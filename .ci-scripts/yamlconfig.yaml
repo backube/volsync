@@ -1,0 +1,20 @@
+---
+# https://yamllint.readthedocs.io/en/stable/configuration.html
+
+extends: default
+ignore: |
+  helm/snapscheduler/templates/*
+rules:
+  document-start:
+    ignore: |
+      deploy/crds/snapscheduler.backube_snapshotschedules_crd.yaml
+      deploy/olm-catalog/snapscheduler/1.1.1/snapshotschedules.snapscheduler.backube.crd.yaml
+      helm/snapscheduler/crds/snapscheduler.backube_snapshotschedules_crd.yaml
+  indentation:
+    indent-sequences: consistent
+  line-length:
+    allow-non-breakable-inline-mappings: true
+    ignore: |
+      deploy/crds/snapscheduler.backube_snapshotschedules_crd.yaml
+      deploy/olm-catalog/snapscheduler/1.1.1/snapshotschedules.snapscheduler.backube.crd.yaml
+      helm/snapscheduler/crds/snapscheduler.backube_snapshotschedules_crd.yaml

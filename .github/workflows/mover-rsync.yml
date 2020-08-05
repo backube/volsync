@@ -1,0 +1,94 @@
+---
+# yamllint disable rule:line-length
+
+name: mover-rsync
+on:  # yamllint disable-line rule:truthy
+  push:
+  pull_request:
+  schedule:
+    - cron: "15 4 * * 1"  # 4:15 every Monday
+
+env:
+  IMAGE: "quay.io/backube/scribe-mover-rsync"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v2
+
+      - name: Install prereqs
+        run: |
+          echo 'APT::Acquire::Retries "5";' | sudo tee /etc/apt/apt.conf.d/80-retries
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python-pip ruby
+          sudo gem install asciidoctor mdl
+          sudo pip install yamllint
+      - name: Run linters
+        run: ./.ci-scripts/pre-commit.sh --require-all
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v2
+
+      - name: Build operator container
+        run: make -C mover-rsync image
+
+      - name: Export container image
+        run: docker save -o /tmp/image.tar ${IMAGE}
+
+      - name: Save container as artifact
+        uses: actions/upload-artifact@v1
+        with:
+          name: ${IMAGE}
+          path: /tmp/image.tar
+
+  push:
+    name: Push container to registry
+    needs: [build, lint]
+    if: >
+      (github.event_name == 'push' || github.event_name == 'schedule') &&
+      (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Load container artifact
+        uses: actions/download-artifact@v1
+        with:
+          name: "${IMAGE}"
+          path: /tmp
+
+      - name: Import container image
+        run: |
+          docker load -i /tmp/image.tar
+          docker inspect ${IMAGE}
+      - name: Login to registry
+        # If the registry server is specified in the image name, we use that.
+        # If the server isn't in the image name, default to docker.io
+        run: |
+          [[ "${IMAGE}" =~ ^([^/]+)/[^/]+/[^/]+ ]] && REGISTRY="${BASH_REMATCH[1]}" || REGISTRY="docker.io"
+          echo "Attempting docker login to: ${REGISTRY}"
+          echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login -u "${{ secrets.REGISTRY_USERNAME }}" --password-stdin ${REGISTRY}
+      - name: Push to registry (latest)
+        if: >
+          (github.event_name == 'push' || github.event_name == 'schedule') &&
+          github.ref == 'refs/heads/master'
+        run: |
+          docker push "${IMAGE}"
+      - name: Push to registry (version tag)
+        if: >
+          (github.event_name == 'push' || github.event_name == 'schedule') &&
+          startsWith(github.ref, 'refs/tags/v')
+        run: |
+          [[ "${{ github.ref }}" =~ ^refs/tags/v([0-9]+\..*) ]] || exit 0
+          TAG="${BASH_REMATCH[1]}"
+          echo "Pushing to $TAG"
+          docker tag "${IMAGE}" "${IMAGE}:${TAG}"
+          docker push "${IMAGE}:${TAG}"
