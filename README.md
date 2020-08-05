@@ -2,6 +2,10 @@
 
 Scribe asynchronously replicates Kubernetes persistent volumes between clusters.
 
+:construction: :construction: :construction:
+This project is in the very early stages. Stay tuned...
+:construction: :construction: :construction:
+
 ## Helpful links
 
 - [Contributing guidelines](https://github.com/backube/.github/blob/master/CONTRIBUTING.md)
