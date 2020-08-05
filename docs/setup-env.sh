@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
-VENV_NAME="$SCRIPT_DIR/.venv"
+VENV_NAME="$SCRIPT_DIR/../.venv"
 
 
 python3 -m venv "$VENV_NAME"

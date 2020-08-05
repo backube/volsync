@@ -1,2 +1,4 @@
+mypy
+pylint
 rstcheck
 sphinx_rtd_theme
