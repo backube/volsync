@@ -1,0 +1,63 @@
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: secondary-data
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: scribe-rsync-secondary
+spec:
+  template:
+    metadata:
+      name: scribe-rsync-secondary
+      labels:
+        app.kubernetes.io/name: rsync-sink
+        app.kubernetes.io/component: mover
+        app.kubernetes.io/part-of: scribe
+    spec:
+      containers:
+        - name: rsync
+          command: ["/bin/bash", "-c", "/secondary.sh"]
+          image: quay.io/backube/scribe-mover-rsync:latest
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: keys
+              mountPath: /keys
+      restartPolicy: Never
+      # May need to set the fsGroup so the non-root container can access the
+      # PV.
+      # securityContext:
+      #   fsGroup: 9999
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: secondary-data
+        - name: keys
+          secret:
+            secretName: secondary-secret
+            defaultMode: 0600
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scribe-rsync-secondary
+spec:
+  selector:
+    app.kubernetes.io/name: rsync-sink
+    app.kubernetes.io/component: mover
+    app.kubernetes.io/part-of: scribe
+  ports:
+    - protocol: TCP
+      port: 22
+  type: ClusterIP
