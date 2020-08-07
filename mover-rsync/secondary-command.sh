@@ -20,11 +20,11 @@ function do_rsync {
     LANG=C rrsync /data
 }
 
-#-- These are the only commands allowed to be executed by the source side:
-# Source can initiate an rsync
+#-- These are the only commands allowed to be executed by the primary side:
+# Primary can initiate an rsync
 if [[ "$SSH_ORIGINAL_COMMAND" =~ ^rsync( ) ]]; then
     do_rsync
-# Source can tell us (destination) to shutdown & pass a numeric result code
+# Primary can tell us (secondary) to shutdown & pass a numeric result code
 elif [[ "$SSH_ORIGINAL_COMMAND" =~ ^shutdown( )+([0-9]+)$ ]]; then
     do_shutdown "${BASH_REMATCH[2]}"
 # Everything else is an error

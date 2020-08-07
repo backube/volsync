@@ -10,14 +10,14 @@ RUN yum update -y && \
     && yum clean all && \
     rm -rf /var/cache/yum
 
-COPY client.sh \
-     server.sh \
-     server-command.sh \
+COPY primary.sh \
+     secondary.sh \
+     secondary-command.sh \
      /
 
-RUN chmod a+rx /client.sh /server.sh \server-command.sh && \
-    ln -s /keys/server /etc/ssh/ssh_host_rsa_key && \
-    ln -s /keys/server.pub /etc/ssh/ssh_host_rsa_key.pub && \
+RUN chmod a+rx /primary.sh /secondary.sh \secondary-command.sh && \
+    ln -s /keys/secondary /etc/ssh/ssh_host_rsa_key && \
+    ln -s /keys/secondary.pub /etc/ssh/ssh_host_rsa_key.pub && \
     install /usr/share/doc/rsync/support/rrsync /usr/local/bin
 
 ARG builddate="(unknown)"

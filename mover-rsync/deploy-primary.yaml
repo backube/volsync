@@ -1,0 +1,52 @@
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: primary-data
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: scribe-rsync-primary
+spec:
+  template:
+    metadata:
+      name: scribe-rsync-primary
+      labels:
+        app.kubernetes.io/name: rsync-primary
+        app.kubernetes.io/component: mover
+        app.kubernetes.io/part-of: scribe
+    spec:
+      containers:
+        - name: rsync
+          command: ["/bin/bash", "-c", "/primary.sh"]
+          env:
+            - name: SECONDARY_ADDRESS
+              value: scribe-rsync-secondary.scribe.svc.cluster.local
+          image: quay.io/backube/scribe-mover-rsync:latest
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: keys
+              mountPath: /keys
+      restartPolicy: Never
+      # May need to set the fsGroup so the non-root container can access the
+      # PV.
+      # securityContext:
+      #   fsGroup: 9999
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: primary-data
+            readOnly: true
+        - name: keys
+          secret:
+            secretName: primary-secret
+            defaultMode: 0600

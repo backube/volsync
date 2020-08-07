@@ -12,10 +12,10 @@ sed -ir 's|^[#\s]*\(AllowTcpForwarding\)\s.*$|\1 no|' "$SSHD_CONFIG"
 sed -ir 's|^[#\s]*\(X11Forwarding\)\s.*$|\1 no|' "$SSHD_CONFIG"
 sed -ir 's|^[#\s]*\(PermitTunnel\)\s.*$|\1 no|' "$SSHD_CONFIG"
 
-# Allow client key to access, but restrict what the client can do.
+# Allow primary's key to access, but restrict what it can do.
 mkdir -p ~/.ssh
 chmod 700 ~/.ssh
-echo "command=\"/server-command.sh\",restrict $(</keys/client.pub)" > ~/.ssh/authorized_keys
+echo "command=\"/secondary-command.sh\",restrict $(</keys/primary.pub)" > ~/.ssh/authorized_keys
 
 # Wait for incoming rsync transfer
 echo "Waiting for connection..."
