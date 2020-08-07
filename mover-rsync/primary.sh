@@ -2,9 +2,10 @@
 
 set -e -o pipefail
 
-SERVER_PORT="${SERVER_PORT:-22}"
-if [[ -z "$SERVER_ADDRESS" ]]; then
-    echo "Remote host must be provided in SERVER_ADDRESS"
+# Ensure we have connection info for the secondary
+SECONDARY_PORT="${SECONDARY_PORT:-22}"
+if [[ -z "$SECONDARY_ADDRESS" ]]; then
+    echo "Remote host must be provided in SECONDARY_ADDRESS"
     exit 1
 fi
 
@@ -12,7 +13,7 @@ mkdir -p ~/.ssh/controlmasters
 chmod 711 ~/.ssh
 
 # Provide ssh host key to validate remote
-echo "$SERVER_ADDRESS $(</keys/server.pub)" > ~/.ssh/known_hosts
+echo "$SECONDARY_ADDRESS $(</keys/secondary.pub)" > ~/.ssh/known_hosts
 
 cat - <<SSHCONFIG > ~/.ssh/config
 Host *
@@ -23,8 +24,8 @@ Host *
   # Disables warning when IP is added to known_hosts
   CheckHostIP no
   # Use the identity provided via attached Secret
-  IdentityFile /keys/client
-  Port ${SERVER_PORT}
+  IdentityFile /keys/primary
+  Port ${SECONDARY_PORT}
   # Enable protocol-level keepalive to detect connection failure
   ServerAliveCountMax 4
   ServerAliveInterval 30
@@ -34,12 +35,12 @@ Host *
   TCPKeepAlive no
 SSHCONFIG
 
-echo "Syncing data to ${SERVER_ADDRESS}:${SERVER_PORT} ..."
-rsync -aAhHSxXz --delete --itemize-changes --info=stats2,misc2 /data/ "root@${SERVER_ADDRESS}":.
+echo "Syncing data to ${SECONDARY_ADDRESS}:${SECONDARY_PORT} ..."
+rsync -aAhHSxXz --delete --itemize-changes --info=stats2,misc2 /data/ "root@${SECONDARY_ADDRESS}":.
 rc=$?
 if [[ $rc -eq 0 ]]; then
-    echo "Synchronization completed successfully. Calling shutdown."
-    ssh "root@${SERVER_ADDRESS}" shutdown 0
+    echo "Synchronization completed successfully. Notifying secondary..."
+    ssh "root@${SECONDARY_ADDRESS}" shutdown 0
 else
     echo "Synchronization failed. rsync returned: $rc"
     exit $rc
