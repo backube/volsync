@@ -2,6 +2,9 @@
 
 Scribe asynchronously replicates Kubernetes persistent volumes between clusters.
 
+[![Documentation
+Status](https://readthedocs.org/projects/scribe-replication/badge/?version=latest)](https://scribe-replication.readthedocs.io/en/latest/?badge=latest)
+
 :construction: :construction: :construction:
 This project is in the very early stages. Stay tuned...
 :construction: :construction: :construction:
