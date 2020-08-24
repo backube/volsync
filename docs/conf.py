@@ -29,6 +29,9 @@ author = 'The Scribe authors'
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
+        # https://plantweb.readthedocs.io/#sphinx-directives
+        # https://plantweb.readthedocs.io/examples.html
+        'plantweb.directive',
         'sphinx_rtd_theme',
 ]
 
