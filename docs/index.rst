@@ -1,23 +1,21 @@
-======
-Scribe
-======
-
-.. toctree::
-   :maxdepth: 2
-   :caption: Contents
-   :hidden:
-
-..   anotherpage
+====================
+Scribe Documentation
+====================
 
 *Asynchronous volume replication for Kubernetes CSI storage*
+
+This project is hosted at GitHub. See https://github.com/backube/scribe
+
+.. toctree::
+   :caption: Contents
+   :hidden:
+   :titlesonly:
+   :includehidden:
+
+   self
+   design/index
 
 Overview
 ========
 
-So now I'm going to include some text and see how it goes.
-
-.. important:: This is important
-
-.. tip:: I have a tip for you
-
-.. note:: You should take note!
+This project is in the very early stages. The best place to start is to read the `design documents <design/index.html>`_.

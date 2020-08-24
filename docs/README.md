@@ -1,7 +1,7 @@
 # Documentation
 
-This documentation will be hosted at
-[readthedocs](https://readthedocs.io).
+This documentation is hosted at
+[scribe-replication.readthedocs.io](https://scribe-replication.readthedocs.io/).
 
 ## New to reStructuredText?
 
