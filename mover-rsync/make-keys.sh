@@ -5,8 +5,8 @@ set -e -o pipefail
 # We always use RSA keys since the other types are either insecure or not
 # available in FIPS mode
 
-PRIMARY=primary-key
-SECONDARY=secondary-key
+SOURCE=source-key
+DESTINATION=destination-key
 
 function gen-key {
     OUTFILE="$1"
@@ -15,33 +15,33 @@ function gen-key {
     ssh-keygen -q -t rsa -b 4096 -f "$OUTFILE" -C '' -N '' 
 }
 
-gen-key "$PRIMARY"
-gen-key "$SECONDARY"
+gen-key "$SOURCE"
+gen-key "$DESTINATION"
 
-cat - <<PRIMARY > primary-secret.yaml
+cat - <<SOURCE > source-secret.yaml
 ---
 apiVersion: v1
 kind: Secret
 metadata:
-  name: primary-secret
+  name: source-secret
 type: Opaque
 data:
-  primary: $(base64 -w0 < "$PRIMARY")
-  primary.pub: $(base64 -w0 < "$PRIMARY.pub")
-  secondary.pub: $(base64 -w0 < "$SECONDARY.pub")
-PRIMARY
+  source: $(base64 -w0 < "$SOURCE")
+  source.pub: $(base64 -w0 < "$SOURCE.pub")
+  destination.pub: $(base64 -w0 < "$DESTINATION.pub")
+SOURCE
 
-cat - <<SECONDARY > secondary-secret.yaml
+cat - <<DESTINATION > destination-secret.yaml
 ---
 apiVersion: v1
 kind: Secret
 metadata:
-  name: secondary-secret
+  name: destination-secret
 type: Opaque
 data:
-  primary.pub: $(base64 -w0 < "$PRIMARY.pub")
-  secondary: $(base64 -w0 < "$SECONDARY")
-  secondary.pub: $(base64 -w0 < "$SECONDARY.pub")
-SECONDARY
+  source.pub: $(base64 -w0 < "$SOURCE.pub")
+  destination: $(base64 -w0 < "$DESTINATION")
+  destination.pub: $(base64 -w0 < "$DESTINATION.pub")
+DESTINATION
 
-rm -f "${PRIMARY}" "${PRIMARY}.pub" "${SECONDARY}" "${SECONDARY}.pub"
+rm -f "${SOURCE}" "${SOURCE}.pub" "${DESTINATION}" "${DESTINATION}.pub"
