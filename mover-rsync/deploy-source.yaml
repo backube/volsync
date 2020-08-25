@@ -2,7 +2,7 @@
 kind: PersistentVolumeClaim
 apiVersion: v1
 metadata:
-  name: primary-data
+  name: source-data
 spec:
   accessModes: ["ReadWriteOnce"]
   resources:
@@ -13,22 +13,22 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: scribe-rsync-primary
+  name: scribe-rsync-source
 spec:
   template:
     metadata:
-      name: scribe-rsync-primary
+      name: scribe-rsync-source
       labels:
-        app.kubernetes.io/name: rsync-primary
+        app.kubernetes.io/name: rsync-source
         app.kubernetes.io/component: mover
         app.kubernetes.io/part-of: scribe
     spec:
       containers:
         - name: rsync
-          command: ["/bin/bash", "-c", "/primary.sh"]
+          command: ["/bin/bash", "-c", "/source.sh"]
           env:
-            - name: SECONDARY_ADDRESS
-              value: scribe-rsync-secondary.scribe.svc.cluster.local
+            - name: DESTINATION_ADDRESS
+              value: scribe-rsync-destination.scribe.svc.cluster.local
           image: quay.io/backube/scribe-mover-rsync:latest
           imagePullPolicy: IfNotPresent
           volumeMounts:
@@ -44,9 +44,9 @@ spec:
       volumes:
         - name: data
           persistentVolumeClaim:
-            claimName: primary-data
+            claimName: source-data
             readOnly: true
         - name: keys
           secret:
-            secretName: primary-secret
+            secretName: source-secret
             defaultMode: 0600
