@@ -4,7 +4,9 @@
 name: mover-rsync
 on:  # yamllint disable-line rule:truthy
   push:
+    branches: [master]
   pull_request:
+    branches: [master]
   schedule:
     - cron: "15 4 * * 1"  # 4:15 every Monday
 
@@ -47,7 +49,7 @@ jobs:
       - name: Save container as artifact
         uses: actions/upload-artifact@v1
         with:
-          name: ${IMAGE}
+          name: scribe-mover-rsync-container
           path: /tmp/image.tar
 
   push:
@@ -62,7 +64,7 @@ jobs:
       - name: Load container artifact
         uses: actions/download-artifact@v1
         with:
-          name: "${IMAGE}"
+          name: scribe-mover-rsync-container
           path: /tmp
 
       - name: Import container image
