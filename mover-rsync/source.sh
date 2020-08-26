@@ -19,7 +19,7 @@ cat - <<SSHCONFIG > ~/.ssh/config
 Host *
   # Control persist to speed 2nd ssh connection
   ControlMaster auto
-  ControlPath ~/.ssh/controlmasters/%r@%h:%p
+  ControlPath ~/.ssh/controlmasters/%C
   ControlPersist 5
   # Disables warning when IP is added to known_hosts
   CheckHostIP no
@@ -36,8 +36,10 @@ Host *
 SSHCONFIG
 
 echo "Syncing data to ${DESTINATION_ADDRESS}:${DESTINATION_PORT} ..."
+START_TIME=$SECONDS
 rsync -aAhHSxXz --delete --itemize-changes --info=stats2,misc2 /data/ "root@${DESTINATION_ADDRESS}":.
 rc=$?
+echo "Rsync completed in $(( SECONDS - START_TIME ))s"
 if [[ $rc -eq 0 ]]; then
     echo "Synchronization completed successfully. Notifying destination..."
     ssh "root@${DESTINATION_ADDRESS}" shutdown 0

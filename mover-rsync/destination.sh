@@ -20,7 +20,7 @@ echo "command=\"/destination-command.sh\",restrict $(</keys/source.pub)" > ~/.ss
 # Wait for incoming rsync transfer
 echo "Waiting for connection..."
 rm -f /var/run/nologin
-/usr/sbin/sshd -D -e
+/usr/sbin/sshd -D -e -q
 
 # When sshd exits, need to return the proper exit code from the rsync operation
 CODE=255
