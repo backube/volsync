@@ -17,6 +17,8 @@ echo "$DESTINATION_ADDRESS $(</keys/destination.pub)" > ~/.ssh/known_hosts
 
 cat - <<SSHCONFIG > ~/.ssh/config
 Host *
+  # Wait max 30s to establish connection
+  ConnectTimeout 30
   # Control persist to speed 2nd ssh connection
   ControlMaster auto
   ControlPath ~/.ssh/controlmasters/%C
