@@ -13,6 +13,7 @@ BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 
 GOLANGCI_VERSION := v1.25.0
 OPERATOR_SDK_VERSION := v1.0.0
+export SHELL := /bin/bash
 
 # Image URL to use all building/pushing image targets
 IMG ?= quay.io/backube/scribe:latest
