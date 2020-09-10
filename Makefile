@@ -26,12 +26,15 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
-all: manager
+all: manager manifests
 
 # Run tests
+ENVTEST_ASSETS_DIR=$(shell pwd)/testbin
 test: generate fmt vet manifests golangci-lint
-	golangci-lint run ./...
-	go test ./... -coverprofile cover.out
+	$(GOLANGCILINT) run ./...
+	mkdir -p ${ENVTEST_ASSETS_DIR}
+	test -f ${ENVTEST_ASSETS_DIR}/setup-envtest.sh || curl -sSLo ${ENVTEST_ASSETS_DIR}/setup-envtest.sh https://raw.githubusercontent.com/kubernetes-sigs/controller-runtime/master/hack/setup-envtest.sh
+	source ${ENVTEST_ASSETS_DIR}/setup-envtest.sh; fetch_envtest_tools $(ENVTEST_ASSETS_DIR); setup_envtest_env $(ENVTEST_ASSETS_DIR); go test ./... -coverprofile cover.out
 
 # Build manager binary
 manager: generate fmt vet
@@ -128,9 +131,9 @@ GOLANGCI_URL := https://install.goreleaser.com/github.com/golangci/golangci-lint
 golangci-lint:
 ifeq (, $(shell which golangci-lint))
 	curl -fL ${GOLANGCI_URL} | sh -s -- -b ${GOBIN} ${GOLANGCI_VERSION}
-GOLANGCI=$(GOBIN)/golangci-lint
+GOLANGCILINT=$(GOBIN)/golangci-lint
 else
-GOLANGCI=$(shell which golangci-lint)
+GOLANGCILINT=$(shell which golangci-lint)
 endif
 
 .PHONY: operator-sdk

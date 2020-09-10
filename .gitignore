@@ -1,6 +1,7 @@
 .venv/
 /.vscode/
 /docs/_build/
+/testbin/
 
 # Binaries for programs and plugins
 *.exe
