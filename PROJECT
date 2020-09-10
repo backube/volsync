@@ -2,6 +2,13 @@ domain: backube
 layout: go.kubebuilder.io/v2
 projectName: scribe
 repo: github.com/backube/scribe
+resources:
+- group: scribe
+  kind: Source
+  version: v1alpha1
+- group: scribe
+  kind: Destination
+  version: v1alpha1
 version: 3-alpha
 plugins:
   go.sdk.operatorframework.io/v2-alpha: {}

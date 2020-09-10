@@ -1,0 +1,7 @@
+apiVersion: scribe.backube/v1alpha1
+kind: Source
+metadata:
+  name: source-sample
+spec:
+  # Add fields here
+  foo: bar
