@@ -11,6 +11,9 @@ BUNDLE_DEFAULT_CHANNEL := --default-channel=$(DEFAULT_CHANNEL)
 endif
 BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 
+GOLANGCI_VERSION := v1.25.0
+OPERATOR_SDK_VERSION := v1.0.0
+
 # Image URL to use all building/pushing image targets
 IMG ?= quay.io/backube/scribe:latest
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
@@ -26,7 +29,8 @@ endif
 all: manager
 
 # Run tests
-test: generate fmt vet manifests
+test: generate fmt vet manifests golangci-lint
+	golangci-lint run ./...
 	go test ./... -coverprofile cover.out
 
 # Build manager binary
@@ -109,12 +113,34 @@ endif
 # Generate bundle manifests and metadata, then validate generated files.
 .PHONY: bundle
 bundle: manifests
-	operator-sdk generate kustomize manifests -q
+	$(OPERATOR_SDK) generate kustomize manifests -q
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
-	$(KUSTOMIZE) build config/manifests | operator-sdk generate bundle -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
-	operator-sdk bundle validate ./bundle
+	$(KUSTOMIZE) build config/manifests | $(OPERATOR_SDK) generate bundle -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
+	$(OPERATOR_SDK) bundle validate ./bundle
 
 # Build the bundle image.
 .PHONY: bundle-build
 bundle-build:
 	docker build -f bundle.Dockerfile -t $(BUNDLE_IMG) .
+
+.PHONY: golangci-lint
+GOLANGCI_URL := https://install.goreleaser.com/github.com/golangci/golangci-lint.sh
+golangci-lint:
+ifeq (, $(shell which golangci-lint))
+	curl -fL ${GOLANGCI_URL} | sh -s -- -b ${GOBIN} ${GOLANGCI_VERSION}
+GOLANGCI=$(GOBIN)/golangci-lint
+else
+GOLANGCI=$(shell which golangci-lint)
+endif
+
+.PHONY: operator-sdk
+OPERATOR_SDK_URL := https://github.com/operator-framework/operator-sdk/releases/download/$(OPERATOR_SDK_VERSION)/operator-sdk-$(OPERATOR_SDK_VERSION)-x86_64-linux-gnu
+operator-sdk:
+ifeq (, $(shell which operator-sdk))
+	mkdir -p ${GOBINDIR}
+	curl -fL "${OPERATOR_SDK_URL}" > "${GOBIN}/operator-sdk"
+	chmod a+x "${GOBIN}/operator-sdk"
+OPERATOR_SDK=$(GOBIN)/operator-sdk
+else
+OPERATOR_SDK=$(shell which operator-sdk)
+endif
