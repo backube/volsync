@@ -19,7 +19,7 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Source is the Schema for the sources API
+        description: Source defines the source for a replicated volume
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation
@@ -34,34 +34,45 @@ spec:
           metadata:
             type: object
           spec:
-            description: SourceSpec defines the desired state of Source
+            description: spec is the desired state of the Source, including the replication
+              method to use and its configuration.
             properties:
               parameters:
                 additionalProperties:
                   type: string
-                description: Parameters are method-specific configuration parameters
+                description: parameters are method-specific key/value configuration
+                  parameters. For more information, please see the documentation of
+                  the specific replicationMethod being used.
                 type: object
               replicationMethod:
-                description: ReplicationMethod chooses the method used to replicate
-                  the volume
+                description: replicationMethod determines the method used to replicate
+                  the volume. This may be either a method built into the Scribe controller
+                  or the name of an external plugin. It must match the replicationMethod
+                  of the corresponding destination.
                 type: string
               source:
-                description: Source is the name of the PVC to replicate
+                description: source is the name of the PersistentVolumeClaim (PVC)
+                  to replicate.
                 type: string
               trigger:
-                description: Trigger controls when the volume will be replicated
+                description: trigger determines when the latest state of the volume
+                  will be replicated to the destination.
                 properties:
                   schedule:
+                    description: schedule is a cronspec (https://en.wikipedia.org/wiki/Cron#Overview)
+                      that can be used to schedule replication to occur at regular,
+                      time-based intervals.
                     pattern: ^(\d+|\*)(/\d+)?(\s+(\d+|\*)(/\d+)?){4}$
                     type: string
                 type: object
             type: object
           status:
-            description: SourceStatus defines the observed state of Source
+            description: status is the observed state of the Source as determined
+              by the controller.
             properties:
               conditions:
-                description: Conditions represent the latest available observations
-                  of an object's state
+                description: conditions represent the latest available observations
+                  of the source's state.
                 items:
                   description: "Condition represents an observation of an object's
                     state. Conditions are an extension mechanism intended to be used
@@ -103,10 +114,9 @@ spec:
               methodStatus:
                 additionalProperties:
                   type: string
-                description: MethodStatus provides method-specific replication status
+                description: methodStatus provides status information that is specific
+                  to the replicationMethod being used.
                 type: object
-            required:
-            - conditions
             type: object
         type: object
     served: true

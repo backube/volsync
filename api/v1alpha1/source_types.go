@@ -39,42 +39,60 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// SourceTriggerSpec defines when a volume will be synchronized with the
+// destination.
 type SourceTriggerSpec struct {
-	// +kubebuilder:validation:Optional
+	// schedule is a cronspec (https://en.wikipedia.org/wiki/Cron#Overview) that
+	// can be used to schedule replication to occur at regular, time-based
+	// intervals.
 	// +kubebuilder:validation:Pattern=`^(\d+|\*)(/\d+)?(\s+(\d+|\*)(/\d+)?){4}$`
+	// +optional
 	Schedule *string `json:"schedule,omitempty"`
 }
 
 // SourceSpec defines the desired state of Source
 type SourceSpec struct {
-	// Source is the name of the PVC to replicate
+	// source is the name of the PersistentVolumeClaim (PVC) to replicate.
 	Source string `json:"source,omitempty"`
-	// Trigger controls when the volume will be replicated
+	// trigger determines when the latest state of the volume will be replicated
+	// to the destination.
 	Trigger SourceTriggerSpec `json:"trigger,omitempty"`
-	// ReplicationMethod chooses the method used to replicate the volume
+	// replicationMethod determines the method used to replicate the volume.
+	// This may be either a method built into the Scribe controller or the name
+	// of an external plugin. It must match the replicationMethod of the
+	// corresponding destination.
 	ReplicationMethod string `json:"replicationMethod,omitempty"`
-	// Parameters are method-specific configuration parameters
+	// parameters are method-specific key/value configuration parameters. For
+	// more information, please see the documentation of the specific
+	// replicationMethod being used.
 	Parameters map[string]string `json:"parameters,omitempty"`
 }
 
 // SourceStatus defines the observed state of Source
 type SourceStatus struct {
-	// MethodStatus provides method-specific replication status
+	// methodStatus provides status information that is specific to the
+	// replicationMethod being used.
 	MethodStatus map[string]string `json:"methodStatus,omitempty"`
-	// Conditions represent the latest available observations of an object's state
-	Conditions status.Conditions `json:"conditions"`
+	// conditions represent the latest available observations of the
+	// source's state.
+	Conditions status.Conditions `json:"conditions,omitempty"`
 }
 
+// Source defines the source for a replicated volume
 // +kubebuilder:object:root=true
+// +kubebuilder:resource:scope=Namespaced
 // +kubebuilder:subresource:status
-
-// Source is the Schema for the sources API
 type Source struct {
-	metav1.TypeMeta   `json:",inline"`
+	metav1.TypeMeta `json:",inline"`
+	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-
-	Spec   SourceSpec   `json:"spec,omitempty"`
-	Status SourceStatus `json:"status,omitempty"`
+	// spec is the desired state of the Source, including the replication method
+	// to use and its configuration.
+	Spec SourceSpec `json:"spec,omitempty"`
+	// status is the observed state of the Source as determined by the
+	// controller.
+	// +optional
+	Status *SourceStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true

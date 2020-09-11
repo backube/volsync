@@ -39,40 +39,48 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
 // DestinationSpec defines the desired state of Destination
 type DestinationSpec struct {
-	// ReplicationMethod chooses the method used to replicate the volume
+	// replicationMethod determines the method used to replicate the volume.
+	// This may be either a method built into the Scribe controller or the name
+	// of an external plugin. It must match the replicationMethod of the
+	// corresponding source.
 	ReplicationMethod string `json:"replicationMethod,omitempty"`
-	// Parameters are method-specific configuration parameters
+	// parameters are method-specific key/value configuration parameters. For
+	// more information, please see the documentation of the specific
+	// replicationMethod being used.
 	Parameters map[string]string `json:"parameters,omitempty"`
 }
 
 // DestinationStatus defines the observed state of Destination
 type DestinationStatus struct {
-	// MethodStatus provides method-specific replication status
+	// methodStatus provides status information that is specific to the
+	// replicationMethod being used.
 	MethodStatus map[string]string `json:"methodStatus,omitempty"`
-	// Conditions represent the latest available observations of an object's state
-	Conditions status.Conditions `json:"conditions"`
+	// conditions represent the latest available observations of the
+	// destination's state.
+	Conditions status.Conditions `json:"conditions,omitempty"`
 }
 
+// Destination defines the destination for a replicated volume
 // +kubebuilder:object:root=true
+// +kubebuilder:resource:scope=Namespaced
 // +kubebuilder:subresource:status
-
-// Destination is the Schema for the destinations API
 type Destination struct {
-	metav1.TypeMeta   `json:",inline"`
+	metav1.TypeMeta `json:",inline"`
+	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-
-	Spec   DestinationSpec   `json:"spec,omitempty"`
-	Status DestinationStatus `json:"status,omitempty"`
+	// spec is the desired state of the Destination, including the replication
+	// method to use and its configuration.
+	Spec DestinationSpec `json:"spec,omitempty"`
+	// status is the observed state of the Destination as determined by the
+	// controller.
+	// +optional
+	Status *DestinationStatus `json:"status,omitempty"`
 }
-
-// +kubebuilder:object:root=true
 
 // DestinationList contains a list of Destination
+// +kubebuilder:object:root=true
 type DestinationList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
