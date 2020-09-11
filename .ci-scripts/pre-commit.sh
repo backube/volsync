@@ -21,9 +21,8 @@ function run_check() {
         echo "=====  $exe  ====="
         find . \
             -path ./vendor -prune -o \
-            -path ./docs/_site -prune -o \
-            -path ./docs/vendor -prune -o \
             -path ./.venv -prune -o \
+            -path ./testbin -prune -o \
             -regextype egrep -iregex "$regex" -print0 | \
             xargs -0rt "$exe" "$@"
         echo

@@ -1,0 +1,20 @@
+# permissions for end users to view destinations.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: destination-viewer-role
+rules:
+- apiGroups:
+  - scribe.backube
+  resources:
+  - destinations
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - scribe.backube
+  resources:
+  - destinations/status
+  verbs:
+  - get

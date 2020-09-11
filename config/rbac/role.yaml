@@ -1,0 +1,48 @@
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  name: manager-role
+rules:
+- apiGroups:
+  - scribe.backube
+  resources:
+  - destinations
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - scribe.backube
+  resources:
+  - destinations/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - scribe.backube
+  resources:
+  - sources
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - scribe.backube
+  resources:
+  - sources/status
+  verbs:
+  - get
+  - patch
+  - update
