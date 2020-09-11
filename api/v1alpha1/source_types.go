@@ -31,28 +31,38 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// +kubebuilder:validation:Required
 package v1alpha1
 
 import (
+	"github.com/operator-framework/operator-lib/status"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+type SourceTriggerSpec struct {
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Pattern=`^(\d+|\*)(/\d+)?(\s+(\d+|\*)(/\d+)?){4}$`
+	Schedule *string `json:"schedule,omitempty"`
+}
 
 // SourceSpec defines the desired state of Source
 type SourceSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// Foo is an example field of Source. Edit Source_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// Source is the name of the PVC to replicate
+	Source string `json:"source,omitempty"`
+	// Trigger controls when the volume will be replicated
+	Trigger SourceTriggerSpec `json:"trigger,omitempty"`
+	// ReplicationMethod chooses the method used to replicate the volume
+	ReplicationMethod string `json:"replicationMethod,omitempty"`
+	// Parameters are method-specific configuration parameters
+	Parameters map[string]string `json:"parameters,omitempty"`
 }
 
 // SourceStatus defines the observed state of Source
 type SourceStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// MethodStatus provides method-specific replication status
+	MethodStatus map[string]string `json:"methodStatus,omitempty"`
+	// Conditions represent the latest available observations of an object's state
+	Conditions status.Conditions `json:"conditions"`
 }
 
 // +kubebuilder:object:root=true

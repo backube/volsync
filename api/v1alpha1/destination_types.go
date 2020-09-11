@@ -31,9 +31,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// +kubebuilder:validation:Required
 package v1alpha1
 
 import (
+	"github.com/operator-framework/operator-lib/status"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -42,17 +44,18 @@ import (
 
 // DestinationSpec defines the desired state of Destination
 type DestinationSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// Foo is an example field of Destination. Edit Destination_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// ReplicationMethod chooses the method used to replicate the volume
+	ReplicationMethod string `json:"replicationMethod,omitempty"`
+	// Parameters are method-specific configuration parameters
+	Parameters map[string]string `json:"parameters,omitempty"`
 }
 
 // DestinationStatus defines the observed state of Destination
 type DestinationStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// MethodStatus provides method-specific replication status
+	MethodStatus map[string]string `json:"methodStatus,omitempty"`
+	// Conditions represent the latest available observations of an object's state
+	Conditions status.Conditions `json:"conditions"`
 }
 
 // +kubebuilder:object:root=true

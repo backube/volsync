@@ -43,6 +43,7 @@ func (r *DestinationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 	_ = r.Log.WithValues("destination", req.NamespacedName)
 
 	// your logic here
+	r.Log.Info("reconcile started...")
 
 	return ctrl.Result{}, nil
 }
