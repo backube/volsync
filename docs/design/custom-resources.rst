@@ -92,7 +92,7 @@ With the above considerations in mind, the primary side of the replication relat
         schedule: "*/10 * * * * *"
       # Method of replication. Either built-in "rsync" or an external method
       # (e.g., "ceph.io/rbd-async")
-      replicationMethod: rsync
+      replicationMethod: Rsync
       # Method-specific configuration parameters
       parameters:  # map[string]string
         param1: value2
@@ -114,7 +114,7 @@ trigger specification:
       name: myVolMirror
       namespace: myNamespace
     spec:
-      replicationMethod: rsync
+      replicationMethod: Rsync
       parameters:
         param1: value2
     status:

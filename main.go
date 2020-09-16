@@ -21,15 +21,15 @@ import (
 	"flag"
 	"os"
 
+	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
+	"github.com/backube/scribe/controllers"
+	snapv1 "github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-
-	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
-	"github.com/backube/scribe/controllers"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -40,7 +40,7 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-
+	utilruntime.Must(snapv1.AddToScheme(scheme))
 	utilruntime.Must(scribev1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
@@ -52,6 +52,8 @@ func main() {
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+	flag.StringVar(&controllers.RsyncContainerImage, "rsync-container-image",
+		controllers.DefaultRsyncContainerImage, "The container image for the rsync data mover")
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))

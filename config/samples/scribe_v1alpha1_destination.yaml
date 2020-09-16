@@ -3,5 +3,8 @@ kind: Destination
 metadata:
   name: destination-sample
 spec:
-  # Add fields here
-  foo: bar
+  replicationMethod: Rsync
+  parameters:
+    accessMode: ReadWriteOnce
+    capacity: 1Gi
+    serviceType: ClusterIP
