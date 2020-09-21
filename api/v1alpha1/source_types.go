@@ -61,7 +61,7 @@ type SourceSpec struct {
 	// This may be either a method built into the Scribe controller or the name
 	// of an external plugin. It must match the replicationMethod of the
 	// corresponding destination.
-	ReplicationMethod string `json:"replicationMethod,omitempty"`
+	ReplicationMethod ReplicationMethodType `json:"replicationMethod,omitempty"`
 	// parameters are method-specific key/value configuration parameters. For
 	// more information, please see the documentation of the specific
 	// replicationMethod being used.
