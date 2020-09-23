@@ -55,27 +55,27 @@ var RsyncContainerImage string
 // DefaultRsyncContainerImage is the default container image name of the rsync data mover
 var DefaultRsyncContainerImage = "quay.io/backube/scribe-mover-rsync:latest"
 
-// DestinationReconciler reconciles a Destination object
-type DestinationReconciler struct {
+// ReplicationDestinationReconciler reconciles a ReplicationDestination object
+type ReplicationDestinationReconciler struct {
 	client.Client
 	Log    logr.Logger
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=scribe.backube,resources=destinations,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=scribe.backube,resources=destinations/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=scribe.backube,resources=replicationdestinations,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=scribe.backube,resources=replicationdestinations/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=snapshot.storage.k8s.io,resources=volumesnapshots,verbs=get;list;watch;create;update;patch;delete
 
-func (r *DestinationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
+func (r *ReplicationDestinationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	ctx := context.Background()
-	logger := r.Log.WithValues("destination", req.NamespacedName)
+	logger := r.Log.WithValues("replicationdestination", req.NamespacedName)
 
 	// Get CR instance
-	inst := &scribev1alpha1.Destination{}
+	inst := &scribev1alpha1.ReplicationDestination{}
 	if err := r.Client.Get(ctx, req.NamespacedName, inst); err != nil {
 		if !kerrors.IsNotFound(err) {
 			logger.Error(err, "Failed to get Destination")
@@ -85,7 +85,7 @@ func (r *DestinationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 
 	// Prepare the .Status fields if necessary
 	if inst.Status == nil {
-		inst.Status = &scribev1alpha1.DestinationStatus{}
+		inst.Status = &scribev1alpha1.ReplicationDestinationStatus{}
 	}
 	if inst.Status.Conditions == nil {
 		inst.Status.Conditions = status.Conditions{}
@@ -131,9 +131,9 @@ func (r *DestinationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 	return result, err
 }
 
-func (r *DestinationReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *ReplicationDestinationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&scribev1alpha1.Destination{}).
+		For(&scribev1alpha1.ReplicationDestination{}).
 		Owns(&batchv1.Job{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
 		Owns(&corev1.Secret{}).
@@ -144,8 +144,8 @@ func (r *DestinationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 type rsyncDestReconciler struct {
 	ctx        context.Context
-	instance   *scribev1alpha1.Destination
-	r          *DestinationReconciler
+	instance   *scribev1alpha1.ReplicationDestination
+	r          *ReplicationDestinationReconciler
 	service    types.NamespacedName
 	mainSecret types.NamespacedName
 	destSecret types.NamespacedName
@@ -154,7 +154,7 @@ type rsyncDestReconciler struct {
 	snap       types.NamespacedName
 }
 
-func (r *rsyncDestReconciler) Run(ctx context.Context, instance *scribev1alpha1.Destination, dr *DestinationReconciler, logger logr.Logger) (ctrl.Result, error) {
+func (r *rsyncDestReconciler) Run(ctx context.Context, instance *scribev1alpha1.ReplicationDestination, dr *ReplicationDestinationReconciler, logger logr.Logger) (ctrl.Result, error) {
 	// Initialize state for the reconcile pass
 	r.ctx = ctx
 	r.instance = instance

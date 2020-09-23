@@ -6,20 +6,21 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.3.0
   creationTimestamp: null
-  name: destinations.scribe.backube
+  name: replicationdestinations.scribe.backube
 spec:
   group: scribe.backube
   names:
-    kind: Destination
-    listKind: DestinationList
-    plural: destinations
-    singular: destination
+    kind: ReplicationDestination
+    listKind: ReplicationDestinationList
+    plural: replicationdestinations
+    singular: replicationdestination
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Destination defines the destination for a replicated volume
+        description: ReplicationDestination defines the destination for a replicated
+          volume
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation
@@ -34,8 +35,8 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec is the desired state of the Destination, including the
-              replication method to use and its configuration.
+            description: spec is the desired state of the ReplicationDestination,
+              including the replication method to use and its configuration.
             properties:
               parameters:
                 additionalProperties:
@@ -52,8 +53,8 @@ spec:
                 type: string
             type: object
           status:
-            description: status is the observed state of the Destination as determined
-              by the controller.
+            description: status is the observed state of the ReplicationDestination
+              as determined by the controller.
             properties:
               conditions:
                 description: conditions represent the latest available observations

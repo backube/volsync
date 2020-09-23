@@ -1,7 +1,7 @@
 apiVersion: scribe.backube/v1alpha1
-kind: Destination
+kind: ReplicationDestination
 metadata:
-  name: destination-sample
+  name: replicationdestination-sample
 spec:
   replicationMethod: Rsync
   parameters:
