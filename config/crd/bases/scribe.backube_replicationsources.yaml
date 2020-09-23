@@ -6,20 +6,20 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.3.0
   creationTimestamp: null
-  name: sources.scribe.backube
+  name: replicationsources.scribe.backube
 spec:
   group: scribe.backube
   names:
-    kind: Source
-    listKind: SourceList
-    plural: sources
-    singular: source
+    kind: ReplicationSource
+    listKind: ReplicationSourceList
+    plural: replicationsources
+    singular: replicationsource
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Source defines the source for a replicated volume
+        description: ReplicationSource defines the source for a replicated volume
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation
@@ -34,8 +34,8 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec is the desired state of the Source, including the replication
-              method to use and its configuration.
+            description: spec is the desired state of the ReplicationSource, including
+              the replication method to use and its configuration.
             properties:
               parameters:
                 additionalProperties:
@@ -67,8 +67,8 @@ spec:
                 type: object
             type: object
           status:
-            description: status is the observed state of the Source as determined
-              by the controller.
+            description: status is the observed state of the ReplicationSource as
+              determined by the controller.
             properties:
               conditions:
                 description: conditions represent the latest available observations

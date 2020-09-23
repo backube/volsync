@@ -1,13 +1,13 @@
-# permissions for end users to view sources.
+# permissions for end users to view replicationsources.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: source-viewer-role
+  name: replicationsource-viewer-role
 rules:
 - apiGroups:
   - scribe.backube
   resources:
-  - sources
+  - replicationsources
   verbs:
   - get
   - list
@@ -15,6 +15,6 @@ rules:
 - apiGroups:
   - scribe.backube
   resources:
-  - sources/status
+  - replicationsources/status
   verbs:
   - get

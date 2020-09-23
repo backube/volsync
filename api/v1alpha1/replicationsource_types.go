@@ -39,12 +39,28 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// DestinationSpec defines the desired state of Destination
-type DestinationSpec struct {
+// ReplicationSourceTriggerSpec defines when a volume will be synchronized with
+// the destination.
+type ReplicationSourceTriggerSpec struct {
+	// schedule is a cronspec (https://en.wikipedia.org/wiki/Cron#Overview) that
+	// can be used to schedule replication to occur at regular, time-based
+	// intervals.
+	// +kubebuilder:validation:Pattern=`^(\d+|\*)(/\d+)?(\s+(\d+|\*)(/\d+)?){4}$`
+	// +optional
+	Schedule *string `json:"schedule,omitempty"`
+}
+
+// ReplicationSourceSpec defines the desired state of ReplicationSource
+type ReplicationSourceSpec struct {
+	// source is the name of the PersistentVolumeClaim (PVC) to replicate.
+	Source string `json:"source,omitempty"`
+	// trigger determines when the latest state of the volume will be replicated
+	// to the destination.
+	Trigger ReplicationSourceTriggerSpec `json:"trigger,omitempty"`
 	// replicationMethod determines the method used to replicate the volume.
 	// This may be either a method built into the Scribe controller or the name
 	// of an external plugin. It must match the replicationMethod of the
-	// corresponding source.
+	// corresponding destination.
 	ReplicationMethod ReplicationMethodType `json:"replicationMethod,omitempty"`
 	// parameters are method-specific key/value configuration parameters. For
 	// more information, please see the documentation of the specific
@@ -52,41 +68,42 @@ type DestinationSpec struct {
 	Parameters map[string]string `json:"parameters,omitempty"`
 }
 
-// DestinationStatus defines the observed state of Destination
-type DestinationStatus struct {
+// ReplicationSourceStatus defines the observed state of ReplicationSource
+type ReplicationSourceStatus struct {
 	// methodStatus provides status information that is specific to the
 	// replicationMethod being used.
 	MethodStatus map[string]string `json:"methodStatus,omitempty"`
 	// conditions represent the latest available observations of the
-	// destination's state.
+	// source's state.
 	Conditions status.Conditions `json:"conditions,omitempty"`
 }
 
-// Destination defines the destination for a replicated volume
+// ReplicationSource defines the source for a replicated volume
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Namespaced
 // +kubebuilder:subresource:status
-type Destination struct {
+type ReplicationSource struct {
 	metav1.TypeMeta `json:",inline"`
 	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	// spec is the desired state of the Destination, including the replication
-	// method to use and its configuration.
-	Spec DestinationSpec `json:"spec,omitempty"`
-	// status is the observed state of the Destination as determined by the
-	// controller.
+	// spec is the desired state of the ReplicationSource, including the
+	// replication method to use and its configuration.
+	Spec ReplicationSourceSpec `json:"spec,omitempty"`
+	// status is the observed state of the ReplicationSource as determined by
+	// the controller.
 	// +optional
-	Status *DestinationStatus `json:"status,omitempty"`
+	Status *ReplicationSourceStatus `json:"status,omitempty"`
 }
 
-// DestinationList contains a list of Destination
 // +kubebuilder:object:root=true
-type DestinationList struct {
+
+// ReplicationSourceList contains a list of Source
+type ReplicationSourceList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Destination `json:"items"`
+	Items           []ReplicationSource `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&Destination{}, &DestinationList{})
+	SchemeBuilder.Register(&ReplicationSource{}, &ReplicationSourceList{})
 }

@@ -1,13 +1,13 @@
-# permissions for end users to edit sources.
+# permissions for end users to edit replicationdestinations.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: source-editor-role
+  name: replicationdestination-editor-role
 rules:
 - apiGroups:
   - scribe.backube
   resources:
-  - sources
+  - replicationdestinations
   verbs:
   - create
   - delete
@@ -19,6 +19,6 @@ rules:
 - apiGroups:
   - scribe.backube
   resources:
-  - sources/status
+  - replicationdestinations/status
   verbs:
   - get

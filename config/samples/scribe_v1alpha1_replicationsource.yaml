@@ -1,7 +1,7 @@
 apiVersion: scribe.backube/v1alpha1
-kind: Source
+kind: ReplicationSource
 metadata:
-  name: source-sample
+  name: replicationsource-sample
 spec:
   # Add fields here
   foo: bar

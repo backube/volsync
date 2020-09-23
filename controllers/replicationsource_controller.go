@@ -28,19 +28,19 @@ import (
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
 )
 
-// SourceReconciler reconciles a Source object
-type SourceReconciler struct {
+// ReplicationSourceReconciler reconciles a ReplicationSource object
+type ReplicationSourceReconciler struct {
 	client.Client
 	Log    logr.Logger
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=scribe.backube,resources=sources,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=scribe.backube,resources=sources/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=scribe.backube,resources=replicationsources,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=scribe.backube,resources=replicationsources/status,verbs=get;update;patch
 
-func (r *SourceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
+func (r *ReplicationSourceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	_ = context.Background()
-	_ = r.Log.WithValues("source", req.NamespacedName)
+	_ = r.Log.WithValues("replicationsource", req.NamespacedName)
 
 	// your logic here
 	r.Log.Info("reconcile started...")
@@ -48,8 +48,8 @@ func (r *SourceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	return ctrl.Result{}, nil
 }
 
-func (r *SourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *ReplicationSourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&scribev1alpha1.Source{}).
+		For(&scribev1alpha1.ReplicationSource{}).
 		Complete(r)
 }

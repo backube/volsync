@@ -70,7 +70,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controllers.SourceReconciler{
+	if err = (&controllers.ReplicationSourceReconciler{
 		Client: mgr.GetClient(),
 		Log:    ctrl.Log.WithName("controllers").WithName("Source"),
 		Scheme: mgr.GetScheme(),
@@ -78,7 +78,7 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "Source")
 		os.Exit(1)
 	}
-	if err = (&controllers.DestinationReconciler{
+	if err = (&controllers.ReplicationDestinationReconciler{
 		Client: mgr.GetClient(),
 		Log:    ctrl.Log.WithName("controllers").WithName("Destination"),
 		Scheme: mgr.GetScheme(),

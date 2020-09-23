@@ -4,10 +4,10 @@ projectName: scribe
 repo: github.com/backube/scribe
 resources:
 - group: scribe
-  kind: Source
+  kind: ReplicationSource
   version: v1alpha1
 - group: scribe
-  kind: Destination
+  kind: ReplicationDestination
   version: v1alpha1
 version: 3-alpha
 plugins:
