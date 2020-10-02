@@ -9,6 +9,7 @@ import (
 	. "github.com/onsi/gomega"
 	gomegatypes "github.com/onsi/gomega/types"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -246,6 +247,88 @@ var _ = Describe("ReplicationDestination", func() {
 					_ = k8sClient.Get(ctx, rdNsN, rdNew)
 					return rdNew.Status.MethodStatus
 				}, maxWait, interval).Should(HaveKeyWithValue(scribev1alpha1.RsyncConnectionInfoKey, srcSecret.Name))
+			})
+		})
+
+		Context("if the PVC size is omitted", func() {
+			BeforeEach(func() {
+				if rd.Spec.Parameters == nil {
+					rd.Spec.Parameters = make(map[string]string, 1)
+				}
+				rd.Spec.Parameters[scribev1alpha1.RsyncAccessModeKey] = string(corev1.ReadWriteOnce)
+			})
+			It("generates a reconcile error", func() {
+				rdNew := &scribev1alpha1.ReplicationDestination{}
+				Eventually(func() bool {
+					_ = k8sClient.Get(ctx, rdNsN, rdNew)
+					if rdNew.Status == nil {
+						return false
+					}
+					c := rdNew.Status.Conditions.GetCondition(scribev1alpha1.ConditionReconciled)
+					return c != nil && c.IsFalse() && c.Reason == scribev1alpha1.ReconciledReasonError
+				}, maxWait, interval).Should(BeTrue())
+			})
+		})
+		Context("if the PVC accessMode is omitted", func() {
+			BeforeEach(func() {
+				if rd.Spec.Parameters == nil {
+					rd.Spec.Parameters = make(map[string]string, 1)
+				}
+				rd.Spec.Parameters[scribev1alpha1.RsyncCapacityKey] = "1Gi"
+			})
+			It("generates a reconcile error", func() {
+				rdNew := &scribev1alpha1.ReplicationDestination{}
+				Eventually(func() bool {
+					_ = k8sClient.Get(ctx, rdNsN, rdNew)
+					if rdNew.Status == nil {
+						return false
+					}
+					c := rdNew.Status.Conditions.GetCondition(scribev1alpha1.ConditionReconciled)
+					return c != nil && c.IsFalse() && c.Reason == scribev1alpha1.ReconciledReasonError
+				}, maxWait, interval).Should(BeTrue())
+			})
+		})
+		Context("a PVC for incoming replication", func() {
+			pvc := &corev1.PersistentVolumeClaim{}
+			BeforeEach(func() {
+				if rd.Spec.Parameters == nil {
+					rd.Spec.Parameters = make(map[string]string, 2)
+				}
+				rd.Spec.Parameters[scribev1alpha1.RsyncAccessModeKey] = string(corev1.ReadWriteOnce)
+				rd.Spec.Parameters[scribev1alpha1.RsyncCapacityKey] = "1Gi"
+			})
+			JustBeforeEach(func() {
+				Eventually(func() error {
+					return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, pvc)
+				}, maxWait, interval).Should(Succeed())
+			})
+			It("must be created w/ the requested size and accessMode", func() {
+				Expect(pvc.Spec.AccessModes).To(ConsistOf(corev1.ReadWriteOnce))
+				Expect(*pvc.Spec.Resources.Requests.Storage()).To(Equal(resource.MustParse("1Gi")))
+			})
+			It("uses the default StorageClass by default", func() {
+				// test env doesn't have a default SC
+				Expect(pvc.Spec.StorageClassName).To(BeNil())
+			})
+			It("must be properly owned", func() {
+				Expect(pvc).To(beOwnedBy(rd))
+			})
+		})
+		Context("a PVC for incoming replication", func() {
+			pvc := &corev1.PersistentVolumeClaim{}
+			BeforeEach(func() {
+				if rd.Spec.Parameters == nil {
+					rd.Spec.Parameters = make(map[string]string, 3)
+				}
+				rd.Spec.Parameters[scribev1alpha1.RsyncAccessModeKey] = string(corev1.ReadWriteOnce)
+				rd.Spec.Parameters[scribev1alpha1.RsyncCapacityKey] = "1Gi"
+				rd.Spec.Parameters[scribev1alpha1.RsyncStorageClassNameKey] = "myclass"
+			})
+			It("allows a StorageClass to be specified", func() {
+				Eventually(func() error {
+					return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, pvc)
+				}, maxWait, interval).Should(Succeed())
+				Expect(*pvc.Spec.StorageClassName).To(Equal("myclass"))
 			})
 		})
 	})
