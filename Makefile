@@ -12,6 +12,8 @@ BUNDLE_DEFAULT_CHANNEL := --default-channel=$(DEFAULT_CHANNEL)
 endif
 BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 
+TEST_ARGS ?= -progress -randomizeAllSpecs -randomizeSuites -slowSpecThreshold 30 -p -cover -coverprofile cover.out -outputdir .
+
 GOLANGCI_VERSION := v1.31.0
 OPERATOR_SDK_VERSION := v1.0.1
 export SHELL := /bin/bash
@@ -34,11 +36,11 @@ all: manager manifests
 # Run tests
 .PHONY: test
 ENVTEST_ASSETS_DIR=$(shell pwd)/testbin
-test: generate manifests golangci-lint
+test: generate manifests golangci-lint ginkgo
 	$(GOLANGCILINT) run ./...
 	mkdir -p ${ENVTEST_ASSETS_DIR}
 	test -f ${ENVTEST_ASSETS_DIR}/setup-envtest.sh || curl -sSLo ${ENVTEST_ASSETS_DIR}/setup-envtest.sh https://raw.githubusercontent.com/kubernetes-sigs/controller-runtime/master/hack/setup-envtest.sh
-	source ${ENVTEST_ASSETS_DIR}/setup-envtest.sh; fetch_envtest_tools $(ENVTEST_ASSETS_DIR); setup_envtest_env $(ENVTEST_ASSETS_DIR); go test ./... -coverprofile cover.out
+	source ${ENVTEST_ASSETS_DIR}/setup-envtest.sh; fetch_envtest_tools $(ENVTEST_ASSETS_DIR); setup_envtest_env $(ENVTEST_ASSETS_DIR); ginkgo $(TEST_ARGS) ./...
 
 # Build manager binary
 .PHONY: manager
@@ -153,4 +155,13 @@ ifeq (, $(shell which operator-sdk))
 OPERATOR_SDK=$(GOBIN)/operator-sdk
 else
 OPERATOR_SDK=$(shell which operator-sdk)
+endif
+
+.PHONY: ginkgo
+ginkgo:
+ifeq (, $(shell which ginkgo))
+	go get github.com/onsi/ginkgo/ginkgo
+GINKGO=$(GOBIN)/ginkgo
+else
+GINKGO=$(shell which ginkgo)
 endif

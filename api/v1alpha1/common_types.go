@@ -37,6 +37,8 @@ import (
 	"github.com/operator-framework/operator-lib/status"
 )
 
+// ReplicationMethodType describes values that can be used to specify the
+// replication method in the ReplicationSource and ReplicationDestination CRs
 type ReplicationMethodType string
 
 const (
