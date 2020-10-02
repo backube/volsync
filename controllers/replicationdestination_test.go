@@ -24,15 +24,15 @@ const (
 
 // beOwnedBy is a GomegaMatcher that ensures a Kubernetes Object is owned by a
 // specific other object.
-func beOwnedBy(expected interface{}) gomegatypes.GomegaMatcher {
+func beOwnedBy(owner interface{}) gomegatypes.GomegaMatcher {
 	return &ownerRefMatcher{
-		expected: expected,
+		owner: owner,
 	}
 }
 
 type ownerRefMatcher struct {
-	expected interface{}
-	reason   string
+	owner  interface{}
+	reason string
 }
 
 func (m *ownerRefMatcher) Match(actual interface{}) (success bool, err error) {
@@ -40,7 +40,7 @@ func (m *ownerRefMatcher) Match(actual interface{}) (success bool, err error) {
 	if !ok {
 		return false, fmt.Errorf("actual value is not a metav1.Object")
 	}
-	expObj, ok := m.expected.(metav1.Object)
+	ownerObj, ok := m.owner.(metav1.Object)
 	if !ok {
 		return false, fmt.Errorf("expected value is not a metav1.Object")
 	}
@@ -49,17 +49,27 @@ func (m *ownerRefMatcher) Match(actual interface{}) (success bool, err error) {
 		m.reason = "it does not have an owner"
 		return false, nil
 	}
-	if controller.UID != expObj.GetUID() {
+	if controller.UID != ownerObj.GetUID() {
 		m.reason = "it does not refer to the expected parent object"
 		return false, nil
+	}
+	// XXX: This check isn't perfect. Both cluster-scoped and objects in the
+	// "default" namespace have an empty namespace name. So the following may
+	// (incorrectly) pass for namespaced owners in the default namespace
+	// attempting to own cluster-scoped objects.
+	if ownerObj.GetNamespace() != "" { // if owner not cluster-scoped
+		if actObj.GetNamespace() != ownerObj.GetNamespace() {
+			m.reason = "cross namespace owner references are not allowed"
+			return false, nil
+		}
 	}
 	return true, nil
 }
 func (m *ownerRefMatcher) FailureMessage(actual interface{}) (message string) {
-	return fmt.Sprintf("Expected\n\t%#v\nto be owned by\n\t%#v\nbut %v", actual, m.expected, m.reason)
+	return fmt.Sprintf("Expected\n\t%#v\nto be owned by\n\t%#v\nbut %v", actual, m.owner, m.reason)
 }
 func (m *ownerRefMatcher) NegatedFailureMessage(actual interface{}) (message string) {
-	return fmt.Sprintf("Expected\n\t%#v\nnot to be owned by\n\t%#v", actual, m.expected)
+	return fmt.Sprintf("Expected\n\t%#v\nnot to be owned by\n\t%#v", actual, m.owner)
 }
 
 var _ = Describe("ReplicationDestination", func() {
