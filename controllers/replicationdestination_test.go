@@ -121,6 +121,7 @@ var _ = Describe("ReplicationDestination", func() {
 	})
 
 	Context("when using rsync replication", func() {
+		pvcCapacity := "1Gi"
 		BeforeEach(func() {
 			rd.Spec.ReplicationMethod = scribev1alpha1.ReplicationMethodRsync
 		})
@@ -196,13 +197,16 @@ var _ = Describe("ReplicationDestination", func() {
 
 			JustBeforeEach(func() {
 				Eventually(func() error {
-					return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-main-" + rd.Name, Namespace: rd.Namespace}, mainSecret)
+					return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-main-" + rd.Name,
+						Namespace: rd.Namespace}, mainSecret)
 				}, maxWait, interval).Should(Succeed())
 				Eventually(func() error {
-					return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-source-" + rd.Name, Namespace: rd.Namespace}, srcSecret)
+					return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-source-" + rd.Name,
+						Namespace: rd.Namespace}, srcSecret)
 				}, maxWait, interval).Should(Succeed())
 				Eventually(func() error {
-					return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, dstSecret)
+					return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-dest-" + rd.Name,
+						Namespace: rd.Namespace}, dstSecret)
 				}, maxWait, interval).Should(Succeed())
 			})
 
@@ -274,7 +278,7 @@ var _ = Describe("ReplicationDestination", func() {
 				if rd.Spec.Parameters == nil {
 					rd.Spec.Parameters = make(map[string]string, 1)
 				}
-				rd.Spec.Parameters[scribev1alpha1.RsyncCapacityKey] = "1Gi"
+				rd.Spec.Parameters[scribev1alpha1.RsyncCapacityKey] = pvcCapacity
 			})
 			It("generates a reconcile error", func() {
 				rdNew := &scribev1alpha1.ReplicationDestination{}
@@ -295,7 +299,7 @@ var _ = Describe("ReplicationDestination", func() {
 					rd.Spec.Parameters = make(map[string]string, 2)
 				}
 				rd.Spec.Parameters[scribev1alpha1.RsyncAccessModeKey] = string(corev1.ReadWriteOnce)
-				rd.Spec.Parameters[scribev1alpha1.RsyncCapacityKey] = "1Gi"
+				rd.Spec.Parameters[scribev1alpha1.RsyncCapacityKey] = pvcCapacity
 			})
 			JustBeforeEach(func() {
 				Eventually(func() error {
@@ -304,7 +308,7 @@ var _ = Describe("ReplicationDestination", func() {
 			})
 			It("must be created w/ the requested size and accessMode", func() {
 				Expect(pvc.Spec.AccessModes).To(ConsistOf(corev1.ReadWriteOnce))
-				Expect(*pvc.Spec.Resources.Requests.Storage()).To(Equal(resource.MustParse("1Gi")))
+				Expect(*pvc.Spec.Resources.Requests.Storage()).To(Equal(resource.MustParse(pvcCapacity)))
 			})
 			It("uses the default StorageClass by default", func() {
 				// test env doesn't have a default SC
@@ -321,7 +325,7 @@ var _ = Describe("ReplicationDestination", func() {
 					rd.Spec.Parameters = make(map[string]string, 3)
 				}
 				rd.Spec.Parameters[scribev1alpha1.RsyncAccessModeKey] = string(corev1.ReadWriteOnce)
-				rd.Spec.Parameters[scribev1alpha1.RsyncCapacityKey] = "1Gi"
+				rd.Spec.Parameters[scribev1alpha1.RsyncCapacityKey] = pvcCapacity
 				rd.Spec.Parameters[scribev1alpha1.RsyncStorageClassNameKey] = "myclass"
 			})
 			It("allows a StorageClass to be specified", func() {

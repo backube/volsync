@@ -1,0 +1,33 @@
+---
+# https://golangci-lint.run/usage/configuration/#config-file
+
+run:
+  timeout: 30m
+  # skip-files:
+linters:
+  disable-all: true
+  enable:
+    - deadcode
+    - dupl
+    - errcheck
+    - funlen
+    - goconst
+    - gocyclo
+    - goimports
+    - golint
+    - gosec
+    - gosimple
+    - govet
+    - ineffassign
+    - lll
+    - maligned
+    - misspell
+    - nakedret
+    - staticcheck
+    - structcheck
+    - typecheck
+    - unconvert
+    - unparam
+    - unused
+    - varcheck
+    - whitespace

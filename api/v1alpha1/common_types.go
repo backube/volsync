@@ -78,7 +78,12 @@ const (
 )
 
 const (
-	ConditionReconciled      status.ConditionType   = "Reconciled"
+	// ConditionReconciled is a status condition type that indicates whether the
+	// CR has been successfully reconciled
+	ConditionReconciled status.ConditionType = "Reconciled"
+	// ReconciledReasonComplete indicates the CR was successfully reconciled
 	ReconciledReasonComplete status.ConditionReason = "ReconcileComplete"
-	ReconciledReasonError    status.ConditionReason = "ReconcileError"
+	// ReconciledReasonError indicates an error was encountered while
+	// reconciling the CR
+	ReconciledReasonError status.ConditionReason = "ReconcileError"
 )

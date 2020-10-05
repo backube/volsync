@@ -4,6 +4,13 @@ Scribe asynchronously replicates Kubernetes persistent volumes between clusters.
 
 [![Documentation
 Status](https://readthedocs.org/projects/scribe-replication/badge/?version=latest)](https://scribe-replication.readthedocs.io/en/latest/?badge=latest)
+[![Go Report
+Card](https://goreportcard.com/badge/github.com/backube/scribe)](https://goreportcard.com/report/github.com/backube/scribe)
+[![codecov](https://codecov.io/gh/backube/scribe/branch/master/graph/badge.svg)](https://codecov.io/gh/backube/scribe)
+
+![Documentation](https://github.com/backube/scribe/workflows/Documentation/badge.svg)
+![operator](https://github.com/backube/scribe/workflows/operator/badge.svg)
+![mover-rsync](https://github.com/backube/scribe/workflows/mover-rsync/badge.svg)
 
 :construction: :construction: :construction:
 This project is in the very early stages. Stay tuned...
