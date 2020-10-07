@@ -180,8 +180,11 @@ func (r *rsyncDestReconciler) Run(ctx context.Context, instance *scribev1alpha1.
 		{r.cleanupJob, "Clean up job & old snapshot"},
 	}
 	for _, f := range reconcileFuncs {
-		if cont, err := f.f(l.WithValues("step", f.desc)); !cont || err != nil {
-			return ctrl.Result{Requeue: true}, err
+		ll := l.WithValues("step", f.desc)
+		ll.V(1).Info("starting step")
+		if cont, err := f.f(ll); !cont || err != nil {
+			//return ctrl.Result{Requeue: true}, err
+			return ctrl.Result{}, err
 		}
 	}
 	return ctrl.Result{}, nil
@@ -530,6 +533,8 @@ func (r *rsyncDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 		for k, v := range r.serviceSelector() {
 			r.job.Spec.Template.ObjectMeta.Labels[k] = v
 		}
+		backoffLimit := int32(2)
+		r.job.Spec.BackoffLimit = &backoffLimit
 		if len(r.job.Spec.Template.Spec.Containers) != 1 {
 			r.job.Spec.Template.Spec.Containers = []corev1.Container{{}}
 		}
@@ -565,6 +570,13 @@ func (r *rsyncDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 		}
 		return nil
 	})
+
+	// If Job had failed, delete it so it can be recreated
+	if r.job.Status.Failed == *r.job.Spec.BackoffLimit {
+		logger.Info("deleting job -- backoff limit reached")
+		err = r.r.Client.Delete(r.ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground))
+		return false, err
+	}
 
 	if err != nil {
 		logger.Error(err, "reconcile failed")
@@ -622,12 +634,6 @@ func (r *rsyncDestReconciler) snapshotVolume(l logr.Logger) (bool, error) {
 
 		return nil
 	})
-
-	if err != nil {
-		// We had a problem creating the snapshot, so we need to stop (and try
-		// again later)
-		return false, err
-	}
 
 	if err != nil {
 		logger.Error(err, "reconcile failed")

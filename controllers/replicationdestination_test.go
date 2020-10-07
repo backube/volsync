@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"time"
 
+	snapv1 "github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	gomegatypes "github.com/onsi/gomega/types"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -333,6 +335,82 @@ var _ = Describe("ReplicationDestination", func() {
 					return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, pvc)
 				}, maxWait, interval).Should(Succeed())
 				Expect(*pvc.Spec.StorageClassName).To(Equal("myclass"))
+			})
+		})
+
+		Context("the rsync data mover job", func() {
+			job := &batchv1.Job{}
+			BeforeEach(func() {
+				if rd.Spec.Parameters == nil {
+					rd.Spec.Parameters = make(map[string]string, 2)
+				}
+				rd.Spec.Parameters[scribev1alpha1.RsyncAccessModeKey] = string(corev1.ReadWriteOnce)
+				rd.Spec.Parameters[scribev1alpha1.RsyncCapacityKey] = pvcCapacity
+				RsyncContainerImage = "dummy_invalid_image"
+			})
+			JustBeforeEach(func() {
+				Eventually(func() error {
+					return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, job)
+				}, maxWait, interval).Should(Succeed())
+			})
+			It("should be owned by the ReplicationDestination", func() {
+				Expect(job).To(beOwnedBy(rd))
+			})
+			It("should be restarted if it fails", func() {
+				job.Status.Failed = *job.Spec.BackoffLimit
+				Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
+				Eventually(func() int32 {
+					Eventually(func() error {
+						return k8sClient.Get(ctx,
+							types.NamespacedName{Name: "scribe-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, job)
+					}, maxWait, interval).Should(Succeed())
+					return job.Status.Failed
+				}, maxWait, interval).Should(Equal(int32(0)))
+			})
+		})
+		Context("once the sync job completes", func() {
+			job := &batchv1.Job{}
+			BeforeEach(func() {
+				if rd.Spec.Parameters == nil {
+					rd.Spec.Parameters = make(map[string]string, 2)
+				}
+				rd.Spec.Parameters[scribev1alpha1.RsyncAccessModeKey] = string(corev1.ReadWriteOnce)
+				rd.Spec.Parameters[scribev1alpha1.RsyncCapacityKey] = pvcCapacity
+				RsyncContainerImage = "dummy_invalid_image"
+			})
+			JustBeforeEach(func() {
+				Eventually(func() error {
+					return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, job)
+				}, maxWait, interval).Should(Succeed())
+				job.Status.Succeeded = 1
+				Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
+			})
+			It("should create a snapshot of the volume", func() {
+				snap := &snapv1.VolumeSnapshot{}
+				Eventually(func() error {
+					_ = k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, job)
+					snapname := job.GetAnnotations()[rsyncSnapshotAnnotation]
+					return k8sClient.Get(ctx, types.NamespacedName{Name: snapname, Namespace: rd.Namespace}, snap)
+				}, maxWait, interval).Should(Succeed())
+				Expect(snap).To(beOwnedBy(rd))
+				// force it to appear bound
+				vscn := "foo"
+				snap.Status = &snapv1.VolumeSnapshotStatus{
+					BoundVolumeSnapshotContentName: &vscn,
+				}
+				Expect(k8sClient.Status().Update(ctx, snap)).To(Succeed())
+				// Once bound, job should be deleted and recreated, resetting .status.succeeded to 0
+				Eventually(func() int32 {
+					_ = k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, job)
+					return job.Status.Succeeded
+				}, maxWait, interval).Should(Equal(int32(0)))
+				// The snap name should then be in the CR status
+				Eventually(func() string {
+					if err := k8sClient.Get(ctx, types.NamespacedName{Name: rd.Name, Namespace: rd.Namespace}, rd); err != nil {
+						return ""
+					}
+					return rd.Status.MethodStatus[scribev1alpha1.RsyncLatestSnapKey]
+				}, maxWait, interval).Should(Equal(snap.Name))
 			})
 		})
 	})
