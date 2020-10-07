@@ -31,7 +31,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// +kubebuilder:validation:Required
+//+kubebuilder:validation:Required
 package v1alpha1
 
 import (
