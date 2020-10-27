@@ -6,7 +6,7 @@ VERSION := $(shell git describe --match 'v[0-9]*' --tags --dirty 2> /dev/null ||
 .PHONY: all
 all: image
 
-.PHONY: build
+.PHONY: image
 image:
 	docker build \
 	  --build-arg "builddate=$(BUILDDATE)" \
