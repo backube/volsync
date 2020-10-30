@@ -37,6 +37,20 @@ import (
 	"github.com/operator-framework/operator-lib/status"
 )
 
+// CopyMethodType defines the methods for creating point-in-time copies of
+// volumes.
+type CopyMethodType string
+
+const (
+	// CopyMethodNone indicates a copy should not be performed.
+	CopyMethodNone CopyMethodType = "None"
+	// CopyMethodClone indicates a copy should be created using volume cloning.
+	CopyMethodClone CopyMethodType = "Clone"
+	// CopyMethodSnapshot indicates a copy should be created using a volume
+	// snapshot.
+	CopyMethodSnapshot CopyMethodType = "Snapshot"
+)
+
 // ReplicationMethodType describes values that can be used to specify the
 // replication method in the ReplicationSource and ReplicationDestination CRs
 type ReplicationMethodType string

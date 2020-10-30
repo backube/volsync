@@ -16,7 +16,18 @@ spec:
     singular: replicationsource
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.sourcePVC
+      name: Source
+      type: string
+    - format: date-time
+      jsonPath: .status.lastSyncTime
+      name: Last sync
+      type: string
+    - jsonPath: .status.lastSyncDuration
+      name: Duration
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: ReplicationSource defines the source for a replicated volume
@@ -37,26 +48,137 @@ spec:
             description: spec is the desired state of the ReplicationSource, including
               the replication method to use and its configuration.
             properties:
-              parameters:
-                additionalProperties:
-                  type: string
-                description: parameters are method-specific key/value configuration
-                  parameters. For more information, please see the documentation of
-                  the specific replicationMethod being used.
+              external:
+                description: external defines the configuration when using an external
+                  replication provider.
+                properties:
+                  parameters:
+                    additionalProperties:
+                      type: string
+                    description: parameters are provider-specific key/value configuration
+                      parameters. For more information, please see the documentation
+                      of the specific replication provider being used.
+                    type: object
+                  provider:
+                    description: 'provider is the name of the external replication
+                      provider. The name should be of the form: domain.com/provider.'
+                    type: string
                 type: object
-              replicationMethod:
-                description: replicationMethod determines the method used to replicate
-                  the volume. This may be either a method built into the Scribe controller
-                  or the name of an external plugin. It must match the replicationMethod
-                  of the corresponding destination.
-                type: string
-              source:
-                description: source is the name of the PersistentVolumeClaim (PVC)
+              rclone:
+                description: rclone defines the configuration when using Rclone-based
+                  replication.
+                properties:
+                  accessModes:
+                    description: accessModes can be used to override the accessModes
+                      of the PiT image.
+                    items:
+                      type: string
+                    minItems: 1
+                    type: array
+                  capacity:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: capacity can be used to override the capacity of
+                      the PiT image.
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  copyMethod:
+                    description: copyMethod describes how a point-in-time (PiT) image
+                      of the source volume should be created.
+                    enum:
+                    - None
+                    - Clone
+                    - Snapshot
+                    type: string
+                  path:
+                    description: path is the remote path to sync to.
+                    type: string
+                  rcloneConfig:
+                    description: rcloneConfig is the name of a Secret that contains
+                      a valid Rclone configuration file.
+                    type: string
+                  storageClassName:
+                    description: storageClassName can be used to override the StorageClass
+                      of the PiT image.
+                    type: string
+                  volumeSnapshotClassName:
+                    description: volumeSnapshotClassName can be used to specify the
+                      VSC to be used if copyMethod is Snapshot. If not set, the default
+                      VSC is used.
+                    type: string
+                type: object
+              rsync:
+                description: rsync defines the configuration when using Rsync-based
+                  replication.
+                properties:
+                  accessModes:
+                    description: accessModes can be used to override the accessModes
+                      of the PiT image.
+                    items:
+                      type: string
+                    minItems: 1
+                    type: array
+                  address:
+                    description: address is the remote address to connect to for replication.
+                    type: string
+                  capacity:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: capacity can be used to override the capacity of
+                      the PiT image.
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  copyMethod:
+                    description: copyMethod describes how a point-in-time (PiT) image
+                      of the source volume should be created.
+                    enum:
+                    - None
+                    - Clone
+                    - Snapshot
+                    type: string
+                  path:
+                    description: path is the remote path to rsync to. Defaults to
+                      "/"
+                    type: string
+                  port:
+                    description: port is the SSH port to connect to for replication.
+                      Defaults to 22.
+                    format: int32
+                    maximum: 65535
+                    minimum: 0
+                    type: integer
+                  serviceType:
+                    description: serviceType determines the Service type that will
+                      be created for incoming SSH connections.
+                    type: string
+                  sshKeys:
+                    description: sshKeys is the name of a Secret that contains the
+                      SSH keys to be used for authentication. If not provided, the
+                      keys will be generated.
+                    type: string
+                  sshUser:
+                    description: sshUser is the username for outgoing SSH connections.
+                      Defaults to "root".
+                    type: string
+                  storageClassName:
+                    description: storageClassName can be used to override the StorageClass
+                      of the PiT image.
+                    type: string
+                  volumeSnapshotClassName:
+                    description: volumeSnapshotClassName can be used to specify the
+                      VSC to be used if copyMethod is Snapshot. If not set, the default
+                      VSC is used.
+                    type: string
+                type: object
+              sourcePVC:
+                description: sourcePVC is the name of the PersistentVolumeClaim (PVC)
                   to replicate.
                 type: string
               trigger:
                 description: trigger determines when the latest state of the volume
-                  will be replicated to the destination.
+                  will be captured (and potentially replicated to the destination).
                 properties:
                   schedule:
                     description: schedule is a cronspec (https://en.wikipedia.org/wiki/Cron#Overview)
@@ -111,11 +233,40 @@ spec:
                   - type
                   type: object
                 type: array
-              methodStatus:
+              external:
                 additionalProperties:
                   type: string
-                description: methodStatus provides status information that is specific
-                  to the replicationMethod being used.
+                description: external contains provider-specific status information.
+                  For more details, please see the documentation of the specific replication
+                  provider being used.
+                type: object
+              lastSyncDuration:
+                description: lastSyncDuration is the amount of time required to send
+                  the most recent update.
+                type: string
+              lastSyncTime:
+                description: lastSyncTime is the time of the most recent successful
+                  synchronization.
+                format: date-time
+                type: string
+              rsync:
+                description: rsync contains status information for Rsync-based replication.
+                properties:
+                  address:
+                    description: address is the address to connect to for incoming
+                      SSH replication connections.
+                    type: string
+                  port:
+                    description: port is the SSH port to connect to for incoming SSH
+                      replication connections.
+                    format: int32
+                    type: integer
+                  sshKeys:
+                    description: sshKeys is the name of a Secret that contains the
+                      SSH keys to be used for authentication. If not provided in .spec.rsync.sshKeys,
+                      SSH keys will be generated and the appropriate keys for the
+                      remote side will be placed here.
+                    type: string
                 type: object
             type: object
         type: object

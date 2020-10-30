@@ -52,35 +52,65 @@ type ReplicationDestinationSpec struct {
 	Parameters map[string]string `json:"parameters,omitempty"`
 }
 
+type ReplicationDestinationRsyncStatus struct {
+	// sshKeys is the name of a Secret that contains the SSH keys to be used for
+	// authentication. If not provided in .spec.rsync.sshKeys, SSH keys will be
+	// generated and the appropriate keys for the remote side will be placed
+	// here.
+	//+optional
+	SSHKeys *string `json:"sshKeys,omitempty"`
+	// address is the address to connect to for incoming SSH replication
+	// connections.
+	//+optional
+	Address *string `json:"address,omitempty"`
+	// port is the SSH port to connect to for incoming SSH replication
+	// connections.
+	//+optional
+	Port *int32 `json:"port,omitempty"`
+}
+
 // ReplicationDestinationStatus defines the observed state of ReplicationDestination
 type ReplicationDestinationStatus struct {
-	// methodStatus provides status information that is specific to the
-	// replicationMethod being used.
-	MethodStatus map[string]string `json:"methodStatus,omitempty"`
+	// lastSyncTime is the time of the most recent successful synchronization.
+	//+optional
+	LastSyncTime *metav1.Time `json:"lastSyncTime,omitempty"`
+	// lastSyncDuration is the amount of time required to send the most recent
+	// update.
+	//+optional
+	LastSyncDuration *metav1.Duration `json:"lastSyncDuration,omitempty"`
+	// rsync contains status information for Rsync-based replication.
+	Rsync *ReplicationDestinationRsyncStatus `json:"rsync,omitempty"`
+	// external contains provider-specific status information. For more details,
+	// please see the documentation of the specific replication provider being
+	// used.
+	//+optional
+	External map[string]string `json:"external,omitempty"`
 	// conditions represent the latest available observations of the
 	// destination's state.
 	Conditions status.Conditions `json:"conditions,omitempty"`
 }
 
 // ReplicationDestination defines the destination for a replicated volume
-// +kubebuilder:object:root=true
-// +kubebuilder:resource:scope=Namespaced
-// +kubebuilder:subresource:status
+//+kubebuilder:object:root=true
+//+kubebuilder:resource:scope=Namespaced
+//+kubebuilder:subresource:status
+//+kubebuilder:printcolumn:name="Last sync",type="string",format="date-time",JSONPath=`.status.lastSyncTime`
+//+kubebuilder:printcolumn:name="Duration",type="string",JSONPath=`.status.lastSyncDuration`
 type ReplicationDestination struct {
 	metav1.TypeMeta `json:",inline"`
-	// +optional
+	//+optional
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 	// spec is the desired state of the ReplicationDestination, including the
 	// replication method to use and its configuration.
 	Spec ReplicationDestinationSpec `json:"spec,omitempty"`
 	// status is the observed state of the ReplicationDestination as determined
 	// by the controller.
-	// +optional
+	//+optional
 	Status *ReplicationDestinationStatus `json:"status,omitempty"`
 }
 
 // ReplicationDestinationList contains a list of ReplicationDestination
-// +kubebuilder:object:root=true
+//+kubebuilder:object:root=true
 type ReplicationDestinationList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
