@@ -36,20 +36,112 @@ package v1alpha1
 
 import (
 	"github.com/operator-framework/operator-lib/status"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// ReplicationDestinationSpec defines the desired state of ReplicationDestination
-type ReplicationDestinationSpec struct {
-	// replicationMethod determines the method used to replicate the volume.
-	// This may be either a method built into the Scribe controller or the name
-	// of an external plugin. It must match the replicationMethod of the
-	// corresponding source.
-	ReplicationMethod ReplicationMethodType `json:"replicationMethod,omitempty"`
-	// parameters are method-specific key/value configuration parameters. For
+// ReplicationDestinationTriggerSpec defines when a volume will be synchronized
+// with the source.
+type ReplicationDestinationTriggerSpec struct {
+	// schedule is a cronspec (https://en.wikipedia.org/wiki/Cron#Overview) that
+	// can be used to schedule replication to occur at regular, time-based
+	// intervals.
+	//+kubebuilder:validation:Pattern=`^(\d+|\*)(/\d+)?(\s+(\d+|\*)(/\d+)?){4}$`
+	//+optional
+	Schedule *string `json:"schedule,omitempty"`
+}
+
+type ReplicationDestinationVolumeOptions struct {
+	// copyMethod describes how a point-in-time (PiT) image of the destination
+	// volume should be created.
+	CopyMethod CopyMethodType `json:"copyMethod,omitempty"`
+	// capacity is the size of the destination volume to create.
+	//+optional
+	Capacity *resource.Quantity `json:"capacity,omitempty"`
+	// storageClassName can be used to specify the StorageClass of the
+	// destination volume. If not set, the default StorageClass will be used.
+	//+optional
+	StorageClassName *string `json:"storageClassName,omitempty"`
+	// accessModes specifies the access modes for the destination volume.
+	//+kubebuilder:validation:MinItems=1
+	//+optional
+	AccessModes []v1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
+	// volumeSnapshotClassName can be used to specify the VSC to be used if
+	// copyMethod is Snapshot. If not set, the default VSC is used.
+	//+optional
+	VolumeSnapshotClassName *string `json:"volumeSnapshotClassName,omitempty"`
+	// destinationPVC is a PVC to use as the transfer destination instead of
+	// automatically provisioning one. Either this field or both capacity and
+	// accessModes must be specified.
+	//+optional
+	DestinationPVC *string `json:"destinationPVC,omitempty"`
+}
+
+type ReplicationDestinationRsyncSpec struct {
+	ReplicationDestinationVolumeOptions `json:",inline"`
+	// sshKeys is the name of a Secret that contains the SSH keys to be used for
+	// authentication. If not provided, the keys will be generated.
+	//+optional
+	SSHKeys *string `json:"sshKeys,omitempty"`
+	// serviceType determines the Service type that will be created for incoming
+	// SSH connections.
+	//+optional
+	ServiceType *v1.ServiceType `json:"serviceType,omitempty"`
+	// address is the remote address to connect to for replication.
+	//+optional
+	Address *string `json:"address,omitempty"`
+	// port is the SSH port to connect to for replication. Defaults to 22.
+	//+kubebuilder:validation:Minimum=0
+	//+kubebuilder:validation:Maximum=65535
+	//+optional
+	Port *int32 `json:"port,omitempty"`
+	// path is the remote path to rsync from. Defaults to "/"
+	//+optional
+	Path *string `json:"path,omitempty"`
+	// sshUser is the username for outgoing SSH connections. Defaults to "root".
+	//+optional
+	SSHUser *string `json:"sshUser,omitempty"`
+}
+
+type ReplicationDestinationRcloneSpec struct {
+	ReplicationDestinationVolumeOptions `json:",inline"`
+	// rcloneConfig is the name of a Secret that contains a valid Rclone
+	// configuration file.
+	RcloneConfig string `json:"rcloneConfig,omitempty"`
+	// path is the remote path to sync from.
+	Path string `json:"path,omitempty"`
+}
+
+// ReplicationDestinationExternalSpec defines the configuration when using an
+// external replication provider.
+type ReplicationDestinationExternalSpec struct {
+	// provider is the name of the external replication provider. The name
+	// should be of the form: domain.com/provider.
+	Provider string `json:"provider,omitempty"`
+	// parameters are provider-specific key/value configuration parameters. For
 	// more information, please see the documentation of the specific
-	// replicationMethod being used.
+	// replication provider being used.
 	Parameters map[string]string `json:"parameters,omitempty"`
+}
+
+// ReplicationDestinationSpec defines the desired state of
+// ReplicationDestination
+type ReplicationDestinationSpec struct {
+	// trigger determines if/when the destination should attempt to synchronize
+	// data with the source.
+	//+optional
+	Trigger *ReplicationDestinationTriggerSpec `json:"trigger,omitempty"`
+	// rsync defines the configuration when using Rsync-based replication.
+	//+optional
+	Rsync *ReplicationDestinationRsyncSpec `json:"rsync,omitempty"`
+	// rclone defines the configuration when using Rclone-based replication.
+	//+optional
+	Rclone ReplicationDestinationRcloneSpec `json:"rclone,omitempty"`
+	// external defines the configuration when using an external replication
+	// provider.
+	//+optional
+	External *ReplicationDestinationExternalSpec `json:"external,omitempty"`
 }
 
 type ReplicationDestinationRsyncStatus struct {
@@ -78,6 +170,10 @@ type ReplicationDestinationStatus struct {
 	// update.
 	//+optional
 	LastSyncDuration *metav1.Duration `json:"lastSyncDuration,omitempty"`
+	// latestImage in the object holding the most recent consistent replicated
+	// image.
+	//+optional
+	LatestImage *v1.TypedLocalObjectReference `json:"latestImage,omitempty"`
 	// rsync contains status information for Rsync-based replication.
 	Rsync *ReplicationDestinationRsyncStatus `json:"rsync,omitempty"`
 	// external contains provider-specific status information. For more details,

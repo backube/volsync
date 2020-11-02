@@ -46,19 +46,153 @@ spec:
             description: spec is the desired state of the ReplicationDestination,
               including the replication method to use and its configuration.
             properties:
-              parameters:
-                additionalProperties:
-                  type: string
-                description: parameters are method-specific key/value configuration
-                  parameters. For more information, please see the documentation of
-                  the specific replicationMethod being used.
+              external:
+                description: external defines the configuration when using an external
+                  replication provider.
+                properties:
+                  parameters:
+                    additionalProperties:
+                      type: string
+                    description: parameters are provider-specific key/value configuration
+                      parameters. For more information, please see the documentation
+                      of the specific replication provider being used.
+                    type: object
+                  provider:
+                    description: 'provider is the name of the external replication
+                      provider. The name should be of the form: domain.com/provider.'
+                    type: string
                 type: object
-              replicationMethod:
-                description: replicationMethod determines the method used to replicate
-                  the volume. This may be either a method built into the Scribe controller
-                  or the name of an external plugin. It must match the replicationMethod
-                  of the corresponding source.
-                type: string
+              rclone:
+                description: rclone defines the configuration when using Rclone-based
+                  replication.
+                properties:
+                  accessModes:
+                    description: accessModes specifies the access modes for the destination
+                      volume.
+                    items:
+                      type: string
+                    minItems: 1
+                    type: array
+                  capacity:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: capacity is the size of the destination volume to
+                      create.
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  copyMethod:
+                    description: copyMethod describes how a point-in-time (PiT) image
+                      of the destination volume should be created.
+                    enum:
+                    - None
+                    - Clone
+                    - Snapshot
+                    type: string
+                  destinationPVC:
+                    description: destinationPVC is a PVC to use as the transfer destination
+                      instead of automatically provisioning one. Either this field
+                      or both capacity and accessModes must be specified.
+                    type: string
+                  path:
+                    description: path is the remote path to sync from.
+                    type: string
+                  rcloneConfig:
+                    description: rcloneConfig is the name of a Secret that contains
+                      a valid Rclone configuration file.
+                    type: string
+                  storageClassName:
+                    description: storageClassName can be used to specify the StorageClass
+                      of the destination volume. If not set, the default StorageClass
+                      will be used.
+                    type: string
+                  volumeSnapshotClassName:
+                    description: volumeSnapshotClassName can be used to specify the
+                      VSC to be used if copyMethod is Snapshot. If not set, the default
+                      VSC is used.
+                    type: string
+                type: object
+              rsync:
+                description: rsync defines the configuration when using Rsync-based
+                  replication.
+                properties:
+                  accessModes:
+                    description: accessModes specifies the access modes for the destination
+                      volume.
+                    items:
+                      type: string
+                    minItems: 1
+                    type: array
+                  address:
+                    description: address is the remote address to connect to for replication.
+                    type: string
+                  capacity:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: capacity is the size of the destination volume to
+                      create.
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  copyMethod:
+                    description: copyMethod describes how a point-in-time (PiT) image
+                      of the destination volume should be created.
+                    enum:
+                    - None
+                    - Clone
+                    - Snapshot
+                    type: string
+                  destinationPVC:
+                    description: destinationPVC is a PVC to use as the transfer destination
+                      instead of automatically provisioning one. Either this field
+                      or both capacity and accessModes must be specified.
+                    type: string
+                  path:
+                    description: path is the remote path to rsync from. Defaults to
+                      "/"
+                    type: string
+                  port:
+                    description: port is the SSH port to connect to for replication.
+                      Defaults to 22.
+                    format: int32
+                    maximum: 65535
+                    minimum: 0
+                    type: integer
+                  serviceType:
+                    description: serviceType determines the Service type that will
+                      be created for incoming SSH connections.
+                    type: string
+                  sshKeys:
+                    description: sshKeys is the name of a Secret that contains the
+                      SSH keys to be used for authentication. If not provided, the
+                      keys will be generated.
+                    type: string
+                  sshUser:
+                    description: sshUser is the username for outgoing SSH connections.
+                      Defaults to "root".
+                    type: string
+                  storageClassName:
+                    description: storageClassName can be used to specify the StorageClass
+                      of the destination volume. If not set, the default StorageClass
+                      will be used.
+                    type: string
+                  volumeSnapshotClassName:
+                    description: volumeSnapshotClassName can be used to specify the
+                      VSC to be used if copyMethod is Snapshot. If not set, the default
+                      VSC is used.
+                    type: string
+                type: object
+              trigger:
+                description: trigger determines if/when the destination should attempt
+                  to synchronize data with the source.
+                properties:
+                  schedule:
+                    description: schedule is a cronspec (https://en.wikipedia.org/wiki/Cron#Overview)
+                      that can be used to schedule replication to occur at regular,
+                      time-based intervals.
+                    pattern: ^(\d+|\*)(/\d+)?(\s+(\d+|\*)(/\d+)?){4}$
+                    type: string
+                type: object
             type: object
           status:
             description: status is the observed state of the ReplicationDestination
@@ -121,6 +255,26 @@ spec:
                   synchronization.
                 format: date-time
                 type: string
+              latestImage:
+                description: latestImage in the object holding the most recent consistent
+                  replicated image.
+                properties:
+                  apiGroup:
+                    description: APIGroup is the group for the resource being referenced.
+                      If APIGroup is not specified, the specified Kind must be in
+                      the core API group. For any other third-party types, APIGroup
+                      is required.
+                    type: string
+                  kind:
+                    description: Kind is the type of resource being referenced
+                    type: string
+                  name:
+                    description: Name is the name of resource being referenced
+                    type: string
+                required:
+                - kind
+                - name
+                type: object
               rsync:
                 description: rsync contains status information for Rsync-based replication.
                 properties:

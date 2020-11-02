@@ -39,6 +39,7 @@ import (
 
 // CopyMethodType defines the methods for creating point-in-time copies of
 // volumes.
+//+kubebuilder:validation:Enum=None;Clone;Snapshot
 type CopyMethodType string
 
 const (
@@ -49,46 +50,6 @@ const (
 	// CopyMethodSnapshot indicates a copy should be created using a volume
 	// snapshot.
 	CopyMethodSnapshot CopyMethodType = "Snapshot"
-)
-
-// ReplicationMethodType describes values that can be used to specify the
-// replication method in the ReplicationSource and ReplicationDestination CRs
-type ReplicationMethodType string
-
-const (
-	// ReplicationMethodRsync is the replication method that uses the built-in
-	// rsync over ssh data mover to replicate data
-	ReplicationMethodRsync ReplicationMethodType = "Rsync"
-)
-
-// Parameters used by the Rsync replication method in *.Spec.Parameters and
-// *.Status.MethodStatus
-const (
-	// RsyncServiceTypeKey determines the ServiceType that is created
-	// to handle the incoming connection to the destination. It should be one of
-	// the values supported by Service.spec.type
-	RsyncServiceTypeKey = "serviceType"
-	// RsyncStorageClassNameKey determines the StorageClass name used
-	// to create temporary PVCs for replication. This should match the Source
-	// PVC on the sending side and the Destination PVC on the receiving side.
-	RsyncStorageClassNameKey = "storageClassName"
-	// RsyncVolumeSnapshotClassNameKey is the name of the volume
-	// snapshot class that should be used to create PVC snapshots. It must be a
-	// class that is compatible with the StorageClass being used.
-	RsyncVolumeSnapshotClassNameKey = "volumeSnapshotClassName"
-	// RsyncAccessModeKey is the access mode (ReadWriteOnce or
-	// ReadWriteMany) of the temporary PVCs. This should match the access mode
-	// of the source/destination volumes.
-	RsyncAccessModeKey = "accessMode"
-	// RsyncCapacityKey is the capacity to use when creating the
-	// temporary volumes. It should match the size of the source/destination
-	// volumes.
-	RsyncCapacityKey = "capacity"
-	//RsyncConsistencyModeKey = "consistencyMode"
-	RsyncConnectionInfoKey = "connectionInfo"
-	// RsyncLatestSnapKey is the name of the snapshot holding the most recently
-	// synchronized data
-	RsyncLatestSnapKey = "latestSnapshot"
 )
 
 const (

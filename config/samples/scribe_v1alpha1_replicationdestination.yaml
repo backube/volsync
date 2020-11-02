@@ -3,8 +3,9 @@ kind: ReplicationDestination
 metadata:
   name: replicationdestination-sample
 spec:
-  replicationMethod: Rsync
-  parameters:
-    accessMode: ReadWriteOnce
-    capacity: 1Gi
-    serviceType: ClusterIP
+  rsync:
+    serviceType: LoadBalancer
+    copyMethod: Snapshot
+    capacity: 10Gi
+    accessModes: [ReadWriteOnce]
+
