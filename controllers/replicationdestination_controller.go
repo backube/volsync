@@ -19,11 +19,10 @@ package controllers
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
-	"time"
 
 	"github.com/go-logr/logr"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1"
@@ -31,7 +30,6 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -45,8 +43,7 @@ import (
 
 const (
 	// Time format for snapshot names and labels
-	timeYYYYMMDDHHMMSS      = "20060102150405"
-	rsyncSnapshotAnnotation = "scribe.backube/rsync-snapname"
+	timeYYYYMMDDHHMMSS = "20060102150405"
 )
 
 // RsyncContainerImage is the container image name of the rsync data mover
@@ -91,14 +88,11 @@ func (r *ReplicationDestinationReconciler) Reconcile(req ctrl.Request) (ctrl.Res
 	if inst.Status.Conditions == nil {
 		inst.Status.Conditions = status.Conditions{}
 	}
-	if inst.Status.MethodStatus == nil {
-		inst.Status.MethodStatus = map[string]string{}
-	}
 
 	var result ctrl.Result
 	var err error
 	// Only reconcile if the replication method is internal
-	if inst.Spec.ReplicationMethod == scribev1alpha1.ReplicationMethodRsync {
+	if inst.Spec.Rsync != nil {
 		result, err = (&rsyncDestReconciler{}).Run(ctx, inst, r, logger)
 	} else {
 		// Not an internal method... we're done.
@@ -143,15 +137,27 @@ func (r *ReplicationDestinationReconciler) SetupWithManager(mgr ctrl.Manager) er
 		Complete(r)
 }
 
+// reconcileFunc is a function that partially reconciles an object. It returns a
+// bool indicating whether reconciling should continue and an error.
+type reconcileFunc func(logr.Logger) (bool, error)
+
+// reconcileBatch steps through a list of reconcile functions until one returns
+// false or an error.
+func reconcileBatch(l logr.Logger, reconcileFuncs ...reconcileFunc) (bool, error) {
+	for _, f := range reconcileFuncs {
+		if cont, err := f(l); !cont || err != nil {
+			return cont, err
+		}
+	}
+	return true, nil
+}
+
 type rsyncDestReconciler struct {
-	ctx        context.Context
-	instance   *scribev1alpha1.ReplicationDestination
-	r          *ReplicationDestinationReconciler
+	destinationVolumeHandler
 	service    *corev1.Service
 	mainSecret *corev1.Secret
 	destSecret *corev1.Secret
 	srcSecret  *corev1.Secret
-	pvc        *corev1.PersistentVolumeClaim
 	job        *batchv1.Job
 	snap       *snapv1.VolumeSnapshot
 }
@@ -159,40 +165,32 @@ type rsyncDestReconciler struct {
 func (r *rsyncDestReconciler) Run(ctx context.Context, instance *scribev1alpha1.ReplicationDestination,
 	dr *ReplicationDestinationReconciler, logger logr.Logger) (ctrl.Result, error) {
 	// Initialize state for the reconcile pass
-	r.ctx = ctx
-	r.instance = instance
-	r.r = dr
+	r.Ctx = ctx
+	r.Instance = instance
+	r.ReplicationDestinationReconciler = *dr
+	r.destinationVolumeHandler.Options = &r.Instance.Spec.Rsync.ReplicationDestinationVolumeOptions
 
 	l := logger.WithValues("method", "Rsync")
 
-	// The reconcile functions return True if we should continue reconciling
-	reconcileFuncs := []struct {
-		f    func(logr.Logger) (bool, error)
-		desc string
-	}{
-		{r.ensureService, "Ensure incoming service"},
-		{r.ensureMainSecret, "Ensure main secret"},
-		{r.ensureDestinationSecret, "Ensure destination secret"},
-		{r.ensureConnectionSecret, "Ensure connection secret/info"},
-		{r.ensureIncomingPvc, "Ensure PVC for incoming data"},
-		{r.ensureJob, "Ensure mover Job exists"},
-		{r.snapshotVolume, "Snapshot volume if synchronized"},
-		{r.cleanupJob, "Clean up job & old snapshot"},
+	// Make sure there's a place to write status info
+	if r.Instance.Status.Rsync == nil {
+		r.Instance.Status.Rsync = &scribev1alpha1.ReplicationDestinationRsyncStatus{}
 	}
-	for _, f := range reconcileFuncs {
-		ll := l.WithValues("step", f.desc)
-		ll.V(1).Info("starting step")
-		if cont, err := f.f(ll); !cont || err != nil {
-			//return ctrl.Result{Requeue: true}, err
-			return ctrl.Result{}, err
-		}
-	}
-	return ctrl.Result{}, nil
+
+	_, err := reconcileBatch(l,
+		r.EnsurePVC,
+		r.ensureService,
+		r.ensureSecrets,
+		r.ensureJob,
+		r.PreserveImage,
+		r.cleanupJob,
+	)
+	return ctrl.Result{}, err
 }
 
 func (r *rsyncDestReconciler) serviceSelector() map[string]string {
 	return map[string]string{
-		"app.kubernetes.io/name":      "dest-" + r.instance.Name,
+		"app.kubernetes.io/name":      "dest-" + r.Instance.Name,
 		"app.kubernetes.io/component": "rsync-mover",
 		"app.kubernetes.io/part-of":   "scribe",
 	}
@@ -201,9 +199,14 @@ func (r *rsyncDestReconciler) serviceSelector() map[string]string {
 // ensureService maintains the Service that is used to connect to the
 // destination rsync mover.
 func (r *rsyncDestReconciler) ensureService(l logr.Logger) (bool, error) {
+	if r.Instance.Spec.Rsync.Address != nil {
+		// Connection will be outbound. Don't need a Service
+		return true, nil
+	}
+
 	svcName := types.NamespacedName{
-		Name:      "scribe-rsync-dest-" + r.instance.Name,
-		Namespace: r.instance.Namespace,
+		Name:      "scribe-rsync-dest-" + r.Instance.Name,
+		Namespace: r.Instance.Namespace,
 	}
 	logger := l.WithValues("service", svcName)
 
@@ -214,13 +217,16 @@ func (r *rsyncDestReconciler) ensureService(l logr.Logger) (bool, error) {
 		},
 	}
 
-	op, err := ctrlutil.CreateOrUpdate(r.ctx, r.r.Client, r.service, func() error {
+	op, err := ctrlutil.CreateOrUpdate(r.Ctx, r.Client, r.service, func() error {
+		if err := ctrl.SetControllerReference(r.Instance, r.service, r.Scheme); err != nil {
+			logger.Error(err, "unable to set controller reference")
+			return err
+		}
 		r.service.ObjectMeta.Annotations = map[string]string{
 			"service.beta.kubernetes.io/aws-load-balancer-type": "nlb",
 		}
-		st, found := r.instance.Spec.Parameters[scribev1alpha1.RsyncServiceTypeKey]
-		if found {
-			r.service.Spec.Type = corev1.ServiceType(st)
+		if r.Instance.Spec.Rsync.ServiceType != nil {
+			r.service.Spec.Type = *r.Instance.Spec.Rsync.ServiceType
 		} else {
 			r.service.Spec.Type = corev1.ServiceTypeClusterIP
 		}
@@ -229,23 +235,73 @@ func (r *rsyncDestReconciler) ensureService(l logr.Logger) (bool, error) {
 			r.service.Spec.Ports = []corev1.ServicePort{{}}
 		}
 		r.service.Spec.Ports[0].Name = "ssh"
-		r.service.Spec.Ports[0].Port = 22
+		if r.Instance.Spec.Rsync.Port != nil {
+			r.service.Spec.Ports[0].Port = *r.Instance.Spec.Rsync.Port
+		} else {
+			r.service.Spec.Ports[0].Port = 22
+		}
 		r.service.Spec.Ports[0].Protocol = corev1.ProtocolTCP
 		r.service.Spec.Ports[0].TargetPort = intstr.FromInt(22)
 		if r.service.Spec.Type == corev1.ServiceTypeClusterIP {
 			r.service.Spec.Ports[0].NodePort = 0
 		}
-		if err := ctrl.SetControllerReference(r.instance, r.service, r.r.Scheme); err != nil {
-			logger.Error(err, "unable to set controller reference")
-		}
 		return nil
 	})
 	if err != nil {
 		logger.Error(err, "Service reconcile failed")
-	} else {
-		logger.V(1).Info("Service reconciled", "operation", op)
+		return false, err
 	}
-	return op == ctrlutil.OperationResultNone, err
+
+	address := r.service.Spec.ClusterIP
+	if r.service.Spec.Type == corev1.ServiceTypeLoadBalancer {
+		if len(r.service.Status.LoadBalancer.Ingress) > 0 {
+			if r.service.Status.LoadBalancer.Ingress[0].Hostname != "" {
+				address = r.service.Status.LoadBalancer.Ingress[0].Hostname
+			} else if r.service.Status.LoadBalancer.Ingress[0].IP != "" {
+				address = r.service.Status.LoadBalancer.Ingress[0].IP
+			}
+		}
+	}
+	if address == "" {
+		// We don't have an address yet, try again later
+		r.Instance.Status.Rsync.Address = nil
+		return false, nil
+	}
+	r.Instance.Status.Rsync.Address = &address
+
+	logger.V(1).Info("Service reconciled", "operation", op)
+	return true, err
+}
+
+func (r *rsyncDestReconciler) validateProvidedSSHKeys(l logr.Logger) (bool, error) {
+	r.destSecret = &corev1.Secret{}
+	secretName := types.NamespacedName{Name: *r.Instance.Spec.Rsync.SSHKeys, Namespace: r.Instance.Namespace}
+	err := r.Client.Get(r.Ctx, secretName, r.destSecret)
+	if err != nil {
+		l.Error(err, "failed to get SSH keys Secret with provided name", "Secret", secretName)
+		return false, err
+	}
+	for _, f := range []string{"local", "local.pub", "remote"} {
+		if _, ok := r.destSecret.Data[f]; !ok {
+			err = fmt.Errorf("field not found")
+			l.Error(err, "SSH keys Secret is missing a required field", "field", f)
+			return false, err
+		}
+	}
+	return true, nil
+}
+
+func (r *rsyncDestReconciler) ensureSecrets(l logr.Logger) (bool, error) {
+	// If user provided keys, use those
+	if r.Instance.Spec.Rsync.SSHKeys != nil {
+		return r.validateProvidedSSHKeys(l)
+	}
+	// Otherwise, create the secrets
+	return reconcileBatch(l,
+		r.ensureMainSecret,
+		r.ensureConnectionSecret,
+		r.ensureDestinationSecret,
+	)
 }
 
 func (r *rsyncDestReconciler) ensureMainSecret(l logr.Logger) (bool, error) {
@@ -258,14 +314,14 @@ func (r *rsyncDestReconciler) ensureMainSecret(l logr.Logger) (bool, error) {
 	// - Create it if it doesn't exist
 	// - Ensure the expected fields are present within
 	secName := types.NamespacedName{
-		Name:      "scribe-rsync-main-" + r.instance.Name,
-		Namespace: r.instance.Namespace,
+		Name:      "scribe-rsync-main-" + r.Instance.Name,
+		Namespace: r.Instance.Namespace,
 	}
 	logger := l.WithValues("mainSecret", secName)
 
 	// See if it exists and has the proper fields
 	r.mainSecret = &corev1.Secret{}
-	err := r.r.Client.Get(r.ctx, secName, r.mainSecret)
+	err := r.Client.Get(r.Ctx, secName, r.mainSecret)
 	if err != nil && !kerrors.IsNotFound(err) {
 		logger.Error(err, "failed to get secret")
 		return false, err
@@ -284,7 +340,7 @@ func (r *rsyncDestReconciler) ensureMainSecret(l logr.Logger) (bool, error) {
 		}
 		if !valid {
 			logger.V(1).Info("deleting invalid secret")
-			if err = r.r.Client.Delete(r.ctx, r.mainSecret); err != nil {
+			if err = r.Client.Delete(r.Ctx, r.mainSecret); err != nil {
 				logger.Error(err, "failed to delete secret")
 			}
 			return false, err
@@ -301,7 +357,7 @@ func (r *rsyncDestReconciler) ensureMainSecret(l logr.Logger) (bool, error) {
 		l.Error(err, "unable to generate main secret")
 		return false, err
 	}
-	if err = r.r.Client.Create(r.ctx, r.mainSecret); err != nil {
+	if err = r.Client.Create(r.Ctx, r.mainSecret); err != nil {
 		l.Error(err, "unable to create secret")
 		return false, err
 	}
@@ -326,13 +382,13 @@ func generateKeyPair(ctx context.Context, filename string) (private []byte, publ
 
 func (r *rsyncDestReconciler) generateMainSecret(l logr.Logger) error {
 	r.mainSecret.Data = make(map[string][]byte, 4)
-	if err := ctrl.SetControllerReference(r.instance, r.mainSecret, r.r.Scheme); err != nil {
+	if err := ctrl.SetControllerReference(r.Instance, r.mainSecret, r.Scheme); err != nil {
 		l.Error(err, "unable to set controller reference")
 		return err
 	}
 
 	sourceKeyFile := "/tmp/" + r.mainSecret.Namespace + "-" + r.mainSecret.Name + "-" + "source"
-	priv, pub, err := generateKeyPair(r.ctx, sourceKeyFile)
+	priv, pub, err := generateKeyPair(r.Ctx, sourceKeyFile)
 	if err != nil {
 		l.Error(err, "unable to generate source ssh keys")
 		return err
@@ -341,7 +397,7 @@ func (r *rsyncDestReconciler) generateMainSecret(l logr.Logger) error {
 	r.mainSecret.Data["source.pub"] = pub
 
 	destinationKeyFile := "/tmp/" + r.mainSecret.Namespace + "-" + r.mainSecret.Name + "-" + "destination"
-	priv, pub, err = generateKeyPair(r.ctx, destinationKeyFile)
+	priv, pub, err = generateKeyPair(r.Ctx, destinationKeyFile)
 	if err != nil {
 		l.Error(err, "unable to generate destination ssh keys")
 		return err
@@ -354,7 +410,7 @@ func (r *rsyncDestReconciler) generateMainSecret(l logr.Logger) error {
 }
 
 func (r *rsyncDestReconciler) ensureDestinationSecret(l logr.Logger) (bool, error) {
-	destName := types.NamespacedName{Name: "scribe-rsync-dest-" + r.instance.Name, Namespace: r.instance.Namespace}
+	destName := types.NamespacedName{Name: "scribe-rsync-dest-" + r.Instance.Name, Namespace: r.Instance.Namespace}
 	logger := l.WithValues("destSecret", destName)
 
 	// The destination secret is a subset of the main secret
@@ -372,8 +428,8 @@ func (r *rsyncDestReconciler) ensureDestinationSecret(l logr.Logger) (bool, erro
 			Namespace: destName.Namespace,
 		},
 	}
-	op, err := ctrlutil.CreateOrUpdate(r.ctx, r.r.Client, r.destSecret, func() error {
-		if err := ctrl.SetControllerReference(r.instance, r.destSecret, r.r.Scheme); err != nil {
+	op, err := ctrlutil.CreateOrUpdate(r.Ctx, r.Client, r.destSecret, func() error {
+		if err := ctrl.SetControllerReference(r.Instance, r.destSecret, r.Scheme); err != nil {
 			logger.Error(err, "unable to set controller reference")
 			return err
 		}
@@ -395,8 +451,8 @@ func (r *rsyncDestReconciler) ensureDestinationSecret(l logr.Logger) (bool, erro
 }
 
 func (r *rsyncDestReconciler) ensureConnectionSecret(l logr.Logger) (bool, error) {
-	srcName := types.NamespacedName{Name: "scribe-rsync-source-" + r.instance.Name, Namespace: r.instance.Namespace}
-	logger := l.WithValues("srcSecret", srcName)
+	srcName := types.NamespacedName{Name: "scribe-rsync-source-" + r.Instance.Name, Namespace: r.Instance.Namespace}
+	logger := l.WithValues("sourceSecret", srcName)
 
 	// The source secret is a subset of the main secret
 	keysToCopy := []string{"source", "source.pub", "destination.pub"}
@@ -413,8 +469,8 @@ func (r *rsyncDestReconciler) ensureConnectionSecret(l logr.Logger) (bool, error
 			Namespace: srcName.Namespace,
 		},
 	}
-	op, err := ctrlutil.CreateOrUpdate(r.ctx, r.r.Client, r.srcSecret, func() error {
-		if err := ctrl.SetControllerReference(r.instance, r.srcSecret, r.r.Scheme); err != nil {
+	op, err := ctrlutil.CreateOrUpdate(r.Ctx, r.Client, r.srcSecret, func() error {
+		if err := ctrl.SetControllerReference(r.Instance, r.srcSecret, r.Scheme); err != nil {
 			logger.Error(err, "unable to set controller reference")
 			return err
 		}
@@ -424,93 +480,24 @@ func (r *rsyncDestReconciler) ensureConnectionSecret(l logr.Logger) (bool, error
 		for _, k := range keysToCopy {
 			r.srcSecret.Data[k] = r.mainSecret.Data[k]
 		}
-		address := r.service.Spec.ClusterIP
-		if r.service.Spec.Type == corev1.ServiceTypeLoadBalancer {
-			if len(r.service.Status.LoadBalancer.Ingress) > 0 {
-				if r.service.Status.LoadBalancer.Ingress[0].Hostname != "" {
-					address = r.service.Status.LoadBalancer.Ingress[0].Hostname
-				} else if r.service.Status.LoadBalancer.Ingress[0].IP != "" {
-					address = r.service.Status.LoadBalancer.Ingress[0].IP
-				}
-			}
-		}
-		r.srcSecret.Data["address"] = []byte(address)
 		return nil
 	})
 
 	if err != nil {
-		delete(r.instance.Status.MethodStatus, scribev1alpha1.RsyncConnectionInfoKey)
+		r.Instance.Status.Rsync.SSHKeys = nil
 		logger.Error(err, "reconcile failed")
 	} else {
-		r.instance.Status.MethodStatus[scribev1alpha1.RsyncConnectionInfoKey] = srcName.Name
+		r.Instance.Status.Rsync.SSHKeys = &srcName.Name
 		logger.V(1).Info("Secret reconciled", "operation", op)
 	}
-	return op == ctrlutil.OperationResultNone, err
-}
-
-func (r *rsyncDestReconciler) ensureIncomingPvc(l logr.Logger) (bool, error) {
-	pvcName := types.NamespacedName{Name: "scribe-rsync-dest-" + r.instance.Name, Namespace: r.instance.Namespace}
-	logger := l.WithValues("PVC", pvcName)
-
-	// Ensure required configuration parameters have been provided
-	accessMode, ok := r.instance.Spec.Parameters[scribev1alpha1.RsyncAccessModeKey]
-	if !ok {
-		return false, errors.New("parameter " + scribev1alpha1.RsyncAccessModeKey + " must be provided")
-	}
-	pvcCapacityStr, ok := r.instance.Spec.Parameters[scribev1alpha1.RsyncCapacityKey]
-	if !ok {
-		return false, errors.New("parameter " + scribev1alpha1.RsyncCapacityKey + " must be provided")
-	}
-	pvcCapacity, err := resource.ParseQuantity(pvcCapacityStr)
-	if err != nil {
-		return false, errors.New("parameter " + scribev1alpha1.RsyncCapacityKey + " must be a resource quantity")
-	}
-	var storageClassName *string
-	if scName, ok := r.instance.Spec.Parameters[scribev1alpha1.RsyncStorageClassNameKey]; ok {
-		storageClassName = &scName
-	}
-
-	r.pvc = &corev1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      pvcName.Name,
-			Namespace: pvcName.Namespace,
-		},
-	}
-	// Note: we don't reconcile the immutable fields. We could do it by deleting
-	// and recreating the PVC.
-	op, err := ctrlutil.CreateOrUpdate(r.ctx, r.r.Client, r.pvc, func() error {
-		if err := ctrl.SetControllerReference(r.instance, r.pvc, r.r.Scheme); err != nil {
-			logger.Error(err, "unable to set controller reference")
-			return err
-		}
-		if r.pvc.CreationTimestamp.IsZero() { // set immutable fields
-			r.pvc.Spec.AccessModes = []corev1.PersistentVolumeAccessMode{
-				corev1.PersistentVolumeAccessMode(accessMode),
-			}
-			r.pvc.Spec.StorageClassName = storageClassName
-			volumeMode := corev1.PersistentVolumeFilesystem
-			r.pvc.Spec.VolumeMode = &volumeMode
-		}
-
-		r.pvc.Spec.Resources.Requests = corev1.ResourceList{
-			corev1.ResourceStorage: pvcCapacity,
-		}
-		return nil
-	})
-
-	if err != nil {
-		logger.Error(err, "reconcile failed")
-	} else {
-		logger.V(1).Info("PVC reconciled", "operation", op)
-	}
-	return op == ctrlutil.OperationResultNone, err
+	return true, err
 }
 
 //nolint:funlen
 func (r *rsyncDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 	jobName := types.NamespacedName{
-		Name:      "scribe-rsync-dest-" + r.instance.Name,
-		Namespace: r.instance.Namespace,
+		Name:      "scribe-rsync-dest-" + r.Instance.Name,
+		Namespace: r.Instance.Namespace,
 	}
 	logger := l.WithValues("job", jobName)
 
@@ -521,8 +508,8 @@ func (r *rsyncDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 		},
 	}
 
-	op, err := ctrlutil.CreateOrUpdate(r.ctx, r.r.Client, r.job, func() error {
-		if err := ctrl.SetControllerReference(r.instance, r.job, r.r.Scheme); err != nil {
+	op, err := ctrlutil.CreateOrUpdate(r.Ctx, r.Client, r.job, func() error {
+		if err := ctrl.SetControllerReference(r.Instance, r.job, r.Scheme); err != nil {
 			logger.Error(err, "unable to set controller reference")
 			return err
 		}
@@ -557,7 +544,7 @@ func (r *rsyncDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 		r.job.Spec.Template.Spec.Volumes = []corev1.Volume{
 			{Name: "data", VolumeSource: corev1.VolumeSource{
 				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-					ClaimName: r.pvc.Name,
+					ClaimName: r.PVC.Name,
 					ReadOnly:  false,
 				}},
 			},
@@ -574,7 +561,7 @@ func (r *rsyncDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 	// If Job had failed, delete it so it can be recreated
 	if r.job.Status.Failed == *r.job.Spec.BackoffLimit {
 		logger.Info("deleting job -- backoff limit reached")
-		err = r.r.Client.Delete(r.ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground))
+		err = r.Client.Delete(r.Ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground))
 		return false, err
 	}
 
@@ -583,110 +570,17 @@ func (r *rsyncDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 	} else {
 		logger.V(1).Info("Job reconciled", "operation", op)
 	}
-	return op == ctrlutil.OperationResultNone, err
-}
 
-func (r *rsyncDestReconciler) snapshotVolume(l logr.Logger) (bool, error) {
-	// We only continue if the rsync job has completed
-	if r.job.Status.Succeeded == 0 {
-		return false, nil
-	}
-
-	// Track the name of the (in-progress) snapshot as a Job annotation
-	snapName := types.NamespacedName{Namespace: r.instance.Namespace}
-	if r.job.Annotations == nil {
-		r.job.Annotations = make(map[string]string)
-	}
-	if name, ok := r.job.Annotations[rsyncSnapshotAnnotation]; ok {
-		snapName.Name = name
-	} else {
-		ts := time.Now().Format(timeYYYYMMDDHHMMSS)
-		snapName.Name = "scribe-rsync-dest-" + r.instance.Name + "-" + ts
-		r.job.Annotations[rsyncSnapshotAnnotation] = snapName.Name
-		if err := r.r.Client.Update(r.ctx, r.job); err != nil {
-			l.Error(err, "unable to update job")
-			return false, err
-		}
-	}
-	logger := l.WithValues("snapshot", snapName)
-
-	r.snap = &snapv1.VolumeSnapshot{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      snapName.Name,
-			Namespace: snapName.Namespace,
-		},
-	}
-	op, err := ctrlutil.CreateOrUpdate(r.ctx, r.r.Client, r.snap, func() error {
-		if err := ctrl.SetControllerReference(r.instance, r.snap, r.r.Scheme); err != nil {
-			logger.Error(err, "unable to set controller reference")
-			return err
-		}
-		if r.snap.CreationTimestamp.IsZero() {
-			r.snap.Spec = snapv1.VolumeSnapshotSpec{
-				Source: snapv1.VolumeSnapshotSource{
-					PersistentVolumeClaimName: &r.pvc.Name,
-				},
-			}
-			if vscn, ok := r.instance.Spec.Parameters[scribev1alpha1.RsyncVolumeSnapshotClassNameKey]; ok {
-				r.snap.Spec.VolumeSnapshotClassName = &vscn
-			}
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		logger.Error(err, "reconcile failed")
-	} else {
-		logger.V(1).Info("Snapshot reconciled", "operation", op)
-	}
-	return op == ctrlutil.OperationResultNone, err
+	// We only continue reconciling if the rsync job has completed
+	return r.job.Status.Succeeded == 1, nil
 }
 
 func (r *rsyncDestReconciler) cleanupJob(l logr.Logger) (bool, error) {
 	logger := l.WithValues("job", r.job)
 
-	// We only continue if the snapshot has been bound
-	if r.snap.Status == nil || r.snap.Status.BoundVolumeSnapshotContentName == nil {
-		return false, nil
-	}
-
-	// Delete the old snapshot (if it exists)
-	oldSnap, ok := r.instance.Status.MethodStatus[scribev1alpha1.RsyncLatestSnapKey]
-	if ok && oldSnap != r.snap.Name {
-		// Delete the old snapshot
-		old := &snapv1.VolumeSnapshot{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      oldSnap,
-				Namespace: r.instance.Namespace,
-			},
-		}
-		logger.V(1).Info("deleting old snapshot", "old-snapshot", oldSnap)
-		err := r.r.Client.Delete(r.ctx, old)
-		if err != nil && !kerrors.IsNotFound(err) {
-			logger.Error(err, "unable to delete old snapshot")
-		}
-	}
-
-	// Delete succeeded, so move the current snapshot to be the "latest".
-	// This also performs the CR status update here (in addition to at the
-	// conclusion of the main reconcile loop). The reason it's done here is that
-	// sometimes the update fails (object changed error), and that can cause the
-	// update of the latest snapshot to be lost. Doing it here lets us terminate
-	// the reconcile process and try again before the Job is deleted. Deleting
-	// the Job is the commit point that signals the end of the current
-	// replication cycle, so there's no chance to try again after that delete
-	// happens.
-	r.instance.Status.MethodStatus[scribev1alpha1.RsyncLatestSnapKey] = r.snap.Name
-	err := r.r.Status().Update(r.ctx, r.instance)
-	if err != nil {
-		logger.Error(err, "unable to update instance status")
-		return false, err
-	}
-
 	// Delete the (completed) Job. The next reconcile pass will recreate it.
 	// Set propagation policy so the old pods get deleted
-	if err := r.r.Client.Delete(r.ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
+	if err := r.Client.Delete(r.Ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
 		logger.Error(err, "unable to delete old job")
 		return false, err
 	}

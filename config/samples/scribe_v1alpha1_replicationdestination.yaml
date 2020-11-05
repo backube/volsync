@@ -4,8 +4,7 @@ metadata:
   name: replicationdestination-sample
 spec:
   rsync:
-    serviceType: LoadBalancer
+    serviceType: ClusterIP
     copyMethod: Snapshot
     capacity: 10Gi
     accessModes: [ReadWriteOnce]
-
