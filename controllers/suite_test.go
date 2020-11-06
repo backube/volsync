@@ -18,12 +18,15 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package controllers
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	gomegatypes "github.com/onsi/gomega/types"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -115,3 +118,53 @@ var _ = AfterSuite(func() {
 	err := testEnv.Stop()
 	Expect(err).ToNot(HaveOccurred())
 })
+
+// beOwnedBy is a GomegaMatcher that ensures a Kubernetes Object is owned by a
+// specific other object.
+func beOwnedBy(owner interface{}) gomegatypes.GomegaMatcher {
+	return &ownerRefMatcher{
+		owner: owner,
+	}
+}
+
+type ownerRefMatcher struct {
+	owner  interface{}
+	reason string
+}
+
+func (m *ownerRefMatcher) Match(actual interface{}) (success bool, err error) {
+	actObj, ok := actual.(metav1.Object)
+	if !ok {
+		return false, fmt.Errorf("actual value is not a metav1.Object")
+	}
+	ownerObj, ok := m.owner.(metav1.Object)
+	if !ok {
+		return false, fmt.Errorf("expected value is not a metav1.Object")
+	}
+	controller := metav1.GetControllerOf(actObj)
+	if controller == nil {
+		m.reason = "it does not have an owner"
+		return false, nil
+	}
+	if controller.UID != ownerObj.GetUID() {
+		m.reason = "it does not refer to the expected parent object"
+		return false, nil
+	}
+	// XXX: This check isn't perfect. Both cluster-scoped and objects in the
+	// "default" namespace have an empty namespace name. So the following may
+	// (incorrectly) pass for namespaced owners in the default namespace
+	// attempting to own cluster-scoped objects.
+	if ownerObj.GetNamespace() != "" { // if owner not cluster-scoped
+		if actObj.GetNamespace() != ownerObj.GetNamespace() {
+			m.reason = "cross namespace owner references are not allowed"
+			return false, nil
+		}
+	}
+	return true, nil
+}
+func (m *ownerRefMatcher) FailureMessage(actual interface{}) (message string) {
+	return fmt.Sprintf("Expected\n\t%#v\nto be owned by\n\t%#v\nbut %v", actual, m.owner, m.reason)
+}
+func (m *ownerRefMatcher) NegatedFailureMessage(actual interface{}) (message string) {
+	return fmt.Sprintf("Expected\n\t%#v\nnot to be owned by\n\t%#v", actual, m.owner)
+}
