@@ -42,15 +42,12 @@ import (
 )
 
 const (
-	// Time format for snapshot names and labels
-	timeYYYYMMDDHHMMSS = "20060102150405"
+	// DefaultRsyncContainerImage is the default container image name of the rsync data mover
+	DefaultRsyncContainerImage = "quay.io/backube/scribe-mover-rsync:latest"
 )
 
 // RsyncContainerImage is the container image name of the rsync data mover
 var RsyncContainerImage string
-
-// DefaultRsyncContainerImage is the default container image name of the rsync data mover
-var DefaultRsyncContainerImage = "quay.io/backube/scribe-mover-rsync:latest"
 
 // ReplicationDestinationReconciler reconciles a ReplicationDestination object
 type ReplicationDestinationReconciler struct {
@@ -159,7 +156,6 @@ type rsyncDestReconciler struct {
 	destSecret *corev1.Secret
 	srcSecret  *corev1.Secret
 	job        *batchv1.Job
-	snap       *snapv1.VolumeSnapshot
 }
 
 func (r *rsyncDestReconciler) Run(ctx context.Context, instance *scribev1alpha1.ReplicationDestination,
@@ -180,6 +176,7 @@ func (r *rsyncDestReconciler) Run(ctx context.Context, instance *scribev1alpha1.
 	_, err := reconcileBatch(l,
 		r.EnsurePVC,
 		r.ensureService,
+		r.publishSvcAddress,
 		r.ensureSecrets,
 		r.ensureJob,
 		r.PreserveImage,
@@ -252,6 +249,15 @@ func (r *rsyncDestReconciler) ensureService(l logr.Logger) (bool, error) {
 		return false, err
 	}
 
+	logger.V(1).Info("Service reconciled", "operation", op)
+	return true, nil
+}
+
+func (r *rsyncDestReconciler) publishSvcAddress(l logr.Logger) (bool, error) {
+	if r.service == nil { // no service, nothing to do
+		return true, nil
+	}
+
 	address := r.service.Spec.ClusterIP
 	if r.service.Spec.Type == corev1.ServiceTypeLoadBalancer {
 		if len(r.service.Status.LoadBalancer.Ingress) > 0 {
@@ -269,8 +275,8 @@ func (r *rsyncDestReconciler) ensureService(l logr.Logger) (bool, error) {
 	}
 	r.Instance.Status.Rsync.Address = &address
 
-	logger.V(1).Info("Service reconciled", "operation", op)
-	return true, err
+	l.V(1).Info("Service addr published", "address", address)
+	return true, nil
 }
 
 func (r *rsyncDestReconciler) validateProvidedSSHKeys(l logr.Logger) (bool, error) {
@@ -281,7 +287,7 @@ func (r *rsyncDestReconciler) validateProvidedSSHKeys(l logr.Logger) (bool, erro
 		l.Error(err, "failed to get SSH keys Secret with provided name", "Secret", secretName)
 		return false, err
 	}
-	for _, f := range []string{"local", "local.pub", "remote"} {
+	for _, f := range []string{"destination", "destination.pub", "source.pub"} {
 		if _, ok := r.destSecret.Data[f]; !ok {
 			err = fmt.Errorf("field not found")
 			l.Error(err, "SSH keys Secret is missing a required field", "field", f)

@@ -1,35 +1,47 @@
+//nolint:lll
 package controllers
 
 import (
 	"context"
 	"time"
 
+	//snapv1 "github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/operator-framework/operator-lib/status"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	//batchv1 "k8s.io/api/batch/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
+
+	//"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+
+	//"k8s.io/apimachinery/pkg/types"
+	//"k8s.io/apimachinery/pkg/util/intstr"
 
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
 )
 
 const (
 	duration = 5 * time.Second
-	maxWait  = 120 * time.Second
+	maxWait  = 60 * time.Second
 	interval = 250 * time.Millisecond
 )
 
 var _ = Describe("ReplicationDestination", func() {
-	var rd *scribev1alpha1.ReplicationDestination
-	var rdNsN types.NamespacedName
-	var namespace *corev1.Namespace
 	var ctx = context.Background()
+	var namespace *corev1.Namespace
+	var rd *scribev1alpha1.ReplicationDestination
 
 	BeforeEach(func() {
+		// Each test is run in its own namespace
 		namespace = &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
 				GenerateName: "scribe-test-",
@@ -37,328 +49,344 @@ var _ = Describe("ReplicationDestination", func() {
 		}
 		Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
 		Expect(namespace.Name).NotTo(BeEmpty())
+
+		// Scaffold the ReplicationDestination, but don't create so that it can
+		// be customized per test scenario.
 		rd = &scribev1alpha1.ReplicationDestination{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "instance",
 				Namespace: namespace.Name,
 			},
 		}
-		rdNsN = types.NamespacedName{Name: rd.Name, Namespace: rd.Namespace}
+		RsyncContainerImage = DefaultRsyncContainerImage
 	})
 	AfterEach(func() {
 		// All resources are namespaced, so this should clean it all up
 		Expect(k8sClient.Delete(ctx, namespace)).To(Succeed())
 	})
-
 	JustBeforeEach(func() {
+		// ReplicationDestination should have been customized in the BeforeEach
+		// at each level, so now we create it.
 		Expect(k8sClient.Create(ctx, rd)).To(Succeed())
 		// Wait for it to show up in the API server
 		Eventually(func() error {
 			inst := &scribev1alpha1.ReplicationDestination{}
-			return k8sClient.Get(ctx, rdNsN, inst)
+			return k8sClient.Get(ctx, nameFor(rd), inst)
 		}, maxWait, interval).Should(Succeed())
 	})
-	Context("when an unknown replication method is specified", func() {
+
+	Context("when an external replication method is specified", func() {
 		BeforeEach(func() {
-			rd.Spec.ReplicationMethod = "somethingUnknown"
+			rd.Spec.External = &scribev1alpha1.ReplicationDestinationExternalSpec{}
 		})
 		It("the CR is not reconciled", func() {
 			Consistently(func() *scribev1alpha1.ReplicationDestinationStatus {
-				Expect(k8sClient.Get(ctx, rdNsN, rd)).To(Succeed())
+				Expect(k8sClient.Get(ctx, nameFor(rd), rd)).To(Succeed())
 				return rd.Status
 			}, duration, interval).Should(BeNil())
 		})
 	})
 
-	Context("when using rsync replication", func() {
-		pvcCapacity := "1Gi"
+	Context("when a destinationPVC is specified", func() {
+		var pvc *v1.PersistentVolumeClaim
 		BeforeEach(func() {
-			rd.Spec.ReplicationMethod = scribev1alpha1.ReplicationMethodRsync
+			pvc = &v1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "foo",
+					Namespace: rd.Namespace,
+				},
+				Spec: v1.PersistentVolumeClaimSpec{
+					AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+					Resources: v1.ResourceRequirements{
+						Requests: v1.ResourceList{
+							"storage": resource.MustParse("10Gi"),
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, pvc)).To(Succeed())
+			rd.Spec.Rsync = &scribev1alpha1.ReplicationDestinationRsyncSpec{
+				ReplicationDestinationVolumeOptions: scribev1alpha1.ReplicationDestinationVolumeOptions{
+					DestinationPVC: &pvc.Name,
+				},
+			}
+		})
+		It("is used as the target PVC", func() {
+			job := &batchv1.Job{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, job)
+			}, maxWait, interval).Should(Succeed())
+			volumes := job.Spec.Template.Spec.Volumes
+			found := false
+			for _, v := range volumes {
+				if v.PersistentVolumeClaim != nil && v.PersistentVolumeClaim.ClaimName == pvc.Name {
+					found = true
+				}
+			}
+			Expect(found).To(BeTrue())
+			Expect(pvc).NotTo(beOwnedBy(rd))
+		})
+	})
+
+	Context("when none of capacity, accessMode, or destinationPVC are specified", func() {
+		BeforeEach(func() {
+			rd.Spec.Rsync = &scribev1alpha1.ReplicationDestinationRsyncSpec{
+				ReplicationDestinationVolumeOptions: scribev1alpha1.ReplicationDestinationVolumeOptions{},
+			}
+		})
+		It("generates a reconcile error", func() {
+			Eventually(func() *scribev1alpha1.ReplicationDestinationStatus {
+				_ = k8sClient.Get(ctx, nameFor(rd), rd)
+				return rd.Status
+			}, maxWait, interval).Should(Not(BeNil()))
+			var cond *status.Condition
+			Eventually(func() *status.Condition {
+				_ = k8sClient.Get(ctx, nameFor(rd), rd)
+				cond = rd.Status.Conditions.GetCondition(scribev1alpha1.ConditionReconciled)
+				return cond
+			}, maxWait, interval).Should(Not(BeNil()))
+			Expect(cond.Status).To(Equal(corev1.ConditionFalse))
+			Expect(cond.Reason).To(Equal(scribev1alpha1.ReconciledReasonError))
+		})
+	})
+
+	Context("when capacity and accessModes are specified", func() {
+		capacity := resource.MustParse("2Gi")
+		accessModes := []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce}
+		BeforeEach(func() {
+			rd.Spec.Rsync = &scribev1alpha1.ReplicationDestinationRsyncSpec{
+				ReplicationDestinationVolumeOptions: scribev1alpha1.ReplicationDestinationVolumeOptions{
+					Capacity:    &capacity,
+					AccessModes: accessModes,
+				},
+			}
 		})
 
-		Context("verify common Service settings", func() {
-			svc := &corev1.Service{}
-			JustBeforeEach(func() {
-				Eventually(func() error {
-					svcName := types.NamespacedName{
-						Name:      "scribe-rsync-dest-" + rd.Name,
-						Namespace: rd.Namespace,
-					}
-					return k8sClient.Get(ctx, svcName, svc)
-				}, maxWait, interval).Should(Succeed())
-			})
-			It("Type defaults to ClusterIP", func() {
-				Expect(svc.Spec.Type).To(Equal(corev1.ServiceTypeClusterIP))
-				Expect(svc.Spec.ClusterIP).To(MatchRegexp(`^(\d+.){3}\d+$`))
-			})
-			It("opens a single port for ssh", func() {
-				Expect(svc.Spec.Ports).To(HaveLen(1))
-				thePort := svc.Spec.Ports[0]
-				Expect(thePort.Name).To(Equal("ssh"))
-				Expect(thePort.Port).To(Equal(int32(22)))
-				Expect(thePort.Protocol).To(Equal(corev1.ProtocolTCP))
-				Expect(thePort.TargetPort).To(Equal(intstr.FromInt(22)))
-			})
-			It("is owned by the ReplicationDestination", func() {
-				Expect(svc).To(beOwnedBy(rd))
-			})
+		It("creates a ClusterIP service by default", func() {
+			svc := &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "scribe-rsync-dest-" + rd.Name,
+					Namespace: rd.Namespace,
+				},
+			}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, nameFor(svc), svc)
+			}, maxWait, interval).Should(Succeed())
+			Expect(svc.Spec.Type).To(Equal(corev1.ServiceTypeClusterIP))
+			Eventually(func() *string {
+				_ = k8sClient.Get(ctx, nameFor(rd), rd)
+				if rd.Status == nil || rd.Status.Rsync == nil {
+					return nil
+				}
+				return rd.Status.Rsync.Address
+			}, maxWait, interval).Should(Not(BeNil()))
+			Expect(*rd.Status.Rsync.Address).To(Equal(svc.Spec.ClusterIP))
+			Expect(svc).To(beOwnedBy(rd))
+			By("opening a single port for ssh")
+			Expect(svc.Spec.Ports).To(HaveLen(1))
+			thePort := svc.Spec.Ports[0]
+			Expect(thePort.Name).To(Equal("ssh"))
+			Expect(thePort.Port).To(Equal(int32(22)))
+			Expect(thePort.Protocol).To(Equal(corev1.ProtocolTCP))
+			Expect(thePort.TargetPort).To(Equal(intstr.FromInt(22)))
 		})
 
-		Context("with serviceType of ClusterIP", func() {
-			svc := &corev1.Service{}
+		Context("when serviceType is LoadBalancer", func() {
 			BeforeEach(func() {
-				rd.Spec.Parameters = map[string]string{scribev1alpha1.RsyncServiceTypeKey: string(corev1.ServiceTypeClusterIP)}
+				lb := v1.ServiceTypeLoadBalancer
+				rd.Spec.Rsync.ServiceType = &lb
 			})
-			It("a service of type ClusterIP is created", func() {
-				Eventually(func() error {
-					svcName := types.NamespacedName{
+			It("a LoadBalancer service is created", func() {
+				svc := &corev1.Service{
+					ObjectMeta: metav1.ObjectMeta{
 						Name:      "scribe-rsync-dest-" + rd.Name,
 						Namespace: rd.Namespace,
-					}
-					return k8sClient.Get(ctx, svcName, svc)
-				}, maxWait, interval).Should(Succeed())
-				Expect(svc.Spec.Type).To(Equal(corev1.ServiceTypeClusterIP))
-				Expect(svc.Spec.ClusterIP).To(MatchRegexp(`^(\d+.){3}\d+$`))
-			})
-		})
-
-		Context("with serviceType of LoadBalancer", func() {
-			svc := &corev1.Service{}
-			BeforeEach(func() {
-				rd.Spec.Parameters = map[string]string{scribev1alpha1.RsyncServiceTypeKey: string(corev1.ServiceTypeLoadBalancer)}
-			})
-			It("a service of type LoadBalancer is created", func() {
+					},
+				}
 				Eventually(func() error {
-					svcName := types.NamespacedName{
-						Name:      "scribe-rsync-dest-" + rd.Name,
-						Namespace: rd.Namespace,
-					}
-					return k8sClient.Get(ctx, svcName, svc)
+					return k8sClient.Get(ctx, nameFor(svc), svc)
 				}, maxWait, interval).Should(Succeed())
 				Expect(svc.Spec.Type).To(Equal(corev1.ServiceTypeLoadBalancer))
-				Expect(svc.Spec.ClusterIP).To(MatchRegexp(`^(\d+.){3}\d+$`))
+				Eventually(func() *string {
+					_ = k8sClient.Get(ctx, nameFor(rd), rd)
+					if rd.Status == nil || rd.Status.Rsync == nil {
+						return nil
+					}
+					return rd.Status.Rsync.Address
+				}, maxWait, interval).Should(Not(BeNil()))
 			})
 		})
 
-		Context("the ssh keys", func() {
-			mainSecret := &corev1.Secret{}
-			srcSecret := &corev1.Secret{}
-			dstSecret := &corev1.Secret{}
-
-			JustBeforeEach(func() {
-				Eventually(func() error {
-					return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-main-" + rd.Name,
-						Namespace: rd.Namespace}, mainSecret)
-				}, maxWait, interval).Should(Succeed())
-				Eventually(func() error {
-					return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-source-" + rd.Name,
-						Namespace: rd.Namespace}, srcSecret)
-				}, maxWait, interval).Should(Succeed())
-				Eventually(func() error {
-					return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-dest-" + rd.Name,
-						Namespace: rd.Namespace}, dstSecret)
-				}, maxWait, interval).Should(Succeed())
-			})
-
-			It("should have 4 entries in the main secret", func() {
-				Expect(mainSecret.Data).To(HaveLen(4))
-				Expect(mainSecret.Data).To(HaveKey("source"))
-				Expect(mainSecret.Data).To(HaveKey("source.pub"))
-				Expect(mainSecret.Data).To(HaveKey("destination"))
-				Expect(mainSecret.Data).To(HaveKey("destination.pub"))
-				Expect(mainSecret).To(beOwnedBy(rd))
-			})
-			It("should have 3 entries in the destination secret", func() {
-				Expect(dstSecret.Data).To(HaveLen(3))
-				keys := []string{"source.pub", "destination.pub", "destination"}
-				for _, k := range keys {
-					Expect(dstSecret.Data).To(HaveKeyWithValue(k, mainSecret.Data[k]))
+		It("creates a PVC", func() {
+			job := &batchv1.Job{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, job)
+			}, maxWait, interval).Should(Succeed())
+			var pvcName string
+			volumes := job.Spec.Template.Spec.Volumes
+			for _, v := range volumes {
+				if v.PersistentVolumeClaim != nil && v.Name == "data" {
+					pvcName = v.PersistentVolumeClaim.ClaimName
 				}
-				Expect(dstSecret).To(beOwnedBy(rd))
+			}
+			pvc := &v1.PersistentVolumeClaim{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{Name: pvcName, Namespace: rd.Namespace}, pvc)
+			}, maxWait, interval).Should(Succeed())
+			Expect(pvc).To(beOwnedBy(rd))
+			Expect(*pvc.Spec.Resources.Requests.Storage()).To(Equal(capacity))
+			Expect(pvc.Spec.AccessModes).To(Equal(accessModes))
+		})
+
+		Context("when a SC is specified", func() {
+			scName := "mysc"
+			BeforeEach(func() {
+				rd.Spec.Rsync.ReplicationDestinationVolumeOptions.StorageClassName = &scName
 			})
-			It("should have 3 keys plus the connection address in the source secret", func() {
-				Expect(srcSecret.Data).To(HaveLen(4))
-				// ssh keys should match
-				keys := []string{"source.pub", "source", "destination.pub"}
-				for _, k := range keys {
-					Expect(srcSecret.Data).To(HaveKeyWithValue(k, mainSecret.Data[k]))
-				}
-				// Should also have the connection address from the service. The default is a ClusterIP service
-				svc := &corev1.Service{}
+			It("is used in the PVC", func() {
+				job := &batchv1.Job{}
 				Eventually(func() error {
-					svcName := types.NamespacedName{
-						Name:      "scribe-rsync-dest-" + rd.Name,
+					return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, job)
+				}, maxWait, interval).Should(Succeed())
+				var pvcName string
+				volumes := job.Spec.Template.Spec.Volumes
+				for _, v := range volumes {
+					if v.PersistentVolumeClaim != nil && v.Name == "data" {
+						pvcName = v.PersistentVolumeClaim.ClaimName
+					}
+				}
+				pvc := &v1.PersistentVolumeClaim{}
+				Eventually(func() error {
+					return k8sClient.Get(ctx, types.NamespacedName{Name: pvcName, Namespace: rd.Namespace}, pvc)
+				}, maxWait, interval).Should(Succeed())
+				Expect(*pvc.Spec.StorageClassName).To(Equal(scName))
+			})
+		})
+
+		It("Generates ssh keys automatically", func() {
+			secret := &v1.Secret{}
+			Eventually(func() *scribev1alpha1.ReplicationDestinationStatus {
+				_ = k8sClient.Get(ctx, nameFor(rd), rd)
+				return rd.Status
+			}, maxWait, interval).Should(Not(BeNil()))
+			Eventually(func() *scribev1alpha1.ReplicationDestinationRsyncStatus {
+				_ = k8sClient.Get(ctx, nameFor(rd), rd)
+				return rd.Status.Rsync
+			}, maxWait, interval).Should(Not(BeNil()))
+			Eventually(func() *string {
+				_ = k8sClient.Get(ctx, nameFor(rd), rd)
+				return rd.Status.Rsync.SSHKeys
+			}, maxWait, interval).Should(Not(BeNil()))
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: *rd.Status.Rsync.SSHKeys,
+				Namespace: rd.Namespace}, secret)).To(Succeed())
+			Expect(secret.Data).To(HaveKey("source"))
+			Expect(secret.Data).To(HaveKey("source.pub"))
+			Expect(secret.Data).To(HaveKey("destination.pub"))
+			Expect(secret.Data).NotTo(HaveKey("destination"))
+			Expect(secret).To(beOwnedBy(rd))
+		})
+
+		Context("when ssh keys are provided", func() {
+			var secret *v1.Secret
+			BeforeEach(func() {
+				secret = &v1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "keys",
 						Namespace: rd.Namespace,
-					}
-					return k8sClient.Get(ctx, svcName, svc)
-				}, maxWait, interval).Should(Succeed())
-				Expect(srcSecret.Data).To(HaveKeyWithValue("address", []uint8(svc.Spec.ClusterIP)))
-				Expect(srcSecret).To(beOwnedBy(rd))
-			})
-			It("should be referenced in the ReplicationDestination status", func() {
-				rdNew := &scribev1alpha1.ReplicationDestination{}
-				Eventually(func() map[string]string {
-					_ = k8sClient.Get(ctx, rdNsN, rdNew)
-					return rdNew.Status.MethodStatus
-				}, maxWait, interval).Should(HaveKeyWithValue(scribev1alpha1.RsyncConnectionInfoKey, srcSecret.Name))
-			})
-		})
-
-		Context("if the PVC size is omitted", func() {
-			BeforeEach(func() {
-				if rd.Spec.Parameters == nil {
-					rd.Spec.Parameters = make(map[string]string, 1)
+					},
+					StringData: map[string]string{
+						"destination":     "foo",
+						"destination.pub": "bar",
+						"source.pub":      "baz",
+					},
 				}
-				rd.Spec.Parameters[scribev1alpha1.RsyncAccessModeKey] = string(corev1.ReadWriteOnce)
+				Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+				rd.Spec.Rsync.SSHKeys = &secret.Name
 			})
-			It("generates a reconcile error", func() {
-				rdNew := &scribev1alpha1.ReplicationDestination{}
-				Eventually(func() bool {
-					_ = k8sClient.Get(ctx, rdNsN, rdNew)
-					if rdNew.Status == nil {
-						return false
-					}
-					c := rdNew.Status.Conditions.GetCondition(scribev1alpha1.ConditionReconciled)
-					return c != nil && c.IsFalse() && c.Reason == scribev1alpha1.ReconciledReasonError
-				}, maxWait, interval).Should(BeTrue())
-			})
-		})
-		Context("if the PVC accessMode is omitted", func() {
-			BeforeEach(func() {
-				if rd.Spec.Parameters == nil {
-					rd.Spec.Parameters = make(map[string]string, 1)
-				}
-				rd.Spec.Parameters[scribev1alpha1.RsyncCapacityKey] = pvcCapacity
-			})
-			It("generates a reconcile error", func() {
-				rdNew := &scribev1alpha1.ReplicationDestination{}
-				Eventually(func() bool {
-					_ = k8sClient.Get(ctx, rdNsN, rdNew)
-					if rdNew.Status == nil {
-						return false
-					}
-					c := rdNew.Status.Conditions.GetCondition(scribev1alpha1.ConditionReconciled)
-					return c != nil && c.IsFalse() && c.Reason == scribev1alpha1.ReconciledReasonError
-				}, maxWait, interval).Should(BeTrue())
-			})
-		})
-		Context("a PVC for incoming replication", func() {
-			pvc := &corev1.PersistentVolumeClaim{}
-			BeforeEach(func() {
-				if rd.Spec.Parameters == nil {
-					rd.Spec.Parameters = make(map[string]string, 2)
-				}
-				rd.Spec.Parameters[scribev1alpha1.RsyncAccessModeKey] = string(corev1.ReadWriteOnce)
-				rd.Spec.Parameters[scribev1alpha1.RsyncCapacityKey] = pvcCapacity
-			})
-			JustBeforeEach(func() {
-				Eventually(func() error {
-					return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, pvc)
-				}, maxWait, interval).Should(Succeed())
-			})
-			It("must be created w/ the requested size and accessMode", func() {
-				Expect(pvc.Spec.AccessModes).To(ConsistOf(corev1.ReadWriteOnce))
-				Expect(*pvc.Spec.Resources.Requests.Storage()).To(Equal(resource.MustParse(pvcCapacity)))
-			})
-			It("uses the default StorageClass by default", func() {
-				// test env doesn't have a default SC
-				Expect(pvc.Spec.StorageClassName).To(BeNil())
-			})
-			It("must be properly owned", func() {
-				Expect(pvc).To(beOwnedBy(rd))
-			})
-		})
-		Context("a PVC for incoming replication", func() {
-			pvc := &corev1.PersistentVolumeClaim{}
-			BeforeEach(func() {
-				if rd.Spec.Parameters == nil {
-					rd.Spec.Parameters = make(map[string]string, 3)
-				}
-				rd.Spec.Parameters[scribev1alpha1.RsyncAccessModeKey] = string(corev1.ReadWriteOnce)
-				rd.Spec.Parameters[scribev1alpha1.RsyncCapacityKey] = pvcCapacity
-				rd.Spec.Parameters[scribev1alpha1.RsyncStorageClassNameKey] = "myclass"
-			})
-			It("allows a StorageClass to be specified", func() {
-				Eventually(func() error {
-					return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, pvc)
-				}, maxWait, interval).Should(Succeed())
-				Expect(*pvc.Spec.StorageClassName).To(Equal("myclass"))
-			})
-		})
-
-		Context("the rsync data mover job", func() {
-			job := &batchv1.Job{}
-			BeforeEach(func() {
-				if rd.Spec.Parameters == nil {
-					rd.Spec.Parameters = make(map[string]string, 2)
-				}
-				rd.Spec.Parameters[scribev1alpha1.RsyncAccessModeKey] = string(corev1.ReadWriteOnce)
-				rd.Spec.Parameters[scribev1alpha1.RsyncCapacityKey] = pvcCapacity
-				RsyncContainerImage = "dummy_invalid_image"
-			})
-			JustBeforeEach(func() {
+			It("they are used by the sync Job", func() {
+				job := &batchv1.Job{}
 				Eventually(func() error {
 					return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, job)
 				}, maxWait, interval).Should(Succeed())
-			})
-			It("should be owned by the ReplicationDestination", func() {
-				Expect(job).To(beOwnedBy(rd))
-			})
-			It("should be restarted if it fails", func() {
-				job.Status.Failed = *job.Spec.BackoffLimit
-				Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
-				Eventually(func() int32 {
-					Eventually(func() error {
-						return k8sClient.Get(ctx,
-							types.NamespacedName{Name: "scribe-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, job)
-					}, maxWait, interval).Should(Succeed())
-					return job.Status.Failed
-				}, maxWait, interval).Should(Equal(int32(0)))
+				volumes := job.Spec.Template.Spec.Volumes
+				found := false
+				for _, v := range volumes {
+					if v.Secret != nil && v.Secret.SecretName == secret.Name {
+						found = true
+					}
+				}
+				Expect(found).To(BeTrue())
+				Expect(secret).NotTo(beOwnedBy(rd))
 			})
 		})
-		Context("once the sync job completes", func() {
-			job := &batchv1.Job{}
+	})
+
+	Context("after sync is complete", func() {
+		BeforeEach(func() {
+			capacity := resource.MustParse("10Gi")
+			rd.Spec.Rsync = &scribev1alpha1.ReplicationDestinationRsyncSpec{
+				ReplicationDestinationVolumeOptions: scribev1alpha1.ReplicationDestinationVolumeOptions{
+					Capacity:    &capacity,
+					AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+				},
+			}
+		})
+		JustBeforeEach(func() {
+			job := &batchv1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "scribe-rsync-dest-" + rd.Name,
+					Namespace: rd.Namespace,
+				},
+			}
+			// Wait for the Rsync Job to be created
+			Eventually(func() error {
+				return k8sClient.Get(ctx, nameFor(job), job)
+			}, maxWait, interval).Should(Succeed())
+			// Mark it as succeeded
+			job.Status.Succeeded = 1
+			Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
+		})
+		Context("with a CopyMethod of None", func() {
 			BeforeEach(func() {
-				if rd.Spec.Parameters == nil {
-					rd.Spec.Parameters = make(map[string]string, 2)
-				}
-				rd.Spec.Parameters[scribev1alpha1.RsyncAccessModeKey] = string(corev1.ReadWriteOnce)
-				rd.Spec.Parameters[scribev1alpha1.RsyncCapacityKey] = pvcCapacity
-				RsyncContainerImage = "dummy_invalid_image"
+				rd.Spec.Rsync.CopyMethod = scribev1alpha1.CopyMethodNone
 			})
-			JustBeforeEach(func() {
-				Eventually(func() error {
-					return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, job)
-				}, maxWait, interval).Should(Succeed())
-				job.Status.Succeeded = 1
-				Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
+			It("the PVC should be the latestImage", func() {
+				Eventually(func() *v1.TypedLocalObjectReference {
+					_ = k8sClient.Get(ctx, nameFor(rd), rd)
+					return rd.Status.LatestImage
+				}, maxWait, interval).Should(Not(BeNil()))
+				li := rd.Status.LatestImage
+				Expect(li.Kind).To(Equal("PersistentVolumeClaim"))
+				Expect(*li.APIGroup).To(Equal(""))
+				Expect(li.Name).To(Not(Equal("")))
 			})
-			It("should create a snapshot of the volume", func() {
-				snap := &snapv1.VolumeSnapshot{}
-				Eventually(func() error {
-					_ = k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, job)
-					snapname := job.GetAnnotations()[rsyncSnapshotAnnotation]
-					return k8sClient.Get(ctx, types.NamespacedName{Name: snapname, Namespace: rd.Namespace}, snap)
-				}, maxWait, interval).Should(Succeed())
-				Expect(snap).To(beOwnedBy(rd))
-				// force it to appear bound
-				vscn := "foo"
+		})
+		Context("with a CopyMethod of Snapshot", func() {
+			BeforeEach(func() {
+				rd.Spec.Rsync.CopyMethod = scribev1alpha1.CopyMethodSnapshot
+			})
+			It("a snapshot should be the latestImage", func() {
+				By("once snapshot is created, force it to be bound")
+				snapList := &snapv1.VolumeSnapshotList{}
+				Eventually(func() []snapv1.VolumeSnapshot {
+					_ = k8sClient.List(ctx, snapList, client.InNamespace(rd.Namespace))
+					return snapList.Items
+				}, maxWait, interval).Should(Not(BeEmpty()))
+				snap := snapList.Items[0]
+				foo := "foo"
 				snap.Status = &snapv1.VolumeSnapshotStatus{
-					BoundVolumeSnapshotContentName: &vscn,
+					BoundVolumeSnapshotContentName: &foo,
 				}
-				Expect(k8sClient.Status().Update(ctx, snap)).To(Succeed())
-				// Once bound, job should be deleted and recreated, resetting .status.succeeded to 0
-				Eventually(func() int32 {
-					_ = k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, job)
-					return job.Status.Succeeded
-				}, maxWait, interval).Should(Equal(int32(0)))
-				// The snap name should then be in the CR status
-				Eventually(func() string {
-					if err := k8sClient.Get(ctx, types.NamespacedName{Name: rd.Name, Namespace: rd.Namespace}, rd); err != nil {
-						return ""
-					}
-					return rd.Status.MethodStatus[scribev1alpha1.RsyncLatestSnapKey]
-				}, maxWait, interval).Should(Equal(snap.Name))
+				Expect(k8sClient.Status().Update(ctx, &snap)).To(Succeed())
+				By("seeing the now-bound snap in the LatestImage field")
+				Eventually(func() *v1.TypedLocalObjectReference {
+					_ = k8sClient.Get(ctx, nameFor(rd), rd)
+					return rd.Status.LatestImage
+				}, maxWait, interval).Should(Not(BeNil()))
+				li := rd.Status.LatestImage
+				Expect(li.Kind).To(Equal("VolumeSnapshot"))
+				Expect(*li.APIGroup).To(Equal(snapv1.SchemeGroupVersion.Group))
+				Expect(li.Name).To(Not(Equal("")))
 			})
 		})
 	})

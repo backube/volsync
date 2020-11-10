@@ -36,7 +36,10 @@ import (
 )
 
 const (
+	// Annotation used to track the name of the snapshot being created
 	snapshotAnnotation = "scribe.backube/snapname"
+	// Time format for snapshot names and labels
+	timeYYYYMMDDHHMMSS = "20060102150405"
 )
 
 type destinationVolumeHandler struct {
@@ -169,11 +172,18 @@ func (h *destinationVolumeHandler) createSnapshot(l logr.Logger) (bool, error) {
 func (h *destinationVolumeHandler) cleanupOldSnapshot(l logr.Logger) (bool, error) {
 	// Make sure we only delete an old snapshot (it's a snapshot, but not the
 	// current one)
-	if h.Instance.Status.LatestImage == nil ||
-		h.Instance.Status.LatestImage.Kind != "VolumeSnapshot" ||
-		*h.Instance.Status.LatestImage.APIGroup != snapv1.SchemeGroupVersion.Group ||
-		h.Instance.Status.LatestImage.Name == h.Snapshot.Name {
-		l.V(1).Info("No Snap to clean up.", "latest", h.Instance.Status.LatestImage)
+
+	// There's no latestImage
+	if h.Instance.Status.LatestImage == nil {
+		return true, nil
+	}
+	// LatestImage is not a snapshot
+	if h.Instance.Status.LatestImage.Kind != "VolumeSnapshot" ||
+		*h.Instance.Status.LatestImage.APIGroup != snapv1.SchemeGroupVersion.Group {
+		return true, nil
+	}
+	// Also don't clean it up if it's the snap we're trying to preserve
+	if h.Snapshot != nil && h.Instance.Status.LatestImage.Name == h.Snapshot.Name {
 		return true, nil
 	}
 
@@ -217,22 +227,37 @@ func (h *destinationVolumeHandler) removeSnapshotAnnotation(l logr.Logger) (bool
 	return true, nil
 }
 
+func (h *destinationVolumeHandler) recordPVC(l logr.Logger) (bool, error) {
+	coreAPI := ""
+	h.Instance.Status.LatestImage = &v1.TypedLocalObjectReference{
+		APIGroup: &coreAPI,
+		Kind:     h.PVC.Kind,
+		Name:     h.PVC.Name,
+	}
+	err := h.Status().Update(h.Ctx, h.Instance)
+	if err != nil {
+		l.Error(err, "unable to save PVC name")
+		return false, err
+	}
+	return true, nil
+}
+
 // PreserveImage implements the methods for preserving a PiT copy of the
 // replicated data.
 func (h *destinationVolumeHandler) PreserveImage(l logr.Logger) (bool, error) {
-	// If using "None", there's nothing to do
 	if h.Options.CopyMethod == scribev1alpha1.CopyMethodNone {
-		return true, nil
+		return reconcileBatch(l,
+			h.cleanupOldSnapshot,
+			h.recordPVC,
+		)
 	}
-	if h.Options.CopyMethod != scribev1alpha1.CopyMethodSnapshot {
-		return false, fmt.Errorf("unsupported copyMethod: %v -- must be None or Snapshot", h.Options.CopyMethod)
+	if h.Options.CopyMethod == scribev1alpha1.CopyMethodSnapshot {
+		return reconcileBatch(l,
+			h.createSnapshot,
+			h.cleanupOldSnapshot,
+			h.recordNewSnapshot,
+			h.removeSnapshotAnnotation,
+		)
 	}
-
-	// Preserve the data via snapshot
-	return reconcileBatch(l,
-		h.createSnapshot,
-		h.cleanupOldSnapshot,
-		h.recordNewSnapshot,
-		h.removeSnapshotAnnotation,
-	)
+	return false, fmt.Errorf("unsupported copyMethod: %v -- must be None or Snapshot", h.Options.CopyMethod)
 }
