@@ -42,6 +42,13 @@ const (
 	timeYYYYMMDDHHMMSS = "20060102150405"
 )
 
+func nameFor(obj metav1.Object) types.NamespacedName {
+	return types.NamespacedName{
+		Name:      obj.GetName(),
+		Namespace: obj.GetNamespace(),
+	}
+}
+
 type destinationVolumeHandler struct {
 	ReplicationDestinationReconciler
 	Ctx      context.Context
@@ -260,4 +267,198 @@ func (h *destinationVolumeHandler) PreserveImage(l logr.Logger) (bool, error) {
 		)
 	}
 	return false, fmt.Errorf("unsupported copyMethod: %v -- must be None or Snapshot", h.Options.CopyMethod)
+}
+
+type sourceVolumeHandler struct {
+	ReplicationSourceReconciler
+	Ctx      context.Context
+	Instance *scribev1alpha1.ReplicationSource
+	Options  *scribev1alpha1.ReplicationSourceVolumeOptions
+	srcPVC   *v1.PersistentVolumeClaim
+	srcSnap  *snapv1.VolumeSnapshot
+	PVC      *v1.PersistentVolumeClaim
+}
+
+// Cleans up the temporary PVC (and optional snapshot) after the synchronization
+// iteration.
+func (h *sourceVolumeHandler) CleanupPVC(l logr.Logger) (bool, error) {
+	if h.PVC != nil && h.PVC != h.srcPVC {
+		if err := h.Client.Delete(h.Ctx, h.PVC); err != nil {
+			l.Error(err, "unable to delete temporary PVC", "PVC", nameFor(h.PVC))
+			return false, err
+		}
+	}
+	if h.srcSnap != nil {
+		if err := h.Client.Delete(h.Ctx, h.srcSnap); err != nil {
+			l.Error(err, "unable to delete temporary snapshot", "snapshot", nameFor(h.srcSnap))
+			return false, err
+		}
+	}
+	return true, nil
+}
+
+// Ensures there is a source PVC to sync from, using whatever method is
+// specified by CopyMethod.
+func (h *sourceVolumeHandler) EnsurePVC(l logr.Logger) (bool, error) {
+	h.srcPVC = &v1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      h.Instance.Spec.SourcePVC,
+			Namespace: h.Instance.Namespace,
+		},
+	}
+	if err := h.Client.Get(h.Ctx, nameFor(h.srcPVC), h.srcPVC); err != nil {
+		l.Error(err, "unable to get source PVC", "PVC", nameFor(h.srcPVC))
+		return false, err
+	}
+
+	if h.Options.CopyMethod == scribev1alpha1.CopyMethodNone {
+		h.PVC = h.srcPVC
+		return true, nil
+	} else if h.Options.CopyMethod == scribev1alpha1.CopyMethodClone {
+		return h.ensureClone(l)
+	} else if h.Options.CopyMethod == scribev1alpha1.CopyMethodSnapshot {
+		return reconcileBatch(l,
+			h.snapshotSrc,
+			h.pvcFromSnap,
+		)
+	}
+	return false, fmt.Errorf("unsupported copyMethod: %v -- must be None, Clone, or Snapshot", h.Options.CopyMethod)
+}
+
+func (h *sourceVolumeHandler) pvcFromSnap(l logr.Logger) (bool, error) {
+	h.PVC = &v1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "scribe-rsync-src-" + h.Instance.Name,
+			Namespace: h.Instance.Namespace,
+		},
+	}
+	logger := l.WithValues("pvc", nameFor(h.PVC))
+
+	op, err := ctrlutil.CreateOrUpdate(h.Ctx, h.Client, h.PVC, func() error {
+		if err := ctrl.SetControllerReference(h.Instance, h.PVC, h.Scheme); err != nil {
+			logger.Error(err, "unable to set controller reference")
+			return err
+		}
+		if h.PVC.CreationTimestamp.IsZero() {
+			if h.Options.Capacity != nil {
+				h.PVC.Spec.Resources.Requests = corev1.ResourceList{
+					corev1.ResourceStorage: *h.Options.Capacity,
+				}
+			} else {
+				h.PVC.Spec.Resources.Requests = corev1.ResourceList{
+					corev1.ResourceStorage: *h.srcPVC.Spec.Resources.Requests.Storage(),
+				}
+			}
+			if h.Options.StorageClassName != nil {
+				h.PVC.Spec.StorageClassName = h.Options.StorageClassName
+			} else {
+				h.PVC.Spec.StorageClassName = h.srcPVC.Spec.StorageClassName
+			}
+			if h.Options.AccessModes != nil {
+				h.PVC.Spec.AccessModes = h.Options.AccessModes
+			} else {
+				h.PVC.Spec.AccessModes = h.srcPVC.Spec.AccessModes
+			}
+			h.PVC.Spec.DataSource = &v1.TypedLocalObjectReference{
+				APIGroup: &snapv1.SchemeGroupVersion.Group,
+				Kind:     "VolumeSnapshot",
+				Name:     h.srcSnap.Name,
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		logger.Error(err, "reconcile failed")
+		return false, err
+	}
+	logger.V(1).Info("pvc from snap reconciled", "operation", op)
+	return true, nil
+}
+
+func (h *sourceVolumeHandler) snapshotSrc(l logr.Logger) (bool, error) {
+	h.srcSnap = &snapv1.VolumeSnapshot{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "scribe-rsync-src-" + h.Instance.Name,
+			Namespace: h.Instance.Namespace,
+		},
+	}
+	logger := l.WithValues("SourceSnap", nameFor(h.srcSnap))
+
+	op, err := ctrlutil.CreateOrUpdate(h.Ctx, h.Client, h.srcSnap, func() error {
+		if err := ctrl.SetControllerReference(h.Instance, h.srcSnap, h.Scheme); err != nil {
+			logger.Error(err, "unable to set controller reference")
+			return err
+		}
+		if h.srcSnap.CreationTimestamp.IsZero() {
+			h.srcSnap.Spec.Source.PersistentVolumeClaimName = &h.srcPVC.Name
+			h.srcSnap.Spec.VolumeSnapshotClassName = h.Options.VolumeSnapshotClassName
+		}
+		return nil
+	})
+	if err != nil {
+		logger.Error(err, "reconcile failed")
+		return false, err
+	}
+
+	if h.srcSnap.Status == nil || h.srcSnap.Status.BoundVolumeSnapshotContentName == nil {
+		logger.V(1).Info("waiting for snapshot to be bound")
+		return false, nil
+	}
+
+	logger.V(1).Info("temporary snapshot reconciled", "operation", op)
+	return true, nil
+}
+
+func (h *sourceVolumeHandler) ensureClone(l logr.Logger) (bool, error) {
+	pvcName := types.NamespacedName{
+		Name:      "scribe-rsync-src-" + h.Instance.Name,
+		Namespace: h.Instance.Namespace,
+	}
+	logger := l.WithValues("pvc", pvcName)
+
+	h.PVC = &v1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      pvcName.Name,
+			Namespace: pvcName.Namespace,
+		},
+	}
+	op, err := ctrlutil.CreateOrUpdate(h.Ctx, h.Client, h.PVC, func() error {
+		if err := ctrl.SetControllerReference(h.Instance, h.PVC, h.Scheme); err != nil {
+			logger.Error(err, "unable to set controller reference")
+			return err
+		}
+		if h.PVC.CreationTimestamp.IsZero() {
+			if h.Options.Capacity != nil {
+				h.PVC.Spec.Resources.Requests = corev1.ResourceList{
+					corev1.ResourceStorage: *h.Options.Capacity,
+				}
+			} else {
+				h.PVC.Spec.Resources.Requests = corev1.ResourceList{
+					corev1.ResourceStorage: *h.srcPVC.Spec.Resources.Requests.Storage(),
+				}
+			}
+			if h.Options.StorageClassName != nil {
+				h.PVC.Spec.StorageClassName = h.Options.StorageClassName
+			} else {
+				h.PVC.Spec.StorageClassName = h.srcPVC.Spec.StorageClassName
+			}
+			if h.Options.AccessModes != nil {
+				h.PVC.Spec.AccessModes = h.Options.AccessModes
+			} else {
+				h.PVC.Spec.AccessModes = h.srcPVC.Spec.AccessModes
+			}
+			h.PVC.Spec.DataSource = &v1.TypedLocalObjectReference{
+				APIGroup: nil,
+				Kind:     "PersistentVolumeClaim",
+				Name:     h.srcPVC.Name,
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		logger.Error(err, "reconcile failed")
+		return false, err
+	}
+	logger.V(1).Info("clone reconciled", "operation", op)
+	return true, nil
 }

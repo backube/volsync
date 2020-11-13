@@ -21,6 +21,9 @@ import (
 	"context"
 
 	"github.com/go-logr/logr"
+	"github.com/operator-framework/operator-lib/status"
+	corev1 "k8s.io/api/core/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -39,17 +42,89 @@ type ReplicationSourceReconciler struct {
 // +kubebuilder:rbac:groups=scribe.backube,resources=replicationsources/status,verbs=get;update;patch
 
 func (r *ReplicationSourceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
-	_ = context.Background()
-	_ = r.Log.WithValues("replicationsource", req.NamespacedName)
+	ctx := context.Background()
+	logger := r.Log.WithValues("replicationsource", req.NamespacedName)
 
-	// your logic here
-	r.Log.Info("reconcile started...")
+	inst := &scribev1alpha1.ReplicationSource{}
+	if err := r.Client.Get(ctx, req.NamespacedName, inst); err != nil {
+		if kerrors.IsNotFound(err) {
+			logger.Error(err, "Failed to get Source")
+		}
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
 
-	return ctrl.Result{}, nil
+	if inst.Status == nil {
+		inst.Status = &scribev1alpha1.ReplicationSourceStatus{}
+	}
+	if inst.Status.Conditions == nil {
+		inst.Status.Conditions = status.Conditions{}
+	}
+
+	var result ctrl.Result
+	var err error
+	if inst.Spec.Rsync != nil {
+		result, err = RunRsyncSrcReconciler(ctx, inst, r, logger)
+	} else {
+		return ctrl.Result{}, nil
+	}
+
+	// Set reconcile status condition
+	if err == nil {
+		inst.Status.Conditions.SetCondition(
+			status.Condition{
+				Type:    scribev1alpha1.ConditionReconciled,
+				Status:  corev1.ConditionTrue,
+				Reason:  scribev1alpha1.ReconciledReasonComplete,
+				Message: "Reconcile complete",
+			})
+	} else {
+		inst.Status.Conditions.SetCondition(
+			status.Condition{
+				Type:    scribev1alpha1.ConditionReconciled,
+				Status:  corev1.ConditionFalse,
+				Reason:  scribev1alpha1.ReconciledReasonError,
+				Message: err.Error(),
+			})
+	}
+
+	// Update instance status
+	statusErr := r.Client.Status().Update(ctx, inst)
+	if err == nil { // Don't mask previous error
+		err = statusErr
+	}
+	return result, err
 }
 
 func (r *ReplicationSourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&scribev1alpha1.ReplicationSource{}).
 		Complete(r)
+}
+
+type rsyncSrcReconciler struct {
+	sourceVolumeHandler
+}
+
+func RunRsyncSrcReconciler(ctx context.Context, instance *scribev1alpha1.ReplicationSource,
+	sr *ReplicationSourceReconciler, logger logr.Logger) (ctrl.Result, error) {
+	r := rsyncSrcReconciler{
+		sourceVolumeHandler: sourceVolumeHandler{
+			Ctx:                         ctx,
+			Instance:                    instance,
+			ReplicationSourceReconciler: *sr,
+			Options:                     &instance.Spec.Rsync.ReplicationSourceVolumeOptions,
+		},
+	}
+
+	l := logger.WithValues("method", "Rsync")
+
+	// Make sure there's a place to write status info
+	if r.Instance.Status.Rsync == nil {
+		r.Instance.Status.Rsync = &scribev1alpha1.ReplicationSourceRsyncStatus{}
+	}
+
+	_, err := reconcileBatch(l,
+		r.EnsurePVC,
+	)
+	return ctrl.Result{}, err
 }
