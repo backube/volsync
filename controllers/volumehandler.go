@@ -42,13 +42,6 @@ const (
 	timeYYYYMMDDHHMMSS = "20060102150405"
 )
 
-func nameFor(obj metav1.Object) types.NamespacedName {
-	return types.NamespacedName{
-		Name:      obj.GetName(),
-		Namespace: obj.GetNamespace(),
-	}
-}
-
 type destinationVolumeHandler struct {
 	ReplicationDestinationReconciler
 	Ctx      context.Context
