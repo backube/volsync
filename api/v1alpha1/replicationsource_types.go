@@ -166,6 +166,10 @@ type ReplicationSourceStatus struct {
 	// update.
 	//+optional
 	LastSyncDuration *metav1.Duration `json:"lastSyncDuration,omitempty"`
+	// nextSyncTime is the time when the next volume synchronization is
+	// scheduled to start (for schedule-based synchronization).
+	//+optional
+	NextSyncTime *metav1.Time `json:"nextSyncTime,omitempty"`
 	// rsync contains status information for Rsync-based replication.
 	Rsync *ReplicationSourceRsyncStatus `json:"rsync,omitempty"`
 	// external contains provider-specific status information. For more details,
@@ -185,6 +189,7 @@ type ReplicationSourceStatus struct {
 //+kubebuilder:printcolumn:name="Source",type="string",JSONPath=`.spec.sourcePVC`
 //+kubebuilder:printcolumn:name="Last sync",type="string",format="date-time",JSONPath=`.status.lastSyncTime`
 //+kubebuilder:printcolumn:name="Duration",type="string",JSONPath=`.status.lastSyncDuration`
+//+kubebuilder:printcolumn:name="Next sync",type="string",format="date-time",JSONPath=`.status.nextSyncTime`
 type ReplicationSource struct {
 	metav1.TypeMeta `json:",inline"`
 	//+optional

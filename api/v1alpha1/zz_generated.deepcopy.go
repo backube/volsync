@@ -264,6 +264,10 @@ func (in *ReplicationDestinationStatus) DeepCopyInto(out *ReplicationDestination
 		*out = new(metav1.Duration)
 		**out = **in
 	}
+	if in.NextSyncTime != nil {
+		in, out := &in.NextSyncTime, &out.NextSyncTime
+		*out = (*in).DeepCopy()
+	}
 	if in.LatestImage != nil {
 		in, out := &in.LatestImage, &out.LatestImage
 		*out = new(v1.TypedLocalObjectReference)
@@ -579,6 +583,10 @@ func (in *ReplicationSourceStatus) DeepCopyInto(out *ReplicationSourceStatus) {
 		in, out := &in.LastSyncDuration, &out.LastSyncDuration
 		*out = new(metav1.Duration)
 		**out = **in
+	}
+	if in.NextSyncTime != nil {
+		in, out := &in.NextSyncTime, &out.NextSyncTime
+		*out = (*in).DeepCopy()
 	}
 	if in.Rsync != nil {
 		in, out := &in.Rsync, &out.Rsync

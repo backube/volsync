@@ -27,6 +27,10 @@ spec:
     - jsonPath: .status.lastSyncDuration
       name: Duration
       type: string
+    - format: date-time
+      jsonPath: .status.nextSyncTime
+      name: Next sync
+      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -247,6 +251,11 @@ spec:
               lastSyncTime:
                 description: lastSyncTime is the time of the most recent successful
                   synchronization.
+                format: date-time
+                type: string
+              nextSyncTime:
+                description: nextSyncTime is the time when the next volume synchronization
+                  is scheduled to start (for schedule-based synchronization).
                 format: date-time
                 type: string
               rsync:
