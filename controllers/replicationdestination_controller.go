@@ -90,7 +90,7 @@ func (r *ReplicationDestinationReconciler) Reconcile(req ctrl.Request) (ctrl.Res
 	var err error
 	// Only reconcile if the replication method is internal
 	if inst.Spec.Rsync != nil {
-		result, err = (&rsyncDestReconciler{}).Run(ctx, inst, r, logger)
+		result, err = RunRsyncDestReconciler(ctx, inst, r, logger)
 	} else {
 		// Not an internal method... we're done.
 		return ctrl.Result{}, nil
@@ -134,21 +134,6 @@ func (r *ReplicationDestinationReconciler) SetupWithManager(mgr ctrl.Manager) er
 		Complete(r)
 }
 
-// reconcileFunc is a function that partially reconciles an object. It returns a
-// bool indicating whether reconciling should continue and an error.
-type reconcileFunc func(logr.Logger) (bool, error)
-
-// reconcileBatch steps through a list of reconcile functions until one returns
-// false or an error.
-func reconcileBatch(l logr.Logger, reconcileFuncs ...reconcileFunc) (bool, error) {
-	for _, f := range reconcileFuncs {
-		if cont, err := f(l); !cont || err != nil {
-			return cont, err
-		}
-	}
-	return true, nil
-}
-
 type rsyncDestReconciler struct {
 	destinationVolumeHandler
 	service    *corev1.Service
@@ -158,13 +143,17 @@ type rsyncDestReconciler struct {
 	job        *batchv1.Job
 }
 
-func (r *rsyncDestReconciler) Run(ctx context.Context, instance *scribev1alpha1.ReplicationDestination,
+func RunRsyncDestReconciler(ctx context.Context, instance *scribev1alpha1.ReplicationDestination,
 	dr *ReplicationDestinationReconciler, logger logr.Logger) (ctrl.Result, error) {
 	// Initialize state for the reconcile pass
-	r.Ctx = ctx
-	r.Instance = instance
-	r.ReplicationDestinationReconciler = *dr
-	r.destinationVolumeHandler.Options = &r.Instance.Spec.Rsync.ReplicationDestinationVolumeOptions
+	r := rsyncDestReconciler{
+		destinationVolumeHandler: destinationVolumeHandler{
+			Ctx:                              ctx,
+			Instance:                         instance,
+			ReplicationDestinationReconciler: *dr,
+			Options:                          &instance.Spec.Rsync.ReplicationDestinationVolumeOptions,
+		},
+	}
 
 	l := logger.WithValues("method", "Rsync")
 
