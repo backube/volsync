@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"testing"
+	"time"
 
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1"
 	. "github.com/onsi/ginkgo"
@@ -38,6 +39,12 @@ import (
 
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
 	// +kubebuilder:scaffold:imports
+)
+
+const (
+	duration = 5 * time.Second
+	maxWait  = 60 * time.Second
+	interval = 250 * time.Millisecond
 )
 
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
@@ -97,6 +104,13 @@ var _ = BeforeSuite(func(done Done) {
 	err = (&ReplicationDestinationReconciler{
 		Client: k8sManager.GetClient(),
 		Log:    ctrl.Log.WithName("controllers").WithName("Destination"),
+		Scheme: k8sManager.GetScheme(),
+	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&ReplicationSourceReconciler{
+		Client: k8sManager.GetClient(),
+		Log:    ctrl.Log.WithName("controllers").WithName("Source"),
 		Scheme: k8sManager.GetScheme(),
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
