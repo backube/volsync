@@ -14,6 +14,7 @@ This project is hosted at GitHub. See https://github.com/backube/scribe
 
    self
    design/index
+   openshift/index
 
 Overview
 ========
