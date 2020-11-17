@@ -33,7 +33,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -190,56 +189,23 @@ func (r *rsyncDestReconciler) ensureService(l logr.Logger) (bool, error) {
 		return true, nil
 	}
 
-	svcName := types.NamespacedName{
-		Name:      "scribe-rsync-dest-" + r.Instance.Name,
-		Namespace: r.Instance.Namespace,
-	}
-	logger := l.WithValues("service", svcName)
-
 	r.service = &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      svcName.Name,
-			Namespace: svcName.Namespace,
+			Name:      "scribe-rsync-dest-" + r.Instance.Name,
+			Namespace: r.Instance.Namespace,
 		},
 	}
-
-	op, err := ctrlutil.CreateOrUpdate(r.Ctx, r.Client, r.service, func() error {
-		if err := ctrl.SetControllerReference(r.Instance, r.service, r.Scheme); err != nil {
-			logger.Error(err, "unable to set controller reference")
-			return err
-		}
-		r.service.ObjectMeta.Annotations = map[string]string{
-			"service.beta.kubernetes.io/aws-load-balancer-type": "nlb",
-		}
-		if r.Instance.Spec.Rsync.ServiceType != nil {
-			r.service.Spec.Type = *r.Instance.Spec.Rsync.ServiceType
-		} else {
-			r.service.Spec.Type = corev1.ServiceTypeClusterIP
-		}
-		r.service.Spec.Selector = r.serviceSelector()
-		if len(r.service.Spec.Ports) != 1 {
-			r.service.Spec.Ports = []corev1.ServicePort{{}}
-		}
-		r.service.Spec.Ports[0].Name = "ssh"
-		if r.Instance.Spec.Rsync.Port != nil {
-			r.service.Spec.Ports[0].Port = *r.Instance.Spec.Rsync.Port
-		} else {
-			r.service.Spec.Ports[0].Port = 22
-		}
-		r.service.Spec.Ports[0].Protocol = corev1.ProtocolTCP
-		r.service.Spec.Ports[0].TargetPort = intstr.FromInt(22)
-		if r.service.Spec.Type == corev1.ServiceTypeClusterIP {
-			r.service.Spec.Ports[0].NodePort = 0
-		}
-		return nil
-	})
-	if err != nil {
-		logger.Error(err, "Service reconcile failed")
-		return false, err
+	svcDesc := rsyncSvcDescription{
+		Context:  r.Ctx,
+		Client:   r.Client,
+		Scheme:   r.Scheme,
+		Service:  r.service,
+		Owner:    r.Instance,
+		Type:     r.Instance.Spec.Rsync.ServiceType,
+		Selector: r.serviceSelector(),
+		Port:     r.Instance.Spec.Rsync.Port,
 	}
-
-	logger.V(1).Info("Service reconciled", "operation", op)
-	return true, nil
+	return svcDesc.reconcile(l)
 }
 
 func (r *rsyncDestReconciler) publishSvcAddress(l logr.Logger) (bool, error) {

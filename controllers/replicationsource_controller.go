@@ -166,6 +166,7 @@ func ensureNextSyncValidSource(rs *scribev1alpha1.ReplicationSource, logger logr
 
 type rsyncSrcReconciler struct {
 	sourceVolumeHandler
+	service *corev1.Service
 }
 
 func RunRsyncSrcReconciler(ctx context.Context, instance *scribev1alpha1.ReplicationSource,
@@ -197,9 +198,45 @@ func RunRsyncSrcReconciler(ctx context.Context, instance *scribev1alpha1.Replica
 	_, err := reconcileBatch(l,
 		awaitNextSync,
 		r.EnsurePVC,
+		r.ensureService,
 		// other stuff here
 		r.CleanupPVC,
 		updateNextsync,
 	)
 	return ctrl.Result{}, err
+}
+
+func (r *rsyncSrcReconciler) serviceSelector() map[string]string {
+	return map[string]string{
+		"app.kubernetes.io/name":      "src-" + r.Instance.Name,
+		"app.kubernetes.io/component": "rsync-mover",
+		"app.kubernetes.io/part-of":   "scribe",
+	}
+}
+
+// ensureService maintains the Service that is used to connect to the
+// source rsync mover.
+func (r *rsyncSrcReconciler) ensureService(l logr.Logger) (bool, error) {
+	if r.Instance.Spec.Rsync.Address != nil {
+		// Connection will be outbound. Don't need a Service
+		return true, nil
+	}
+
+	r.service = &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "scribe-rsync-src-" + r.Instance.Name,
+			Namespace: r.Instance.Namespace,
+		},
+	}
+	svcDesc := rsyncSvcDescription{
+		Context:  r.Ctx,
+		Client:   r.Client,
+		Scheme:   r.Scheme,
+		Service:  r.service,
+		Owner:    r.Instance,
+		Type:     r.Instance.Spec.Rsync.ServiceType,
+		Selector: r.serviceSelector(),
+		Port:     r.Instance.Spec.Rsync.Port,
+	}
+	return svcDesc.reconcile(l)
 }

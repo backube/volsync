@@ -206,4 +206,47 @@ var _ = Describe("ReplicationSource", func() {
 			})
 		})
 	})
+
+	Context("rsync: when no remote address is specified", func() {
+		BeforeEach(func() {
+			rs.Spec.Rsync = &scribev1alpha1.ReplicationSourceRsyncSpec{
+				ReplicationSourceVolumeOptions: scribev1alpha1.ReplicationSourceVolumeOptions{
+					CopyMethod: scribev1alpha1.CopyMethodClone,
+				},
+			}
+		})
+		It("Creates a Service for incoming connections", func() {
+			svc := &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "scribe-rsync-src-" + rs.Name,
+					Namespace: rs.Namespace,
+				},
+			}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, nameFor(svc), svc)
+			}, maxWait, interval).Should(Succeed())
+		})
+	})
+	Context("rsync: when a remote address is specified", func() {
+		BeforeEach(func() {
+			remoteAddr := "my.remote.host.com"
+			rs.Spec.Rsync = &scribev1alpha1.ReplicationSourceRsyncSpec{
+				ReplicationSourceVolumeOptions: scribev1alpha1.ReplicationSourceVolumeOptions{
+					CopyMethod: scribev1alpha1.CopyMethodClone,
+				},
+				Address: &remoteAddr,
+			}
+		})
+		It("No Service is created", func() {
+			svc := &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "scribe-rsync-src-" + rs.Name,
+					Namespace: rs.Namespace,
+				},
+			}
+			Consistently(func() error {
+				return k8sClient.Get(ctx, nameFor(svc), svc)
+			}, duration, interval).Should(Not(Succeed()))
+		})
+	})
 })

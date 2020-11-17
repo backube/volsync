@@ -42,7 +42,7 @@ import (
 )
 
 const (
-	duration = 5 * time.Second
+	duration = 10 * time.Second
 	maxWait  = 60 * time.Second
 	interval = 250 * time.Millisecond
 )
