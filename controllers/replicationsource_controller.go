@@ -199,6 +199,7 @@ func RunRsyncSrcReconciler(ctx context.Context, instance *scribev1alpha1.Replica
 		awaitNextSync,
 		r.EnsurePVC,
 		r.ensureService,
+		r.publishSvcAddress,
 		// other stuff here
 		r.CleanupPVC,
 		updateNextsync,
@@ -239,4 +240,22 @@ func (r *rsyncSrcReconciler) ensureService(l logr.Logger) (bool, error) {
 		Port:     r.Instance.Spec.Rsync.Port,
 	}
 	return svcDesc.reconcile(l)
+}
+
+func (r *rsyncSrcReconciler) publishSvcAddress(l logr.Logger) (bool, error) {
+	if r.service == nil { // no service, nothing to do
+		r.Instance.Status.Rsync.Address = nil
+		return true, nil
+	}
+
+	address := getServiceAddress(r.service)
+	if address == "" {
+		// We don't have an address yet, try again later
+		r.Instance.Status.Rsync.Address = nil
+		return false, nil
+	}
+	r.Instance.Status.Rsync.Address = &address
+
+	l.V(1).Info("Service addr published", "address", address)
+	return true, nil
 }

@@ -210,19 +210,11 @@ func (r *rsyncDestReconciler) ensureService(l logr.Logger) (bool, error) {
 
 func (r *rsyncDestReconciler) publishSvcAddress(l logr.Logger) (bool, error) {
 	if r.service == nil { // no service, nothing to do
+		r.Instance.Status.Rsync.Address = nil
 		return true, nil
 	}
 
-	address := r.service.Spec.ClusterIP
-	if r.service.Spec.Type == corev1.ServiceTypeLoadBalancer {
-		if len(r.service.Status.LoadBalancer.Ingress) > 0 {
-			if r.service.Status.LoadBalancer.Ingress[0].Hostname != "" {
-				address = r.service.Status.LoadBalancer.Ingress[0].Hostname
-			} else if r.service.Status.LoadBalancer.Ingress[0].IP != "" {
-				address = r.service.Status.LoadBalancer.Ingress[0].IP
-			}
-		}
-	}
+	address := getServiceAddress(r.service)
 	if address == "" {
 		// We don't have an address yet, try again later
 		r.Instance.Status.Rsync.Address = nil

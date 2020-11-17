@@ -82,3 +82,19 @@ func (d *rsyncSvcDescription) reconcile(l logr.Logger) (bool, error) {
 	logger.V(1).Info("Service reconciled", "operation", op)
 	return true, nil
 }
+
+func getServiceAddress(svc *corev1.Service) string {
+	address := svc.Spec.ClusterIP
+	if svc.Spec.Type == corev1.ServiceTypeLoadBalancer {
+		if len(svc.Status.LoadBalancer.Ingress) > 0 {
+			if svc.Status.LoadBalancer.Ingress[0].Hostname != "" {
+				address = svc.Status.LoadBalancer.Ingress[0].Hostname
+			} else if svc.Status.LoadBalancer.Ingress[0].IP != "" {
+				address = svc.Status.LoadBalancer.Ingress[0].IP
+			}
+		} else {
+			address = ""
+		}
+	}
+	return address
+}

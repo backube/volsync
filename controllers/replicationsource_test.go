@@ -222,9 +222,19 @@ var _ = Describe("ReplicationSource", func() {
 					Namespace: rs.Namespace,
 				},
 			}
+			By("creating a service")
 			Eventually(func() error {
 				return k8sClient.Get(ctx, nameFor(svc), svc)
 			}, maxWait, interval).Should(Succeed())
+			By("making the service addr available in the CR status")
+			Eventually(func() *string {
+				_ = k8sClient.Get(ctx, nameFor(rs), rs)
+				if rs.Status == nil || rs.Status.Rsync == nil {
+					return nil
+				}
+				return rs.Status.Rsync.Address
+			}, maxWait, interval).Should(Not(BeNil()))
+			Expect(*rs.Status.Rsync.Address).To(Equal(svc.Spec.ClusterIP))
 		})
 	})
 	Context("rsync: when a remote address is specified", func() {

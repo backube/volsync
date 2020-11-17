@@ -192,6 +192,11 @@ var _ = Describe("ReplicationDestination", func() {
 					return k8sClient.Get(ctx, nameFor(svc), svc)
 				}, maxWait, interval).Should(Succeed())
 				Expect(svc.Spec.Type).To(Equal(corev1.ServiceTypeLoadBalancer))
+				// test env doesn't support LB, so fake the address
+				svc.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{
+					{IP: "127.0.0.1"},
+				}
+				Expect(k8sClient.Status().Update(ctx, svc)).To(Succeed())
 				Eventually(func() *string {
 					_ = k8sClient.Get(ctx, nameFor(rd), rd)
 					if rd.Status == nil || rd.Status.Rsync == nil {
