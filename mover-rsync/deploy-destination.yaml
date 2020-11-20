@@ -21,7 +21,9 @@ allowHostPID: false
 allowHostPorts: false
 allowPrivilegeEscalation: true
 allowPrivilegedContainer: false
-allowedCapabilities: [AUDIT_WRITE]
+allowedCapabilities:
+- AUDIT_WRITE
+- SYS_CHROOT
 fsGroup:
   type: RunAsAny
 priority: 10
@@ -100,6 +102,7 @@ spec:
                 # w/o AUDIT_WRITE, sshd closes connection with:
                 # linux_audit_write_entry failed: Operation not permitted
                 - "AUDIT_WRITE"
+                - "SYS_CHROOT"
             runAsUser: 0
           volumeMounts:
             - name: data
