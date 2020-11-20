@@ -276,6 +276,7 @@ var _ = Describe("ReplicationDestination", func() {
 			Expect(secret).To(beOwnedBy(rd))
 		})
 
+		//nolint:dupl
 		Context("when ssh keys are provided", func() {
 			var secret *v1.Secret
 			BeforeEach(func() {

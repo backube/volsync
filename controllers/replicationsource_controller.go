@@ -166,7 +166,10 @@ func ensureNextSyncValidSource(rs *scribev1alpha1.ReplicationSource, logger logr
 
 type rsyncSrcReconciler struct {
 	sourceVolumeHandler
-	service *corev1.Service
+	service    *corev1.Service
+	destSecret *corev1.Secret
+	srcSecret  *corev1.Secret
+	//job        *batchv1.Job
 }
 
 func RunRsyncSrcReconciler(ctx context.Context, instance *scribev1alpha1.ReplicationSource,
@@ -200,6 +203,7 @@ func RunRsyncSrcReconciler(ctx context.Context, instance *scribev1alpha1.Replica
 		r.EnsurePVC,
 		r.ensureService,
 		r.publishSvcAddress,
+		r.ensureKeys,
 		// other stuff here
 		r.CleanupPVC,
 		updateNextsync,
@@ -239,7 +243,7 @@ func (r *rsyncSrcReconciler) ensureService(l logr.Logger) (bool, error) {
 		Selector: r.serviceSelector(),
 		Port:     r.Instance.Spec.Rsync.Port,
 	}
-	return svcDesc.reconcile(l)
+	return svcDesc.Reconcile(l)
 }
 
 func (r *rsyncSrcReconciler) publishSvcAddress(l logr.Logger) (bool, error) {
@@ -258,4 +262,41 @@ func (r *rsyncSrcReconciler) publishSvcAddress(l logr.Logger) (bool, error) {
 
 	l.V(1).Info("Service addr published", "address", address)
 	return true, nil
+}
+
+//nolint:dupl
+func (r *rsyncSrcReconciler) ensureKeys(l logr.Logger) (bool, error) {
+	// If user provided keys, use those
+	if r.Instance.Spec.Rsync.SSHKeys != nil {
+		r.srcSecret = &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      *r.Instance.Spec.Rsync.SSHKeys,
+				Namespace: r.Instance.Namespace,
+			},
+		}
+		fields := []string{"source", "source.pub", "destination"}
+		if err := getAndValidateSecret(r.Ctx, r.Client, l, r.srcSecret, fields); err != nil {
+			l.Error(err, "SSH keys secret does not contain the proper fields")
+			return false, err
+		}
+		return true, nil
+	}
+
+	// otherwise, we need to create our own
+	keyInfo := rsyncSSHKeys{
+		Context:      r.Ctx,
+		Client:       r.Client,
+		Scheme:       r.Scheme,
+		Owner:        r.Instance,
+		NameTemplate: "scribe-rsync-src",
+	}
+	cont, err := keyInfo.Reconcile(l)
+	if !cont || err != nil {
+		r.Instance.Status.Rsync.SSHKeys = nil
+	} else {
+		r.srcSecret = keyInfo.SrcSecret
+		r.destSecret = keyInfo.DestSecret
+		r.Instance.Status.Rsync.SSHKeys = &r.destSecret.Name
+	}
+	return cont, err
 }
