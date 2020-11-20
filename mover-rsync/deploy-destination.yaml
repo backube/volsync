@@ -36,12 +36,12 @@ seLinuxContext:
 supplementalGroups:
   type: RunAsAny
 volumes:
-  - configMap
-  - downwardAPI
-  - emptyDir
-  - persistentVolumeClaim
-  - projected
-  - secret
+- configMap
+- downwardAPI
+- emptyDir
+- persistentVolumeClaim
+- projected
+- secret
 
 ---
 apiVersion: v1
@@ -55,14 +55,14 @@ kind: Role
 metadata:
   name: rsync-destination
 rules:
-  - apiGroups:
-      - security.openshift.io
-    resourceNames:
-      - scribe-rsync
-    resources:
-      - securitycontextconstraints
-    verbs:
-      - use
+- apiGroups:
+    - security.openshift.io
+  resourceNames:
+    - scribe-rsync
+  resources:
+    - securitycontextconstraints
+  verbs:
+    - use
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -101,8 +101,8 @@ spec:
               add:
                 # w/o AUDIT_WRITE, sshd closes connection with:
                 # linux_audit_write_entry failed: Operation not permitted
-                - "AUDIT_WRITE"
-                - "SYS_CHROOT"
+              - "AUDIT_WRITE"
+              - "SYS_CHROOT"
             runAsUser: 0
           volumeMounts:
             - name: data
