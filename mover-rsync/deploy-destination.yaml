@@ -111,12 +111,12 @@ spec:
       serviceAccount: rsync-destination
       volumes:
       - name: data
-         persistentVolumeClaim:
-           claimName: destination-data
+        persistentVolumeClaim:
+          claimName: destination-data
       - name: keys
-         secret:
-           secretName: destination-secret
-           defaultMode: 0600
+        secret:
+          secretName: destination-secret
+          defaultMode: 0600
 
 ---
 apiVersion: v1
