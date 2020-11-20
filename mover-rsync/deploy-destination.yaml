@@ -103,20 +103,20 @@ spec:
             - "SYS_CHROOT"
           runAsUser: 0
         volumeMounts:
-         - name: data
-           mountPath: /data
-         - name: keys
-           mountPath: /keys
+        - name: data
+          mountPath: /data
+        - name: keys
+          mountPath: /keys
       restartPolicy: Never
       serviceAccount: rsync-destination
       volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: destination-data
-        - name: keys
-          secret:
-            secretName: destination-secret
-            defaultMode: 0600
+      - name: data
+         persistentVolumeClaim:
+           claimName: destination-data
+      - name: keys
+         secret:
+           secretName: destination-secret
+           defaultMode: 0600
 
 ---
 apiVersion: v1
@@ -131,7 +131,6 @@ spec:
     app.kubernetes.io/component: mover
     app.kubernetes.io/part-of: scribe
   ports:
-    - protocol: TCP
-      port: 22
-  # type: ClusterIP
+  - protocol: TCP
+    port: 22
   type: LoadBalancer
