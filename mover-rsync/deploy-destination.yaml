@@ -56,13 +56,13 @@ metadata:
   name: rsync-destination
 rules:
 - apiGroups:
-    - security.openshift.io
+  - security.openshift.io
   resourceNames:
-    - scribe-rsync
+  - scribe-rsync
   resources:
-    - securitycontextconstraints
+  - securitycontextconstraints
   verbs:
-    - use
+  - use
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -74,8 +74,8 @@ roleRef:
   kind: Role
   name: rsync-destination
 subjects:
-  - kind: ServiceAccount
-    name: rsync-destination
+- kind: ServiceAccount
+  name: rsync-destination
 
 ---
 apiVersion: batch/v1
@@ -92,23 +92,21 @@ spec:
         app.kubernetes.io/part-of: scribe
     spec:
       containers:
-        - name: rsync
-          command: ["/bin/bash", "-c", "/destination.sh"]
-          image: quay.io/backube/scribe-mover-rsync:latest
-          imagePullPolicy: IfNotPresent
-          securityContext:
-            capabilities:
-              add:
-                # w/o AUDIT_WRITE, sshd closes connection with:
-                # linux_audit_write_entry failed: Operation not permitted
-              - "AUDIT_WRITE"
-              - "SYS_CHROOT"
-            runAsUser: 0
-          volumeMounts:
-            - name: data
-              mountPath: /data
-            - name: keys
-              mountPath: /keys
+      - name: rsync
+        command: ["/bin/bash", "-c", "/destination.sh"]
+        image: quay.io/backube/scribe-mover-rsync:latest
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          capabilities:
+            add:
+            - "AUDIT_WRITE"
+            - "SYS_CHROOT"
+          runAsUser: 0
+        volumeMounts:
+         - name: data
+           mountPath: /data
+         - name: keys
+           mountPath: /keys
       restartPolicy: Never
       serviceAccount: rsync-destination
       volumes:
