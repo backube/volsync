@@ -3,8 +3,10 @@ pull_request_rules:
   - name: Automatic merge on approval
     conditions:
       - "#approved-reviews-by>=1"
-      - check-success=mover-rsync/Build
+      - check-success=Lint-mover-rsync
+      - check-success=Build-mover-rsync
       - check-success=Lint
+      - check-success=Build-operator
     actions:
       merge:
-        method: merge
+        method: squash
