@@ -15,7 +15,7 @@ env:
 
 jobs:
   lint:
-    name: Lint_mover_rsync
+    name: Lint-mover-rsync
     runs-on: ubuntu-latest
 
     steps:
@@ -33,7 +33,7 @@ jobs:
         run: ./.ci-scripts/pre-commit.sh --require-all
 
   build:
-    name: Build_mover_rsync
+    name: Build-mover-rsync
     runs-on: ubuntu-latest
 
     steps:
