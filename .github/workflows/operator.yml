@@ -33,7 +33,7 @@ jobs:
         run: ./.ci-scripts/pre-commit.sh --require-all
 
   build:
-    name: Build
+    name: Build-operator
     runs-on: ubuntu-latest
 
     steps:
