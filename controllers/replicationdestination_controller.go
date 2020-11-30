@@ -19,6 +19,7 @@ package controllers
 
 import (
 	"context"
+	"time"
 
 	"github.com/go-logr/logr"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1"
@@ -342,6 +343,11 @@ func (r *rsyncDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 
 func (r *rsyncDestReconciler) cleanupJob(l logr.Logger) (bool, error) {
 	logger := l.WithValues("job", r.job)
+	r.Instance.Status.LastSyncTime = &metav1.Time{Time: time.Now()}
+	if r.job.Status.StartTime != nil {
+		d := r.Instance.Status.LastSyncTime.Sub(r.job.Status.StartTime.Time)
+		r.Instance.Status.LastSyncDuration = &metav1.Duration{Duration: d}
+	}
 
 	// Delete the (completed) Job. The next reconcile pass will recreate it.
 	// Set propagation policy so the old pods get deleted

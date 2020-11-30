@@ -389,5 +389,17 @@ func (r *rsyncSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 }
 
 func (r *rsyncSrcReconciler) cleanupJob(l logr.Logger) (bool, error) {
+	logger := l.WithValues("job", r.job)
+	// update time/duration
+	r.Instance.Status.LastSyncTime = &metav1.Time{Time: time.Now()}
+	if r.job.Status.StartTime != nil {
+		d := r.Instance.Status.LastSyncTime.Sub(r.job.Status.StartTime.Time)
+		r.Instance.Status.LastSyncDuration = &metav1.Duration{Duration: d}
+	}
+	// remove job
+	if err := r.Client.Delete(r.Ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
+		logger.Error(err, "unable to delete job")
+		return false, err
+	}
 	return true, nil
 }
