@@ -301,13 +301,13 @@ func (r *rsyncDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 			RunAsUser: &runAsUser,
 		}
 		r.job.Spec.Template.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
-			{Name: "data", MountPath: "/data"},
+			{Name: dataVolumeName, MountPath: "/data"},
 			{Name: "keys", MountPath: "/keys"},
 		}
 		r.job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
 		secretMode := int32(0600)
 		r.job.Spec.Template.Spec.Volumes = []corev1.Volume{
-			{Name: "data", VolumeSource: corev1.VolumeSource{
+			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
 				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 					ClaimName: r.PVC.Name,
 					ReadOnly:  false,

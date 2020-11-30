@@ -215,7 +215,7 @@ var _ = Describe("ReplicationDestination", func() {
 			var pvcName string
 			volumes := job.Spec.Template.Spec.Volumes
 			for _, v := range volumes {
-				if v.PersistentVolumeClaim != nil && v.Name == "data" {
+				if v.PersistentVolumeClaim != nil && v.Name == dataVolumeName {
 					pvcName = v.PersistentVolumeClaim.ClaimName
 				}
 			}
@@ -241,7 +241,7 @@ var _ = Describe("ReplicationDestination", func() {
 				var pvcName string
 				volumes := job.Spec.Template.Spec.Volumes
 				for _, v := range volumes {
-					if v.PersistentVolumeClaim != nil && v.Name == "data" {
+					if v.PersistentVolumeClaim != nil && v.Name == dataVolumeName {
 						pvcName = v.PersistentVolumeClaim.ClaimName
 					}
 				}

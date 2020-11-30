@@ -32,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
 )
@@ -169,7 +170,7 @@ type rsyncSrcReconciler struct {
 	service    *corev1.Service
 	destSecret *corev1.Secret
 	srcSecret  *corev1.Secret
-	//job        *batchv1.Job
+	job        *batchv1.Job
 }
 
 func RunRsyncSrcReconciler(ctx context.Context, instance *scribev1alpha1.ReplicationSource,
@@ -204,7 +205,8 @@ func RunRsyncSrcReconciler(ctx context.Context, instance *scribev1alpha1.Replica
 		r.ensureService,
 		r.publishSvcAddress,
 		r.ensureKeys,
-		// other stuff here
+		r.ensureJob,
+		r.cleanupJob,
 		r.CleanupPVC,
 		updateNextsync,
 	)
@@ -274,7 +276,7 @@ func (r *rsyncSrcReconciler) ensureKeys(l logr.Logger) (bool, error) {
 				Namespace: r.Instance.Namespace,
 			},
 		}
-		fields := []string{"source", "source.pub", "destination"}
+		fields := []string{"source", "source.pub", "destination.pub"}
 		if err := getAndValidateSecret(r.Ctx, r.Client, l, r.srcSecret, fields); err != nil {
 			l.Error(err, "SSH keys secret does not contain the proper fields")
 			return false, err
@@ -299,4 +301,93 @@ func (r *rsyncSrcReconciler) ensureKeys(l logr.Logger) (bool, error) {
 		r.Instance.Status.Rsync.SSHKeys = &r.destSecret.Name
 	}
 	return cont, err
+}
+
+//nolint:funlen
+func (r *rsyncSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
+	r.job = &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "scribe-rsync-src-" + r.Instance.Name,
+			Namespace: r.Instance.Namespace,
+		},
+	}
+	logger := l.WithValues("job", nameFor(r.job))
+
+	op, err := ctrlutil.CreateOrUpdate(r.Ctx, r.Client, r.job, func() error {
+		if err := ctrl.SetControllerReference(r.Instance, r.job, r.Scheme); err != nil {
+			logger.Error(err, "unable to set controller reference")
+			return err
+		}
+		r.job.Spec.Template.ObjectMeta.Name = r.job.Name
+		if r.job.Spec.Template.ObjectMeta.Labels == nil {
+			r.job.Spec.Template.ObjectMeta.Labels = map[string]string{}
+		}
+		for k, v := range r.serviceSelector() {
+			r.job.Spec.Template.ObjectMeta.Labels[k] = v
+		}
+		backoffLimit := int32(2)
+		r.job.Spec.BackoffLimit = &backoffLimit
+		if len(r.job.Spec.Template.Spec.Containers) != 1 {
+			r.job.Spec.Template.Spec.Containers = []corev1.Container{{}}
+		}
+		r.job.Spec.Template.Spec.Containers[0].Name = "rsync"
+		if r.Instance.Spec.Rsync.Address != nil {
+			r.job.Spec.Template.Spec.Containers[0].Env = []corev1.EnvVar{
+				{Name: "DESTINATION_ADDRESS", Value: *r.Instance.Spec.Rsync.Address},
+			}
+		} else {
+			r.job.Spec.Template.Spec.Containers[0].Env = []corev1.EnvVar{}
+		}
+		r.job.Spec.Template.Spec.Containers[0].Command = []string{"/bin/bash", "-c", "/source.sh"}
+		r.job.Spec.Template.Spec.Containers[0].Image = RsyncContainerImage
+		runAsUser := int64(0)
+		r.job.Spec.Template.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{
+			Capabilities: &corev1.Capabilities{
+				Add: []corev1.Capability{"AUDIT_WRITE"},
+			},
+			RunAsUser: &runAsUser,
+		}
+		r.job.Spec.Template.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
+			{Name: dataVolumeName, MountPath: "/data", ReadOnly: true},
+			{Name: "keys", MountPath: "/keys"},
+		}
+		r.job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
+		secretMode := int32(0600)
+		r.job.Spec.Template.Spec.Volumes = []corev1.Volume{
+			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: r.PVC.Name,
+					ReadOnly:  true,
+				}},
+			},
+			{Name: "keys", VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName:  r.srcSecret.Name,
+					DefaultMode: &secretMode,
+				}},
+			},
+		}
+		logger.V(1).Info("Job has PVC", "PVC", r.PVC, "DS", r.PVC.Spec.DataSource)
+		return nil
+	})
+
+	// If Job had failed, delete it so it can be recreated
+	if r.job.Status.Failed == *r.job.Spec.BackoffLimit {
+		logger.Info("deleting job -- backoff limit reached")
+		err = r.Client.Delete(r.Ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground))
+		return false, err
+	}
+
+	if err != nil {
+		logger.Error(err, "reconcile failed")
+	} else {
+		logger.V(1).Info("Job reconciled", "operation", op)
+	}
+
+	// We only continue reconciling if the rsync job has completed
+	return r.job.Status.Succeeded == 1, nil
+}
+
+func (r *rsyncSrcReconciler) cleanupJob(l logr.Logger) (bool, error) {
+	return true, nil
 }

@@ -36,6 +36,10 @@ import (
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
+const (
+	dataVolumeName = "data"
+)
+
 type rsyncSvcDescription struct {
 	Context  context.Context
 	Client   client.Client
@@ -111,25 +115,24 @@ func getAndValidateSecret(ctx context.Context, client client.Client, logger logr
 		logger.Error(err, "failed to get Secret with provided name", "Secret", nameFor(secret))
 		return err
 	}
-	if !secretHasFields(secret, fields) {
-		err := fmt.Errorf("validation failed")
+	if err := secretHasFields(secret, fields); err != nil {
 		logger.Error(err, "SSH keys Secret does not contain the proper fields", "Secret", nameFor(secret))
 		return err
 	}
 	return nil
 }
 
-func secretHasFields(secret *corev1.Secret, fields []string) bool {
+func secretHasFields(secret *corev1.Secret, fields []string) error {
 	data := secret.Data
 	if data == nil || len(data) != len(fields) {
-		return false
+		return fmt.Errorf("secret shoud have fields: %v", fields)
 	}
 	for _, k := range fields {
 		if _, found := data[k]; !found {
-			return false
+			return fmt.Errorf("secret is missing field: %v", k)
 		}
 	}
-	return true
+	return nil
 }
 
 type rsyncSSHKeys struct {
@@ -187,7 +190,7 @@ func (k *rsyncSSHKeys) ensureMainSecret(l logr.Logger) (bool, error) {
 		return false, err
 	}
 	if err == nil { // found it, make sure it has the right fields
-		if !secretHasFields(k.MainSecret, []string{"source", "source.pub", "destination", "destination.pub"}) {
+		if secretHasFields(k.MainSecret, []string{"source", "source.pub", "destination", "destination.pub"}) != nil {
 			logger.V(1).Info("deleting invalid secret")
 			if err = k.Client.Delete(k.Context, k.MainSecret); err != nil {
 				logger.Error(err, "failed to delete secret")
