@@ -16,7 +16,7 @@ env:
 jobs:
   lint:
     name: Lint-mover-rsync
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
 
     steps:
       - name: Checkout source
@@ -26,15 +26,15 @@ jobs:
         run: |
           echo 'APT::Acquire::Retries "5";' | sudo tee /etc/apt/apt.conf.d/80-retries
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python-pip ruby
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3-pip ruby
           sudo gem install asciidoctor mdl
-          sudo pip install yamllint
+          sudo pip3 install yamllint
       - name: Run linters
         run: ./.ci-scripts/pre-commit.sh --require-all
 
   build:
     name: Build-mover-rsync
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
 
     steps:
       - name: Checkout source
@@ -58,7 +58,7 @@ jobs:
     if: >
       (github.event_name == 'push' || github.event_name == 'schedule') &&
       (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
 
     steps:
       - name: Load container artifact
