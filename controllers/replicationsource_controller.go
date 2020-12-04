@@ -343,7 +343,10 @@ func (r *rsyncSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 		runAsUser := int64(0)
 		r.job.Spec.Template.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{
 			Capabilities: &corev1.Capabilities{
-				Add: []corev1.Capability{"AUDIT_WRITE"},
+				Add: []corev1.Capability{
+					"AUDIT_WRITE",
+					"SYS_CHROOT",
+				},
 			},
 			RunAsUser: &runAsUser,
 		}
