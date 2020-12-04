@@ -1,3 +1,4 @@
+---
 apiVersion: scribe.backube/v1alpha1
 kind: ReplicationSource
 metadata:
