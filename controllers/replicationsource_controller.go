@@ -46,6 +46,7 @@ type ReplicationSourceReconciler struct {
 
 //nolint:lll
 //+kubebuilder:rbac:groups=scribe.backube,resources=replicationsources,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=scribe.backube,resources=replicationsources/finalizers,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=scribe.backube,resources=replicationsources/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete

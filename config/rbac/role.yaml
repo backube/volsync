@@ -69,6 +69,18 @@ rules:
 - apiGroups:
   - scribe.backube
   resources:
+  - replicationdestinations/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - scribe.backube
+  resources:
   - replicationdestinations/status
   verbs:
   - get
@@ -78,6 +90,18 @@ rules:
   - scribe.backube
   resources:
   - replicationsources
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - scribe.backube
+  resources:
+  - replicationsources/finalizers
   verbs:
   - create
   - delete
