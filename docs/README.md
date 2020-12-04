@@ -1,36 +1,36 @@
-# Documentation
+# Scribe
 
-This documentation is hosted at
-[scribe-replication.readthedocs.io](https://scribe-replication.readthedocs.io/).
+Scribe asynchronously replicates Kubernetes persistent volumes between clusters
+using either rsync or rclone depending on the number of destinations.
 
-## New to reStructuredText?
+[![Documentation
+Status](https://readthedocs.org/projects/scribe-replication/badge/?version=latest)](https://scribe-replication.readthedocs.io/en/latest/?badge=latest)
+[![Go Report
+Card](https://goreportcard.com/badge/github.com/backube/scribe)](https://goreportcard.com/report/github.com/backube/scribe)
+[![codecov](https://codecov.io/gh/backube/scribe/branch/master/graph/badge.svg)](https://codecov.io/gh/backube/scribe)
 
-The following are some docs to help you get started:
+![Documentation](https://github.com/backube/scribe/workflows/Documentation/badge.svg)
+![operator](https://github.com/backube/scribe/workflows/operator/badge.svg)
+![mover-rsync](https://github.com/backube/scribe/workflows/mover-rsync/badge.svg)
 
-* [reStructuredText
-  primer](https://www.sphinx-doc.org/en/master/usage/restructuredtext/basics.html)
-* [Quick reference](https://docutils.sourceforge.io/docs/user/rst/quickref.html)
+## Gettings started
+Currently, this project is under heavy development. To try out the Scribe
+clone the repository and try out the steps in
+![Getting Started](https://scribe-replication.readthedocs.io/en/latest/getting_started/index.html)
 
-## Building locally
+## Helpful links
 
-To build and edit the docs locally, setup the python virtualenv and use the
-Makefile:
+- [Contributing guidelines](https://github.com/backube/.github/blob/master/CONTRIBUTING.md)
+- [Organization code of conduct](https://github.com/backube/.github/blob/master/CODE_OF_CONDUCT.md)
 
-```console
-$ . ./setup-env.sh
-.....
-$ make html
-Running Sphinx v3.0.4
-loading pickled environment... done
-building [mo]: targets for 0 po files that are out of date
-building [html]: targets for 0 source files that are out of date
-updating environment: 0 added, 0 changed, 0 removed
-looking for now-outdated files... none found
-no targets are out of date.
-build succeeded.
+## Licensing
 
-The HTML pages are in _build/html.
-```
+This project is licensed under the [GNU AGPL 3.0 License](LICENSE) with the following
+exceptions:
 
-You can then navigate to the root of the documentation at
-`docs/_build/html/index.html`.
+- The files within the `api/*` directories are additionally licensed under
+  Apache License 2.0. This is to permit Scribe's CustomResource types to be used
+  by a wider range of software.
+- Documentation is made available under the [Creative Commons
+  Attribution-ShareAlike 4.0 International license (CC BY-SA
+  4.0)](https://creativecommons.org/licenses/by-sa/4.0/)
