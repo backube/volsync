@@ -1,10 +1,15 @@
+---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: mysql-pv-claim
 spec:
   accessModes:
-  - ReadWriteOnce
+    - ReadWriteOnce
+  dataSource:
+    kind: VolumeSnapshot
+    apiGroup: snapshot.storage.k8s.io
+    name: snapshotToReplace
   resources:
     requests:
       storage: 2Gi
