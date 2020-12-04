@@ -68,6 +68,12 @@ deploy: manifests kustomize
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMAGE}
 	$(KUSTOMIZE) build config/default | kubectl apply -f -
 
+# Deploy controller in the configured OpenShift cluster in ~/.kube/config
+.PHONY: deploy-openshift
+deploy-openshift: manifests kustomize
+	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMAGE}
+	$(KUSTOMIZE) build config/openshift | kubectl apply -f -
+
 # Generate manifests e.g. CRD, RBAC etc.
 .PHONY: manifests
 manifests: controller-gen
