@@ -21,7 +21,9 @@ allowHostPID: false
 allowHostPorts: false
 allowPrivilegeEscalation: true
 allowPrivilegedContainer: false
-allowedCapabilities: [AUDIT_WRITE]
+allowedCapabilities:
+- AUDIT_WRITE
+- SYS_CHROOT
 fsGroup:
   type: RunAsAny
 priority: 10
@@ -34,12 +36,12 @@ seLinuxContext:
 supplementalGroups:
   type: RunAsAny
 volumes:
-  - configMap
-  - downwardAPI
-  - emptyDir
-  - persistentVolumeClaim
-  - projected
-  - secret
+- configMap
+- downwardAPI
+- emptyDir
+- persistentVolumeClaim
+- projected
+- secret
 
 ---
 apiVersion: v1
@@ -53,14 +55,14 @@ kind: Role
 metadata:
   name: rsync-destination
 rules:
-  - apiGroups:
-      - security.openshift.io
-    resourceNames:
-      - scribe-rsync
-    resources:
-      - securitycontextconstraints
-    verbs:
-      - use
+- apiGroups:
+  - security.openshift.io
+  resourceNames:
+  - scribe-rsync
+  resources:
+  - securitycontextconstraints
+  verbs:
+  - use
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -72,8 +74,8 @@ roleRef:
   kind: Role
   name: rsync-destination
 subjects:
-  - kind: ServiceAccount
-    name: rsync-destination
+- kind: ServiceAccount
+  name: rsync-destination
 
 ---
 apiVersion: batch/v1
@@ -90,32 +92,31 @@ spec:
         app.kubernetes.io/part-of: scribe
     spec:
       containers:
-        - name: rsync
-          command: ["/bin/bash", "-c", "/destination.sh"]
-          image: quay.io/backube/scribe-mover-rsync:latest
-          imagePullPolicy: IfNotPresent
-          securityContext:
-            capabilities:
-              add:
-                # w/o AUDIT_WRITE, sshd closes connection with:
-                # linux_audit_write_entry failed: Operation not permitted
-                - "AUDIT_WRITE"
-            runAsUser: 0
-          volumeMounts:
-            - name: data
-              mountPath: /data
-            - name: keys
-              mountPath: /keys
+      - name: rsync
+        command: ["/bin/bash", "-c", "/destination.sh"]
+        image: quay.io/backube/scribe-mover-rsync:latest
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          capabilities:
+            add:
+            - "AUDIT_WRITE"
+            - "SYS_CHROOT"
+          runAsUser: 0
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: keys
+          mountPath: /keys
       restartPolicy: Never
       serviceAccount: rsync-destination
       volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: destination-data
-        - name: keys
-          secret:
-            secretName: destination-secret
-            defaultMode: 0600
+      - name: data
+        persistentVolumeClaim:
+          claimName: destination-data
+      - name: keys
+        secret:
+          secretName: destination-secret
+          defaultMode: 0600
 
 ---
 apiVersion: v1
@@ -130,7 +131,6 @@ spec:
     app.kubernetes.io/component: mover
     app.kubernetes.io/part-of: scribe
   ports:
-    - protocol: TCP
-      port: 22
-  # type: ClusterIP
+  - protocol: TCP
+    port: 22
   type: LoadBalancer

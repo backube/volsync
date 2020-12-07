@@ -19,11 +19,20 @@ package controllers
 
 import (
 	"context"
+	"time"
 
 	"github.com/go-logr/logr"
+	snapv1 "github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1"
+	"github.com/operator-framework/operator-lib/status"
+	cron "github.com/robfig/cron/v3"
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
 )
@@ -35,21 +44,365 @@ type ReplicationSourceReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=scribe.backube,resources=replicationsources,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=scribe.backube,resources=replicationsources/status,verbs=get;update;patch
+//nolint:lll
+//+kubebuilder:rbac:groups=scribe.backube,resources=replicationsources,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=scribe.backube,resources=replicationsources/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=snapshot.storage.k8s.io,resources=volumesnapshots,verbs=get;list;watch;create;update;patch;delete
 
 func (r *ReplicationSourceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
-	_ = context.Background()
-	_ = r.Log.WithValues("replicationsource", req.NamespacedName)
+	ctx := context.Background()
+	logger := r.Log.WithValues("replicationsource", req.NamespacedName)
 
-	// your logic here
-	r.Log.Info("reconcile started...")
+	inst := &scribev1alpha1.ReplicationSource{}
+	if err := r.Client.Get(ctx, req.NamespacedName, inst); err != nil {
+		if kerrors.IsNotFound(err) {
+			logger.Error(err, "Failed to get Source")
+		}
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
 
-	return ctrl.Result{}, nil
+	if inst.Status == nil {
+		inst.Status = &scribev1alpha1.ReplicationSourceStatus{}
+	}
+	if inst.Status.Conditions == nil {
+		inst.Status.Conditions = status.Conditions{}
+	}
+
+	var result ctrl.Result
+	var err error
+	if inst.Spec.Rsync != nil {
+		result, err = RunRsyncSrcReconciler(ctx, inst, r, logger)
+	} else {
+		return ctrl.Result{}, nil
+	}
+
+	// Set reconcile status condition
+	if err == nil {
+		inst.Status.Conditions.SetCondition(
+			status.Condition{
+				Type:    scribev1alpha1.ConditionReconciled,
+				Status:  corev1.ConditionTrue,
+				Reason:  scribev1alpha1.ReconciledReasonComplete,
+				Message: "Reconcile complete",
+			})
+	} else {
+		inst.Status.Conditions.SetCondition(
+			status.Condition{
+				Type:    scribev1alpha1.ConditionReconciled,
+				Status:  corev1.ConditionFalse,
+				Reason:  scribev1alpha1.ReconciledReasonError,
+				Message: err.Error(),
+			})
+	}
+
+	// Update instance status
+	statusErr := r.Client.Status().Update(ctx, inst)
+	if err == nil { // Don't mask previous error
+		err = statusErr
+	}
+
+	if !inst.Status.NextSyncTime.IsZero() {
+		// ensure we get re-reconciled no later than the next scheduled sync
+		// time
+		delta := time.Until(inst.Status.NextSyncTime.Time)
+		if delta > 0 {
+			result.RequeueAfter = delta
+		}
+	}
+	return result, err
 }
 
 func (r *ReplicationSourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&scribev1alpha1.ReplicationSource{}).
+		Owns(&batchv1.Job{}).
+		Owns(&corev1.PersistentVolumeClaim{}).
+		Owns(&corev1.Secret{}).
+		Owns(&corev1.Service{}).
+		Owns(&snapv1.VolumeSnapshot{}).
 		Complete(r)
+}
+
+// Check schedule to see if it's time to sync
+func awaitNextSyncSource(rs *scribev1alpha1.ReplicationSource, logger logr.Logger) (bool, error) {
+	if cont, err := ensureNextSyncValidSource(rs, logger); !cont || err != nil {
+		return cont, err
+	}
+	if !rs.Status.NextSyncTime.IsZero() && rs.Status.NextSyncTime.Time.After(time.Now()) {
+		return false, nil
+	}
+	return true, nil
+}
+
+// Set the next sync time accd to the schedule
+func updateNextSyncSource(rs *scribev1alpha1.ReplicationSource, logger logr.Logger) (bool, error) {
+	if rs.Spec.Trigger != nil && rs.Spec.Trigger.Schedule != nil {
+		parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
+		schedule, err := parser.Parse(*rs.Spec.Trigger.Schedule)
+		if err != nil {
+			logger.Error(err, "error parsing schedule", "cronspec", rs.Spec.Trigger.Schedule)
+			return false, err
+		}
+		next := schedule.Next(time.Now())
+		rs.Status.NextSyncTime = &metav1.Time{Time: next}
+	}
+	return true, nil
+}
+
+// Make sure the next sync time is valid based on the schedule
+func ensureNextSyncValidSource(rs *scribev1alpha1.ReplicationSource, logger logr.Logger) (bool, error) {
+	if rs.Spec.Trigger != nil && rs.Spec.Trigger.Schedule != nil {
+		if rs.Status.NextSyncTime == nil {
+			return updateNextSyncSource(rs, logger)
+		}
+		return true, nil
+	}
+	rs.Status.NextSyncTime = nil
+	return true, nil
+}
+
+type rsyncSrcReconciler struct {
+	sourceVolumeHandler
+	service    *corev1.Service
+	destSecret *corev1.Secret
+	srcSecret  *corev1.Secret
+	job        *batchv1.Job
+}
+
+func RunRsyncSrcReconciler(ctx context.Context, instance *scribev1alpha1.ReplicationSource,
+	sr *ReplicationSourceReconciler, logger logr.Logger) (ctrl.Result, error) {
+	r := rsyncSrcReconciler{
+		sourceVolumeHandler: sourceVolumeHandler{
+			Ctx:                         ctx,
+			Instance:                    instance,
+			ReplicationSourceReconciler: *sr,
+			Options:                     &instance.Spec.Rsync.ReplicationSourceVolumeOptions,
+		},
+	}
+
+	l := logger.WithValues("method", "Rsync")
+
+	// Make sure there's a place to write status info
+	if r.Instance.Status.Rsync == nil {
+		r.Instance.Status.Rsync = &scribev1alpha1.ReplicationSourceRsyncStatus{}
+	}
+
+	// wrap the scheduling functions as reconcileFuncs
+	awaitNextSync := func(l logr.Logger) (bool, error) {
+		return awaitNextSyncSource(r.Instance, l)
+	}
+	updateNextsync := func(l logr.Logger) (bool, error) {
+		return updateNextSyncSource(r.Instance, l)
+	}
+
+	_, err := reconcileBatch(l,
+		awaitNextSync,
+		r.EnsurePVC,
+		r.ensureService,
+		r.publishSvcAddress,
+		r.ensureKeys,
+		r.ensureJob,
+		r.cleanupJob,
+		r.CleanupPVC,
+		updateNextsync,
+	)
+	return ctrl.Result{}, err
+}
+
+func (r *rsyncSrcReconciler) serviceSelector() map[string]string {
+	return map[string]string{
+		"app.kubernetes.io/name":      "src-" + r.Instance.Name,
+		"app.kubernetes.io/component": "rsync-mover",
+		"app.kubernetes.io/part-of":   "scribe",
+	}
+}
+
+// ensureService maintains the Service that is used to connect to the
+// source rsync mover.
+func (r *rsyncSrcReconciler) ensureService(l logr.Logger) (bool, error) {
+	if r.Instance.Spec.Rsync.Address != nil {
+		// Connection will be outbound. Don't need a Service
+		return true, nil
+	}
+
+	r.service = &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "scribe-rsync-src-" + r.Instance.Name,
+			Namespace: r.Instance.Namespace,
+		},
+	}
+	svcDesc := rsyncSvcDescription{
+		Context:  r.Ctx,
+		Client:   r.Client,
+		Scheme:   r.Scheme,
+		Service:  r.service,
+		Owner:    r.Instance,
+		Type:     r.Instance.Spec.Rsync.ServiceType,
+		Selector: r.serviceSelector(),
+		Port:     r.Instance.Spec.Rsync.Port,
+	}
+	return svcDesc.Reconcile(l)
+}
+
+func (r *rsyncSrcReconciler) publishSvcAddress(l logr.Logger) (bool, error) {
+	if r.service == nil { // no service, nothing to do
+		r.Instance.Status.Rsync.Address = nil
+		return true, nil
+	}
+
+	address := getServiceAddress(r.service)
+	if address == "" {
+		// We don't have an address yet, try again later
+		r.Instance.Status.Rsync.Address = nil
+		return false, nil
+	}
+	r.Instance.Status.Rsync.Address = &address
+
+	l.V(1).Info("Service addr published", "address", address)
+	return true, nil
+}
+
+//nolint:dupl
+func (r *rsyncSrcReconciler) ensureKeys(l logr.Logger) (bool, error) {
+	// If user provided keys, use those
+	if r.Instance.Spec.Rsync.SSHKeys != nil {
+		r.srcSecret = &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      *r.Instance.Spec.Rsync.SSHKeys,
+				Namespace: r.Instance.Namespace,
+			},
+		}
+		fields := []string{"source", "source.pub", "destination.pub"}
+		if err := getAndValidateSecret(r.Ctx, r.Client, l, r.srcSecret, fields); err != nil {
+			l.Error(err, "SSH keys secret does not contain the proper fields")
+			return false, err
+		}
+		return true, nil
+	}
+
+	// otherwise, we need to create our own
+	keyInfo := rsyncSSHKeys{
+		Context:      r.Ctx,
+		Client:       r.Client,
+		Scheme:       r.Scheme,
+		Owner:        r.Instance,
+		NameTemplate: "scribe-rsync-src",
+	}
+	cont, err := keyInfo.Reconcile(l)
+	if !cont || err != nil {
+		r.Instance.Status.Rsync.SSHKeys = nil
+	} else {
+		r.srcSecret = keyInfo.SrcSecret
+		r.destSecret = keyInfo.DestSecret
+		r.Instance.Status.Rsync.SSHKeys = &r.destSecret.Name
+	}
+	return cont, err
+}
+
+//nolint:funlen
+func (r *rsyncSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
+	r.job = &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "scribe-rsync-src-" + r.Instance.Name,
+			Namespace: r.Instance.Namespace,
+		},
+	}
+	logger := l.WithValues("job", nameFor(r.job))
+
+	op, err := ctrlutil.CreateOrUpdate(r.Ctx, r.Client, r.job, func() error {
+		if err := ctrl.SetControllerReference(r.Instance, r.job, r.Scheme); err != nil {
+			logger.Error(err, "unable to set controller reference")
+			return err
+		}
+		r.job.Spec.Template.ObjectMeta.Name = r.job.Name
+		if r.job.Spec.Template.ObjectMeta.Labels == nil {
+			r.job.Spec.Template.ObjectMeta.Labels = map[string]string{}
+		}
+		for k, v := range r.serviceSelector() {
+			r.job.Spec.Template.ObjectMeta.Labels[k] = v
+		}
+		backoffLimit := int32(2)
+		r.job.Spec.BackoffLimit = &backoffLimit
+		if len(r.job.Spec.Template.Spec.Containers) != 1 {
+			r.job.Spec.Template.Spec.Containers = []corev1.Container{{}}
+		}
+		r.job.Spec.Template.Spec.Containers[0].Name = "rsync"
+		if r.Instance.Spec.Rsync.Address != nil {
+			r.job.Spec.Template.Spec.Containers[0].Env = []corev1.EnvVar{
+				{Name: "DESTINATION_ADDRESS", Value: *r.Instance.Spec.Rsync.Address},
+			}
+		} else {
+			r.job.Spec.Template.Spec.Containers[0].Env = []corev1.EnvVar{}
+		}
+		r.job.Spec.Template.Spec.Containers[0].Command = []string{"/bin/bash", "-c", "/source.sh"}
+		r.job.Spec.Template.Spec.Containers[0].Image = RsyncContainerImage
+		runAsUser := int64(0)
+		r.job.Spec.Template.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{
+			Capabilities: &corev1.Capabilities{
+				Add: []corev1.Capability{
+					"AUDIT_WRITE",
+					"SYS_CHROOT",
+				},
+			},
+			RunAsUser: &runAsUser,
+		}
+		r.job.Spec.Template.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
+			{Name: dataVolumeName, MountPath: "/data", ReadOnly: true},
+			{Name: "keys", MountPath: "/keys"},
+		}
+		r.job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
+		secretMode := int32(0600)
+		r.job.Spec.Template.Spec.Volumes = []corev1.Volume{
+			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: r.PVC.Name,
+					ReadOnly:  true,
+				}},
+			},
+			{Name: "keys", VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName:  r.srcSecret.Name,
+					DefaultMode: &secretMode,
+				}},
+			},
+		}
+		logger.V(1).Info("Job has PVC", "PVC", r.PVC, "DS", r.PVC.Spec.DataSource)
+		return nil
+	})
+
+	// If Job had failed, delete it so it can be recreated
+	if r.job.Status.Failed == *r.job.Spec.BackoffLimit {
+		logger.Info("deleting job -- backoff limit reached")
+		err = r.Client.Delete(r.Ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground))
+		return false, err
+	}
+
+	if err != nil {
+		logger.Error(err, "reconcile failed")
+	} else {
+		logger.V(1).Info("Job reconciled", "operation", op)
+	}
+
+	// We only continue reconciling if the rsync job has completed
+	return r.job.Status.Succeeded == 1, nil
+}
+
+func (r *rsyncSrcReconciler) cleanupJob(l logr.Logger) (bool, error) {
+	logger := l.WithValues("job", r.job)
+	// update time/duration
+	r.Instance.Status.LastSyncTime = &metav1.Time{Time: time.Now()}
+	if r.job.Status.StartTime != nil {
+		d := r.Instance.Status.LastSyncTime.Sub(r.job.Status.StartTime.Time)
+		r.Instance.Status.LastSyncDuration = &metav1.Duration{Duration: d}
+	}
+	// remove job
+	if err := r.Client.Delete(r.Ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
+		logger.Error(err, "unable to delete job")
+		return false, err
+	}
+	return true, nil
 }
