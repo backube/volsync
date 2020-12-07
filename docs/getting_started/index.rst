@@ -9,8 +9,8 @@ Deploying
 Once the repository has been cloned run the following within the scribe directory to deploy the required
 components.
 
-Volume SnapShot capabilities are required for Scribe. If you are using Kind to develop functionality in
-Scribe or ensure that you are using a CSI capable storageclass.
+Volume SnapShot capabilities are required for Scribe. If you are using Kind to develop functionality for
+Scribe or another Kubernetes provider ensure that you are using a CSI capable storageclass.
 
 If you are wanting try scribe run the make command to deploy the objects into
 the cluster. Before starting ensure that your KUBECONFIG is set to the cluster you want to install Scribe.
