@@ -1,0 +1,14 @@
+---
+apiVersion: scribe.backube/v1alpha1
+kind: ReplicationSource
+metadata:
+  name: database-source
+  namespace: source
+spec:
+  sourcePVC: mysql-pv-claim
+  trigger:
+    schedule: "*/3 * * * *"
+  rsync:
+    sshKeys: scribe-rsync-dest-src-database-destination
+    address: my.host.com
+    copyMethod: Clone
