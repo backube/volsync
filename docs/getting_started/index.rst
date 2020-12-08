@@ -38,7 +38,7 @@ the controller to your terminal.
 Using Rsync
 ===========
 The following example will use the rsync replication method and take a Snapshot at the destination.
-A database will be used.
+A MySQL database will be used as the example application.
 
 First, create the destination and deploy the ReplicationDestination configuration.
 
