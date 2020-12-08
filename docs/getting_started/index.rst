@@ -19,11 +19,12 @@ the cluster. Before starting ensure that your KUBECONFIG is set to the cluster y
 
    make deploy
 
-Verify Scribe is running.
+Verify Scribe is running by checking the output of kubectl describe.
 
 .. code-block:: bash
 
-   kubectl get pods -n scribe-system
+   kubectl describe pods -n scribe-system
+
 
 If you are developing and adding functionality to scribe run the following as it will output the logs of
 the controller to your terminal.
@@ -46,14 +47,13 @@ First, create the destination and deploy the ReplicationDestination configuratio
    kubectl create ns dest
    kubectl create -n dest -f examples/scribe_v1alpha1_replicationdestination.yaml
 
-A service object is created which will be used by the ReplicationSource to rsync the data. Record
-the service IP as it will be used for the ReplicationSource.
+A service is created which will be used by the ReplicationSource to rsync the data. Record
+the service IP address as it will be used for the ReplicationSource.
 
 .. code-block:: bash
 
-   kubectl get svc -n dest
-   NAME                                TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE
-   scribe-rsync-dest-database-sample   ClusterIP   10.107.249.72   <none>        22/TCP    18s
+   kubectl get replicationdestination database-destination -n dest --template={{.status.rsync.address}}
+   10.107.249.72
 
 Now it is time to deploy our database.
 
@@ -78,7 +78,7 @@ dest namespace.
    kubectl get secret -n dest scribe-rsync-dest-src-database-destination -o yaml | sed 's/namespace: dest/namespace: source/g' > /tmp/secret.yaml
    kubectl create -f /tmp/secret.yaml
 
-Using the service object that relates to the ReplicationDestination that was recorded earlier. Modify
+Using the IP address that relates to the ReplicationDestination that was recorded earlier. Modify
 *scribe_v1alpha1_replicationsource.yaml* replacing the value of the address and create the ReplicationSource object.
 
 .. code-block:: bash
@@ -130,13 +130,14 @@ Create a databases in the mysql pod running in the source namespace.
    exit
 
 Now the mysql database will be deployed to the dest namespace which will use the data that has been replicated.
-First list the snapshots, record the values of the latest snapshot as it will be used to create a pvc. Then create
+First we need to identify the latest snapshot from the replicationdestination object.
+Record the values of the latest snapshot as it will be used to create a pvc. Then create
 the deployment, service, pvc, and secret. Ensure the Snapshots Age is not greater than 3 minutes as it will be replaced
 by scribe before it can be used.
 
 .. code-block:: bash
 
-   kubectl get volumesnapshots -n dest
+   kubectl get replicationdestination database-destination -n dest --template={{.status.latestImage.name}}
    sed -i 's/snapshotToReplace/scribe-dest-database-destination-20201203174504/g' examples/destination-database/mysql-pvc.yaml
    kubectl create -n dest -f examples/destination-database/
 

@@ -16,7 +16,7 @@ spec:
         tier: mysql
     spec:
       containers:
-        - image: quay.io/rcook/tools:mysql
+        - image: mysql
           name: mysql
           env:
             - name: MYSQL_ROOT_PASSWORD
