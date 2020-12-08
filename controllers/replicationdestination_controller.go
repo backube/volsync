@@ -26,6 +26,7 @@ import (
 	"github.com/operator-framework/operator-lib/status"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -60,6 +61,9 @@ type ReplicationDestinationReconciler struct {
 //+kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=roles,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=snapshot.storage.k8s.io,resources=volumesnapshots,verbs=get;list;watch;create;update;patch;delete
 
 func (r *ReplicationDestinationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
@@ -127,16 +131,20 @@ func (r *ReplicationDestinationReconciler) SetupWithManager(mgr ctrl.Manager) er
 		Owns(&corev1.PersistentVolumeClaim{}).
 		Owns(&corev1.Secret{}).
 		Owns(&corev1.Service{}).
+		Owns(&corev1.ServiceAccount{}).
+		Owns(&rbacv1.Role{}).
+		Owns(&rbacv1.RoleBinding{}).
 		Owns(&snapv1.VolumeSnapshot{}).
 		Complete(r)
 }
 
 type rsyncDestReconciler struct {
 	destinationVolumeHandler
-	service    *corev1.Service
-	destSecret *corev1.Secret
-	srcSecret  *corev1.Secret
-	job        *batchv1.Job
+	service        *corev1.Service
+	destSecret     *corev1.Secret
+	srcSecret      *corev1.Secret
+	serviceAccount *corev1.ServiceAccount
+	job            *batchv1.Job
 }
 
 func RunRsyncDestReconciler(ctx context.Context, instance *scribev1alpha1.ReplicationDestination,
@@ -163,6 +171,7 @@ func RunRsyncDestReconciler(ctx context.Context, instance *scribev1alpha1.Replic
 		r.ensureService,
 		r.publishSvcAddress,
 		r.ensureSecrets,
+		r.ensureServiceAccount,
 		r.ensureJob,
 		r.PreserveImage,
 		r.cleanupJob,
@@ -260,6 +269,23 @@ func (r *rsyncDestReconciler) ensureSecrets(l logr.Logger) (bool, error) {
 	return cont, err
 }
 
+func (r *rsyncDestReconciler) ensureServiceAccount(l logr.Logger) (bool, error) {
+	r.serviceAccount = &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "scribe-rsync-dest-" + r.Instance.Name,
+			Namespace: r.Instance.Namespace,
+		},
+	}
+	saDesc := rsyncSADescription{
+		Context: r.Ctx,
+		Client:  r.Client,
+		Scheme:  r.Scheme,
+		SA:      r.serviceAccount,
+		Owner:   r.Instance,
+	}
+	return saDesc.Reconcile(l)
+}
+
 //nolint:funlen
 func (r *rsyncDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 	jobName := types.NamespacedName{
@@ -310,6 +336,7 @@ func (r *rsyncDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 			{Name: "keys", MountPath: "/keys"},
 		}
 		r.job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
+		r.job.Spec.Template.Spec.ServiceAccountName = r.serviceAccount.Name
 		secretMode := int32(0600)
 		r.job.Spec.Template.Spec.Volumes = []corev1.Volume{
 			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
