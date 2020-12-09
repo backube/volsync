@@ -9,10 +9,7 @@ function error {
     exit "$rc"
 }
 
-# Rclone config file gets mounted as a Secret onto /rclone-config
-RCLONE_CONFIG=/rclone-config/rclone.conf
-# Which remote to use in the Rclone config file
-RCLONE_CONFIG_SECTION=default
+# Rclone config file that gets mounted as a Secret onto RCLONE_CONFIG
 
 [[ -n "${RCLONE_DEST_PATH}" ]] || error 1 "RCLONE_DEST_PATH must be defined"
 [[ -n "${DIRECTION}" ]] || error 1 "DIRECTION must be defined"
@@ -22,11 +19,11 @@ RCLONE_FLAGS=(--checksum --one-file-system --create-empty-src-dirs --progress --
 START_TIME=$SECONDS
 case "${DIRECTION}" in
 source)
-    rclone --config "${RCLONE_CONFIG}" sync "${RCLONE_FLAGS[@]}" /data "${RCLONE_CONFIG_SECTION}:${RCLONE_DEST_PATH}"
+    rclone sync "${RCLONE_FLAGS[@]}" "${MOUNT_PATH}" "${RCLONE_CONFIG_SECTION}:${RCLONE_DEST_PATH}"
     rc=$?
     ;;
 destination)
-    rclone --config "${RCLONE_CONFIG}" sync "${RCLONE_FLAGS[@]}" "${RCLONE_CONFIG_SECTION}:${RCLONE_DEST_PATH}" /data
+    rclone sync "${RCLONE_FLAGS[@]}" "${RCLONE_CONFIG_SECTION}:${RCLONE_DEST_PATH}" "${MOUNT_PATH}"
     rc=$?
     ;;
 *)
