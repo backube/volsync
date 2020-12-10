@@ -156,6 +156,8 @@ rules:
   - update
 - apiGroups:
   - security.openshift.io
+  resourceNames:
+  - scribe-mover
   resources:
   - securitycontextconstraints
   verbs:
