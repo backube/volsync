@@ -131,7 +131,6 @@ func (h *destinationVolumeHandler) createSnapshot(l logr.Logger) (bool, error) {
 			l.Error(err, "unable to update PVC")
 			return false, err
 		}
-		h.Instance.Status.LastSyncTime = &metav1.Time{Time: time.Now()}
 	}
 	logger := l.WithValues("snapshot", snapName)
 
@@ -451,6 +450,10 @@ func (h *sourceVolumeHandler) ensureClone(l logr.Logger) (bool, error) {
 	if err != nil {
 		logger.Error(err, "reconcile failed")
 		return false, err
+	}
+	if !h.PVC.DeletionTimestamp.IsZero() {
+		logger.V(1).Info("PVC is being deleted-- need to wait")
+		return false, nil
 	}
 	logger.V(1).Info("clone reconciled", "operation", op)
 	return true, nil

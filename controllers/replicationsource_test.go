@@ -6,12 +6,15 @@ import (
 	"context"
 
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
+	snapv1 "github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 var _ = Describe("ReplicationSource", func() {
@@ -137,11 +140,20 @@ var _ = Describe("ReplicationSource", func() {
 				},
 			}
 		})
-		JustBeforeEach(func() {
-			// TODO: Find the sync Job and its PVC
-		})
 		It("uses the source PVC as the sync source", func() {
-			// TODO: Check the sync Job to make sure it's using the source PVC
+			job := &batchv1.Job{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
+			}, maxWait, interval).Should(Succeed())
+			volumes := job.Spec.Template.Spec.Volumes
+			found := false
+			for _, v := range volumes {
+				if v.PersistentVolumeClaim != nil && v.PersistentVolumeClaim.ClaimName == srcPVC.Name {
+					found = true
+				}
+			}
+			Expect(found).To(BeTrue())
+			Expect(srcPVC).NotTo(beOwnedBy(rs))
 		})
 	})
 
@@ -153,14 +165,28 @@ var _ = Describe("ReplicationSource", func() {
 				},
 			}
 		})
-		JustBeforeEach(func() {
-			// TODO: Find the sync Job and its PVC
-		})
 		It("creates a clone of the source PVC as the sync source", func() {
-			// TODO: Check the sync Job to make sure it's using a PVC w/ a
-			// DataSource that matches srcPVC
+			job := &batchv1.Job{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
+			}, maxWait, interval).Should(Succeed())
+			volumes := job.Spec.Template.Spec.Volumes
+			pvc := &corev1.PersistentVolumeClaim{}
+			pvc.Namespace = rs.Namespace
+			found := false
+			for _, v := range volumes {
+				if v.PersistentVolumeClaim != nil {
+					found = true
+					pvc.Name = v.PersistentVolumeClaim.ClaimName
+				}
+			}
+			Expect(found).To(BeTrue())
+			Expect(k8sClient.Get(ctx, nameFor(pvc), pvc)).To(Succeed())
+			Expect(pvc.Spec.DataSource.Name).To(Equal(srcPVC.Name))
+			Expect(pvc).To(beOwnedBy(rs))
 		})
 
+		//nolint:dupl
 		Context("SC, capacity, accessModes can be overridden", func() {
 			newSC := "mysc2"
 			newCapacity := resource.MustParse("1Gi")
@@ -171,7 +197,26 @@ var _ = Describe("ReplicationSource", func() {
 				rs.Spec.Rsync.AccessModes = newAccessModes
 			})
 			It("cloned PVC has overridden values", func() {
-				// TODO: Check the capacity, accessModes, and storageClassName
+				job := &batchv1.Job{}
+				Eventually(func() error {
+					return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
+				}, maxWait, interval).Should(Succeed())
+				volumes := job.Spec.Template.Spec.Volumes
+				pvc := &corev1.PersistentVolumeClaim{}
+				pvc.Namespace = rs.Namespace
+				found := false
+				for _, v := range volumes {
+					if v.PersistentVolumeClaim != nil {
+						found = true
+						pvc.Name = v.PersistentVolumeClaim.ClaimName
+					}
+				}
+				Expect(found).To(BeTrue())
+				Expect(k8sClient.Get(ctx, nameFor(pvc), pvc)).To(Succeed())
+				Expect(pvc).To(beOwnedBy(rs))
+				Expect(pvc.Spec.AccessModes).To(ConsistOf(newAccessModes))
+				Expect(*pvc.Spec.Resources.Requests.Storage()).To(Equal(newCapacity))
+				Expect(*pvc.Spec.StorageClassName).To(Equal(newSC))
 			})
 		})
 	})
@@ -184,14 +229,43 @@ var _ = Describe("ReplicationSource", func() {
 				},
 			}
 		})
-		JustBeforeEach(func() {
-			// TODO: Find the sync Job and its PVC
+		XIt("creates a snapshot of the source PVC and restores it as the sync source", func() {
+			// Reconcile waits until the Snap is bound before creating the PVC &
+			// Job, so we need to fake the binding
+			snap := &snapv1.VolumeSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "scribe-rsync-src-" + rs.Name,
+					Namespace: rs.Namespace,
+				},
+			}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, nameFor(snap), snap)
+			}, maxWait, interval).Should(Succeed())
+			foo := "foo"
+			snap.Status = &snapv1.VolumeSnapshotStatus{
+				BoundVolumeSnapshotContentName: &foo,
+			}
+			Expect(k8sClient.Status().Update(ctx, snap)).To(Succeed())
+			// Continue checking
+			job := &batchv1.Job{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
+			}, maxWait, interval).Should(Succeed())
+			volumes := job.Spec.Template.Spec.Volumes
+			pvc := &corev1.PersistentVolumeClaim{}
+			pvc.Namespace = rs.Namespace
+			for _, v := range volumes {
+				if v.PersistentVolumeClaim != nil && v.Name == dataVolumeName {
+					pvc.Name = v.PersistentVolumeClaim.ClaimName
+				}
+			}
+			Expect(k8sClient.Get(ctx, nameFor(pvc), pvc)).To(Succeed())
+			// XXX: Why doesn't the following pass?
+			Expect(pvc.Spec.DataSource).NotTo(BeNil())
+			Expect(pvc.Spec.DataSource.Kind).To(Equal("VolumeSnapshot"))
+			Expect(pvc).To(beOwnedBy(rs))
 		})
-		It("creates a snapshot of the source PVC and restores it as the sync source", func() {
-			// TODO: Check the sync Job to make sure it's using a PVC w/ a
-			// DataSource that is a VolumeSnapshot
-		})
-
+		//nolint:dupl
 		Context("SC, capacity, accessModes can be overridden", func() {
 			newSC := "mysc2"
 			newCapacity := resource.MustParse("1Gi")
@@ -202,8 +276,172 @@ var _ = Describe("ReplicationSource", func() {
 				rs.Spec.Rsync.AccessModes = newAccessModes
 			})
 			It("new PVC has overridden values", func() {
-				// TODO: Check the capacity, accessModes, and storageClassName
+				// Reconcile waits until the Snap is bound before creating the PVC &
+				// Job, so we need to fake the binding
+				snap := &snapv1.VolumeSnapshot{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "scribe-rsync-src-" + rs.Name,
+						Namespace: rs.Namespace,
+					},
+				}
+				Eventually(func() error {
+					return k8sClient.Get(ctx, nameFor(snap), snap)
+				}, maxWait, interval).Should(Succeed())
+				foo := "foo2"
+				snap.Status = &snapv1.VolumeSnapshotStatus{
+					BoundVolumeSnapshotContentName: &foo,
+				}
+				Expect(k8sClient.Status().Update(ctx, snap)).To(Succeed())
+				// Continue checking
+				job := &batchv1.Job{}
+				Eventually(func() error {
+					return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
+				}, maxWait, interval).Should(Succeed())
+				volumes := job.Spec.Template.Spec.Volumes
+				pvc := &corev1.PersistentVolumeClaim{}
+				pvc.Namespace = rs.Namespace
+				found := false
+				for _, v := range volumes {
+					if v.PersistentVolumeClaim != nil {
+						found = true
+						pvc.Name = v.PersistentVolumeClaim.ClaimName
+					}
+				}
+				Expect(found).To(BeTrue())
+				Expect(k8sClient.Get(ctx, nameFor(pvc), pvc)).To(Succeed())
+				Expect(pvc).To(beOwnedBy(rs))
+				Expect(pvc.Spec.AccessModes).To(ConsistOf(newAccessModes))
+				Expect(*pvc.Spec.Resources.Requests.Storage()).To(Equal(newCapacity))
+				Expect(*pvc.Spec.StorageClassName).To(Equal(newSC))
 			})
 		})
 	})
+
+	Context("rsync: when no remote address is specified", func() {
+		BeforeEach(func() {
+			rs.Spec.Rsync = &scribev1alpha1.ReplicationSourceRsyncSpec{
+				ReplicationSourceVolumeOptions: scribev1alpha1.ReplicationSourceVolumeOptions{
+					CopyMethod: scribev1alpha1.CopyMethodClone,
+				},
+			}
+		})
+		It("Creates a Service for incoming connections", func() {
+			svc := &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "scribe-rsync-src-" + rs.Name,
+					Namespace: rs.Namespace,
+				},
+			}
+			By("creating a service")
+			Eventually(func() error {
+				return k8sClient.Get(ctx, nameFor(svc), svc)
+			}, maxWait, interval).Should(Succeed())
+			By("making the service addr available in the CR status")
+			Eventually(func() *string {
+				_ = k8sClient.Get(ctx, nameFor(rs), rs)
+				if rs.Status == nil || rs.Status.Rsync == nil {
+					return nil
+				}
+				return rs.Status.Rsync.Address
+			}, maxWait, interval).Should(Not(BeNil()))
+			Expect(*rs.Status.Rsync.Address).To(Equal(svc.Spec.ClusterIP))
+		})
+	})
+	Context("rsync: when a remote address is specified", func() {
+		BeforeEach(func() {
+			remoteAddr := "my.remote.host.com"
+			rs.Spec.Rsync = &scribev1alpha1.ReplicationSourceRsyncSpec{
+				ReplicationSourceVolumeOptions: scribev1alpha1.ReplicationSourceVolumeOptions{
+					CopyMethod: scribev1alpha1.CopyMethodClone,
+				},
+				Address: &remoteAddr,
+			}
+		})
+		It("No Service is created", func() {
+			svc := &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "scribe-rsync-src-" + rs.Name,
+					Namespace: rs.Namespace,
+				},
+			}
+			Consistently(func() error {
+				return k8sClient.Get(ctx, nameFor(svc), svc)
+			}, duration, interval).Should(Not(Succeed()))
+		})
+	})
+
+	Context("rsync: when no key is provided", func() {
+		BeforeEach(func() {
+			rs.Spec.Rsync = &scribev1alpha1.ReplicationSourceRsyncSpec{
+				ReplicationSourceVolumeOptions: scribev1alpha1.ReplicationSourceVolumeOptions{
+					CopyMethod: scribev1alpha1.CopyMethodClone,
+				},
+			}
+		})
+		It("generates ssh keys automatically", func() {
+			secret := &corev1.Secret{}
+			Eventually(func() *scribev1alpha1.ReplicationSourceStatus {
+				_ = k8sClient.Get(ctx, nameFor(rs), rs)
+				return rs.Status
+			}, maxWait, interval).ShouldNot(BeNil())
+			Eventually(func() *scribev1alpha1.ReplicationSourceRsyncStatus {
+				_ = k8sClient.Get(ctx, nameFor(rs), rs)
+				return rs.Status.Rsync
+			}, maxWait, interval).Should(Not(BeNil()))
+			Eventually(func() *string {
+				_ = k8sClient.Get(ctx, nameFor(rs), rs)
+				return rs.Status.Rsync.SSHKeys
+			}, maxWait, interval).Should(Not(BeNil()))
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: *rs.Status.Rsync.SSHKeys,
+				Namespace: rs.Namespace}, secret)).To(Succeed())
+			Expect(secret.Data).To(HaveKey("destination"))
+			Expect(secret.Data).To(HaveKey("destination.pub"))
+			Expect(secret.Data).To(HaveKey("source.pub"))
+			Expect(secret.Data).NotTo(HaveKey("source"))
+			Expect(secret).To(beOwnedBy(rs))
+		})
+	})
+	//nolint:dupl
+	Context("rsync: when ssh keys are provided", func() {
+		var secret *v1.Secret
+		BeforeEach(func() {
+			secret = &v1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "keys",
+					Namespace: rs.Namespace,
+				},
+				StringData: map[string]string{
+					"source":          "foo",
+					"source.pub":      "bar",
+					"destination.pub": "baz",
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+			rs.Spec.Rsync = &scribev1alpha1.ReplicationSourceRsyncSpec{
+				ReplicationSourceVolumeOptions: scribev1alpha1.ReplicationSourceVolumeOptions{
+					CopyMethod: scribev1alpha1.CopyMethodClone,
+				},
+				SSHKeys: &secret.Name,
+			}
+		})
+		It("they are used by the sync Job", func() {
+			job := &batchv1.Job{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      "scribe-rsync-src-" + rs.Name,
+					Namespace: rs.Namespace,
+				}, job)
+			}, maxWait, interval).Should(Succeed())
+			volumes := job.Spec.Template.Spec.Volumes
+			found := false
+			for _, v := range volumes {
+				if v.Secret != nil && v.Secret.SecretName == secret.Name {
+					found = true
+				}
+			}
+			Expect(found).To(BeTrue())
+			Expect(secret).NotTo(beOwnedBy(rs))
+		})
+	})
+
 })
