@@ -50,6 +50,7 @@ Create the following VolumeSnapshotClass
    SNAPCLASS
 
 Finally set *gp2-csi* as the default VolumeSnapshotClass.
+
 .. code-block:: bash
    
    $ oc annotate volumesnapshotclass/gp2-csi snapshot.storage.kubernetes.io/is-default-class="true"
@@ -57,3 +58,15 @@ Finally set *gp2-csi* as the default VolumeSnapshotClass.
 
 Deploying Scribe
 ================
+A special make parameter is provided to allow for Scribe to be installed
+on OpenShift. Using this method ensures proper *SecurityContextContstraints*
+are applied to the cluster.
+
+.. code-block:: bash
+
+   make deploy-openshift
+
+Using Scribe
+===========
+The OpenShift cluster(s) should now be able to use Scribe. To test Scribe
+follow the steps to `use rsync https://scribe-replication.readthedocs.io/en/latest/getting_started/index.html#using-rsync`_.
