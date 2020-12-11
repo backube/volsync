@@ -67,6 +67,6 @@ are applied to the cluster.
    make deploy-openshift
 
 Using Scribe
-===========
+============
 The OpenShift cluster(s) should now be able to use Scribe. To test Scribe
-follow the steps to `use rsync https://scribe-replication.readthedocs.io/en/latest/getting_started/index.html#using-rsync`_.
+follow the steps to `use the rsync replication method <http://https://scribe-replication.readthedocs.io/en/latest/getting_started/index.html#using-rsync>`_
