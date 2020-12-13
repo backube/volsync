@@ -39,6 +39,9 @@ the controller to your terminal.
    make run
 
 
+
+.. _using rsync:
+
 Using Rsync
 ===========
 The following example will use the rsync replication method and take a Snapshot at the destination.
