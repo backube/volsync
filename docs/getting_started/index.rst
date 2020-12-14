@@ -13,7 +13,7 @@ Volume SnapShot capabilities are required for Scribe. If you are using Kind to d
 Scribe or another Kubernetes provider ensure that you are using a CSI capable storageclass.
 
 Running Scribe on OpenShift requires some additional steps. Follow the steps to deploy Scribe
-on `OpenShift  <http://https://scribe-replication.readthedocs.io/en/latest/openshift/index.html>`_
+on `OpenShift  <https://scribe-replication.readthedocs.io/en/latest/openshift/index.html>`_
 
 
 If you are wanting try scribe run the make command to deploy the objects into
@@ -38,6 +38,9 @@ the controller to your terminal.
    make install
    make run
 
+
+
+.. _using rsync:
 
 Using Rsync
 ===========
