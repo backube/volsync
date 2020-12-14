@@ -11,7 +11,7 @@ on:  # yamllint disable-line rule:truthy
     - cron: "15 4 * * 1"  # 4:15 every Monday
 
 env:
-  IMAGE: "quay.io/backube/scribe"
+  OPERATOR_IMAGE: "quay.io/backube/scribe"
 
 jobs:
   lint:
@@ -32,7 +32,7 @@ jobs:
       - name: Run linters
         run: ./.ci-scripts/pre-commit.sh --require-all
 
-  build:
+  build-operator:
     name: Build-operator
     runs-on: ubuntu-20.04
 
@@ -51,10 +51,10 @@ jobs:
           fail_ci_if_error: true
 
       - name: Build operator container
-        run: make docker-build IMG=${IMAGE}
+        run: make docker-build IMG=${OPERATOR_IMAGE}
 
       - name: Export container image
-        run: docker save -o /tmp/image.tar ${IMAGE}
+        run: docker save -o /tmp/image.tar ${OPERATOR_IMAGE}
 
       - name: Save container as artifact
         uses: actions/upload-artifact@v1
@@ -64,14 +64,15 @@ jobs:
 
   e2e:
     name: End-to-end
-    needs: build
+    needs: build-operator
     runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
       matrix:
         # There must be kindest/node images for these versions
         # See: https://hub.docker.com/r/kindest/node/tags?page=1&ordering=name
-        KUBERNETES_VERSIONS: ["1.16.9", "1.17.5", "1.18.8", "1.19.0"]
+        # KUBERNETES_VERSIONS: ["1.16.9", "1.17.5", "1.18.8", "1.19.0"]
+        KUBERNETES_VERSIONS: ["1.20.0"]
     env:
       KUBECONFIG: /tmp/kubeconfig
       KUBERNETES_VERSION: ${{ matrix.KUBERNETES_VERSIONS }}
@@ -80,9 +81,21 @@ jobs:
         run: |
           echo "TODO: test on $KUBERNETES_VERSION"
 
-  push:
-    name: Push container to registry
-    needs: [build, e2e, lint]
+  # This is a dummy job that can be used to determine success of CI:
+  # - by Mergify instead of having to list a bunch of other jobs
+  # - by the push jobs to ensure all pre-reqs pass before ANY containers are
+  #   pushed.
+  e2e-success:
+    name: Successful e2e tests
+    needs: [build-operator, e2e, lint]
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Success
+        run: echo "Previous steps were successful"
+
+  push-operator:
+    name: Push operator container to registry
+    needs: e2e-success
     if: >
       (github.event_name == 'push' || github.event_name == 'schedule') &&
       (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
@@ -98,12 +111,12 @@ jobs:
       - name: Import container image
         run: |
           docker load -i /tmp/image.tar
-          docker inspect ${IMAGE}
+          docker inspect ${OPERATOR_IMAGE}
       - name: Login to registry
         # If the registry server is specified in the image name, we use that.
         # If the server isn't in the image name, default to docker.io
         run: |
-          [[ "${IMAGE}" =~ ^([^/]+)/[^/]+/[^/]+ ]] && REGISTRY="${BASH_REMATCH[1]}" || REGISTRY="docker.io"
+          [[ "${OPERATOR_IMAGE}" =~ ^([^/]+)/[^/]+/[^/]+ ]] && REGISTRY="${BASH_REMATCH[1]}" || REGISTRY="docker.io"
           echo "Attempting docker login to: ${REGISTRY}"
           echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login -u "${{ secrets.REGISTRY_USERNAME }}" --password-stdin ${REGISTRY}
       - name: Push to registry (latest)
@@ -111,7 +124,7 @@ jobs:
           (github.event_name == 'push' || github.event_name == 'schedule') &&
           github.ref == 'refs/heads/master'
         run: |
-          docker push "${IMAGE}"
+          docker push "${OPERATOR_IMAGE}"
       - name: Push to registry (version tag)
         if: >
           (github.event_name == 'push' || github.event_name == 'schedule') &&
@@ -120,5 +133,5 @@ jobs:
           [[ "${{ github.ref }}" =~ ^refs/tags/v([0-9]+\..*) ]] || exit 0
           TAG="${BASH_REMATCH[1]}"
           echo "Pushing to $TAG"
-          docker tag "${IMAGE}" "${IMAGE}:${TAG}"
-          docker push "${IMAGE}:${TAG}"
+          docker tag "${OPERATOR_IMAGE}" "${OPERATOR_IMAGE}:${TAG}"
+          docker push "${OPERATOR_IMAGE}:${TAG}"
