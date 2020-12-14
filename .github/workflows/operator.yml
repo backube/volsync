@@ -12,6 +12,8 @@ on:  # yamllint disable-line rule:truthy
 
 env:
   OPERATOR_IMAGE: "quay.io/backube/scribe"
+  RCLONE_IMAGE: "quay.io/backube/scribe-mover-rclone"
+  RSYNC_IMAGE: "quay.io/backube/scribe-mover-rsync"
 
 jobs:
   lint:
@@ -62,9 +64,49 @@ jobs:
           name: scribe-operator
           path: /tmp/image.tar
 
+  build-rclone:
+    name: Build-mover-rclone
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v2
+
+      - name: Build operator container
+        run: make -C mover-rclone image
+
+      - name: Export container image
+        run: docker save -o /tmp/image.tar ${RCLONE_IMAGE}
+
+      - name: Save container as artifact
+        uses: actions/upload-artifact@v1
+        with:
+          name: scribe-mover-rclone-container
+          path: /tmp/image.tar
+
+  build-rsync:
+    name: Build-mover-rsync
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v2
+
+      - name: Build operator container
+        run: make -C mover-rsync image
+
+      - name: Export container image
+        run: docker save -o /tmp/image.tar ${RSYNC_IMAGE}
+
+      - name: Save container as artifact
+        uses: actions/upload-artifact@v1
+        with:
+          name: scribe-mover-rsync-container
+          path: /tmp/image.tar
+
   e2e:
     name: End-to-end
-    needs: build-operator
+    needs: [build-operator, build-rclone, build-rsync]
     runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
@@ -135,3 +177,89 @@ jobs:
           echo "Pushing to $TAG"
           docker tag "${OPERATOR_IMAGE}" "${OPERATOR_IMAGE}:${TAG}"
           docker push "${OPERATOR_IMAGE}:${TAG}"
+
+  push-rclone:
+    name: Push rclone container to registry
+    needs: e2e-success
+    if: >
+      (github.event_name == 'push' || github.event_name == 'schedule') &&
+      (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: Load container artifact
+        uses: actions/download-artifact@v1
+        with:
+          name: scribe-mover-rclone-container
+          path: /tmp
+
+      - name: Import container image
+        run: |
+          docker load -i /tmp/image.tar
+          docker inspect ${RCLONE_IMAGE}
+      - name: Login to registry
+        # If the registry server is specified in the image name, we use that.
+        # If the server isn't in the image name, default to docker.io
+        run: |
+          [[ "${RCLONE_IMAGE}" =~ ^([^/]+)/[^/]+/[^/]+ ]] && REGISTRY="${BASH_REMATCH[1]}" || REGISTRY="docker.io"
+          echo "Attempting docker login to: ${REGISTRY}"
+          echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login -u "${{ secrets.REGISTRY_USERNAME }}" --password-stdin ${REGISTRY}
+      - name: Push to registry (latest)
+        if: >
+          (github.event_name == 'push' || github.event_name == 'schedule') &&
+          github.ref == 'refs/heads/master'
+        run: |
+          docker push "${RCLONE_IMAGE}"
+      - name: Push to registry (version tag)
+        if: >
+          (github.event_name == 'push' || github.event_name == 'schedule') &&
+          startsWith(github.ref, 'refs/tags/v')
+        run: |
+          [[ "${{ github.ref }}" =~ ^refs/tags/v([0-9]+\..*) ]] || exit 0
+          TAG="${BASH_REMATCH[1]}"
+          echo "Pushing to $TAG"
+          docker tag "${RCLONE_IMAGE}" "${RCLONE_IMAGE}:${TAG}"
+          docker push "${RCLONE_IMAGE}:${TAG}"
+
+  push-rsync:
+    name: Push rsync container to registry
+    needs: e2e-success
+    if: >
+      (github.event_name == 'push' || github.event_name == 'schedule') &&
+      (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: Load container artifact
+        uses: actions/download-artifact@v1
+        with:
+          name: scribe-mover-rsync-container
+          path: /tmp
+
+      - name: Import container image
+        run: |
+          docker load -i /tmp/image.tar
+          docker inspect ${RSYNC_IMAGE}
+      - name: Login to registry
+        # If the registry server is specified in the image name, we use that.
+        # If the server isn't in the image name, default to docker.io
+        run: |
+          [[ "${RSYNC_IMAGE}" =~ ^([^/]+)/[^/]+/[^/]+ ]] && REGISTRY="${BASH_REMATCH[1]}" || REGISTRY="docker.io"
+          echo "Attempting docker login to: ${REGISTRY}"
+          echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login -u "${{ secrets.REGISTRY_USERNAME }}" --password-stdin ${REGISTRY}
+      - name: Push to registry (latest)
+        if: >
+          (github.event_name == 'push' || github.event_name == 'schedule') &&
+          github.ref == 'refs/heads/master'
+        run: |
+          docker push "${RSYNC_IMAGE}"
+      - name: Push to registry (version tag)
+        if: >
+          (github.event_name == 'push' || github.event_name == 'schedule') &&
+          startsWith(github.ref, 'refs/tags/v')
+        run: |
+          [[ "${{ github.ref }}" =~ ^refs/tags/v([0-9]+\..*) ]] || exit 0
+          TAG="${BASH_REMATCH[1]}"
+          echo "Pushing to $TAG"
+          docker tag "${RSYNC_IMAGE}" "${RSYNC_IMAGE}:${TAG}"
+          docker push "${RSYNC_IMAGE}:${TAG}"
