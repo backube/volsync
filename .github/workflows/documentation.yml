@@ -11,8 +11,8 @@ on:  # yamllint disable-line rule:truthy
     - cron: "15 4 * * 1"  # 4:15 every Monday
 
 jobs:
-  build:
-    name: Build
+  build-docs:
+    name: Build docs
     runs-on: ubuntu-20.04
 
     steps:
