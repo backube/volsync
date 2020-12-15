@@ -46,6 +46,9 @@ const (
 // RsyncContainerImage is the container image name of the rsync data mover
 var RsyncContainerImage string
 
+// RcloneContainerImage is the container image name of the rclone data mover
+var RcloneContainerImage string
+
 // ReplicationDestinationReconciler reconciles a ReplicationDestination object
 type ReplicationDestinationReconciler struct {
 	client.Client

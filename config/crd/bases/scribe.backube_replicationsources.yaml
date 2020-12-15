@@ -99,12 +99,15 @@ spec:
                     - Clone
                     - Snapshot
                     type: string
-                  path:
-                    description: path is the remote path to sync to.
+                  direction:
+                    type: string
+                  mountPath:
                     type: string
                   rcloneConfig:
-                    description: rcloneConfig is the name of a Secret that contains
-                      a valid Rclone configuration file.
+                    type: string
+                  rcloneConfigSection:
+                    type: string
+                  rcloneDestPath:
                     type: string
                   storageClassName:
                     description: storageClassName can be used to override the StorageClass
