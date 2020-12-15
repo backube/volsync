@@ -38,7 +38,57 @@ the controller to your terminal.
    make install
    make run
 
+Understanding Rsync Data Flow
+=============================
+The source and destination CustomResources support a *CopyMethod* field which will indicate how the data is to
+be delivered and received. Scribe supports the underlying CSI methods for Snapshots and Clones.
 
+Destination copyMethod:
+-----------------------
+
+Destination receives incoming source data as a PVC and the copyMethod will determine what happens once the source data
+is received.
+
+.. code-block:: yaml
+
+  spec:
+    rsync:
+      serviceType: ClusterIP
+      copyMethod: Snapshot
+      capacity: 2Gi
+      accessModes: [ReadWriteOnce]
+
+
+The copyMethod supports two values on Destination side:
+
+- **Snapshot** - Data is received from source as a PVC and if copyMethod is Snapshot then Scribe will take a
+  VolumeSnapshot of the source PVC and this now becomes the latestImage in the CustomResource.
+
+- **None** - data is received from the source as a PVC and if copyMethod is None, then Scribe will take no action on
+  the PVC and it will become the latestImage in the CustomResource.
+
+
+Source copyMethod:
+------------------
+Source will create a copy of the source volume and transfer the data to the destination as a PVC.
+
+.. code-block:: yaml
+
+  spec:
+    sourcePVC: mysql-pv-claim
+    trigger:
+      schedule: "*/3 * * * *"
+    rsync:
+      sshKeys: scribe-rsync-dest-src-database-destination
+      address: my.host.com
+      copyMethod: Clone
+
+
+The copyMethod supports three values on the Source side:
+
+* **Snapshot** - will use the VolumeSnapshot capabilities of CSI and create a point in time copy of the PVC.
+* **Clone** - will use the VolumeClone capabilities of CSI and create a copy of the PVC
+* **None** - will not use any CSI capabilities (no VolumeSnapshot or VolumeClone) and simply copy the volume as is.
 
 .. _using rsync:
 
@@ -173,3 +223,10 @@ Connect to the mysql pod and list the databases to verify the synced database ex
    | sys                |
    +--------------------+
    5 rows in set (0.00 sec)
+
+.. _using rclone:
+
+Using Rclone
+============
+
+WIP - Place Holder for
