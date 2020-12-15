@@ -4,13 +4,17 @@
 name: operator
 on:  # yamllint disable-line rule:truthy
   push:
-    branches: [master]
+    branches: ["master", "release*"]
+    tags: ["*"]
   pull_request:
-    branches: [master]
+    branches: ["master", "release*"]
   schedule:
     - cron: "15 4 * * 1"  # 4:15 every Monday
 
 env:
+  GO_VERSION: "1.15"
+  KIND_VERSION: "0.9.0"
+  GO111MODULE: "on"
   OPERATOR_IMAGE: "quay.io/backube/scribe"
   RCLONE_IMAGE: "quay.io/backube/scribe-mover-rclone"
   RSYNC_IMAGE: "quay.io/backube/scribe-mover-rsync"
@@ -41,6 +45,11 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v2
+
+      - name: Install Go
+        uses: actions/setup-go@v1
+        with:
+          go-version: ${{ env.GO_VERSION }}
 
       - name: Test
         run: make test
@@ -119,9 +128,70 @@ jobs:
       KUBECONFIG: /tmp/kubeconfig
       KUBERNETES_VERSION: ${{ matrix.KUBERNETES_VERSIONS }}
     steps:
-      - name: To do
+      - name: Checkout source
+        uses: actions/checkout@v2
+
+      - name: Install kubectl
         run: |
-          echo "TODO: test on $KUBERNETES_VERSION"
+          curl -LO "https://storage.googleapis.com/kubernetes-release/release/v${KUBERNETES_VERSION}/bin/linux/amd64/kubectl"
+          sudo install ./kubectl /usr/local/bin/
+          kubectl version --short --client
+          kubectl version --short --client | grep -q ${KUBERNETES_VERSION}
+
+      - name: Install kind
+        run: |
+          curl -L -o kind https://github.com/kubernetes-sigs/kind/releases/download/v${KIND_VERSION}/kind-linux-amd64
+          sudo install ./kind /usr/local/bin && rm kind
+          kind version
+          kind version | grep -q ${KIND_VERSION}
+
+      - name: Create Kubernetes cluster
+        run: |
+          ./hack/setup-kind-cluster.sh "${KUBERNETES_VERSION}"
+
+      - name: Load operator container artifact
+        uses: actions/download-artifact@v1
+        with:
+          name: scribe-operator
+          path: /tmp
+
+      - name: Import container image into cluster
+        run: |
+          docker load -i /tmp/image.tar
+          docker inspect ${OPERATOR_IMAGE}
+          kind load docker-image "${OPERATOR_IMAGE}"
+
+      - name: Load rclone container artifact
+        uses: actions/download-artifact@v1
+        with:
+          name: scribe-mover-rclone-container
+          path: /tmp
+
+      - name: Import container image into cluster
+        run: |
+          docker load -i /tmp/image.tar
+          docker inspect ${RCLONE_IMAGE}
+          kind load docker-image "${RCLONE_IMAGE}"
+
+      - name: Load rsync container artifact
+        uses: actions/download-artifact@v1
+        with:
+          name: scribe-mover-rsync-container
+          path: /tmp
+
+      - name: Import container image into cluster
+        run: |
+          docker load -i /tmp/image.tar
+          docker inspect ${RSYNC_IMAGE}
+          kind load docker-image "${RSYNC_IMAGE}"
+
+      # Replace this with `helm install` once we have a chart
+      - name: Start operator
+        run: |
+          make deploy
+
+      - name: Verify operator is running
+        run: kubectl -n scribe-system wait --for condition=Available --timeout 60s deploy/scribe-controller-manager
 
   # This is a dummy job that can be used to determine success of CI:
   # - by Mergify instead of having to list a bunch of other jobs
