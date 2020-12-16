@@ -1,0 +1,9 @@
+---
+apiVersion: scribe.backube/v1alpha1
+kind: ReplicationDestination
+metadata:
+  name: test
+status:
+  latestImage:
+    apiGroup: snapshot.storage.k8s.io
+    kind: VolumeSnapshot
