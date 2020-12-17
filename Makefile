@@ -16,6 +16,7 @@ TEST_ARGS ?= -progress -randomizeAllSpecs -randomizeSuites -slowSpecThreshold 30
 
 GOLANGCI_VERSION := v1.31.0
 OPERATOR_SDK_VERSION := v1.0.1
+KUTTL_VERSION := 0.7.2
 export SHELL := /bin/bash
 
 # Image URL to use all building/pushing image targets
@@ -155,7 +156,7 @@ endif
 OPERATOR_SDK_URL := https://github.com/operator-framework/operator-sdk/releases/download/$(OPERATOR_SDK_VERSION)/operator-sdk-$(OPERATOR_SDK_VERSION)-x86_64-linux-gnu
 operator-sdk:
 ifeq (, $(shell which operator-sdk))
-	mkdir -p ${GOBINDIR}
+	mkdir -p ${GOBIN}
 	curl -fL "${OPERATOR_SDK_URL}" > "${GOBIN}/operator-sdk"
 	chmod a+x "${GOBIN}/operator-sdk"
 OPERATOR_SDK=$(GOBIN)/operator-sdk
@@ -171,3 +172,19 @@ GINKGO=$(GOBIN)/ginkgo
 else
 GINKGO=$(shell which ginkgo)
 endif
+
+.PHONY: kuttl
+KUTTL_URL := https://github.com/kudobuilder/kuttl/releases/download/v$(KUTTL_VERSION)/kubectl-kuttl_$(KUTTL_VERSION)_linux_x86_64
+kuttl:
+ifeq (, $(shell which kubectl-kuttl))
+	mkdir -p ${GOBIN}
+	curl -fL "${KUTTL_URL}" > "${GOBIN}/kubectl-kuttl"
+	chmod a+x "${GOBIN}/kubectl-kuttl"
+endif
+
+# Prior to running these tests, you should have a cluster available and Scribe
+# should be running
+.PHONY: test-e2e
+test-e2e: kuttl
+	cd test-kuttl && kubectl kuttl test
+	rm -f test-kuttl/kubeconfig

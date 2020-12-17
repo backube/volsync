@@ -1,0 +1,30 @@
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: data-source
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+kind: Pod
+apiVersion: v1
+metadata:
+  name: source
+spec:
+  containers:
+    - name: busybox
+      image: busybox
+      command: ["/bin/sh", "-c"]
+      args: ["echo 'data' > /mnt/datafile; sleep 99999"]
+      volumeMounts:
+        - name: data
+          mountPath: "/mnt"
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: data-source

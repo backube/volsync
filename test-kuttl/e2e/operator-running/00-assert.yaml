@@ -1,0 +1,8 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scribe-controller-manager
+  namespace: scribe-system
+status:
+  readyReplicas: 1

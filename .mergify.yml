@@ -3,10 +3,12 @@ pull_request_rules:
   - name: Automatic merge on approval
     conditions:
       - "#approved-reviews-by>=1"
-      - check-success=Lint-mover-rsync
-      - check-success=Build-mover-rsync
-      - check-success=Lint
-      - check-success=Build-operator
+      - "#changes-requested-reviews-by=0"
+      - label!=do-not-merge
+      - check-success=Build docs
+      - check-success=DCO
+      - check-success=Successful e2e tests
     actions:
       merge:
         method: merge
+        strict: true

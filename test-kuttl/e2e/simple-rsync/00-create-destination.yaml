@@ -1,0 +1,11 @@
+---
+apiVersion: scribe.backube/v1alpha1
+kind: ReplicationDestination
+metadata:
+  name: test
+spec:
+  rsync:
+    copyMethod: Snapshot
+    capacity: 1Gi
+    accessModes:
+      - ReadWriteOnce

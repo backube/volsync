@@ -1,0 +1,6 @@
+---
+apiVersion: kuttl.dev/v1beta1
+kind: TestSuite
+testDirs:
+  - ./e2e
+timeout: 30
