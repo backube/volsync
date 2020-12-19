@@ -234,7 +234,11 @@ func (in *ReplicationDestinationSpec) DeepCopyInto(out *ReplicationDestinationSp
 		*out = new(ReplicationDestinationRsyncSpec)
 		(*in).DeepCopyInto(*out)
 	}
-	in.Rclone.DeepCopyInto(&out.Rclone)
+	if in.Rclone != nil {
+		in, out := &in.Rclone, &out.Rclone
+		*out = new(ReplicationDestinationRcloneSpec)
+		(*in).DeepCopyInto(*out)
+	}
 	if in.External != nil {
 		in, out := &in.External, &out.External
 		*out = new(ReplicationDestinationExternalSpec)

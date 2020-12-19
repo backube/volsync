@@ -104,13 +104,19 @@ type ReplicationDestinationRsyncSpec struct {
 	SSHUser *string `json:"sshUser,omitempty"`
 }
 
+// ReplicationDestinationRcloneSpec defines the field for rclone in replicationSource.
 type ReplicationDestinationRcloneSpec struct {
 	ReplicationDestinationVolumeOptions `json:",inline"`
-	// rcloneConfig is the name of a Secret that contains a valid Rclone
-	// configuration file.
+	//RcloneConfigSection is the section in rclone_config file to use for the current job.
+	RcloneConfigSection string `json:"rcloneConfigSection,omitempty"`
+	//Direction is the direction of data movement.
+	Direction string `json:"direction,omitempty"`
+	// MountPath is the source data directory location
+	MountPath string `json:"mountPath,omitempty"`
+	// RcloneDestPath is the remote path to sync to.
+	RcloneDestPath string `json:"rcloneDestPath,omitempty"`
+	// RcloneConfig is the rclone_config file location
 	RcloneConfig string `json:"rcloneConfig,omitempty"`
-	// path is the remote path to sync from.
-	Path string `json:"path,omitempty"`
 }
 
 // ReplicationDestinationExternalSpec defines the configuration when using an
@@ -137,7 +143,7 @@ type ReplicationDestinationSpec struct {
 	Rsync *ReplicationDestinationRsyncSpec `json:"rsync,omitempty"`
 	// rclone defines the configuration when using Rclone-based replication.
 	//+optional
-	Rclone ReplicationDestinationRcloneSpec `json:"rclone,omitempty"`
+	Rclone *ReplicationDestinationRcloneSpec `json:"rclone,omitempty"`
 	// external defines the configuration when using an external replication
 	// provider.
 	//+optional

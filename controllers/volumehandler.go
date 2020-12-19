@@ -165,6 +165,7 @@ func (h *destinationVolumeHandler) createSnapshot(l logr.Logger) (bool, error) {
 	if h.Snapshot.Status == nil || h.Snapshot.Status.BoundVolumeSnapshotContentName == nil {
 		return false, nil
 	}
+
 	return true, nil
 }
 
@@ -192,7 +193,7 @@ func (h *destinationVolumeHandler) cleanupOldSnapshot(l logr.Logger) (bool, erro
 			Namespace: h.Instance.Namespace,
 		},
 	}
-	l.V(1).Info("deleting old snapshot", "snapshot", oldSnap)
+	l.V(1).Info("*************************************deleting old snapshot", "snapshot", oldSnap)
 	err := h.Client.Delete(h.Ctx, oldSnap)
 	if err != nil && !kerrors.IsNotFound(err) {
 		l.Error(err, "unable to delete old snapshot")
@@ -261,6 +262,25 @@ func (h *destinationVolumeHandler) PreserveImage(l logr.Logger) (bool, error) {
 	return false, fmt.Errorf("unsupported copyMethod: %v -- must be None or Snapshot", h.Options.CopyMethod)
 }
 
+// PreserveImage implements the methods for preserving a PiT copy of the
+// replicated data.
+func (h *destinationVolumeHandler) PreserveRclone(l logr.Logger) (bool, error) {
+	if h.Options.CopyMethod == scribev1alpha1.CopyMethodNone {
+		return reconcileBatch(l,
+			h.cleanupOldSnapshot,
+			h.recordPVC,
+		)
+	}
+	if h.Options.CopyMethod == scribev1alpha1.CopyMethodSnapshot {
+		return reconcileBatch(l,
+			h.createSnapshot,
+			h.recordNewSnapshot,
+			h.cleanupOldSnapshot,
+		)
+	}
+	return false, fmt.Errorf("unsupported copyMethod: %v -- must be None or Snapshot", h.Options.CopyMethod)
+}
+
 type sourceVolumeHandler struct {
 	ReplicationSourceReconciler
 	Ctx      context.Context
@@ -320,7 +340,7 @@ func (h *sourceVolumeHandler) EnsurePVC(l logr.Logger) (bool, error) {
 func (h *sourceVolumeHandler) pvcFromSnap(l logr.Logger) (bool, error) {
 	h.PVC = &v1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "scribe-rsync-src-" + h.Instance.Name,
+			Name:      "scribe-src-" + h.Instance.Name,
 			Namespace: h.Instance.Namespace,
 		},
 	}
@@ -370,7 +390,7 @@ func (h *sourceVolumeHandler) pvcFromSnap(l logr.Logger) (bool, error) {
 func (h *sourceVolumeHandler) snapshotSrc(l logr.Logger) (bool, error) {
 	h.srcSnap = &snapv1.VolumeSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "scribe-rsync-src-" + h.Instance.Name,
+			Name:      "scribe-src-" + h.Instance.Name,
 			Namespace: h.Instance.Namespace,
 		},
 	}
@@ -403,7 +423,7 @@ func (h *sourceVolumeHandler) snapshotSrc(l logr.Logger) (bool, error) {
 
 func (h *sourceVolumeHandler) ensureClone(l logr.Logger) (bool, error) {
 	pvcName := types.NamespacedName{
-		Name:      "scribe-rsync-src-" + h.Instance.Name,
+		Name:      "scribe-src-" + h.Instance.Name,
 		Namespace: h.Instance.Namespace,
 	}
 	logger := l.WithValues("pvc", pvcName)

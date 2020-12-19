@@ -1,0 +1,16 @@
+---
+apiVersion: scribe.backube/v1alpha1
+kind: ReplicationDestination
+metadata:
+  name: database-destination
+  namespace: dest
+spec:
+  rclone:
+    rcloneConfigSection: "aws-s3-bucket"
+    direction: "destination"
+    mountPath: "/data"
+    rcloneDestPath: "scribe-test-bucket"
+    rcloneConfig: "/rclone-config/rclone.conf"
+    copyMethod: Snapshot
+    accessModes: [ReadWriteMany]
+    capacity: 2Gi

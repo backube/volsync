@@ -4,9 +4,9 @@ kind: VolumeSnapshot
 metadata:
   name: mover-rclone-snapshot
 spec:
-  volumeSnapshotClassName: gp2-csi
+  volumeSnapshotClassName: csi-hostpath-snapclass
   source:
-    persistentVolumeClaimName: source-pvc
+    persistentVolumeClaimName: mysql-pv-claim
 
 ---
 apiVersion: v1
@@ -22,7 +22,7 @@ spec:
     name: mover-rclone-snapshot
   resources:
     requests:
-      storage: 1Gi
+      storage: 2Gi
 
 ---
 apiVersion: batch/v1
