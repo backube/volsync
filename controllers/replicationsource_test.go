@@ -317,6 +317,25 @@ var _ = Describe("ReplicationSource", func() {
 		})
 	})
 
+	Context("when the value of paused is set to true", func() {
+		parallelism := int32(0)
+		BeforeEach(func() {
+			rs.Spec.Rsync = &scribev1alpha1.ReplicationSourceRsyncSpec{
+				ReplicationSourceVolumeOptions: scribev1alpha1.ReplicationSourceVolumeOptions{
+					CopyMethod: scribev1alpha1.CopyMethodClone,
+				},
+				Paused: true,
+			}
+		})
+		It("the job will create but will not run", func() {
+			job := &batchv1.Job{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
+			}, maxWait, interval).Should(Succeed())
+			Expect(*job.Spec.Parallelism).To(Equal(parallelism))
+		})
+	})
+
 	Context("rsync: when no remote address is specified", func() {
 		BeforeEach(func() {
 			rs.Spec.Rsync = &scribev1alpha1.ReplicationSourceRsyncSpec{
