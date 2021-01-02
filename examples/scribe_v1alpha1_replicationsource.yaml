@@ -10,5 +10,5 @@ spec:
     schedule: "*/3 * * * *"
   rsync:
     sshKeys: scribe-rsync-dest-src-database-destination
-    address: 10.99.105.133
+    address: my.host.com
     copyMethod: Clone
