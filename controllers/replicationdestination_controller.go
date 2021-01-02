@@ -316,6 +316,13 @@ func (r *rsyncDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 		}
 		backoffLimit := int32(2)
 		r.job.Spec.BackoffLimit = &backoffLimit
+		if r.Instance.Spec.Rsync.Paused {
+			parallelism := int32(0)
+			r.job.Spec.Parallelism = &parallelism
+		} else {
+			parallelism := int32(1)
+			r.job.Spec.Parallelism = &parallelism
+		}
 		if len(r.job.Spec.Template.Spec.Containers) != 1 {
 			r.job.Spec.Template.Spec.Containers = []corev1.Container{{}}
 		}
