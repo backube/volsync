@@ -280,7 +280,7 @@ var _ = Describe("ReplicationSource", func() {
 				// Job, so we need to fake the binding
 				snap := &snapv1.VolumeSnapshot{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "scribe-rsync-src-" + rs.Name,
+						Name:      "scribe-src-" + rs.Name,
 						Namespace: rs.Namespace,
 					},
 				}

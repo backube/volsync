@@ -108,15 +108,15 @@ type ReplicationDestinationRsyncSpec struct {
 type ReplicationDestinationRcloneSpec struct {
 	ReplicationDestinationVolumeOptions `json:",inline"`
 	//RcloneConfigSection is the section in rclone_config file to use for the current job.
-	RcloneConfigSection string `json:"rcloneConfigSection,omitempty"`
+	RcloneConfigSection *string `json:"rcloneConfigSection,omitempty"`
 	//Direction is the direction of data movement.
-	Direction string `json:"direction,omitempty"`
+	Direction *string `json:"direction,omitempty"`
 	// MountPath is the source data directory location
-	MountPath string `json:"mountPath,omitempty"`
+	MountPath *string `json:"mountPath,omitempty"`
 	// RcloneDestPath is the remote path to sync to.
-	RcloneDestPath string `json:"rcloneDestPath,omitempty"`
+	RcloneDestPath *string `json:"rcloneDestPath,omitempty"`
 	// RcloneConfig is the rclone_config file location
-	RcloneConfig string `json:"rcloneConfig,omitempty"`
+	RcloneConfig *string `json:"rcloneConfig,omitempty"`
 }
 
 // ReplicationDestinationExternalSpec defines the configuration when using an

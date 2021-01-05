@@ -8,10 +8,7 @@ spec:
   sourcePVC: mysql-pv-claim
   trigger:
     schedule: "*/3 * * * *"
-  rclone:
-    rcloneConfigSection: "aws-s3-bucket"
-    direction: "source"
-    mountPath: "/data"
-    rcloneDestPath: "scribe-test-bucket"
-    rcloneConfig: "/rclone-config/rclone.conf"
-    copyMethod: Snapshot
+  rsync:
+    sshKeys: scribe-rsync-dest-src-database-destination
+    address: my.host.com
+    copyMethod: Clone

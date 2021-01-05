@@ -46,6 +46,7 @@ type ReplicationSourceReconciler struct {
 }
 
 //nolint:lll
+//nolint:funlen
 //+kubebuilder:rbac:groups=scribe.backube,resources=replicationsources,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=scribe.backube,resources=replicationsources/finalizers,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=scribe.backube,resources=replicationsources/status,verbs=get;update;patch
@@ -57,11 +58,9 @@ type ReplicationSourceReconciler struct {
 //+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=roles,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=snapshot.storage.k8s.io,resources=volumesnapshots,verbs=get;list;watch;create;update;patch;delete
-
 func (r *ReplicationSourceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	ctx := context.Background()
 	logger := r.Log.WithValues("replicationsource", req.NamespacedName)
-
 	inst := &scribev1alpha1.ReplicationSource{}
 	if err := r.Client.Get(ctx, req.NamespacedName, inst); err != nil {
 		if kerrors.IsNotFound(err) {
@@ -83,7 +82,6 @@ func (r *ReplicationSourceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, 
 		result, err = RunRsyncSrcReconciler(ctx, inst, r, logger)
 	} else if inst.Spec.Rclone != nil {
 		result, err = RunRcloneSrcReconciler(ctx, inst, r, logger)
-
 	} else {
 		return ctrl.Result{}, nil
 	}
@@ -112,7 +110,6 @@ func (r *ReplicationSourceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, 
 	if err == nil { // Don't mask previous error
 		err = statusErr
 	}
-
 	if !inst.Status.NextSyncTime.IsZero() {
 		// ensure we get re-reconciled no later than the next scheduled sync
 		// time
@@ -261,15 +258,15 @@ func RunRcloneSrcReconciler(ctx context.Context, instance *scribev1alpha1.Replic
 		r.ensureServiceAccount,
 		r.ensureRcloneConfig,
 		r.ensureJob,
-		// r.cleanupJob,
+		r.cleanupJob,
 		// r.CleanupPVC,
 		updateNextsync,
 	)
 	return ctrl.Result{}, err
 }
 
+//nolint:funlen
 func (r *rcloneSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
-
 	r.job = &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "scribe-rclone-src-" + r.Instance.Name,
@@ -277,7 +274,6 @@ func (r *rcloneSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 		},
 	}
 	logger := l.WithValues("job", nameFor(r.job))
-
 	op, err := ctrlutil.CreateOrUpdate(r.Ctx, r.Client, r.job, func() error {
 		if err := ctrl.SetControllerReference(r.Instance, r.job, r.Scheme); err != nil {
 			logger.Error(err, "unable to set controller reference")
@@ -294,11 +290,11 @@ func (r *rcloneSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 		}
 		r.job.Spec.Template.Spec.Containers[0].Name = "rclone"
 		r.job.Spec.Template.Spec.Containers[0].Env = []corev1.EnvVar{
-			{Name: "RCLONE_CONFIG", Value: *&r.Instance.Spec.Rclone.RcloneConfig},
-			{Name: "RCLONE_DEST_PATH", Value: *&r.Instance.Spec.Rclone.RcloneDestPath},
-			{Name: "DIRECTION", Value: *&r.Instance.Spec.Rclone.Direction},
-			{Name: "MOUNT_PATH", Value: *&r.Instance.Spec.Rclone.MountPath},
-			{Name: "RCLONE_CONFIG_SECTION", Value: *&r.Instance.Spec.Rclone.RcloneConfigSection},
+			{Name: "RCLONE_CONFIG", Value: *r.Instance.Spec.Rclone.RcloneConfig},
+			{Name: "RCLONE_DEST_PATH", Value: *r.Instance.Spec.Rclone.RcloneDestPath},
+			{Name: "DIRECTION", Value: *r.Instance.Spec.Rclone.Direction},
+			{Name: "MOUNT_PATH", Value: *r.Instance.Spec.Rclone.MountPath},
+			{Name: "RCLONE_CONFIG_SECTION", Value: *r.Instance.Spec.Rclone.RcloneConfigSection},
 		}
 		r.job.Spec.Template.Spec.Containers[0].Command = []string{"/bin/bash", "-c", "./active.sh"}
 		r.job.Spec.Template.Spec.Containers[0].Image = "quay.io/backube/scribe-mover-rclone:latest"
@@ -336,21 +332,18 @@ func (r *rcloneSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 		logger.V(1).Info("Job has PVC", "PVC", r.PVC, "DS", r.PVC.Spec.DataSource)
 		return nil
 	})
-
 	// If Job had failed, delete it so it can be recreated
 	if r.job.Status.Failed == *r.job.Spec.BackoffLimit {
 		logger.Info("deleting job -- backoff limit reached")
 		err = r.Client.Delete(r.Ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground))
 		return false, err
 	}
-
 	if err != nil {
 		logger.Error(err, "reconcile failed")
 	} else {
 		logger.V(1).Info("Job reconciled", "operation", op)
 	}
-
-	// We only continue reconciling if the rsync job has completed
+	// We only continue reconciling if the rclone job has completed
 	return r.job.Status.Succeeded == 1, nil
 }
 
@@ -615,9 +608,12 @@ func (r *rcloneSrcReconciler) cleanupJob(l logr.Logger) (bool, error) {
 		r.Instance.Status.LastSyncDuration = &metav1.Duration{Duration: d}
 	}
 	// remove job
-	if err := r.Client.Delete(r.Ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
-		logger.Error(err, "unable to delete job")
-		return false, err
+	if r.job.Status.Succeeded >= 1 {
+		if err := r.Client.Delete(r.Ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
+			logger.Error(err, "unable to delete job")
+			return false, err
+		}
+		logger.Info("Job deleted", "Job name: ", r.job.Spec.Template.Name)
 	}
 	return true, nil
 }

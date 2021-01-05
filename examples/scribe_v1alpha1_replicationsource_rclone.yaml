@@ -7,7 +7,7 @@ metadata:
 spec:
   sourcePVC: mysql-pv-claim
   trigger:
-    schedule: "*/3 * * * *"
+    schedule: "*/6 * * * *"
   rclone:
     rcloneConfigSection: "aws-s3-bucket"
     direction: "source"

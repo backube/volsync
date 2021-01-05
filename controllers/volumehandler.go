@@ -193,7 +193,6 @@ func (h *destinationVolumeHandler) cleanupOldSnapshot(l logr.Logger) (bool, erro
 			Namespace: h.Instance.Namespace,
 		},
 	}
-	l.V(1).Info("*************************************deleting old snapshot", "snapshot", oldSnap)
 	err := h.Client.Delete(h.Ctx, oldSnap)
 	if err != nil && !kerrors.IsNotFound(err) {
 		l.Error(err, "unable to delete old snapshot")
