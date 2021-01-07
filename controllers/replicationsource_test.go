@@ -320,11 +320,11 @@ var _ = Describe("ReplicationSource", func() {
 	Context("when the value of paused is set to true", func() {
 		parallelism := int32(0)
 		BeforeEach(func() {
+			rs.Spec.Paused = true
 			rs.Spec.Rsync = &scribev1alpha1.ReplicationSourceRsyncSpec{
 				ReplicationSourceVolumeOptions: scribev1alpha1.ReplicationSourceVolumeOptions{
 					CopyMethod: scribev1alpha1.CopyMethodClone,
 				},
-				Paused: true,
 			}
 		})
 		It("the job will create but will not run", func() {

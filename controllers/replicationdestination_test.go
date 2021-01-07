@@ -255,7 +255,7 @@ var _ = Describe("ReplicationDestination", func() {
 		Context("when sync should be paused", func() {
 			parallelism := int32(0)
 			BeforeEach(func() {
-				rd.Spec.Rsync.Paused = true
+				rd.Spec.Paused = true
 			})
 			It("is used to define parallelism", func() {
 				job := &batchv1.Job{}

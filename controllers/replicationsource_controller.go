@@ -355,7 +355,7 @@ func (r *rsyncSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 		}
 		backoffLimit := int32(2)
 		r.job.Spec.BackoffLimit = &backoffLimit
-		if r.Instance.Spec.Rsync.Paused {
+		if r.Instance.Spec.Paused {
 			parallelism := int32(0)
 			r.job.Spec.Parallelism = &parallelism
 		} else {

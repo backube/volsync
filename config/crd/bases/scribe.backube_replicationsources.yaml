@@ -68,6 +68,10 @@ spec:
                       provider. The name should be of the form: domain.com/provider.'
                     type: string
                 type: object
+              paused:
+                description: paused can be used to temporarily stop replication. Defaults
+                  to "false".
+                type: boolean
               rclone:
                 description: rclone defines the configuration when using Rclone-based
                   replication.
@@ -146,10 +150,6 @@ spec:
                     description: path is the remote path to rsync to. Defaults to
                       "/"
                     type: string
-                  paused:
-                    description: paused can be used to temporarily stop replication.
-                      Defaults to "false".
-                    type: boolean
                   port:
                     description: port is the SSH port to connect to for replication.
                       Defaults to 22.
