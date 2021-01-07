@@ -89,7 +89,15 @@ kind create cluster ${KIND_CONFIG} --image "kindest/node:v${KUBE_VERSION}"
 rm -f "${KIND_CONFIG_FILE}"
 
 # Kube >= 1.17, we need to deploy the snapshot controller
-if [[ $KUBE_MINOR -ge 17 ]]; then
+if [[ $KUBE_MINOR -ge 20 ]]; then
+  TAG="v4.0.0"  # https://github.com/kubernetes-csi/external-snapshotter/releases
+  kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/${TAG}/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml"
+  kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/${TAG}/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml"
+  kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/${TAG}/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml"
+
+  kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/${TAG}/deploy/kubernetes/snapshot-controller/rbac-snapshot-controller.yaml"
+  kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/${TAG}/deploy/kubernetes/snapshot-controller/setup-snapshot-controller.yaml"
+elif [[ $KUBE_MINOR -ge 17 ]]; then
   TAG="v3.0.3"  # https://github.com/kubernetes-csi/external-snapshotter/releases
   kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/${TAG}/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml"
   kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/${TAG}/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml"
