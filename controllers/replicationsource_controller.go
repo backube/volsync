@@ -386,7 +386,7 @@ func (r *rsyncSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 			RunAsUser: &runAsUser,
 		}
 		r.job.Spec.Template.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
-			{Name: dataVolumeName, MountPath: "/data", ReadOnly: true},
+			{Name: dataVolumeName, MountPath: "/data"},
 			{Name: "keys", MountPath: "/keys"},
 		}
 		r.job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
@@ -396,7 +396,6 @@ func (r *rsyncSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
 				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 					ClaimName: r.PVC.Name,
-					ReadOnly:  true,
 				}},
 			},
 			{Name: "keys", VolumeSource: corev1.VolumeSource{
