@@ -2,5 +2,5 @@
 apiVersion: kuttl.dev/v1beta1
 kind: TestStep
 commands:
-  - timeout: 1200
+  - timeout: 60
     command: ./10-waitfor-generated-keys.sh
