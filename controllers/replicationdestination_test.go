@@ -252,6 +252,19 @@ var _ = Describe("ReplicationDestination", func() {
 				Expect(*pvc.Spec.StorageClassName).To(Equal(scName))
 			})
 		})
+		Context("when sync should be paused", func() {
+			parallelism := int32(0)
+			BeforeEach(func() {
+				rd.Spec.Paused = true
+			})
+			It("is used to define parallelism", func() {
+				job := &batchv1.Job{}
+				Eventually(func() error {
+					return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, job)
+				}, maxWait, interval).Should(Succeed())
+				Expect(*job.Spec.Parallelism).To(Equal(parallelism))
+			})
+		})
 
 		It("Generates ssh keys automatically", func() {
 			secret := &v1.Secret{}

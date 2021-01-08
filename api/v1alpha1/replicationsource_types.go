@@ -138,6 +138,9 @@ type ReplicationSourceSpec struct {
 	// provider.
 	//+optional
 	External *ReplicationSourceExternalSpec `json:"external,omitempty"`
+	// paused can be used to temporarily stop replication. Defaults to "false".
+	//+optional
+	Paused bool `json:"paused,omitempty"`
 }
 
 type ReplicationSourceRsyncStatus struct {

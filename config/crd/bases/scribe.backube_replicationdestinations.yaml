@@ -66,6 +66,10 @@ spec:
                       provider. The name should be of the form: domain.com/provider.'
                     type: string
                 type: object
+              paused:
+                description: paused can be used to temporarily stop replication. Defaults
+                  to "false".
+                type: boolean
               rclone:
                 description: rclone defines the configuration when using Rclone-based
                   replication.
