@@ -1,0 +1,85 @@
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: source-data
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rsync-source
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: rsync-source
+rules:
+  - apiGroups:
+      - security.openshift.io
+    resourceNames:
+      - anyuid
+    resources:
+      - securitycontextconstraints
+    verbs:
+      - use
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: rsync-source
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: rsync-source
+subjects:
+  - kind: ServiceAccount
+    name: rsync-source
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: scribe-rsync-source
+spec:
+  template:
+    metadata:
+      name: scribe-rsync-source
+      labels:
+        app.kubernetes.io/name: rsync-source
+        app.kubernetes.io/component: mover
+        app.kubernetes.io/part-of: scribe
+    spec:
+      containers:
+        - name: rsync
+          command: ["/bin/bash", "-c", "/source.sh"]
+          env:
+            - name: DESTINATION_ADDRESS
+              value: scribe-rsync-destination.scribe.svc.cluster.local
+          image: quay.io/backube/scribe-mover-rsync:latest
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: keys
+              mountPath: /keys
+      restartPolicy: Never
+      serviceAccount: rsync-source
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: source-data
+            readOnly: true
+        - name: keys
+          secret:
+            secretName: source-secret
+            defaultMode: 0600

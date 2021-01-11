@@ -1,0 +1,136 @@
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: destination-data
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: scribe-rsync
+allowHostDirVolumePlugin: false
+allowHostIPC: false
+allowHostNetwork: false
+allowHostPID: false
+allowHostPorts: false
+allowPrivilegeEscalation: true
+allowPrivilegedContainer: false
+allowedCapabilities:
+- AUDIT_WRITE
+- SYS_CHROOT
+fsGroup:
+  type: RunAsAny
+priority: 10
+readOnlyRootFilesystem: false
+requiredDropCapabilities: [MKNOD]
+runAsUser:
+  type: RunAsAny
+seLinuxContext:
+  type: MustRunAs
+supplementalGroups:
+  type: RunAsAny
+volumes:
+- configMap
+- downwardAPI
+- emptyDir
+- persistentVolumeClaim
+- projected
+- secret
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rsync-destination
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: rsync-destination
+rules:
+- apiGroups:
+  - security.openshift.io
+  resourceNames:
+  - scribe-rsync
+  resources:
+  - securitycontextconstraints
+  verbs:
+  - use
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: rsync-destination
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: rsync-destination
+subjects:
+- kind: ServiceAccount
+  name: rsync-destination
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: scribe-rsync-destination
+spec:
+  template:
+    metadata:
+      name: scribe-rsync-destination
+      labels:
+        app.kubernetes.io/name: rsync-destination
+        app.kubernetes.io/component: mover
+        app.kubernetes.io/part-of: scribe
+    spec:
+      containers:
+      - name: rsync
+        command: ["/bin/bash", "-c", "/destination.sh"]
+        image: quay.io/backube/scribe-mover-rsync:latest
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          capabilities:
+            add:
+            - "AUDIT_WRITE"
+            - "SYS_CHROOT"
+          runAsUser: 0
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: keys
+          mountPath: /keys
+      restartPolicy: Never
+      serviceAccount: rsync-destination
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: destination-data
+      - name: keys
+        secret:
+          secretName: destination-secret
+          defaultMode: 0600
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scribe-rsync-destination
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+spec:
+  selector:
+    app.kubernetes.io/name: rsync-destination
+    app.kubernetes.io/component: mover
+    app.kubernetes.io/part-of: scribe
+  ports:
+  - protocol: TCP
+    port: 22
+  type: LoadBalancer
