@@ -200,6 +200,7 @@ func (h *destinationVolumeHandler) cleanupOldSnapshot(l logr.Logger) (bool, erro
 	}
 	// Don't need to force the status update
 	h.Instance.Status.LatestImage = nil
+	l.Info("Old snapshot deleted.", "snapshotname", oldSnap)
 	return true, nil
 }
 
@@ -275,6 +276,7 @@ func (h *destinationVolumeHandler) PreserveRclone(l logr.Logger) (bool, error) {
 			h.createSnapshot,
 			h.recordNewSnapshot,
 			h.cleanupOldSnapshot,
+			h.removeSnapshotAnnotation,
 		)
 	}
 	return false, fmt.Errorf("unsupported copyMethod: %v -- must be None or Snapshot", h.Options.CopyMethod)

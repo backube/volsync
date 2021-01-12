@@ -4,7 +4,6 @@ kind: VolumeSnapshot
 metadata:
   name: mover-rclone-snapshot
 spec:
-  volumeSnapshotClassName: csi-hostpath-snapclass
   source:
     persistentVolumeClaimName: mysql-pv-claim
 

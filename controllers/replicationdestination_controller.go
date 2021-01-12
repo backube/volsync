@@ -126,7 +126,9 @@ func (r *ReplicationDestinationReconciler) Reconcile(req ctrl.Request) (ctrl.Res
 	if err == nil { // Don't mask previous error
 		err = statusErr
 	}
+
 	return result, err
+
 }
 
 func (r *ReplicationDestinationReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -567,11 +569,13 @@ func (r *rcloneDestReconciler) cleanupJob(l logr.Logger) (bool, error) {
 	}
 	// remove job
 	if r.job.Status.Succeeded >= 1 {
+		logger.Info("Job succeded", "Job", r.job.Spec)
+
 		if err := r.Client.Delete(r.Ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
 			logger.Error(err, "unable to delete job")
 			return false, err
 		}
-		logger.Info("Job deleted", "Job name: ", r.job.Spec.Template)
+		logger.Info("Job deleted", "Job", r.job.Spec)
 	}
 	return true, nil
 }
