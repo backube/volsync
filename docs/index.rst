@@ -1,6 +1,6 @@
-====================
-Scribe Documentation
-====================
+========
+Overview
+========
 
 *Asynchronous volume replication for Kubernetes CSI storage*
 
@@ -14,11 +14,9 @@ This project is hosted at GitHub. See https://github.com/backube/scribe
 
    self
    design/index
-   getting_started/index
-   openshift/index
+   installation/index
+   rsync/index
+   rclone/index
 
-
-Overview
-========
 
 This project is in the very early stages. The best place to start is to read the `design documents <design/index.html>`_.

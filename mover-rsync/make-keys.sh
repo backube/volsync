@@ -10,9 +10,9 @@ DESTINATION=destination-key
 
 function gen-key {
     OUTFILE="$1"
-    
+
     rm -f "$OUTFILE" "$OUTFILE.pub"
-    ssh-keygen -q -t rsa -b 4096 -f "$OUTFILE" -C '' -N '' 
+    ssh-keygen -q -t rsa -b 4096 -f "$OUTFILE" -C '' -N ''
 }
 
 gen-key "$SOURCE"
