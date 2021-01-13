@@ -83,8 +83,7 @@ func (r *ReplicationSourceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, 
 	var err error
 	if inst.Spec.Rsync != nil {
 		result, err = RunRsyncSrcReconciler(ctx, inst, r, logger)
-	}
-	if inst.Spec.Rclone != nil {
+	} else if inst.Spec.Rclone != nil {
 		result, err = RunRcloneSrcReconciler(ctx, inst, r, logger)
 	} else {
 		return ctrl.Result{}, nil
