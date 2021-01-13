@@ -19,6 +19,7 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -126,9 +127,7 @@ func (r *ReplicationDestinationReconciler) Reconcile(req ctrl.Request) (ctrl.Res
 	if err == nil { // Don't mask previous error
 		err = statusErr
 	}
-
 	return result, err
-
 }
 
 func (r *ReplicationDestinationReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -480,24 +479,29 @@ func (r *rcloneDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 		if len(r.job.Spec.Template.Spec.Containers) != 1 {
 			r.job.Spec.Template.Spec.Containers = []corev1.Container{{}}
 		}
-		r.job.Spec.Template.Spec.Containers[0].Name = "rclone"
-		r.job.Spec.Template.Spec.Containers[0].Env = []corev1.EnvVar{
-			{Name: "RCLONE_CONFIG", Value: *r.Instance.Spec.Rclone.RcloneConfig},
-			{Name: "RCLONE_DEST_PATH", Value: *r.Instance.Spec.Rclone.RcloneDestPath},
-			{Name: "DIRECTION", Value: *r.Instance.Spec.Rclone.Direction},
-			{Name: "MOUNT_PATH", Value: *r.Instance.Spec.Rclone.MountPath},
-			{Name: "RCLONE_CONFIG_SECTION", Value: *r.Instance.Spec.Rclone.RcloneConfigSection},
+		isValidRcloneSpec, err := r.validateRcloneSpec(logger)
+		if isValidRcloneSpec {
+			r.job.Spec.Template.Spec.Containers[0].Name = "rclone"
+			r.job.Spec.Template.Spec.Containers[0].Env = []corev1.EnvVar{
+				{Name: "RCLONE_CONFIG", Value: *r.Instance.Spec.Rclone.RcloneConfig},
+				{Name: "RCLONE_DEST_PATH", Value: *r.Instance.Spec.Rclone.RcloneDestPath},
+				{Name: "DIRECTION", Value: *r.Instance.Spec.Rclone.Direction},
+				{Name: "MOUNT_PATH", Value: *r.Instance.Spec.Rclone.MountPath},
+				{Name: "RCLONE_CONFIG_SECTION", Value: *r.Instance.Spec.Rclone.RcloneConfigSection},
+			}
+		} else {
+			logger.Error(err, "Invalid Rclone spec")
 		}
 		r.job.Spec.Template.Spec.Containers[0].Command = []string{"/bin/bash", "-c", "./active.sh"}
-		r.job.Spec.Template.Spec.Containers[0].Image = "quay.io/backube/scribe-mover-rclone:latest"
+		r.job.Spec.Template.Spec.Containers[0].Image = RcloneContainerImage
 		runAsUser := int64(0)
 		r.job.Spec.Template.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{
-			Capabilities: &corev1.Capabilities{
-				Add: []corev1.Capability{
-					"AUDIT_WRITE",
-					"SYS_CHROOT",
-				},
-			},
+			// Capabilities: &corev1.Capabilities{
+			// 	Add: []corev1.Capability{
+			// 		"AUDIT_WRITE",
+			// 		"SYS_CHROOT",
+			// 	},
+			// },
 			RunAsUser: &runAsUser,
 		}
 		r.job.Spec.Template.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
@@ -569,13 +573,35 @@ func (r *rcloneDestReconciler) cleanupJob(l logr.Logger) (bool, error) {
 	}
 	// remove job
 	if r.job.Status.Succeeded >= 1 {
-		logger.Info("Job succeded", "Job", r.job.Spec)
+		logger.Info("Job succeeded", "Job", r.job.Spec)
 
 		if err := r.Client.Delete(r.Ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
 			logger.Error(err, "unable to delete job")
 			return false, err
 		}
 		logger.Info("Job deleted", "Job", r.job.Spec)
+	}
+	return true, nil
+}
+
+func (r *rcloneDestReconciler) validateRcloneSpec(l logr.Logger) (bool, error) {
+	logger := l.WithValues("job", nameFor(r.job))
+	if len(*r.Instance.Spec.Rclone.RcloneConfig) == 0 {
+		err := errors.New("Unable to get Rclone config secret name")
+		logger.V(1).Info("Unable to get Rclone config secret name")
+		return false, err
+	}
+	if len(*r.Instance.Spec.Rclone.RcloneConfigSection) == 0 {
+		err := errors.New("Unable to get Rclone config section name")
+		logger.V(1).Info("Unable to get Rclone config section name")
+
+		return false, err
+	}
+	if len(*r.Instance.Spec.Rclone.RcloneDestPath) == 0 {
+		err := errors.New("Unable to get Rclone destination name")
+		logger.V(1).Info("Unable to get Rclone destination name")
+
+		return false, err
 	}
 	return true, nil
 }
