@@ -204,15 +204,9 @@ func RunRcloneDestReconciler(ctx context.Context, instance *scribev1alpha1.Repli
 			Options:                          &instance.Spec.Rclone.ReplicationDestinationVolumeOptions,
 		},
 	}
-
 	l := logger.WithValues("method", "Rclone")
-
-	// Make sure there's a place to write status info
-	if r.Instance.Status.Rsync == nil {
-		r.Instance.Status.Rsync = &scribev1alpha1.ReplicationDestinationRsyncStatus{}
-	}
-
 	_, err := reconcileBatch(l,
+		r.validateRcloneSpec,
 		r.EnsurePVC,
 		r.ensureRcloneConfig,
 		r.ensureServiceAccount,
@@ -479,29 +473,19 @@ func (r *rcloneDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 		if len(r.job.Spec.Template.Spec.Containers) != 1 {
 			r.job.Spec.Template.Spec.Containers = []corev1.Container{{}}
 		}
-		isValidRcloneSpec, err := r.validateRcloneSpec(logger)
-		if isValidRcloneSpec {
-			r.job.Spec.Template.Spec.Containers[0].Name = "rclone"
-			r.job.Spec.Template.Spec.Containers[0].Env = []corev1.EnvVar{
-				{Name: "RCLONE_CONFIG", Value: *r.Instance.Spec.Rclone.RcloneConfig},
-				{Name: "RCLONE_DEST_PATH", Value: *r.Instance.Spec.Rclone.RcloneDestPath},
-				{Name: "DIRECTION", Value: *r.Instance.Spec.Rclone.Direction},
-				{Name: "MOUNT_PATH", Value: *r.Instance.Spec.Rclone.MountPath},
-				{Name: "RCLONE_CONFIG_SECTION", Value: *r.Instance.Spec.Rclone.RcloneConfigSection},
-			}
-		} else {
-			logger.Error(err, "Invalid Rclone spec")
+
+		r.job.Spec.Template.Spec.Containers[0].Name = "rclone"
+		r.job.Spec.Template.Spec.Containers[0].Env = []corev1.EnvVar{
+			{Name: "RCLONE_CONFIG", Value: *r.Instance.Spec.Rclone.RcloneConfig},
+			{Name: "RCLONE_DEST_PATH", Value: *r.Instance.Spec.Rclone.RcloneDestPath},
+			{Name: "DIRECTION", Value: *r.Instance.Spec.Rclone.Direction},
+			{Name: "MOUNT_PATH", Value: *r.Instance.Spec.Rclone.MountPath},
+			{Name: "RCLONE_CONFIG_SECTION", Value: *r.Instance.Spec.Rclone.RcloneConfigSection},
 		}
 		r.job.Spec.Template.Spec.Containers[0].Command = []string{"/bin/bash", "-c", "./active.sh"}
 		r.job.Spec.Template.Spec.Containers[0].Image = RcloneContainerImage
 		runAsUser := int64(0)
 		r.job.Spec.Template.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{
-			// Capabilities: &corev1.Capabilities{
-			// 	Add: []corev1.Capability{
-			// 		"AUDIT_WRITE",
-			// 		"SYS_CHROOT",
-			// 	},
-			// },
 			RunAsUser: &runAsUser,
 		}
 		r.job.Spec.Template.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
