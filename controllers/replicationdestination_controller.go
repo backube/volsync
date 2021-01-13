@@ -97,7 +97,8 @@ func (r *ReplicationDestinationReconciler) Reconcile(req ctrl.Request) (ctrl.Res
 	// Only reconcile if the replication method is internal
 	if inst.Spec.Rsync != nil {
 		result, err = RunRsyncDestReconciler(ctx, inst, r, logger)
-	} else if inst.Spec.Rclone != nil {
+	}
+	if inst.Spec.Rclone != nil {
 		result, err = RunRcloneDestReconciler(ctx, inst, r, logger)
 	} else {
 		// Not an internal method... we're done.
