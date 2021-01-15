@@ -2,10 +2,6 @@
 Overview
 ========
 
-*Asynchronous volume replication for Kubernetes CSI storage*
-
-This project is hosted at GitHub. See https://github.com/backube/scribe
-
 .. toctree::
    :caption: Contents
    :hidden:
@@ -13,10 +9,20 @@ This project is hosted at GitHub. See https://github.com/backube/scribe
    :includehidden:
 
    self
-   design/index
    installation/index
-   rsync/index
-   rclone/index
+   usage/index
+   design/index
 
+*Asynchronous volume replication for Kubernetes CSI storage*
 
-This project is in the very early stages. The best place to start is to read the `design documents <design/index.html>`_.
+Scribe is a Kubernetes operator that performs asynchronous replication of
+persistent volumes within, or across, clusters. The replication provided by
+Scribe is independent of the storage system. This allows replication to and from
+storage types that don't normally support remote replication. Additionally, it
+can replicate across different types (and vendors) of storage.
+
+The project is still in the early stages, but feel free to give it a try.
+
+To get started, see the :doc:`installation instructions <installation/index>`.
+
+Check us out on GitHub ➡️ https://github.com/backube/scribe
