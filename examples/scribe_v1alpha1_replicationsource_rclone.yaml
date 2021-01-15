@@ -1,0 +1,17 @@
+---
+apiVersion: scribe.backube/v1alpha1
+kind: ReplicationSource
+metadata:
+  name: database-source
+  namespace: source
+spec:
+  sourcePVC: mysql-pv-claim
+  trigger:
+    schedule: "*/6 * * * *"
+  rclone:
+    rcloneConfigSection: "aws-s3-bucket"
+    direction: "source"
+    mountPath: "/data"
+    rcloneDestPath: "scribe-test-bucket"
+    rcloneConfig: "/rclone-config/rclone.conf"
+    copyMethod: Snapshot

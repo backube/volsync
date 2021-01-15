@@ -19,6 +19,7 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -46,6 +47,7 @@ type ReplicationSourceReconciler struct {
 }
 
 //nolint:lll
+//nolint:funlen
 //+kubebuilder:rbac:groups=scribe.backube,resources=replicationsources,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=scribe.backube,resources=replicationsources/finalizers,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=scribe.backube,resources=replicationsources/status,verbs=get;update;patch
@@ -62,7 +64,6 @@ type ReplicationSourceReconciler struct {
 func (r *ReplicationSourceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	ctx := context.Background()
 	logger := r.Log.WithValues("replicationsource", req.NamespacedName)
-
 	inst := &scribev1alpha1.ReplicationSource{}
 	if err := r.Client.Get(ctx, req.NamespacedName, inst); err != nil {
 		if kerrors.IsNotFound(err) {
@@ -82,6 +83,8 @@ func (r *ReplicationSourceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, 
 	var err error
 	if inst.Spec.Rsync != nil {
 		result, err = RunRsyncSrcReconciler(ctx, inst, r, logger)
+	} else if inst.Spec.Rclone != nil {
+		result, err = RunRcloneSrcReconciler(ctx, inst, r, logger)
 	} else {
 		return ctrl.Result{}, nil
 	}
@@ -110,7 +113,6 @@ func (r *ReplicationSourceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, 
 	if err == nil { // Don't mask previous error
 		err = statusErr
 	}
-
 	if !inst.Status.NextSyncTime.IsZero() {
 		// ensure we get re-reconciled no later than the next scheduled sync
 		// time
@@ -183,6 +185,13 @@ type rsyncSrcReconciler struct {
 	job            *batchv1.Job
 }
 
+type rcloneSrcReconciler struct {
+	sourceVolumeHandler
+	rcloneConfigSecret *corev1.Secret
+	serviceAccount     *corev1.ServiceAccount
+	job                *batchv1.Job
+}
+
 func RunRsyncSrcReconciler(ctx context.Context, instance *scribev1alpha1.ReplicationSource,
 	sr *ReplicationSourceReconciler, logger logr.Logger) (ctrl.Result, error) {
 	r := rsyncSrcReconciler{
@@ -222,6 +231,117 @@ func RunRsyncSrcReconciler(ctx context.Context, instance *scribev1alpha1.Replica
 		updateNextsync,
 	)
 	return ctrl.Result{}, err
+}
+
+// RunRcloneSrcReconciler is invoked when ReplicationSource.Spec.Rclone != nil
+func RunRcloneSrcReconciler(ctx context.Context, instance *scribev1alpha1.ReplicationSource,
+	sr *ReplicationSourceReconciler, logger logr.Logger) (ctrl.Result, error) {
+	r := rcloneSrcReconciler{
+		sourceVolumeHandler: sourceVolumeHandler{
+			Ctx:                         ctx,
+			Instance:                    instance,
+			ReplicationSourceReconciler: *sr,
+			Options:                     &instance.Spec.Rclone.ReplicationSourceVolumeOptions,
+		},
+	}
+
+	l := logger.WithValues("method", "Rclone")
+
+	// wrap the scheduling functions as reconcileFuncs
+	awaitNextSync := func(l logr.Logger) (bool, error) {
+		return awaitNextSyncSource(r.Instance, l)
+	}
+	updateNextsync := func(l logr.Logger) (bool, error) {
+		return updateNextSyncSource(r.Instance, l)
+	}
+
+	_, err := reconcileBatch(l,
+		awaitNextSync,
+		r.validateRcloneSpec,
+		r.EnsurePVC,
+		r.ensureServiceAccount,
+		r.ensureRcloneConfig,
+		r.ensureJob,
+		r.cleanupJob,
+		r.CleanupPVC,
+		updateNextsync,
+	)
+	return ctrl.Result{}, err
+}
+
+//nolint:funlen
+func (r *rcloneSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
+	r.job = &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "scribe-rclone-src-" + r.Instance.Name,
+			Namespace: r.Instance.Namespace,
+		},
+	}
+	logger := l.WithValues("job", nameFor(r.job))
+	op, err := ctrlutil.CreateOrUpdate(r.Ctx, r.Client, r.job, func() error {
+		if err := ctrl.SetControllerReference(r.Instance, r.job, r.Scheme); err != nil {
+			logger.Error(err, "unable to set controller reference")
+			return err
+		}
+		r.job.Spec.Template.ObjectMeta.Name = r.job.Name
+		if r.job.Spec.Template.ObjectMeta.Labels == nil {
+			r.job.Spec.Template.ObjectMeta.Labels = map[string]string{}
+		}
+		backoffLimit := int32(2)
+		r.job.Spec.BackoffLimit = &backoffLimit
+		if len(r.job.Spec.Template.Spec.Containers) != 1 {
+			r.job.Spec.Template.Spec.Containers = []corev1.Container{{}}
+		}
+		r.job.Spec.Template.Spec.Containers[0].Name = "rclone"
+		r.job.Spec.Template.Spec.Containers[0].Env = []corev1.EnvVar{
+			{Name: "RCLONE_CONFIG", Value: *r.Instance.Spec.Rclone.RcloneConfig},
+			{Name: "RCLONE_DEST_PATH", Value: *r.Instance.Spec.Rclone.RcloneDestPath},
+			{Name: "DIRECTION", Value: *r.Instance.Spec.Rclone.Direction},
+			{Name: "MOUNT_PATH", Value: *r.Instance.Spec.Rclone.MountPath},
+			{Name: "RCLONE_CONFIG_SECTION", Value: *r.Instance.Spec.Rclone.RcloneConfigSection},
+		}
+		r.job.Spec.Template.Spec.Containers[0].Command = []string{"/bin/bash", "-c", "./active.sh"}
+		r.job.Spec.Template.Spec.Containers[0].Image = RcloneContainerImage
+		runAsUser := int64(0)
+		r.job.Spec.Template.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{
+			RunAsUser: &runAsUser,
+		}
+		r.job.Spec.Template.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
+			{Name: dataVolumeName, MountPath: "/data"},
+			{Name: "rclone-secret", MountPath: "/rclone-config/"},
+		}
+		r.job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
+		r.job.Spec.Template.Spec.ServiceAccountName = r.serviceAccount.Name
+		secretMode := int32(0600)
+		r.job.Spec.Template.Spec.Volumes = []corev1.Volume{
+			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: r.PVC.Name,
+				}},
+			},
+			{Name: "rclone-secret", VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName:  r.rcloneConfigSecret.Name,
+					DefaultMode: &secretMode,
+				}},
+			},
+		}
+		logger.V(1).Info("Job has PVC", "PVC", r.PVC, "DS", r.PVC.Spec.DataSource)
+		return nil
+	})
+	// If Job had failed, delete it so it can be recreated
+	if r.job.Status.Failed == *r.job.Spec.BackoffLimit {
+		logger.Info("deleting job -- backoff limit reached")
+		err = r.Client.Delete(r.Ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground))
+		return false, err
+	}
+	if err != nil {
+		logger.Error(err, "reconcile failed")
+	} else {
+		logger.V(1).Info("Job reconciled", "operation", op)
+	}
+	// We only continue reconciling if the rclone job has completed
+	return r.job.Status.Succeeded == 1, nil
 }
 
 func (r *rsyncSrcReconciler) serviceSelector() map[string]string {
@@ -314,10 +434,44 @@ func (r *rsyncSrcReconciler) ensureKeys(l logr.Logger) (bool, error) {
 	return cont, err
 }
 
+func (r *rcloneSrcReconciler) ensureRcloneConfig(l logr.Logger) (bool, error) {
+	// If user provided keys, use those
+
+	r.rcloneConfigSecret = &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "rclone-secret",
+			Namespace: r.Instance.Namespace,
+		},
+	}
+	fields := []string{"rclone.conf"}
+	if err := getAndValidateSecret(r.Ctx, r.Client, l, r.rcloneConfigSecret, fields); err != nil {
+		l.Error(err, "Rclone config secret does not contain the proper fields")
+		return false, err
+	}
+	return true, nil
+}
+
 func (r *rsyncSrcReconciler) ensureServiceAccount(l logr.Logger) (bool, error) {
 	r.serviceAccount = &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "scribe-rsync-src-" + r.Instance.Name,
+			Namespace: r.Instance.Namespace,
+		},
+	}
+	saDesc := rsyncSADescription{
+		Context: r.Ctx,
+		Client:  r.Client,
+		Scheme:  r.Scheme,
+		SA:      r.serviceAccount,
+		Owner:   r.Instance,
+	}
+	return saDesc.Reconcile(l)
+}
+
+func (r *rcloneSrcReconciler) ensureServiceAccount(l logr.Logger) (bool, error) {
+	r.serviceAccount = &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "scribe-src-" + r.Instance.Name,
 			Namespace: r.Instance.Namespace,
 		},
 	}
@@ -437,6 +591,46 @@ func (r *rsyncSrcReconciler) cleanupJob(l logr.Logger) (bool, error) {
 	// remove job
 	if err := r.Client.Delete(r.Ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
 		logger.Error(err, "unable to delete job")
+		return false, err
+	}
+	return true, nil
+}
+
+func (r *rcloneSrcReconciler) cleanupJob(l logr.Logger) (bool, error) {
+	logger := l.WithValues("job", r.job)
+	// update time/duration
+	r.Instance.Status.LastSyncTime = &metav1.Time{Time: time.Now()}
+	if r.job.Status.StartTime != nil {
+		d := r.Instance.Status.LastSyncTime.Sub(r.job.Status.StartTime.Time)
+		r.Instance.Status.LastSyncDuration = &metav1.Duration{Duration: d}
+	}
+	// remove job
+	if r.job.Status.Succeeded >= 1 {
+		if err := r.Client.Delete(r.Ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
+			logger.Error(err, "unable to delete job")
+			return false, err
+		}
+		logger.Info("Job deleted ****** ", "Job name: ", r.job.Spec.Template.ObjectMeta.Name)
+	}
+	return true, nil
+}
+
+func (r *rcloneSrcReconciler) validateRcloneSpec(l logr.Logger) (bool, error) {
+	if len(*r.Instance.Spec.Rclone.RcloneConfig) == 0 {
+		err := errors.New("Unable to get Rclone config secret name")
+		l.V(1).Info("Unable to get Rclone config secret name")
+		return false, err
+	}
+	if len(*r.Instance.Spec.Rclone.RcloneConfigSection) == 0 {
+		err := errors.New("Unable to get Rclone config section name")
+		l.V(1).Info("Unable to get Rclone config section name")
+
+		return false, err
+	}
+	if len(*r.Instance.Spec.Rclone.RcloneDestPath) == 0 {
+		err := errors.New("Unable to get Rclone destination name")
+		l.V(1).Info("Unable to get Rclone destination name")
+
 		return false, err
 	}
 	return true, nil
