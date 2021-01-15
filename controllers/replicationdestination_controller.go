@@ -211,7 +211,7 @@ func RunRcloneDestReconciler(ctx context.Context, instance *scribev1alpha1.Repli
 		r.ensureRcloneConfig,
 		r.ensureServiceAccount,
 		r.ensureJob,
-		r.PreserveRclone,
+		r.PreserveImage,
 		r.cleanupJob,
 	)
 	return ctrl.Result{}, err
