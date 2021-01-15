@@ -569,23 +569,23 @@ func (r *rcloneDestReconciler) cleanupJob(l logr.Logger) (bool, error) {
 }
 
 func (r *rcloneDestReconciler) validateRcloneSpec(l logr.Logger) (bool, error) {
-	logger := l.WithValues("job", nameFor(r.job))
 	if len(*r.Instance.Spec.Rclone.RcloneConfig) == 0 {
 		err := errors.New("Unable to get Rclone config secret name")
-		logger.V(1).Info("Unable to get Rclone config secret name")
+		l.V(1).Info("Unable to get Rclone config secret name")
 		return false, err
 	}
 	if len(*r.Instance.Spec.Rclone.RcloneConfigSection) == 0 {
 		err := errors.New("Unable to get Rclone config section name")
-		logger.V(1).Info("Unable to get Rclone config section name")
+		l.V(1).Info("Unable to get Rclone config section name")
 
 		return false, err
 	}
 	if len(*r.Instance.Spec.Rclone.RcloneDestPath) == 0 {
 		err := errors.New("Unable to get Rclone destination name")
-		logger.V(1).Info("Unable to get Rclone destination name")
+		l.V(1).Info("Unable to get Rclone destination name")
 
 		return false, err
 	}
+	l.V(1).Info("Rclone config validation complete.")
 	return true, nil
 }

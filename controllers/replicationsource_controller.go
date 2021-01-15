@@ -263,6 +263,7 @@ func RunRcloneSrcReconciler(ctx context.Context, instance *scribev1alpha1.Replic
 		r.ensureRcloneConfig,
 		r.ensureJob,
 		r.cleanupJob,
+		r.CleanupPVC,
 		updateNextsync,
 	)
 	return ctrl.Result{}, err
@@ -609,27 +610,26 @@ func (r *rcloneSrcReconciler) cleanupJob(l logr.Logger) (bool, error) {
 			logger.Error(err, "unable to delete job")
 			return false, err
 		}
-		logger.Info("Job deleted", "Job name: ", r.job.Spec.Template.Name)
+		logger.Info("Job deleted ****** ", "Job name: ", r.job.Spec.Template.ObjectMeta.Name)
 	}
 	return true, nil
 }
 
 func (r *rcloneSrcReconciler) validateRcloneSpec(l logr.Logger) (bool, error) {
-	logger := l.WithValues("job", nameFor(r.job))
 	if len(*r.Instance.Spec.Rclone.RcloneConfig) == 0 {
 		err := errors.New("Unable to get Rclone config secret name")
-		logger.V(1).Info("Unable to get Rclone config secret name")
+		l.V(1).Info("Unable to get Rclone config secret name")
 		return false, err
 	}
 	if len(*r.Instance.Spec.Rclone.RcloneConfigSection) == 0 {
 		err := errors.New("Unable to get Rclone config section name")
-		logger.V(1).Info("Unable to get Rclone config section name")
+		l.V(1).Info("Unable to get Rclone config section name")
 
 		return false, err
 	}
 	if len(*r.Instance.Spec.Rclone.RcloneDestPath) == 0 {
 		err := errors.New("Unable to get Rclone destination name")
-		logger.V(1).Info("Unable to get Rclone destination name")
+		l.V(1).Info("Unable to get Rclone destination name")
 
 		return false, err
 	}
