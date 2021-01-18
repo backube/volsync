@@ -118,7 +118,7 @@ type ReplicationSourceRcloneSpec struct {
 	RcloneConfigSection *string `json:"rcloneConfigSection,omitempty"`
 	// RcloneDestPath is the remote path to sync to.
 	RcloneDestPath *string `json:"rcloneDestPath,omitempty"`
-	// RcloneConfig is  the rclone secret name
+	// RcloneConfig is the rclone secret name
 	RcloneConfig *string `json:"rcloneConfig,omitempty"`
 }
 

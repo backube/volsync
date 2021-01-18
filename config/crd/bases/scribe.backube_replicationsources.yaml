@@ -100,7 +100,7 @@ spec:
                     - Snapshot
                     type: string
                   rcloneConfig:
-                    description: RcloneConfig is  the rclone secret name
+                    description: RcloneConfig is the rclone secret name
                     type: string
                   rcloneConfigSection:
                     description: RcloneConfigSection is the section in rclone_config
