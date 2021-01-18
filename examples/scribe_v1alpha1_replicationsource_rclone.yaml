@@ -7,11 +7,9 @@ metadata:
 spec:
   sourcePVC: mysql-pv-claim
   trigger:
-    schedule: "*/6 * * * *"
+    schedule: "*/10 * * * *"
   rclone:
     rcloneConfigSection: "aws-s3-bucket"
-    direction: "source"
-    mountPath: "/data"
     rcloneDestPath: "scribe-test-bucket"
-    rcloneConfig: "/rclone-config/rclone.conf"
+    rcloneConfig: "rclone-secret"
     copyMethod: Snapshot

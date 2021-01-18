@@ -99,14 +99,8 @@ spec:
                     - Clone
                     - Snapshot
                     type: string
-                  direction:
-                    description: Direction is the direction of data movement.
-                    type: string
-                  mountPath:
-                    description: MountPath is the source data directory location
-                    type: string
                   rcloneConfig:
-                    description: RcloneConfig is the rclone_config file location
+                    description: RcloneConfig is  the rclone secret name
                     type: string
                   rcloneConfigSection:
                     description: RcloneConfigSection is the section in rclone_config
