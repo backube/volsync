@@ -13,14 +13,15 @@ Card](https://goreportcard.com/badge/github.com/backube/scribe)](https://gorepor
 ![operator](https://github.com/backube/scribe/workflows/operator/badge.svg)
 ![mover-rsync](https://github.com/backube/scribe/workflows/mover-rsync/badge.svg)
 
-## Gettings started
+## Getting started
 
-Currently, this project is under heavy development. To try out the Scribe
-clone the repository and try out the steps in
-[Getting Started](https://scribe-replication.readthedocs.io/en/latest/getting_started/index.html)
+Currently, this project is under heavy development. To try out Scribe, clone the
+repository and follow the steps in the [installation
+instructions](https://scribe-replication.readthedocs.io/en/latest/installation/index.html).
 
 ## Helpful links
 
+- [Scribe documentation](https://scribe-replication.readthedocs.io)
 - [Contributing guidelines](https://github.com/backube/.github/blob/master/CONTRIBUTING.md)
 - [Organization code of conduct](https://github.com/backube/.github/blob/master/CODE_OF_CONDUCT.md)
 
