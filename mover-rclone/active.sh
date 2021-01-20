@@ -2,6 +2,8 @@
 
 set -e -o pipefail
 
+echo "Scribe rclone container version: ${version:-unknown}"
+
 function error {
     rc="$1"
     shift
