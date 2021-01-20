@@ -42,13 +42,16 @@ import (
 const (
 	// DefaultRsyncContainerImage is the default container image name of the rsync data mover
 	DefaultRsyncContainerImage = "quay.io/backube/scribe-mover-rsync:latest"
+	// DefaultRcloneContainerImage is the default container image name of the rclone data mover
+	DefaultRcloneContainerImage = "quay.io/backube/scribe-mover-rclone:latest"
 )
 
-// RsyncContainerImage is the container image name of the rsync data mover
-var RsyncContainerImage string
-
-// RcloneContainerImage is the container image name of the rclone data mover
-var RcloneContainerImage string = "quay.io/backube/scribe-mover-rclone:latest"
+var (
+	// RsyncContainerImage is the container image name of the rsync data mover
+	RsyncContainerImage string
+	// RcloneContainerImage is the container image name of the rclone data mover
+	RcloneContainerImage string
+)
 
 // ReplicationDestinationReconciler reconciles a ReplicationDestination object
 type ReplicationDestinationReconciler struct {
