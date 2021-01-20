@@ -29,8 +29,10 @@ RUN chmod a+rx /source.sh /destination.sh \destination-command.sh && \
     sed -ir 's|^[#\s]*\(X11Forwarding\)\s.*$|\1 no|' "$SSHD_CONFIG" && \
     sed -ir 's|^[#\s]*\(PermitTunnel\)\s.*$|\1 no|' "$SSHD_CONFIG"
 
-ARG builddate="(unknown)"
-ARG version="(unknown)"
+ARG builddate_arg="(unknown)"
+ARG version_arg="(unknown)"
+ENV builddate="${builddate_arg}"
+ENV version="${version_arg}"
 
 LABEL org.label-schema.build-date="${builddate}" \
       org.label-schema.description="rsync-based data mover for Scribe" \
