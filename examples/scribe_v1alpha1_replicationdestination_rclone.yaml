@@ -7,10 +7,8 @@ metadata:
 spec:
   rclone:
     rcloneConfigSection: "aws-s3-bucket"
-    direction: "destination"
-    mountPath: "/data"
     rcloneDestPath: "scribe-test-bucket"
-    rcloneConfig: "/rclone-config/rclone.conf"
+    rcloneConfig: "rclone-secret"
     copyMethod: Snapshot
     accessModes: [ReadWriteMany]
     capacity: 2Gi

@@ -307,11 +307,11 @@ func (r *rsyncDestReconciler) ensureSecrets(l logr.Logger) (bool, error) {
 }
 
 func (r *rcloneDestReconciler) ensureRcloneConfig(l logr.Logger) (bool, error) {
-	// If user provided keys, use those
+	// If user provided "rclone-secret", use those
 
 	r.rcloneConfigSecret = &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "rclone-secret",
+			Name:      *r.Instance.Spec.Rclone.RcloneConfig,
 			Namespace: r.Instance.Namespace,
 		},
 	}
@@ -410,7 +410,7 @@ func (r *rsyncDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 			RunAsUser: &runAsUser,
 		}
 		r.job.Spec.Template.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
-			{Name: dataVolumeName, MountPath: "/data"},
+			{Name: dataVolumeName, MountPath: mountPath},
 			{Name: "keys", MountPath: "/keys"},
 		}
 		r.job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
@@ -476,10 +476,10 @@ func (r *rcloneDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 
 		r.job.Spec.Template.Spec.Containers[0].Name = "rclone"
 		r.job.Spec.Template.Spec.Containers[0].Env = []corev1.EnvVar{
-			{Name: "RCLONE_CONFIG", Value: *r.Instance.Spec.Rclone.RcloneConfig},
+			{Name: "RCLONE_CONFIG", Value: "/rclone-config/rclone.conf"},
 			{Name: "RCLONE_DEST_PATH", Value: *r.Instance.Spec.Rclone.RcloneDestPath},
-			{Name: "DIRECTION", Value: *r.Instance.Spec.Rclone.Direction},
-			{Name: "MOUNT_PATH", Value: *r.Instance.Spec.Rclone.MountPath},
+			{Name: "DIRECTION", Value: "destination"},
+			{Name: "MOUNT_PATH", Value: mountPath},
 			{Name: "RCLONE_CONFIG_SECTION", Value: *r.Instance.Spec.Rclone.RcloneConfigSection},
 		}
 		r.job.Spec.Template.Spec.Containers[0].Command = []string{"/bin/bash", "-c", "./active.sh"}
@@ -489,8 +489,8 @@ func (r *rcloneDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 			RunAsUser: &runAsUser,
 		}
 		r.job.Spec.Template.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
-			{Name: dataVolumeName, MountPath: "/data"},
-			{Name: "rclone-secret", MountPath: "/rclone-config/"},
+			{Name: dataVolumeName, MountPath: mountPath},
+			{Name: rcloneSecret, MountPath: "/rclone-config/"},
 		}
 		r.job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
 		r.job.Spec.Template.Spec.ServiceAccountName = r.serviceAccount.Name
@@ -502,7 +502,7 @@ func (r *rcloneDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 					ReadOnly:  false,
 				}},
 			},
-			{Name: "rclone-secret", VolumeSource: corev1.VolumeSource{
+			{Name: rcloneSecret, VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
 					SecretName:  r.rcloneConfigSecret.Name,
 					DefaultMode: &secretMode,

@@ -138,16 +138,6 @@ func (in *ReplicationDestinationRcloneSpec) DeepCopyInto(out *ReplicationDestina
 		*out = new(string)
 		**out = **in
 	}
-	if in.Direction != nil {
-		in, out := &in.Direction, &out.Direction
-		*out = new(string)
-		**out = **in
-	}
-	if in.MountPath != nil {
-		in, out := &in.MountPath, &out.MountPath
-		*out = new(string)
-		**out = **in
-	}
 	if in.RcloneDestPath != nil {
 		in, out := &in.RcloneDestPath, &out.RcloneDestPath
 		*out = new(string)
@@ -484,16 +474,6 @@ func (in *ReplicationSourceRcloneSpec) DeepCopyInto(out *ReplicationSourceRclone
 	in.ReplicationSourceVolumeOptions.DeepCopyInto(&out.ReplicationSourceVolumeOptions)
 	if in.RcloneConfigSection != nil {
 		in, out := &in.RcloneConfigSection, &out.RcloneConfigSection
-		*out = new(string)
-		**out = **in
-	}
-	if in.Direction != nil {
-		in, out := &in.Direction, &out.Direction
-		*out = new(string)
-		**out = **in
-	}
-	if in.MountPath != nil {
-		in, out := &in.MountPath, &out.MountPath
 		*out = new(string)
 		**out = **in
 	}
