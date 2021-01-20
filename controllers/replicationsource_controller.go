@@ -39,8 +39,10 @@ import (
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
 )
 
-// MountPath is the source data directory location
-var MountPath string = "/data"
+const (
+	// mountPath is the source and destination data directory location
+	mountPath = "/data"
+)
 
 // ReplicationSourceReconciler reconciles a ReplicationSource object
 type ReplicationSourceReconciler struct {
@@ -301,7 +303,7 @@ func (r *rcloneSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 			{Name: "RCLONE_CONFIG", Value: "/rclone-config/rclone.conf"},
 			{Name: "RCLONE_DEST_PATH", Value: *r.Instance.Spec.Rclone.RcloneDestPath},
 			{Name: "DIRECTION", Value: "source"},
-			{Name: "MOUNT_PATH", Value: MountPath},
+			{Name: "MOUNT_PATH", Value: mountPath},
 			{Name: "RCLONE_CONFIG_SECTION", Value: *r.Instance.Spec.Rclone.RcloneConfigSection},
 		}
 		r.job.Spec.Template.Spec.Containers[0].Command = []string{"/bin/bash", "-c", "./active.sh"}
@@ -311,7 +313,7 @@ func (r *rcloneSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 			RunAsUser: &runAsUser,
 		}
 		r.job.Spec.Template.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
-			{Name: dataVolumeName, MountPath: MountPath},
+			{Name: dataVolumeName, MountPath: mountPath},
 			{Name: rcloneSecret, MountPath: "/rclone-config/"},
 		}
 		r.job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
@@ -544,7 +546,7 @@ func (r *rsyncSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 			RunAsUser: &runAsUser,
 		}
 		r.job.Spec.Template.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
-			{Name: dataVolumeName, MountPath: MountPath},
+			{Name: dataVolumeName, MountPath: mountPath},
 			{Name: "keys", MountPath: "/keys"},
 		}
 		r.job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
