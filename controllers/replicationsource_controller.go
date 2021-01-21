@@ -39,6 +39,11 @@ import (
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
 )
 
+const (
+	// mountPath is the source and destination data directory location
+	mountPath = "/data"
+)
+
 // ReplicationSourceReconciler reconciles a ReplicationSource object
 type ReplicationSourceReconciler struct {
 	client.Client
@@ -292,12 +297,13 @@ func (r *rcloneSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 		if len(r.job.Spec.Template.Spec.Containers) != 1 {
 			r.job.Spec.Template.Spec.Containers = []corev1.Container{{}}
 		}
+
 		r.job.Spec.Template.Spec.Containers[0].Name = "rclone"
 		r.job.Spec.Template.Spec.Containers[0].Env = []corev1.EnvVar{
-			{Name: "RCLONE_CONFIG", Value: *r.Instance.Spec.Rclone.RcloneConfig},
+			{Name: "RCLONE_CONFIG", Value: "/rclone-config/rclone.conf"},
 			{Name: "RCLONE_DEST_PATH", Value: *r.Instance.Spec.Rclone.RcloneDestPath},
-			{Name: "DIRECTION", Value: *r.Instance.Spec.Rclone.Direction},
-			{Name: "MOUNT_PATH", Value: *r.Instance.Spec.Rclone.MountPath},
+			{Name: "DIRECTION", Value: "source"},
+			{Name: "MOUNT_PATH", Value: mountPath},
 			{Name: "RCLONE_CONFIG_SECTION", Value: *r.Instance.Spec.Rclone.RcloneConfigSection},
 		}
 		r.job.Spec.Template.Spec.Containers[0].Command = []string{"/bin/bash", "-c", "./active.sh"}
@@ -307,8 +313,8 @@ func (r *rcloneSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 			RunAsUser: &runAsUser,
 		}
 		r.job.Spec.Template.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
-			{Name: dataVolumeName, MountPath: "/data"},
-			{Name: "rclone-secret", MountPath: "/rclone-config/"},
+			{Name: dataVolumeName, MountPath: mountPath},
+			{Name: rcloneSecret, MountPath: "/rclone-config/"},
 		}
 		r.job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
 		r.job.Spec.Template.Spec.ServiceAccountName = r.serviceAccount.Name
@@ -319,7 +325,7 @@ func (r *rcloneSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 					ClaimName: r.PVC.Name,
 				}},
 			},
-			{Name: "rclone-secret", VolumeSource: corev1.VolumeSource{
+			{Name: rcloneSecret, VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
 					SecretName:  r.rcloneConfigSecret.Name,
 					DefaultMode: &secretMode,
@@ -435,11 +441,11 @@ func (r *rsyncSrcReconciler) ensureKeys(l logr.Logger) (bool, error) {
 }
 
 func (r *rcloneSrcReconciler) ensureRcloneConfig(l logr.Logger) (bool, error) {
-	// If user provided keys, use those
+	// If user provided "rclone-secret", use those
 
 	r.rcloneConfigSecret = &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "rclone-secret",
+			Name:      *r.Instance.Spec.Rclone.RcloneConfig,
 			Namespace: r.Instance.Namespace,
 		},
 	}
@@ -540,7 +546,7 @@ func (r *rsyncSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 			RunAsUser: &runAsUser,
 		}
 		r.job.Spec.Template.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
-			{Name: dataVolumeName, MountPath: "/data"},
+			{Name: dataVolumeName, MountPath: mountPath},
 			{Name: "keys", MountPath: "/keys"},
 		}
 		r.job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
@@ -610,7 +616,7 @@ func (r *rcloneSrcReconciler) cleanupJob(l logr.Logger) (bool, error) {
 			logger.Error(err, "unable to delete job")
 			return false, err
 		}
-		logger.Info("Job deleted ****** ", "Job name: ", r.job.Spec.Template.ObjectMeta.Name)
+		logger.Info("Job deleted", "Job name: ", r.job.Spec.Template.ObjectMeta.Name)
 	}
 	return true, nil
 }

@@ -26,3 +26,6 @@ bin
 *.swp
 *.swo
 *~
+
+# Secret files to prevent accidental commit of keys
+examples/rclone.conf
