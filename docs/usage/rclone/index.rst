@@ -6,12 +6,13 @@ Rclone-based replication
    :hidden:
 
    database_example
+   rclone-secret
 
 .. sidebar:: Contents
 
    .. contents:: Rclone-based replication
 
-Rclone-based replication supports 1:1 asynchronous replication of volumes for use
+Rclone-based replication supports 1:many asynchronous replication of volumes for use
 cases such as:
 
 - High fan-out data replication from a central site to many (edge) sites
@@ -42,23 +43,24 @@ Start by configuring the source; a minimal example is shown below:
 
 .. code:: yaml
 
-   ---
-   apiVersion: scribe/v1alpha1
-   kind: ReplicationSource
-   metadata:
-     name: database-source
-     namespace: source
-   spec:
+  ---
+  apiVersion: scribe.backube/v1alpha1
+  kind: ReplicationSource
+  metadata:
+    name: database-source
+    namespace: source
+  spec:
     sourcePVC: mysql-pv-claim
     trigger:
       schedule: "*/6 * * * *"
-     rclone:
-       copyMethod: Snapshot
-       capacity: 10Gi
-       accessModes: ["ReadWriteOnce"]
+    rclone:
+      rcloneConfigSection: "aws-s3-bucket"
+      rcloneDestPath: "scribe-test-bucket"
+      rcloneConfig: "rclone-secret"
+      copyMethod: Snapshot
 
 Since the ``copyMethod`` specified above is ``Snapshot``, the Rclone data mover creates a ``VolumeSnapshot`` 
-of the source pvc ``mysql-pv-claim`` using the ``VolumeSnapshotClass`` provisioned by the CSI driver.
+of the source pvc ``mysql-pv-claim`` using the cluster's default ``VolumeSnapshotClass``.
 
 It then creates a temproray pvc ``scribe-src-database-source`` out of the VolumeSnapshot to transfer source
 data to the intermediary storage system like AWS S3 using the configurations provided in ``rclone-secret``
@@ -95,9 +97,8 @@ Once the ``ReplicationSource`` is deployed, Scribe updates the ``nextSyncTime`` 
 In the above ``ReplicationSource`` object,
 
 - The Rclone configuations are provided via ``rclone-secret``
-- The PiT copy of the source data ``mysql-pv-claim`` will be created using ``VolumeSnapshot`` provisioned
-  by the CSI driver.
-- ``Rclone Dest Path`` indicates the location on the intermediary storage system where the source data
+- The PiT copy of the source data ``mysql-pv-claim`` will be created using cluster's default ``VolumeSnapshot``.
+- ``rcloneDestPath`` indicates the location on the intermediary storage system where the source data
   will be copied
 - The synchronization schedule, ``.spec.trigger.schedule``, is defined by a 
   `cronspec <https://en.wikipedia.org/wiki/Cron#Overview>`_, making the schedule very flexible. 
