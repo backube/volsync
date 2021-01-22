@@ -14,8 +14,10 @@ COPY active.sh \
 
 RUN chmod a+rx /active.sh
 
-ARG builddate="(unknown)"
-ARG version="(unknown)"
+ARG builddate_arg="(unknown)"
+ARG version_arg="(unknown)"
+ENV builddate="${builddate_arg}"
+ENV version="${version_arg}"
 
 LABEL org.label-schema.build-date="${builddate}" \
       org.label-schema.description="rclone-based data mover for Scribe" \

@@ -19,12 +19,14 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
+	"runtime"
 
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
 	"github.com/backube/scribe/controllers"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1"
-	"k8s.io/apimachinery/pkg/runtime"
+	kruntime "k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
@@ -34,8 +36,9 @@ import (
 )
 
 var (
-	scheme   = runtime.NewScheme()
-	setupLog = ctrl.Log.WithName("setup")
+	scheme        = kruntime.NewScheme()
+	setupLog      = ctrl.Log.WithName("setup")
+	scribeVersion = "0.0.0"
 )
 
 func init() {
@@ -52,11 +55,19 @@ func main() {
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+	flag.StringVar(&controllers.RcloneContainerImage, "rclone-container-image",
+		controllers.DefaultRcloneContainerImage, "The container image for the rclone data mover")
 	flag.StringVar(&controllers.RsyncContainerImage, "rsync-container-image",
 		controllers.DefaultRsyncContainerImage, "The container image for the rsync data mover")
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
+
+	setupLog.Info(fmt.Sprintf("Go Version: %s", runtime.Version()))
+	setupLog.Info(fmt.Sprintf("Go OS/Arch: %s/%s", runtime.GOOS, runtime.GOARCH))
+	setupLog.Info(fmt.Sprintf("Operator Version: %s", scribeVersion))
+	setupLog.Info(fmt.Sprintf("Rclone container: %s", controllers.RcloneContainerImage))
+	setupLog.Info(fmt.Sprintf("Rsync container: %s", controllers.RsyncContainerImage))
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:             scheme,
