@@ -46,12 +46,12 @@ test: generate manifests golangci-lint ginkgo
 # Build manager binary
 .PHONY: manager
 manager: generate
-	go build -o bin/manager main.go
+	go build -o bin/manager -ldflags -X=main.scribeVersion=$(VERSION) main.go
 
 # Run against the configured Kubernetes cluster in ~/.kube/config
 .PHONY: run
 run: generate manifests
-	go run ./main.go
+	go run -ldflags -X=main.scribeVersion=$(VERSION) ./main.go
 
 # Install CRDs into a cluster
 .PHONY: install

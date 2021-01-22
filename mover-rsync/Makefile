@@ -9,7 +9,7 @@ all: image
 .PHONY: image
 image:
 	docker build \
-	  --build-arg "builddate=$(BUILDDATE)" \
-	  --build-arg "version=$(VERSION)" \
+	  --build-arg "builddate_arg=$(BUILDDATE)" \
+	  --build-arg "version_arg=$(VERSION)" \
 	  -t $(IMAGE) \
 	  -f Dockerfile .
