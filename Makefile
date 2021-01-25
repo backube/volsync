@@ -15,6 +15,7 @@ BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 TEST_ARGS ?= -progress -randomizeAllSpecs -randomizeSuites -slowSpecThreshold 30 -p -cover -coverprofile cover.out -outputdir .
 
 GOLANGCI_VERSION := v1.31.0
+HELM_VERSION := v3.5.0
 OPERATOR_SDK_VERSION := v1.0.1
 KUTTL_VERSION := 0.7.2
 export SHELL := /bin/bash
@@ -79,6 +80,7 @@ deploy-openshift: manifests kustomize
 .PHONY: manifests
 manifests: controller-gen
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	cp config/crd/bases/* helm/scribe/crds
 
 # Generate code
 .PHONY: generate
@@ -188,3 +190,15 @@ endif
 test-e2e: kuttl
 	cd test-kuttl && kubectl kuttl test
 	rm -f test-kuttl/kubeconfig
+
+.PHONY: helm
+HELM_URL := https://get.helm.sh/helm-$(HELM_VERSION)-linux-amd64.tar.gz
+helm:
+ifeq (, $(shell which helm))
+	mkdir -p ${GOBIN}
+	curl -fL "${HELM_URL}" > "${GOBIN}/helm"
+	chmod a+x "${GOBIN}/helm"
+HELM=$(GOBIN)/helm
+else
+HELM=$(shell which helm)
+endif

@@ -54,4 +54,7 @@ run_check '.*\.(ba)?sh' shellcheck
 # Install via: pip install yamllint
 run_check '.*\.ya?ml' yamllint -s -c "${scriptdir}/yamlconfig.yaml"
 
+# CRDs in the Helm chart must match generated CRDs
+diff -qr config/crd/bases helm/scribe/crds
+
 echo "ALL OK."
