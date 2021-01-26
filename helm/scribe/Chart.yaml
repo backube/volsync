@@ -1,0 +1,53 @@
+apiVersion: v2
+name: scribe
+type: application
+description: Asynchronous data replication for Kubernetes
+home: https://scribe-replication.readthedocs.io/
+icon: https://raw.githubusercontent.com/backube/scribe/master/docs/media/scribe.svg?sanitize=true
+sources:
+  - https://github.com/backube/scribe
+maintainers:
+  - name: John Strunk
+    email: jstrunk@redhat.com
+    url: https://github.com/JohnStrunk
+keywords:
+  - csi
+  - data
+  - disaster recovery
+  - replication
+  - storage
+annotations:
+  # Changelog for current chart & app version
+  # Prefix w/ Added/Changed/Deprecated/Fixed/Removed/Security
+  artifacthub.io/changes: |
+    - Added: Initial release
+  artifacthub.io/crds: |
+    - kind: ReplicationDestination
+      version: v1alpha1
+      name: replicationdestination.scribe.backube
+      displayName: Replication destination
+      description: Defines the destination of a replicated volume
+    - kind: ReplicationSource
+      version: v1alpha1
+      name: replicationsource.scribe.backube
+      displayName: Replication source
+      description: Defines the source of a replicated volume
+  artifacthub.io/license: AGPL-3.0-or-later
+  artifacthub.io/operator: "true"
+  artifacthub.io/operatorCapabilities: Basic Install
+
+# We require beta-level CSI snapshots (1.17+)
+# Adding "-0" at the end of the version string permits pre-release kube versions
+# to match. See https://github.com/helm/helm/issues/6190
+kubeVersion: "^1.17.0-0"
+
+# This is the chart version. This version number should be incremented each time
+# you make changes to the chart and its templates, including the app version.
+# Versions are expected to follow Semantic Versioning (https://semver.org/)
+version: "0.1.0"
+
+# This is the version number of the application being deployed. This version
+# number should be incremented each time you make changes to the application.
+# Versions are not expected to follow Semantic Versioning. They should reflect
+# the version the application is using. It is recommended to use it with quotes.
+appVersion: "0.1.0"

@@ -1,0 +1,56 @@
+# Default values for scribe.
+replicaCount: 1
+
+image:
+  repository: quay.io/backube/scribe
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+rclone:
+  repository: quay.io/backube/scribe-mover-rclone
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+rsync:
+  repository: quay.io/backube/scribe-mover-rsync
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+resources:
+  limits:
+    cpu: 100m
+    memory: 300Mi
+  requests:
+    cpu: 100m
+    memory: 20Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "scribe.fullname" . }}-metrics-service
+  labels:
+    control-plane: {{ include "scribe.fullname" . }}-controller
+    {{- include "scribe.labels" . | nindent 4 }}
+spec:
+  ports:
+  - name: https
+    port: 8443
+    targetPort: https
+  selector:
+    control-plane: {{ include "scribe.fullname" . }}-controller
