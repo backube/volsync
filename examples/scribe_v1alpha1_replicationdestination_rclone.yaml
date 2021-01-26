@@ -5,6 +5,8 @@ metadata:
   name: database-destination
   namespace: dest
 spec:
+  trigger:
+    schedule: "*/10 * * * *"
   rclone:
     rcloneConfigSection: "aws-s3-bucket"
     rcloneDestPath: "scribe-test-bucket"

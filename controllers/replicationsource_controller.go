@@ -155,8 +155,12 @@ func awaitNextSyncSource(rs *scribev1alpha1.ReplicationSource, logger logr.Logge
 		return cont, err
 	}
 	if !rs.Status.NextSyncTime.IsZero() && rs.Status.NextSyncTime.Time.After(time.Now()) {
+		logger.V(1).Info("************ Dont sync *******************")
+
 		return false, nil
 	}
+	logger.V(1).Info("************ Start sync *******************")
+
 	return true, nil
 }
 
@@ -171,6 +175,8 @@ func updateNextSyncSource(rs *scribev1alpha1.ReplicationSource, logger logr.Logg
 		}
 		next := schedule.Next(time.Now())
 		rs.Status.NextSyncTime = &metav1.Time{Time: next}
+		logger.V(1).Info("************* In updateNextSyncDestination **************", "rs.Status.NextSyncTime", rs.Status.NextSyncTime)
+
 	}
 	return true, nil
 }
