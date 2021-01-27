@@ -88,7 +88,7 @@ generate: controller-gen
 # Build the docker image
 .PHONY: docker-build
 docker-build:
-	docker build . -t ${IMAGE}
+	docker build --build-arg "VERSION=$(VERSION)" . -t ${IMAGE}
 
 # Push the docker image
 .PHONY: docker-push
