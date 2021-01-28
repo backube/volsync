@@ -129,7 +129,7 @@ case "$KUBE_MINOR" in
     DEPLOY_SCRIPT="deploy-hostpath.sh"
     ;;
   *)
-    HOSTPATH_BRANCH="master"
+    HOSTPATH_BRANCH="v1.4.0"
     DEPLOY_SCRIPT="deploy.sh"
     ;;
 esac
