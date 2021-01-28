@@ -122,8 +122,8 @@ jobs:
       matrix:
         # There must be kindest/node images for these versions
         # See: https://hub.docker.com/r/kindest/node/tags?page=1&ordering=name
-        # KUBERNETES_VERSIONS: ["1.16.9", "1.17.5", "1.18.8", "1.19.0"]
-        KUBERNETES_VERSIONS: ["1.20.0"]
+        # Or: skopeo list-tags docker://kindest/node
+        KUBERNETES_VERSIONS: ["1.20.2"]
     env:
       KUBECONFIG: /tmp/kubeconfig
       KUBERNETES_VERSION: ${{ matrix.KUBERNETES_VERSIONS }}
