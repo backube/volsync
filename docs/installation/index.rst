@@ -12,6 +12,11 @@ The following directions will walk through the process of deploying Scribe.
 There are three options for installing Scribe. Choose the option that relates to
 your situation.
 
+.. warning::
+   Scribe requires the Kubernetes snapshot controller to be installed
+   within a cluster. If the controller is not deployed review the
+   snapshot controller documentation https://github.com/kubernetes-csi/external-snapshotter.
+
 Development
 ===========
 
