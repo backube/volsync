@@ -20,6 +20,7 @@ package controllers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -87,9 +88,10 @@ func (r *ReplicationSourceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, 
 
 	var result ctrl.Result
 	var err error
-	if inst.Spec.Rsync != nil && inst.Spec.Rclone != nil {
-		logger.Error(err, "Only rclone or rsync can be specified")
-		return ctrl.Result{}, err
+	if inst.Spec.Rsync != nil && inst.Spec.Rclone != nil ||
+		inst.Spec.External != nil && inst.Spec.Rclone != nil ||
+		inst.Spec.Rsync != nil && inst.Spec.External != nil {
+		err = fmt.Errorf("only a single replication method can be provided")
 	} else if inst.Spec.Rsync != nil {
 		result, err = RunRsyncSrcReconciler(ctx, inst, r, logger)
 	} else if inst.Spec.Rclone != nil {
