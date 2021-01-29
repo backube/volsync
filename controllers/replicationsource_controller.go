@@ -66,6 +66,7 @@ type ReplicationSourceReconciler struct {
 //+kubebuilder:rbac:groups=security.openshift.io,resources=securitycontextconstraints,resourceNames=scribe-mover,verbs=use
 //+kubebuilder:rbac:groups=snapshot.storage.k8s.io,resources=volumesnapshots,verbs=get;list;watch;create;update;patch;delete
 
+//nolint:funlen
 func (r *ReplicationSourceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	ctx := context.Background()
 	logger := r.Log.WithValues("replicationsource", req.NamespacedName)
@@ -86,7 +87,10 @@ func (r *ReplicationSourceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, 
 
 	var result ctrl.Result
 	var err error
-	if inst.Spec.Rsync != nil {
+	if inst.Spec.Rsync != nil && inst.Spec.Rclone != nil {
+		logger.Error(err, "Only rclone or rsync can be specified")
+		return ctrl.Result{}, err
+	} else if inst.Spec.Rsync != nil {
 		result, err = RunRsyncSrcReconciler(ctx, inst, r, logger)
 	} else if inst.Spec.Rclone != nil {
 		result, err = RunRcloneSrcReconciler(ctx, inst, r, logger)

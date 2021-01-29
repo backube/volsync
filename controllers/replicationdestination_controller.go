@@ -74,6 +74,7 @@ type ReplicationDestinationReconciler struct {
 //+kubebuilder:rbac:groups=security.openshift.io,resources=securitycontextconstraints,resourceNames=scribe-mover,verbs=use
 //+kubebuilder:rbac:groups=snapshot.storage.k8s.io,resources=volumesnapshots,verbs=get;list;watch;create;update;patch;delete
 
+//nolint:funlen
 func (r *ReplicationDestinationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	ctx := context.Background()
 	logger := r.Log.WithValues("replicationdestination", req.NamespacedName)
@@ -98,7 +99,10 @@ func (r *ReplicationDestinationReconciler) Reconcile(req ctrl.Request) (ctrl.Res
 	var result ctrl.Result
 	var err error
 	// Only reconcile if the replication method is internal
-	if inst.Spec.Rsync != nil {
+	if inst.Spec.Rsync != nil && inst.Spec.Rclone != nil {
+		logger.Error(err, "Only rclone or rsync can be specified")
+		return ctrl.Result{}, err
+	} else if inst.Spec.Rsync != nil {
 		result, err = RunRsyncDestReconciler(ctx, inst, r, logger)
 	} else if inst.Spec.Rclone != nil {
 		result, err = RunRcloneDestReconciler(ctx, inst, r, logger)
