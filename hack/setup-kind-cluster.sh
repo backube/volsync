@@ -124,12 +124,16 @@ case "$KUBE_MINOR" in
     HOSTPATH_BRANCH="v1.2.0"
     DEPLOY_SCRIPT="deploy-hostpath.sh"
     ;;
-  15|16|17)
+  15)
     HOSTPATH_BRANCH="v1.3.0"
     DEPLOY_SCRIPT="deploy-hostpath.sh"
     ;;
-  *)
+  16|17)
     HOSTPATH_BRANCH="v1.4.0"
+    DEPLOY_SCRIPT="deploy.sh"
+    ;;
+  *)
+    HOSTPATH_BRANCH="v1.5.0"
     DEPLOY_SCRIPT="deploy.sh"
     ;;
 esac
