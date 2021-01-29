@@ -15,13 +15,14 @@ Card](https://goreportcard.com/badge/github.com/backube/scribe)](https://gorepor
 
 ## Getting started
 
-Currently, this project is under heavy development. To try out Scribe, clone the
-repository and follow the steps in the [installation
+Currently, this project is under heavy development. To try out Scribe,  follow
+the steps in the [installation
 instructions](https://scribe-replication.readthedocs.io/en/latest/installation/index.html).
 
 ## Helpful links
 
 - [Scribe documentation](https://scribe-replication.readthedocs.io)
+- [Changelog](CHANGELOG.md)
 - [Contributing guidelines](https://github.com/backube/.github/blob/master/CONTRIBUTING.md)
 - [Organization code of conduct](https://github.com/backube/.github/blob/master/CODE_OF_CONDUCT.md)
 
