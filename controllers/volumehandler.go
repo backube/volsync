@@ -116,7 +116,6 @@ func (h *destinationVolumeHandler) EnsurePVC(l logr.Logger) (bool, error) {
 }
 
 func (h *destinationVolumeHandler) createSnapshot(l logr.Logger) (bool, error) {
-	l.Info("+++++++++++++++++++++ iNSIDE createSnapshot")
 	// Track the name of the (in-progress) snapshot as a PVC annotation
 	snapName := types.NamespacedName{Namespace: h.Instance.Namespace}
 	if h.PVC.Annotations == nil {
@@ -246,7 +245,6 @@ func (h *destinationVolumeHandler) recordPVC(l logr.Logger) (bool, error) {
 // PreserveImage implements the methods for preserving a PiT copy of the
 // replicated data.
 func (h *destinationVolumeHandler) PreserveImage(l logr.Logger) (bool, error) {
-	l.Info("+++++++++++++++++++++++++++++++++++++++++++++++ Enter PreserveImage")
 	if h.Options.CopyMethod == scribev1alpha1.CopyMethodNone {
 		return reconcileBatch(l,
 			h.cleanupOldSnapshot,
@@ -254,8 +252,6 @@ func (h *destinationVolumeHandler) PreserveImage(l logr.Logger) (bool, error) {
 		)
 	}
 	if h.Options.CopyMethod == scribev1alpha1.CopyMethodSnapshot {
-		l.Info("+++++++++++++++++++++++++++++++++++++++++++++++ Enter PreserveImage CopyMethodSnapshot")
-
 		return reconcileBatch(l,
 			h.createSnapshot,
 			h.cleanupOldSnapshot,

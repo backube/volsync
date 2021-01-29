@@ -80,17 +80,14 @@ type ReplicationDestinationReconciler struct {
 func (r *ReplicationDestinationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	ctx := context.Background()
 	logger := r.Log.WithValues("replicationdestination", req.NamespacedName)
-
 	// Get CR instance
 	inst := &scribev1alpha1.ReplicationDestination{}
-	logger.V(1).Info("************ 1. Get CR instance: ", "inst: ", inst)
 	if err := r.Client.Get(ctx, req.NamespacedName, inst); err != nil {
 		if !kerrors.IsNotFound(err) {
 			logger.Error(err, "Failed to get Destination")
 		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-
 	// Prepare the .Status fields if necessary
 	if inst.Status == nil {
 		inst.Status = &scribev1alpha1.ReplicationDestinationStatus{}
@@ -98,7 +95,6 @@ func (r *ReplicationDestinationReconciler) Reconcile(req ctrl.Request) (ctrl.Res
 	if inst.Status.Conditions == nil {
 		inst.Status.Conditions = status.Conditions{}
 	}
-
 	var result ctrl.Result
 	var err error
 	// Only reconcile if the replication method is internal
@@ -109,8 +105,6 @@ func (r *ReplicationDestinationReconciler) Reconcile(req ctrl.Request) (ctrl.Res
 	} else if inst.Spec.Rsync != nil {
 		result, err = RunRsyncDestReconciler(ctx, inst, r, logger)
 	} else if inst.Spec.Rclone != nil {
-		logger.V(1).Info("************ 2. before RunRcloneDestReconciler: ", "inst: ", inst)
-
 		result, err = RunRcloneDestReconciler(ctx, inst, r, logger)
 	} else {
 		// Not an internal method... we're done.
@@ -118,7 +112,6 @@ func (r *ReplicationDestinationReconciler) Reconcile(req ctrl.Request) (ctrl.Res
 	}
 	// Set reconcile status condition
 	if err == nil {
-		logger.V(1).Info("*********************** Inside err==nil")
 		inst.Status.Conditions.SetCondition(
 			status.Condition{
 				Type:    scribev1alpha1.ConditionReconciled,
@@ -127,8 +120,6 @@ func (r *ReplicationDestinationReconciler) Reconcile(req ctrl.Request) (ctrl.Res
 				Message: "Reconcile complete",
 			})
 	} else {
-		logger.V(1).Info("************** Inside err!=nil: ", "err", err)
-
 		inst.Status.Conditions.SetCondition(
 			status.Condition{
 				Type:    scribev1alpha1.ConditionReconciled,
@@ -137,12 +128,10 @@ func (r *ReplicationDestinationReconciler) Reconcile(req ctrl.Request) (ctrl.Res
 				Message: err.Error(),
 			})
 	}
-
 	// Update instance status
 	statusErr := r.Client.Status().Update(ctx, inst)
 	if err == nil { // Don't mask previous error
 		err = statusErr
-		logger.V(1).Info("++++++++++++++++++++++++++  Instance status at line139: ", "err", err)
 	}
 	if !inst.Status.NextSyncTime.IsZero() {
 		// ensure we get re-reconciled no later than the next scheduled sync
@@ -152,10 +141,6 @@ func (r *ReplicationDestinationReconciler) Reconcile(req ctrl.Request) (ctrl.Res
 			result.RequeueAfter = delta
 		}
 	}
-	logger.V(1).Info("++++++++++++++++++++++++++  Instance status at line149: ")
-	logger.V(1).Info("+++++++++++++++++++++ ", "result", result)
-	// logger.V(1).Info("+++++++++++++++++++++ ", result)
-
 	return result, err
 }
 
@@ -234,22 +219,17 @@ func RunRcloneDestReconciler(ctx context.Context, instance *scribev1alpha1.Repli
 		},
 	}
 	l := logger.WithValues("method", "Rclone")
-	logger.V(1).Info("************** 3. RunRcloneDestReconciler")
 	// wrap the scheduling functions as reconcileFuncs
 	awaitNextSync := func(l logr.Logger) (bool, error) {
 		b, e := awaitNextSyncDestination(r.Instance, l)
-		logger.V(1).Info("************* awaitNextSync . RunRcloneDestReconciler", "awaitNextSync b: ", b, "err: ", e)
+		logger.V(1).Info("awaitNextSync: ", "result: ", b, "err: ", e)
 		return b, e
-
 	}
 	updateNextsync := func(l logr.Logger) (bool, error) {
-		logger.V(1).Info("+++++++++++++++++++++++++++++++++++++++++")
 		b, e := updateNextSyncDestination(r.Instance, l)
-		logger.V(1).Info("************* updateNextsync . RunRcloneDestReconciler", "updateNextsync b: ", b, "err: ", e)
-
+		logger.V(1).Info("updateNextsync: ", "result ", b, "err: ", e)
 		return updateNextSyncDestination(r.Instance, l)
 	}
-
 	_, err := reconcileBatch(l,
 		awaitNextSync,
 		r.validateRcloneSpec,
@@ -355,7 +335,6 @@ func (r *rsyncDestReconciler) ensureSecrets(l logr.Logger) (bool, error) {
 
 func (r *rcloneDestReconciler) ensureRcloneConfig(l logr.Logger) (bool, error) {
 	// If user provided "rclone-secret", use those
-	l.Info("+++++++++++++++++++++ inside ensureRcloneConfig")
 	r.rcloneConfigSecret = &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      *r.Instance.Spec.Rclone.RcloneConfig,
@@ -367,6 +346,8 @@ func (r *rcloneDestReconciler) ensureRcloneConfig(l logr.Logger) (bool, error) {
 		l.Error(err, "Rclone config secret does not contain the proper fields")
 		return false, err
 	}
+	l.Info("RcloneConfig reconciled")
+
 	return true, nil
 }
 
@@ -499,8 +480,6 @@ func (r *rsyncDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 
 //nolint:funlen
 func (r *rcloneDestReconciler) ensureJob(l logr.Logger) (bool, error) {
-	l.Info("++++++++++++++ inside ensureJob")
-
 	r.job = &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "scribe-rclone-src-" + r.Instance.Name,
@@ -508,7 +487,6 @@ func (r *rcloneDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 		},
 	}
 	logger := l.WithValues("job", nameFor(r.job))
-	logger.V(1).Info("+++++++++++++++++++++++++ Inside ensureJob")
 	op, err := ctrlutil.CreateOrUpdate(r.Ctx, r.Client, r.job, func() error {
 		if err := ctrl.SetControllerReference(r.Instance, r.job, r.Scheme); err != nil {
 			logger.Error(err, "unable to set controller reference")
@@ -579,7 +557,7 @@ func (r *rcloneDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 	if err != nil {
 		logger.Error(err, "reconcile failed")
 	} else {
-		logger.V(1).Info("+++++++++++++++ Job reconciled", "operation", op)
+		logger.V(1).Info("Job reconciled", "operation", op)
 	}
 	// We only continue reconciling if the rsync job has completed
 	return r.job.Status.Succeeded == 1, nil
@@ -626,7 +604,7 @@ func (r *rcloneDestReconciler) cleanupJob(l logr.Logger) (bool, error) {
 }
 
 func (r *rcloneDestReconciler) validateRcloneSpec(l logr.Logger) (bool, error) {
-	l.V(1).Info("******************** Rclone config validation initiated.")
+	l.V(1).Info("Initiate RcloneSpec validation")
 
 	if len(*r.Instance.Spec.Rclone.RcloneConfig) == 0 {
 		err := errors.New("Unable to get Rclone config secret name")
@@ -651,17 +629,12 @@ func (r *rcloneDestReconciler) validateRcloneSpec(l logr.Logger) (bool, error) {
 
 // Check schedule to see if it's time to sync
 func awaitNextSyncDestination(rs *scribev1alpha1.ReplicationDestination, logger logr.Logger) (bool, error) {
-
 	if cont, err := ensureNextSyncValidDestination(rs, logger); !cont || err != nil {
-		logger.V(1).Info("************ awaitNextSyncDestination *******************", "cont", cont, "err", err)
 		return cont, err
 	}
 	if !rs.Status.NextSyncTime.IsZero() && rs.Status.NextSyncTime.Time.After(time.Now()) {
-		logger.V(1).Info("************ Dont sync *******************")
 		return false, nil
 	}
-	logger.V(1).Info("************ Start sync *******************")
-
 	return true, nil
 }
 
@@ -676,7 +649,6 @@ func updateNextSyncDestination(rs *scribev1alpha1.ReplicationDestination, logger
 		}
 		next := schedule.Next(time.Now())
 		rs.Status.NextSyncTime = &metav1.Time{Time: next}
-		logger.V(1).Info("************* In updateNextSyncDestination **************", "rs.Status.NextSyncTime", rs.Status.NextSyncTime)
 	}
 	return true, nil
 }
