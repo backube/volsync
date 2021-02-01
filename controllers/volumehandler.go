@@ -262,26 +262,6 @@ func (h *destinationVolumeHandler) PreserveImage(l logr.Logger) (bool, error) {
 	return false, fmt.Errorf("unsupported copyMethod: %v -- must be None or Snapshot", h.Options.CopyMethod)
 }
 
-// PreserveImage implements the methods for preserving a PiT copy of the
-// replicated data.
-func (h *destinationVolumeHandler) PreserveRclone(l logr.Logger) (bool, error) {
-	if h.Options.CopyMethod == scribev1alpha1.CopyMethodNone {
-		return reconcileBatch(l,
-			h.cleanupOldSnapshot,
-			h.recordPVC,
-		)
-	}
-	if h.Options.CopyMethod == scribev1alpha1.CopyMethodSnapshot {
-		return reconcileBatch(l,
-			h.createSnapshot,
-			h.recordNewSnapshot,
-			h.cleanupOldSnapshot,
-			h.removeSnapshotAnnotation,
-		)
-	}
-	return false, fmt.Errorf("unsupported copyMethod: %v -- must be None or Snapshot", h.Options.CopyMethod)
-}
-
 type sourceVolumeHandler struct {
 	ReplicationSourceReconciler
 	Ctx      context.Context

@@ -26,6 +26,7 @@ import (
 	"github.com/go-logr/logr"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1"
 	"github.com/operator-framework/operator-lib/status"
+	cron "github.com/robfig/cron/v3"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -79,7 +80,6 @@ type ReplicationDestinationReconciler struct {
 func (r *ReplicationDestinationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	ctx := context.Background()
 	logger := r.Log.WithValues("replicationdestination", req.NamespacedName)
-
 	// Get CR instance
 	inst := &scribev1alpha1.ReplicationDestination{}
 	if err := r.Client.Get(ctx, req.NamespacedName, inst); err != nil {
@@ -88,7 +88,6 @@ func (r *ReplicationDestinationReconciler) Reconcile(req ctrl.Request) (ctrl.Res
 		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-
 	// Prepare the .Status fields if necessary
 	if inst.Status == nil {
 		inst.Status = &scribev1alpha1.ReplicationDestinationStatus{}
@@ -96,7 +95,6 @@ func (r *ReplicationDestinationReconciler) Reconcile(req ctrl.Request) (ctrl.Res
 	if inst.Status.Conditions == nil {
 		inst.Status.Conditions = status.Conditions{}
 	}
-
 	var result ctrl.Result
 	var err error
 	// Only reconcile if the replication method is internal
@@ -130,11 +128,18 @@ func (r *ReplicationDestinationReconciler) Reconcile(req ctrl.Request) (ctrl.Res
 				Message: err.Error(),
 			})
 	}
-
 	// Update instance status
 	statusErr := r.Client.Status().Update(ctx, inst)
 	if err == nil { // Don't mask previous error
 		err = statusErr
+	}
+	if !inst.Status.NextSyncTime.IsZero() {
+		// ensure we get re-reconciled no later than the next scheduled sync
+		// time
+		delta := time.Until(inst.Status.NextSyncTime.Time)
+		if delta > 0 {
+			result.RequeueAfter = delta
+		}
 	}
 	return result, err
 }
@@ -214,7 +219,19 @@ func RunRcloneDestReconciler(ctx context.Context, instance *scribev1alpha1.Repli
 		},
 	}
 	l := logger.WithValues("method", "Rclone")
+	// wrap the scheduling functions as reconcileFuncs
+	awaitNextSync := func(l logr.Logger) (bool, error) {
+		b, e := awaitNextSyncDestination(r.Instance, l)
+		logger.V(1).Info("awaitNextSync: ", "result: ", b, "err: ", e)
+		return b, e
+	}
+	updateNextsync := func(l logr.Logger) (bool, error) {
+		b, e := updateNextSyncDestination(r.Instance, l)
+		logger.V(1).Info("updateNextsync: ", "result ", b, "err: ", e)
+		return updateNextSyncDestination(r.Instance, l)
+	}
 	_, err := reconcileBatch(l,
+		awaitNextSync,
 		r.validateRcloneSpec,
 		r.EnsurePVC,
 		r.ensureRcloneConfig,
@@ -222,6 +239,7 @@ func RunRcloneDestReconciler(ctx context.Context, instance *scribev1alpha1.Repli
 		r.ensureJob,
 		r.PreserveImage,
 		r.cleanupJob,
+		updateNextsync,
 	)
 	return ctrl.Result{}, err
 }
@@ -317,7 +335,6 @@ func (r *rsyncDestReconciler) ensureSecrets(l logr.Logger) (bool, error) {
 
 func (r *rcloneDestReconciler) ensureRcloneConfig(l logr.Logger) (bool, error) {
 	// If user provided "rclone-secret", use those
-
 	r.rcloneConfigSecret = &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      *r.Instance.Spec.Rclone.RcloneConfig,
@@ -329,6 +346,8 @@ func (r *rcloneDestReconciler) ensureRcloneConfig(l logr.Logger) (bool, error) {
 		l.Error(err, "Rclone config secret does not contain the proper fields")
 		return false, err
 	}
+	l.Info("RcloneConfig reconciled")
+
 	return true, nil
 }
 
@@ -585,6 +604,8 @@ func (r *rcloneDestReconciler) cleanupJob(l logr.Logger) (bool, error) {
 }
 
 func (r *rcloneDestReconciler) validateRcloneSpec(l logr.Logger) (bool, error) {
+	l.V(1).Info("Initiate RcloneSpec validation")
+
 	if len(*r.Instance.Spec.Rclone.RcloneConfig) == 0 {
 		err := errors.New("Unable to get Rclone config secret name")
 		l.V(1).Info("Unable to get Rclone config secret name")
@@ -603,5 +624,43 @@ func (r *rcloneDestReconciler) validateRcloneSpec(l logr.Logger) (bool, error) {
 		return false, err
 	}
 	l.V(1).Info("Rclone config validation complete.")
+	return true, nil
+}
+
+// Check schedule to see if it's time to sync
+func awaitNextSyncDestination(rs *scribev1alpha1.ReplicationDestination, logger logr.Logger) (bool, error) {
+	if cont, err := ensureNextSyncValidDestination(rs, logger); !cont || err != nil {
+		return cont, err
+	}
+	if !rs.Status.NextSyncTime.IsZero() && rs.Status.NextSyncTime.Time.After(time.Now()) {
+		return false, nil
+	}
+	return true, nil
+}
+
+// Set the next sync time accd to the schedule
+func updateNextSyncDestination(rs *scribev1alpha1.ReplicationDestination, logger logr.Logger) (bool, error) {
+	if rs.Spec.Trigger != nil && rs.Spec.Trigger.Schedule != nil {
+		parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
+		schedule, err := parser.Parse(*rs.Spec.Trigger.Schedule)
+		if err != nil {
+			logger.Error(err, "error parsing schedule", "cronspec", rs.Spec.Trigger.Schedule)
+			return false, err
+		}
+		next := schedule.Next(time.Now())
+		rs.Status.NextSyncTime = &metav1.Time{Time: next}
+	}
+	return true, nil
+}
+
+// Make sure the next sync time is valid based on the schedule
+func ensureNextSyncValidDestination(rs *scribev1alpha1.ReplicationDestination, logger logr.Logger) (bool, error) {
+	if rs.Spec.Trigger != nil && rs.Spec.Trigger.Schedule != nil {
+		if rs.Status.NextSyncTime == nil {
+			return updateNextSyncDestination(rs, logger)
+		}
+		return true, nil
+	}
+	rs.Status.NextSyncTime = nil
 	return true, nil
 }
