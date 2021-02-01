@@ -11,7 +11,6 @@ Card](https://goreportcard.com/badge/github.com/backube/scribe)](https://gorepor
 
 ![Documentation](https://github.com/backube/scribe/workflows/Documentation/badge.svg)
 ![operator](https://github.com/backube/scribe/workflows/operator/badge.svg)
-![mover-rsync](https://github.com/backube/scribe/workflows/mover-rsync/badge.svg)
 
 ## Getting started
 
