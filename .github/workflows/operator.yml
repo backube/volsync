@@ -138,6 +138,9 @@ jobs:
           kubectl version --short --client
           kubectl version --short --client | grep -q ${KUBERNETES_VERSION}
 
+      - name: Install helm
+        run: make helm
+
       - name: Install kind
         run: |
           curl -L -o kind https://github.com/kubernetes-sigs/kind/releases/download/v${KIND_VERSION}/kind-linux-amd64
@@ -159,7 +162,8 @@ jobs:
         run: |
           docker load -i /tmp/image.tar
           docker inspect ${OPERATOR_IMAGE}
-          kind load docker-image "${OPERATOR_IMAGE}"
+          docker tag ${OPERATOR_IMAGE} ${OPERATOR_IMAGE}:ci-build
+          kind load docker-image "${OPERATOR_IMAGE}:ci-build"
 
       - name: Load rclone container artifact
         uses: actions/download-artifact@v1
@@ -171,7 +175,8 @@ jobs:
         run: |
           docker load -i /tmp/image.tar
           docker inspect ${RCLONE_IMAGE}
-          kind load docker-image "${RCLONE_IMAGE}"
+          docker tag ${RCLONE_IMAGE} ${RCLONE_IMAGE}:ci-build
+          kind load docker-image "${RCLONE_IMAGE}:ci-build"
 
       - name: Load rsync container artifact
         uses: actions/download-artifact@v1
@@ -183,12 +188,16 @@ jobs:
         run: |
           docker load -i /tmp/image.tar
           docker inspect ${RSYNC_IMAGE}
-          kind load docker-image "${RSYNC_IMAGE}"
+          docker tag ${RSYNC_IMAGE} ${RSYNC_IMAGE}:ci-build
+          kind load docker-image "${RSYNC_IMAGE}:ci-build"
 
-      # TODO: Replace this with `helm install` once we have a chart
       - name: Start operator
         run: |
-          make deploy
+          helm install --create-namespace -n scribe-system \
+              --set image.tag=ci-build \
+              --set rclone.tag=ci-build \
+              --set rsync.tag=ci-build \
+              scribe ./helm/scribe
 
       - name: Run e2e tests
         run: make test-e2e
