@@ -1,0 +1,5 @@
+
+The Scribe operator has been installed into the {{ .Release.Namespace }}
+namespace.
+
+Please see https://scribe-replication.readthedocs.org for documentation.

@@ -5,6 +5,7 @@ extends: default
 ignore: |
   config/**
   hack/crds/*
+  helm/scribe/**
 rules:
   indentation:
     indent-sequences: consistent
