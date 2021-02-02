@@ -8,14 +8,14 @@ Status](https://readthedocs.org/projects/scribe-replication/badge/?version=lates
 [![Go Report
 Card](https://goreportcard.com/badge/github.com/backube/scribe)](https://goreportcard.com/report/github.com/backube/scribe)
 [![codecov](https://codecov.io/gh/backube/scribe/branch/master/graph/badge.svg)](https://codecov.io/gh/backube/scribe)
+![maturity](https://img.shields.io/static/v1?label=maturity&message=alpha&color=red)
 
 ![Documentation](https://github.com/backube/scribe/workflows/Documentation/badge.svg)
 ![operator](https://github.com/backube/scribe/workflows/operator/badge.svg)
 
 ## Getting started
 
-Currently, this project is under heavy development. To try out Scribe,  follow
-the steps in the [installation
+To try out Scribe,  follow the steps in the [installation
 instructions](https://scribe-replication.readthedocs.io/en/latest/installation/index.html).
 
 ## Helpful links

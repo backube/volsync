@@ -4,6 +4,8 @@ Asynchronous volume replication for Kubernetes CSI storage
 
 ## About this operator
 
+![maturity](https://img.shields.io/static/v1?label=maturity&message=alpha&color=red)
+
 Scribe is a Kubernetes operator that performs asynchronous replication of
 persistent volumes within, or across, clusters. Scribe supports replication in a
 storage system independent manner. This means replication can be used with
