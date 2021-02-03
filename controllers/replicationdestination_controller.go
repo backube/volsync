@@ -174,6 +174,50 @@ type rcloneDestReconciler struct {
 	job                *batchv1.Job
 }
 
+//nolint:dupl
+func updateNextSyncDestination(rd *scribev1alpha1.ReplicationDestination, logger logr.Logger) (bool, error) {
+	// if there's a schedule
+	if rd.Spec.Trigger != nil && rd.Spec.Trigger.Schedule != nil {
+		parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
+		schedule, err := parser.Parse(*rd.Spec.Trigger.Schedule)
+		if err != nil {
+			logger.Error(err, "error parsing schedule", "cronspec", rd.Spec.Trigger.Schedule)
+			return false, err
+		}
+
+		// If we've previously completed a sync
+		if rd.Status.LastSyncTime != nil {
+			next := schedule.Next(rd.Status.LastSyncTime.Time)
+			rd.Status.NextSyncTime = &metav1.Time{Time: next}
+		} else { // Never synced before, so we should ASAP
+			rd.Status.NextSyncTime = &metav1.Time{Time: time.Now()}
+		}
+	} else { // No schedule, so there's no "next"
+		rd.Status.NextSyncTime = nil
+	}
+
+	return true, nil
+}
+
+func awaitNextSyncDestination(rd *scribev1alpha1.ReplicationDestination, logger logr.Logger) (bool, error) {
+	// Ensure nextSyncTime is correct
+	if cont, err := updateNextSyncDestination(rd, logger); !cont || err != nil {
+		return cont, err
+	}
+
+	// If there's no next (no schedule) or we're past the nextSyncTime, we should sync
+	if rd.Status.NextSyncTime.IsZero() || rd.Status.NextSyncTime.Time.Before(time.Now()) {
+		return true, nil
+	}
+	return false, nil
+}
+
+func updateLastSyncDestination(rd *scribev1alpha1.ReplicationDestination, logger logr.Logger) (bool, error) {
+	rd.Status.LastSyncTime = &metav1.Time{Time: time.Now()}
+	return updateNextSyncDestination(rd, logger)
+}
+
+//nolint:dupl
 func RunRsyncDestReconciler(ctx context.Context, instance *scribev1alpha1.ReplicationDestination,
 	dr *ReplicationDestinationReconciler, logger logr.Logger) (ctrl.Result, error) {
 	// Initialize state for the reconcile pass
@@ -193,7 +237,13 @@ func RunRsyncDestReconciler(ctx context.Context, instance *scribev1alpha1.Replic
 		r.Instance.Status.Rsync = &scribev1alpha1.ReplicationDestinationRsyncStatus{}
 	}
 
+	// wrap the scheduling functions as reconcileFuncs
+	awaitNextSync := func(l logr.Logger) (bool, error) {
+		return awaitNextSyncDestination(r.Instance, l)
+	}
+
 	_, err := reconcileBatch(l,
+		awaitNextSync,
 		r.EnsurePVC,
 		r.ensureService,
 		r.publishSvcAddress,
@@ -221,14 +271,7 @@ func RunRcloneDestReconciler(ctx context.Context, instance *scribev1alpha1.Repli
 	l := logger.WithValues("method", "Rclone")
 	// wrap the scheduling functions as reconcileFuncs
 	awaitNextSync := func(l logr.Logger) (bool, error) {
-		b, e := awaitNextSyncDestination(r.Instance, l)
-		logger.V(1).Info("awaitNextSync: ", "result: ", b, "err: ", e)
-		return b, e
-	}
-	updateNextsync := func(l logr.Logger) (bool, error) {
-		b, e := updateNextSyncDestination(r.Instance, l)
-		logger.V(1).Info("updateNextsync: ", "result ", b, "err: ", e)
-		return updateNextSyncDestination(r.Instance, l)
+		return awaitNextSyncDestination(r.Instance, l)
 	}
 	_, err := reconcileBatch(l,
 		awaitNextSync,
@@ -239,7 +282,6 @@ func RunRcloneDestReconciler(ctx context.Context, instance *scribev1alpha1.Repli
 		r.ensureJob,
 		r.PreserveImage,
 		r.cleanupJob,
-		updateNextsync,
 	)
 	return ctrl.Result{}, err
 }
@@ -584,8 +626,9 @@ func (r *rsyncDestReconciler) cleanupJob(l logr.Logger) (bool, error) {
 func (r *rcloneDestReconciler) cleanupJob(l logr.Logger) (bool, error) {
 	logger := l.WithValues("job", r.job)
 	// update time/duration
-
-	r.Instance.Status.LastSyncTime = &metav1.Time{Time: time.Now()}
+	if _, err := updateLastSyncDestination(r.Instance, logger); err != nil {
+		return false, err
+	}
 	if r.job.Status.StartTime != nil {
 		d := r.Instance.Status.LastSyncTime.Sub(r.job.Status.StartTime.Time)
 		r.Instance.Status.LastSyncDuration = &metav1.Duration{Duration: d}
@@ -624,43 +667,5 @@ func (r *rcloneDestReconciler) validateRcloneSpec(l logr.Logger) (bool, error) {
 		return false, err
 	}
 	l.V(1).Info("Rclone config validation complete.")
-	return true, nil
-}
-
-// Check schedule to see if it's time to sync
-func awaitNextSyncDestination(rs *scribev1alpha1.ReplicationDestination, logger logr.Logger) (bool, error) {
-	if cont, err := ensureNextSyncValidDestination(rs, logger); !cont || err != nil {
-		return cont, err
-	}
-	if !rs.Status.NextSyncTime.IsZero() && rs.Status.NextSyncTime.Time.After(time.Now()) {
-		return false, nil
-	}
-	return true, nil
-}
-
-// Set the next sync time accd to the schedule
-func updateNextSyncDestination(rs *scribev1alpha1.ReplicationDestination, logger logr.Logger) (bool, error) {
-	if rs.Spec.Trigger != nil && rs.Spec.Trigger.Schedule != nil {
-		parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
-		schedule, err := parser.Parse(*rs.Spec.Trigger.Schedule)
-		if err != nil {
-			logger.Error(err, "error parsing schedule", "cronspec", rs.Spec.Trigger.Schedule)
-			return false, err
-		}
-		next := schedule.Next(time.Now())
-		rs.Status.NextSyncTime = &metav1.Time{Time: next}
-	}
-	return true, nil
-}
-
-// Make sure the next sync time is valid based on the schedule
-func ensureNextSyncValidDestination(rs *scribev1alpha1.ReplicationDestination, logger logr.Logger) (bool, error) {
-	if rs.Spec.Trigger != nil && rs.Spec.Trigger.Schedule != nil {
-		if rs.Status.NextSyncTime == nil {
-			return updateNextSyncDestination(rs, logger)
-		}
-		return true, nil
-	}
-	rs.Status.NextSyncTime = nil
 	return true, nil
 }
