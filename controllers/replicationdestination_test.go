@@ -3,6 +3,7 @@ package controllers
 
 import (
 	"context"
+	"time"
 
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1"
 	. "github.com/onsi/ginkgo"
@@ -16,9 +17,82 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
 )
+
+//nolint:dupl
+var _ = Describe("Destination scheduling", func() {
+	var rd *scribev1alpha1.ReplicationDestination
+	logger := zap.LoggerTo(GinkgoWriter, true)
+
+	BeforeEach(func() {
+		rd = &scribev1alpha1.ReplicationDestination{
+			Status: &scribev1alpha1.ReplicationDestinationStatus{},
+		}
+	})
+
+	Context("When a schedule is specified", func() {
+		var schedule = "0 */2 * * *"
+		BeforeEach(func() {
+			rd.Spec.Trigger = &scribev1alpha1.ReplicationDestinationTriggerSpec{
+				Schedule: &schedule,
+			}
+		})
+		It("if never synced, sync now", func() {
+			rd.Status.LastSyncTime = nil
+			b, e := awaitNextSyncDestination(rd, logger)
+			Expect(b).To(BeTrue())
+			Expect(e).To(BeNil())
+		})
+		It("if synced long ago, sync now", func() {
+			when := metav1.Time{Time: time.Now().Add(-5 * time.Hour)}
+			rd.Status.LastSyncTime = &when
+			b, e := awaitNextSyncDestination(rd, logger)
+			Expect(b).To(BeTrue())
+			Expect(e).To(BeNil())
+		})
+		It("if recently synced, wait", func() {
+			when := metav1.Time{Time: time.Now().Add(-1 * time.Minute)}
+			rd.Status.LastSyncTime = &when
+			b, e := awaitNextSyncDestination(rd, logger)
+			Expect(b).To(BeFalse())
+			Expect(e).To(BeNil())
+		})
+		It("nextSyncTime will be set", func() {
+			_, _ = awaitNextSyncDestination(rd, logger)
+			Expect(rd.Status.NextSyncTime).To(Not(BeNil()))
+		})
+	})
+
+	Context("When a schedule is NOT specified", func() {
+		It("if never synced, sync now", func() {
+			rd.Status.LastSyncTime = nil
+			b, e := awaitNextSyncDestination(rd, logger)
+			Expect(b).To(BeTrue())
+			Expect(e).To(BeNil())
+		})
+		It("if synced long ago, sync now", func() {
+			when := metav1.Time{Time: time.Now().Add(-5 * time.Hour)}
+			rd.Status.LastSyncTime = &when
+			b, e := awaitNextSyncDestination(rd, logger)
+			Expect(b).To(BeTrue())
+			Expect(e).To(BeNil())
+		})
+		It("if recently synced, sync now", func() {
+			when := metav1.Time{Time: time.Now().Add(-1 * time.Minute)}
+			rd.Status.LastSyncTime = &when
+			b, e := awaitNextSyncDestination(rd, logger)
+			Expect(b).To(BeTrue())
+			Expect(e).To(BeNil())
+		})
+		It("nextSyncTime will NOT be set", func() {
+			_, _ = awaitNextSyncDestination(rd, logger)
+			Expect(rd.Status.NextSyncTime).To(BeNil())
+		})
+	})
+})
 
 var _ = Describe("ReplicationDestination", func() {
 	var ctx = context.Background()
