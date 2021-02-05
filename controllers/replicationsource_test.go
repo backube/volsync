@@ -4,6 +4,7 @@ package controllers
 
 import (
 	"context"
+	"time"
 
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1"
@@ -15,7 +16,80 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
+
+//nolint:dupl
+var _ = Describe("Source scheduling", func() {
+	var rs *scribev1alpha1.ReplicationSource
+	logger := zap.LoggerTo(GinkgoWriter, true)
+
+	BeforeEach(func() {
+		rs = &scribev1alpha1.ReplicationSource{
+			Status: &scribev1alpha1.ReplicationSourceStatus{},
+		}
+	})
+
+	Context("When a schedule is specified", func() {
+		var schedule = "0 */2 * * *"
+		BeforeEach(func() {
+			rs.Spec.Trigger = &scribev1alpha1.ReplicationSourceTriggerSpec{
+				Schedule: &schedule,
+			}
+		})
+		It("if never synced, sync now", func() {
+			rs.Status.LastSyncTime = nil
+			b, e := awaitNextSyncSource(rs, logger)
+			Expect(b).To(BeTrue())
+			Expect(e).To(BeNil())
+		})
+		It("if synced long ago, sync now", func() {
+			when := metav1.Time{Time: time.Now().Add(-5 * time.Hour)}
+			rs.Status.LastSyncTime = &when
+			b, e := awaitNextSyncSource(rs, logger)
+			Expect(b).To(BeTrue())
+			Expect(e).To(BeNil())
+		})
+		It("if recently synced, wait", func() {
+			when := metav1.Time{Time: time.Now().Add(-1 * time.Minute)}
+			rs.Status.LastSyncTime = &when
+			b, e := awaitNextSyncSource(rs, logger)
+			Expect(b).To(BeFalse())
+			Expect(e).To(BeNil())
+		})
+		It("nextSyncTime will be set", func() {
+			_, _ = awaitNextSyncSource(rs, logger)
+			Expect(rs.Status.NextSyncTime).To(Not(BeNil()))
+		})
+	})
+
+	Context("When a schedule is NOT specified", func() {
+		It("if never synced, sync now", func() {
+			rs.Status.LastSyncTime = nil
+			b, e := awaitNextSyncSource(rs, logger)
+			Expect(b).To(BeTrue())
+			Expect(e).To(BeNil())
+		})
+		It("if synced long ago, sync now", func() {
+			when := metav1.Time{Time: time.Now().Add(-5 * time.Hour)}
+			rs.Status.LastSyncTime = &when
+			b, e := awaitNextSyncSource(rs, logger)
+			Expect(b).To(BeTrue())
+			Expect(e).To(BeNil())
+		})
+		It("if recently synced, sync now", func() {
+			when := metav1.Time{Time: time.Now().Add(-1 * time.Minute)}
+			rs.Status.LastSyncTime = &when
+			b, e := awaitNextSyncSource(rs, logger)
+			Expect(b).To(BeTrue())
+			Expect(e).To(BeNil())
+		})
+		It("nextSyncTime will NOT be set", func() {
+			_, _ = awaitNextSyncSource(rs, logger)
+			Expect(rs.Status.NextSyncTime).To(BeNil())
+		})
+	})
+})
 
 var _ = Describe("ReplicationSource", func() {
 	var ctx = context.Background()
