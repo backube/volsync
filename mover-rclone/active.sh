@@ -21,11 +21,14 @@ RCLONE_FLAGS=(--checksum --one-file-system --create-empty-src-dirs --progress --
 START_TIME=$SECONDS
 case "${DIRECTION}" in
 source)
+    getfacl -R ${MOUNT_PATH} > ${MOUNT_PATH}/permissons.facl
     rclone sync "${RCLONE_FLAGS[@]}" "${MOUNT_PATH}" "${RCLONE_CONFIG_SECTION}:${RCLONE_DEST_PATH}" --log-level DEBUG
     rc=$?
     ;;
 destination)
     rclone sync "${RCLONE_FLAGS[@]}" "${RCLONE_CONFIG_SECTION}:${RCLONE_DEST_PATH}" "${MOUNT_PATH}" --log-level DEBUG
+    setfacl --restore=${MOUNT_PATH}/permissons.facl
+    rm -rf ${MOUNT_PATH}/permissons.facl
     rc=$?
     ;;
 *)
