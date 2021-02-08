@@ -23,6 +23,7 @@ case "${DIRECTION}" in
 source)
     getfacl -R "${MOUNT_PATH}" > "${MOUNT_PATH}"/permissons.facl
     rclone sync "${RCLONE_FLAGS[@]}" "${MOUNT_PATH}" "${RCLONE_CONFIG_SECTION}:${RCLONE_DEST_PATH}" --log-level DEBUG
+    rm -rf "${MOUNT_PATH}"/permissons.facl
     rc=$?
     ;;
 destination)
