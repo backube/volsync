@@ -5,6 +5,7 @@ ARG rclone_version=v1.53.2
 RUN yum update -y && \
     yum install -y \
       bash \
+      acl \
       https://github.com/rclone/rclone/releases/download/${rclone_version}/rclone-${rclone_version}-linux-amd64.rpm \
     && yum clean all && \
     rm -rf /var/cache/yum
