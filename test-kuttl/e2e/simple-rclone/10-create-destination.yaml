@@ -1,0 +1,15 @@
+---
+apiVersion: scribe.backube/v1alpha1
+kind: ReplicationDestination
+metadata:
+  name: destination
+spec:
+  trigger:
+    schedule: "*/5 * * * *"
+  rclone:
+    rcloneConfigSection: "rclone-data-mover"
+    rcloneDestPath: "scribe-test-bucket"
+    rcloneConfig: "rclone-secret"
+    copyMethod: Snapshot
+    accessModes: [ReadWriteMany]
+    capacity: 1Gi
