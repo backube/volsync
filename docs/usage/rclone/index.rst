@@ -27,7 +27,7 @@ trigger is used on the source side of the relationship to trigger each replicati
 
 Following are the sequences of events happening in each iterations.
 
-- A point-in-time (PiT) copy of the source volume is created using CSI drivers. It will be used as the source data .
+- A point-in-time (PiT) copy of the source volume is created using CSI drivers. It will be used as the source data.
 - A temporary PVC is created out of the PiT copy and mounted on Rclone data mover job pod.
 - The Scribe Rclone data mover then connects to the intermediary storage system (e.g. AWS S3) using configurations
   based on ``rclone-secret``. It uses ``rclone sync`` to copy source data to S3.
@@ -61,6 +61,11 @@ Start by configuring the source; a minimal example is shown below:
 
 Since the ``copyMethod`` specified above is ``Snapshot``, the Rclone data mover creates a ``VolumeSnapshot`` 
 of the source pvc ``mysql-pv-claim`` using the cluster's default ``VolumeSnapshotClass``.
+
+The synchronization schedule, ``.spec.trigger.schedule``, is defined by a
+`cronspec <https://en.wikipedia.org/wiki/Cron#Overview>`_, making the schedule
+very flexible. Both intervals (shown above) as well as specific times and/or
+days can be specified.
 
 It then creates a temproray pvc ``scribe-src-database-source`` out of the VolumeSnapshot to transfer source
 data to the intermediary storage system like AWS S3 using the configurations provided in ``rclone-secret``
@@ -106,6 +111,27 @@ In the above ``ReplicationSource`` object,
 - No errors were detected (the Reconciled condition is True)
 - ``nextSyncTime`` indicates the time of the upcoming Rclone data mover job
 
+Additional source options
+-------------------------
+
+There are a number of more advanced configuration parameters that are supported
+for configuring the source. All of the following options would be placed within
+the .spec.rclone portion of the ReplicationSource CustomResource.
+
+.. include:: ../inc_src_opts.rst
+
+rcloneConfigSection
+   This is used to idenitfy the object storage configuration within
+   ``rclone.conf`` to use.
+
+rcloneDestPath
+   This is the remote storage location in which the persistent data will
+   be uploaded.
+
+rcloneConfig
+   This specifies the secret to be used. The secret contains credentials
+   for the remote storage location.
+
 ----------------------------------
 
 Destination configuration
@@ -122,18 +148,24 @@ A minimal destination configuration is shown here:
     name: database-destination
     namespace: dest
   spec:
+  trigger:
+    schedule: "*/6 * * * *"
     rclone:
       rcloneConfigSection: "aws-s3-bucket"
       rcloneDestPath: "scribe-test-bucket"
       rcloneConfig: "rclone-secret"
       copyMethod: Snapshot
-      accessModes: [ReadWriteMany]
+      accessModes: [ReadWriteOnce]
       capacity: 10Gi
 
 
 In the above example, a 10 GiB RWO volume will be provisioned using the default
 ``StorageClass`` to serve as the destination for replicated data. This volume is
 used by the Rclone data mover to receive the incoming data transfers.
+
+Similar to the replication source, a synchronization schedule is defined ``.spec.trigger.schedule``.
+This indicates when persistent data should be pulled from the remote storage location.
+
 
 Since the ``copyMethod`` specified above is ``Snapshot``, a ``VolumeSnapshot`` of the incoming data
 will be created at the end of each synchronization interval. It is this snapshot that
@@ -155,7 +187,7 @@ Scribe provides status information on the state of the replication via the
   Spec:
   Rclone:
     Access Modes:
-      ReadWriteMany
+      ReadWriteOnce
     Capacity:               10Gi
     Copy Method:            Snapshot
     Rclone Config:          rclone-secret
@@ -190,5 +222,26 @@ available:
   the copyMethod is Snapshot, this will be a VolumeSnapshot object. If the
   copyMethod is None, this will be the PVC that is used as the destination by
   Scribe.
+
+Additional destination options
+------------------------------
+
+There are a number of more advanced configuration parameters that are supported
+for configuring the destination. All of the following options would be placed
+within the ``.spec.rclone`` portion of the ReplicationDestination CustomResource.
+
+.. include:: ../inc_dst_opts.rst
+
+rcloneConfigSection
+   This is used to idenitfy the object storage configuration within
+   ``rclone.conf`` to use.
+
+rcloneDestPath
+   This is the remote storage location in which the persistent data will
+   be downloaded.
+
+rcloneConfig
+   This specifies the secret to be used. The secret contains credentials
+   for the remote storage location.
 
 For a concrete example, see the :doc:`database synchronization example <database_example>`.
