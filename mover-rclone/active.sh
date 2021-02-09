@@ -28,7 +28,7 @@ source)
     ;;
 destination)
     rclone sync "${RCLONE_FLAGS[@]}" "${RCLONE_CONFIG_SECTION}:${RCLONE_DEST_PATH}" "${MOUNT_PATH}" --log-level DEBUG
-    setfacl --restore="${MOUNT_PATH}"/permissons.facl
+    setfacl --restore="${MOUNT_PATH}"/permissons.facl || true
     rm -rf "${MOUNT_PATH}"/permissons.facl
     rc=$?
     ;;
