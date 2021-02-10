@@ -17,11 +17,39 @@ your situation.
    within a cluster. If the controller is not deployed review the
    snapshot controller documentation https://github.com/kubernetes-csi/external-snapshotter.
 
+Kubernetes & OpenShift
+======================
+
+While the operator can be deployed via the ``make deploy`` or ``make
+deploy-openshift`` targets, the recommended method for deploying Scribe is via
+the Helm chart.
+
+.. code-block:: bash
+
+   # Add the Backube Helm repo
+   $ helm repo add backube https://backube.github.io/helm-charts/
+
+   # Deploy the chart in your cluster
+   $ helm install --create-namespace scribe-system scribe backube/scribe
+
+Verify Scribe is running by checking the output of ``kubectl get pods``:
+
+.. code-block:: bash
+
+   $ kubectl -n scribe-system get pods
+   NAME                          READY   STATUS    RESTARTS   AGE
+   scribe-686c8557bc-cr6k9       2/2     Running   0          13s
+
+At this point it is now possible to use the Rsync and Rclone capabilities of
+Scribe.
+
+Continue on to the :doc:`usage docs </usage/index>`.
+
 Development
 ===========
 
-If you are developing Scribe, run the following as it will output the logs of
-the controller to your terminal.
+If you are developing Scribe, run the following as it will run the operator
+locally and output the logs of the controller to your terminal.
 
 .. code-block:: bash
 
@@ -30,40 +58,3 @@ the controller to your terminal.
 
    # Run the operator locally
    $ make run
-
-Kubernetes
-==========
-
-If you are running Kubernetes issue the following command.
-
-.. code-block:: bash
-
-   $ make deploy
-
-OpenShift
-=========
-
-A special make target is provided to allow Scribe to be installed on OpenShift.
-Using this method ensures the proper `SecurityContextConstraint
-<https://docs.openshift.com/container-platform/4.6/rest_api/security_apis/securitycontextconstraints-security-openshift-io-v1.html>`_
-is applied to the cluster.
-
-.. code-block:: bash
-
-   $ make deploy-openshift
-
-
-In the case of the Kubernetes or OpenShift instructions above, verify Scribe is
-running by checking the output of ``kubectl get pods``:
-
-.. code-block:: bash
-
-   $ kubectl -n scribe-system get pods
-   NAME                                         READY   STATUS    RESTARTS   AGE
-   scribe-controller-manager-77d89c5879-bvscw   2/2     Running   0          27s
-
-At this point it is now possible to use the Rsync and Rclone capabilities of
-Scribe.
-
-Continue on to the :doc:`usage docs </usage/index>`.
-
