@@ -20,7 +20,7 @@ annotations:
   # Changelog for current chart & app version
   # Prefix w/ Added/Changed/Deprecated/Fixed/Removed/Security
   artifacthub.io/changes: |
-    - Added: Initial release
+    - Added - Initial release
   artifacthub.io/crds: |
     - kind: ReplicationDestination
       version: v1alpha1
