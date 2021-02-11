@@ -11,5 +11,5 @@ spec:
     rcloneDestPath: "scribe-test-bucket"
     rcloneConfig: "rclone-secret"
     copyMethod: Snapshot
-    accessModes: [ReadWriteMany]
+    accessModes: [ReadWriteOnce]
     capacity: 1Gi
