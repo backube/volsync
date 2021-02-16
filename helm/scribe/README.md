@@ -89,6 +89,10 @@ on the command line or via a custom `values.yaml` file.
   - The container image for Scribe's rclone-based data mover
 - `rclone.tag`: (current appVersion)
   - The tag to use for the rclone-based data mover
+- `restic.repository`: `quay.io/backube/scribe-mover-restic`
+  - The container image for Scribe's restic-based data mover
+- `restic.tag`: (current appVersion)
+  - The tag to use for the restic-based data mover
 - `rsync.repository`: `quay.io/backube/scribe-mover-rsync`
   - The container image for Scribe's rsync-based data mover
 - `rsync.tag`: (current appVersion)
