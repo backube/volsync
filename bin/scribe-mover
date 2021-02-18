@@ -5,12 +5,12 @@ usage()
 cat << EOF
 usage: $0 -s /var/www/html -d loadbalancer.mycluster.com -i /home/user/source-key
 
-This script does foo.
+$0 is used to move data into a Kubernetes environment using Scribe.
 
 OPTIONS:
    -d   Destination host in which to rsync the data
-   -h	Show this message
-   -i	Path to SSH key
+   -h   Show this message
+   -i   Path to SSH key
    -s   Source directory
 EOF
 }
@@ -23,9 +23,9 @@ fi
 while getopts h:s:d:i: flag
 do
     case "${flag}" in
-        s) SOURCE=${OPTARG};;
         d) DESTINATION_ADDRESS=${OPTARG};;
         i) SSHKEY=${OPTARG};;
+        s) SOURCE=${OPTARG};;
         h)
             usage
             exit
