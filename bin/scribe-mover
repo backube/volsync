@@ -1,0 +1,60 @@
+#!/bin/bash
+SSHOPTS="-o ServerAliveInterval=30 -o ServerAliveCountMax=4 -o TCPKeepAlive=no -o ControlPersist=5 -o ConnectTimeout=30 -o ControlMaster=auto CheckHostIP=no"
+usage()
+{
+cat << EOF
+usage: $0 -s /var/www/html -d loadbalancer.mycluster.com -i /home/user/source-key
+
+This script does foo.
+
+OPTIONS:
+   -d   Destination host in which to rsync the data
+   -h	Show this message
+   -i	Path to SSH key
+   -s   Source directory
+EOF
+}
+
+if ! command -v rsync > /dev/null 2>&1; then
+	echo "rsync must be installed before proceeding"
+	exit 1
+fi
+
+while getopts h:s:d:i: flag
+do
+    case "${flag}" in
+        s) SOURCE=${OPTARG};;
+        d) DESTINATION_ADDRESS=${OPTARG};;
+        i) SSHKEY=${OPTARG};;
+        h)
+            usage
+            exit
+            ;;
+    esac
+done
+
+if [ ! "$SSHKEY" ] || [ ! "$DESTINATION_ADDRESS" ] || [ ! "$SOURCE" ]
+then
+	echo "Ensure that all required parameters are provided"
+    usage
+    exit 1
+fi
+
+ssh-keygen -F ${DESTINATION_ADDRESS} 2>/dev/null 1>/dev/null
+if [ $? -eq 1 ]; then
+   echo "Adding known host entry"
+   ssh-keyscan -t rsa -T 10 ${DESTINATION_ADDRESS} >> ~/.ssh/known_hosts
+fi
+
+echo "Syncing data to ${DESTINATION_ADDRESS} ..."
+START_TIME=$SECONDS
+rsync -aAhHSxz -e "ssh -i ${SSHKEY} ${SSHOPTS}" --delete --itemize-changes --info=stats2,misc2 ${SOURCE} "root@${DESTINATION_ADDRESS}":.
+rc=$?
+echo "Rsync completed in $(( SECONDS - START_TIME ))s"
+if [[ $rc -eq 0 ]]; then
+    echo "Synchronization completed successfully. Notifying destination..."
+    ssh -i ${SSHKEY} "root@${DESTINATION_ADDRESS}" shutdown 0
+else
+    echo "Synchronization failed. rsync returned: $rc"
+    exit $rc
+fi
