@@ -1,0 +1,106 @@
+---
+# This shows an example of how the mover container can be invoked, though it is
+# not intended to be run manually (only by the operator).
+
+
+# This Secret is provided by the user to configure the restic repo parameters.
+# The keys will be turned into env vars
+apiVersion: v1
+kind: Secret
+metadata:
+  name: restic-config
+type: Opaque
+stringData:
+  # The repository url
+  RESTIC_REPOSITORY: s3:http://minio.minio.svc.cluster.local:9000/restic-repo
+  # The repository encryption key
+  RESTIC_PASSWORD: my-secure-restic-password
+  # ENV vars specific to the back end
+  # https://restic.readthedocs.io/en/stable/030_preparing_a_new_repo.html
+  AWS_ACCESS_KEY_ID: access
+  AWS_SECRET_ACCESS_KEY: password
+
+
+---
+# This volume persists the restic cache between runs. The data is truly a cache
+# (and can be deleted), but it speeds subsequent runs by decreasing the amount
+# of data that must be fetched from the repo.
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: restic-cache
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: restic-mover
+spec:
+  template:
+    metadata:
+      name: restic-mover
+    spec:
+      containers:
+        - name: restic
+          image: quay.io/backube/scribe-mover-restic:latest
+          imagePullPolicy: IfNotPresent
+          command: [/entry.sh]
+          # This can be "backup", "restore", or "prune"
+          args: [backup]
+          env:
+            # Options to pass to `restic forget`
+            - name: FORGET_OPTIONS
+              value: --keep-hourly 2 --keep-daily 1
+            # Match the mount path for the data volume
+            - name: DATA_DIR
+              value: /data
+            # Match the mount path for the cache volume
+            - name: RESTIC_CACHE_DIR
+              value: /cache
+            # Repository and password are mandatory
+            - name: RESTIC_REPOSITORY
+              valueFrom:
+                secretKeyRef:
+                  name: restic-config
+                  key: RESTIC_REPOSITORY
+                  optional: false
+            - name: RESTIC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: restic-config
+                  key: RESTIC_PASSWORD
+                  optional: false
+            # All restic env vars should be added here (as optional)
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: restic-config
+                  key: AWS_ACCESS_KEY_ID
+                  optional: true
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: restic-config
+                  key: AWS_SECRET_ACCESS_KEY
+                  optional: true
+          volumeMounts:
+            - name: cache
+              mountPath: /cache
+            - name: data
+              mountPath: /data
+      restartPolicy: OnFailure
+      volumes:
+        - name: cache
+          persistentVolumeClaim:
+            claimName: restic-cache
+        - name: data
+          persistentVolumeClaim:
+            # PVC name taken from user CR
+            claimName: datavol
