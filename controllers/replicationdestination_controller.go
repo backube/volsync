@@ -46,6 +46,8 @@ const (
 	DefaultRsyncContainerImage = "quay.io/backube/scribe-mover-rsync:latest"
 	// DefaultRcloneContainerImage is the default container image name of the rclone data mover
 	DefaultRcloneContainerImage = "quay.io/backube/scribe-mover-rclone:latest"
+	// DefaultResticContainerImage is the default container image name of the restic data mover
+	DefaultResticContainerImage = "quay.io/backube/scribe-mover-restic:latest"
 )
 
 var (
@@ -53,6 +55,8 @@ var (
 	RsyncContainerImage string
 	// RcloneContainerImage is the container image name of the rclone data mover
 	RcloneContainerImage string
+	// ResticContainerImage is the container image name of the restic data mover
+	ResticContainerImage string
 )
 
 // ReplicationDestinationReconciler reconciles a ReplicationDestination object
