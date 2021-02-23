@@ -61,6 +61,8 @@ func main() {
 		controllers.DefaultResticContainerImage, "The container image for the restic data mover")
 	flag.StringVar(&controllers.RsyncContainerImage, "rsync-container-image",
 		controllers.DefaultRsyncContainerImage, "The container image for the rsync data mover")
+	flag.StringVar(&controllers.SCCName, "scc-name",
+		controllers.DefaultSCCName, "The name of the scribe security context constraint")
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
