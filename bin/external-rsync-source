@@ -1,15 +1,15 @@
 #!/bin/bash
-SSHOPTS="-o ServerAliveInterval=30 -o ServerAliveCountMax=4 -o TCPKeepAlive=no -o ControlPersist=5 -o ConnectTimeout=30 -o ControlMaster=auto CheckHostIP=no"
+SSHOPTS="-o ServerAliveInterval=30 -o ServerAliveCountMax=4 -o TCPKeepAlive=no -o ControlPersist=5 -o ConnectTimeout=30 -o ControlMaster=auto -o CheckHostIP=no"
 usage()
 {
 cat << EOF
 usage: $0 -s /var/www/html -d loadbalancer.mycluster.com -i /home/user/source-key
 
-$0 is used to move data into a Kubernetes environment using Scribe.
+external-rsync-source is used to rsync data into a Kubernetes environment.
 
 OPTIONS:
-   -d   Destination host in which to rsync the data
-   -h   Show this message
+   -d   Destination address to rsync the data
+   -h   Help
    -i   Path to SSH key
    -s   Source directory
 EOF
