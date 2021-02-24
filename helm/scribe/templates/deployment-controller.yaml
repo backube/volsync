@@ -44,6 +44,7 @@ spec:
             - --metrics-addr=127.0.0.1:8080
             - --enable-leader-election
             - --rclone-container-image={{ .Values.rclone.repository }}:{{ .Values.rclone.tag | default .Chart.AppVersion }}
+            - --restic-container-image={{ .Values.restic.repository }}:{{ .Values.restic.tag | default .Chart.AppVersion }}
             - --rsync-container-image={{ .Values.rsync.repository }}:{{ .Values.rsync.tag | default .Chart.AppVersion }}
           command:
             - /manager

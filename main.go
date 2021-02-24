@@ -57,6 +57,8 @@ func main() {
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.StringVar(&controllers.RcloneContainerImage, "rclone-container-image",
 		controllers.DefaultRcloneContainerImage, "The container image for the rclone data mover")
+	flag.StringVar(&controllers.ResticContainerImage, "restic-container-image",
+		controllers.DefaultResticContainerImage, "The container image for the restic data mover")
 	flag.StringVar(&controllers.RsyncContainerImage, "rsync-container-image",
 		controllers.DefaultRsyncContainerImage, "The container image for the rsync data mover")
 	flag.Parse()

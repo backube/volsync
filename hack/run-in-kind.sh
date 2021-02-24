@@ -9,6 +9,7 @@ cd "$scriptdir/.."
 # Build the container images
 make docker-build
 make -C mover-rclone image
+make -C mover-restic image
 make -C mover-rsync image
 
 # Load the images into kind
@@ -24,5 +25,6 @@ done
 helm install --create-namespace -n scribe-system \
     --set image.tag="${KIND_TAG}" \
     --set rclone.tag="${KIND_TAG}" \
+    --set restic.tag="${KIND_TAG}" \
     --set rsync.tag="${KIND_TAG}" \
     scribe ./helm/scribe
