@@ -7,6 +7,7 @@ Rsync-based replication
 
    database_example
    ssh_keys
+   external_rsync
 
 .. sidebar:: Contents
 
