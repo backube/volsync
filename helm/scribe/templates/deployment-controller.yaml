@@ -46,6 +46,7 @@ spec:
             - --rclone-container-image={{ .Values.rclone.repository }}:{{ .Values.rclone.tag | default .Chart.AppVersion }}
             - --restic-container-image={{ .Values.restic.repository }}:{{ .Values.restic.tag | default .Chart.AppVersion }}
             - --rsync-container-image={{ .Values.rsync.repository }}:{{ .Values.rsync.tag | default .Chart.AppVersion }}
+            - --scc-name={{ include "scribe.fullname" . }}-mover
           command:
             - /manager
           securityContext:

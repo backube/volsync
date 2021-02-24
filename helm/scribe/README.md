@@ -55,6 +55,7 @@ provide replication capabilities to all namespaces in the cluster.
 **Running more than one instance of Scribe at a time is not supported.**
 
 ```console
+$ helm repo add backube-helm-charts https://backube.github.io/helm-charts/
 $ helm install --create-namespace --namespace scribe-system scribe backube/scribe
 
 NAME: scribe
