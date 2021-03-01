@@ -33,8 +33,8 @@ Migration Example
 In this example, a database is running on a RHEL 8 server. It has been decided
 that this database should move from a server into a Kubernetes environment.
 
-Starting at the Kubernetes cluster create the
-`replicationdestination` and the PVC using the examples below.
+Starting at the Kubernetes cluster create the `Namespace`,
+`replicationdestination`, and the `PVC` using the examples below.
 
 .. code:: bash
 
