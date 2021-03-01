@@ -2,7 +2,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: scribe
+  name: scribe-ghaction
   namespace: scribe-system
 status:
   readyReplicas: 1

@@ -173,6 +173,10 @@ jobs:
         run: |
           ./hack/setup-kind-cluster.sh "${KUBERNETES_VERSION}"
 
+      - name: Start MinIO
+        run: |
+          ./hack/run-minio.sh
+
       - name: Load operator container artifact
         uses: actions/download-artifact@v1
         with:
@@ -232,10 +236,13 @@ jobs:
               --set rclone.tag=ci-build \
               --set rsync.tag=ci-build \
               --set restic.tag=ci-build \
-              scribe ./helm/scribe
+              --wait --timeout=300s \
+              scribe-ghaction ./helm/scribe
 
       - name: Run e2e tests
-        run: make test-e2e
+        run: |
+          kubectl -n minio wait --for=condition=Available --timeout=300s deploy/minio
+          make test-e2e
 
   # This is a dummy job that can be used to determine success of CI:
   # - by Mergify instead of having to list a bunch of other jobs
