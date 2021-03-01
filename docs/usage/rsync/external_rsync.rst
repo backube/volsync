@@ -9,7 +9,8 @@ Kubernetes cluster.
 Usage
 =====
 This binary works by using Rsync and SSH to copy a directory into an endpoint
-within a Kubernetes cluster created by the `replicationdestination` object. Because
+within a Kubernetes cluster created by the `replicationdestination` object. Connectivity
+must exist from the data source to the Kubernetes cluster. Because
 of the simplicity the underlying storage does not matter. This means the directory
 could exist on a NFS share, within GlusterFS, or on the servers filesystem.
 
