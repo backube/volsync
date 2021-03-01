@@ -33,10 +33,8 @@ Migration Example
 In this example, a database is running on a RHEL 8 server. It has been decided
 that this database should move from a server into a Kubernetes environment.
 
-Starting at the Kubernetes cluster create a file with the YAML below. The
-`replicationdestination` will use the `gp2 storageclass` for the PVC.
-
-Create the namespace, PVC, and `replicationdestination` object.
+Starting at the Kubernetes cluster create the
+`replicationdestination` and the PVC using the examples below.
 
 .. code:: bash
 
