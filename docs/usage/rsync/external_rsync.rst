@@ -6,7 +6,6 @@ In the Scribe repository, the script `bin/external-rsync-source` can be executed
 which will serve as the `replicationsource` allowing data to be replicated to a
 Kubernetes cluster.
 
-
 Usage
 =====
 This binary works by using Rsync and SSH to copy a directory into an endpoint
@@ -27,8 +26,9 @@ LoadBalancer service created by the `replicationdestination`.
 
    $ external-rsync-source -s /var/www/html -d a48a38bf6f69c4070831391e8b22e8d5-08027986c9de8c10.elb.us-east-2.amazonaws.com -i /home/user/source-key
 
-Example
-======
+
+Migration Example
+=================
 
 In this example, a database is running on a RHEL 8 server. It has been decided
 that this database should move from a server into a Kubernetes environment.
