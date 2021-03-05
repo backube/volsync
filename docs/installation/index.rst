@@ -30,7 +30,7 @@ the Helm chart.
    $ helm repo add backube https://backube.github.io/helm-charts/
 
    # Deploy the chart in your cluster
-   $ helm install --create-namespace scribe-system scribe backube/scribe
+   $ helm install --create-namespace -n scribe-system scribe backube/scribe
 
 Verify Scribe is running by checking the output of ``kubectl get pods``:
 
