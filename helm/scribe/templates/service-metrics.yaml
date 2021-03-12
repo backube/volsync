@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "scribe.fullname" . }}-metrics-service
+  name: {{ include "scribe.fullname" . }}-metrics
   labels:
     control-plane: {{ include "scribe.fullname" . }}-controller
     {{- include "scribe.labels" . | nindent 4 }}
