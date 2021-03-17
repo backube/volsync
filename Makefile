@@ -33,7 +33,7 @@ GOBIN := $(shell go env GOBIN)
 endif
 export PATH := $(PATH):$(GOBIN)
 
-all: manager manifests
+all: manager manifests scribe
 
 # Run tests
 .PHONY: test
@@ -206,3 +206,11 @@ HELM=$(GOBIN)/helm
 else
 HELM=$(shell which helm)
 endif
+
+.PHONY: scribe
+scribe: build-scribe
+
+.PHONY: build-scribe
+build-scribe:
+	go build -o bin/kubectl-scribe -ldflags -X=main.scribeVersion=$(VERSION) ./cmd/scribe
+

@@ -40,6 +40,53 @@ Verify Scribe is running by checking the output of ``kubectl get pods``:
    NAME                          READY   STATUS    RESTARTS   AGE
    scribe-686c8557bc-cr6k9       2/2     Running   0          13s
 
+Configure default CSI storage
+-----------------------------
+
+AWS
+^^^
+
+.. code-block:: bash
+
+    $ kubectl annotate sc/gp2 storageclass.kubernetes.io/is-default-class="false" --overwrite
+    $ kubectl annotate sc/gp2-csi storageclass.kubernetes.io/is-default-class="true" --overwrite
+
+    # Install a VolumeSnapshotClass
+    $ kubectl create -f - << SNAPCLASS
+    ---
+    apiVersion: snapshot.storage.k8s.io/v1beta1
+    kind: VolumeSnapshotClass
+    metadata:
+      name: gp2-csi
+    driver: ebs.csi.aws.com
+    deletionPolicy: Delete
+    SNAPCLASS
+
+    # Set gp2-csi as default VolumeSnapshotClass
+    $ kubectl annotate volumesnapshotclass/gp2-csi snapshot.storage.kubernetes.io/is-default-class="true"
+
+GCE
+^^^
+
+.. code-block:: bash
+
+    $ kubectl annotate sc/standard storageclass.kubernetes.io/is-default-class="false" --overwrite
+    $ kubectl annotate sc/standard-csi storageclass.kubernetes.io/is-default-class="true" --overwrite
+
+    # Install a VolumeSnapshotClass
+    $ kubectl create -f - << SNAPCLASS
+    ---
+    apiVersion: snapshot.storage.k8s.io/v1beta1
+    kind: VolumeSnapshotClass
+    metadata:
+      name: standard-csi
+    driver: pd.csi.storage.gke.io
+    deletionPolicy: Delete
+    SNAPCLASS
+
+    # Set standard-csi as default VolumeSnapshotClass
+    $ kubectl annotate volumesnapshotclass/standard-csi snapshot.storage.kubernetes.io/is-default-class="true"
+
 At this point it is now possible to use the Rsync and Rclone capabilities of
 Scribe.
 

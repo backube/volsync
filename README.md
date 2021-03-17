@@ -15,24 +15,57 @@ Card](https://goreportcard.com/badge/github.com/backube/scribe)](https://gorepor
 
 ## Getting started
 
-To try out Scribe,  follow the steps in the [installation
+### Try Scribe in Kind
+
+For a convenient script to start a `kind cluster`, try this
+[script to setup a kind cluster](hack/setup-kind-cluster.sh).
+
+### Try Scribe in a Kind, Kubernetes, or Openshift cluster
+
+Follow the steps in the [installation
 instructions](https://scribe-replication.readthedocs.io/en/latest/installation/index.html).
+Here are
+[useful commands to configure cluster storage classes](./storage-setup.md).
+
+## Scribe kubectl plugin
+
+To try out Scribe with a command line interface `scribe`:
+
+```bash
+make scribe
+cp bin/kubectl-scribe /usr/local/bin/
+```
+
+**NOTE:** `scribe` tool is being actively developed. Options, flags,
+and names are likely to be updated frequently. PRs and new issues are welcome!
+
+Available commands:
+
+```bash
+kubectl scribe new-source
+kubectl scribe new-destination
+kubectl scribe sync-ssh-secret
+```
+
+* Try the current examples:
+  * [single cluster cross namespace example](./docs/usage/rsync/db-example-cli.md)
+  * [multiple cluster example](./docs/usage/rsync/multi-context-sync-cli.md)
 
 ## Helpful links
 
-- [Scribe documentation](https://scribe-replication.readthedocs.io)
-- [Changelog](CHANGELOG.md)
-- [Contributing guidelines](https://github.com/backube/.github/blob/master/CONTRIBUTING.md)
-- [Organization code of conduct](https://github.com/backube/.github/blob/master/CODE_OF_CONDUCT.md)
+* [Scribe documentation](https://scribe-replication.readthedocs.io)
+* [Changelog](CHANGELOG.md)
+* [Contributing guidelines](https://github.com/backube/.github/blob/master/CONTRIBUTING.md)
+* [Organization code of conduct](https://github.com/backube/.github/blob/master/CODE_OF_CONDUCT.md)
 
 ## Licensing
 
 This project is licensed under the [GNU AGPL 3.0 License](LICENSE) with the following
 exceptions:
 
-- The files within the `api/*` directories are additionally licensed under
+* The files within the `api/*` directories are additionally licensed under
   Apache License 2.0. This is to permit Scribe's CustomResource types to be used
   by a wider range of software.
-- Documentation is made available under the [Creative Commons
+* Documentation is made available under the [Creative Commons
   Attribution-ShareAlike 4.0 International license (CC BY-SA
   4.0)](https://creativecommons.org/licenses/by-sa/4.0/)
