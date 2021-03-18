@@ -538,13 +538,13 @@ func (r *rsyncSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 			r.job.Spec.Template.Spec.Containers = []corev1.Container{{}}
 		}
 		r.job.Spec.Template.Spec.Containers[0].Name = "rsync"
-		if r.Instance.Spec.Rsync.Port != nil {
+		if r.Instance.Spec.Rsync.Port != nil && r.Instance.Spec.Rsync.Address != nil {
 			connectPort := strconv.Itoa(int(*r.Instance.Spec.Rsync.Port))
 			r.job.Spec.Template.Spec.Containers[0].Env = []corev1.EnvVar{
 				{Name: "DESTINATION_ADDRESS", Value: *r.Instance.Spec.Rsync.Address},
 				{Name: "DESTINATION_PORT", Value: connectPort},
 			}
-		} else if r.Instance.Spec.Rsync.Port == nil {
+		} else if r.Instance.Spec.Rsync.Port == nil && r.Instance.Spec.Rsync.Address != nil {
 			r.job.Spec.Template.Spec.Containers[0].Env = []corev1.EnvVar{
 				{Name: "DESTINATION_ADDRESS", Value: *r.Instance.Spec.Rsync.Address},
 			}
