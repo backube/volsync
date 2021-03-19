@@ -4,6 +4,7 @@ package controllers
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
@@ -460,6 +461,35 @@ var _ = Describe("ReplicationSource", func() {
 			Consistently(func() error {
 				return k8sClient.Get(ctx, nameFor(svc), svc)
 			}, duration, interval).Should(Not(Succeed()))
+		})
+	})
+
+	Context("when a port is defined", func() {
+		BeforeEach(func() {
+			remotePort := int32(2222)
+			remoteAddr := "my.remote.host.com"
+			rs.Spec.Rsync = &scribev1alpha1.ReplicationSourceRsyncSpec{
+				ReplicationSourceVolumeOptions: scribev1alpha1.ReplicationSourceVolumeOptions{
+					CopyMethod: scribev1alpha1.CopyMethodClone,
+				},
+				Address: &remoteAddr,
+				Port: &remotePort,
+			}
+		})
+		It("an environment variable is created", func() {
+			job := &batchv1.Job{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
+			}, maxWait, interval).Should(Succeed())
+			port := job.Spec.Template.Spec.Containers[0].Env
+			remotePort := strconv.Itoa(int(2222))
+			found := false
+			for _, v := range port {
+				if v.Value == remotePort {
+					found = true
+				}
+			}
+			Expect(found).To(BeTrue())
 		})
 	})
 
