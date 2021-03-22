@@ -19,6 +19,10 @@ rsync:
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
 
+metrics:
+  # Disable auth checks when scraping metrics (allow anyone to scrape)
+  disableAuth: false
+
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
