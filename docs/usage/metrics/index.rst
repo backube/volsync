@@ -20,7 +20,7 @@ scribe_missed_intervals_total
    example, when using the rsync mover with a schedule on the source but not on
    the destination, only the metric for the source side is meaningful.
 scribe_sync_duration_seconds
-   This is a summary of the time required for each sync iteration. My monitoring
+   This is a summary of the time required for each sync iteration. By monitoring
    this value it is possible to determine how much "slack" exists in the
    synchronization schedule (i.e., how much less is the sync duration than the
    schedule frequency).
