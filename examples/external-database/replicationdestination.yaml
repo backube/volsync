@@ -1,0 +1,14 @@
+---
+apiVersion: scribe.backube/v1alpha1
+kind: ReplicationDestination
+metadata:
+  name: database-destination
+  namespace: database
+spec:
+  rsync:
+    serviceType: LoadBalancer
+    destinationPVC: mysql-pvc
+    copyMethod: None
+    storageClassName: gp2-csi
+    capacity: 8Gi
+    accessModes: [ReadWriteOnce]

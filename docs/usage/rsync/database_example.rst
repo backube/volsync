@@ -83,7 +83,7 @@ Create a database in the mysql pod running in the source namespace.
 
 .. code:: bash
 
-   $ kubectl exec --stdin --tty -n source `kubectl get pods -n source | grep mysql | awk '{print $1}'` /bin/bash
+   $ kubectl exec --stdin --tty -n source `kubectl get pods -n source | grep mysql | awk '{print $1}'` -- /bin/bash
    $ mysql -u root -p$MYSQL_ROOT_PASSWORD
    > show databases;
    +--------------------+
@@ -127,7 +127,7 @@ exists.
 
 .. code:: bash
 
-   $ kubectl exec --stdin --tty -n dest `kubectl get pods -n dest | grep mysql | awk '{print $1}'` /bin/bash
+   $ kubectl exec --stdin --tty -n dest `kubectl get pods -n dest | grep mysql | awk '{print $1}'` -- /bin/bash
    $ mysql -u root -p$MYSQL_ROOT_PASSWORD
    > show databases;
    +--------------------+

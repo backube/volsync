@@ -1,0 +1,7 @@
+---
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+commands:
+  # Timeout must be longer than sync interval in ReplicationSource
+  - timeout: 150
+    command: ./08-waitfor-sync-source.sh

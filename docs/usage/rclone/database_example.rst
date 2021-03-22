@@ -11,7 +11,7 @@ First, create the source. Next deploy the source MySQL database.
 .. code:: bash
 
    $ kubectl create ns source
-   $ kubectl create -f example/source-databases/ -n source
+   $ kubectl create -f examples/source-database/ -n source
 
 Verify the database is running.
 
@@ -25,7 +25,7 @@ Add a new database.
 
 .. code:: bash
 
-   $ kubectl exec --stdin --tty -n source `kubectl get pods -n source | grep mysql | awk '{print $1}'` /bin/bash
+   $ kubectl exec --stdin --tty -n source `kubectl get pods -n source | grep mysql | awk '{print $1}'` -- /bin/bash
    $ mysql -u root -p$MYSQL_ROOT_PASSWORD
    > show databases;
    +--------------------+
@@ -82,7 +82,7 @@ on the destination.
 
    $ kubectl create ns dest
    $ kubectl create secret generic rclone-secret --from-file=rclone.conf=./examples/rclone.conf -n dest
-   $ create -f examples/scribe_v1alpha1_replicationdestination_rclone.yaml -n dest
+   $ kubectl create -f examples/scribe_v1alpha1_replicationdestination_rclone.yaml -n dest
 
 
 
@@ -116,7 +116,7 @@ exists.
 
 .. code:: bash
 
-   $ kubectl exec --stdin --tty -n dest `kubectl get pods -n dest | grep mysql | awk '{print $1}'` /bin/bash
+   $ kubectl exec --stdin --tty -n dest `kubectl get pods -n dest | grep mysql | awk '{print $1}'` -- /bin/bash
    $ mysql -u root -p$MYSQL_ROOT_PASSWORD
    > show databases;
    +--------------------+
@@ -130,5 +130,5 @@ exists.
    +--------------------+
    5 rows in set (0.00 sec)
 
-
-
+   > exit
+   $ exit

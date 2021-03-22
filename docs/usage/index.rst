@@ -5,6 +5,7 @@ Usage
 .. toctree::
    :hidden:
 
+   metrics/index
    rclone/index
    rsync/index
 
@@ -17,3 +18,9 @@ There are two different replication methods built into Scribe. Choose the method
    Use Rsync-based replication for 1:1 replication of volumes in scenarios such
    as disaster recovery, mirroring to a test environment, or sending data to a
    remote site for processing.
+
+Metrics
+=======
+
+Scribe :doc:`exposes a number of metrics <metrics/index>` that permit monitoring
+the status of replication relationships via Prometheus.

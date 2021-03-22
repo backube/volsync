@@ -18,10 +18,74 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package controllers
 
 import (
+	"time"
+
 	"github.com/go-logr/logr"
+	"github.com/prometheus/client_golang/prometheus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
+
+const (
+	metricsNamespace = "scribe"
+)
+
+// scribeMetrics holds references to fully qualified instances of the metrics
+type scribeMetrics struct {
+	MissedIntervals prometheus.Counter
+	OutOfSync       prometheus.Gauge
+	SyncDurations   prometheus.Observer
+}
+
+var (
+	metricLabels = []string{
+		"obj_name",      // Name of the replication CR
+		"obj_namespace", // Namespace containing the CR
+		"role",          // Direction: "source" or "destination"
+		"method",        // Synchronization method (rsync, rclone, etc.)
+	}
+
+	missedIntervals = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name:      "missed_intervals_total",
+			Namespace: metricsNamespace,
+			Help:      "The number of times a synchronization failed to complete before the next scheduled start",
+		},
+		metricLabels,
+	)
+	outOfSync = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name:      "volume_out_of_sync",
+			Namespace: metricsNamespace,
+			Help:      "Set to 1 if the volume is not properly synchronized",
+		},
+		metricLabels,
+	)
+	syncDurations = prometheus.NewSummaryVec(
+		prometheus.SummaryOpts{
+			Name:       "sync_duration_seconds",
+			Namespace:  metricsNamespace,
+			Help:       "Duration of the synchronization interval in seconds",
+			Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
+			MaxAge:     24 * time.Hour,
+		},
+		metricLabels,
+	)
+)
+
+func newScribeMetrics(labels prometheus.Labels) scribeMetrics {
+	return scribeMetrics{
+		MissedIntervals: missedIntervals.With(labels),
+		OutOfSync:       outOfSync.With(labels),
+		SyncDurations:   syncDurations.With(labels),
+	}
+}
+
+func init() {
+	// Register custom metrics with the global prometheus registry
+	metrics.Registry.MustRegister(missedIntervals, outOfSync, syncDurations)
+}
 
 func nameFor(obj metav1.Object) types.NamespacedName {
 	return types.NamespacedName{

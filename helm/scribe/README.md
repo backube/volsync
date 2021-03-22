@@ -4,6 +4,8 @@ Asynchronous volume replication for Kubernetes CSI storage
 
 ## About this operator
 
+![maturity](https://img.shields.io/static/v1?label=maturity&message=alpha&color=red)
+
 Scribe is a Kubernetes operator that performs asynchronous replication of
 persistent volumes within, or across, clusters. Scribe supports replication in a
 storage system independent manner. This means replication can be used with
@@ -53,6 +55,7 @@ provide replication capabilities to all namespaces in the cluster.
 **Running more than one instance of Scribe at a time is not supported.**
 
 ```console
+$ helm repo add backube-helm-charts https://backube.github.io/helm-charts/
 $ helm install --create-namespace --namespace scribe-system scribe backube/scribe
 
 NAME: scribe
@@ -87,6 +90,10 @@ on the command line or via a custom `values.yaml` file.
   - The container image for Scribe's rclone-based data mover
 - `rclone.tag`: (current appVersion)
   - The tag to use for the rclone-based data mover
+- `restic.repository`: `quay.io/backube/scribe-mover-restic`
+  - The container image for Scribe's restic-based data mover
+- `restic.tag`: (current appVersion)
+  - The tag to use for the restic-based data mover
 - `rsync.repository`: `quay.io/backube/scribe-mover-rsync`
   - The container image for Scribe's rsync-based data mover
 - `rsync.tag`: (current appVersion)

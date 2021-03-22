@@ -10,10 +10,18 @@ rclone:
   repository: quay.io/backube/scribe-mover-rclone
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
+restic:
+  repository: quay.io/backube/scribe-mover-restic
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
 rsync:
   repository: quay.io/backube/scribe-mover-rsync
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
+
+metrics:
+  # Disable auth checks when scraping metrics (allow anyone to scrape)
+  disableAuth: false
 
 imagePullSecrets: []
 nameOverride: ""

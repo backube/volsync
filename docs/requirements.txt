@@ -3,3 +3,4 @@ plantweb
 pylint
 rstcheck
 sphinx_rtd_theme
+sphinxcontrib-contentui

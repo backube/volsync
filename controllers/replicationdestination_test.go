@@ -9,6 +9,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/operator-framework/operator-lib/status"
+	"github.com/prometheus/client_golang/prometheus"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
@@ -25,7 +26,7 @@ import (
 //nolint:dupl
 var _ = Describe("Destination scheduling", func() {
 	var rd *scribev1alpha1.ReplicationDestination
-	logger := zap.LoggerTo(GinkgoWriter, true)
+	logger := zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
 
 	BeforeEach(func() {
 		rd = &scribev1alpha1.ReplicationDestination{
@@ -35,6 +36,7 @@ var _ = Describe("Destination scheduling", func() {
 
 	Context("When a schedule is specified", func() {
 		var schedule = "0 */2 * * *"
+		metrics := newScribeMetrics(prometheus.Labels{"obj_name": "a", "obj_namespace": "b", "role": "c", "method": "d"})
 		BeforeEach(func() {
 			rd.Spec.Trigger = &scribev1alpha1.ReplicationDestinationTriggerSpec{
 				Schedule: &schedule,
@@ -42,53 +44,54 @@ var _ = Describe("Destination scheduling", func() {
 		})
 		It("if never synced, sync now", func() {
 			rd.Status.LastSyncTime = nil
-			b, e := awaitNextSyncDestination(rd, logger)
+			b, e := awaitNextSyncDestination(rd, metrics, logger)
 			Expect(b).To(BeTrue())
 			Expect(e).To(BeNil())
 		})
 		It("if synced long ago, sync now", func() {
 			when := metav1.Time{Time: time.Now().Add(-5 * time.Hour)}
 			rd.Status.LastSyncTime = &when
-			b, e := awaitNextSyncDestination(rd, logger)
+			b, e := awaitNextSyncDestination(rd, metrics, logger)
 			Expect(b).To(BeTrue())
 			Expect(e).To(BeNil())
 		})
 		It("if recently synced, wait", func() {
 			when := metav1.Time{Time: time.Now().Add(-1 * time.Minute)}
 			rd.Status.LastSyncTime = &when
-			b, e := awaitNextSyncDestination(rd, logger)
+			b, e := awaitNextSyncDestination(rd, metrics, logger)
 			Expect(b).To(BeFalse())
 			Expect(e).To(BeNil())
 		})
 		It("nextSyncTime will be set", func() {
-			_, _ = awaitNextSyncDestination(rd, logger)
+			_, _ = awaitNextSyncDestination(rd, metrics, logger)
 			Expect(rd.Status.NextSyncTime).To(Not(BeNil()))
 		})
 	})
 
 	Context("When a schedule is NOT specified", func() {
+		metrics := newScribeMetrics(prometheus.Labels{"obj_name": "a", "obj_namespace": "b", "role": "c", "method": "d"})
 		It("if never synced, sync now", func() {
 			rd.Status.LastSyncTime = nil
-			b, e := awaitNextSyncDestination(rd, logger)
+			b, e := awaitNextSyncDestination(rd, metrics, logger)
 			Expect(b).To(BeTrue())
 			Expect(e).To(BeNil())
 		})
 		It("if synced long ago, sync now", func() {
 			when := metav1.Time{Time: time.Now().Add(-5 * time.Hour)}
 			rd.Status.LastSyncTime = &when
-			b, e := awaitNextSyncDestination(rd, logger)
+			b, e := awaitNextSyncDestination(rd, metrics, logger)
 			Expect(b).To(BeTrue())
 			Expect(e).To(BeNil())
 		})
 		It("if recently synced, sync now", func() {
 			when := metav1.Time{Time: time.Now().Add(-1 * time.Minute)}
 			rd.Status.LastSyncTime = &when
-			b, e := awaitNextSyncDestination(rd, logger)
+			b, e := awaitNextSyncDestination(rd, metrics, logger)
 			Expect(b).To(BeTrue())
 			Expect(e).To(BeNil())
 		})
 		It("nextSyncTime will NOT be set", func() {
-			_, _ = awaitNextSyncDestination(rd, logger)
+			_, _ = awaitNextSyncDestination(rd, metrics, logger)
 			Expect(rd.Status.NextSyncTime).To(BeNil())
 		})
 	})

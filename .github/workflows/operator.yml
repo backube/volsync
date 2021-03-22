@@ -17,6 +17,7 @@ env:
   GO111MODULE: "on"
   OPERATOR_IMAGE: "quay.io/backube/scribe"
   RCLONE_IMAGE: "quay.io/backube/scribe-mover-rclone"
+  RESTIC_IMAGE: "quay.io/backube/scribe-mover-restic"
   RSYNC_IMAGE: "quay.io/backube/scribe-mover-rsync"
 
 jobs:
@@ -93,6 +94,26 @@ jobs:
           name: scribe-mover-rclone-container
           path: /tmp/image.tar
 
+  build-restic:
+    name: Build-mover-restic
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v2
+
+      - name: Build operator container
+        run: make -C mover-restic image
+
+      - name: Export container image
+        run: docker save -o /tmp/image.tar ${RESTIC_IMAGE}
+
+      - name: Save container as artifact
+        uses: actions/upload-artifact@v1
+        with:
+          name: scribe-mover-restic-container
+          path: /tmp/image.tar
+
   build-rsync:
     name: Build-mover-rsync
     runs-on: ubuntu-20.04
@@ -115,7 +136,7 @@ jobs:
 
   e2e:
     name: End-to-end
-    needs: [build-operator, build-rclone, build-rsync]
+    needs: [build-operator, build-rclone, build-restic, build-rsync]
     runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
@@ -152,6 +173,10 @@ jobs:
         run: |
           ./hack/setup-kind-cluster.sh "${KUBERNETES_VERSION}"
 
+      - name: Start MinIO
+        run: |
+          ./hack/run-minio.sh
+
       - name: Load operator container artifact
         uses: actions/download-artifact@v1
         with:
@@ -178,6 +203,19 @@ jobs:
           docker tag ${RCLONE_IMAGE} ${RCLONE_IMAGE}:ci-build
           kind load docker-image "${RCLONE_IMAGE}:ci-build"
 
+      - name: Load restic container artifact
+        uses: actions/download-artifact@v1
+        with:
+          name: scribe-mover-restic-container
+          path: /tmp
+
+      - name: Import container image into cluster
+        run: |
+          docker load -i /tmp/image.tar
+          docker inspect ${RESTIC_IMAGE}
+          docker tag ${RESTIC_IMAGE} ${RESTIC_IMAGE}:ci-build
+          kind load docker-image "${RESTIC_IMAGE}:ci-build"
+
       - name: Load rsync container artifact
         uses: actions/download-artifact@v1
         with:
@@ -197,10 +235,14 @@ jobs:
               --set image.tag=ci-build \
               --set rclone.tag=ci-build \
               --set rsync.tag=ci-build \
-              scribe ./helm/scribe
+              --set restic.tag=ci-build \
+              --wait --timeout=300s \
+              scribe-ghaction ./helm/scribe
 
       - name: Run e2e tests
-        run: make test-e2e
+        run: |
+          kubectl -n minio wait --for=condition=Available --timeout=300s deploy/minio
+          make test-e2e
 
   # This is a dummy job that can be used to determine success of CI:
   # - by Mergify instead of having to list a bunch of other jobs
@@ -299,6 +341,49 @@ jobs:
           echo "Pushing to $TAG"
           docker tag "${RCLONE_IMAGE}" "${RCLONE_IMAGE}:${TAG}"
           docker push "${RCLONE_IMAGE}:${TAG}"
+
+  push-restic:
+    name: Push restic container to registry
+    needs: e2e-success
+    if: >
+      (github.event_name == 'push' || github.event_name == 'schedule') &&
+      (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: Load container artifact
+        uses: actions/download-artifact@v1
+        with:
+          name: scribe-mover-restic-container
+          path: /tmp
+
+      - name: Import container image
+        run: |
+          docker load -i /tmp/image.tar
+          docker inspect ${RESTIC_IMAGE}
+      - name: Login to registry
+        # If the registry server is specified in the image name, we use that.
+        # If the server isn't in the image name, default to docker.io
+        run: |
+          [[ "${RESTIC_IMAGE}" =~ ^([^/]+)/[^/]+/[^/]+ ]] && REGISTRY="${BASH_REMATCH[1]}" || REGISTRY="docker.io"
+          echo "Attempting docker login to: ${REGISTRY}"
+          echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login -u "${{ secrets.REGISTRY_USERNAME }}" --password-stdin ${REGISTRY}
+      - name: Push to registry (latest)
+        if: >
+          (github.event_name == 'push' || github.event_name == 'schedule') &&
+          github.ref == 'refs/heads/master'
+        run: |
+          docker push "${RESTIC_IMAGE}"
+      - name: Push to registry (version tag)
+        if: >
+          (github.event_name == 'push' || github.event_name == 'schedule') &&
+          startsWith(github.ref, 'refs/tags/v')
+        run: |
+          [[ "${{ github.ref }}" =~ ^refs/tags/v([0-9]+\..*) ]] || exit 0
+          TAG="${BASH_REMATCH[1]}"
+          echo "Pushing to $TAG"
+          docker tag "${RESTIC_IMAGE}" "${RESTIC_IMAGE}:${TAG}"
+          docker push "${RESTIC_IMAGE}:${TAG}"
 
   push-rsync:
     name: Push rsync container to registry

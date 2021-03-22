@@ -85,7 +85,7 @@ func (d *rsyncSADescription) ensureRole(l logr.Logger) (bool, error) {
 				Resources: []string{"securitycontextconstraints"},
 				// Must match the name of the SCC that is deployed w/ the operator
 				// config/openshift/mover_scc.yaml
-				ResourceNames: []string{"scribe-mover"},
+				ResourceNames: []string{SCCName},
 				Verbs:         []string{"use"},
 			},
 		}
