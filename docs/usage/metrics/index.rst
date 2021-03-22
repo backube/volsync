@@ -45,6 +45,37 @@ method
    This indicates the synchronization method being used. Currently, "rsync" or
    "rclone".
 
+As an example, the below raw data comes from a single rsync-based relationship
+that is replicating data using the ReplicationSource ``dsrc`` in the ``srcns``
+namespace to the ReplicationDestination ``dest`` in the ``dstns`` namespace.
+
+.. code-block:: none
+   :caption: Example raw metrics data
+
+    $ curl -s http://127.0.0.1:8080/metrics | grep scribe
+
+    # HELP scribe_missed_intervals_total The number of times a synchronization failed to complete before the next scheduled start
+    # TYPE scribe_missed_intervals_total counter
+    scribe_missed_intervals_total{method="rsync",obj_name="dest",obj_namespace="dstns",role="destination"} 0
+    scribe_missed_intervals_total{method="rsync",obj_name="dsrc",obj_namespace="srcns",role="source"} 0
+    # HELP scribe_sync_duration_seconds Duration of the synchronization interval in seconds
+    # TYPE scribe_sync_duration_seconds summary
+    scribe_sync_duration_seconds{method="rsync",obj_name="dest",obj_namespace="dstns",role="destination",quantile="0.5"} 179.725047058
+    scribe_sync_duration_seconds{method="rsync",obj_name="dest",obj_namespace="dstns",role="destination",quantile="0.9"} 544.86628289
+    scribe_sync_duration_seconds{method="rsync",obj_name="dest",obj_namespace="dstns",role="destination",quantile="0.99"} 544.86628289
+    scribe_sync_duration_seconds_sum{method="rsync",obj_name="dest",obj_namespace="dstns",role="destination"} 828.711667153
+    scribe_sync_duration_seconds_count{method="rsync",obj_name="dest",obj_namespace="dstns",role="destination"} 3
+    scribe_sync_duration_seconds{method="rsync",obj_name="dsrc",obj_namespace="srcns",role="source",quantile="0.5"} 11.547060835
+    scribe_sync_duration_seconds{method="rsync",obj_name="dsrc",obj_namespace="srcns",role="source",quantile="0.9"} 12.013468222
+    scribe_sync_duration_seconds{method="rsync",obj_name="dsrc",obj_namespace="srcns",role="source",quantile="0.99"} 12.013468222
+    scribe_sync_duration_seconds_sum{method="rsync",obj_name="dsrc",obj_namespace="srcns",role="source"} 33.317039014
+    scribe_sync_duration_seconds_count{method="rsync",obj_name="dsrc",obj_namespace="srcns",role="source"} 3
+    # HELP scribe_volume_out_of_sync Set to 1 if the volume is not properly synchronized
+    # TYPE scribe_volume_out_of_sync gauge
+    scribe_volume_out_of_sync{method="rsync",obj_name="dest",obj_namespace="dstns",role="destination"} 0
+    scribe_volume_out_of_sync{method="rsync",obj_name="dsrc",obj_namespace="srcns",role="source"} 0
+
+
 Obtaining metrics
 =================
 
