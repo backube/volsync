@@ -473,7 +473,7 @@ var _ = Describe("ReplicationSource", func() {
 					CopyMethod: scribev1alpha1.CopyMethodClone,
 				},
 				Address: &remoteAddr,
-				Port: &remotePort,
+				Port:    &remotePort,
 			}
 		})
 		It("an environment variable is created", func() {
