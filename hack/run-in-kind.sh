@@ -22,9 +22,10 @@ for i in "${IMAGES[@]}"; do
     kind load docker-image "${i}:${KIND_TAG}"
 done
 
-helm install --create-namespace -n scribe-system \
+helm upgrade --install --create-namespace -n scribe-system \
     --set image.tag="${KIND_TAG}" \
     --set rclone.tag="${KIND_TAG}" \
     --set restic.tag="${KIND_TAG}" \
     --set rsync.tag="${KIND_TAG}" \
+    --set metrics.disableAuth=true \
     scribe ./helm/scribe
