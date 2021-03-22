@@ -1,6 +1,6 @@
-================
-Design documents
-================
+=====================
+Enhancement proposals
+=====================
 
 .. toctree::
    :titlesonly:
@@ -8,3 +8,4 @@ Design documents
    a-case-for
    custom-resources
    mover-rsync
+   restic
