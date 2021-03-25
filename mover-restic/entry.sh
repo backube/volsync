@@ -3,6 +3,8 @@
 set -e -o pipefail
 
 echo "Scribe restic container version: ${version:-unknown}"
+echo  "$@"
+
 
 # Force the associated backup host name to be "scribe"
 RESTIC_HOST="scribe"
@@ -26,6 +28,7 @@ function check_var_defined {
 
 # Ensure the repo has been initialized
 function ensure_initialized {
+    echo "== Initialize Dir ======="
     # Try a restic command and capture the rc & output
     outfile=$(mktemp -q)
     if ! restic snapshots 2>"$outfile"; then
@@ -66,7 +69,7 @@ function do_restore {
     restic restore -t . --host "${RESTIC_HOST}" latest
     popd
 }
-
+echo "Testing mandatory env variables"
 # Check the mandatory env variables
 for var in RESTIC_CACHE_DIR \
            RESTIC_PASSWORD \
