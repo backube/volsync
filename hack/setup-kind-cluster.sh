@@ -133,7 +133,7 @@ case "$KUBE_MINOR" in
     DEPLOY_SCRIPT="deploy.sh"
     ;;
   *)
-    HOSTPATH_BRANCH="v1.6.0"
+    HOSTPATH_BRANCH="v1.6.2"
     DEPLOY_SCRIPT="deploy.sh"
     ;;
 esac
