@@ -119,6 +119,80 @@ spec:
                       VSC is used.
                     type: string
                 type: object
+              restic:
+                description: restic defines the configuration when using Restic-based
+                  replication.
+                properties:
+                  accessModes:
+                    description: accessModes can be used to override the accessModes
+                      of the PiT image.
+                    items:
+                      type: string
+                    minItems: 1
+                    type: array
+                  capacity:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: capacity can be used to override the capacity of
+                      the PiT image.
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  copyMethod:
+                    description: copyMethod describes how a point-in-time (PiT) image
+                      of the source volume should be created.
+                    enum:
+                    - None
+                    - Clone
+                    - Snapshot
+                    type: string
+                  pruneIntervalDays:
+                    description: PruneIntervalDays define how often to prune the repository
+                    format: int32
+                    type: integer
+                  repository:
+                    description: Repository is the secret name containing repository
+                      info
+                    type: string
+                  retain:
+                    description: ResticRetainPolicy define the retain policy
+                    properties:
+                      daily:
+                        description: Daily defines the number of snapshots to be kept
+                          daily
+                        format: int32
+                        type: integer
+                      hourly:
+                        description: Hourly defines the number of snapshots to be
+                          kept hourly
+                        format: int32
+                        type: integer
+                      monthly:
+                        description: Monthly defines the number of snapshots to be
+                          kept monthly
+                        format: int32
+                        type: integer
+                      weekly:
+                        description: Weekly defines the number of snapshots to be
+                          kept weekly
+                        format: int32
+                        type: integer
+                      yearly:
+                        description: Yearly defines the number of snapshots to be
+                          kept yearly
+                        format: int32
+                        type: integer
+                    type: object
+                  storageClassName:
+                    description: storageClassName can be used to override the StorageClass
+                      of the PiT image.
+                    type: string
+                  volumeSnapshotClassName:
+                    description: volumeSnapshotClassName can be used to specify the
+                      VSC to be used if copyMethod is Snapshot. If not set, the default
+                      VSC is used.
+                    type: string
+                type: object
               rsync:
                 description: rsync defines the configuration when using Rsync-based
                   replication.
@@ -265,6 +339,15 @@ spec:
                   is scheduled to start (for schedule-based synchronization).
                 format: date-time
                 type: string
+              restic:
+                description: restic contains status information for Restic-based replication.
+                properties:
+                  lastPruned:
+                    description: lastPruned in the object holding the time of last
+                      pruned
+                    format: date-time
+                    type: string
+                type: object
               rsync:
                 description: rsync contains status information for Rsync-based replication.
                 properties:
