@@ -353,12 +353,12 @@ type resticDestReconciler struct {
 // RunResticDestReconciler is invokded when ReplicationDestination.Spec>Restic !=  nil
 //nolint:dupl
 func RunResticDestReconciler(ctx context.Context, instance *scribev1alpha1.ReplicationDestination,
-	sr *ReplicationDestinationReconciler, logger logr.Logger) (ctrl.Result, error) {
+	dr *ReplicationDestinationReconciler, logger logr.Logger) (ctrl.Result, error) {
 	r := resticDestReconciler{
 		destinationVolumeHandler: destinationVolumeHandler{
 			Ctx:                              ctx,
 			Instance:                         instance,
-			ReplicationDestinationReconciler: *sr,
+			ReplicationDestinationReconciler: *dr,
 			Options:                          &instance.Spec.Restic.ReplicationDestinationVolumeOptions,
 		},
 		scribeMetrics: newScribeMetrics(prometheus.Labels{
@@ -965,7 +965,7 @@ func (r *resticDestReconciler) validateResticSpec(l logr.Logger) (bool, error) {
 	if err == nil {
 		// get secret from cluster
 		foundSecret := &corev1.Secret{}
-		secretNotFoundErr := r.Client.Get(context.TODO(),
+		secretNotFoundErr := r.Client.Get(r.Ctx,
 			types.NamespacedName{
 				Name: resticSecretName, Namespace: r.Instance.Namespace}, foundSecret)
 		if secretNotFoundErr != nil {
