@@ -19,8 +19,6 @@ bin
 
 # Kubernetes Generated files - skip generated files, except for vendored files
 
-!vendor/**/zz_generated.*
-
 # editor and IDE paraphernalia
 .idea
 *.swp
@@ -29,3 +27,10 @@ bin
 
 # Secret files to prevent accidental commit of keys
 examples/rclone.conf
+
+# Dependency directories (remove the comment below to include it)
+vendor/
+
+# Config with CLI flag values
+config.yaml
+
