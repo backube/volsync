@@ -1,10 +1,10 @@
-=============================================
-Rsync Multiple Cluster Kubectl Plugin Example
-=============================================
+===========================================
+Rsync Database Cross-Cluster Plugin Example
+===========================================
 
 This example will sync data from mysql database persistent volumes
 For this example, sync will happen between 2 clusters. Data will be synced
-from cluster-name `api-source-com:6443` to cluster-name `destination123`
+from cluster-name :code:`api-source-com:6443` to cluster-name :code:`destination123`
 
 .. note::
     * :doc:`Clusters must have the scribe operator installed </installation/index>`.
@@ -23,9 +23,9 @@ Merge Kubeconfigs
 
 If clusters not already in a single kubeconfig, then merge like so:
 
-~/kubeconfig1 with context `destuser` and cluster-name `destination123`
+~/kubeconfig1 with context :code:`destuser` and cluster-name :code:`destination123`
 
-~/kubeconfig2 with context `sourceuser` and cluster-name `api-source-com:6443`
+~/kubeconfig2 with context :code:`sourceuser` and cluster-name :code:`api-source-com:6443`
 
 .. code:: bash
 
@@ -73,8 +73,8 @@ You can also pass these individually to each command, but they add up so the
 config file is usually a good option. You can add any, some, or all flags
 to the config file.
 
-Create the config file at **./config.yaml** *or* **~/.scribeconfig/config.yaml**,
-scribe will look for that file in the current directory or in **~/.scribeconfig**.
+Create the config file at :code:`./config.yaml` *or* :code:`~/.scribeconfig/config.yaml`,
+scribe will look for that file in the current directory or in :code:`~/.scribeconfig`.
 For complete list of options for a command, run the following or consult the API:
 
 .. code:: bash
@@ -98,10 +98,12 @@ For complete list of options for a command, run the following or consult the API
     source-copy-method: Snapshot
     source-pvc: mysql-pv-claim
 
+Refer to the :doc:`example config </usage/rsync/plugin_opts>` that lists plugin options with default values.
+
 Create a replication destination
 ---------------------------------
 
-Necessary flags are configured in `./config.yaml` shown above.
+Necessary flags are configured in :code:`./config.yaml` shown above.
 
 .. code:: bash
 
@@ -119,12 +121,12 @@ Save the rsync address from the destination to pass to the new-source:
 Sync SSH secret from destination to source
 
 This assumes the default secret name that is created by the scribe controller.
-You can also pass `--ssh-keys-secret` that is a valid ssh-key-secret
+You can also pass :code:`--ssh-keys-secret` that is a valid ssh-key-secret
 in the DestinationReplication namespace and cluster.
 
-Necessary flags are configured in `./config.yaml` shown above.
+Necessary flags are configured in :code:`./config.yaml` shown above.
 Save the output from the command below, as you will need the
-name of the ssh-keys-secret to pass to `new-source`
+name of the ssh-keys-secret to pass to :code:`new-source`
 
 .. code:: bash
 
@@ -132,14 +134,14 @@ name of the ssh-keys-secret to pass to `new-source`
 
 ## Create replication source
 
-Necessary flags are configured in `./config.yaml` shown above.
-The ssh-keys-secret name listed below is copied from output of `scribe sync-ssh-secret`.
+Necessary flags are configured in :code:`./config.yaml` shown above.
+The ssh-keys-secret name listed below is copied from output of :code:`scribe sync-ssh-secret`.
 
 .. code:: bash
 
     $ kubectl scribe new-source --address ${address} --ssh-keys-secret <ssh-keys-secret>
 
-For the rest of the example, you'll be working from the `destuser context`.
+For the rest of the example, you'll be working from the :code:`destuser context`.
 So we don't have to pass that to every kubectl command, run this:
 
 .. code:: bash

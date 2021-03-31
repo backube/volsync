@@ -10,6 +10,7 @@ Rsync-based replication
    external_rsync
    multi_context_sync_cli
    ssh_keys
+   plugin_opts
 
 .. sidebar:: Contents
 

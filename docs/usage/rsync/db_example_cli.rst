@@ -1,6 +1,6 @@
-============================
-Rsync Kubectl Plugin Example 
-============================
+=============================
+Rsync Database Plugin Example
+=============================
 
 This example will sync data from mysql database persistent volumes
 For this example, sync will happen within a single cluster and 2 namespaces.
@@ -25,8 +25,8 @@ You can also pass these individually to each command, but they add up so the
 config file is usually a good option. You can add any, some, or all flags
 to the config file.
 
-Create the config file at **./config.yaml** *or* **~/.scribeconfig/config.yaml**,
-scribe will look for that file in the current directory or in **~/.scribeconfig**.
+Create the config file at :code:`./config.yaml` *or* :code:`~/.scribeconfig/config.yaml`,
+scribe will look for that file in the current directory or in :code:`~/.scribeconfig`.
 For complete list of options for a command, run the following or consult the API:
 
 .. code:: bash
@@ -43,6 +43,8 @@ For complete list of options for a command, run the following or consult the API
     source-namespace: source
     source-pvc: mysql-pv-claim
     source-copy-method: Snapshot
+
+Refer to the :doc:`example config </usage/rsync/plugin_opts>` that lists plugin options with default values.
 
 Create source application
 --------------------------
@@ -67,7 +69,7 @@ Modify the mysql database
 Create a replication destination
 ---------------------------------
 
-Necessary flags are configured in `./config.yaml` shown above.
+Necessary flags are configured in :code:`./config.yaml` shown above.
 
 .. code:: bash
 
@@ -86,12 +88,12 @@ Sync SSH secret from destination to source
 ------------------------------------------
 
 This assumes the default secret name that is created by the scribe controller.
-You can also pass `--ssh-keys-secret` that is a valid ssh-key-secret in the
+You can also pass :code:`--ssh-keys-secret` that is a valid ssh-key-secret in the
 DestinationReplication namespace and cluster.
 
-Necessary flags are configured in `./config.yaml` shown above.
+Necessary flags are configured in :code:`./config.yaml` shown above.
 Save the output from the command below, you will need the name of the
-ssh-keys-secret to pass to `scribe new-source`.
+ssh-keys-secret to pass to :code:`scribe new-source`.
 
 .. code:: bash
 
@@ -100,7 +102,7 @@ ssh-keys-secret to pass to `scribe new-source`.
 Create a replication source
 ----------------------------
 
-Necessary flags are configured in `./config.yaml` shown above.
+Necessary flags are configured in :code:`./config.yaml` shown above.
 
 .. code:: bash
 
