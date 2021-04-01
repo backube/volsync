@@ -177,6 +177,10 @@ spec:
                           kept weekly
                         format: int32
                         type: integer
+                      within:
+                        description: Within defines the number of snapshots to be
+                          kept Within the given time period
+                        type: string
                       yearly:
                         description: Yearly defines the number of snapshots to be
                           kept yearly

@@ -505,9 +505,8 @@ func (r *resticSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 		r.job.Spec.Template.Spec.Containers[0].Name = "restic-backup"
 
 		var optionalFalse = false
-		forgetOptions := generateForgetOptions(r.Instance, l)
-		l.V(1).Info("e.g. --keep-hourly 2 --keep-daily 1", "forgetOptions", forgetOptions)
-
+		forgetOptions := generateForgetOptions(*r.Instance, l)
+		l.V(1).Info("restic forget options", "options", forgetOptions)
 		r.job.Spec.Template.Spec.Containers[0].Env = []corev1.EnvVar{
 			{Name: "FORGET_OPTIONS", Value: forgetOptions},
 			{Name: "DATA_DIR", Value: mountPath},
@@ -621,13 +620,12 @@ func (r *resticSrcReconciler) resticPrune(l logr.Logger) bool {
 		shouldPrune = now.After(delta)
 	}
 	if r.Instance.Status.Restic.LastPruned != nil {
-		l.V(1).Info("Should prune?")
 		//calculate next prune time as now - lastPruned > pruneInterval
 		delta = r.Instance.Status.Restic.LastPruned.Time.Add(pruneIntervalHours)
 		shouldPrune = now.After(delta)
 	}
 	if !shouldPrune {
-		l.V(1).Info("Waiting for prune...", "estimated to start at", delta)
+		l.V(1).Info("Skipping prune", "next", delta)
 	}
 	return shouldPrune
 }
