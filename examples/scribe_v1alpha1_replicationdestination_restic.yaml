@@ -1,0 +1,15 @@
+---
+apiVersion: scribe.backube/v1alpha1
+kind: ReplicationDestination
+metadata:
+  name: database-destination
+  namespace: dest
+spec:
+  sourcePVC: mysql-pv-claim
+  trigger:
+    schedule: "*/5 * * * *"
+  restic:
+    repository: restic-config
+    copyMethod: Snapshot
+    accessModes: [ReadWriteOnce]
+    capacity: 2Gi
