@@ -20,6 +20,7 @@ package controllers
 import (
 	"time"
 
+	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -107,4 +108,46 @@ func reconcileBatch(l logr.Logger, reconcileFuncs ...reconcileFunc) (bool, error
 		}
 	}
 	return true, nil
+}
+
+//nolint:funlen
+func (r *ReplicationSourceReconciler) countReplicationMethods(instance *scribev1alpha1.ReplicationSource,
+	logger logr.Logger) int {
+	var numOfReplication int
+	logger.Info("Counting number of Reconciliation methods", "instance", instance)
+	if instance.Spec.Rsync != nil {
+		numOfReplication++
+	}
+	if instance.Spec.Rclone != nil {
+		numOfReplication++
+	}
+	if instance.Spec.Restic != nil {
+		numOfReplication++
+	}
+	if instance.Spec.External != nil {
+		numOfReplication++
+	}
+	logger.Info("Counting over ", "Number of Replication Methods: ", numOfReplication)
+	return numOfReplication
+}
+
+//nolint:funlen
+func (r *ReplicationDestinationReconciler) countReplicationMethods(instance *scribev1alpha1.ReplicationDestination,
+	logger logr.Logger) int {
+	var numOfReplication int
+	logger.Info("Counting number of Reconciliation methods", "instance", instance)
+	if instance.Spec.Rsync != nil {
+		numOfReplication++
+	}
+	if instance.Spec.Rclone != nil {
+		numOfReplication++
+	}
+	if instance.Spec.Restic != nil {
+		numOfReplication++
+	}
+	if instance.Spec.External != nil {
+		numOfReplication++
+	}
+	logger.Info("Counting over ", "Number of Replication Methods: ", numOfReplication)
+	return numOfReplication
 }

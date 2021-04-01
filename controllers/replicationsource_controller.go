@@ -92,7 +92,7 @@ func (r *ReplicationSourceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, 
 
 	var result ctrl.Result
 	var err error
-	if countReplicationMethods(inst, logger) > 1 {
+	if r.countReplicationMethods(inst, logger) > 1 {
 		err = fmt.Errorf("only a single replication method can be provided")
 		return result, err
 	}
@@ -139,26 +139,6 @@ func (r *ReplicationSourceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, 
 		}
 	}
 	return result, err
-}
-
-func countReplicationMethods(instance *scribev1alpha1.ReplicationSource,
-	logger logr.Logger) int {
-	var numOfReplication int
-	logger.Info("Counting number of Reconciliation methods")
-	if instance.Spec.Rsync != nil {
-		numOfReplication++
-	}
-	if instance.Spec.Rclone != nil {
-		numOfReplication++
-	}
-	if instance.Spec.Restic != nil {
-		numOfReplication++
-	}
-	if instance.Spec.External != nil {
-		numOfReplication++
-	}
-	logger.Info("Counting over ", "Number of Replication Methods: ", numOfReplication)
-	return numOfReplication
 }
 
 func (r *ReplicationSourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -492,7 +472,7 @@ func (r *rcloneSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 	return r.job.Status.Succeeded == 1, nil
 }
 
-//nolint:funlen
+//nolint:dupl,funlen
 func (r *resticSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 	r.job = &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{

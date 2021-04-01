@@ -25,12 +25,16 @@ bin
 *.swo
 *~
 
-# Secret files to prevent accidental commit of keys
-examples/rclone.conf
-
 # Dependency directories (remove the comment below to include it)
 vendor/
+
+# Scribe related
+# Secret files to prevent accidental commit of keys
+examples/rclone.conf
 
 # Config with CLI flag values
 config.yaml
 
+# test dir
+test-kuttl/kubeconfig
+test-kuttl/e2e/simple-rclone/rclone.conf

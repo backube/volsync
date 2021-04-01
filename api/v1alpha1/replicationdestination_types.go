@@ -140,6 +140,9 @@ type ReplicationDestinationSpec struct {
 	// rclone defines the configuration when using Rclone-based replication.
 	//+optional
 	Rclone *ReplicationDestinationRcloneSpec `json:"rclone,omitempty"`
+	// restic defines the configuration when using Restic-based replication.
+	//+optional
+	Restic *ReplicationDestinationResticSpec `json:"restic,omitempty"`
 	// external defines the configuration when using an external replication
 	// provider.
 	//+optional
@@ -164,6 +167,13 @@ type ReplicationDestinationRsyncStatus struct {
 	// connections.
 	//+optional
 	Port *int32 `json:"port,omitempty"`
+}
+
+// ReplicationDestinationResticSpec defines the field for restic in replicationDestination.
+type ReplicationDestinationResticSpec struct {
+	ReplicationDestinationVolumeOptions `json:",inline"`
+	// Repository is the secret name containing repository info
+	Repository string `json:"repository,omitempty"`
 }
 
 // ReplicationDestinationStatus defines the observed state of ReplicationDestination
