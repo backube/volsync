@@ -49,20 +49,20 @@ type DestinationOptions struct {
 	ScribeOptions           ScribeOptions
 	SSHKeysSecretOptions    SSHKeysSecretOptions
 	Schedule                string
-	CopyMethod              string //v1alpha1.CopyMethodType
-	Capacity                string //*resource.Quantity
+	CopyMethod              string
+	Capacity                string
 	StorageClassName        string
-	AccessMode              string //[]corev1.PersistentVolumeAccessMode
+	AccessMode              string
 	Address                 string
 	VolumeSnapshotClassName string
 	PVC                     string
 	SSHUser                 string
-	ServiceType             string //*corev1.ServiceType
-	Port                    int32  //int32
+	ServiceType             string
+	Port                    int32
 	Path                    string
 	RcloneConfig            string
 	Provider                string
-	ProviderParameters      string //map[string]string
+	ProviderParameters      string
 	genericclioptions.IOStreams
 }
 

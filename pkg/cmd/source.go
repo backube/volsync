@@ -48,20 +48,20 @@ type SourceOptions struct {
 	ScribeOptions           ScribeOptions
 	SSHKeysSecretOptions    SSHKeysSecretOptions
 	Schedule                string
-	CopyMethod              string //v1alpha1.CopyMethodType
-	Capacity                string //*resource.Quantity
+	CopyMethod              string
+	Capacity                string
 	StorageClassName        string
-	AccessMode              string //[]corev1.PersistentVolumeAccessMode
+	AccessMode              string
 	Address                 string
 	VolumeSnapshotClassName string
 	PVC                     string
 	SSHUser                 string
-	ServiceType             string //*corev1.ServiceType
-	Port                    int32  //int32
+	ServiceType             string
+	Port                    int32
 	Path                    string
 	RcloneConfig            string
 	Provider                string
-	ProviderParameters      string //map[string]string
+	ProviderParameters      string
 	genericclioptions.IOStreams
 }
 
@@ -104,7 +104,7 @@ func (o *SourceOptions) bindFlags(cmd *cobra.Command, v *viper.Viper) error {
 	flags.StringVar(&o.VolumeSnapshotClassName, "source-volume-snapshot-class", o.VolumeSnapshotClassName, "name of VolumeSnapshotClass for the source volume, only if copyMethod is 'Snapshot'. If empty, default VSC will be used.")
 	flags.StringVar(&o.PVC, "source-pvc", o.PVC, "name of an existing PersistentVolumeClaim (PVC) to replicate.")
 	// TODO: Default to every 3min for source?
-	flags.StringVar(&o.Schedule, "source-cron-spec", "*/3 * * * *", "cronspec to be used to schedule capturing the state of the source volume. If not set the source volume will be captured every 3 minutes.")
+	flags.StringVar(&o.Schedule, "source-cron-spec", "*/5 * * * *", "cronspec to be used to schedule capturing the state of the source volume.")
 	// Defaults to "root" after creation
 	flags.StringVar(&o.SSHUser, "source-ssh-user", o.SSHUser, "username for outgoing SSH connections (default 'root')")
 	// Defaults to ClusterIP after creation
