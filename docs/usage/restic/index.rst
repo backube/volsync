@@ -2,10 +2,22 @@
 Restic Database Example
 =======================
 
-Restic
-------
+.. toctree::
+   :hidden:
+
+   restic_restore
+   restic_config
+
+.. sidebar:: Contents
+
+   .. contents:: Backing up source volume using Restic
+
+
+Restic backup
+-------------
+
 `Restic <https://restic.readthedocs.io/>`_ is a fast and secure backup program. 
-The following example will use the Restic backup and take a Snapshot at the source.
+The following example will use Restic to create a backup of a source volume.
 
 A MySQL database will be used as the example application.
 
@@ -71,21 +83,67 @@ Start ``minio``
    kubectl port-forward --namespace minio svc/minio 9000:9000
 
 
+``restic-config`` secret configures the restic repo parameters. The keys will be turned into env vars.
 
-Once ``minio`` is up and running, create a restic repository for storing backup snapshots.
-The contents of a directory at a specific point in time is called a "snapshot" in restic.
+.. code:: yaml
 
-.. code:: bash
+   ---
+   apiVersion: v1
+   kind: Secret
+   metadata:
+      name: restic-config
+   type: Opaque
+   stringData:
+      # The repository url
+      RESTIC_REPOSITORY: s3:http://minio.minio.svc.cluster.local:9000/restic-repo
+      # The repository encryption key
+      RESTIC_PASSWORD: my-secure-restic-password
+      # ENV vars specific to the back end
+      # https://restic.readthedocs.io/en/stable/030_preparing_a_new_repo.html
+      AWS_ACCESS_KEY_ID: access
+      AWS_SECRET_ACCESS_KEY: password
 
-   export AWS_ACCESS_KEY_ID=access
-   export AWS_SECRET_ACCESS_KEY=password
 
-   restic -r s3:http://127.0.0.1:9000/restic-repo init
+ReplicationSource
+------------------
 
-On password prompt use the same password as used in setting up the ``restic-config``.
-It should match the field ``RESTIC_PASSWORD`` in the secret. 
+Start by configuring the source; a minimal example is shown below
+
+.. code:: yaml
+
+   ---
+   apiVersion: scribe.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+      name: database-source
+      namespace: source
+   spec:
+      sourcePVC: mysql-pv-claim
+      trigger:
+         schedule: "*/5 * * * *"
+   restic:
+      pruneIntervalDays: 15
+      repository: restic-config
+      retain:
+         hourly: 1
+         daily: 1
+         weekly: 1
+         monthly: 1
+         yearly: 1
+      copyMethod: Snapshot
+
+In the above ``ReplicationSource`` object,
+
+- The PiT copy of the source data ``mysql-pv-claim`` will be created using cluster's default ``VolumeSnapshot``.
+- The synchronization schedule, ``.spec.trigger.schedule``, is defined by a 
+  `cronspec <https://en.wikipedia.org/wiki/Cron#Overview>`_, making the schedule very flexible. 
+- The restic repository configuations are provided via ``restic-config``
+- ``pruneIntervalDays`` defines the interval between prune in days.
+- Restic forget parameters is derived via ``retain`` in the form of ``--keep-hourly 2 --keep-daily 1"``.
+  Read more about `restic forget <https://restic.readthedocs.io/en/stable/060_forget.html?highlight=forget#removing-snapshots-according-to-a-policy>`_ 
 
 Now, deploy the ``restic-config`` followed by ``ReplicationSource`` configuration.
+
 
 .. code:: bash
 

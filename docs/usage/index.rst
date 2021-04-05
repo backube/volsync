@@ -7,8 +7,8 @@ Usage
 
    metrics/index
    rclone/index
-   rsync/index
    restic/index
+   rsync/index
 
 There are two different replication methods built into Scribe. Choose the method that best fits your use-case:
 
@@ -23,7 +23,7 @@ There are two different replication methods built into Scribe. Choose the method
 For data backup Scribe uses Restic. Follow the guide here:
 
 :doc:`Restic backup<restic/index>`
-   Use Restic backup, forget and prune feature to pvc backups
+   Create a Restic-based backup of the data in a PersistentVolume.
 
 Metrics
 =======
