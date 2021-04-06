@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -9,72 +10,75 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
-type ReplicationOptions struct {
+type sharedOptions struct {
 	CopyMethod              string //v1alpha1.CopyMethodType
 	Capacity                string //*resource.Quantity
-	StorageClassName        string
+	StorageClass            string
 	AccessMode              string //[]corev1.PersistentVolumeAccessMode
-	Address                 string
 	VolumeSnapshotClassName string
-	PVC                     string
 	SSHUser                 string
 	ServiceType             string //*corev1.ServiceType
 	Port                    int32  //int32
-	Path                    string
 	RcloneConfig            string
 	Provider                string
 	ProviderParameters      string //map[string]string
 }
 
-type CommonOptions struct {
-	CopyMethod          scribev1alpha1.CopyMethodType
-	Capacity            *resource.Quantity
-	StorageClassName    *string
-	AccessModes         []corev1.PersistentVolumeAccessMode
-	Address             *string
-	VolumeSnapClassName *string
-	PVC                 *string
-	SSHUser             *string
-	ServiceType         corev1.ServiceType
-	Port                *int32
-	Path                *string
-	Parameters          map[string]string
-}
-
-func (o *ReplicationOptions) GetCommonOptions() (*CommonOptions, error) {
-	c := &CommonOptions{}
+func (o *SetupReplicationOptions) getCommonOptions(c *sharedOptions, mode string) error {
 	var ok bool
-	c = o.getCapacity(c)
-	if c, ok = o.getCopyMethod(c); !ok {
-		return nil, fmt.Errorf("unrecognized --dest-copy-method %s", o.CopyMethod)
+	if ok := o.getCopyMethod(c.CopyMethod, mode); !ok {
+		return fmt.Errorf("error applying %s copyMethod %s", mode, o.CopyMethod)
 	}
-	if c, ok = o.getAccessModes(c); !ok {
-		return nil, fmt.Errorf("unrecognized --dest-access-modes %s", o.CopyMethod)
+	if ok = o.getAccessModes(c.AccessMode, mode); !ok {
+		return fmt.Errorf("error applying %s accessModes %s", mode, o.AccessMode)
 	}
-	if c, ok = o.getServiceType(c); !ok {
-		return nil, fmt.Errorf("unrecognized --dest-service-type %s", o.ServiceType)
+	if ok = o.getServiceType(c.ServiceType, mode); !ok {
+		return fmt.Errorf("error applying %s serviceType %s", mode, o.ServiceType)
 	}
-	if o.Port == 0 {
-		c.Port = nil
+	port := &c.Port
+	if c.Port == 0 {
+		port = nil
 	}
-	c.Address = getOption(o.Address)
-	c.SSHUser = getOption(o.SSHUser)
-	c.Path = getOption(o.Path)
-	c.StorageClassName = getOption(o.StorageClassName)
-	c.VolumeSnapClassName = getOption(o.VolumeSnapshotClassName)
-	c.PVC = getOption(o.PVC)
-	c.Parameters = make(map[string]string)
-	if len(o.ProviderParameters) > 0 {
-		p := strings.Split(o.ProviderParameters, ",")
-		for _, kv := range p {
-			pair := strings.Split(kv, "=")
-			if len(pair) != 2 {
-				return nil, fmt.Errorf("error parsing --provider-parameters %s, pass key=value,key1=value1", o.ProviderParameters)
+	if err := o.getCapacity(c.Capacity, mode); err != nil {
+		return err
+	}
+	switch mode {
+	case "dest":
+		o.RepOpts.Dest.Port = port
+		o.RepOpts.Dest.SSHUser = getOption(c.SSHUser)
+		o.RepOpts.Dest.StorageClass = getOption(c.StorageClass)
+		o.RepOpts.Dest.VolumeSnapClassName = getOption(c.VolumeSnapshotClassName)
+		o.RepOpts.Dest.Provider = c.Provider
+		o.RepOpts.Dest.Parameters = make(map[string]string)
+		if len(c.ProviderParameters) > 0 {
+			p := strings.Split(c.ProviderParameters, ",")
+			for _, kv := range p {
+				pair := strings.Split(kv, "=")
+				if len(pair) != 2 {
+					return fmt.Errorf("error parsing --provider-parameters %s, pass key=value,key1=value1", c.ProviderParameters)
+				}
+				o.RepOpts.Dest.Parameters[pair[0]] = pair[1]
 			}
-			c.Parameters[pair[0]] = pair[1]
+		}
+	case "source":
+		o.RepOpts.Source.Port = port
+		o.RepOpts.Source.SSHUser = getOption(c.SSHUser)
+		o.RepOpts.Source.StorageClass = getOption(c.StorageClass)
+		o.RepOpts.Source.VolumeSnapClassName = getOption(c.VolumeSnapshotClassName)
+		o.RepOpts.Source.Provider = c.Provider
+		o.RepOpts.Source.Parameters = make(map[string]string)
+		if len(c.ProviderParameters) > 0 {
+			p := strings.Split(c.ProviderParameters, ",")
+			for _, kv := range p {
+				pair := strings.Split(kv, "=")
+				if len(pair) != 2 {
+					return fmt.Errorf("error parsing --provider-parameters %s, pass key=value,key1=value1", c.ProviderParameters)
+				}
+				o.RepOpts.Source.Parameters[pair[0]] = pair[1]
+			}
 		}
 	}
-	return c, nil
+	return nil
 }
 
 func getOption(opt string) *string {
@@ -84,66 +88,90 @@ func getOption(opt string) *string {
 	return nil
 }
 
-func (o *ReplicationOptions) getCopyMethod(c *CommonOptions) (*CommonOptions, bool) {
-	// CopyMethod is always required
-	switch strings.ToLower(o.CopyMethod) {
-	case "none":
-		c.CopyMethod = scribev1alpha1.CopyMethodNone
-		return c, true
-	case "clone":
-		c.CopyMethod = scribev1alpha1.CopyMethodClone
-		return c, true
-	case "snapshot":
-		c.CopyMethod = scribev1alpha1.CopyMethodSnapshot
-		return c, true
-	}
-	return nil, false
-}
-
-func (o *ReplicationOptions) getCapacity(c *CommonOptions) *CommonOptions {
+func (o *SetupReplicationOptions) getCapacity(c string, mode string) error {
 	// Capacity not always required
-	switch {
-	case len(o.Capacity) > 0:
-		capacity := resource.MustParse(o.Capacity)
-		c.Capacity = &capacity
-		return c
+	var capacity resource.Quantity
+	if len(c) > 0 {
+		capacity = resource.MustParse(c)
 	}
-	return c
+	switch mode {
+	case "dest":
+		o.RepOpts.Dest.Capacity = capacity
+	case "source":
+		srcPVC, err := o.GetSourcePVC(context.Background())
+		if err != nil {
+			return err
+		}
+		capacity = srcPVC.Spec.Resources.Requests[corev1.ResourceStorage]
+		o.RepOpts.Source.Capacity = capacity
+	}
+	return nil
 }
 
-func (o *ReplicationOptions) getAccessModes(c *CommonOptions) (*CommonOptions, bool) {
-	// AccessMode not always required
-	if len(o.AccessMode) > 0 {
-		switch o.AccessMode {
-		case "ReadWriteOnce":
-			c.AccessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
-		case "ReadWriteMany":
-			c.AccessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany}
-		case "ReadOnlyMany":
-			c.AccessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadOnlyMany}
-		default:
-			return nil, false
-		}
-	}
-	return c, true
-}
-
-func (o *ReplicationOptions) getServiceType(c *CommonOptions) (*CommonOptions, bool) {
-	// defaults to ClusterIP if not set
-	switch {
-	case len(o.ServiceType) > 0:
-		switch strings.ToLower(o.ServiceType) {
-		case "clusterip":
-			c.ServiceType = corev1.ServiceTypeClusterIP
-			return c, true
-		case "loadbalancer":
-			c.ServiceType = corev1.ServiceTypeLoadBalancer
-			return c, true
-		default:
-			return nil, false
-		}
+func (o *SetupReplicationOptions) getCopyMethod(c string, mode string) bool {
+	var cm scribev1alpha1.CopyMethodType
+	// CopyMethod is always required
+	switch strings.ToLower(c) {
+	case "none":
+		cm = scribev1alpha1.CopyMethodNone
+	case "clone":
+		cm = scribev1alpha1.CopyMethodClone
+	case "snapshot":
+		cm = scribev1alpha1.CopyMethodSnapshot
 	default:
-		c.ServiceType = corev1.ServiceTypeClusterIP
+		return false
 	}
-	return c, true
+	switch mode {
+	case "dest":
+		o.RepOpts.Dest.CopyMethod = cm
+	case "source":
+		o.RepOpts.Source.CopyMethod = cm
+	}
+	return true
+}
+
+func (o *SetupReplicationOptions) getAccessModes(c string, mode string) bool {
+	var am []corev1.PersistentVolumeAccessMode
+	// AccessMode not always required
+	if len(c) > 0 {
+		switch c {
+		case "ReadWriteOnce":
+			am = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
+		case "ReadWriteMany":
+			am = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany}
+		case "ReadOnlyMany":
+			am = []corev1.PersistentVolumeAccessMode{corev1.ReadOnlyMany}
+		default:
+			return false
+		}
+	}
+	switch mode {
+	case "dest":
+		o.RepOpts.Dest.AccessModes = am
+	case "source":
+		o.RepOpts.Source.AccessModes = am
+	}
+	return true
+}
+
+func (o *SetupReplicationOptions) getServiceType(c string, mode string) bool {
+	// defaults to ClusterIP if not set
+	var st corev1.ServiceType
+	if len(c) > 0 {
+		switch strings.ToLower(c) {
+		case "clusterip":
+			st = corev1.ServiceTypeClusterIP
+		case "loadbalancer":
+			st = corev1.ServiceTypeLoadBalancer
+		default:
+			return false
+		}
+	}
+	switch mode {
+	case "dest":
+		o.RepOpts.Dest.ServiceType = st
+	case "source":
+		o.RepOpts.Source.ServiceType = st
+	}
+	return true
 }

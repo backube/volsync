@@ -2,9 +2,19 @@
 Rsync Database Cross-Cluster Plugin Example
 ===========================================
 
+TODO: Update and Verify this example
+
 This example will sync data from mysql database persistent volumes
 For this example, sync will happen between 2 clusters. Data will be synced
 from cluster-name :code:`api-source-com:6443` to cluster-name :code:`destination123`
+
+Also, the copy method in this example is "None" for both source and destination.
+This means data will be synced directly from source PV to dest PV. Because of this,
+before the sync, the source deployment must be scaled to 0 to allow scribe to bind
+to the PV during replication.
+
+TODO: Add example using SnapShot CopyMethod
+
 
 .. note::
     * :doc:`Clusters must have the scribe operator installed </installation/index>`.
@@ -89,57 +99,31 @@ For complete list of options for a command, run the following or consult the API
     dest-kube-clustername: destination123
     dest-service-type: LoadBalancer
     dest-access-mode: ReadWriteOnce
-    dest-copy-method: Snapshot
+    dest-copy-method: None
     dest-namespace: dest
     source-kube-context: sourceuser
     source-kube-clustername: api-source-com:6443
     source-namespace: source
     source-service-type: LoadBalancer
-    source-copy-method: Snapshot
+    source-copy-method: None
     source-pvc: mysql-pv-claim
 
 Refer to the :doc:`example config </usage/rsync/plugin_opts>` that lists plugin options with default values.
 
-Create a replication destination
+Create a Scribe Destination
 ---------------------------------
 
-Necessary flags are configured in :code:`./config.yaml` shown above.
-
 .. code:: bash
 
-    $ kubectl --context destuser create ns dest
-    $ kubectl scribe new-destination
+    $ kubectl scribe start-replication
 
-Save the rsync address from the destination to pass to the new-source:
-
-.. code:: bash
-
-    $ address=$(kubectl --context destuser get replicationdestination/dest-destination  -n dest --template={{.status.rsync.address}})
-    $ echo ${address}
-    # be sure it's not empty, may take a minute to populate
-
-Sync SSH secret from destination to source
-
-This assumes the default secret name that is created by the scribe controller.
-You can also pass :code:`--ssh-keys-secret` that is a valid ssh-key-secret
-in the DestinationReplication namespace and cluster.
+The above command:
+* Creates destination PVC (if dest PVC not provided)
+* Syncs SSH secret from destination to source
+* Creates replication destination
+* Creates replication source
 
 Necessary flags are configured in :code:`./config.yaml` shown above.
-Save the output from the command below, as you will need the
-name of the ssh-keys-secret to pass to :code:`new-source`
-
-.. code:: bash
-
-    $ kubectl scribe sync-ssh-secret
-
-## Create replication source
-
-Necessary flags are configured in :code:`./config.yaml` shown above.
-The ssh-keys-secret name listed below is copied from output of :code:`scribe sync-ssh-secret`.
-
-.. code:: bash
-
-    $ kubectl scribe new-source --address ${address} --ssh-keys-secret <ssh-keys-secret>
 
 For the rest of the example, you'll be working from the :code:`destuser context`.
 So we don't have to pass that to every kubectl command, run this:
@@ -148,37 +132,31 @@ So we don't have to pass that to every kubectl command, run this:
 
     $ kubectl config use-context destuser
 
-Create the destination application
-----------------------------------
+Create a replication database
+-----------------------------
+
+Create the destination application from the scribe example:
 
 .. code:: bash
 
-    $ cd examples/destination-database
-    $ cp mysql-pvc.yaml /tmp/pvc.yaml // will use that later
-    # edit the /tmp/pvc.yaml with metadata.namespace
-    # otherwise you may forget to add the `-n dest` when you apply (like I did).
+    $ kubectl apply -n dest -f examples/destination-database/mysql-deployment.yaml
+    $ kubectl apply -n dest -f examples/destination-database/mysql-service.yaml
+    $ kubectl apply -n dest -f examples/destination-database/mysql-secret.yaml
 
-    $ kubectl apply -n dest -f mysql-deployment.yaml
-    $ kubectl apply -n dest -f mysql-service.yaml
-    $ kubectl apply -n dest -f mysql-secret.yaml
+Delete the replication destination 
+-----------------------------------
 
-**TODO:** add this to scribe CLI
+TODO: Add delete command
 
-To sync the data, you have to replace the PVC each time.
-This is because PersistenVolumeClaims are immutable.
-That is the reason for creating the PVC, extracting the yaml to a local file,
-then updating the snapshot image. For each sync, find the latest image from the
-ReplicationDestination, then use this image to create the PVC
-
-Data Sync
----------
+Deleting the replication destination after the data sync is required to allow the
+destination PVC to bind with the destination deployment pod. Also, delete the
+synced dest-src ssh key secret in the source namespace to avoid errors with the
+next data sync and stale ssh keys.
 
 .. code:: bash
 
-    $ SNAPSHOT=$(kubectl get replicationdestination dest-destination -n dest --template={{.status.latestImage.name}})
-    $ echo ${SNAPSHOT} // make sure this is not empty, may take a minute
-    $ sed -i "s/snapshotToReplace/${SNAPSHOT}/g" /tmp/pvc.yaml
-    $ kubectl apply -f /tmp/pvc.yaml
+   $ kubectl delete -n dest < name of replication destination default: <destns-destination> >
+   $ kubectl delete --context sourceuser -n source < ssh-key-secret default scribe-rsync-dest-src-<destns>-destination >
 
 Verify the synced database
 ^^^^^^^^^^^^^^^^^^^^^^^^^^

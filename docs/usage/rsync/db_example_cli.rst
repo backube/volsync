@@ -4,6 +4,12 @@ Rsync Database Plugin Example
 
 This example will sync data from mysql database persistent volumes
 For this example, sync will happen within a single cluster and 2 namespaces.
+Also, the copy method in this example is "None" for both source and destination.
+This means data will be synced directly from source PV to dest PV. Because of this,
+before the sync, the source deployment must be scaled to 0 to allow scribe to bind
+to the PV during replication.
+
+TODO: Add example using SnapShot CopyMethod
 
 .. note::
     * :doc:`Cluster must have the scribe operator installed </installation/index>`.
@@ -38,11 +44,11 @@ For complete list of options for a command, run the following or consult the API
     $ cat config.yaml
 
     dest-access-mode: ReadWriteOnce
-    dest-copy-method: Snapshot
+    dest-copy-method: None
     dest-namespace: dest
     source-namespace: source
     source-pvc: mysql-pv-claim
-    source-copy-method: Snapshot
+    source-copy-method: None
 
 Refer to the :doc:`example config </usage/rsync/plugin_opts>` that lists plugin options with default values.
 
@@ -66,47 +72,20 @@ Modify the mysql database
     > exit
     $ exit
 
-Create a replication destination
----------------------------------
-
-Necessary flags are configured in :code:`./config.yaml` shown above.
-
-.. code:: bash
-
-    $ kubectl create ns dest
-    $ kubectl scribe new-destination
-
-Save the rsync address from the destination to pass to the new-source:
-
-.. code:: bash
-
-    $ address=$(kubectl get replicationdestination/dest-destination  -n dest --template={{.status.rsync.address}})
-    $ echo ${address} 
-    # be sure it's not empty, may take a minute to populate
-
-Sync SSH secret from destination to source
-------------------------------------------
-
-This assumes the default secret name that is created by the scribe controller.
-You can also pass :code:`--ssh-keys-secret` that is a valid ssh-key-secret in the
-DestinationReplication namespace and cluster.
-
-Necessary flags are configured in :code:`./config.yaml` shown above.
-Save the output from the command below, you will need the name of the
-ssh-keys-secret to pass to :code:`scribe new-source`.
-
-.. code:: bash
-
-    $ kubectl scribe sync-ssh-secret
-
-Create a replication source
+Create a scribe destination
 ----------------------------
 
-Necessary flags are configured in :code:`./config.yaml` shown above.
-
 .. code:: bash
 
-    $ kubectl scribe new-source --address ${address} --ssh-keys-secret <name-of-ssh-secret-from-output-of-sync>
+    $ kubectl scribe start-replication
+
+The above command:
+* Creates destination PVC (if dest PVC not provided)
+* Syncs SSH secret from destination to source
+* Creates replication destination
+* Creates replication source
+
+Necessary flags are configured in :code:`./config.yaml` shown above.
 
 Create a replication database
 -----------------------------
@@ -115,32 +94,24 @@ Create the destination application from the scribe example:
 
 .. code:: bash
 
-    $ cd examples/destination-database
-    $ cp mysql-pvc.yaml /tmp/pvc.yaml
-    # edit the /tmp/pvc.yaml with metadata.namespace
-    # otherwise you may forget to add the `-n dest` (like I did).
+    $ kubectl apply -n dest -f examples/destination-database/mysql-deployment.yaml
+    $ kubectl apply -n dest -f examples/destination-database/mysql-service.yaml
+    $ kubectl apply -n dest -f examples/destination-database/mysql-secret.yaml
 
-    $ kubectl apply -n dest -f mysql-deployment.yaml
-    $ kubectl apply -n dest -f mysql-service.yaml
-    $ kubectl apply -n dest -f mysql-secret.yaml
+Delete the replication destination 
+-----------------------------------
 
-**TODO:** add this to scribe CLI
+TODO: Add delete command
 
-To sync the data, you have to replace the PVC with every sync.
-This is because PersistenVolumeClaims are immutable.
-That is the reason for extracting the yaml to a local file,
-then updating it with the snapshot image. For each sync, find the latest image
-from the ReplicationDestination, then use this image to create the PVC
-
-Data sync
----------
+Deleting the replication destination after the data sync is required to allow the
+destination PVC to bind with the destination deployment pod. Also, delete the
+synced dest-src ssh key secret in the source namespace to avoid errors with the
+next data sync and stale ssh keys.
 
 .. code:: bash
 
-    $ SNAPSHOT=$(kubectl get replicationdestination dest-destination -n dest --template={{.status.latestImage.name}})
-    $ echo ${SNAPSHOT} // make sure this is not empty, may take a minute
-    $ sed -i "s/snapshotToReplace/${SNAPSHOT}/g" /tmp/pvc.yaml
-    $ kubectl apply -f /tmp/pvc.yaml
+   $ kubectl delete -n dest < name of replication destination default: <destns-destination> >
+   $ kubectl delete -n source < ssh-key-secret default scribe-rsync-dest-src-<destns>-destination >
 
 Verify the synced database
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
