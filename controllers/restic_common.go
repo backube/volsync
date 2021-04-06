@@ -43,23 +43,18 @@ func generateForgetOptions(inst scribev1alpha1.ReplicationSource, l logr.Logger)
 	}
 	if inst.Spec.Restic.Retain.Daily != nil {
 		foDaily = fmt.Sprint("--keep-daily ", fmt.Sprint(*inst.Spec.Restic.Retain.Daily))
-
 	}
 	if inst.Spec.Restic.Retain.Weekly != nil {
 		foWeekly = fmt.Sprint("--keep-weekly ", fmt.Sprint(*inst.Spec.Restic.Retain.Weekly))
-
 	}
 	if inst.Spec.Restic.Retain.Monthly != nil {
 		foMonthly = fmt.Sprint("--keep-monthly ", fmt.Sprint(*inst.Spec.Restic.Retain.Monthly))
-
 	}
 	if inst.Spec.Restic.Retain.Yearly != nil {
 		foYearly = fmt.Sprint("--keep-yearly ", fmt.Sprint(*inst.Spec.Restic.Retain.Yearly))
-
 	}
 	if inst.Spec.Restic.Retain.Within != nil {
 		foWithin = fmt.Sprintf("%s%s", "--keep-within ", *inst.Spec.Restic.Retain.Within)
-
 	}
 	if foHourly == "" && foDaily == "" && foWeekly == "" && foYearly == "" && foWithin == "" {
 		forgetOptions := fmt.Sprint("--keep-last ", 1)
