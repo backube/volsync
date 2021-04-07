@@ -24,7 +24,7 @@ import (
 )
 
 //nolint:dupl
-var _ = Describe("Destination scheduling", func() {
+var _ = Describe("Destination trigger", func() {
 	var rd *scribev1alpha1.ReplicationDestination
 	logger := zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
 
@@ -47,6 +47,7 @@ var _ = Describe("Destination scheduling", func() {
 			b, e := awaitNextSyncDestination(rd, metrics, logger)
 			Expect(b).To(BeTrue())
 			Expect(e).To(BeNil())
+			Expect(rd.Status.NextSyncTime).To(Not(BeNil()))
 		})
 		It("if synced long ago, sync now", func() {
 			when := metav1.Time{Time: time.Now().Add(-5 * time.Hour)}
@@ -54,6 +55,7 @@ var _ = Describe("Destination scheduling", func() {
 			b, e := awaitNextSyncDestination(rd, metrics, logger)
 			Expect(b).To(BeTrue())
 			Expect(e).To(BeNil())
+			Expect(rd.Status.NextSyncTime).To(Not(BeNil()))
 		})
 		It("if recently synced, wait", func() {
 			when := metav1.Time{Time: time.Now().Add(-1 * time.Minute)}
@@ -61,20 +63,48 @@ var _ = Describe("Destination scheduling", func() {
 			b, e := awaitNextSyncDestination(rd, metrics, logger)
 			Expect(b).To(BeFalse())
 			Expect(e).To(BeNil())
-		})
-		It("nextSyncTime will be set", func() {
-			_, _ = awaitNextSyncDestination(rd, metrics, logger)
 			Expect(rd.Status.NextSyncTime).To(Not(BeNil()))
 		})
 	})
 
-	Context("When a schedule is NOT specified", func() {
+	Context("When a manual trigger is specified", func() {
+		BeforeEach(func() {
+			rd.Spec.Trigger = &scribev1alpha1.ReplicationDestinationTriggerSpec{
+				Manual: "1",
+			}
+		})
+		metrics := newScribeMetrics(prometheus.Labels{"obj_name": "a", "obj_namespace": "b", "role": "c", "method": "d"})
+		It("if never synced a manual trigger, sync now", func() {
+			rd.Status.LastManualSync = ""
+			b, e := awaitNextSyncDestination(rd, metrics, logger)
+			Expect(b).To(BeTrue())
+			Expect(e).To(BeNil())
+			Expect(rd.Status.NextSyncTime).To(BeNil())
+		})
+		It("if already synced the current manual trigger, stay idle", func() {
+			rd.Status.LastManualSync = rd.Spec.Trigger.Manual
+			b, e := awaitNextSyncDestination(rd, metrics, logger)
+			Expect(b).To(BeFalse())
+			Expect(e).To(BeNil())
+			Expect(rd.Status.NextSyncTime).To(BeNil())
+		})
+		It("if already synced a previous manual trigger, sync now", func() {
+			rd.Status.LastManualSync = "2"
+			b, e := awaitNextSyncDestination(rd, metrics, logger)
+			Expect(b).To(BeTrue())
+			Expect(e).To(BeNil())
+			Expect(rd.Status.NextSyncTime).To(BeNil())
+		})
+	})
+
+	Context("When the trigger is empty", func() {
 		metrics := newScribeMetrics(prometheus.Labels{"obj_name": "a", "obj_namespace": "b", "role": "c", "method": "d"})
 		It("if never synced, sync now", func() {
 			rd.Status.LastSyncTime = nil
 			b, e := awaitNextSyncDestination(rd, metrics, logger)
 			Expect(b).To(BeTrue())
 			Expect(e).To(BeNil())
+			Expect(rd.Status.NextSyncTime).To(BeNil())
 		})
 		It("if synced long ago, sync now", func() {
 			when := metav1.Time{Time: time.Now().Add(-5 * time.Hour)}
@@ -82,6 +112,7 @@ var _ = Describe("Destination scheduling", func() {
 			b, e := awaitNextSyncDestination(rd, metrics, logger)
 			Expect(b).To(BeTrue())
 			Expect(e).To(BeNil())
+			Expect(rd.Status.NextSyncTime).To(BeNil())
 		})
 		It("if recently synced, sync now", func() {
 			when := metav1.Time{Time: time.Now().Add(-1 * time.Minute)}
@@ -89,9 +120,6 @@ var _ = Describe("Destination scheduling", func() {
 			b, e := awaitNextSyncDestination(rd, metrics, logger)
 			Expect(b).To(BeTrue())
 			Expect(e).To(BeNil())
-		})
-		It("nextSyncTime will NOT be set", func() {
-			_, _ = awaitNextSyncDestination(rd, metrics, logger)
 			Expect(rd.Status.NextSyncTime).To(BeNil())
 		})
 	})
