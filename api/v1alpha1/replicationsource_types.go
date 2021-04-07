@@ -125,15 +125,23 @@ type ReplicationSourceRcloneSpec struct {
 // ResticRetainPolicy defines the feilds for Restic backup
 type ResticRetainPolicy struct {
 	// Hourly defines the number of snapshots to be kept hourly
+	//+optional
 	Hourly *int32 `json:"hourly,omitempty"`
 	// Daily defines the number of snapshots to be kept daily
+	//+optional
 	Daily *int32 `json:"daily,omitempty"`
 	// Weekly defines the number of snapshots to be kept weekly
+	//+optional
 	Weekly *int32 `json:"weekly,omitempty"`
 	// Monthly defines the number of snapshots to be kept monthly
+	//+optional
 	Monthly *int32 `json:"monthly,omitempty"`
 	// Yearly defines the number of snapshots to be kept yearly
+	//+optional
 	Yearly *int32 `json:"yearly,omitempty"`
+	// Within defines the number of snapshots to be kept Within the given time period
+	//+optional
+	Within *string `json:"within,omitempty"`
 }
 
 // ReplicationSourceResticSpec defines the field for restic in replicationSource.

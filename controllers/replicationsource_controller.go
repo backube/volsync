@@ -503,13 +503,12 @@ func (r *resticSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 			r.job.Spec.Template.Spec.Containers = []corev1.Container{{}}
 		}
 		r.job.Spec.Template.Spec.Containers[0].Name = "restic-backup"
-		// calculate retention policy. for now setting FORGET_OPTIONS in
-		// env variables directly. It has to be calculated from retention
-		// policy
-		// get secret from cluster
+
 		var optionalFalse = false
+		forgetOptions := generateForgetOptions(*r.Instance, l)
+		l.V(1).Info("restic forget options", "options", forgetOptions)
 		r.job.Spec.Template.Spec.Containers[0].Env = []corev1.EnvVar{
-			{Name: "FORGET_OPTIONS", Value: "--keep-hourly 2 --keep-daily 1"},
+			{Name: "FORGET_OPTIONS", Value: forgetOptions},
 			{Name: "DATA_DIR", Value: mountPath},
 			{Name: "RESTIC_CACHE_DIR", Value: resticCacheMountPath},
 			{Name: "RESTIC_REPOSITORY", ValueFrom: &corev1.EnvVarSource{
@@ -551,7 +550,12 @@ func (r *resticSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 		}
 
 		r.job.Spec.Template.Spec.Containers[0].Command = []string{"/entry.sh"}
-		r.job.Spec.Template.Spec.Containers[0].Args = []string{"backup"}
+
+		if r.resticPrune(l) {
+			r.job.Spec.Template.Spec.Containers[0].Args = []string{"backup", "prune"}
+		} else {
+			r.job.Spec.Template.Spec.Containers[0].Args = []string{"backup"}
+		}
 		r.job.Spec.Template.Spec.Containers[0].Image = ResticContainerImage
 		runAsUser := int64(0)
 		r.job.Spec.Template.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{
@@ -589,30 +593,42 @@ func (r *resticSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 	} else {
 		logger.V(1).Info("Job reconciled", "operation", op)
 	}
+	// Only set r.Instance.Status.Restic.LastPruned when the restic job has completed
+	if r.resticPrune(l) && r.job.Status.Succeeded == 1 {
+		r.Instance.Status.Restic.LastPruned = &metav1.Time{Time: time.Now()}
+		l.V(1).Info("Prune completed at ", ".Status.Restic.LastPruned", r.Instance.Status.Restic.LastPruned)
+	}
 	// We only continue reconciling if the restic job has completed
 	return r.job.Status.Succeeded == 1, nil
 }
 
 //nolint:funlen
-// func (r *resticSrcReconciler) ensureRetain(l logr.Logger) (bool, error) {
-// 	startTime := *&r.Instance.Status.
-// 	h := time.Now().Hour()
-// 	interval := int64(*r.Instance.Spec.Restic.PrueIntervalDays * 24)
+func (r *resticSrcReconciler) resticPrune(l logr.Logger) bool {
+	pruneInterval := int64(*r.Instance.Spec.Restic.PruneIntervalDays * 24)
+	pruneIntervalHours := time.Duration(pruneInterval) * time.Hour
+	creationTime := r.Instance.ObjectMeta.CreationTimestamp
+	now := time.Now()
+	shouldPrune := false
+	var delta time.Time
 
-// 	if r.Instance.Status.LastPruned == nil {
-// 		// this is the first backup and never has been pruned.
-// 		hours := time.Duration(interval) * time.Hour
-
-// 	}
-// 	if r.Instance.Status.LastPruned != nil {
-// 		//calculate next prune time as now - lastPruned > pruneInterval
-// 		// if true: call prune
-// 		// set last prune time
-// 	}
-
-// 	return true, nil
-
-// }
+	if r.Instance.Status.Restic.LastPruned == nil {
+		//This is the first prune and never has been pruned before
+		//Check if now - CreationTime > pruneInterval
+		// true: start first prune and update LastPruned in Status.Restic
+		// false: wait for next prune
+		delta = creationTime.Time.Add(pruneIntervalHours)
+		shouldPrune = now.After(delta)
+	}
+	if r.Instance.Status.Restic.LastPruned != nil {
+		//calculate next prune time as now - lastPruned > pruneInterval
+		delta = r.Instance.Status.Restic.LastPruned.Time.Add(pruneIntervalHours)
+		shouldPrune = now.After(delta)
+	}
+	if !shouldPrune {
+		l.V(1).Info("Skipping prune", "next", delta)
+	}
+	return shouldPrune
+}
 
 func (r *rsyncSrcReconciler) serviceSelector() map[string]string {
 	return map[string]string{
