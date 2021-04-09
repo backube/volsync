@@ -992,6 +992,7 @@ func (r *rcloneSrcReconciler) validateRcloneSpec(l logr.Logger) (bool, error) {
 	return true, nil
 }
 
+//nolint:dupl
 func (r *resticSrcReconciler) validateResticSpec(l logr.Logger) (bool, error) {
 	var err error
 	var result bool = true
@@ -1003,11 +1004,14 @@ func (r *resticSrcReconciler) validateResticSpec(l logr.Logger) (bool, error) {
 	if err == nil {
 		// get secret from cluster
 		foundSecret := &corev1.Secret{}
-		secretNotFoundErr := r.Client.Get(context.TODO(),
+		secretNotFoundErr := r.Client.Get(r.Ctx,
 			types.NamespacedName{
-				Name: resticSecretName, Namespace: r.Instance.Namespace}, foundSecret)
+				Name:      r.Instance.Spec.Restic.Repository,
+				Namespace: r.Instance.Namespace,
+			}, foundSecret)
 		if secretNotFoundErr != nil {
-			l.Error(err, "restic-config secret not found.")
+			l.Error(err, "restic repository secret not found.",
+				"repository", r.Instance.Spec.Restic.Repository)
 			result = false
 			err = secretNotFoundErr
 		} else {
