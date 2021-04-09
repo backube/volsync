@@ -954,6 +954,8 @@ func (r *rcloneDestReconciler) validateRcloneSpec(l logr.Logger) (bool, error) {
 	l.V(1).Info("Rclone config validation complete.")
 	return true, nil
 }
+
+//nolint:dupl
 func (r *resticDestReconciler) validateResticSpec(l logr.Logger) (bool, error) {
 	var err error
 	var result bool = true
@@ -967,9 +969,12 @@ func (r *resticDestReconciler) validateResticSpec(l logr.Logger) (bool, error) {
 		foundSecret := &corev1.Secret{}
 		secretNotFoundErr := r.Client.Get(r.Ctx,
 			types.NamespacedName{
-				Name: resticSecretName, Namespace: r.Instance.Namespace}, foundSecret)
+				Name:      r.Instance.Spec.Restic.Repository,
+				Namespace: r.Instance.Namespace,
+			}, foundSecret)
 		if secretNotFoundErr != nil {
-			l.Error(err, "restic-config secret not found.")
+			l.Error(err, "restic repository secret not found.",
+				"repository", r.Instance.Spec.Restic.Repository)
 			result = false
 			err = secretNotFoundErr
 		} else {

@@ -16,7 +16,12 @@ make -C mover-rsync image
 # We are using a special tag that should never be pushed to a repo so that it's
 # obvious if we try to run a container other than these intended ones.
 KIND_TAG=local-build
-IMAGES=("quay.io/backube/scribe" "quay.io/backube/scribe-mover-rclone" "quay.io/backube/scribe-mover-rsync")
+IMAGES=(
+        "quay.io/backube/scribe"
+        "quay.io/backube/scribe-mover-rclone"
+        "quay.io/backube/scribe-mover-restic"
+        "quay.io/backube/scribe-mover-rsync"
+)
 for i in "${IMAGES[@]}"; do
     docker tag "${i}:latest" "${i}:${KIND_TAG}"
     kind load docker-image "${i}:${KIND_TAG}"
