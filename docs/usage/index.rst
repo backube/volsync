@@ -5,6 +5,7 @@ Usage
 .. toctree::
    :hidden:
 
+   triggers
    metrics/index
    rclone/index
    rsync/index
@@ -19,8 +20,14 @@ There are two different replication methods built into Scribe. Choose the method
    as disaster recovery, mirroring to a test environment, or sending data to a
    remote site for processing.
 
+Triggers
+========
+
+Scribe :doc:`supports several types of triggers <triggers>` to specify when to schedule the replication.
+
 Metrics
 =======
 
 Scribe :doc:`exposes a number of metrics <metrics/index>` that permit monitoring
 the status of replication relationships via Prometheus.
+

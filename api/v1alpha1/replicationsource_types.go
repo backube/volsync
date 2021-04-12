@@ -50,6 +50,14 @@ type ReplicationSourceTriggerSpec struct {
 	//+kubebuilder:validation:Pattern=`^(\d+|\*)(/\d+)?(\s+(\d+|\*)(/\d+)?){4}$`
 	//+optional
 	Schedule *string `json:"schedule,omitempty"`
+	// manual is a string value that schedules a manual trigger.
+	// Once a sync completes then status.lastManualSync is set to the same string value.
+	// A consumer of a manual trigger should set spec.trigger.manual to a known value
+	// and then wait for lastManualSync to be updated by the operator to the same value,
+	// which means that the manual trigger will then pause and wait for further
+	// updates to the trigger.
+	//+optional
+	Manual string `json:"manual,omitempty"`
 }
 
 // ReplicationSourceExternalSpec defines the configuration when using an
@@ -219,6 +227,9 @@ type ReplicationSourceStatus struct {
 	// scheduled to start (for schedule-based synchronization).
 	//+optional
 	NextSyncTime *metav1.Time `json:"nextSyncTime,omitempty"`
+	// lastManualSync is set to the last spec.trigger.manual when the manual sync is done.
+	//+optional
+	LastManualSync string `json:"lastManualSync,omitempty"`
 	// rsync contains status information for Rsync-based replication.
 	Rsync *ReplicationSourceRsyncStatus `json:"rsync,omitempty"`
 	// external contains provider-specific status information. For more details,

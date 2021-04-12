@@ -165,10 +165,15 @@ func pastScheduleDeadline(schedule cron.Schedule, lastCompleted time.Time, now t
 }
 
 //nolint:dupl
-func updateNextSyncSource(rs *scribev1alpha1.ReplicationSource, metrics scribeMetrics,
-	logger logr.Logger) (bool, error) {
-	// if there's a schedule
-	if rs.Spec.Trigger != nil && rs.Spec.Trigger.Schedule != nil {
+func updateNextSyncSource(
+	rs *scribev1alpha1.ReplicationSource,
+	metrics scribeMetrics,
+	logger logr.Logger,
+) (bool, error) {
+	// if there's a schedule, and no manual trigger is set
+	if rs.Spec.Trigger != nil &&
+		rs.Spec.Trigger.Schedule != nil &&
+		rs.Spec.Trigger.Manual == "" {
 		parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
 		schedule, err := parser.Parse(*rs.Spec.Trigger.Schedule)
 		if err != nil {
@@ -198,23 +203,38 @@ func updateNextSyncSource(rs *scribev1alpha1.ReplicationSource, metrics scribeMe
 	return true, nil
 }
 
-func awaitNextSyncSource(rs *scribev1alpha1.ReplicationSource, metrics scribeMetrics,
-	logger logr.Logger) (bool, error) {
+func awaitNextSyncSource(
+	rs *scribev1alpha1.ReplicationSource,
+	metrics scribeMetrics,
+	logger logr.Logger,
+) (bool, error) {
 	// Ensure nextSyncTime is correct
 	if cont, err := updateNextSyncSource(rs, metrics, logger); !cont || err != nil {
 		return cont, err
 	}
 
-	// If there's no next (no schedule) or we're past the nextSyncTime, we should sync
-	if rs.Status.NextSyncTime.IsZero() || rs.Status.NextSyncTime.Time.Before(time.Now()) {
-		return true, nil
+	// When manual trigger is set, but the lastManualSync value already matches
+	// then we don't want to sync further.
+	if rs.Spec.Trigger != nil &&
+		rs.Spec.Trigger.Manual != "" &&
+		rs.Spec.Trigger.Manual == rs.Status.LastManualSync {
+		return false, nil
 	}
-	return false, nil
+
+	// If there's no next (no schedule) or we're past the nextSyncTime, we should sync
+	if !rs.Status.NextSyncTime.IsZero() && !rs.Status.NextSyncTime.Time.Before(time.Now()) {
+		return false, nil
+	}
+
+	return true, nil
 }
 
 //nolint:dupl
-func updateLastSyncSource(rs *scribev1alpha1.ReplicationSource, metrics scribeMetrics,
-	logger logr.Logger) (bool, error) {
+func updateLastSyncSource(
+	rs *scribev1alpha1.ReplicationSource,
+	metrics scribeMetrics,
+	logger logr.Logger,
+) (bool, error) {
 	// if there's a schedule see if we've made the deadline
 	if rs.Spec.Trigger != nil && rs.Spec.Trigger.Schedule != nil && rs.Status.LastSyncTime != nil {
 		parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
@@ -235,6 +255,14 @@ func updateLastSyncSource(rs *scribev1alpha1.ReplicationSource, metrics scribeMe
 	}
 
 	rs.Status.LastSyncTime = &metav1.Time{Time: time.Now()}
+
+	// When a sync is completed we set lastManualSync
+	if rs.Spec.Trigger != nil {
+		rs.Status.LastManualSync = rs.Spec.Trigger.Manual
+	} else {
+		rs.Status.LastManualSync = ""
+	}
+
 	return updateNextSyncSource(rs, metrics, logger)
 }
 
@@ -265,8 +293,12 @@ type resticSrcReconciler struct {
 }
 
 //nolint:dupl
-func RunRsyncSrcReconciler(ctx context.Context, instance *scribev1alpha1.ReplicationSource,
-	sr *ReplicationSourceReconciler, logger logr.Logger) (ctrl.Result, error) {
+func RunRsyncSrcReconciler(
+	ctx context.Context,
+	instance *scribev1alpha1.ReplicationSource,
+	sr *ReplicationSourceReconciler,
+	logger logr.Logger,
+) (ctrl.Result, error) {
 	r := rsyncSrcReconciler{
 		sourceVolumeHandler: sourceVolumeHandler{
 			Ctx:                         ctx,
@@ -309,8 +341,12 @@ func RunRsyncSrcReconciler(ctx context.Context, instance *scribev1alpha1.Replica
 }
 
 // RunRcloneSrcReconciler is invoked when ReplicationSource.Spec.Rclone != nil
-func RunRcloneSrcReconciler(ctx context.Context, instance *scribev1alpha1.ReplicationSource,
-	sr *ReplicationSourceReconciler, logger logr.Logger) (ctrl.Result, error) {
+func RunRcloneSrcReconciler(
+	ctx context.Context,
+	instance *scribev1alpha1.ReplicationSource,
+	sr *ReplicationSourceReconciler,
+	logger logr.Logger,
+) (ctrl.Result, error) {
 	r := rcloneSrcReconciler{
 		sourceVolumeHandler: sourceVolumeHandler{
 			Ctx:                         ctx,
@@ -348,8 +384,12 @@ func RunRcloneSrcReconciler(ctx context.Context, instance *scribev1alpha1.Replic
 
 // RunResticSrcReconciler is invokded when ReplicationSource.Spec>Restic !=  nil
 //nolint:dupl
-func RunResticSrcReconciler(ctx context.Context, instance *scribev1alpha1.ReplicationSource,
-	sr *ReplicationSourceReconciler, logger logr.Logger) (ctrl.Result, error) {
+func RunResticSrcReconciler(
+	ctx context.Context,
+	instance *scribev1alpha1.ReplicationSource,
+	sr *ReplicationSourceReconciler,
+	logger logr.Logger,
+) (ctrl.Result, error) {
 	r := resticSrcReconciler{
 		sourceVolumeHandler: sourceVolumeHandler{
 			Ctx:                         ctx,
