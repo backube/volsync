@@ -375,11 +375,32 @@ func (h *sourceVolumeHandler) pvcFromSnap(l logr.Logger) (bool, error) {
 func (h *sourceVolumeHandler) pvcForCache(l logr.Logger) (bool, error) {
 	h.resticCache = &v1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "restic-cache",
+			Name:      "scribe-rcs-" + h.Instance.Name,
 			Namespace: h.Instance.Namespace,
 		},
 	}
 	logger := l.WithValues("pvc", nameFor(h.resticCache))
+
+	capacity := resource.MustParse("1Gi")
+	if h.Instance.Spec.Restic != nil && h.Instance.Spec.Restic.CacheCapacity != nil {
+		capacity = *h.Instance.Spec.Restic.CacheCapacity
+	}
+
+	scName := h.srcPVC.Spec.StorageClassName
+	if h.Options.StorageClassName != nil {
+		scName = h.Options.StorageClassName
+	}
+	if h.Instance.Spec.Restic != nil && h.Instance.Spec.Restic.CacheStorageClassName != nil {
+		scName = h.Instance.Spec.Restic.CacheStorageClassName
+	}
+
+	aModes := h.srcPVC.Spec.AccessModes
+	if h.Options.AccessModes != nil {
+		aModes = h.Options.AccessModes
+	}
+	if h.Instance.Spec.Restic != nil && h.Instance.Spec.Restic.CacheAccessModes != nil {
+		aModes = h.Instance.Spec.Restic.CacheAccessModes
+	}
 
 	op, err := ctrlutil.CreateOrUpdate(h.Ctx, h.Client, h.resticCache, func() error {
 		if err := ctrl.SetControllerReference(h.Instance, h.resticCache, h.Scheme); err != nil {
@@ -388,19 +409,10 @@ func (h *sourceVolumeHandler) pvcForCache(l logr.Logger) (bool, error) {
 		}
 		if h.resticCache.CreationTimestamp.IsZero() {
 			h.resticCache.Spec.Resources.Requests = corev1.ResourceList{
-				corev1.ResourceStorage: resource.MustParse("1Gi"),
+				corev1.ResourceStorage: capacity,
 			}
-
-			if h.Options.StorageClassName != nil {
-				h.resticCache.Spec.StorageClassName = h.Options.StorageClassName
-			} else {
-				h.resticCache.Spec.StorageClassName = h.srcPVC.Spec.StorageClassName
-			}
-			if h.Options.AccessModes != nil {
-				h.resticCache.Spec.AccessModes = h.Options.AccessModes
-			} else {
-				h.resticCache.Spec.AccessModes = h.srcPVC.Spec.AccessModes
-			}
+			h.resticCache.Spec.StorageClassName = scName
+			h.resticCache.Spec.AccessModes = aModes
 		}
 		return nil
 	})
@@ -417,11 +429,32 @@ func (h *sourceVolumeHandler) pvcForCache(l logr.Logger) (bool, error) {
 func (h *destinationVolumeHandler) pvcForCache(l logr.Logger) (bool, error) {
 	h.resticCache = &v1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "restic-cache",
+			Name:      "scribe-rcd-" + h.Instance.Name,
 			Namespace: h.Instance.Namespace,
 		},
 	}
 	logger := l.WithValues("pvc", nameFor(h.resticCache))
+
+	capacity := resource.MustParse("1Gi")
+	if h.Instance.Spec.Restic != nil && h.Instance.Spec.Restic.CacheCapacity != nil {
+		capacity = *h.Instance.Spec.Restic.CacheCapacity
+	}
+
+	scName := h.PVC.Spec.StorageClassName
+	if h.Options.StorageClassName != nil {
+		scName = h.Options.StorageClassName
+	}
+	if h.Instance.Spec.Restic != nil && h.Instance.Spec.Restic.CacheStorageClassName != nil {
+		scName = h.Instance.Spec.Restic.CacheStorageClassName
+	}
+
+	aModes := h.PVC.Spec.AccessModes
+	if h.Options.AccessModes != nil {
+		aModes = h.Options.AccessModes
+	}
+	if h.Instance.Spec.Restic != nil && h.Instance.Spec.Restic.CacheAccessModes != nil {
+		aModes = h.Instance.Spec.Restic.CacheAccessModes
+	}
 
 	op, err := ctrlutil.CreateOrUpdate(h.Ctx, h.Client, h.resticCache, func() error {
 		if err := ctrl.SetControllerReference(h.Instance, h.resticCache, h.Scheme); err != nil {
@@ -430,18 +463,10 @@ func (h *destinationVolumeHandler) pvcForCache(l logr.Logger) (bool, error) {
 		}
 		if h.resticCache.CreationTimestamp.IsZero() {
 			h.resticCache.Spec.Resources.Requests = corev1.ResourceList{
-				corev1.ResourceStorage: resource.MustParse("1Gi"),
+				corev1.ResourceStorage: capacity,
 			}
-			if h.Options.StorageClassName != nil {
-				h.resticCache.Spec.StorageClassName = h.Options.StorageClassName
-			} else {
-				h.resticCache.Spec.StorageClassName = h.PVC.Spec.StorageClassName
-			}
-			if h.Options.AccessModes != nil {
-				h.resticCache.Spec.AccessModes = h.Options.AccessModes
-			} else {
-				h.resticCache.Spec.AccessModes = h.PVC.Spec.AccessModes
-			}
+			h.resticCache.Spec.StorageClassName = scName
+			h.resticCache.Spec.AccessModes = aModes
 		}
 		return nil
 	})
