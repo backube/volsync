@@ -92,7 +92,7 @@ func (o *ScribeSourceOptions) Bind(cmd *cobra.Command, v *viper.Viper) {
 	flags := cmd.Flags()
 	flags.StringVar(&o.KubeContext, "source-kube-context", o.KubeContext, "the name of the kubeconfig context to use for the destination cluster. Defaults to current-context.")
 	flags.StringVar(&o.KubeClusterName, "source-kube-clustername", o.KubeClusterName, "the name of the kubeconfig cluster to use for the destination cluster. Defaults to current cluster.")
-	flags.StringVar(&o.Namespace, "source-namespace", o.Namespace, "the transfer source namespace and/or location of a ReplicationSource. This namespace must exist. default is current namespace.")
+	flags.StringVar(&o.Namespace, "source-namespace", o.Namespace, "the transfer source namespace and/or location of a ReplicationSource. This namespace must exist. Defaults to current namespace.")
 	flags.VisitAll(func(f *pflag.Flag) {
 		// Apply the viper config value to the flag when the flag is not set and viper has a value
 		if v.IsSet(f.Name) {
@@ -107,7 +107,7 @@ func (o *ScribeDestinationOptions) Bind(cmd *cobra.Command, v *viper.Viper) {
 	flags := cmd.Flags()
 	flags.StringVar(&o.KubeContext, "dest-kube-context", o.KubeContext, "the name of the kubeconfig context to use for the destination cluster. Defaults to current-context.")
 	flags.StringVar(&o.KubeClusterName, "dest-kube-clustername", o.KubeClusterName, "the name of the kubeconfig cluster to use for the destination cluster. Defaults to current-cluster.")
-	flags.StringVar(&o.Namespace, "dest-namespace", o.Namespace, "the transfer destination namespace and/or location of a ReplicationDestination. This namespace must exist. If not set, use the current namespace.")
+	flags.StringVar(&o.Namespace, "dest-namespace", o.Namespace, "the transfer destination namespace and/or location of a ReplicationDestination. This namespace must exist. Defaults to current namespace.")
 	flags.VisitAll(func(f *pflag.Flag) {
 		// Apply the viper config value to the flag when the flag is not set and viper has a value
 		if v.IsSet(f.Name) {
@@ -130,7 +130,7 @@ func (o *Config) bindFlags(cmd *cobra.Command, v *viper.Viper) {
 	})
 }
 
-func (o *Config) complete(cmd *cobra.Command, v *viper.Viper) error {
+func (o *Config) complete(v *viper.Viper) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
@@ -170,7 +170,7 @@ func (o *Config) complete(cmd *cobra.Command, v *viper.Viper) error {
 
 func (o *Config) Bind(cmd *cobra.Command, v *viper.Viper) error {
 	o.bindFlags(cmd, v)
-	if err := o.complete(cmd, v); err != nil {
+	if err := o.complete(v); err != nil {
 		return err
 	}
 	return nil
@@ -197,7 +197,9 @@ func NewCmdScribe(in io.Reader, out, errout io.Writer) *cobra.Command {
 		},
 	}
 	scribecmd.AddCommand(NewCmdScribeStartReplication(streams))
-	//scribecmd.AddCommand(NewCmdScribeFinalizeReplication(streams))
+	scribecmd.AddCommand(NewCmdScribeSetReplication(streams))
+	scribecmd.AddCommand(NewCmdScribeContinueReplication(streams))
+	scribecmd.AddCommand(NewCmdScribeRemoveReplication(streams))
 
 	return scribecmd
 }
@@ -214,6 +216,7 @@ func (o *ReplicationOptions) Complete() error {
 	return nil
 }
 
+//nolint:dupl
 func (o *ScribeSourceOptions) Complete() error {
 	sourceKubeConfigFlags := genericclioptions.NewConfigFlags(true)
 	if len(o.KubeContext) > 0 {
@@ -245,6 +248,7 @@ func (o *ScribeSourceOptions) Complete() error {
 	return nil
 }
 
+//nolint:dupl
 func (o *ScribeDestinationOptions) Complete() error {
 	destKubeConfigFlags := genericclioptions.NewConfigFlags(true)
 	if len(o.KubeContext) > 0 {

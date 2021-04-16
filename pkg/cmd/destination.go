@@ -9,7 +9,9 @@ import (
 	kcmdutil "k8s.io/kubectl/pkg/cmd/util"
 )
 
-var destPVCStorageClass = "gp2-csi"
+// This will be passed to scribe as 'nil' that will
+// result in defaulting to the cluster's default storage class
+var destPVCDefaultStorageClass = ""
 
 type DestinationOptions struct {
 	Name                    string
@@ -40,7 +42,7 @@ func (o *DestinationOptions) Bind(cmd *cobra.Command, v *viper.Viper) error {
 	flags.StringVar(&o.Address, "dest-address", o.Address, "the remote address to connect to for replication.")
 	// TODO: Defaulted with CLI, should it be??
 	flags.StringVar(&o.Capacity, "dest-capacity", "2Gi", "Size of the destination volume to create. Must be provided if --dest-pvc is not provided.")
-	flags.StringVar(&o.StorageClass, "dest-storage-class-name", o.StorageClass, "name of the StorageClass of the destination volume. If not set, the default StorageClass will be used.")
+	flags.StringVar(&o.StorageClass, "dest-storage-class", o.StorageClass, "name of the StorageClass of the destination volume. If not set, the default StorageClass will be used.")
 	flags.StringVar(&o.AccessMode, "dest-access-mode", o.AccessMode, "the access modes for the destination volume. Must be provided if --dest-pvc is not provided; One of 'ReadWriteOnce|ReadOnlyMany|ReadWriteMany")
 	flags.StringVar(&o.VolumeSnapshotClassName, "dest-volume-snapshot-class", o.VolumeSnapshotClassName, "name of the VolumeSnapshotClass to be used for the destination volume, only if the copyMethod is 'Snapshot'. If not set, the default VSC will be used.")
 	flags.StringVar(&o.DestPVC, "dest-pvc", o.DestPVC, "name of an existing empty PVC in the destination namespace to use as the transfer destination volume. If empty, one will be provisioned.")

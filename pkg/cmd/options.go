@@ -10,6 +10,11 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
+const (
+	scribeSource = "source"
+	scribeDest   = "dest"
+)
+
 type sharedOptions struct {
 	CopyMethod              string //v1alpha1.CopyMethodType
 	Capacity                string //*resource.Quantity
@@ -24,6 +29,7 @@ type sharedOptions struct {
 	ProviderParameters      string //map[string]string
 }
 
+//nolint:funlen
 func (o *SetupReplicationOptions) getCommonOptions(c *sharedOptions, mode string) error {
 	var ok bool
 	if ok := o.getCopyMethod(c.CopyMethod, mode); !ok {
@@ -43,7 +49,7 @@ func (o *SetupReplicationOptions) getCommonOptions(c *sharedOptions, mode string
 		return err
 	}
 	switch mode {
-	case "dest":
+	case scribeDest:
 		o.RepOpts.Dest.Port = port
 		o.RepOpts.Dest.SSHUser = getOption(c.SSHUser)
 		o.RepOpts.Dest.StorageClass = getOption(c.StorageClass)
@@ -60,7 +66,7 @@ func (o *SetupReplicationOptions) getCommonOptions(c *sharedOptions, mode string
 				o.RepOpts.Dest.Parameters[pair[0]] = pair[1]
 			}
 		}
-	case "source":
+	case scribeSource:
 		o.RepOpts.Source.Port = port
 		o.RepOpts.Source.SSHUser = getOption(c.SSHUser)
 		o.RepOpts.Source.StorageClass = getOption(c.StorageClass)
@@ -91,19 +97,25 @@ func getOption(opt string) *string {
 func (o *SetupReplicationOptions) getCapacity(c string, mode string) error {
 	// Capacity not always required
 	var capacity resource.Quantity
-	if len(c) > 0 {
-		capacity = resource.MustParse(c)
+	srcPVC, err := o.GetSourcePVC(context.Background())
+	if err != nil {
+		return err
 	}
 	switch mode {
-	case "dest":
-		o.RepOpts.Dest.Capacity = capacity
-	case "source":
-		srcPVC, err := o.GetSourcePVC(context.Background())
-		if err != nil {
-			return err
+	case scribeDest:
+		if len(c) > 0 {
+			o.RepOpts.Dest.Capacity = resource.MustParse(c)
+		} else {
+			capacity = srcPVC.Spec.Resources.Requests[corev1.ResourceStorage]
+			o.RepOpts.Dest.Capacity = capacity
 		}
-		capacity = srcPVC.Spec.Resources.Requests[corev1.ResourceStorage]
-		o.RepOpts.Source.Capacity = capacity
+	case scribeSource:
+		if len(c) > 0 {
+			o.RepOpts.Source.Capacity = resource.MustParse(c)
+		} else {
+			capacity = srcPVC.Spec.Resources.Requests[corev1.ResourceStorage]
+			o.RepOpts.Source.Capacity = capacity
+		}
 	}
 	return nil
 }
@@ -122,9 +134,9 @@ func (o *SetupReplicationOptions) getCopyMethod(c string, mode string) bool {
 		return false
 	}
 	switch mode {
-	case "dest":
+	case scribeDest:
 		o.RepOpts.Dest.CopyMethod = cm
-	case "source":
+	case scribeSource:
 		o.RepOpts.Source.CopyMethod = cm
 	}
 	return true
@@ -146,9 +158,9 @@ func (o *SetupReplicationOptions) getAccessModes(c string, mode string) bool {
 		}
 	}
 	switch mode {
-	case "dest":
+	case scribeDest:
 		o.RepOpts.Dest.AccessModes = am
-	case "source":
+	case scribeSource:
 		o.RepOpts.Source.AccessModes = am
 	}
 	return true
@@ -168,9 +180,9 @@ func (o *SetupReplicationOptions) getServiceType(c string, mode string) bool {
 		}
 	}
 	switch mode {
-	case "dest":
+	case scribeDest:
 		o.RepOpts.Dest.ServiceType = st
-	case "source":
+	case scribeSource:
 		o.RepOpts.Source.ServiceType = st
 	}
 	return true

@@ -91,7 +91,7 @@ func NewCmdScribeStartReplication(streams genericclioptions.IOStreams) *cobra.Co
 		},
 	}
 	kcmdutil.CheckErr(o.Config.Bind(cmd, v))
-	o.DestOpts.Bind(cmd, v)
+	kcmdutil.CheckErr(o.DestOpts.Bind(cmd, v))
 	o.RepOpts.Bind(cmd, v)
 	o.SSHKeysSecretOptions.Bind(cmd, v)
 	kcmdutil.CheckErr(o.Bind(cmd, v))
@@ -160,7 +160,7 @@ func (o *SetupReplicationOptions) Complete() error {
 		o.DestOpts.Name = fmt.Sprintf("%s-destination", o.RepOpts.Dest.Namespace)
 	}
 	if len(o.DestOpts.StorageClass) == 0 {
-		o.DestOpts.StorageClass = destPVCStorageClass
+		o.DestOpts.StorageClass = destPVCDefaultStorageClass
 	}
 	if err := o.Validate(); err != nil {
 		return err
@@ -199,7 +199,7 @@ func (o *SetupReplicationOptions) sourceCommonOptions() error {
 		Provider:                o.Provider,
 		ProviderParameters:      o.ProviderParameters,
 	}
-	return o.getCommonOptions(sharedOpts, "source")
+	return o.getCommonOptions(sharedOpts, scribeSource)
 }
 
 func (o *SetupReplicationOptions) destCommonOptions() error {
@@ -216,9 +216,10 @@ func (o *SetupReplicationOptions) destCommonOptions() error {
 		Provider:                o.DestOpts.Provider,
 		ProviderParameters:      o.DestOpts.ProviderParameters,
 	}
-	return o.getCommonOptions(sharedOpts, "dest")
+	return o.getCommonOptions(sharedOpts, scribeDest)
 }
 
+//nolint:funlen
 // StartReplication does the following:
 // 1) Create ReplicationDestination
 // 2) Create DestinationPVC (if not provided)
@@ -251,7 +252,7 @@ func (o *SetupReplicationOptions) StartReplication() error {
 			return false, nil
 		}
 		if repDest.Status.Rsync.Address == nil {
-			klog.Infof("Waiting for ReplicationDestination %s RSync address to populate")
+			klog.Infof("Waiting for ReplicationDestination %s RSync address to populate", repDest.Name)
 			return false, nil
 		}
 		klog.Infof("Found ReplicationDestination RSync Address: %s", *repDest.Status.Rsync.Address)
@@ -277,7 +278,7 @@ func (o *SetupReplicationOptions) StartReplication() error {
 	}
 	err = o.RepOpts.Dest.Client.Get(ctx, nsName, sshSecret)
 	if err != nil {
-		return fmt.Errorf("error retrieving destination sshSecret %s failed to sync secret", *sshKeysSecret, o.RepOpts.Source.Namespace)
+		return fmt.Errorf("error retrieving destination sshSecret %s: %v", *sshKeysSecret, err)
 	}
 	klog.Infof("Found destination SSH secret %s, namespace %s", *sshKeysSecret, o.RepOpts.Dest.Namespace)
 	sshSecret = &corev1.Secret{}
@@ -375,10 +376,10 @@ func (o *SetupReplicationOptions) NameDestinationPVC(ctx context.Context) (strin
 		}
 	}
 
-	if destPVCExists || (o.SourcePVC == o.DestOpts.DestPVC && o.RepOpts.Source.Namespace == o.RepOpts.Dest.Namespace) {
+	if len(o.DestOpts.DestPVC) == 0 || destPVCExists {
 		t := time.Now().Format("2006-01-02T15:04:05")
 		tag := strings.ReplaceAll(t, ":", "-")
-		destPVCName = strings.ToLower(fmt.Sprintf("%s-%s", o.SourcePVC, tag))
+		destPVCName = strings.ToLower(fmt.Sprintf("%s-%s", destPVCName, tag))
 	}
 	return destPVCName, nil
 }
@@ -396,10 +397,15 @@ func (o *SetupReplicationOptions) GetSourcePVC(ctx context.Context) (*corev1.Per
 }
 
 // CreateDestinationPVCFromSource creates PVC in destination namespace synced from source PVC
-func (o *SetupReplicationOptions) CreateDestinationPVCFromSource(ctx context.Context, latestImage *corev1.TypedLocalObjectReference, destPVCName string) error {
+func (o *SetupReplicationOptions) CreateDestinationPVCFromSource(
+	ctx context.Context, latestImage *corev1.TypedLocalObjectReference) (string, error) {
+	destPVCName, err := o.NameDestinationPVC(ctx)
+	if err != nil {
+		return "", err
+	}
 	srcPVC, err := o.GetSourcePVC(ctx)
 	if err != nil {
-		return err
+		return "", err
 	}
 	newPVC := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
@@ -426,21 +432,21 @@ func (o *SetupReplicationOptions) CreateDestinationPVCFromSource(ctx context.Con
 
 	klog.V(2).Infof("Creating PVC %s in destination namespace %s", destPVCName, o.RepOpts.Dest.Namespace)
 	if err := o.RepOpts.Dest.Client.Create(ctx, newPVC); err != nil {
-		return err
+		return "", err
 	}
 	klog.Infof("PVC %s created in destination namespace: %s", destPVCName, o.RepOpts.Dest.Namespace)
-	return nil
+	return destPVCName, nil
 }
 
+//nolint:funlen
 // CreateDestination creates a ReplicationDestination resource
 // along with a destination PVC if copyMethod "None"
 func (o *SetupReplicationOptions) CreateDestination(ctx context.Context) error {
-	destPVCName, err := o.NameDestinationPVC(ctx)
-	if err != nil {
-		return err
-	}
+	var destPVCName string
+	var err error
 	if o.RepOpts.Dest.CopyMethod == scribev1alpha1.CopyMethodNone {
-		if err := o.CreateDestinationPVCFromSource(ctx, nil, destPVCName); err != nil {
+		destPVCName, err = o.CreateDestinationPVCFromSource(ctx, nil)
+		if err != nil {
 			return err
 		}
 	}
