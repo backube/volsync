@@ -498,7 +498,7 @@ func (r *rcloneSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 		return nil
 	})
 	// If Job had failed, delete it so it can be recreated
-	if r.job.Status.Failed == *r.job.Spec.BackoffLimit {
+	if r.job.Status.Failed >= *r.job.Spec.BackoffLimit {
 		logger.Info("deleting job -- backoff limit reached")
 		err = r.Client.Delete(r.Ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground))
 		return false, err
@@ -623,7 +623,7 @@ func (r *resticSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 		return nil
 	})
 	// If Job had failed, delete it so it can be recreated
-	if r.job.Status.Failed == *r.job.Spec.BackoffLimit {
+	if r.job.Status.Failed >= *r.job.Spec.BackoffLimit {
 		logger.Info("deleting job -- backoff limit reached")
 		err = r.Client.Delete(r.Ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground))
 		return false, err
@@ -930,7 +930,7 @@ func (r *rsyncSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 	})
 
 	// If Job had failed, delete it so it can be recreated
-	if r.job.Status.Failed == *r.job.Spec.BackoffLimit {
+	if r.job.Status.Failed >= *r.job.Spec.BackoffLimit {
 		logger.Info("deleting job -- backoff limit reached")
 		err = r.Client.Delete(r.Ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground))
 		return false, err
