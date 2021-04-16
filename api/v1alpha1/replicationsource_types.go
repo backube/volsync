@@ -162,6 +162,16 @@ type ReplicationSourceResticSpec struct {
 	// ResticRetainPolicy define the retain policy
 	//+optional
 	Retain *ResticRetainPolicy `json:"retain,omitempty"`
+	// cacheCapacity can be used to set the size of the restic metadata cache volume
+	//+optional
+	CacheCapacity *resource.Quantity `json:"cacheCapacity,omitempty"`
+	// cacheStorageClassName can be used to set the StorageClass of the restic
+	// metadata cache volume
+	//+optional
+	CacheStorageClassName *string `json:"cacheStorageClassName,omitempty"`
+	// accessModes can be used to set the accessModes of restic metadata cache volume
+	//+optional
+	CacheAccessModes []v1.PersistentVolumeAccessMode `json:"cacheAccessModes,omitempty"`
 }
 
 //ReplicationSourceResticStatus defines the field for ReplicationSourceStatus in ReplicationSourceStatus

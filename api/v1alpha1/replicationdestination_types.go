@@ -182,6 +182,16 @@ type ReplicationDestinationResticSpec struct {
 	ReplicationDestinationVolumeOptions `json:",inline"`
 	// Repository is the secret name containing repository info
 	Repository string `json:"repository,omitempty"`
+	// cacheCapacity can be used to set the size of the restic metadata cache volume
+	//+optional
+	CacheCapacity *resource.Quantity `json:"cacheCapacity,omitempty"`
+	// cacheStorageClassName can be used to set the StorageClass of the restic
+	// metadata cache volume
+	//+optional
+	CacheStorageClassName *string `json:"cacheStorageClassName,omitempty"`
+	// accessModes can be used to set the accessModes of restic metadata cache volume
+	//+optional
+	CacheAccessModes []v1.PersistentVolumeAccessMode `json:"cacheAccessModes,omitempty"`
 }
 
 // ReplicationDestinationStatus defines the observed state of ReplicationDestination
