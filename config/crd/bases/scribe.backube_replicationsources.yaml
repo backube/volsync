@@ -130,6 +130,24 @@ spec:
                       type: string
                     minItems: 1
                     type: array
+                  cacheAccessModes:
+                    description: accessModes can be used to set the accessModes of
+                      restic metadata cache volume
+                    items:
+                      type: string
+                    type: array
+                  cacheCapacity:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: cacheCapacity can be used to set the size of the
+                      restic metadata cache volume
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  cacheStorageClassName:
+                    description: cacheStorageClassName can be used to set the StorageClass
+                      of the restic metadata cache volume
+                    type: string
                   capacity:
                     anyOf:
                     - type: integer
