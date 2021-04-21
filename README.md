@@ -42,9 +42,10 @@ and names are likely to be updated frequently. PRs and new issues are welcome!
 Available commands:
 
 ```bash
-kubectl scribe new-source
-kubectl scribe new-destination
-kubectl scribe sync-ssh-secret
+kubectl scribe start-replication
+kubectl scribe set-replication
+kubectl scribe continue-replication
+kubectl scribe remove-replication
 ```
 
 * Try the current examples:
