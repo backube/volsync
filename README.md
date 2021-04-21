@@ -25,7 +25,7 @@ For a convenient script to start a `kind cluster`, try this
 Follow the steps in the [installation
 instructions](https://scribe-replication.readthedocs.io/en/latest/installation/index.html).
 Here are
-[useful commands to configure cluster storage classes](./storage-setup.md).
+[useful commands to configure cluster storage classes](https://scribe-replication.readthedocs.io/en/latest/installation/index.html#configure-default-csi-storage).
 
 ## Scribe kubectl plugin
 
