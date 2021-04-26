@@ -48,15 +48,15 @@ echo "Syncing data to ${DESTINATION_ADDRESS}:${DESTINATION_PORT} ..."
 START_TIME=$SECONDS
 # Avoids exiting on rsync failure
 set +e
-while [ ${rc} -ne 0  -a ${RETRY} -lt ${MAX_RETRIES} ]
+while [[ ${rc} -ne 0 && ${RETRY} -lt ${MAX_RETRIES} ]]
 do
-    RETRY=$(expr ${RETRY} + 1)
+    RETRY=$((RETRY + 1))
     rsync -aAhHSxz --delete --itemize-changes --info=stats2,misc2 /data/ "root@${DESTINATION_ADDRESS}":. 
     rc=$?
     if [[ ${rc} -ne 0 ]]; then
         echo "Syncronization failed. Retrying in ${DELAY} seconds. Retry ${RETRY}/${MAX_RETRIES}."
         sleep ${DELAY}
-        DELAY=$(expr ${DELAY} \* ${FACTOR})
+        DELAY=$((DELAY * FACTOR ))
     fi
 done
 set -e
