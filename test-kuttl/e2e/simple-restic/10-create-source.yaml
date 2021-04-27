@@ -1,0 +1,18 @@
+---
+apiVersion: scribe.backube/v1alpha1
+kind: ReplicationSource
+metadata:
+  name: source
+spec:
+  sourcePVC: data-source
+  trigger:
+    manual: once
+  restic:
+    pruneIntervalDays: 1
+    repository: restic-repo
+    retain:
+      hourly: 3
+      daily: 2
+      monthly: 1
+    copyMethod: Clone
+    cacheCapacity: 1Gi

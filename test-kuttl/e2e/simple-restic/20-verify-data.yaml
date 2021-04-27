@@ -1,0 +1,26 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: verify
+spec:
+  template:
+    spec:
+      containers:
+        - name: busybox
+          image: busybox
+          command: ["/bin/sh", "-c"]
+          args: ["diff -rs /mnt /mnt2"]
+          volumeMounts:
+            - name: data-src
+              mountPath: "/mnt"
+            - name: data-dest
+              mountPath: "/mnt2"
+      volumes:
+        - name: data-dest
+          persistentVolumeClaim:
+            claimName: data-dest
+        - name: data-src
+          persistentVolumeClaim:
+            claimName: data-source
+      restartPolicy: Never
