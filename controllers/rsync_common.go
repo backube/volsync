@@ -61,9 +61,12 @@ func (d *rsyncSvcDescription) Reconcile(l logr.Logger) (bool, error) {
 			logger.Error(err, "unable to set controller reference")
 			return err
 		}
-		d.Service.ObjectMeta.Annotations = map[string]string{
-			"service.beta.kubernetes.io/aws-load-balancer-type": "nlb",
+
+		if d.Service.ObjectMeta.Annotations == nil {
+			d.Service.ObjectMeta.Annotations = map[string]string{}
 		}
+		d.Service.ObjectMeta.Annotations["service.beta.kubernetes.io/aws-load-balancer-type"] = "nlb"
+
 		if d.Type != nil {
 			d.Service.Spec.Type = *d.Type
 		} else {
