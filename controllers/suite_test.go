@@ -38,7 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
-	// +kubebuilder:scaffold:imports
+	//+kubebuilder:scaffold:imports
 )
 
 const (
@@ -73,6 +73,7 @@ var _ = BeforeSuite(func(done Done) {
 			// Snapshot CRDs
 			filepath.Join("..", "hack", "crds"),
 		},
+		ErrorIfCRDPathMissing: true,
 	}
 
 	var err error
@@ -86,7 +87,7 @@ var _ = BeforeSuite(func(done Done) {
 	err = snapv1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
-	// +kubebuilder:scaffold:scheme
+	//+kubebuilder:scaffold:scheme
 
 	/*
 		// From original boilerplate

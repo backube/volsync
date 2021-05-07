@@ -72,8 +72,7 @@ type ReplicationSourceReconciler struct {
 //+kubebuilder:rbac:groups=snapshot.storage.k8s.io,resources=volumesnapshots,verbs=get;list;watch;create;update;patch;delete
 
 //nolint:funlen
-func (r *ReplicationSourceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
-	ctx := context.Background()
+func (r *ReplicationSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Log.WithValues("replicationsource", req.NamespacedName)
 	inst := &scribev1alpha1.ReplicationSource{}
 	if err := r.Client.Get(ctx, req.NamespacedName, inst); err != nil {

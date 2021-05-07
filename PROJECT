@@ -1,14 +1,28 @@
 domain: backube
-layout: go.kubebuilder.io/v2
+layout:
+- go.kubebuilder.io/v3
+plugins:
+  manifests.sdk.operatorframework.io/v2: {}
+  scorecard.sdk.operatorframework.io/v2: {}
 projectName: scribe
 repo: github.com/backube/scribe
 resources:
-- group: scribe
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: backube
+  group: scribe
   kind: ReplicationSource
+  path: github.com/backube/scribe/api/v1alpha1
   version: v1alpha1
-- group: scribe
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: backube
+  group: scribe
   kind: ReplicationDestination
+  path: github.com/backube/scribe/api/v1alpha1
   version: v1alpha1
-version: 3-alpha
-plugins:
-  go.sdk.operatorframework.io/v2-alpha: {}
+version: "3"
