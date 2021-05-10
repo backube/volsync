@@ -117,7 +117,10 @@ test-e2e: kuttl ## Run e2e tests. Requires cluster w/ Scribe already installed
 build: generate lint ## Build manager binary.
 	go build -o bin/manager -ldflags -X=main.scribeVersion=$(VERSION) main.go
 
-bin/kubectl-scribe: lint ## Build Scribe kubectl plugin
+.PHONY: cli
+cli: bin/kubectl-scribe ## Build Scribe kubectl plugin
+
+bin/kubectl-scribe: lint
 	go build -o $@ -ldflags -X=main.scribeVersion=$(VERSION) ./cmd/scribe
 
 .PHONY: run
