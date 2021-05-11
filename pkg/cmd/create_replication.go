@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -142,7 +143,8 @@ func (o *SetupReplicationOptions) Bind(cmd *cobra.Command, v *viper.Viper) error
 	v.AddConfigPath(".")
 	v.SetConfigType("yaml")
 	if err := v.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+		var nf *viper.ConfigFileNotFoundError
+		if !errors.As(err, &nf) {
 			return err
 		}
 	}
@@ -278,7 +280,7 @@ func (o *SetupReplicationOptions) StartReplication() error {
 	}
 	err = o.RepOpts.Dest.Client.Get(ctx, nsName, sshSecret)
 	if err != nil {
-		return fmt.Errorf("error retrieving destination sshSecret %s: %v", *sshKeysSecret, err)
+		return fmt.Errorf("error retrieving destination sshSecret %s: %w", *sshKeysSecret, err)
 	}
 	klog.Infof("Found destination SSH secret %s, namespace %s", *sshKeysSecret, o.RepOpts.Dest.Namespace)
 	sshSecret = &corev1.Secret{}

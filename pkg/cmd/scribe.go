@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -161,7 +162,8 @@ func (o *Config) complete(v *viper.Viper) error {
 		}
 	}
 	if err = v.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+		var nf *viper.ConfigFileNotFoundError
+		if !errors.As(err, &nf) {
 			return err
 		}
 	}

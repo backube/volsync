@@ -76,7 +76,7 @@ func (o *FinalizeOptions) Continue() error {
 		Schedule: repSource.Spec.Trigger.Schedule,
 	}
 	if err := o.RepOpts.Source.Client.Update(ctx, repSource); err != nil {
-		return fmt.Errorf("unable to remove manual trigger for last sync: %v", err)
+		return fmt.Errorf("unable to remove manual trigger for last sync: %w", err)
 	}
 	klog.Infof("ReplicationSource schedule %v restored, manual trigger removed.", *repSource.Spec.Trigger.Schedule)
 	return nil
