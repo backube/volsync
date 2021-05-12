@@ -74,6 +74,15 @@ jobs:
           name: scribe-operator
           path: /tmp/image.tar
 
+      - name: Build cli
+        run: make cli
+
+      - name: Save cli as artifact
+        uses: actions/upload-artifact@v1
+        with:
+          name: kubectl-scribe
+          path: bin/kubectl-scribe
+
   build-rclone:
     name: Build-mover-rclone
     runs-on: ubuntu-20.04
@@ -238,6 +247,15 @@ jobs:
               --set restic.tag=ci-build \
               --wait --timeout=300s \
               scribe-ghaction ./helm/scribe
+
+      - name: Load cli artifact
+        uses: actions/download-artifact@v1
+        with:
+          name: kubectl-scribe
+          path: bin
+
+      - name: Make cli executable
+        run: chmod a+x bin/kubectl-scribe
 
       - name: Run e2e tests
         run: |

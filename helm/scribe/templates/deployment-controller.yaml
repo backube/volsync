@@ -42,26 +42,35 @@ spec:
           ports:
             - containerPort: 8443
               name: https
-          securityContext:
-            runAsGroup: 65534
-            runAsNonRoot: true
-            runAsUser: 65532
         - name: manager
           args:
-            - --metrics-addr=127.0.0.1:8080
-            - --enable-leader-election
+            - --health-probe-bind-address=:8081
+            - --metrics-bind-address=127.0.0.1:8080
+            - --leader-elect
             - --rclone-container-image={{ .Values.rclone.repository }}:{{ .Values.rclone.tag | default .Chart.AppVersion }}
             - --restic-container-image={{ .Values.restic.repository }}:{{ .Values.restic.tag | default .Chart.AppVersion }}
             - --rsync-container-image={{ .Values.rsync.repository }}:{{ .Values.rsync.tag | default .Chart.AppVersion }}
             - --scc-name={{ include "scribe.fullname" . }}-mover
           command:
             - /manager
-          securityContext:
-            {{- toYaml .Values.securityContext | nindent 12 }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

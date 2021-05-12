@@ -86,8 +86,7 @@ type ReplicationDestinationReconciler struct {
 //+kubebuilder:rbac:groups=snapshot.storage.k8s.io,resources=volumesnapshots,verbs=get;list;watch;create;update;patch;delete
 
 //nolint:funlen
-func (r *ReplicationDestinationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
-	ctx := context.Background()
+func (r *ReplicationDestinationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Log.WithValues("replicationdestination", req.NamespacedName)
 	// Get CR instance
 	inst := &scribev1alpha1.ReplicationDestination{}

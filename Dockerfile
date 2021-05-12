@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM golang:1.13 as builder
+FROM golang:1.15 as builder
 
 WORKDIR /workspace
 # Copy the Go Modules manifests
@@ -19,16 +19,17 @@ ARG VERSION="(unknown)"
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o manager -ldflags "-X=main.scribeVersion=${VERSION}" main.go
 
 # Final container
-FROM centos:8
+FROM registry.access.redhat.com/ubi8-minimal:8.3
 
 # Needs openssh in order to generate ssh keys
-RUN yum update -y && \
-    yum install -y \
-      openssh \
-    && yum clean all && \
-    rm -rf /var/cache/yum
+RUN microdnf --refresh update && \
+    microdnf --nodocs install \
+        openssh \
+    && microdnf clean all
 
 WORKDIR /
 COPY --from=builder /workspace/manager .
+# uid/gid: nobody/nobody
+USER 65534:65534
 
 ENTRYPOINT ["/manager"]
