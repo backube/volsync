@@ -1,190 +1,211 @@
-=======================
-Restic Database Example
-=======================
+===================
+Restic-based backup
+===================
 
 .. toctree::
    :hidden:
 
-   restic_restore
-   restic_config
+   database_example
 
 .. sidebar:: Contents
 
-   .. contents:: Backing up source volume using Restic
-
-
-Restic backup
--------------
-
-`Restic <https://restic.readthedocs.io/>`_ is a fast and secure backup program. 
-The following example will use Restic to create a backup of a source volume.
-
-A MySQL database will be used as the example application.
-
-Creating source pvc to be backed up
------------------------------------
-
-First, create a namespace called ``source``. Next deploy the source MySQL database.  
-
-
-.. code:: bash
-
-   kubectl create ns source
-   kubectl create -f examples/source-database/ -n source
-
-Verify the database is running.
-
-.. code:: bash
-
-   watch oc get pods,pvc,volumesnapshots
-   
-   NAME                        READY     STATUS    RESTARTS   AGE
-   pod/mysql-87f849f8c-n9j7j   1/1       Running   1          58m
-
-   NAME                                   STATUS    VOLUME                                     CAPACITY   ACCESS MODES
-   STORAGECLASS	  AGE
-   persistentvolumeclaim/mysql-pv-claim   Bound     pvc-adbf57f1-6399-4738-87c9-4c660d982a0f   2Gi        RWO
-   csi-hostpath-sc   60m
+   .. contents:: Backing up using Restic
 
 
 
-Add a new database.
+Scribe supports taking backups of PersistentVolume data using the Restic-based
+data mover. A ReplicationSource defines the backup policy (target, frequency,
+and retention), while a ReplicationDestination is used for restores.
 
-.. code:: bash
+The Restic mover is different than most of Scribe's other movers because it is
+not meant for synchronizing data between clusters. This mover is specifically
+meant for data backup.
 
-   kubectl exec --stdin --tty -n source `kubectl get pods -n source | grep mysql | awk '{print $1}'` -- /bin/bash
-   mysql -u root -p$MYSQL_ROOT_PASSWORD
-   > show databases;
-   +--------------------+
-   | Database           |
-   +--------------------+
-   | information_schema |
-   | mysql              |
-   | performance_schema |
-   | sys                |
-   +--------------------+
-   4 rows in set (0.00 sec)
+Specifying a repository
+=======================
 
+For both backup and restore operations, it is necessary to specify a backup
+repository for Restic. The repository and connection information are defined in
+a ``restic-config`` Secret.
 
-   > create database synced;
-   > exit
-   exit
-   
-Restic Repository Setup
------------------------
+Below is an example showing how to use a repository stored on Minio.
 
-For the purpose of this tutorial we are using minio as S3 storage.
-Start ``minio`` 
+.. code-block:: yaml
 
-.. code:: bash
-
-   hack/run-minio.sh 
-
-   kubectl port-forward --namespace minio svc/minio 9000:9000
-
-
-``restic-config`` secret configures the restic repo parameters. The keys will be turned into env vars.
-
-.. code:: yaml
-
-   ---
    apiVersion: v1
    kind: Secret
    metadata:
-      name: restic-config
+     name: restic-config
    type: Opaque
    stringData:
-      # The repository url
-      RESTIC_REPOSITORY: s3:http://minio.minio.svc.cluster.local:9000/restic-repo
-      # The repository encryption key
-      RESTIC_PASSWORD: my-secure-restic-password
-      # ENV vars specific to the back end
-      # https://restic.readthedocs.io/en/stable/030_preparing_a_new_repo.html
-      AWS_ACCESS_KEY_ID: access
-      AWS_SECRET_ACCESS_KEY: password
+     # The repository url
+     RESTIC_REPOSITORY: s3:http://minio.minio.svc.cluster.local:9000/restic-repo
+     # The repository encryption key
+     RESTIC_PASSWORD: my-secure-restic-password
+     # ENV vars specific to the chosen back end
+     # https://restic.readthedocs.io/en/stable/030_preparing_a_new_repo.html
+     AWS_ACCESS_KEY_ID: access
+     AWS_SECRET_ACCESS_KEY: password
 
+This Secret will be referenced for both backup (ReplicationSource) and for
+restore (ReplicationDestination).
 
-ReplicationSource
-------------------
+.. note::
+   If necessary, the repository will be automatically initialized (i.e.,
+   ``restic init``) during the first backup.
 
-Start by configuring the source; a minimal example is shown below
+Configuring backup
+==================
 
-.. code:: yaml
+A backup policy is defined by a ReplicationSource object that uses the restic
+replication method.
+
+.. code-block:: yaml
 
    ---
    apiVersion: scribe.backube/v1alpha1
    kind: ReplicationSource
    metadata:
-      name: database-source
-      namespace: source
+     name: mydata-backup
    spec:
-      sourcePVC: mysql-pv-claim
-      trigger:
-         schedule: "*/5 * * * *"
+     # The PVC to be backed up
+     sourcePVC: mydata
+     trigger:
+       # Take a backup every 30 minutes
+       schedule: "*/30 * * * *"
    restic:
-      pruneIntervalDays: 15
-      repository: restic-config
-      retain:
-         hourly: 1
-         daily: 1
-         weekly: 1
-         monthly: 1
-         yearly: 1
-      copyMethod: Snapshot
+     # Prune the repository (repack to free space) every 2 weeks
+     pruneIntervalDays: 14
+     # Name of the Secret with the connection information
+     repository: restic-config
+     # Retention policy for backups
+     retain:
+       hourly: 6
+       daily: 5
+       weekly: 4
+       monthly: 2
+       yearly: 1
+     # Clone the source volume prior to taking a backup to ensure a
+     # point-in-time image.
+     copyMethod: Clone
 
-In the above ``ReplicationSource`` object,
+Backup options
+--------------
 
-- The PiT copy of the source data ``mysql-pv-claim`` will be created using cluster's default ``VolumeSnapshot``.
-- The synchronization schedule, ``.spec.trigger.schedule``, is defined by a 
-  `cronspec <https://en.wikipedia.org/wiki/Cron#Overview>`_, making the schedule very flexible. 
-- The restic repository configuations are provided via ``restic-config``
-- ``pruneIntervalDays`` defines the interval between prune in days.
-- Restic forget parameters is derived via ``retain`` in the form of ``--keep-hourly 2 --keep-daily 1"``.
-  Read more about `restic forget <https://restic.readthedocs.io/en/stable/060_forget.html?highlight=forget#removing-snapshots-according-to-a-policy>`_ 
+There are a number of additional configuration options not shown in the above
+example. Scribe's Restic mover options closely follow those of Restic itself.
 
-Now, deploy the ``restic-config`` followed by ``ReplicationSource`` configuration.
+.. include:: ../inc_src_opts.rst
+
+cacheCapacity
+   This determines the size of the Restic metadata cache volume. This volume
+   contains cached metadata from the backup repository. It must be large enough
+   to hold the non-pruned repository metadata. The default is ``1 Gi``.
+cacheStorageClassName
+   This is the name of the StorageClass that should be used when provisioning
+   the cache volume. It defaults to ``.spec.storageClassName``, then to the name
+   of the StorageClass used by the source PVC.
+cacheAccessModes
+   This is the access mode(s) that should be used to provision the cache volume.
+   It defaults to ``.spec.accessModes``, then to the access modes used by the
+   source PVC.
+pruneIntervalDays
+   This determines the number of days between running ``restic prune`` on the
+   repository. The prune operation repacks the data to free space, but it can
+   also generate significant I/O traffic as a part of the process. Setting this
+   option allows a trade-off between storage consumption (from no longer
+   referenced data) and access costs.
+repository
+   This is the name of the Secret (in the same Namespace) that holds the
+   connection information for the backup repository. The repository path should
+   be unique for each PV.
+retain
+   This has sub-fields for ``hourly``, ``daily``, ``weekly``, ``monthly``, and
+   ``yearly`` that allow setting the number of each type of backup to retain.
+   There is an additional field, ``within`` that can be used to specify a time
+   period during which all backups should be retained. See Restic's
+   `documentation on --keep-within
+   <https://restic.readthedocs.io/en/stable/060_forget.html#removing-snapshots-according-to-a-policy>`_
+   for more information.
+
+   When more than the specified number of backups are present in the repository,
+   they will be removed via Restic's ``forget`` operation, and the space will be
+   reclaimed during the next prune.
 
 
-.. code:: bash
+Performing a restore
+====================
 
-   kubectl create -f example/source-restic/source-restic.yaml -n source
-   kubectl create -f examples/scribe_v1alpha1_replicationsource_restic.yaml -n source
+Data from a backup can be restored using the ReplicationDestination CR. In most
+cases, it is desirable to perform a single restore into an empty
+PersistentVolume.
 
-To verify the replication has completed describe the Replication source.
+For example, create a PVC to hold the restored data:
 
-.. code:: bash
+.. code-block:: yaml
 
-   kubectl describe ReplicationSource -n source database-source
+   ---
+   kind: PersistentVolumeClaim
+   apiVersion: v1
+   metadata:
+     name: datavol
+   spec:
+   accessModes:
+     - ReadWriteOnce
+   resources:
+     requests:
+       storage: 3Gi
 
-From the output, the success of the replication can be seen by the following
-lines:
+Restore the data into ``datavol``:
 
-.. code:: bash
+.. code-block:: yaml
 
- Status:
-  Conditions:
-    Last Transition Time:  2021-01-18T21:50:59Z
-    Message:               Reconcile complete
-    Reason:                ReconcileComplete
-    Status:                True
-    Type:                  Reconciled
-  Next Sync Time:          2021-01-18T22:00:00Z
+   ---
+   apiVersion: scribe.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: datavol-dest
+   spec:
+     trigger:
+       manual: restore-once
+     restic:
+       repository: restic-repo
+       destinationPVC: datavol
+       copyMethod: None
 
-At ``Next Sync Time`` Scribe will create the next Restic data mover job. 
+In the above example, the data will be written directly into the new PVC since
+it is specified via ``destinationPVC``, and no snapshot will be created since a
+``copyMethod`` of ``None`` is used.
 
------------------------------------------
+The restore operation only needs to be performed once, so instead of using a cronspec-based schedule, a manual trigger is used. After the restore completes, the ReplicationDestination object can be deleted.
 
-Follow the steps below to verify the backup 
+.. note::
+   Currently, Scribe only supports restoring the latest backup. However, older
+   backups may be present in the repository (according to the retain
+   parameters). Those can be accessed directly using the Restic utility plus the
+   connection information and credentials from the repository Secret.
 
-.. code:: bash
-   
-   restic -r s3:http://127.0.0.1:9000/restic-repo snapshots
+Restore options
+---------------
 
-   enter password for repository: 
-   repository e6f9ccf6 opened successfully, password is correct
-   ID        Time                 Host                   Tags        Paths
-   ---------------------------------------------------------------------------------------------
-   42ec9adb  2021-03-26 11:40:24  scribe                             /data
-   ---------------------------------------------------------------------------------------------
+There are a number of additional configuration options not shown in the above
+example.
 
-There is a snapshot in the restic repository created by the restic data mover.
+.. include:: ../inc_dst_opts.rst
+
+cacheCapacity
+   This determines the size of the Restic metadata cache volume. This volume
+   contains cached metadata from the backup repository. It must be large enough
+   to hold the non-pruned repository metadata. The default is ``1 Gi``.
+cacheStorageClassName
+   This is the name of the StorageClass that should be used when provisioning
+   the cache volume. It defaults to ``.spec.storageClassName``, then to the name
+   of the StorageClass used by the source PVC.
+cacheAccessModes
+   This is the access mode(s) that should be used to provision the cache volume.
+   It defaults to ``.spec.accessModes``, then to the access modes used by the
+   source PVC.
+repository
+   This is the name of the Secret (in the same Namespace) that holds the
+   connection information for the backup repository. The repository path should
+   be unique for each PV.
