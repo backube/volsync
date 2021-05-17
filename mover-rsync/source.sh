@@ -39,10 +39,27 @@ Host *
   TCPKeepAlive no
 SSHCONFIG
 
+MAX_RETRIES=5
+RETRY=0
+DELAY=2
+FACTOR=2
+rc=1
 echo "Syncing data to ${DESTINATION_ADDRESS}:${DESTINATION_PORT} ..."
 START_TIME=$SECONDS
-rsync -aAhHSxz --delete --itemize-changes --info=stats2,misc2 /data/ "root@${DESTINATION_ADDRESS}":.
-rc=$?
+# Avoids exiting on rsync failure
+set +e
+while [[ ${rc} -ne 0 && ${RETRY} -lt ${MAX_RETRIES} ]]
+do
+    RETRY=$((RETRY + 1))
+    rsync -aAhHSxz --delete --itemize-changes --info=stats2,misc2 /data/ "root@${DESTINATION_ADDRESS}":. 
+    rc=$?
+    if [[ ${rc} -ne 0 ]]; then
+        echo "Syncronization failed. Retrying in ${DELAY} seconds. Retry ${RETRY}/${MAX_RETRIES}."
+        sleep ${DELAY}
+        DELAY=$((DELAY * FACTOR ))
+    fi
+done
+set -e
 echo "Rsync completed in $(( SECONDS - START_TIME ))s"
 if [[ $rc -eq 0 ]]; then
     echo "Synchronization completed successfully. Notifying destination..."

@@ -50,6 +50,14 @@ type ReplicationDestinationTriggerSpec struct {
 	//+kubebuilder:validation:Pattern=`^(\d+|\*)(/\d+)?(\s+(\d+|\*)(/\d+)?){4}$`
 	//+optional
 	Schedule *string `json:"schedule,omitempty"`
+	// manual is a string value that schedules a manual trigger.
+	// Once a sync completes then status.lastManualSync is set to the same string value.
+	// A consumer of a manual trigger should set spec.trigger.manual to a known value
+	// and then wait for lastManualSync to be updated by the operator to the same value,
+	// which means that the manual trigger will then pause and wait for further
+	// updates to the trigger.
+	//+optional
+	Manual string `json:"manual,omitempty"`
 }
 
 type ReplicationDestinationVolumeOptions struct {
@@ -174,6 +182,16 @@ type ReplicationDestinationResticSpec struct {
 	ReplicationDestinationVolumeOptions `json:",inline"`
 	// Repository is the secret name containing repository info
 	Repository string `json:"repository,omitempty"`
+	// cacheCapacity can be used to set the size of the restic metadata cache volume
+	//+optional
+	CacheCapacity *resource.Quantity `json:"cacheCapacity,omitempty"`
+	// cacheStorageClassName can be used to set the StorageClass of the restic
+	// metadata cache volume
+	//+optional
+	CacheStorageClassName *string `json:"cacheStorageClassName,omitempty"`
+	// accessModes can be used to set the accessModes of restic metadata cache volume
+	//+optional
+	CacheAccessModes []v1.PersistentVolumeAccessMode `json:"cacheAccessModes,omitempty"`
 }
 
 // ReplicationDestinationStatus defines the observed state of ReplicationDestination
@@ -189,6 +207,9 @@ type ReplicationDestinationStatus struct {
 	// scheduled to start (for schedule-based synchronization).
 	//+optional
 	NextSyncTime *metav1.Time `json:"nextSyncTime,omitempty"`
+	// lastManualSync is set to the last spec.trigger.manual when the manual sync is done.
+	//+optional
+	LastManualSync string `json:"lastManualSync,omitempty"`
 	// latestImage in the object holding the most recent consistent replicated
 	// image.
 	//+optional

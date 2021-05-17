@@ -39,9 +39,7 @@ import (
 const (
 	dataVolumeName = "data"
 	rcloneSecret   = "rclone-secret"
-	//nolint
-	resticSecretName = "restic-config"
-	resticCache      = "cache"
+	resticCache    = "cache"
 )
 
 type rsyncSvcDescription struct {
@@ -63,9 +61,12 @@ func (d *rsyncSvcDescription) Reconcile(l logr.Logger) (bool, error) {
 			logger.Error(err, "unable to set controller reference")
 			return err
 		}
-		d.Service.ObjectMeta.Annotations = map[string]string{
-			"service.beta.kubernetes.io/aws-load-balancer-type": "nlb",
+
+		if d.Service.ObjectMeta.Annotations == nil {
+			d.Service.ObjectMeta.Annotations = map[string]string{}
 		}
+		d.Service.ObjectMeta.Annotations["service.beta.kubernetes.io/aws-load-balancer-type"] = "nlb"
+
 		if d.Type != nil {
 			d.Service.Spec.Type = *d.Type
 		} else {
@@ -220,9 +221,10 @@ func (k *rsyncSSHKeys) ensureMainSecret(l logr.Logger) (bool, error) {
 	return false, nil
 }
 
-func generateKeyPair(ctx context.Context) (private []byte, public []byte, err error) {
+func generateKeyPair(ctx context.Context, l logr.Logger) (private []byte, public []byte, err error) {
 	keydir, err := ioutil.TempDir("", "sshkeys")
 	if err != nil {
+		l.Error(err, "unable to create temporary directory")
 		return
 	}
 	defer os.RemoveAll(keydir)
@@ -245,7 +247,7 @@ func (k *rsyncSSHKeys) generateMainSecret(l logr.Logger) error {
 		return err
 	}
 
-	priv, pub, err := generateKeyPair(k.Context)
+	priv, pub, err := generateKeyPair(k.Context, l)
 	if err != nil {
 		l.Error(err, "unable to generate source ssh keys")
 		return err
@@ -253,7 +255,7 @@ func (k *rsyncSSHKeys) generateMainSecret(l logr.Logger) error {
 	k.MainSecret.Data["source"] = priv
 	k.MainSecret.Data["source.pub"] = pub
 
-	priv, pub, err = generateKeyPair(k.Context)
+	priv, pub, err = generateKeyPair(k.Context, l)
 	if err != nil {
 		l.Error(err, "unable to generate destination ssh keys")
 		return err

@@ -72,8 +72,7 @@ type ReplicationSourceReconciler struct {
 //+kubebuilder:rbac:groups=snapshot.storage.k8s.io,resources=volumesnapshots,verbs=get;list;watch;create;update;patch;delete
 
 //nolint:funlen
-func (r *ReplicationSourceReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
-	ctx := context.Background()
+func (r *ReplicationSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Log.WithValues("replicationsource", req.NamespacedName)
 	inst := &scribev1alpha1.ReplicationSource{}
 	if err := r.Client.Get(ctx, req.NamespacedName, inst); err != nil {
@@ -165,10 +164,15 @@ func pastScheduleDeadline(schedule cron.Schedule, lastCompleted time.Time, now t
 }
 
 //nolint:dupl
-func updateNextSyncSource(rs *scribev1alpha1.ReplicationSource, metrics scribeMetrics,
-	logger logr.Logger) (bool, error) {
-	// if there's a schedule
-	if rs.Spec.Trigger != nil && rs.Spec.Trigger.Schedule != nil {
+func updateNextSyncSource(
+	rs *scribev1alpha1.ReplicationSource,
+	metrics scribeMetrics,
+	logger logr.Logger,
+) (bool, error) {
+	// if there's a schedule, and no manual trigger is set
+	if rs.Spec.Trigger != nil &&
+		rs.Spec.Trigger.Schedule != nil &&
+		rs.Spec.Trigger.Manual == "" {
 		parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
 		schedule, err := parser.Parse(*rs.Spec.Trigger.Schedule)
 		if err != nil {
@@ -198,23 +202,38 @@ func updateNextSyncSource(rs *scribev1alpha1.ReplicationSource, metrics scribeMe
 	return true, nil
 }
 
-func awaitNextSyncSource(rs *scribev1alpha1.ReplicationSource, metrics scribeMetrics,
-	logger logr.Logger) (bool, error) {
+func awaitNextSyncSource(
+	rs *scribev1alpha1.ReplicationSource,
+	metrics scribeMetrics,
+	logger logr.Logger,
+) (bool, error) {
 	// Ensure nextSyncTime is correct
 	if cont, err := updateNextSyncSource(rs, metrics, logger); !cont || err != nil {
 		return cont, err
 	}
 
-	// If there's no next (no schedule) or we're past the nextSyncTime, we should sync
-	if rs.Status.NextSyncTime.IsZero() || rs.Status.NextSyncTime.Time.Before(time.Now()) {
-		return true, nil
+	// When manual trigger is set, but the lastManualSync value already matches
+	// then we don't want to sync further.
+	if rs.Spec.Trigger != nil &&
+		rs.Spec.Trigger.Manual != "" &&
+		rs.Spec.Trigger.Manual == rs.Status.LastManualSync {
+		return false, nil
 	}
-	return false, nil
+
+	// If there's no next (no schedule) or we're past the nextSyncTime, we should sync
+	if !rs.Status.NextSyncTime.IsZero() && !rs.Status.NextSyncTime.Time.Before(time.Now()) {
+		return false, nil
+	}
+
+	return true, nil
 }
 
 //nolint:dupl
-func updateLastSyncSource(rs *scribev1alpha1.ReplicationSource, metrics scribeMetrics,
-	logger logr.Logger) (bool, error) {
+func updateLastSyncSource(
+	rs *scribev1alpha1.ReplicationSource,
+	metrics scribeMetrics,
+	logger logr.Logger,
+) (bool, error) {
 	// if there's a schedule see if we've made the deadline
 	if rs.Spec.Trigger != nil && rs.Spec.Trigger.Schedule != nil && rs.Status.LastSyncTime != nil {
 		parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
@@ -235,6 +254,14 @@ func updateLastSyncSource(rs *scribev1alpha1.ReplicationSource, metrics scribeMe
 	}
 
 	rs.Status.LastSyncTime = &metav1.Time{Time: time.Now()}
+
+	// When a sync is completed we set lastManualSync
+	if rs.Spec.Trigger != nil {
+		rs.Status.LastManualSync = rs.Spec.Trigger.Manual
+	} else {
+		rs.Status.LastManualSync = ""
+	}
+
 	return updateNextSyncSource(rs, metrics, logger)
 }
 
@@ -265,8 +292,12 @@ type resticSrcReconciler struct {
 }
 
 //nolint:dupl
-func RunRsyncSrcReconciler(ctx context.Context, instance *scribev1alpha1.ReplicationSource,
-	sr *ReplicationSourceReconciler, logger logr.Logger) (ctrl.Result, error) {
+func RunRsyncSrcReconciler(
+	ctx context.Context,
+	instance *scribev1alpha1.ReplicationSource,
+	sr *ReplicationSourceReconciler,
+	logger logr.Logger,
+) (ctrl.Result, error) {
 	r := rsyncSrcReconciler{
 		sourceVolumeHandler: sourceVolumeHandler{
 			Ctx:                         ctx,
@@ -309,8 +340,12 @@ func RunRsyncSrcReconciler(ctx context.Context, instance *scribev1alpha1.Replica
 }
 
 // RunRcloneSrcReconciler is invoked when ReplicationSource.Spec.Rclone != nil
-func RunRcloneSrcReconciler(ctx context.Context, instance *scribev1alpha1.ReplicationSource,
-	sr *ReplicationSourceReconciler, logger logr.Logger) (ctrl.Result, error) {
+func RunRcloneSrcReconciler(
+	ctx context.Context,
+	instance *scribev1alpha1.ReplicationSource,
+	sr *ReplicationSourceReconciler,
+	logger logr.Logger,
+) (ctrl.Result, error) {
 	r := rcloneSrcReconciler{
 		sourceVolumeHandler: sourceVolumeHandler{
 			Ctx:                         ctx,
@@ -348,8 +383,12 @@ func RunRcloneSrcReconciler(ctx context.Context, instance *scribev1alpha1.Replic
 
 // RunResticSrcReconciler is invokded when ReplicationSource.Spec>Restic !=  nil
 //nolint:dupl
-func RunResticSrcReconciler(ctx context.Context, instance *scribev1alpha1.ReplicationSource,
-	sr *ReplicationSourceReconciler, logger logr.Logger) (ctrl.Result, error) {
+func RunResticSrcReconciler(
+	ctx context.Context,
+	instance *scribev1alpha1.ReplicationSource,
+	sr *ReplicationSourceReconciler,
+	logger logr.Logger,
+) (ctrl.Result, error) {
 	r := resticSrcReconciler{
 		sourceVolumeHandler: sourceVolumeHandler{
 			Ctx:                         ctx,
@@ -458,7 +497,7 @@ func (r *rcloneSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 		return nil
 	})
 	// If Job had failed, delete it so it can be recreated
-	if r.job.Status.Failed == *r.job.Spec.BackoffLimit {
+	if r.job.Status.Failed >= *r.job.Spec.BackoffLimit {
 		logger.Info("deleting job -- backoff limit reached")
 		err = r.Client.Delete(r.Ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground))
 		return false, err
@@ -503,13 +542,12 @@ func (r *resticSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 			r.job.Spec.Template.Spec.Containers = []corev1.Container{{}}
 		}
 		r.job.Spec.Template.Spec.Containers[0].Name = "restic-backup"
-		// calculate retention policy. for now setting FORGET_OPTIONS in
-		// env variables directly. It has to be calculated from retention
-		// policy
-		// get secret from cluster
+
 		var optionalFalse = false
+		forgetOptions := generateForgetOptions(*r.Instance, l)
+		l.V(1).Info("restic forget options", "options", forgetOptions)
 		r.job.Spec.Template.Spec.Containers[0].Env = []corev1.EnvVar{
-			{Name: "FORGET_OPTIONS", Value: "--keep-hourly 2 --keep-daily 1"},
+			{Name: "FORGET_OPTIONS", Value: forgetOptions},
 			{Name: "DATA_DIR", Value: mountPath},
 			{Name: "RESTIC_CACHE_DIR", Value: resticCacheMountPath},
 			{Name: "RESTIC_REPOSITORY", ValueFrom: &corev1.EnvVarSource{
@@ -551,7 +589,12 @@ func (r *resticSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 		}
 
 		r.job.Spec.Template.Spec.Containers[0].Command = []string{"/entry.sh"}
-		r.job.Spec.Template.Spec.Containers[0].Args = []string{"backup"}
+
+		if r.resticPrune(l) {
+			r.job.Spec.Template.Spec.Containers[0].Args = []string{"backup", "prune"}
+		} else {
+			r.job.Spec.Template.Spec.Containers[0].Args = []string{"backup"}
+		}
 		r.job.Spec.Template.Spec.Containers[0].Image = ResticContainerImage
 		runAsUser := int64(0)
 		r.job.Spec.Template.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{
@@ -579,7 +622,7 @@ func (r *resticSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 		return nil
 	})
 	// If Job had failed, delete it so it can be recreated
-	if r.job.Status.Failed == *r.job.Spec.BackoffLimit {
+	if r.job.Status.Failed >= *r.job.Spec.BackoffLimit {
 		logger.Info("deleting job -- backoff limit reached")
 		err = r.Client.Delete(r.Ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground))
 		return false, err
@@ -589,30 +632,42 @@ func (r *resticSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 	} else {
 		logger.V(1).Info("Job reconciled", "operation", op)
 	}
+	// Only set r.Instance.Status.Restic.LastPruned when the restic job has completed
+	if r.resticPrune(l) && r.job.Status.Succeeded == 1 {
+		r.Instance.Status.Restic.LastPruned = &metav1.Time{Time: time.Now()}
+		l.V(1).Info("Prune completed at ", ".Status.Restic.LastPruned", r.Instance.Status.Restic.LastPruned)
+	}
 	// We only continue reconciling if the restic job has completed
 	return r.job.Status.Succeeded == 1, nil
 }
 
 //nolint:funlen
-// func (r *resticSrcReconciler) ensureRetain(l logr.Logger) (bool, error) {
-// 	startTime := *&r.Instance.Status.
-// 	h := time.Now().Hour()
-// 	interval := int64(*r.Instance.Spec.Restic.PrueIntervalDays * 24)
+func (r *resticSrcReconciler) resticPrune(l logr.Logger) bool {
+	pruneInterval := int64(*r.Instance.Spec.Restic.PruneIntervalDays * 24)
+	pruneIntervalHours := time.Duration(pruneInterval) * time.Hour
+	creationTime := r.Instance.ObjectMeta.CreationTimestamp
+	now := time.Now()
+	shouldPrune := false
+	var delta time.Time
 
-// 	if r.Instance.Status.LastPruned == nil {
-// 		// this is the first backup and never has been pruned.
-// 		hours := time.Duration(interval) * time.Hour
-
-// 	}
-// 	if r.Instance.Status.LastPruned != nil {
-// 		//calculate next prune time as now - lastPruned > pruneInterval
-// 		// if true: call prune
-// 		// set last prune time
-// 	}
-
-// 	return true, nil
-
-// }
+	if r.Instance.Status.Restic.LastPruned == nil {
+		//This is the first prune and never has been pruned before
+		//Check if now - CreationTime > pruneInterval
+		// true: start first prune and update LastPruned in Status.Restic
+		// false: wait for next prune
+		delta = creationTime.Time.Add(pruneIntervalHours)
+		shouldPrune = now.After(delta)
+	}
+	if r.Instance.Status.Restic.LastPruned != nil {
+		//calculate next prune time as now - lastPruned > pruneInterval
+		delta = r.Instance.Status.Restic.LastPruned.Time.Add(pruneIntervalHours)
+		shouldPrune = now.After(delta)
+	}
+	if !shouldPrune {
+		l.V(1).Info("Skipping prune", "next", delta)
+	}
+	return shouldPrune
+}
 
 func (r *rsyncSrcReconciler) serviceSelector() map[string]string {
 	return map[string]string{
@@ -874,7 +929,7 @@ func (r *rsyncSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 	})
 
 	// If Job had failed, delete it so it can be recreated
-	if r.job.Status.Failed == *r.job.Spec.BackoffLimit {
+	if r.job.Status.Failed >= *r.job.Spec.BackoffLimit {
 		logger.Info("deleting job -- backoff limit reached")
 		err = r.Client.Delete(r.Ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground))
 		return false, err
@@ -976,6 +1031,7 @@ func (r *rcloneSrcReconciler) validateRcloneSpec(l logr.Logger) (bool, error) {
 	return true, nil
 }
 
+//nolint:dupl
 func (r *resticSrcReconciler) validateResticSpec(l logr.Logger) (bool, error) {
 	var err error
 	var result bool = true
@@ -987,11 +1043,14 @@ func (r *resticSrcReconciler) validateResticSpec(l logr.Logger) (bool, error) {
 	if err == nil {
 		// get secret from cluster
 		foundSecret := &corev1.Secret{}
-		secretNotFoundErr := r.Client.Get(context.TODO(),
+		secretNotFoundErr := r.Client.Get(r.Ctx,
 			types.NamespacedName{
-				Name: resticSecretName, Namespace: r.Instance.Namespace}, foundSecret)
+				Name:      r.Instance.Spec.Restic.Repository,
+				Namespace: r.Instance.Namespace,
+			}, foundSecret)
 		if secretNotFoundErr != nil {
-			l.Error(err, "restic-config secret not found.")
+			l.Error(err, "restic repository secret not found.",
+				"repository", r.Instance.Spec.Restic.Repository)
 			result = false
 			err = secretNotFoundErr
 		} else {

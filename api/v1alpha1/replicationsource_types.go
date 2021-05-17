@@ -50,6 +50,14 @@ type ReplicationSourceTriggerSpec struct {
 	//+kubebuilder:validation:Pattern=`^(\d+|\*)(/\d+)?(\s+(\d+|\*)(/\d+)?){4}$`
 	//+optional
 	Schedule *string `json:"schedule,omitempty"`
+	// manual is a string value that schedules a manual trigger.
+	// Once a sync completes then status.lastManualSync is set to the same string value.
+	// A consumer of a manual trigger should set spec.trigger.manual to a known value
+	// and then wait for lastManualSync to be updated by the operator to the same value,
+	// which means that the manual trigger will then pause and wait for further
+	// updates to the trigger.
+	//+optional
+	Manual string `json:"manual,omitempty"`
 }
 
 // ReplicationSourceExternalSpec defines the configuration when using an
@@ -125,15 +133,23 @@ type ReplicationSourceRcloneSpec struct {
 // ResticRetainPolicy defines the feilds for Restic backup
 type ResticRetainPolicy struct {
 	// Hourly defines the number of snapshots to be kept hourly
+	//+optional
 	Hourly *int32 `json:"hourly,omitempty"`
 	// Daily defines the number of snapshots to be kept daily
+	//+optional
 	Daily *int32 `json:"daily,omitempty"`
 	// Weekly defines the number of snapshots to be kept weekly
+	//+optional
 	Weekly *int32 `json:"weekly,omitempty"`
 	// Monthly defines the number of snapshots to be kept monthly
+	//+optional
 	Monthly *int32 `json:"monthly,omitempty"`
 	// Yearly defines the number of snapshots to be kept yearly
+	//+optional
 	Yearly *int32 `json:"yearly,omitempty"`
+	// Within defines the number of snapshots to be kept Within the given time period
+	//+optional
+	Within *string `json:"within,omitempty"`
 }
 
 // ReplicationSourceResticSpec defines the field for restic in replicationSource.
@@ -146,6 +162,16 @@ type ReplicationSourceResticSpec struct {
 	// ResticRetainPolicy define the retain policy
 	//+optional
 	Retain *ResticRetainPolicy `json:"retain,omitempty"`
+	// cacheCapacity can be used to set the size of the restic metadata cache volume
+	//+optional
+	CacheCapacity *resource.Quantity `json:"cacheCapacity,omitempty"`
+	// cacheStorageClassName can be used to set the StorageClass of the restic
+	// metadata cache volume
+	//+optional
+	CacheStorageClassName *string `json:"cacheStorageClassName,omitempty"`
+	// accessModes can be used to set the accessModes of restic metadata cache volume
+	//+optional
+	CacheAccessModes []v1.PersistentVolumeAccessMode `json:"cacheAccessModes,omitempty"`
 }
 
 //ReplicationSourceResticStatus defines the field for ReplicationSourceStatus in ReplicationSourceStatus
@@ -211,6 +237,9 @@ type ReplicationSourceStatus struct {
 	// scheduled to start (for schedule-based synchronization).
 	//+optional
 	NextSyncTime *metav1.Time `json:"nextSyncTime,omitempty"`
+	// lastManualSync is set to the last spec.trigger.manual when the manual sync is done.
+	//+optional
+	LastManualSync string `json:"lastManualSync,omitempty"`
 	// rsync contains status information for Rsync-based replication.
 	Rsync *ReplicationSourceRsyncStatus `json:"rsync,omitempty"`
 	// external contains provider-specific status information. For more details,

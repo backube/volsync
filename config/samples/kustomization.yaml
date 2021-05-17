@@ -2,4 +2,4 @@
 resources:
 - scribe_v1alpha1_replicationsource.yaml
 - scribe_v1alpha1_replicationdestination.yaml
-# +kubebuilder:scaffold:manifestskustomizesamples
+#+kubebuilder:scaffold:manifestskustomizesamples

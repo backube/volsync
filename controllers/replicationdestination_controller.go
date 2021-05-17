@@ -86,8 +86,7 @@ type ReplicationDestinationReconciler struct {
 //+kubebuilder:rbac:groups=snapshot.storage.k8s.io,resources=volumesnapshots,verbs=get;list;watch;create;update;patch;delete
 
 //nolint:funlen
-func (r *ReplicationDestinationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
-	ctx := context.Background()
+func (r *ReplicationDestinationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Log.WithValues("replicationdestination", req.NamespacedName)
 	// Get CR instance
 	inst := &scribev1alpha1.ReplicationDestination{}
@@ -188,10 +187,15 @@ type rcloneDestReconciler struct {
 }
 
 //nolint:dupl
-func updateNextSyncDestination(rd *scribev1alpha1.ReplicationDestination, metrics scribeMetrics,
-	logger logr.Logger) (bool, error) {
-	// if there's a schedule
-	if rd.Spec.Trigger != nil && rd.Spec.Trigger.Schedule != nil {
+func updateNextSyncDestination(
+	rd *scribev1alpha1.ReplicationDestination,
+	metrics scribeMetrics,
+	logger logr.Logger,
+) (bool, error) {
+	// if there's a schedule, and no manual trigger is set
+	if rd.Spec.Trigger != nil &&
+		rd.Spec.Trigger.Schedule != nil &&
+		rd.Spec.Trigger.Manual == "" {
 		parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
 		schedule, err := parser.Parse(*rd.Spec.Trigger.Schedule)
 		if err != nil {
@@ -221,23 +225,38 @@ func updateNextSyncDestination(rd *scribev1alpha1.ReplicationDestination, metric
 	return true, nil
 }
 
-func awaitNextSyncDestination(rd *scribev1alpha1.ReplicationDestination, metrics scribeMetrics,
-	logger logr.Logger) (bool, error) {
+func awaitNextSyncDestination(
+	rd *scribev1alpha1.ReplicationDestination,
+	metrics scribeMetrics,
+	logger logr.Logger,
+) (bool, error) {
 	// Ensure nextSyncTime is correct
 	if cont, err := updateNextSyncDestination(rd, metrics, logger); !cont || err != nil {
 		return cont, err
 	}
 
-	// If there's no next (no schedule) or we're past the nextSyncTime, we should sync
-	if rd.Status.NextSyncTime.IsZero() || rd.Status.NextSyncTime.Time.Before(time.Now()) {
-		return true, nil
+	// When manual trigger is set, but the lastManualSync value already matches
+	// then we don't want to sync further.
+	if rd.Spec.Trigger != nil &&
+		rd.Spec.Trigger.Manual != "" &&
+		rd.Spec.Trigger.Manual == rd.Status.LastManualSync {
+		return false, nil
 	}
-	return false, nil
+
+	// If there's no next (no schedule) or we're past the nextSyncTime, we should sync
+	if !rd.Status.NextSyncTime.IsZero() && !rd.Status.NextSyncTime.Time.Before(time.Now()) {
+		return false, nil
+	}
+
+	return true, nil
 }
 
 //nolint:dupl
-func updateLastSyncDestination(rd *scribev1alpha1.ReplicationDestination, metrics scribeMetrics,
-	logger logr.Logger) (bool, error) {
+func updateLastSyncDestination(
+	rd *scribev1alpha1.ReplicationDestination,
+	metrics scribeMetrics,
+	logger logr.Logger,
+) (bool, error) {
 	// if there's a schedule see if we've made the deadline
 	if rd.Spec.Trigger != nil && rd.Spec.Trigger.Schedule != nil && rd.Status.LastSyncTime != nil {
 		parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
@@ -258,12 +277,24 @@ func updateLastSyncDestination(rd *scribev1alpha1.ReplicationDestination, metric
 	}
 
 	rd.Status.LastSyncTime = &metav1.Time{Time: time.Now()}
+
+	// When a sync is completed we set lastManualSync
+	if rd.Spec.Trigger != nil {
+		rd.Status.LastManualSync = rd.Spec.Trigger.Manual
+	} else {
+		rd.Status.LastManualSync = ""
+	}
+
 	return updateNextSyncDestination(rd, metrics, logger)
 }
 
 //nolint:dupl
-func RunRsyncDestReconciler(ctx context.Context, instance *scribev1alpha1.ReplicationDestination,
-	dr *ReplicationDestinationReconciler, logger logr.Logger) (ctrl.Result, error) {
+func RunRsyncDestReconciler(
+	ctx context.Context,
+	instance *scribev1alpha1.ReplicationDestination,
+	dr *ReplicationDestinationReconciler,
+	logger logr.Logger,
+) (ctrl.Result, error) {
 	// Initialize state for the reconcile pass
 	r := rsyncDestReconciler{
 		destinationVolumeHandler: destinationVolumeHandler{
@@ -307,8 +338,12 @@ func RunRsyncDestReconciler(ctx context.Context, instance *scribev1alpha1.Replic
 }
 
 // RunRcloneDestReconciler reconciles rclone mover related objects.
-func RunRcloneDestReconciler(ctx context.Context, instance *scribev1alpha1.ReplicationDestination,
-	dr *ReplicationDestinationReconciler, logger logr.Logger) (ctrl.Result, error) {
+func RunRcloneDestReconciler(
+	ctx context.Context,
+	instance *scribev1alpha1.ReplicationDestination,
+	dr *ReplicationDestinationReconciler,
+	logger logr.Logger,
+) (ctrl.Result, error) {
 	// Initialize state for the reconcile pass
 	r := rcloneDestReconciler{
 		destinationVolumeHandler: destinationVolumeHandler{
@@ -352,8 +387,12 @@ type resticDestReconciler struct {
 
 // RunResticDestReconciler is invokded when ReplicationDestination.Spec>Restic !=  nil
 //nolint:dupl
-func RunResticDestReconciler(ctx context.Context, instance *scribev1alpha1.ReplicationDestination,
-	dr *ReplicationDestinationReconciler, logger logr.Logger) (ctrl.Result, error) {
+func RunResticDestReconciler(
+	ctx context.Context,
+	instance *scribev1alpha1.ReplicationDestination,
+	dr *ReplicationDestinationReconciler,
+	logger logr.Logger,
+) (ctrl.Result, error) {
 	r := resticDestReconciler{
 		destinationVolumeHandler: destinationVolumeHandler{
 			Ctx:                              ctx,
@@ -529,7 +568,7 @@ func (r *resticDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 		return nil
 	})
 	// If Job had failed, delete it so it can be recreated
-	if r.job.Status.Failed == *r.job.Spec.BackoffLimit {
+	if r.job.Status.Failed >= *r.job.Spec.BackoffLimit {
 		logger.Info("deleting job -- backoff limit reached")
 		err = r.Client.Delete(r.Ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground))
 		return false, err
@@ -784,7 +823,7 @@ func (r *rsyncDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 	})
 
 	// If Job had failed, delete it so it can be recreated
-	if r.job.Status.Failed == *r.job.Spec.BackoffLimit {
+	if r.job.Status.Failed >= *r.job.Spec.BackoffLimit {
 		logger.Info("deleting job -- backoff limit reached")
 		err = r.Client.Delete(r.Ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground))
 		return false, err
@@ -871,7 +910,7 @@ func (r *rcloneDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 	})
 
 	// If Job had failed, delete it so it can be recreated
-	if r.job.Status.Failed == *r.job.Spec.BackoffLimit {
+	if r.job.Status.Failed >= *r.job.Spec.BackoffLimit {
 		logger.Info("deleting job -- backoff limit reached")
 		err = r.Client.Delete(r.Ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground))
 		return false, err
@@ -954,6 +993,8 @@ func (r *rcloneDestReconciler) validateRcloneSpec(l logr.Logger) (bool, error) {
 	l.V(1).Info("Rclone config validation complete.")
 	return true, nil
 }
+
+//nolint:dupl
 func (r *resticDestReconciler) validateResticSpec(l logr.Logger) (bool, error) {
 	var err error
 	var result bool = true
@@ -967,9 +1008,12 @@ func (r *resticDestReconciler) validateResticSpec(l logr.Logger) (bool, error) {
 		foundSecret := &corev1.Secret{}
 		secretNotFoundErr := r.Client.Get(r.Ctx,
 			types.NamespacedName{
-				Name: resticSecretName, Namespace: r.Instance.Namespace}, foundSecret)
+				Name:      r.Instance.Spec.Restic.Repository,
+				Namespace: r.Instance.Namespace,
+			}, foundSecret)
 		if secretNotFoundErr != nil {
-			l.Error(err, "restic-config secret not found.")
+			l.Error(err, "restic repository secret not found.",
+				"repository", r.Instance.Spec.Restic.Repository)
 			result = false
 			err = secretNotFoundErr
 		} else {
