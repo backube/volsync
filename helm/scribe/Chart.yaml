@@ -11,16 +11,30 @@ maintainers:
     email: jstrunk@redhat.com
     url: https://github.com/JohnStrunk
 keywords:
+  - backup
   - csi
   - data
   - disaster recovery
   - replication
   - storage
-annotations:
+annotations:  # https://artifacthub.io/docs/topics/annotations/helm/
   # Changelog for current chart & app version
-  # Prefix w/ Added/Changed/Deprecated/Fixed/Removed/Security
+  # Prefix w/ added, changed, deprecated, removed, fixed and security
   artifacthub.io/changes: |
-    - Added - Restic mover
+    - kind: added
+      description: Support for creating Restic backups
+    - kind: added
+      description: Metrics for monitoring replication status
+    - kind: added
+      description: Support for manually triggering replication
+    - kind: fixed
+      description: Fixed deployment on OpenShift w/ deployments not named "scribe"
+    - kind: fixed
+      description: Support retries in rsync pod to tolerate Submariner DNS delays
+    - kind: fixed
+      description: Custom rsync port number was being ignored
+    - kind: fixed
+      description: Don't overwrite annotations on the rsync Service
   artifacthub.io/crds: |
     - kind: ReplicationDestination
       version: v1alpha1
