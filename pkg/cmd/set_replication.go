@@ -3,6 +3,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -108,7 +109,8 @@ func (o *FinalizeOptions) Bind(cmd *cobra.Command, v *viper.Viper) error {
 	v.AddConfigPath(".")
 	v.SetConfigType("yaml")
 	if err := v.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+		var nf *viper.ConfigFileNotFoundError
+		if !errors.As(err, &nf) {
 			return err
 		}
 	}

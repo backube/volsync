@@ -21,9 +21,10 @@ var (
 func injectLoglevelFlag(flags *pflag.FlagSet) {
 	from := goflag.CommandLine
 	if flag := from.Lookup("v"); flag != nil {
-		level := flag.Value.(*klog.Level)
-		levelPtr := (*int32)(level)
-		flags.Int32Var(levelPtr, "loglevel", 0, "Set the level of log output (0-10)")
+		if level, ok := flag.Value.(*klog.Level); ok {
+			levelPtr := (*int32)(level)
+			flags.Int32Var(levelPtr, "loglevel", 0, "Set the level of log output (0-10)")
+		}
 	}
 }
 

@@ -4,23 +4,30 @@
 run:
   timeout: 30m
   # skip-files:
+output:
+  sort-results: true
 linters:
   disable-all: true
   enable:
+    - asciicheck
     - deadcode
     - dupl
     - errcheck
+    - errorlint
+    - exhaustive
+    - exportloopref
+    - forcetypeassert
     - funlen
     - goconst
     - gocyclo
-    - goimports
+    - goimports  # Supersedes gofmt
     - golint
     - gosec
     - gosimple
     - govet
     - ineffassign
     - lll
-    - maligned
+    - makezero
     - misspell
     - nakedret
     - staticcheck

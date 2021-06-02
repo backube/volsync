@@ -7,7 +7,7 @@ VERSION ?= $(shell git describe --tags --dirty --match 'v*' 2> /dev/null || git 
 BUILDDATE := $(shell date -u '+%Y-%m-%dT%H:%M:%S.%NZ')
 
 # Helper software versions
-GOLANGCI_VERSION := v1.31.0
+GOLANGCI_VERSION := v1.40.0
 HELM_VERSION := v3.5.0
 OPERATOR_SDK_VERSION := v1.8.0
 KUTTL_VERSION := 0.7.2
