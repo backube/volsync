@@ -36,7 +36,7 @@ function run_check() {
 }
 
 all_required=0
-if [ "x$1" == "x--require-all" ]; then
+if [ "$1" == "--require-all" ]; then
     all_required=1
 fi
 
