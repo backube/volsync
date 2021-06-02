@@ -12,8 +12,8 @@ on:  # yamllint disable-line rule:truthy
     - cron: "15 4 * * 1"  # 4:15 every Monday
 
 env:
-  GO_VERSION: "1.15"
-  KIND_VERSION: "0.9.0"
+  GO_VERSION: "1.16"
+  KIND_VERSION: "0.11.0"
   GO111MODULE: "on"
   OPERATOR_IMAGE: "quay.io/backube/scribe"
   RCLONE_IMAGE: "quay.io/backube/scribe-mover-rclone"
@@ -52,8 +52,8 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: Test
-        run: make test
+      - name: Build operator container
+        run: make docker-build IMG=${OPERATOR_IMAGE}
 
       - name: Upload test coverage
         uses: codecov/codecov-action@v1
@@ -61,9 +61,6 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           file: ./cover.out
           fail_ci_if_error: true
-
-      - name: Build operator container
-        run: make docker-build IMG=${OPERATOR_IMAGE}
 
       - name: Export container image
         run: docker save -o /tmp/image.tar ${OPERATOR_IMAGE}
@@ -153,7 +150,10 @@ jobs:
         # There must be kindest/node images for these versions
         # See: https://hub.docker.com/r/kindest/node/tags?page=1&ordering=name
         # Or: skopeo list-tags docker://kindest/node
-        KUBERNETES_VERSIONS: ["1.20.2"]
+        KUBERNETES_VERSIONS:
+          - "1.19.7"  # OCP 4.6
+          - "1.20.7"  # OCP 4.7
+          - "1.21.1"  # OCP 4.8
     env:
       KUBECONFIG: /tmp/kubeconfig
       KUBERNETES_VERSION: ${{ matrix.KUBERNETES_VERSIONS }}
