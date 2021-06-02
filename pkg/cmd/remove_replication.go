@@ -95,17 +95,17 @@ func (o *FinalizeOptions) RemoveReplication() error {
 		},
 	}
 	if err := o.RepOpts.Source.Client.Delete(ctx, sshSecret); err != nil {
-		return fmt.Errorf("error deleting ssh-keys: %s namespace: %s: %v", sshSecret.Name, o.RepOpts.Source.Namespace, err)
+		return fmt.Errorf("error deleting ssh-keys: %s namespace: %s: %w", sshSecret.Name, o.RepOpts.Source.Namespace, err)
 	}
 	klog.Infof("Deleted source SSH secret %s in namespace %s", sshSecret.Name, o.RepOpts.Source.Namespace)
 
 	if err := o.RepOpts.Source.Client.Delete(ctx, repSource); err != nil {
-		return fmt.Errorf("error deleting replication source: %s namespace: %s: %v", o.sourceName, o.RepOpts.Source.Namespace, err)
+		return fmt.Errorf("error deleting replication source: %s namespace: %s: %w", o.sourceName, o.RepOpts.Source.Namespace, err)
 	}
 	klog.Infof("Deleted replication source %s in namespace %s", o.sourceName, o.RepOpts.Source.Namespace)
 
 	if err := o.RepOpts.Dest.Client.Delete(ctx, repDest); err != nil {
-		return fmt.Errorf("error deleting replication destination: %s namespace: %s: %v", o.destName, o.RepOpts.Dest.Namespace, err)
+		return fmt.Errorf("error deleting replication destination: %s namespace: %s: %w", o.destName, o.RepOpts.Dest.Namespace, err)
 	}
 	klog.Infof("Deleted replication destination %s in namespace %s", o.destName, o.RepOpts.Dest.Namespace)
 
