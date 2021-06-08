@@ -23,7 +23,8 @@ type SSHKeysSecretOptions struct {
 //nolint:lll
 func (o *SSHKeysSecretOptions) Bind(cmd *cobra.Command, v *viper.Viper) {
 	flags := cmd.Flags()
-	flags.StringVar(&o.SSHKeysSecret, "ssh-keys-secret", o.SSHKeysSecret, "name of existing valid SSHKeys secret for authentication. If not set, the dest-src SSHKey secret-name will be used from destinationlocation.")
+	flags.StringVar(&o.SSHKeysSecret, "ssh-keys-secret", o.SSHKeysSecret, ""+
+		"name of existing valid SSHKeys secret for authentication. If not set, the dest-src SSHKey secret-name will be used from destinationlocation.")
 
 	flags.VisitAll(func(f *pflag.Flag) {
 		if !f.Changed && v.IsSet(f.Name) {

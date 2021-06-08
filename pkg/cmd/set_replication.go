@@ -91,10 +91,13 @@ func (o *FinalizeOptions) bindFlags(cmd *cobra.Command, v *viper.Viper) error {
 	flags := cmd.Flags()
 	flags.StringVar(&o.sourceName, "source-replication-name", o.sourceName, "name of ReplicationSource (default '<source-ns>-source')")
 	flags.StringVar(&o.destName, "dest-replication-name", o.destName, "name of ReplicationDestination (default '<dest-ns>-destination') ")
-	flags.StringVar(&o.destPVC, "dest-pvc", o.destPVC, "name of not-yet-existing destination PVC. Default is sourcePVC name, or if PVC with sourcePVC name exists in destination namespace, then 'sourcePVC-<date-tag>'")
+	flags.StringVar(&o.destPVC, "dest-pvc", o.destPVC, "name of not-yet-existing destination PVC. "+
+		"Default is sourcePVC name, or if PVC with sourcePVC name exists in destination namespace, then 'sourcePVC-<date-tag>'")
 	flags.StringVar(&o.destCapacity, "dest-capacity", o.destCapacity, "size of the destination volume to create. Default is source volume capacity.")
-	flags.StringVar(&o.destStorageClass, "dest-storage-class", o.destStorageClass, "name of the StorageClass of the destination volume. If not set, the default StorageClass will be used.")
-	flags.DurationVar(&o.timeout, "timeout", time.Minute*5, "length of time to wait for final sync to complete. Default is 5m. Pass values as time unit (e.g. 1,, 2m, 3h)")
+	flags.StringVar(&o.destStorageClass, "dest-storage-class", o.destStorageClass, ""+
+		"name of the StorageClass of the destination volume. If not set, the default StorageClass will be used.")
+	flags.DurationVar(&o.timeout, "timeout", time.Minute*5, "length of time to wait for final sync to complete. "+
+		"Default is 5m. Pass values as time unit (e.g. 1,, 2m, 3h)")
 	flags.VisitAll(func(f *pflag.Flag) {
 		if !f.Changed && v.IsSet(f.Name) {
 			val := v.Get(f.Name)

@@ -91,9 +91,12 @@ type ScribeDestinationOptions struct {
 //nolint:lll
 func (o *ScribeSourceOptions) Bind(cmd *cobra.Command, v *viper.Viper) {
 	flags := cmd.Flags()
-	flags.StringVar(&o.KubeContext, "source-kube-context", o.KubeContext, "the name of the kubeconfig context to use for the destination cluster. Defaults to current-context.")
-	flags.StringVar(&o.KubeClusterName, "source-kube-clustername", o.KubeClusterName, "the name of the kubeconfig cluster to use for the destination cluster. Defaults to current cluster.")
-	flags.StringVar(&o.Namespace, "source-namespace", o.Namespace, "the transfer source namespace and/or location of a ReplicationSource. This namespace must exist. Defaults to current namespace.")
+	flags.StringVar(&o.KubeContext, "source-kube-context", o.KubeContext, ""+
+		"the name of the kubeconfig context to use for the destination cluster. Defaults to current-context.")
+	flags.StringVar(&o.KubeClusterName, "source-kube-clustername", o.KubeClusterName, ""+
+		"the name of the kubeconfig cluster to use for the destination cluster. Defaults to current cluster.")
+	flags.StringVar(&o.Namespace, "source-namespace", o.Namespace, ""+
+		"the transfer source namespace and/or location of a ReplicationSource. This namespace must exist. Defaults to current namespace.")
 	flags.VisitAll(func(f *pflag.Flag) {
 		// Apply the viper config value to the flag when the flag is not set and viper has a value
 		if v.IsSet(f.Name) {
@@ -106,9 +109,12 @@ func (o *ScribeSourceOptions) Bind(cmd *cobra.Command, v *viper.Viper) {
 //nolint:lll
 func (o *ScribeDestinationOptions) Bind(cmd *cobra.Command, v *viper.Viper) {
 	flags := cmd.Flags()
-	flags.StringVar(&o.KubeContext, "dest-kube-context", o.KubeContext, "the name of the kubeconfig context to use for the destination cluster. Defaults to current-context.")
-	flags.StringVar(&o.KubeClusterName, "dest-kube-clustername", o.KubeClusterName, "the name of the kubeconfig cluster to use for the destination cluster. Defaults to current-cluster.")
-	flags.StringVar(&o.Namespace, "dest-namespace", o.Namespace, "the transfer destination namespace and/or location of a ReplicationDestination. This namespace must exist. Defaults to current namespace.")
+	flags.StringVar(&o.KubeContext, "dest-kube-context", o.KubeContext, ""+
+		"the name of the kubeconfig context to use for the destination cluster. Defaults to current-context.")
+	flags.StringVar(&o.KubeClusterName, "dest-kube-clustername", o.KubeClusterName, ""+
+		"the name of the kubeconfig cluster to use for the destination cluster. Defaults to current-cluster.")
+	flags.StringVar(&o.Namespace, "dest-namespace", o.Namespace, ""+
+		"the transfer destination namespace and/or location of a ReplicationDestination. This namespace must exist. Defaults to current namespace.")
 	flags.VisitAll(func(f *pflag.Flag) {
 		// Apply the viper config value to the flag when the flag is not set and viper has a value
 		if v.IsSet(f.Name) {
@@ -121,7 +127,9 @@ func (o *ScribeDestinationOptions) Bind(cmd *cobra.Command, v *viper.Viper) {
 //nolint:lll
 func (o *Config) bindFlags(cmd *cobra.Command, v *viper.Viper) {
 	flags := cmd.Flags()
-	flags.StringVar(&o.config, "config", o.config, "the path to file holding flag values. If empty, looks for ./config.yaml then ~/.scribeconfig/config.yaml. Command line values override config file.")
+	flags.StringVar(&o.config, "config", o.config, ""+
+		"the path to file holding flag values. If empty, looks for ./config.yaml then ~/.scribeconfig/config.yaml. "+
+		"Command line values override config file.")
 	flags.VisitAll(func(f *pflag.Flag) {
 		// Apply the viper config value to the flag when the flag is not set and viper has a value
 		if v.IsSet(f.Name) {

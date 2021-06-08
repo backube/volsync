@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+
+	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
 )
 
 const (
@@ -31,15 +32,14 @@ type sharedOptions struct {
 
 //nolint:funlen
 func (o *SetupReplicationOptions) getCommonOptions(c *sharedOptions, mode string) error {
-	var ok bool
-	if ok := o.getCopyMethod(c.CopyMethod, mode); !ok {
-		return fmt.Errorf("error applying %s copyMethod %s", mode, o.CopyMethod)
+	if err := o.getCopyMethod(c.CopyMethod, mode); err != nil {
+		return err
 	}
-	if ok = o.getAccessModes(c.AccessMode, mode); !ok {
-		return fmt.Errorf("error applying %s accessModes %s", mode, o.AccessMode)
+	if err := o.getAccessModes(c.AccessMode, mode); err != nil {
+		return err
 	}
-	if ok = o.getServiceType(c.ServiceType, mode); !ok {
-		return fmt.Errorf("error applying %s serviceType %s", mode, o.ServiceType)
+	if err := o.getServiceType(c.ServiceType, mode); err != nil {
+		return err
 	}
 	port := &c.Port
 	if c.Port == 0 {
@@ -120,7 +120,7 @@ func (o *SetupReplicationOptions) getCapacity(c string, mode string) error {
 	return nil
 }
 
-func (o *SetupReplicationOptions) getCopyMethod(c string, mode string) bool {
+func (o *SetupReplicationOptions) getCopyMethod(c string, mode string) error {
 	var cm scribev1alpha1.CopyMethodType
 	// CopyMethod is always required
 	switch strings.ToLower(c) {
@@ -131,7 +131,7 @@ func (o *SetupReplicationOptions) getCopyMethod(c string, mode string) bool {
 	case "snapshot":
 		cm = scribev1alpha1.CopyMethodSnapshot
 	default:
-		return false
+		return fmt.Errorf("unsupported %s copyMethod %s", mode, c)
 	}
 	switch mode {
 	case scribeDest:
@@ -139,10 +139,10 @@ func (o *SetupReplicationOptions) getCopyMethod(c string, mode string) bool {
 	case scribeSource:
 		o.RepOpts.Source.CopyMethod = cm
 	}
-	return true
+	return nil
 }
 
-func (o *SetupReplicationOptions) getAccessModes(c string, mode string) bool {
+func (o *SetupReplicationOptions) getAccessModes(c string, mode string) error {
 	var am []corev1.PersistentVolumeAccessMode
 	// AccessMode not always required
 	if len(c) > 0 {
@@ -154,7 +154,7 @@ func (o *SetupReplicationOptions) getAccessModes(c string, mode string) bool {
 		case "ReadOnlyMany":
 			am = []corev1.PersistentVolumeAccessMode{corev1.ReadOnlyMany}
 		default:
-			return false
+			return fmt.Errorf("unsupported %s accessMode: %s", mode, c)
 		}
 	}
 	switch mode {
@@ -163,10 +163,10 @@ func (o *SetupReplicationOptions) getAccessModes(c string, mode string) bool {
 	case scribeSource:
 		o.RepOpts.Source.AccessModes = am
 	}
-	return true
+	return nil
 }
 
-func (o *SetupReplicationOptions) getServiceType(c string, mode string) bool {
+func (o *SetupReplicationOptions) getServiceType(c string, mode string) error {
 	// defaults to ClusterIP if not set
 	var st corev1.ServiceType
 	if len(c) > 0 {
@@ -176,7 +176,7 @@ func (o *SetupReplicationOptions) getServiceType(c string, mode string) bool {
 		case "loadbalancer":
 			st = corev1.ServiceTypeLoadBalancer
 		default:
-			return false
+			return fmt.Errorf("unsupported %s serviceType %s", mode, c)
 		}
 	}
 	switch mode {
@@ -185,5 +185,5 @@ func (o *SetupReplicationOptions) getServiceType(c string, mode string) bool {
 	case scribeSource:
 		o.RepOpts.Source.ServiceType = st
 	}
-	return true
+	return nil
 }
