@@ -26,6 +26,14 @@ function check_var_defined {
     fi
 }
 
+function check_contents {
+    echo "== Checking directory for content ==="
+if [ -z "$(ls -A ${DATA_DIR})" ]; then
+   echo "== Directory is empty skipping Backup ==="
+   exit 0
+fi
+}
+
 # Ensure the repo has been initialized
 function ensure_initialized {
     echo "== Initialize Dir ======="
@@ -82,6 +90,7 @@ done
 for op in "$@"; do
     case $op in
         "backup")
+            check_contents
             ensure_initialized
             do_backup
             do_forget
