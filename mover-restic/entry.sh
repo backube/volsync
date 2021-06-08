@@ -27,8 +27,9 @@ function check_var_defined {
 }
 
 function check_contents {
-    echo "== Checking directory for content ==="
-if [ -z "$(ls -A "${DATA_DIR}")" ]; then
+echo "== Checking directory for content ==="
+# shellcheck disable=SC2086
+if [ -z "$(ls -A ${DATA_DIR})" ]; then
    echo "== Directory is empty skipping Backup ==="
    exit 0
 fi
