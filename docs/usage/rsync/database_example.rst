@@ -11,7 +11,7 @@ configuration.
 .. code:: bash
 
    $ kubectl create ns dest
-   $ kubectl create -n dest -f examples/scribe_v1alpha1_replicationdestination.yaml
+   $ kubectl create -n dest -f examples/rsync/scribe_v1alpha1_replicationdestination.yaml
 
 A Service is created which will be used by the ReplicationSource to Rsync the
 data. Record the service IP address as it will be used for the
@@ -54,8 +54,8 @@ the value of the address and create the ReplicationSource object.
 
 .. code:: bash
 
-   $ sed -i 's/my.host.com/10.107.249.72/g' examples/scribe_v1alpha1_replicationsource.yaml
-   $ kubectl create -n source -f examples/scribe_v1alpha1_replicationsource.yaml
+   $ sed -i 's/my.host.com/10.107.249.72/g' examples/rsync/scribe_v1alpha1_replicationsource.yaml
+   $ kubectl create -n source -f examples/rsync/scribe_v1alpha1_replicationsource.yaml
 
 To verify the replication has completed describe the Replication source.
 
