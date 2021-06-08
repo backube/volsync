@@ -86,7 +86,9 @@ func (o *FinalizeOptions) RemoveReplication() error {
 	}
 	if *repSource.Spec.Rsync.Address != *repDest.Status.Rsync.Address {
 		klog.Info("Refusing to remove replication, source and destination do not match")
-		return fmt.Errorf("Source RsyncAddress: %v does not match Destination RsyncAddress: %v", *repSource.Spec.Rsync.Address, *repDest.Status.Rsync.Address)
+		return fmt.Errorf(
+			"Source RsyncAddress: %v does not match Destination RsyncAddress: %v",
+			*repSource.Spec.Rsync.Address, *repDest.Status.Rsync.Address)
 	}
 	sshSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{

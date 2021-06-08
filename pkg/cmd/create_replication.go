@@ -103,25 +103,31 @@ func NewCmdScribeStartReplication(streams genericclioptions.IOStreams) *cobra.Co
 //nolint:lll
 func (o *SetupReplicationOptions) bindFlags(cmd *cobra.Command, v *viper.Viper) error {
 	flags := cmd.Flags()
-	flags.StringVar(&o.CopyMethod, "source-copy-method", o.CopyMethod, "the method of creating a point-in-time image of the source volume; one of 'None|Clone|Snapshot'")
+	flags.StringVar(&o.CopyMethod, "source-copy-method", o.CopyMethod, "the method of creating a point-in-time image of the source volume. "+
+		"one of 'None|Clone|Snapshot'")
 	flags.StringVar(&o.Capacity, "source-capacity", o.Capacity, "provided to override the capacity of the point-in-Time image.")
 	flags.StringVar(&o.StorageClass, "source-storage-class-name", o.StorageClass, "provided to override the StorageClass of the point-in-Time image.")
-	flags.StringVar(&o.AccessMode, "source-access-mode", o.AccessMode, "provided to override the accessModes of the point-in-Time image. One of 'ReadWriteOnce|ReadOnlyMany|ReadWriteMany")
-	flags.StringVar(&o.VolumeSnapshotClassName, "source-volume-snapshot-class", o.VolumeSnapshotClassName, "name of VolumeSnapshotClass for the source volume, only if copyMethod is 'Snapshot'. If empty, default VSC will be used.")
+	flags.StringVar(&o.AccessMode, "source-access-mode", o.AccessMode, "provided to override the accessModes of the point-in-Time image. "+
+		"One of 'ReadWriteOnce|ReadOnlyMany|ReadWriteMany")
+	flags.StringVar(&o.VolumeSnapshotClassName, "source-volume-snapshot-class", o.VolumeSnapshotClassName, ""+
+		"name of VolumeSnapshotClass for the source volume, only if copyMethod is 'Snapshot'. If empty, default VSC will be used.")
 	flags.StringVar(&o.SourcePVC, "source-pvc", o.SourcePVC, "name of an existing PersistentVolumeClaim (PVC) to replicate.")
 	// TODO: Default to every 3min for source?
 	flags.StringVar(&o.Schedule, "source-cron-spec", "*/5 * * * *", "cronspec to be used to schedule capturing the state of the source volume.")
 	// Defaults to "root" after creation
 	flags.StringVar(&o.SSHUser, "source-ssh-user", o.SSHUser, "username for outgoing SSH connections (default 'root')")
 	// Defaults to ClusterIP after creation
-	flags.StringVar(&o.ServiceType, "source-service-type", o.ServiceType, "one of ClusterIP|LoadBalancer. Service type that will be created for incoming SSH connections. (default 'ClusterIP')")
+	flags.StringVar(&o.ServiceType, "source-service-type", o.ServiceType, ""+
+		"one of ClusterIP|LoadBalancer. Service type that will be created for incoming SSH connections. (default 'ClusterIP')")
 	// TODO: Defaulted in CLI, should it be??
 	flags.StringVar(&o.Name, "source-name", o.Name, "name of the ReplicationSource resource (default '<source-ns>-source')")
 	// defaults to 22 after creation
 	flags.Int32Var(&o.Port, "source-port", o.Port, "SSH port to connect to for replication. (default 22)")
-	flags.StringVar(&o.Provider, "source-provider", o.Provider, "name of an external replication provider, if applicable; pass as 'domain.com/provider'")
+	flags.StringVar(&o.Provider, "source-provider", o.Provider, "name of an external replication provider, if applicable. "+
+		"Provide as 'domain.com/provider'")
 	// TODO: I don't know how many params providers have? If a lot, can pass a file instead
-	flags.StringVar(&o.ProviderParameters, "source-provider-parameters", o.ProviderParameters, "provider-specific key=value configuration parameters, for an external provider; pass 'key=value,key1=value1'")
+	flags.StringVar(&o.ProviderParameters, "source-provider-parameters", o.ProviderParameters, ""+
+		"provider-specific key=value configuration parameters, for an external provider; pass 'key=value,key1=value1'")
 	// TODO: Defaulted with CLI, should it be??
 	if err := cmd.MarkFlagRequired("source-copy-method"); err != nil {
 		return err
