@@ -48,7 +48,7 @@ const (
 	// DefaultRcloneContainerImage is the default container image name of the rclone data mover
 	DefaultRcloneContainerImage = "quay.io/backube/scribe-mover-rclone:latest"
 	// DefaultResticContainerImage is the default container image name of the restic data mover
-	DefaultResticContainerImage = "quay.io/backube/scribe-mover-restic:latest"
+	DefaultResticContainerImage = "quay.io/rcook/tools:restic"
 	// DefaultSCCName is the default name of the scribe security context constraint
 	DefaultSCCName = "scribe-mover"
 )
