@@ -85,7 +85,7 @@ Replication destination configuration
 
 The last step to use these keys is to provide the value of ``sshKeys`` to the
 ReplicationDestination object as a field. As an example we will modify
-``examples/scribe_v1alpha1_replicationdestination.yaml``.
+``examples/rsync/scribe_v1alpha1_replicationdestination.yaml``.
 
 .. code:: yaml
 
@@ -108,7 +108,7 @@ The ReplicationDestination object can now be created:
 
 .. code::
 
-   $ kubectl create -f examples/scribe_v1alpha1_replicationdestination.yaml
+   $ kubectl create -f examples/rsync/scribe_v1alpha1_replicationdestination.yaml
 
 The above steps should be repeated to modify set the ``sshKeys`` field in the
 ReplicationSource.

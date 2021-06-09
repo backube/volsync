@@ -138,8 +138,8 @@ Now, deploy the ``restic-config`` followed by ``ReplicationSource`` configuratio
 
 .. code-block:: none
 
-   $ kubectl create -f example/source-restic/source-restic.yaml -n source
-   $ kubectl create -f examples/scribe_v1alpha1_replicationsource_restic.yaml -n source
+   $ kubectl create -f examples/restic/source-restic/source-restic.yaml -n source
+   $ kubectl create -f examples/restic/scribe_v1alpha1_replicationsource.yaml -n source
 
 To verify the replication has completed, view the the ReplicationSource
 ``.status`` field.
@@ -202,7 +202,7 @@ To restore from the backup, create a destination, deploy ``restic-config`` and
 .. code-block:: none
 
    $ kubectl create ns dest
-   $ kubectl -n dest create -f examples/source-restic/
+   $ kubectl -n dest create -f examples/restic/source-restic/
 
 To start the restore, create a empty PVC for the data:
 
@@ -231,7 +231,7 @@ Create the ReplicationDestination in the ``dest`` namespace to restore the data:
 
 .. code-block:: none
 
-   $ kubectl -n dest create -f examples/scribe_v1alpha1_replicationdestination_restic.yaml
+   $ kubectl -n dest create -f examples/restic/scribe_v1alpha1_replicationdestination.yaml
 
 Once the restore is complete, the ``.status.lastManualSync`` field will match
 ``.spec.trigger.manual``.
