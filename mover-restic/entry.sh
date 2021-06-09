@@ -54,7 +54,7 @@ function ensure_initialized {
 
 function do_backup {
     echo "=== Starting backup ==="
-    pushd /data
+    pushd "${DATA_DIR}"
     restic backup --host "${RESTIC_HOST}" .
     popd
 }
@@ -74,7 +74,7 @@ function do_prune {
 
 function do_restore {
     echo "=== Starting restore ==="
-    pushd /data
+    pushd "${DATA_DIR}"
     restic restore -t . --host "${RESTIC_HOST}" latest
     popd
 }
