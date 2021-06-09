@@ -30,7 +30,7 @@ function check_contents {
     echo "== Checking directory for content ==="
     DIR_CONTENTS="$(ls -A "${DATA_DIR}")"
     if [ -z "${DIR_CONTENTS}" ]; then
-        echo "== Directory is empty skipping Backup ==="
+        echo "== Directory is empty skipping backup ==="
         exit 0
     fi
 }
