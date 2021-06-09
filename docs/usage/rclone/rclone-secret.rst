@@ -43,7 +43,7 @@ Source side
 
 .. code:: bash
 
-    $ kubectl create secret generic rclone-secret --from-file=rclone.conf=./examples/rclone.conf -n source
+    $ kubectl create secret generic rclone-secret --from-file=rclone.conf=./examples/rclone/rclone.conf -n source
     $ kubectl get secrets -n source
     NAME                  TYPE                                  DATA   AGE
     default-token-g9vdx   kubernetes.io/service-account-token   3      20s
@@ -56,7 +56,7 @@ Destination side
 
 .. code:: bash
 
-    $ kubectl create secret generic rclone-secret --from-file=rclone.conf=./examples/rclone.conf -n dest
+    $ kubectl create secret generic rclone-secret --from-file=rclone.conf=./examples/rclone/rclone.conf -n dest
     $ kubectl get secrets -n dest
     NAME                  TYPE                                  DATA   AGE
     default-token-5ngtg   kubernetes.io/service-account-token   3      17s

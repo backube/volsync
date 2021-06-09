@@ -48,8 +48,8 @@ Now, deploy the ``rclone-secret`` followed by ``ReplicationSource`` configuratio
 
 .. code:: bash
 
-   $ kubectl create secret generic rclone-secret --from-file=rclone.conf=./examples/rclone.conf -n source
-   $ kubectl create -f examples/scribe_v1alpha1_replicationsource_rclone.yaml -n source
+   $ kubectl create secret generic rclone-secret --from-file=rclone.conf=./examples/rclone/rclone.conf -n source
+   $ kubectl create -f examples/rclone/scribe_v1alpha1_replicationsource.yaml -n source
 
 To verify the replication has completed describe the Replication source.
 
@@ -81,8 +81,8 @@ on the destination.
 .. code:: bash
 
    $ kubectl create ns dest
-   $ kubectl create secret generic rclone-secret --from-file=rclone.conf=./examples/rclone.conf -n dest
-   $ kubectl create -f examples/scribe_v1alpha1_replicationdestination_rclone.yaml -n dest
+   $ kubectl create secret generic rclone-secret --from-file=rclone.conf=./examples/rclone/rclone.conf -n dest
+   $ kubectl create -f examples/rclone/scribe_v1alpha1_replicationdestination.yaml -n dest
 
 
 
