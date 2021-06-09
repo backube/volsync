@@ -28,8 +28,8 @@ function check_var_defined {
 
 function check_contents {
     echo "== Checking directory for content ==="
-    # shellcheck disable=SC2086
-    if [ -z "$(ls -A /data)" ]; then
+    DIR_CONTENTS="$(ls -A "${DATA_DIR}")"
+    if [ -z "${DIR_CONTENTS}" ]; then
         echo "== Directory is empty skipping Backup ==="
         exit 0
     fi
