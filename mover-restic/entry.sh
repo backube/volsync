@@ -27,12 +27,12 @@ function check_var_defined {
 }
 
 function check_contents {
-echo "== Checking directory for content ==="
-# shellcheck disable=SC2086
-if [ -z "$(ls -A ${DATA_DIR})" ]; then
-   echo "== Directory is empty skipping Backup ==="
-   exit 0
-fi
+    echo "== Checking directory for content ==="
+    # shellcheck disable=SC2086
+    if [ -z "$(ls -A /data)" ]; then
+        echo "== Directory is empty skipping Backup ==="
+        exit 0
+    fi
 }
 
 # Ensure the repo has been initialized
@@ -54,7 +54,7 @@ function ensure_initialized {
 
 function do_backup {
     echo "=== Starting backup ==="
-    pushd "${DATA_DIR}"
+    pushd /data
     restic backup --host "${RESTIC_HOST}" .
     popd
 }
@@ -74,7 +74,7 @@ function do_prune {
 
 function do_restore {
     echo "=== Starting restore ==="
-    pushd "${DATA_DIR}"
+    pushd /data
     restic restore -t . --host "${RESTIC_HOST}" latest
     popd
 }
