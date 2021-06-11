@@ -100,7 +100,9 @@ helm-lint: helm ## Lint Helm chart
 
 .PHONY: test
 ENVTEST_ASSETS_DIR=$(shell pwd)/testbin
-TEST_ARGS ?= -progress -randomizeAllSpecs -randomizeSuites -slowSpecThreshold 30 -p -cover -coverprofile cover.out -outputdir .
+DEBUG_FLAGS =
+DEBUG_FLAGS = -v -debug
+TEST_ARGS ?= $(DEBUG_FLAGS) -progress -randomizeAllSpecs -randomizeSuites -slowSpecThreshold 30 -p -cover -coverprofile cover.out -outputdir .
 test: manifests generate lint helm-lint ginkgo ## Run tests.
 	mkdir -p ${ENVTEST_ASSETS_DIR}
 	test -f ${ENVTEST_ASSETS_DIR}/setup-envtest.sh || curl -sSLo ${ENVTEST_ASSETS_DIR}/setup-envtest.sh https://raw.githubusercontent.com/kubernetes-sigs/controller-runtime/v0.8.3/hack/setup-envtest.sh
@@ -124,7 +126,7 @@ bin/kubectl-scribe: lint
 	go build -o $@ -ldflags -X=main.scribeVersion=$(VERSION) ./cmd/scribe
 
 .PHONY: run
-run: manifests generate lint ## Run a controller from your host.
+run: manifests generate  ## Run a controller from your host.
 	go run -ldflags -X=main.scribeVersion=$(VERSION) ./main.go
 
 .PHONY: docker-build
