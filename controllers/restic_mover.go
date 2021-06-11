@@ -23,11 +23,11 @@ import (
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
 )
 
-func generateForgetOptions(inst scribev1alpha1.ReplicationSource) string {
+func generateForgetOptions(policy *scribev1alpha1.ResticRetainPolicy) string {
 	defaultForget := "--keep-last 1"
 
-	// Retain portion of CR isn't present
-	if inst.Spec.Restic.Retain == nil {
+	// Retain policy isn't present
+	if policy == nil {
 		return defaultForget
 	}
 
@@ -36,22 +36,22 @@ func generateForgetOptions(inst scribev1alpha1.ReplicationSource) string {
 		opt   string
 		value *int32
 	}{
-		{"--keep-hourly", inst.Spec.Restic.Retain.Hourly},
-		{"--keep-daily", inst.Spec.Restic.Retain.Daily},
-		{"--keep-weekly", inst.Spec.Restic.Retain.Weekly},
-		{"--keep-monthly", inst.Spec.Restic.Retain.Monthly},
-		{"--keep-yearly", inst.Spec.Restic.Retain.Yearly},
+		{"--keep-hourly", policy.Hourly},
+		{"--keep-daily", policy.Daily},
+		{"--keep-weekly", policy.Weekly},
+		{"--keep-monthly", policy.Monthly},
+		{"--keep-yearly", policy.Yearly},
 	}
 	for _, v := range optionTable {
 		if v.value != nil {
 			forget += fmt.Sprintf(" %s %d", v.opt, *v.value)
 		}
 	}
-	if inst.Spec.Restic.Retain.Within != nil {
-		forget += fmt.Sprintf(" --keep-within %s", *inst.Spec.Restic.Retain.Within)
+	if policy.Within != nil {
+		forget += fmt.Sprintf(" --keep-within %s", *policy.Within)
 	}
 
-	if len(forget) == 0 { // Retain portion was present but empty
+	if len(forget) == 0 { // Retain policy was present, but empty
 		return defaultForget
 	}
 	return forget
