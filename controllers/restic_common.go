@@ -21,47 +21,38 @@ import (
 	"fmt"
 
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
-	"github.com/go-logr/logr"
 )
 
-func generateForgetOptions(inst scribev1alpha1.ReplicationSource, l logr.Logger) string {
-	l.V(1).Info("generating FORGET_OPTIONS for restic data mover")
+func generateForgetOptions(inst scribev1alpha1.ReplicationSource) string {
+	defaultForget := "--keep-last 1"
 
+	// Retain portion of CR isn't present
 	if inst.Spec.Restic.Retain == nil {
-		forgetOptions := fmt.Sprint("--keep-last ", 1)
-		l.V(1).Info("when no retain is given: ", "FORGET_OPTIONS ", forgetOptions)
-		return forgetOptions
+		return defaultForget
 	}
-	foHourly := ""
-	foDaily := ""
-	foWeekly := ""
-	foMonthly := ""
-	foYearly := ""
-	foWithin := ""
-	if inst.Spec.Restic.Retain.Hourly != nil {
-		foHourly = ("--keep-hourly ") + fmt.Sprint(*inst.Spec.Restic.Retain.Hourly)
+
+	var forget string
+	optionTable := []struct {
+		opt   string
+		value *int32
+	}{
+		{"--keep-hourly", inst.Spec.Restic.Retain.Hourly},
+		{"--keep-daily", inst.Spec.Restic.Retain.Daily},
+		{"--keep-weekly", inst.Spec.Restic.Retain.Weekly},
+		{"--keep-monthly", inst.Spec.Restic.Retain.Monthly},
+		{"--keep-yearly", inst.Spec.Restic.Retain.Yearly},
 	}
-	if inst.Spec.Restic.Retain.Daily != nil {
-		foDaily = fmt.Sprint("--keep-daily ", fmt.Sprint(*inst.Spec.Restic.Retain.Daily))
-	}
-	if inst.Spec.Restic.Retain.Weekly != nil {
-		foWeekly = fmt.Sprint("--keep-weekly ", fmt.Sprint(*inst.Spec.Restic.Retain.Weekly))
-	}
-	if inst.Spec.Restic.Retain.Monthly != nil {
-		foMonthly = fmt.Sprint("--keep-monthly ", fmt.Sprint(*inst.Spec.Restic.Retain.Monthly))
-	}
-	if inst.Spec.Restic.Retain.Yearly != nil {
-		foYearly = fmt.Sprint("--keep-yearly ", fmt.Sprint(*inst.Spec.Restic.Retain.Yearly))
+	for _, v := range optionTable {
+		if v.value != nil {
+			forget += fmt.Sprintf(" %s %d", v.opt, *v.value)
+		}
 	}
 	if inst.Spec.Restic.Retain.Within != nil {
-		foWithin = fmt.Sprintf("%s%s", "--keep-within ", *inst.Spec.Restic.Retain.Within)
+		forget += fmt.Sprintf(" --keep-within %s", *inst.Spec.Restic.Retain.Within)
 	}
-	if foHourly == "" && foDaily == "" && foWeekly == "" && foYearly == "" && foWithin == "" {
-		forgetOptions := fmt.Sprint("--keep-last ", 1)
-		return forgetOptions
-	}
-	forgetOptions := foHourly + " " + foDaily + " " + foWeekly + " " + foMonthly + " " + foYearly + " " + foWithin
 
-	l.V(1).Info("when retain is given: ", "FORGET_OPTIONS ", forgetOptions)
-	return forgetOptions
+	if len(forget) == 0 { // Retain portion was present but empty
+		return defaultForget
+	}
+	return forget
 }

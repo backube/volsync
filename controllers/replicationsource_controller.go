@@ -544,7 +544,7 @@ func (r *resticSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 		r.job.Spec.Template.Spec.Containers[0].Name = "restic-backup"
 
 		var optionalFalse = false
-		forgetOptions := generateForgetOptions(*r.Instance, l)
+		forgetOptions := generateForgetOptions(*r.Instance)
 		l.V(1).Info("restic forget options", "options", forgetOptions)
 		r.job.Spec.Template.Spec.Containers[0].Env = []corev1.EnvVar{
 			{Name: "FORGET_OPTIONS", Value: forgetOptions},
