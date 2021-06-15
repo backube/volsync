@@ -49,7 +49,7 @@ func (d *rsyncSADescription) Reconcile(l logr.Logger) (bool, error) {
 }
 
 func (d *rsyncSADescription) ensureSA(l logr.Logger) (bool, error) {
-	logger := l.WithValues("ServiceAccount", nameFor(d.SA))
+	logger := l.WithValues("ServiceAccount", NameFor(d.SA))
 	op, err := ctrlutil.CreateOrUpdate(d.Context, d.Client, d.SA, func() error {
 		if err := ctrl.SetControllerReference(d.Owner, d.SA, d.Scheme); err != nil {
 			logger.Error(err, "unable to set controller reference")
@@ -73,7 +73,7 @@ func (d *rsyncSADescription) ensureRole(l logr.Logger) (bool, error) {
 			Namespace: d.SA.Namespace,
 		},
 	}
-	logger := l.WithValues("Role", nameFor(d.role))
+	logger := l.WithValues("Role", NameFor(d.role))
 	op, err := ctrlutil.CreateOrUpdate(d.Context, d.Client, d.role, func() error {
 		if err := ctrl.SetControllerReference(d.Owner, d.role, d.Scheme); err != nil {
 			logger.Error(err, "unable to set controller reference")
@@ -107,7 +107,7 @@ func (d *rsyncSADescription) ensureRoleBinding(l logr.Logger) (bool, error) {
 			Namespace: d.SA.Namespace,
 		},
 	}
-	logger := l.WithValues("RoleBinding", nameFor(d.roleBinding))
+	logger := l.WithValues("RoleBinding", NameFor(d.roleBinding))
 	op, err := ctrlutil.CreateOrUpdate(d.Context, d.Client, d.roleBinding, func() error {
 		if err := ctrl.SetControllerReference(d.Owner, d.roleBinding, d.Scheme); err != nil {
 			logger.Error(err, "unable to set controller reference")

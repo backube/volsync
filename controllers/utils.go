@@ -88,7 +88,7 @@ func init() {
 	metrics.Registry.MustRegister(missedIntervals, outOfSync, syncDurations)
 }
 
-func nameFor(obj metav1.Object) types.NamespacedName {
+func NameFor(obj metav1.Object) types.NamespacedName {
 	return types.NamespacedName{
 		Name:      obj.GetName(),
 		Namespace: obj.GetNamespace(),

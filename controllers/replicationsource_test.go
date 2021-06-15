@@ -180,7 +180,7 @@ var _ = Describe("ReplicationSource", func() {
 		// Wait for it to show up in the API server
 		Eventually(func() error {
 			inst := &scribev1alpha1.ReplicationSource{}
-			return k8sClient.Get(ctx, nameFor(rs), inst)
+			return k8sClient.Get(ctx, NameFor(rs), inst)
 		}, maxWait, interval).Should(Succeed())
 	})
 
@@ -190,7 +190,7 @@ var _ = Describe("ReplicationSource", func() {
 		})
 		It("the CR is not reconciled", func() {
 			Consistently(func() *scribev1alpha1.ReplicationSourceStatus {
-				Expect(k8sClient.Get(ctx, nameFor(rs), rs)).To(Succeed())
+				Expect(k8sClient.Get(ctx, NameFor(rs), rs)).To(Succeed())
 				return rs.Status
 			}, duration, interval).Should(BeNil())
 		})
@@ -210,7 +210,7 @@ var _ = Describe("ReplicationSource", func() {
 		})
 		It("the next sync time is set in .status.nextSyncTime", func() {
 			Eventually(func() bool {
-				Expect(k8sClient.Get(ctx, nameFor(rs), rs)).To(Succeed())
+				Expect(k8sClient.Get(ctx, NameFor(rs), rs)).To(Succeed())
 				if rs.Status == nil || rs.Status.NextSyncTime.IsZero() {
 					return false
 				}
@@ -229,7 +229,7 @@ var _ = Describe("ReplicationSource", func() {
 		})
 		It("the next sync time is nil", func() {
 			Consistently(func() bool {
-				Expect(k8sClient.Get(ctx, nameFor(rs), rs)).To(Succeed())
+				Expect(k8sClient.Get(ctx, NameFor(rs), rs)).To(Succeed())
 				if rs.Status == nil || rs.Status.NextSyncTime.IsZero() {
 					return false
 				}
@@ -287,7 +287,7 @@ var _ = Describe("ReplicationSource", func() {
 				}
 			}
 			Expect(found).To(BeTrue())
-			Expect(k8sClient.Get(ctx, nameFor(pvc), pvc)).To(Succeed())
+			Expect(k8sClient.Get(ctx, NameFor(pvc), pvc)).To(Succeed())
 			Expect(pvc.Spec.DataSource.Name).To(Equal(srcPVC.Name))
 			Expect(pvc).To(beOwnedBy(rs))
 		})
@@ -318,7 +318,7 @@ var _ = Describe("ReplicationSource", func() {
 					}
 				}
 				Expect(found).To(BeTrue())
-				Expect(k8sClient.Get(ctx, nameFor(pvc), pvc)).To(Succeed())
+				Expect(k8sClient.Get(ctx, NameFor(pvc), pvc)).To(Succeed())
 				Expect(pvc).To(beOwnedBy(rs))
 				Expect(pvc.Spec.AccessModes).To(ConsistOf(newAccessModes))
 				Expect(*pvc.Spec.Resources.Requests.Storage()).To(Equal(newCapacity))
@@ -345,7 +345,7 @@ var _ = Describe("ReplicationSource", func() {
 				},
 			}
 			Eventually(func() error {
-				return k8sClient.Get(ctx, nameFor(snap), snap)
+				return k8sClient.Get(ctx, NameFor(snap), snap)
 			}, maxWait, interval).Should(Succeed())
 			foo := "foo"
 			snap.Status = &snapv1.VolumeSnapshotStatus{
@@ -365,7 +365,7 @@ var _ = Describe("ReplicationSource", func() {
 					pvc.Name = v.PersistentVolumeClaim.ClaimName
 				}
 			}
-			Expect(k8sClient.Get(ctx, nameFor(pvc), pvc)).To(Succeed())
+			Expect(k8sClient.Get(ctx, NameFor(pvc), pvc)).To(Succeed())
 			// XXX: Why doesn't the following pass?
 			Expect(pvc.Spec.DataSource).NotTo(BeNil())
 			Expect(pvc.Spec.DataSource.Kind).To(Equal("VolumeSnapshot"))
@@ -391,7 +391,7 @@ var _ = Describe("ReplicationSource", func() {
 					},
 				}
 				Eventually(func() error {
-					return k8sClient.Get(ctx, nameFor(snap), snap)
+					return k8sClient.Get(ctx, NameFor(snap), snap)
 				}, maxWait, interval).Should(Succeed())
 				foo := "foo2"
 				snap.Status = &snapv1.VolumeSnapshotStatus{
@@ -414,7 +414,7 @@ var _ = Describe("ReplicationSource", func() {
 					}
 				}
 				Expect(found).To(BeTrue())
-				Expect(k8sClient.Get(ctx, nameFor(pvc), pvc)).To(Succeed())
+				Expect(k8sClient.Get(ctx, NameFor(pvc), pvc)).To(Succeed())
 				Expect(pvc).To(beOwnedBy(rs))
 				Expect(pvc.Spec.AccessModes).To(ConsistOf(newAccessModes))
 				Expect(*pvc.Spec.Resources.Requests.Storage()).To(Equal(newCapacity))
@@ -459,11 +459,11 @@ var _ = Describe("ReplicationSource", func() {
 			}
 			By("creating a service")
 			Eventually(func() error {
-				return k8sClient.Get(ctx, nameFor(svc), svc)
+				return k8sClient.Get(ctx, NameFor(svc), svc)
 			}, maxWait, interval).Should(Succeed())
 			By("making the service addr available in the CR status")
 			Eventually(func() *string {
-				_ = k8sClient.Get(ctx, nameFor(rs), rs)
+				_ = k8sClient.Get(ctx, NameFor(rs), rs)
 				if rs.Status == nil || rs.Status.Rsync == nil {
 					return nil
 				}
@@ -490,7 +490,7 @@ var _ = Describe("ReplicationSource", func() {
 				},
 			}
 			Consistently(func() error {
-				return k8sClient.Get(ctx, nameFor(svc), svc)
+				return k8sClient.Get(ctx, NameFor(svc), svc)
 			}, duration, interval).Should(Not(Succeed()))
 		})
 	})
@@ -535,15 +535,15 @@ var _ = Describe("ReplicationSource", func() {
 		It("generates ssh keys automatically", func() {
 			secret := &corev1.Secret{}
 			Eventually(func() *scribev1alpha1.ReplicationSourceStatus {
-				_ = k8sClient.Get(ctx, nameFor(rs), rs)
+				_ = k8sClient.Get(ctx, NameFor(rs), rs)
 				return rs.Status
 			}, maxWait, interval).ShouldNot(BeNil())
 			Eventually(func() *scribev1alpha1.ReplicationSourceRsyncStatus {
-				_ = k8sClient.Get(ctx, nameFor(rs), rs)
+				_ = k8sClient.Get(ctx, NameFor(rs), rs)
 				return rs.Status.Rsync
 			}, maxWait, interval).Should(Not(BeNil()))
 			Eventually(func() *string {
-				_ = k8sClient.Get(ctx, nameFor(rs), rs)
+				_ = k8sClient.Get(ctx, NameFor(rs), rs)
 				return rs.Status.Rsync.SSHKeys
 			}, maxWait, interval).Should(Not(BeNil()))
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: *rs.Status.Rsync.SSHKeys,
