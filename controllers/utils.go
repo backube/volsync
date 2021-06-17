@@ -23,8 +23,6 @@ import (
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
@@ -86,13 +84,6 @@ func newScribeMetrics(labels prometheus.Labels) scribeMetrics {
 func init() {
 	// Register custom metrics with the global prometheus registry
 	metrics.Registry.MustRegister(missedIntervals, outOfSync, syncDurations)
-}
-
-func NameFor(obj metav1.Object) types.NamespacedName {
-	return types.NamespacedName{
-		Name:      obj.GetName(),
-		Namespace: obj.GetNamespace(),
-	}
 }
 
 // reconcileFunc is a function that partially reconciles an object. It returns a

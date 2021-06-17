@@ -20,6 +20,7 @@ package controllers
 import (
 	"context"
 
+	"github.com/backube/scribe/controllers/utils"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -49,7 +50,7 @@ func (d *rsyncSADescription) Reconcile(l logr.Logger) (bool, error) {
 }
 
 func (d *rsyncSADescription) ensureSA(l logr.Logger) (bool, error) {
-	logger := l.WithValues("ServiceAccount", NameFor(d.SA))
+	logger := l.WithValues("ServiceAccount", utils.NameFor(d.SA))
 	op, err := ctrlutil.CreateOrUpdate(d.Context, d.Client, d.SA, func() error {
 		if err := ctrl.SetControllerReference(d.Owner, d.SA, d.Scheme); err != nil {
 			logger.Error(err, "unable to set controller reference")
@@ -73,7 +74,7 @@ func (d *rsyncSADescription) ensureRole(l logr.Logger) (bool, error) {
 			Namespace: d.SA.Namespace,
 		},
 	}
-	logger := l.WithValues("Role", NameFor(d.role))
+	logger := l.WithValues("Role", utils.NameFor(d.role))
 	op, err := ctrlutil.CreateOrUpdate(d.Context, d.Client, d.role, func() error {
 		if err := ctrl.SetControllerReference(d.Owner, d.role, d.Scheme); err != nil {
 			logger.Error(err, "unable to set controller reference")
@@ -107,7 +108,7 @@ func (d *rsyncSADescription) ensureRoleBinding(l logr.Logger) (bool, error) {
 			Namespace: d.SA.Namespace,
 		},
 	}
-	logger := l.WithValues("RoleBinding", NameFor(d.roleBinding))
+	logger := l.WithValues("RoleBinding", utils.NameFor(d.roleBinding))
 	op, err := ctrlutil.CreateOrUpdate(d.Context, d.Client, d.roleBinding, func() error {
 		if err := ctrl.SetControllerReference(d.Owner, d.roleBinding, d.Scheme); err != nil {
 			logger.Error(err, "unable to set controller reference")

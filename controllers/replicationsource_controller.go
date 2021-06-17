@@ -40,6 +40,7 @@ import (
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
+	"github.com/backube/scribe/controllers/utils"
 )
 
 const (
@@ -379,7 +380,7 @@ func (r *rcloneSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 			Namespace: r.Instance.Namespace,
 		},
 	}
-	logger := l.WithValues("job", NameFor(r.job))
+	logger := l.WithValues("job", utils.NameFor(r.job))
 	op, err := ctrlutil.CreateOrUpdate(r.Ctx, r.Client, r.job, func() error {
 		if err := ctrl.SetControllerReference(r.Instance, r.job, r.Scheme); err != nil {
 			logger.Error(err, "unable to set controller reference")
@@ -603,7 +604,7 @@ func (r *rsyncSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 			Namespace: r.Instance.Namespace,
 		},
 	}
-	logger := l.WithValues("job", NameFor(r.job))
+	logger := l.WithValues("job", utils.NameFor(r.job))
 
 	op, err := ctrlutil.CreateOrUpdate(r.Ctx, r.Client, r.job, func() error {
 		if err := ctrl.SetControllerReference(r.Instance, r.job, r.Scheme); err != nil {

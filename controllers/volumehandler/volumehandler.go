@@ -34,7 +34,7 @@ import (
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
-	sc "github.com/backube/scribe/controllers"
+	"github.com/backube/scribe/controllers/utils"
 )
 
 const (
@@ -148,7 +148,7 @@ func (vh *VolumeHandler) EnsureNewPVC(ctx context.Context, log logr.Logger,
 			Namespace: vh.owner.GetNamespace(),
 		},
 	}
-	logger := log.WithValues("PVC", sc.NameFor(pvc))
+	logger := log.WithValues("PVC", utils.NameFor(pvc))
 
 	op, err := ctrlutil.CreateOrUpdate(ctx, vh.client, pvc, func() error {
 		if err := ctrl.SetControllerReference(vh.owner, pvc, vh.client.Scheme()); err != nil {
@@ -238,7 +238,7 @@ func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,
 			Namespace: vh.owner.GetNamespace(),
 		},
 	}
-	logger := log.WithValues("clone", sc.NameFor(clone))
+	logger := log.WithValues("clone", utils.NameFor(clone))
 
 	op, err := ctrlutil.CreateOrUpdate(ctx, vh.client, clone, func() error {
 		if err := ctrl.SetControllerReference(vh.owner, clone, vh.client.Scheme()); err != nil {
@@ -293,7 +293,7 @@ func (vh *VolumeHandler) ensureSnapshot(ctx context.Context, log logr.Logger,
 			Namespace: vh.owner.GetNamespace(),
 		},
 	}
-	logger := log.WithValues("snapshot", sc.NameFor(snap))
+	logger := log.WithValues("snapshot", utils.NameFor(snap))
 
 	op, err := ctrlutil.CreateOrUpdate(ctx, vh.client, snap, func() error {
 		if err := ctrl.SetControllerReference(vh.owner, snap, vh.client.Scheme()); err != nil {
@@ -330,7 +330,7 @@ func (vh *VolumeHandler) pvcFromSnapshot(ctx context.Context, log logr.Logger,
 			Namespace: vh.owner.GetNamespace(),
 		},
 	}
-	logger := log.WithValues("pvc", sc.NameFor(pvc))
+	logger := log.WithValues("pvc", utils.NameFor(pvc))
 
 	op, err := ctrlutil.CreateOrUpdate(ctx, vh.client, pvc, func() error {
 		if err := ctrl.SetControllerReference(vh.owner, pvc, vh.client.Scheme()); err != nil {

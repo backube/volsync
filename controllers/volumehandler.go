@@ -24,6 +24,7 @@ import (
 	"time"
 
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
+	"github.com/backube/scribe/controllers/utils"
 	"github.com/go-logr/logr"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1beta1"
 	corev1 "k8s.io/api/core/v1"
@@ -280,13 +281,13 @@ type sourceVolumeHandler struct {
 func (h *sourceVolumeHandler) CleanupPVC(l logr.Logger) (bool, error) {
 	if h.PVC != nil && h.PVC != h.srcPVC {
 		if err := h.Client.Delete(h.Ctx, h.PVC); err != nil {
-			l.Error(err, "unable to delete temporary PVC", "PVC", NameFor(h.PVC))
+			l.Error(err, "unable to delete temporary PVC", "PVC", utils.NameFor(h.PVC))
 			return false, err
 		}
 	}
 	if h.srcSnap != nil {
 		if err := h.Client.Delete(h.Ctx, h.srcSnap); err != nil {
-			l.Error(err, "unable to delete temporary snapshot", "snapshot", NameFor(h.srcSnap))
+			l.Error(err, "unable to delete temporary snapshot", "snapshot", utils.NameFor(h.srcSnap))
 			return false, err
 		}
 	}
@@ -302,8 +303,8 @@ func (h *sourceVolumeHandler) EnsurePVC(l logr.Logger) (bool, error) {
 			Namespace: h.Instance.Namespace,
 		},
 	}
-	if err := h.Client.Get(h.Ctx, NameFor(h.srcPVC), h.srcPVC); err != nil {
-		l.Error(err, "unable to get source PVC", "PVC", NameFor(h.srcPVC))
+	if err := h.Client.Get(h.Ctx, utils.NameFor(h.srcPVC), h.srcPVC); err != nil {
+		l.Error(err, "unable to get source PVC", "PVC", utils.NameFor(h.srcPVC))
 		return false, err
 	}
 
@@ -328,7 +329,7 @@ func (h *sourceVolumeHandler) pvcFromSnap(l logr.Logger) (bool, error) {
 			Namespace: h.Instance.Namespace,
 		},
 	}
-	logger := l.WithValues("pvc", NameFor(h.PVC))
+	logger := l.WithValues("pvc", utils.NameFor(h.PVC))
 
 	op, err := ctrlutil.CreateOrUpdate(h.Ctx, h.Client, h.PVC, func() error {
 		if err := ctrl.SetControllerReference(h.Instance, h.PVC, h.Scheme); err != nil {
@@ -379,7 +380,7 @@ func (h *sourceVolumeHandler) pvcForCache(l logr.Logger) (bool, error) {
 			Namespace: h.Instance.Namespace,
 		},
 	}
-	logger := l.WithValues("pvc", NameFor(h.resticCache))
+	logger := l.WithValues("pvc", utils.NameFor(h.resticCache))
 
 	capacity := resource.MustParse("1Gi")
 	if h.Instance.Spec.Restic != nil && h.Instance.Spec.Restic.CacheCapacity != nil {
@@ -433,7 +434,7 @@ func (h *destinationVolumeHandler) pvcForCache(l logr.Logger) (bool, error) {
 			Namespace: h.Instance.Namespace,
 		},
 	}
-	logger := l.WithValues("pvc", NameFor(h.resticCache))
+	logger := l.WithValues("pvc", utils.NameFor(h.resticCache))
 
 	capacity := resource.MustParse("1Gi")
 	if h.Instance.Spec.Restic != nil && h.Instance.Spec.Restic.CacheCapacity != nil {
@@ -486,7 +487,7 @@ func (h *sourceVolumeHandler) snapshotSrc(l logr.Logger) (bool, error) {
 			Namespace: h.Instance.Namespace,
 		},
 	}
-	logger := l.WithValues("SourceSnap", NameFor(h.srcSnap))
+	logger := l.WithValues("SourceSnap", utils.NameFor(h.srcSnap))
 
 	op, err := ctrlutil.CreateOrUpdate(h.Ctx, h.Client, h.srcSnap, func() error {
 		if err := ctrl.SetControllerReference(h.Instance, h.srcSnap, h.Scheme); err != nil {

@@ -24,6 +24,7 @@ import (
 	"time"
 
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
+	"github.com/backube/scribe/controllers/utils"
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
 	batchv1 "k8s.io/api/batch/v1"
@@ -118,7 +119,7 @@ func (r *resticSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 			Namespace: r.Instance.Namespace,
 		},
 	}
-	logger := l.WithValues("job", NameFor(r.job))
+	logger := l.WithValues("job", utils.NameFor(r.job))
 	op, err := ctrlutil.CreateOrUpdate(r.Ctx, r.Client, r.job, func() error {
 		if err := ctrl.SetControllerReference(r.Instance, r.job, r.Scheme); err != nil {
 			logger.Error(err, "unable to set controller reference")
@@ -470,7 +471,7 @@ func (r *resticDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 			Namespace: r.Instance.Namespace,
 		},
 	}
-	logger := l.WithValues("job", NameFor(r.job))
+	logger := l.WithValues("job", utils.NameFor(r.job))
 	op, err := ctrlutil.CreateOrUpdate(r.Ctx, r.Client, r.job, func() error {
 		if err := ctrl.SetControllerReference(r.Instance, r.job, r.Scheme); err != nil {
 			logger.Error(err, "unable to set controller reference")

@@ -30,7 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
-	sc "github.com/backube/scribe/controllers"
+	"github.com/backube/scribe/controllers/utils"
 	//sc "github.com/backube/scribe/controllers"
 )
 
@@ -84,7 +84,7 @@ var _ = Describe("Volumehandler", func() {
 			// Wait for it to show up in the API server
 			Eventually(func() error {
 				inst := &scribev1alpha1.ReplicationDestination{}
-				return k8sClient.Get(ctx, sc.NameFor(rd), inst)
+				return k8sClient.Get(ctx, utils.NameFor(rd), inst)
 			}, maxWait, interval).Should(Succeed())
 		})
 
@@ -192,7 +192,7 @@ var _ = Describe("Volumehandler", func() {
 				Expect(tlor).To(BeNil())
 
 				// Grab the snap and make it look bound
-				Expect(k8sClient.Get(ctx, sc.NameFor(pvc), pvc)).To(Succeed())
+				Expect(k8sClient.Get(ctx, utils.NameFor(pvc), pvc)).To(Succeed())
 				snapname := pvc.Annotations[snapshotAnnotation]
 				snap := &snapv1.VolumeSnapshot{}
 				Eventually(func() error {
@@ -269,11 +269,11 @@ var _ = Describe("Volumehandler", func() {
 			// Wait for it to show up in the API server
 			Eventually(func() error {
 				inst := &scribev1alpha1.ReplicationSource{}
-				return k8sClient.Get(ctx, sc.NameFor(rs), inst)
+				return k8sClient.Get(ctx, utils.NameFor(rs), inst)
 			}, maxWait, interval).Should(Succeed())
 			Eventually(func() error {
 				inst := &v1.PersistentVolumeClaim{}
-				return k8sClient.Get(ctx, sc.NameFor(src), inst)
+				return k8sClient.Get(ctx, utils.NameFor(src), inst)
 			}, maxWait, interval).Should(Succeed())
 		})
 
@@ -333,7 +333,7 @@ var _ = Describe("Volumehandler", func() {
 				Expect(new).To(BeNil())
 
 				// Grab the snap and make it look bound
-				Expect(k8sClient.Get(ctx, sc.NameFor(src), src)).To(Succeed())
+				Expect(k8sClient.Get(ctx, utils.NameFor(src), src)).To(Succeed())
 				snap := &snapv1.VolumeSnapshot{}
 				Eventually(func() error {
 					return k8sClient.Get(ctx, types.NamespacedName{Name: "newpvc", Namespace: ns.Name}, snap)
@@ -381,7 +381,7 @@ var _ = Describe("Volumehandler", func() {
 					Expect(new).To(BeNil())
 
 					// Grab the snap and make it look bound
-					Expect(k8sClient.Get(ctx, sc.NameFor(src), src)).To(Succeed())
+					Expect(k8sClient.Get(ctx, utils.NameFor(src), src)).To(Succeed())
 					snap := &snapv1.VolumeSnapshot{}
 					Eventually(func() error {
 						return k8sClient.Get(ctx, types.NamespacedName{Name: "newpvc", Namespace: ns.Name}, snap)
