@@ -97,7 +97,12 @@ var _ = Describe("Volumehandler", func() {
 			})
 
 			It("can be used to provision a temporary PVC", func() {
-				vh := NewVolumeHandlerFromDestination(k8sClient, rd, &rd.Spec.Rsync.ReplicationDestinationVolumeOptions)
+				vh, err := NewVolumeHandler(
+					WithClient(k8sClient),
+					WithOwner(rd),
+					FromDestination(&rd.Spec.Rsync.ReplicationDestinationVolumeOptions),
+				)
+				Expect(err).NotTo(HaveOccurred())
 				Expect(vh).ToNot(BeNil())
 
 				pvcName := "thepvc"
@@ -116,7 +121,12 @@ var _ = Describe("Volumehandler", func() {
 			})
 
 			It("the preserved image is the PVC", func() {
-				vh := NewVolumeHandlerFromDestination(k8sClient, rd, &rd.Spec.Rsync.ReplicationDestinationVolumeOptions)
+				vh, err := NewVolumeHandler(
+					WithClient(k8sClient),
+					WithOwner(rd),
+					FromDestination(&rd.Spec.Rsync.ReplicationDestinationVolumeOptions),
+				)
+				Expect(err).NotTo(HaveOccurred())
 				Expect(vh).ToNot(BeNil())
 
 				pvcSC := "pvcsc"
@@ -158,7 +168,12 @@ var _ = Describe("Volumehandler", func() {
 			})
 
 			It("the preserved image is a snapshot of the PVC", func() {
-				vh := NewVolumeHandlerFromDestination(k8sClient, rd, &rd.Spec.Rsync.ReplicationDestinationVolumeOptions)
+				vh, err := NewVolumeHandler(
+					WithClient(k8sClient),
+					WithOwner(rd),
+					FromDestination(&rd.Spec.Rsync.ReplicationDestinationVolumeOptions),
+				)
+				Expect(err).NotTo(HaveOccurred())
 				Expect(vh).ToNot(BeNil())
 
 				pvcSC := "pvcsc"
@@ -282,7 +297,12 @@ var _ = Describe("Volumehandler", func() {
 				rs.Spec.Rsync.CopyMethod = scribev1alpha1.CopyMethodClone
 			})
 			It("creates a temporary PVC from a source", func() {
-				vh := NewVolumeHandlerFromSource(k8sClient, rs, &rs.Spec.Rsync.ReplicationSourceVolumeOptions)
+				vh, err := NewVolumeHandler(
+					WithClient(k8sClient),
+					WithOwner(rs),
+					FromSource(&rs.Spec.Rsync.ReplicationSourceVolumeOptions),
+				)
+				Expect(err).NotTo(HaveOccurred())
 				Expect(vh).ToNot(BeNil())
 
 				new, err := vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc")
@@ -304,7 +324,12 @@ var _ = Describe("Volumehandler", func() {
 					rs.Spec.Rsync.AccessModes = newAccessModes
 				})
 				It("is reflected in the cloned PVC", func() {
-					vh := NewVolumeHandlerFromSource(k8sClient, rs, &rs.Spec.Rsync.ReplicationSourceVolumeOptions)
+					vh, err := NewVolumeHandler(
+						WithClient(k8sClient),
+						WithOwner(rs),
+						FromSource(&rs.Spec.Rsync.ReplicationSourceVolumeOptions),
+					)
+					Expect(err).NotTo(HaveOccurred())
 					Expect(vh).ToNot(BeNil())
 
 					new, err := vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc")
@@ -324,7 +349,12 @@ var _ = Describe("Volumehandler", func() {
 				rs.Spec.Rsync.CopyMethod = scribev1alpha1.CopyMethodSnapshot
 			})
 			It("creates a temporary PVC from a source", func() {
-				vh := NewVolumeHandlerFromSource(k8sClient, rs, &rs.Spec.Rsync.ReplicationSourceVolumeOptions)
+				vh, err := NewVolumeHandler(
+					WithClient(k8sClient),
+					WithOwner(rs),
+					FromSource(&rs.Spec.Rsync.ReplicationSourceVolumeOptions),
+				)
+				Expect(err).NotTo(HaveOccurred())
 				Expect(vh).ToNot(BeNil())
 
 				// 1st try will not succeed since snapshot is not bound
@@ -372,7 +402,12 @@ var _ = Describe("Volumehandler", func() {
 					rs.Spec.Rsync.VolumeSnapshotClassName = &newVSC
 				})
 				It("is reflected in the new PVC", func() {
-					vh := NewVolumeHandlerFromSource(k8sClient, rs, &rs.Spec.Rsync.ReplicationSourceVolumeOptions)
+					vh, err := NewVolumeHandler(
+						WithClient(k8sClient),
+						WithOwner(rs),
+						FromSource(&rs.Spec.Rsync.ReplicationSourceVolumeOptions),
+					)
+					Expect(err).NotTo(HaveOccurred())
 					Expect(vh).ToNot(BeNil())
 
 					// 1st try will not succeed since snapshot is not bound

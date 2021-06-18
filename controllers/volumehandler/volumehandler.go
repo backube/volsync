@@ -54,34 +54,6 @@ type VolumeHandler struct {
 	volumeSnapshotClassName *string
 }
 
-// NewVolumeHandlerFromSource creates a VolumeHandler for a ReplicationSource
-func NewVolumeHandlerFromSource(client client.Client, source *scribev1alpha1.ReplicationSource,
-	options *scribev1alpha1.ReplicationSourceVolumeOptions) *VolumeHandler {
-	return &VolumeHandler{
-		client:                  client,
-		owner:                   source,
-		copyMethod:              options.CopyMethod,
-		capacity:                options.Capacity,
-		storageClassName:        options.StorageClassName,
-		accessModes:             options.AccessModes,
-		volumeSnapshotClassName: options.VolumeSnapshotClassName,
-	}
-}
-
-// NewVolumeHandlerFromDestination creates a VolumeHandler for a ReplicationDestination
-func NewVolumeHandlerFromDestination(client client.Client, destination *scribev1alpha1.ReplicationDestination,
-	options *scribev1alpha1.ReplicationDestinationVolumeOptions) *VolumeHandler {
-	return &VolumeHandler{
-		client:                  client,
-		owner:                   destination,
-		copyMethod:              options.CopyMethod,
-		capacity:                options.Capacity,
-		storageClassName:        options.StorageClassName,
-		accessModes:             options.AccessModes,
-		volumeSnapshotClassName: options.VolumeSnapshotClassName,
-	}
-}
-
 // EnsurePVCFromSrc ensures the presence of a PVC that is based on the provided
 // src PVC. It is generated based on the VolumeHandler's configuration. It may
 // be the same PVC as src. Note: it's possible to return nil, nil. In this case,
