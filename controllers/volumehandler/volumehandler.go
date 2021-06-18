@@ -25,7 +25,6 @@ import (
 
 	"github.com/go-logr/logr"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1beta1"
-	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -85,7 +84,7 @@ func (vh *VolumeHandler) EnsureImage(ctx context.Context, log logr.Logger,
 	switch vh.copyMethod { //nolint: exhaustive
 	case scribev1alpha1.CopyMethodNone:
 		return &v1.TypedLocalObjectReference{
-			APIGroup: &corev1.SchemeGroupVersion.Group,
+			APIGroup: &v1.SchemeGroupVersion.Group,
 			Kind:     src.Kind,
 			Name:     src.Name,
 		}, nil
@@ -219,12 +218,12 @@ func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,
 		}
 		if clone.CreationTimestamp.IsZero() {
 			if vh.capacity != nil {
-				clone.Spec.Resources.Requests = corev1.ResourceList{
-					corev1.ResourceStorage: *vh.capacity,
+				clone.Spec.Resources.Requests = v1.ResourceList{
+					v1.ResourceStorage: *vh.capacity,
 				}
 			} else {
-				clone.Spec.Resources.Requests = corev1.ResourceList{
-					corev1.ResourceStorage: *src.Spec.Resources.Requests.Storage(),
+				clone.Spec.Resources.Requests = v1.ResourceList{
+					v1.ResourceStorage: *src.Spec.Resources.Requests.Storage(),
 				}
 			}
 			if vh.storageClassName != nil {
@@ -311,16 +310,16 @@ func (vh *VolumeHandler) pvcFromSnapshot(ctx context.Context, log logr.Logger,
 		}
 		if pvc.CreationTimestamp.IsZero() {
 			if vh.capacity != nil {
-				pvc.Spec.Resources.Requests = corev1.ResourceList{
-					corev1.ResourceStorage: *vh.capacity,
+				pvc.Spec.Resources.Requests = v1.ResourceList{
+					v1.ResourceStorage: *vh.capacity,
 				}
 			} else if snap.Status != nil && snap.Status.RestoreSize != nil {
-				pvc.Spec.Resources.Requests = corev1.ResourceList{
-					corev1.ResourceStorage: *snap.Status.RestoreSize,
+				pvc.Spec.Resources.Requests = v1.ResourceList{
+					v1.ResourceStorage: *snap.Status.RestoreSize,
 				}
 			} else {
-				pvc.Spec.Resources.Requests = corev1.ResourceList{
-					corev1.ResourceStorage: *original.Spec.Resources.Requests.Storage(),
+				pvc.Spec.Resources.Requests = v1.ResourceList{
+					v1.ResourceStorage: *original.Spec.Resources.Requests.Storage(),
 				}
 			}
 			if vh.storageClassName != nil {
