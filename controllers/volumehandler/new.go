@@ -21,7 +21,9 @@ import (
 	"errors"
 
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -52,9 +54,16 @@ func WithClient(c client.Client) VHOption {
 
 // WithOwner specifies the Object should be the owner of Objects created by the
 // VolumeHandler
-func WithOwner(o v1.Object) VHOption {
+func WithOwner(o metav1.Object) VHOption {
 	return func(vh *VolumeHandler) {
 		vh.owner = o
+	}
+}
+
+// From populates the VolumeHandler as a copy of an existing VolumeHandler
+func From(v *VolumeHandler) VHOption {
+	return func(vh *VolumeHandler) {
+		*vh = *v
 	}
 }
 
@@ -79,5 +88,35 @@ func FromDestination(d *scribev1alpha1.ReplicationDestinationVolumeOptions) VHOp
 		vh.storageClassName = d.StorageClassName
 		vh.accessModes = d.AccessModes
 		vh.volumeSnapshotClassName = d.VolumeSnapshotClassName
+	}
+}
+
+func AccessModes(am []v1.PersistentVolumeAccessMode) VHOption {
+	return func(vh *VolumeHandler) {
+		vh.accessModes = am
+	}
+}
+
+func CopyMethod(cm scribev1alpha1.CopyMethodType) VHOption {
+	return func(vh *VolumeHandler) {
+		vh.copyMethod = cm
+	}
+}
+
+func Capacity(c *resource.Quantity) VHOption {
+	return func(vh *VolumeHandler) {
+		vh.capacity = c
+	}
+}
+
+func StorageClassName(sc *string) VHOption {
+	return func(vh *VolumeHandler) {
+		vh.storageClassName = sc
+	}
+}
+
+func VolumeSnapshotClassName(vsc *string) VHOption {
+	return func(vh *VolumeHandler) {
+		vh.volumeSnapshotClassName = vsc
 	}
 }
