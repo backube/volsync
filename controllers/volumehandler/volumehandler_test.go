@@ -305,7 +305,7 @@ var _ = Describe("Volumehandler", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(vh).ToNot(BeNil())
 
-				new, err := vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc")
+				new, err := vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc", true)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(new).ToNot(BeNil())
 				Expect(new.Name).To(Equal("newpvc"))
@@ -332,7 +332,7 @@ var _ = Describe("Volumehandler", func() {
 					Expect(err).NotTo(HaveOccurred())
 					Expect(vh).ToNot(BeNil())
 
-					new, err := vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc")
+					new, err := vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc", true)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(new).ToNot(BeNil())
 					Expect(new.Name).To(Equal("newpvc"))
@@ -358,7 +358,7 @@ var _ = Describe("Volumehandler", func() {
 				Expect(vh).ToNot(BeNil())
 
 				// 1st try will not succeed since snapshot is not bound
-				new, err := vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc")
+				new, err := vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc", true)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(new).To(BeNil())
 
@@ -377,7 +377,7 @@ var _ = Describe("Volumehandler", func() {
 
 				// Retry expecting success
 				Eventually(func() *v1.PersistentVolumeClaim {
-					new, err = vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc")
+					new, err = vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc", true)
 					if err != nil {
 						return nil
 					}
@@ -411,7 +411,7 @@ var _ = Describe("Volumehandler", func() {
 					Expect(vh).ToNot(BeNil())
 
 					// 1st try will not succeed since snapshot is not bound
-					new, err := vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc")
+					new, err := vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc", true)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(new).To(BeNil())
 
@@ -430,7 +430,7 @@ var _ = Describe("Volumehandler", func() {
 
 					// Retry expecting success
 					Eventually(func() *v1.PersistentVolumeClaim {
-						new, err = vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc")
+						new, err = vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc", true)
 						if err != nil {
 							return nil
 						}

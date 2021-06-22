@@ -58,18 +58,18 @@ type VolumeHandler struct {
 // be the same PVC as src. Note: it's possible to return nil, nil. In this case,
 // the operation should be retried.
 func (vh *VolumeHandler) EnsurePVCFromSrc(ctx context.Context, log logr.Logger,
-	src *v1.PersistentVolumeClaim, name string) (*v1.PersistentVolumeClaim, error) {
+	src *v1.PersistentVolumeClaim, name string, isTemporary bool) (*v1.PersistentVolumeClaim, error) {
 	switch vh.copyMethod {
 	case scribev1alpha1.CopyMethodNone:
 		return src, nil
 	case scribev1alpha1.CopyMethodClone:
-		return vh.ensureClone(ctx, log, src, name)
+		return vh.ensureClone(ctx, log, src, name, isTemporary)
 	case scribev1alpha1.CopyMethodSnapshot:
-		snap, err := vh.ensureSnapshot(ctx, log, src, name)
+		snap, err := vh.ensureSnapshot(ctx, log, src, name, isTemporary)
 		if snap == nil || err != nil {
 			return nil, err
 		}
-		return vh.pvcFromSnapshot(ctx, log, snap, src, name)
+		return vh.pvcFromSnapshot(ctx, log, snap, src, name, isTemporary)
 	default:
 		return nil, fmt.Errorf("unsupported copyMethod: %v -- must be None, Clone, or Snapshot", vh.copyMethod)
 	}
@@ -202,7 +202,7 @@ func (vh *VolumeHandler) ensureImageSnapshot(ctx context.Context, log logr.Logge
 }
 
 func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,
-	src *v1.PersistentVolumeClaim, name string) (*v1.PersistentVolumeClaim, error) {
+	src *v1.PersistentVolumeClaim, name string, isTemporary bool) (*v1.PersistentVolumeClaim, error) {
 	clone := &v1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -215,6 +215,9 @@ func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,
 		if err := ctrl.SetControllerReference(vh.owner, clone, vh.client.Scheme()); err != nil {
 			logger.Error(err, "unable to set controller reference")
 			return err
+		}
+		if isTemporary {
+			utils.MarkForCleanup(vh.owner, clone)
 		}
 		if clone.CreationTimestamp.IsZero() {
 			if vh.capacity != nil {
@@ -257,7 +260,7 @@ func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,
 }
 
 func (vh *VolumeHandler) ensureSnapshot(ctx context.Context, log logr.Logger,
-	src *v1.PersistentVolumeClaim, name string) (*snapv1.VolumeSnapshot, error) {
+	src *v1.PersistentVolumeClaim, name string, isTemporary bool) (*snapv1.VolumeSnapshot, error) {
 	snap := &snapv1.VolumeSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -270,6 +273,9 @@ func (vh *VolumeHandler) ensureSnapshot(ctx context.Context, log logr.Logger,
 		if err := ctrl.SetControllerReference(vh.owner, snap, vh.client.Scheme()); err != nil {
 			logger.Error(err, "unable to set controller reference")
 			return err
+		}
+		if isTemporary {
+			utils.MarkForCleanup(vh.owner, snap)
 		}
 		if snap.CreationTimestamp.IsZero() {
 			snap.Spec.Source.PersistentVolumeClaimName = &src.Name
@@ -294,7 +300,8 @@ func (vh *VolumeHandler) ensureSnapshot(ctx context.Context, log logr.Logger,
 }
 
 func (vh *VolumeHandler) pvcFromSnapshot(ctx context.Context, log logr.Logger,
-	snap *snapv1.VolumeSnapshot, original *v1.PersistentVolumeClaim, name string) (*v1.PersistentVolumeClaim, error) {
+	snap *snapv1.VolumeSnapshot, original *v1.PersistentVolumeClaim,
+	name string, isTemporary bool) (*v1.PersistentVolumeClaim, error) {
 	pvc := &v1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -307,6 +314,9 @@ func (vh *VolumeHandler) pvcFromSnapshot(ctx context.Context, log logr.Logger,
 		if err := ctrl.SetControllerReference(vh.owner, pvc, vh.client.Scheme()); err != nil {
 			logger.Error(err, "unable to set controller reference")
 			return err
+		}
+		if isTemporary {
+			utils.MarkForCleanup(vh.owner, pvc)
 		}
 		if pvc.CreationTimestamp.IsZero() {
 			if vh.capacity != nil {
