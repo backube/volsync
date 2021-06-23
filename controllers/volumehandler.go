@@ -30,7 +30,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -46,12 +45,11 @@ const (
 
 type destinationVolumeHandler struct {
 	ReplicationDestinationReconciler
-	Ctx         context.Context
-	Instance    *scribev1alpha1.ReplicationDestination
-	Options     *scribev1alpha1.ReplicationDestinationVolumeOptions
-	PVC         *v1.PersistentVolumeClaim
-	Snapshot    *snapv1.VolumeSnapshot
-	resticCache *v1.PersistentVolumeClaim
+	Ctx      context.Context
+	Instance *scribev1alpha1.ReplicationDestination
+	Options  *scribev1alpha1.ReplicationDestinationVolumeOptions
+	PVC      *v1.PersistentVolumeClaim
+	Snapshot *snapv1.VolumeSnapshot
 }
 
 func (h *destinationVolumeHandler) useProvidedPVC(l logr.Logger) (bool, error) {
@@ -267,13 +265,12 @@ func (h *destinationVolumeHandler) PreserveImage(l logr.Logger) (bool, error) {
 
 type sourceVolumeHandler struct {
 	ReplicationSourceReconciler
-	Ctx         context.Context
-	Instance    *scribev1alpha1.ReplicationSource
-	Options     *scribev1alpha1.ReplicationSourceVolumeOptions
-	srcPVC      *v1.PersistentVolumeClaim
-	srcSnap     *snapv1.VolumeSnapshot
-	PVC         *v1.PersistentVolumeClaim
-	resticCache *v1.PersistentVolumeClaim
+	Ctx      context.Context
+	Instance *scribev1alpha1.ReplicationSource
+	Options  *scribev1alpha1.ReplicationSourceVolumeOptions
+	srcPVC   *v1.PersistentVolumeClaim
+	srcSnap  *snapv1.VolumeSnapshot
+	PVC      *v1.PersistentVolumeClaim
 }
 
 // Cleans up the temporary PVC (and optional snapshot) after the synchronization
@@ -369,114 +366,6 @@ func (h *sourceVolumeHandler) pvcFromSnap(l logr.Logger) (bool, error) {
 		return false, err
 	}
 	logger.V(1).Info("pvc from snap reconciled", "operation", op)
-	return true, nil
-}
-
-//nolint:funlen,dupl
-func (h *sourceVolumeHandler) pvcForCache(l logr.Logger) (bool, error) {
-	h.resticCache = &v1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "scribe-rcs-" + h.Instance.Name,
-			Namespace: h.Instance.Namespace,
-		},
-	}
-	logger := l.WithValues("pvc", utils.NameFor(h.resticCache))
-
-	capacity := resource.MustParse("1Gi")
-	if h.Instance.Spec.Restic != nil && h.Instance.Spec.Restic.CacheCapacity != nil {
-		capacity = *h.Instance.Spec.Restic.CacheCapacity
-	}
-
-	scName := h.srcPVC.Spec.StorageClassName
-	if h.Options.StorageClassName != nil {
-		scName = h.Options.StorageClassName
-	}
-	if h.Instance.Spec.Restic != nil && h.Instance.Spec.Restic.CacheStorageClassName != nil {
-		scName = h.Instance.Spec.Restic.CacheStorageClassName
-	}
-
-	aModes := h.srcPVC.Spec.AccessModes
-	if h.Options.AccessModes != nil {
-		aModes = h.Options.AccessModes
-	}
-	if h.Instance.Spec.Restic != nil && h.Instance.Spec.Restic.CacheAccessModes != nil {
-		aModes = h.Instance.Spec.Restic.CacheAccessModes
-	}
-
-	op, err := ctrlutil.CreateOrUpdate(h.Ctx, h.Client, h.resticCache, func() error {
-		if err := ctrl.SetControllerReference(h.Instance, h.resticCache, h.Scheme); err != nil {
-			logger.Error(err, "Unable to set controller refrenece")
-			return err
-		}
-		if h.resticCache.CreationTimestamp.IsZero() {
-			h.resticCache.Spec.Resources.Requests = corev1.ResourceList{
-				corev1.ResourceStorage: capacity,
-			}
-			h.resticCache.Spec.StorageClassName = scName
-			h.resticCache.Spec.AccessModes = aModes
-		}
-		return nil
-	})
-	if err != nil {
-		logger.Error(err, "reconcile failed")
-		return false, err
-	}
-	logger.V(1).Info("restic cache pvc reconciled", "operation", op)
-
-	return true, nil
-}
-
-//nolint:funlen,dupl
-func (h *destinationVolumeHandler) pvcForCache(l logr.Logger) (bool, error) {
-	h.resticCache = &v1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "scribe-rcd-" + h.Instance.Name,
-			Namespace: h.Instance.Namespace,
-		},
-	}
-	logger := l.WithValues("pvc", utils.NameFor(h.resticCache))
-
-	capacity := resource.MustParse("1Gi")
-	if h.Instance.Spec.Restic != nil && h.Instance.Spec.Restic.CacheCapacity != nil {
-		capacity = *h.Instance.Spec.Restic.CacheCapacity
-	}
-
-	scName := h.PVC.Spec.StorageClassName
-	if h.Options.StorageClassName != nil {
-		scName = h.Options.StorageClassName
-	}
-	if h.Instance.Spec.Restic != nil && h.Instance.Spec.Restic.CacheStorageClassName != nil {
-		scName = h.Instance.Spec.Restic.CacheStorageClassName
-	}
-
-	aModes := h.PVC.Spec.AccessModes
-	if h.Options.AccessModes != nil {
-		aModes = h.Options.AccessModes
-	}
-	if h.Instance.Spec.Restic != nil && h.Instance.Spec.Restic.CacheAccessModes != nil {
-		aModes = h.Instance.Spec.Restic.CacheAccessModes
-	}
-
-	op, err := ctrlutil.CreateOrUpdate(h.Ctx, h.Client, h.resticCache, func() error {
-		if err := ctrl.SetControllerReference(h.Instance, h.resticCache, h.Scheme); err != nil {
-			logger.Error(err, "Unable to set controller refrenece")
-			return err
-		}
-		if h.resticCache.CreationTimestamp.IsZero() {
-			h.resticCache.Spec.Resources.Requests = corev1.ResourceList{
-				corev1.ResourceStorage: capacity,
-			}
-			h.resticCache.Spec.StorageClassName = scName
-			h.resticCache.Spec.AccessModes = aModes
-		}
-		return nil
-	})
-	if err != nil {
-		logger.Error(err, "reconcile failed")
-		return false, err
-	}
-	logger.V(1).Info("restic cache pvc reconciled", "operation", op)
-
 	return true, nil
 }
 
