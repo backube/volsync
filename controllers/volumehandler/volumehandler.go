@@ -105,12 +105,19 @@ func (vh *VolumeHandler) EnsureImage(ctx context.Context, log logr.Logger,
 
 func (vh *VolumeHandler) EnsureNewPVC(ctx context.Context, log logr.Logger,
 	name string) (*v1.PersistentVolumeClaim, error) {
-	// Ensure required configuration parameters have been provided in order to create volume
-	if vh.accessModes == nil || len(vh.accessModes) == 0 {
-		return nil, errors.New("accessModes must be provided when destinationPVC is not")
+	logger := log.WithValues("PVC", name)
+
+	// Ensure required configuration parameters have been provided in order to
+	// create volume
+	if len(vh.accessModes) == 0 {
+		err := errors.New("accessModes must be provided when destinationPVC is not")
+		logger.Error(err, "error allocating new PVC")
+		return nil, err
 	}
 	if vh.capacity == nil {
-		return nil, errors.New("capacity must be provided when destinationPVC is not")
+		err := errors.New("capacity must be provided when destinationPVC is not")
+		logger.Error(err, "error allocating new PVC")
+		return nil, err
 	}
 
 	pvc := &v1.PersistentVolumeClaim{
@@ -119,7 +126,6 @@ func (vh *VolumeHandler) EnsureNewPVC(ctx context.Context, log logr.Logger,
 			Namespace: vh.owner.GetNamespace(),
 		},
 	}
-	logger := log.WithValues("PVC", utils.NameFor(pvc))
 
 	op, err := ctrlutil.CreateOrUpdate(ctx, vh.client, pvc, func() error {
 		if err := ctrl.SetControllerReference(vh.owner, pvc, vh.client.Scheme()); err != nil {
@@ -145,6 +151,14 @@ func (vh *VolumeHandler) EnsureNewPVC(ctx context.Context, log logr.Logger,
 	}
 	logger.V(1).Info("PVC reconciled", "operation", op)
 	return pvc, nil
+}
+
+func (vh *VolumeHandler) SetAccessModes(accessModes []v1.PersistentVolumeAccessMode) {
+	vh.accessModes = accessModes
+}
+
+func (vh *VolumeHandler) GetAccessModes() []v1.PersistentVolumeAccessMode {
+	return vh.accessModes
 }
 
 func (vh *VolumeHandler) ensureImageSnapshot(ctx context.Context, log logr.Logger,
