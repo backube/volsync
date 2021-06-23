@@ -18,13 +18,60 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package utils
 
 import (
+	"context"
+	"fmt"
+
+	"github.com/go-logr/logr"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func NameFor(obj metav1.Object) types.NamespacedName {
 	return types.NamespacedName{
 		Name:      obj.GetName(),
 		Namespace: obj.GetNamespace(),
+	}
+}
+
+func GetAndValidateSecret(ctx context.Context, client client.Client,
+	logger logr.Logger, secret *v1.Secret, fields ...string) error {
+	if err := client.Get(ctx, NameFor(secret), secret); err != nil {
+		logger.Error(err, "failed to get Secret with provided name", "Secret", NameFor(secret))
+		return err
+	}
+	if err := secretHasFields(secret, fields...); err != nil {
+		logger.Error(err, "secret does not contain the proper fields", "Secret", NameFor(secret))
+		return err
+	}
+	return nil
+}
+
+func secretHasFields(secret *v1.Secret, fields ...string) error {
+	data := secret.Data
+	if data == nil || len(data) < len(fields) {
+		return fmt.Errorf("secret shoud have fields: %v", fields)
+	}
+	for _, k := range fields {
+		if _, found := data[k]; !found {
+			return fmt.Errorf("secret is missing field: %v", k)
+		}
+	}
+	return nil
+}
+
+func EnvFromSecret(secretName string, field string, optional bool) v1.EnvVar {
+	return v1.EnvVar{
+		Name: field,
+		ValueFrom: &v1.EnvVarSource{
+			SecretKeyRef: &v1.SecretKeySelector{
+				LocalObjectReference: v1.LocalObjectReference{
+					Name: secretName,
+				},
+				Key:      field,
+				Optional: &optional,
+			},
+		},
 	}
 }
