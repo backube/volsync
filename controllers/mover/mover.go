@@ -21,6 +21,7 @@ import (
 	"context"
 	"time"
 
+	v1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
@@ -44,6 +45,10 @@ type Result struct {
 	// Completed is set to true if the synchronization has completed. RetryAfter
 	// will be ignored.
 	Completed bool
+
+	// Image is the resulting data image (PVC or Snapshot) that has been created
+	// by the Synchronize() operation.
+	Image *v1.TypedLocalObjectReference
 
 	// RetryAfter is used to indicate whether synchronization should be
 	// explicitly retried, and when. Setting to nil (default) does not cause an
@@ -73,5 +78,14 @@ func InProgress() Result { return Result{} }
 // requeueing after the provided duration.
 func RetryAfter(s time.Duration) Result { return Result{RetryAfter: &s} }
 
-// Completed indicates that the operation has completed.
+// Complete indicates that the operation has completed.
 func Complete() Result { return Result{Completed: true} }
+
+// CompleteWithImage indicates that the operation has completed, and it provides
+// the synchronized image to the controller.
+func CompleteWithImage(image *v1.TypedLocalObjectReference) Result {
+	return Result{
+		Completed: true,
+		Image:     image,
+	}
+}
