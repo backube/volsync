@@ -19,21 +19,26 @@ package controllers
 
 import (
 	"context"
-	"errors"
+	"flag"
 	"fmt"
 	"time"
 
-	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
-	"github.com/backube/scribe/controllers/utils"
 	"github.com/go-logr/logr"
+	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1beta1"
 	"github.com/prometheus/client_golang/prometheus"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+
+	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
+	"github.com/backube/scribe/controllers/mover"
+	"github.com/backube/scribe/controllers/utils"
+	"github.com/backube/scribe/controllers/volumehandler"
 )
 
 const (
@@ -48,310 +53,526 @@ var (
 	ResticContainerImage string
 )
 
-type resticSrcReconciler struct {
-	sourceVolumeHandler
-	scribeMetrics
-	resticRepositorySecret *corev1.Secret
-	serviceAccount         *corev1.ServiceAccount
-	job                    *batchv1.Job
+// Register the mover so that it's available to the operator
+func init() {
+	mover.Register(&ResticBuilder{})
 }
 
-type resticDestReconciler struct {
-	destinationVolumeHandler
-	scribeMetrics
-	resticRepositorySecret *corev1.Secret
-	serviceAccount         *corev1.ServiceAccount
-	job                    *batchv1.Job
+type ResticBuilder struct{}
+
+var _ mover.Builder = &ResticBuilder{}
+
+func (rb *ResticBuilder) Initialize() {
+	// Register the Restic-related command line flags
+	flag.StringVar(&ResticContainerImage, "restic-container-image",
+		DefaultResticContainerImage, "The container image for the restic data mover")
 }
 
-// RunResticSrcReconciler is invoked when ReplicationSource.Spec>Restic !=  nil
-//nolint:dupl
+func (rb *ResticBuilder) FromSource(client client.Client, logger logr.Logger,
+	source *scribev1alpha1.ReplicationSource) (mover.Mover, error) {
+	// Only build if the CR belongs to us
+	if source.Spec.Restic == nil {
+		return nil, nil
+	}
+
+	// Create ReplicationSourceResticStatus to write restic status
+	if source.Status.Restic == nil {
+		source.Status.Restic = &scribev1alpha1.ReplicationSourceResticStatus{}
+	}
+
+	vh, err := volumehandler.NewVolumeHandler(
+		volumehandler.WithClient(client),
+		volumehandler.WithOwner(source),
+		volumehandler.FromSource(&source.Spec.Restic.ReplicationSourceVolumeOptions),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ResticMover{
+		client:                client,
+		logger:                logger.WithValues("method", "Restic"),
+		owner:                 source,
+		vh:                    vh,
+		cacheAccessModes:      source.Spec.Restic.CacheAccessModes,
+		cacheCapacity:         source.Spec.Restic.CacheCapacity,
+		cacheStorageClassName: source.Spec.Restic.CacheStorageClassName,
+		repositoryName:        source.Spec.Restic.Repository,
+		isSource:              true,
+		paused:                source.Spec.Paused,
+		mainPVCName:           &source.Spec.SourcePVC,
+		pruneInterval:         source.Spec.Restic.PruneIntervalDays,
+		retainPolicy:          source.Spec.Restic.Retain,
+		sourceStatus:          source.Status.Restic,
+	}, nil
+}
+
+func (rb *ResticBuilder) FromDestination(client client.Client, logger logr.Logger,
+	destination *scribev1alpha1.ReplicationDestination) (mover.Mover, error) {
+	// Only build if the CR belongs to us
+	if destination.Spec.Restic == nil {
+		return nil, nil
+	}
+
+	vh, err := volumehandler.NewVolumeHandler(
+		volumehandler.WithClient(client),
+		volumehandler.WithOwner(destination),
+		volumehandler.FromDestination(&destination.Spec.Restic.ReplicationDestinationVolumeOptions),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ResticMover{
+		client:                client,
+		logger:                logger.WithValues("method", "Restic"),
+		owner:                 destination,
+		vh:                    vh,
+		cacheAccessModes:      destination.Spec.Restic.CacheAccessModes,
+		cacheCapacity:         destination.Spec.Restic.CacheCapacity,
+		cacheStorageClassName: destination.Spec.Restic.CacheStorageClassName,
+		repositoryName:        destination.Spec.Restic.Repository,
+		isSource:              false,
+		paused:                destination.Spec.Paused,
+		mainPVCName:           destination.Spec.Restic.DestinationPVC,
+	}, nil
+}
+
+// ResticMover is the reconciliation logic for the Restic-based data mover.
+type ResticMover struct {
+	client                client.Client
+	logger                logr.Logger
+	owner                 metav1.Object
+	vh                    *volumehandler.VolumeHandler
+	cacheAccessModes      []v1.PersistentVolumeAccessMode
+	cacheCapacity         *resource.Quantity
+	cacheStorageClassName *string
+	repositoryName        string
+	isSource              bool
+	paused                bool
+	mainPVCName           *string
+	// Source-only fields
+	pruneInterval *int32
+	retainPolicy  *scribev1alpha1.ResticRetainPolicy
+	sourceStatus  *scribev1alpha1.ReplicationSourceResticStatus
+}
+
+var _ mover.Mover = &ResticMover{}
+
+// All object types that are temporary/per-iteration should be listed here. The
+// individual objects to be cleaned up must also be marked.
+var cleanupTypes = []client.Object{
+	&v1.PersistentVolumeClaim{},
+	&snapv1.VolumeSnapshot{},
+	&batchv1.Job{},
+}
+
+func (m *ResticMover) Name() string { return "restic" }
+
+func (m *ResticMover) Synchronize(ctx context.Context) (mover.Result, error) {
+	var err error
+	// Allocate temporary data PVC
+	var dataPVC *v1.PersistentVolumeClaim
+	if m.isSource {
+		dataPVC, err = m.ensureSourcePVC(ctx)
+	} else {
+		dataPVC, err = m.ensureDestinationPVC(ctx)
+	}
+	if dataPVC == nil || err != nil {
+		return mover.InProgress(), err
+	}
+
+	// Allocate cache volume
+	cachePVC, err := m.ensureCache(ctx, dataPVC)
+	if cachePVC == nil || err != nil {
+		return mover.InProgress(), err
+	}
+
+	// Prepare ServiceAccount
+	sa, err := m.ensureSA(ctx)
+	if sa == nil || err != nil {
+		return mover.InProgress(), err
+	}
+
+	// Validate Repository Secret
+	repo, err := m.validateRepository(ctx)
+	if repo == nil || err != nil {
+		return mover.InProgress(), err
+	}
+
+	// Start mover Job
+	job, err := m.ensureJob(ctx, cachePVC, dataPVC, sa, repo)
+	if job == nil || err != nil {
+		return mover.InProgress(), err
+	}
+
+	// On the destination, preserve the image and return it
+	if !m.isSource {
+		image, err := m.vh.EnsureImage(ctx, m.logger, dataPVC)
+		if image == nil || err != nil {
+			return mover.InProgress(), err
+		}
+		return mover.CompleteWithImage(image), nil
+	}
+
+	// On the source, just signal completion
+	return mover.Complete(), nil
+}
+
+func (m *ResticMover) Cleanup(ctx context.Context) (mover.Result, error) {
+	err := utils.CleanupObjects(ctx, m.client, m.logger, m.owner, cleanupTypes)
+	if err != nil {
+		return mover.InProgress(), err
+	}
+	return mover.Complete(), nil
+}
+
+func (m *ResticMover) ensureCache(ctx context.Context,
+	dataPVC *v1.PersistentVolumeClaim) (*v1.PersistentVolumeClaim, error) {
+	// Create a separate vh for the Restic cache volume that's based on the main
+	// vh, but override options where necessary.
+	cacheConfig := []volumehandler.VHOption{
+		// build on the datavolume's configuration
+		volumehandler.From(m.vh),
+	}
+
+	// Cache capacity defaults to 1Gi but can be overridden
+	cacheCapacity := resource.MustParse("1Gi")
+	if m.cacheCapacity != nil {
+		cacheCapacity = *m.cacheCapacity
+	}
+	cacheConfig = append(cacheConfig, volumehandler.Capacity(&cacheCapacity))
+
+	// AccessModes are generated in the following priority:
+	// 1. Directly specified cache accessMode
+	// 2. Directly specified volume accessMode
+	// 3. Inherited from the source/data PVC
+	if m.cacheAccessModes != nil {
+		cacheConfig = append(cacheConfig, volumehandler.AccessModes(m.cacheAccessModes))
+	} else if len(m.vh.GetAccessModes()) == 0 {
+		cacheConfig = append(cacheConfig, volumehandler.AccessModes(dataPVC.Spec.AccessModes))
+	}
+
+	if m.cacheStorageClassName != nil {
+		cacheConfig = append(cacheConfig, volumehandler.StorageClassName(m.cacheStorageClassName))
+	}
+
+	cacheVh, err := volumehandler.NewVolumeHandler(cacheConfig...)
+	if err != nil {
+		return nil, err
+	}
+
+	// Allocate cache volume
+	cacheName := "scribe-" + m.owner.GetName() + "-cache"
+	m.logger.Info("allocating cache volume", "PVC", cacheName)
+	return cacheVh.EnsureNewPVC(ctx, m.logger, cacheName)
+}
+
+func (m *ResticMover) ensureSourcePVC(ctx context.Context) (*v1.PersistentVolumeClaim, error) {
+	srcPVC := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      *m.mainPVCName,
+			Namespace: m.owner.GetNamespace(),
+		},
+	}
+	if err := m.client.Get(ctx, utils.NameFor(srcPVC), srcPVC); err != nil {
+		return nil, err
+	}
+	dataName := "scribe-" + m.owner.GetName() + "-src"
+	return m.vh.EnsurePVCFromSrc(ctx, m.logger, srcPVC, dataName, true)
+}
+
+func (m *ResticMover) ensureDestinationPVC(ctx context.Context) (*v1.PersistentVolumeClaim, error) {
+	if m.mainPVCName == nil {
+		// Need to allocate the incoming data volume
+		dataPVCName := "scribe-" + m.owner.GetName() + "-dest"
+		return m.vh.EnsureNewPVC(ctx, m.logger, dataPVCName)
+	}
+
+	// use provided PVC
+	pvc := &v1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      *m.mainPVCName,
+			Namespace: m.owner.GetNamespace(),
+		},
+	}
+	err := m.client.Get(ctx, utils.NameFor(pvc), pvc)
+	return pvc, err
+}
+
+func (m *ResticMover) ensureSA(ctx context.Context) (*v1.ServiceAccount, error) {
+	dir := "src"
+	if !m.isSource {
+		dir = "dst"
+	}
+	sa := &v1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "scribe-" + dir + "-" + m.owner.GetName(),
+			Namespace: m.owner.GetNamespace(),
+		},
+	}
+	saDesc := rsyncSADescription{
+		Context: ctx,
+		Client:  m.client,
+		Scheme:  m.client.Scheme(),
+		SA:      sa,
+		Owner:   m.owner,
+	}
+	cont, err := saDesc.Reconcile(m.logger)
+	if cont {
+		return sa, err
+	}
+	return nil, err
+}
+
+func (m *ResticMover) validateRepository(ctx context.Context) (*v1.Secret, error) {
+	secret := &v1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      m.repositoryName,
+			Namespace: m.owner.GetNamespace(),
+		},
+	}
+	logger := m.logger.WithValues("repositorySecret", utils.NameFor(secret))
+	if err := utils.GetAndValidateSecret(ctx, m.client, logger, secret,
+		"RESTIC_REPOSITORY", "RESTIC_PASSWORD"); err != nil {
+		logger.Error(err, "Restic config secret does not contain the proper fields")
+		return nil, err
+	}
+	return secret, nil
+}
+
+//nolint:funlen
+func (m *ResticMover) ensureJob(ctx context.Context, cachePVC *v1.PersistentVolumeClaim,
+	dataPVC *v1.PersistentVolumeClaim, sa *v1.ServiceAccount, repo *v1.Secret) (*batchv1.Job, error) {
+	dir := "src"
+	if !m.isSource {
+		dir = "dst"
+	}
+
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "scribe-" + dir + "-" + m.owner.GetName(),
+			Namespace: m.owner.GetNamespace(),
+		},
+	}
+	logger := m.logger.WithValues("job", utils.NameFor(job))
+	_, err := ctrlutil.CreateOrUpdate(ctx, m.client, job, func() error {
+		if err := ctrl.SetControllerReference(m.owner, job, m.client.Scheme()); err != nil {
+			logger.Error(err, "unable to set controller reference")
+			return err
+		}
+		utils.MarkForCleanup(m.owner, job)
+		job.Spec.Template.ObjectMeta.Name = job.Name
+		backoffLimit := int32(8)
+		job.Spec.BackoffLimit = &backoffLimit
+		parallelism := int32(1)
+		if m.paused {
+			parallelism = int32(0)
+		}
+		job.Spec.Parallelism = &parallelism
+		forgetOptions := generateForgetOptions(m.retainPolicy)
+		runAsUser := int64(0)
+
+		var actions []string
+		if m.isSource {
+			actions = []string{"backup"}
+			if m.shouldPrune() {
+				actions = append(actions, "prune")
+			}
+		} else {
+			actions = []string{"restore"}
+		}
+		logger.Info("job actions", "actions", actions)
+
+		job.Spec.Template.Spec.Containers = []v1.Container{{
+			Name: "restic",
+			Env: []v1.EnvVar{
+				{Name: "FORGET_OPTIONS", Value: forgetOptions},
+				{Name: "DATA_DIR", Value: mountPath},
+				{Name: "RESTIC_CACHE_DIR", Value: resticCacheMountPath},
+				// We populate environment variables from the restic repo
+				// Secret. They are taken 1-for-1 from the Secret into env vars.
+				// The allowed variables are defined by restic.
+				// https://restic.readthedocs.io/en/stable/040_backup.html#environment-variables
+				// Mandatory variables are needed to define the repository
+				// location and its password.
+				utils.EnvFromSecret(repo.Name, "RESTIC_REPOSITORY", false),
+				utils.EnvFromSecret(repo.Name, "RESTIC_PASSWORD", false),
+				// Optional variables based on what backend is used for restic
+				utils.EnvFromSecret(repo.Name, "AWS_ACCESS_KEY_ID", true),
+				utils.EnvFromSecret(repo.Name, "AWS_SECRET_ACCESS_KEY", true),
+				utils.EnvFromSecret(repo.Name, "AWS_DEFAULT_REGION", true),
+				utils.EnvFromSecret(repo.Name, "ST_AUTH", true),
+				utils.EnvFromSecret(repo.Name, "ST_USER", true),
+				utils.EnvFromSecret(repo.Name, "ST_KEY", true),
+				utils.EnvFromSecret(repo.Name, "OS_AUTH_URL", true),
+				utils.EnvFromSecret(repo.Name, "OS_REGION_NAME", true),
+				utils.EnvFromSecret(repo.Name, "OS_USERNAME", true),
+				utils.EnvFromSecret(repo.Name, "OS_USER_ID", true),
+				utils.EnvFromSecret(repo.Name, "OS_PASSWORD", true),
+				utils.EnvFromSecret(repo.Name, "OS_TENANT_ID", true),
+				utils.EnvFromSecret(repo.Name, "OS_TENANT_NAME", true),
+				utils.EnvFromSecret(repo.Name, "OS_USER_DOMAIN_NAME", true),
+				utils.EnvFromSecret(repo.Name, "OS_USER_DOMAIN_ID", true),
+				utils.EnvFromSecret(repo.Name, "OS_PROJECT_NAME", true),
+				utils.EnvFromSecret(repo.Name, "OS_PROJECT_DOMAIN_NAME", true),
+				utils.EnvFromSecret(repo.Name, "OS_PROJECT_DOMAIN_ID", true),
+				utils.EnvFromSecret(repo.Name, "OS_TRUST_ID", true),
+				utils.EnvFromSecret(repo.Name, "OS_APPLICATION_CREDENTIAL_ID", true),
+				utils.EnvFromSecret(repo.Name, "OS_APPLICATION_CREDENTIAL_NAME", true),
+				utils.EnvFromSecret(repo.Name, "OS_APPLICATION_CREDENTIAL_SECRET", true),
+				utils.EnvFromSecret(repo.Name, "OS_STORAGE_URL", true),
+				utils.EnvFromSecret(repo.Name, "OS_AUTH_TOKEN", true),
+				utils.EnvFromSecret(repo.Name, "B2_ACCOUNT_ID", true),
+				utils.EnvFromSecret(repo.Name, "B2_ACCOUNT_KEY", true),
+				utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_NAME", true),
+				utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_KEY", true),
+				utils.EnvFromSecret(repo.Name, "GOOGLE_PROJECT_ID", true),
+				utils.EnvFromSecret(repo.Name, "GOOGLE_APPLICATION_CREDENTIALS", true),
+			},
+			Command: []string{"/entry.sh"},
+			Args:    actions,
+			Image:   ResticContainerImage,
+			SecurityContext: &corev1.SecurityContext{
+				RunAsUser: &runAsUser,
+			},
+			VolumeMounts: []corev1.VolumeMount{
+				{Name: dataVolumeName, MountPath: mountPath},
+				{Name: resticCache, MountPath: resticCacheMountPath},
+			},
+		}}
+		job.Spec.Template.Spec.RestartPolicy = v1.RestartPolicyNever
+		job.Spec.Template.Spec.ServiceAccountName = sa.Name
+		job.Spec.Template.Spec.Volumes = []v1.Volume{
+			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: dataPVC.Name,
+				}},
+			},
+			{Name: resticCache, VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: cachePVC.Name,
+				}},
+			},
+		}
+		return nil
+	})
+	// If Job had failed, delete it so it can be recreated
+	if job.Status.Failed >= *job.Spec.BackoffLimit {
+		logger.Info("deleting job -- backoff limit reached")
+		err = m.client.Delete(ctx, job, client.PropagationPolicy(metav1.DeletePropagationBackground))
+		return nil, err
+	}
+	if err != nil {
+		logger.Error(err, "reconcile failed")
+	}
+
+	// Stop here if the job hasn't completed yet
+	if job.Status.Succeeded == 0 {
+		return nil, nil
+	}
+
+	logger.Info("job completed")
+	if m.isSource && m.shouldPrune() {
+		now := metav1.Now()
+		m.sourceStatus.LastPruned = &now
+		logger.Info("prune completed", ".Status.Restic.LastPruned", m.sourceStatus.LastPruned)
+	}
+	// We only continue reconciling if the restic job has completed
+	return job, nil
+}
+
+func (m *ResticMover) shouldPrune() bool {
+	delta := time.Hour * 24 * 7 // default prune every 7 days
+	if m.pruneInterval != nil {
+		delta = time.Hour * 24 * time.Duration(*m.pruneInterval)
+	}
+	// If we've never pruned, the 1st one should be "delta" after creation.
+	lastPruned := m.owner.GetCreationTimestamp().Time
+	if !m.sourceStatus.LastPruned.IsZero() {
+		lastPruned = m.sourceStatus.LastPruned.Time
+	}
+	return time.Now().After(lastPruned.Add(delta))
+}
+
 func RunResticSrcReconciler(
 	ctx context.Context,
 	instance *scribev1alpha1.ReplicationSource,
 	sr *ReplicationSourceReconciler,
 	logger logr.Logger,
 ) (ctrl.Result, error) {
-	r := resticSrcReconciler{
-		sourceVolumeHandler: sourceVolumeHandler{
-			Ctx:                         ctx,
-			Instance:                    instance,
-			ReplicationSourceReconciler: *sr,
-			Options:                     &instance.Spec.Restic.ReplicationSourceVolumeOptions,
-		},
-		scribeMetrics: newScribeMetrics(prometheus.Labels{
-			"obj_name":      instance.Name,
-			"obj_namespace": instance.Namespace,
-			"role":          "source",
-			"method":        "restic",
-		}),
-	}
-	l := logger.WithValues("method", "Restic")
-	// Create ReplicationSourceResticStatus to write restic status
-	if r.Instance.Status.Restic == nil {
-		r.Instance.Status.Restic = &scribev1alpha1.ReplicationSourceResticStatus{}
+	// This is temporary. The builder is available in the catalog and should be
+	// tried at a higher level to create the reconciler.
+	b := ResticBuilder{}
+	reconciler, err := b.FromSource(sr.Client, logger, instance)
+	if err != nil || reconciler == nil {
+		return ctrl.Result{}, err
 	}
 
-	//Wrap the scheduling functions as reconcileFuncs
-	awaitNextSync := func(l logr.Logger) (bool, error) {
-		return awaitNextSyncSource(r.Instance, r.scribeMetrics, l)
-	}
-
-	_, err := reconcileBatch(l,
-		awaitNextSync,
-		r.validateResticSpec,
-		r.EnsurePVC,
-		r.pvcForCache,
-		r.ensureServiceAccount,
-		r.ensureRepository,
-		r.ensureJob,
-		r.cleanupJob,
-		r.CleanupPVC,
-	)
-	return ctrl.Result{}, err
-}
-
-//nolint:dupl,funlen
-func (r *resticSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
-	r.job = &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "scribe-restic-src-" + r.Instance.Name,
-			Namespace: r.Instance.Namespace,
-		},
-	}
-	logger := l.WithValues("job", utils.NameFor(r.job))
-	op, err := ctrlutil.CreateOrUpdate(r.Ctx, r.Client, r.job, func() error {
-		if err := ctrl.SetControllerReference(r.Instance, r.job, r.Scheme); err != nil {
-			logger.Error(err, "unable to set controller reference")
-			return err
-		}
-		r.job.Spec.Template.ObjectMeta.Name = r.job.Name
-		if r.job.Spec.Template.ObjectMeta.Labels == nil {
-			r.job.Spec.Template.ObjectMeta.Labels = map[string]string{}
-		}
-		backoffLimit := int32(2)
-		r.job.Spec.BackoffLimit = &backoffLimit
-		if r.Instance.Spec.Paused {
-			parallelism := int32(0)
-			r.job.Spec.Parallelism = &parallelism
-		} else {
-			parallelism := int32(1)
-			r.job.Spec.Parallelism = &parallelism
-		}
-		if len(r.job.Spec.Template.Spec.Containers) != 1 {
-			r.job.Spec.Template.Spec.Containers = []corev1.Container{{}}
-		}
-		r.job.Spec.Template.Spec.Containers[0].Name = "restic-backup"
-
-		var optionalFalse = false
-		forgetOptions := generateForgetOptions(r.Instance.Spec.Restic.Retain)
-		l.V(1).Info("restic forget options", "options", forgetOptions)
-		r.job.Spec.Template.Spec.Containers[0].Env = []corev1.EnvVar{
-			{Name: "FORGET_OPTIONS", Value: forgetOptions},
-			{Name: "DATA_DIR", Value: mountPath},
-			{Name: "RESTIC_CACHE_DIR", Value: resticCacheMountPath},
-			{Name: "RESTIC_REPOSITORY", ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: r.resticRepositorySecret.Name,
-					},
-					Key:      "RESTIC_REPOSITORY",
-					Optional: &optionalFalse,
-				},
-			}},
-			{Name: "RESTIC_PASSWORD", ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: r.resticRepositorySecret.Name,
-					},
-					Key:      "RESTIC_PASSWORD",
-					Optional: &optionalFalse,
-				},
-			}},
-			{Name: "AWS_ACCESS_KEY_ID", ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: r.resticRepositorySecret.Name,
-					},
-					Key:      "AWS_ACCESS_KEY_ID",
-					Optional: &optionalFalse,
-				},
-			}},
-			{Name: "AWS_SECRET_ACCESS_KEY", ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: r.resticRepositorySecret.Name,
-					},
-					Key:      "AWS_SECRET_ACCESS_KEY",
-					Optional: &optionalFalse,
-				},
-			}},
-		}
-
-		r.job.Spec.Template.Spec.Containers[0].Command = []string{"/entry.sh"}
-
-		if r.resticPrune(l) {
-			r.job.Spec.Template.Spec.Containers[0].Args = []string{"backup", "prune"}
-		} else {
-			r.job.Spec.Template.Spec.Containers[0].Args = []string{"backup"}
-		}
-		r.job.Spec.Template.Spec.Containers[0].Image = ResticContainerImage
-		runAsUser := int64(0)
-		r.job.Spec.Template.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{
-			RunAsUser: &runAsUser,
-		}
-		r.job.Spec.Template.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
-			{Name: dataVolumeName, MountPath: mountPath},
-			{Name: resticCache, MountPath: resticCacheMountPath},
-		}
-		r.job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
-		r.job.Spec.Template.Spec.ServiceAccountName = r.serviceAccount.Name
-		r.job.Spec.Template.Spec.Volumes = []corev1.Volume{
-			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
-				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-					ClaimName: r.PVC.Name,
-				}},
-			},
-			{Name: resticCache, VolumeSource: corev1.VolumeSource{
-				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-					ClaimName: r.resticCache.Name,
-				}},
-			},
-		}
-		logger.V(1).Info("Job has PVC", "PVC", r.PVC, "DS", r.PVC.Spec.DataSource)
-		return nil
+	metrics := newScribeMetrics(prometheus.Labels{
+		"obj_name":      instance.Name,
+		"obj_namespace": instance.Namespace,
+		"role":          "source",
+		"method":        reconciler.Name(),
 	})
-	// If Job had failed, delete it so it can be recreated
-	if r.job.Status.Failed >= *r.job.Spec.BackoffLimit {
-		logger.Info("deleting job -- backoff limit reached")
-		err = r.Client.Delete(r.Ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground))
-		return false, err
-	}
+	shouldSync, err := awaitNextSyncSource(instance, metrics, logger)
 	if err != nil {
-		logger.Error(err, "reconcile failed")
+		return ctrl.Result{}, err
+	}
+
+	var result mover.Result
+	if shouldSync {
+		result, err = reconciler.Synchronize(ctx)
+		if result.Completed {
+			if ok, err := updateLastSyncSource(instance, metrics, logger); !ok {
+				return mover.InProgress().ReconcileResult(), err
+			}
+		}
 	} else {
-		logger.V(1).Info("Job reconciled", "operation", op)
+		result, err = reconciler.Cleanup(ctx)
 	}
-	// Only set r.Instance.Status.Restic.LastPruned when the restic job has completed
-	if r.resticPrune(l) && r.job.Status.Succeeded == 1 {
-		r.Instance.Status.Restic.LastPruned = &metav1.Time{Time: time.Now()}
-		l.V(1).Info("Prune completed at ", ".Status.Restic.LastPruned", r.Instance.Status.Restic.LastPruned)
-	}
-	// We only continue reconciling if the restic job has completed
-	return r.job.Status.Succeeded == 1, nil
+	return result.ReconcileResult(), err
 }
 
-//nolint:funlen
-func (r *resticSrcReconciler) resticPrune(l logr.Logger) bool {
-	pruneInterval := int64(*r.Instance.Spec.Restic.PruneIntervalDays * 24)
-	pruneIntervalHours := time.Duration(pruneInterval) * time.Hour
-	creationTime := r.Instance.ObjectMeta.CreationTimestamp
-	now := time.Now()
-	shouldPrune := false
-	var delta time.Time
+func RunResticDestReconciler(
+	ctx context.Context,
+	instance *scribev1alpha1.ReplicationDestination,
+	dr *ReplicationDestinationReconciler,
+	logger logr.Logger,
+) (ctrl.Result, error) {
+	// This is temporary. The builder is available in the catalog and should be
+	// tried at a higher level to create the reconciler.
+	b := ResticBuilder{}
+	reconciler, err := b.FromDestination(dr.Client, logger, instance)
+	if err != nil || reconciler == nil {
+		return ctrl.Result{}, err
+	}
 
-	if r.Instance.Status.Restic.LastPruned == nil {
-		//This is the first prune and never has been pruned before
-		//Check if now - CreationTime > pruneInterval
-		// true: start first prune and update LastPruned in Status.Restic
-		// false: wait for next prune
-		delta = creationTime.Time.Add(pruneIntervalHours)
-		shouldPrune = now.After(delta)
-	}
-	if r.Instance.Status.Restic.LastPruned != nil {
-		//calculate next prune time as now - lastPruned > pruneInterval
-		delta = r.Instance.Status.Restic.LastPruned.Time.Add(pruneIntervalHours)
-		shouldPrune = now.After(delta)
-	}
-	if !shouldPrune {
-		l.V(1).Info("Skipping prune", "next", delta)
-	}
-	return shouldPrune
-}
+	metrics := newScribeMetrics(prometheus.Labels{
+		"obj_name":      instance.Name,
+		"obj_namespace": instance.Namespace,
+		"role":          "destination",
+		"method":        reconciler.Name(),
+	})
 
-func (r *resticSrcReconciler) ensureRepository(l logr.Logger) (bool, error) {
-	// If user provided "repository-secret", use those
+	shouldSync, err := awaitNextSyncDestination(instance, metrics, logger)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 
-	r.resticRepositorySecret = &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      r.Instance.Spec.Restic.Repository,
-			Namespace: r.Instance.Namespace,
-		},
-	}
-	fields := []string{"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "RESTIC_PASSWORD", "RESTIC_REPOSITORY"}
-	if err := getAndValidateSecret(r.Ctx, r.Client, l, r.resticRepositorySecret, fields); err != nil {
-		l.Error(err, "Restic config secret does not contain the proper fields")
-		return false, err
-	}
-	return true, nil
-}
-
-func (r *resticSrcReconciler) ensureServiceAccount(l logr.Logger) (bool, error) {
-	r.serviceAccount = &corev1.ServiceAccount{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "scribe-src-" + r.Instance.Name,
-			Namespace: r.Instance.Namespace,
-		},
-	}
-	saDesc := rsyncSADescription{
-		Context: r.Ctx,
-		Client:  r.Client,
-		Scheme:  r.Scheme,
-		SA:      r.serviceAccount,
-		Owner:   r.Instance,
-	}
-	return saDesc.Reconcile(l)
-}
-
-//nolint:dupl
-func (r *resticSrcReconciler) cleanupJob(l logr.Logger) (bool, error) {
-	logger := l.WithValues("job", r.job)
-	// update time/duration
-	if _, err := updateLastSyncSource(r.Instance, r.scribeMetrics, logger); err != nil {
-		return false, err
-	}
-	if r.job.Status.StartTime != nil {
-		d := r.Instance.Status.LastSyncTime.Sub(r.job.Status.StartTime.Time)
-		r.Instance.Status.LastSyncDuration = &metav1.Duration{Duration: d}
-	}
-	// remove job
-	if r.job.Status.Succeeded >= 1 {
-		if err := r.Client.Delete(r.Ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
-			logger.Error(err, "unable to delete job")
-			return false, err
+	var result mover.Result
+	if shouldSync {
+		result, err = reconciler.Synchronize(ctx)
+		if result.Completed && result.Image != nil {
+			instance.Status.LatestImage = result.Image
+			if ok, err := updateLastSyncDestination(instance, metrics, logger); !ok {
+				return mover.InProgress().ReconcileResult(), err
+			}
 		}
-		logger.Info("Job deleted", "Job name: ", r.job.Spec.Template.ObjectMeta.Name)
+	} else {
+		result, err = reconciler.Cleanup(ctx)
 	}
-	return true, nil
-}
-
-//nolint:dupl
-func (r *resticSrcReconciler) validateResticSpec(l logr.Logger) (bool, error) {
-	var err error
-	var result bool = true
-	if len(r.Instance.Spec.Restic.Repository) == 0 {
-		err = errors.New("Unable to get restic repository configurations")
-		l.V(1).Info("Unable to get restic repository configurations")
-		result = false
-	}
-	if err == nil {
-		// get secret from cluster
-		foundSecret := &corev1.Secret{}
-		secretNotFoundErr := r.Client.Get(r.Ctx,
-			types.NamespacedName{
-				Name:      r.Instance.Spec.Restic.Repository,
-				Namespace: r.Instance.Namespace,
-			}, foundSecret)
-		if secretNotFoundErr != nil {
-			l.Error(err, "restic repository secret not found.",
-				"repository", r.Instance.Spec.Restic.Repository)
-			result = false
-			err = secretNotFoundErr
-		} else {
-			r.resticRepositorySecret = foundSecret
-		}
-	}
-	return result, err
+	return result.ReconcileResult(), err
 }
 
 func generateForgetOptions(policy *scribev1alpha1.ResticRetainPolicy) string {
@@ -385,252 +606,4 @@ func generateForgetOptions(policy *scribev1alpha1.ResticRetainPolicy) string {
 		return defaultForget
 	}
 	return forget
-}
-
-// RunResticDestReconciler is invokded when ReplicationDestination.Spec>Restic !=  nil
-//nolint:dupl
-func RunResticDestReconciler(
-	ctx context.Context,
-	instance *scribev1alpha1.ReplicationDestination,
-	dr *ReplicationDestinationReconciler,
-	logger logr.Logger,
-) (ctrl.Result, error) {
-	r := resticDestReconciler{
-		destinationVolumeHandler: destinationVolumeHandler{
-			Ctx:                              ctx,
-			Instance:                         instance,
-			ReplicationDestinationReconciler: *dr,
-			Options:                          &instance.Spec.Restic.ReplicationDestinationVolumeOptions,
-		},
-		scribeMetrics: newScribeMetrics(prometheus.Labels{
-			"obj_name":      instance.Name,
-			"obj_namespace": instance.Namespace,
-			"role":          "destination",
-			"method":        "restic",
-		}),
-	}
-	l := logger.WithValues("method", "Restic")
-
-	//Wrap the scheduling functions as reconcileFuncs
-	awaitNextSync := func(l logr.Logger) (bool, error) {
-		return awaitNextSyncDestination(r.Instance, r.scribeMetrics, l)
-	}
-
-	_, err := reconcileBatch(l,
-		awaitNextSync,
-		r.validateResticSpec,
-		r.EnsurePVC,
-		r.pvcForCache,
-		r.ensureServiceAccount,
-		r.ensureRepository,
-		r.ensureJob,
-		r.PreserveImage,
-		r.cleanupJob,
-	)
-	return ctrl.Result{}, err
-}
-func (r *resticDestReconciler) ensureServiceAccount(l logr.Logger) (bool, error) {
-	r.serviceAccount = &corev1.ServiceAccount{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "scribe-restic-dest-" + r.Instance.Name,
-			Namespace: r.Instance.Namespace,
-		},
-	}
-	saDesc := rsyncSADescription{
-		Context: r.Ctx,
-		Client:  r.Client,
-		Scheme:  r.Scheme,
-		SA:      r.serviceAccount,
-		Owner:   r.Instance,
-	}
-	return saDesc.Reconcile(l)
-}
-
-func (r *resticDestReconciler) ensureRepository(l logr.Logger) (bool, error) {
-	// If user provided "repository-secret", use those
-
-	r.resticRepositorySecret = &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      r.Instance.Spec.Restic.Repository,
-			Namespace: r.Instance.Namespace,
-		},
-	}
-	fields := []string{"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "RESTIC_PASSWORD", "RESTIC_REPOSITORY"}
-	if err := getAndValidateSecret(r.Ctx, r.Client, l, r.resticRepositorySecret, fields); err != nil {
-		l.Error(err, "Restic config secret does not contain the proper fields")
-		return false, err
-	}
-	return true, nil
-}
-
-//nolint:dupl,funlen
-func (r *resticDestReconciler) ensureJob(l logr.Logger) (bool, error) {
-	r.job = &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "scribe-restic-dest-" + r.Instance.Name,
-			Namespace: r.Instance.Namespace,
-		},
-	}
-	logger := l.WithValues("job", utils.NameFor(r.job))
-	op, err := ctrlutil.CreateOrUpdate(r.Ctx, r.Client, r.job, func() error {
-		if err := ctrl.SetControllerReference(r.Instance, r.job, r.Scheme); err != nil {
-			logger.Error(err, "unable to set controller reference")
-			return err
-		}
-		r.job.Spec.Template.ObjectMeta.Name = r.job.Name
-		if r.job.Spec.Template.ObjectMeta.Labels == nil {
-			r.job.Spec.Template.ObjectMeta.Labels = map[string]string{}
-		}
-		backoffLimit := int32(2)
-		r.job.Spec.BackoffLimit = &backoffLimit
-		if r.Instance.Spec.Paused {
-			parallelism := int32(0)
-			r.job.Spec.Parallelism = &parallelism
-		} else {
-			parallelism := int32(1)
-			r.job.Spec.Parallelism = &parallelism
-		}
-		if len(r.job.Spec.Template.Spec.Containers) != 1 {
-			r.job.Spec.Template.Spec.Containers = []corev1.Container{{}}
-		}
-		r.job.Spec.Template.Spec.Containers[0].Name = "restic-restore"
-		// calculate retention policy. for now setting FORGET_OPTIONS in
-		// env variables directly. It has to be calculated from retention
-		// policy
-		// get secret from cluster
-		var optionalFalse = false
-		r.job.Spec.Template.Spec.Containers[0].Env = []corev1.EnvVar{
-			{Name: "FORGET_OPTIONS", Value: "--keep-hourly 2 --keep-daily 1"},
-			{Name: "DATA_DIR", Value: mountPath},
-			{Name: "RESTIC_CACHE_DIR", Value: resticCacheMountPath},
-			{Name: "RESTIC_REPOSITORY", ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: r.resticRepositorySecret.Name,
-					},
-					Key:      "RESTIC_REPOSITORY",
-					Optional: &optionalFalse,
-				},
-			}},
-			{Name: "RESTIC_PASSWORD", ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: r.resticRepositorySecret.Name,
-					},
-					Key:      "RESTIC_PASSWORD",
-					Optional: &optionalFalse,
-				},
-			}},
-			{Name: "AWS_ACCESS_KEY_ID", ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: r.resticRepositorySecret.Name,
-					},
-					Key:      "AWS_ACCESS_KEY_ID",
-					Optional: &optionalFalse,
-				},
-			}},
-			{Name: "AWS_SECRET_ACCESS_KEY", ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: r.resticRepositorySecret.Name,
-					},
-					Key:      "AWS_SECRET_ACCESS_KEY",
-					Optional: &optionalFalse,
-				},
-			}},
-		}
-
-		r.job.Spec.Template.Spec.Containers[0].Command = []string{"/entry.sh"}
-		r.job.Spec.Template.Spec.Containers[0].Args = []string{"restore"}
-		r.job.Spec.Template.Spec.Containers[0].Image = ResticContainerImage
-		runAsUser := int64(0)
-		r.job.Spec.Template.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{
-			RunAsUser: &runAsUser,
-		}
-		r.job.Spec.Template.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
-			{Name: dataVolumeName, MountPath: mountPath},
-			{Name: resticCache, MountPath: resticCacheMountPath},
-		}
-		r.job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
-		r.job.Spec.Template.Spec.ServiceAccountName = r.serviceAccount.Name
-		r.job.Spec.Template.Spec.Volumes = []corev1.Volume{
-			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
-				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-					ClaimName: r.PVC.Name,
-				}},
-			},
-			{Name: resticCache, VolumeSource: corev1.VolumeSource{
-				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-					ClaimName: r.resticCache.Name,
-				}},
-			},
-		}
-		logger.V(1).Info("Job has PVC", "PVC", r.PVC, "DS", r.PVC.Spec.DataSource)
-		return nil
-	})
-	// If Job had failed, delete it so it can be recreated
-	if r.job.Status.Failed >= *r.job.Spec.BackoffLimit {
-		logger.Info("deleting job -- backoff limit reached")
-		err = r.Client.Delete(r.Ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground))
-		return false, err
-	}
-	if err != nil {
-		logger.Error(err, "reconcile failed")
-	} else {
-		logger.V(1).Info("Job reconciled", "operation", op)
-	}
-	// We only continue reconciling if the restic job has completed
-	return r.job.Status.Succeeded == 1, nil
-}
-
-//nolint:dupl
-func (r *resticDestReconciler) cleanupJob(l logr.Logger) (bool, error) {
-	logger := l.WithValues("job", r.job)
-	// update time/duration
-	if _, err := updateLastSyncDestination(r.Instance, r.scribeMetrics, logger); err != nil {
-		return false, err
-	}
-	if r.job.Status.StartTime != nil {
-		d := r.Instance.Status.LastSyncTime.Sub(r.job.Status.StartTime.Time)
-		r.Instance.Status.LastSyncDuration = &metav1.Duration{Duration: d}
-	}
-	// remove job
-	if r.job.Status.Succeeded >= 1 {
-		if err := r.Client.Delete(r.Ctx, r.job, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
-			logger.Error(err, "unable to delete job")
-			return false, err
-		}
-		logger.Info("Job deleted", "Job name: ", r.job.Spec.Template.ObjectMeta.Name)
-	}
-	return true, nil
-}
-
-//nolint:dupl
-func (r *resticDestReconciler) validateResticSpec(l logr.Logger) (bool, error) {
-	var err error
-	var result bool = true
-	if len(r.Instance.Spec.Restic.Repository) == 0 {
-		err = errors.New("Unable to get restic repository configurations")
-		l.V(1).Info("Unable to get restic repository configurations")
-		result = false
-	}
-	if err == nil {
-		// get secret from cluster
-		foundSecret := &corev1.Secret{}
-		secretNotFoundErr := r.Client.Get(r.Ctx,
-			types.NamespacedName{
-				Name:      r.Instance.Spec.Restic.Repository,
-				Namespace: r.Instance.Namespace,
-			}, foundSecret)
-		if secretNotFoundErr != nil {
-			l.Error(err, "restic repository secret not found.",
-				"repository", r.Instance.Spec.Restic.Repository)
-			result = false
-			err = secretNotFoundErr
-		} else {
-			r.resticRepositorySecret = foundSecret
-		}
-	}
-	return result, err
 }
