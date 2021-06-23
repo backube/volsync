@@ -40,6 +40,7 @@ import (
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
+	"github.com/backube/scribe/controllers/mover"
 	"github.com/backube/scribe/controllers/utils"
 )
 
@@ -107,15 +108,16 @@ func (r *ReplicationDestinationReconciler) Reconcile(ctx context.Context, req ct
 		err = fmt.Errorf("only a single replication method can be provided")
 		return result, err
 	}
-	if inst.Spec.Rsync != nil {
-		result, err = RunRsyncDestReconciler(ctx, inst, r, logger)
-	} else if inst.Spec.Rclone != nil {
-		result, err = RunRcloneDestReconciler(ctx, inst, r, logger)
-	} else if inst.Spec.Restic != nil {
-		result, err = RunResticDestReconciler(ctx, inst, r, logger)
-	} else {
-		// Not an internal method... we're done.
-		return ctrl.Result{}, nil
+	result, err = reconcileDestUsingCatalog(ctx, inst, r, logger)
+	if errors.Is(err, errNoMoverFound) { // do the old stuff
+		if inst.Spec.Rsync != nil {
+			result, err = RunRsyncDestReconciler(ctx, inst, r, logger)
+		} else if inst.Spec.Rclone != nil {
+			result, err = RunRcloneDestReconciler(ctx, inst, r, logger)
+		} else {
+			// Not an internal method... we're done.
+			return ctrl.Result{}, nil
+		}
 	}
 	// Set reconcile status condition
 	if err == nil {
@@ -149,6 +151,54 @@ func (r *ReplicationDestinationReconciler) Reconcile(ctx context.Context, req ct
 		}
 	}
 	return result, err
+}
+
+func reconcileDestUsingCatalog(
+	ctx context.Context,
+	instance *scribev1alpha1.ReplicationDestination,
+	dr *ReplicationDestinationReconciler,
+	logger logr.Logger,
+) (ctrl.Result, error) {
+	// Search the Mover catalog for a suitable data mover
+	var dataMover mover.Mover
+	for _, builder := range mover.Catalog {
+		if candidate, err := builder.FromDestination(dr.Client, logger, instance); err == nil {
+			if dataMover != nil && candidate != nil {
+				// Found 2 movers claiming this CR...
+				return ctrl.Result{}, fmt.Errorf("only a single replication method can be provided")
+			}
+			dataMover = candidate
+		}
+	}
+	if dataMover == nil { // No mover matched
+		return ctrl.Result{}, errNoMoverFound
+	}
+
+	metrics := newScribeMetrics(prometheus.Labels{
+		"obj_name":      instance.Name,
+		"obj_namespace": instance.Namespace,
+		"role":          "destination",
+		"method":        dataMover.Name(),
+	})
+
+	shouldSync, err := awaitNextSyncDestination(instance, metrics, logger)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	var result mover.Result
+	if shouldSync {
+		result, err = dataMover.Synchronize(ctx)
+		if result.Completed && result.Image != nil {
+			instance.Status.LatestImage = result.Image
+			if ok, err := updateLastSyncDestination(instance, metrics, logger); !ok {
+				return mover.InProgress().ReconcileResult(), err
+			}
+		}
+	} else {
+		result, err = dataMover.Cleanup(ctx)
+	}
+	return result.ReconcileResult(), err
 }
 
 func (r *ReplicationDestinationReconciler) SetupWithManager(mgr ctrl.Manager) error {

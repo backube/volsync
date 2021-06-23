@@ -37,6 +37,7 @@ import (
 
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
 	"github.com/backube/scribe/controllers"
+	"github.com/backube/scribe/controllers/mover"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -55,6 +56,10 @@ func init() {
 
 //nolint:funlen
 func main() {
+	// Initialize the data movers so they can add command line flags
+	for _, builder := range mover.Catalog {
+		builder.Initialize()
+	}
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
@@ -65,8 +70,6 @@ func main() {
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.StringVar(&controllers.RcloneContainerImage, "rclone-container-image",
 		controllers.DefaultRcloneContainerImage, "The container image for the rclone data mover")
-	flag.StringVar(&controllers.ResticContainerImage, "restic-container-image",
-		controllers.DefaultResticContainerImage, "The container image for the restic data mover")
 	flag.StringVar(&controllers.RsyncContainerImage, "rsync-container-image",
 		controllers.DefaultRsyncContainerImage, "The container image for the rsync data mover")
 	flag.StringVar(&controllers.SCCName, "scc-name",

@@ -25,7 +25,6 @@ import (
 
 	"github.com/go-logr/logr"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1beta1"
-	"github.com/prometheus/client_golang/prometheus"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
@@ -493,86 +492,6 @@ func (m *ResticMover) shouldPrune() bool {
 		lastPruned = m.sourceStatus.LastPruned.Time
 	}
 	return time.Now().After(lastPruned.Add(delta))
-}
-
-func RunResticSrcReconciler(
-	ctx context.Context,
-	instance *scribev1alpha1.ReplicationSource,
-	sr *ReplicationSourceReconciler,
-	logger logr.Logger,
-) (ctrl.Result, error) {
-	// This is temporary. The builder is available in the catalog and should be
-	// tried at a higher level to create the reconciler.
-	b := ResticBuilder{}
-	reconciler, err := b.FromSource(sr.Client, logger, instance)
-	if err != nil || reconciler == nil {
-		return ctrl.Result{}, err
-	}
-
-	metrics := newScribeMetrics(prometheus.Labels{
-		"obj_name":      instance.Name,
-		"obj_namespace": instance.Namespace,
-		"role":          "source",
-		"method":        reconciler.Name(),
-	})
-	shouldSync, err := awaitNextSyncSource(instance, metrics, logger)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	var result mover.Result
-	if shouldSync {
-		result, err = reconciler.Synchronize(ctx)
-		if result.Completed {
-			if ok, err := updateLastSyncSource(instance, metrics, logger); !ok {
-				return mover.InProgress().ReconcileResult(), err
-			}
-		}
-	} else {
-		result, err = reconciler.Cleanup(ctx)
-	}
-	return result.ReconcileResult(), err
-}
-
-func RunResticDestReconciler(
-	ctx context.Context,
-	instance *scribev1alpha1.ReplicationDestination,
-	dr *ReplicationDestinationReconciler,
-	logger logr.Logger,
-) (ctrl.Result, error) {
-	// This is temporary. The builder is available in the catalog and should be
-	// tried at a higher level to create the reconciler.
-	b := ResticBuilder{}
-	reconciler, err := b.FromDestination(dr.Client, logger, instance)
-	if err != nil || reconciler == nil {
-		return ctrl.Result{}, err
-	}
-
-	metrics := newScribeMetrics(prometheus.Labels{
-		"obj_name":      instance.Name,
-		"obj_namespace": instance.Namespace,
-		"role":          "destination",
-		"method":        reconciler.Name(),
-	})
-
-	shouldSync, err := awaitNextSyncDestination(instance, metrics, logger)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	var result mover.Result
-	if shouldSync {
-		result, err = reconciler.Synchronize(ctx)
-		if result.Completed && result.Image != nil {
-			instance.Status.LatestImage = result.Image
-			if ok, err := updateLastSyncDestination(instance, metrics, logger); !ok {
-				return mover.InProgress().ReconcileResult(), err
-			}
-		}
-	} else {
-		result, err = reconciler.Cleanup(ctx)
-	}
-	return result.ReconcileResult(), err
 }
 
 func generateForgetOptions(policy *scribev1alpha1.ResticRetainPolicy) string {

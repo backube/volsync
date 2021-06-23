@@ -40,6 +40,7 @@ import (
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
+	"github.com/backube/scribe/controllers/mover"
 	"github.com/backube/scribe/controllers/utils"
 )
 
@@ -94,14 +95,15 @@ func (r *ReplicationSourceReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		err = fmt.Errorf("only a single replication method can be provided")
 		return result, err
 	}
-	if inst.Spec.Rsync != nil {
-		result, err = RunRsyncSrcReconciler(ctx, inst, r, logger)
-	} else if inst.Spec.Rclone != nil {
-		result, err = RunRcloneSrcReconciler(ctx, inst, r, logger)
-	} else if inst.Spec.Restic != nil {
-		result, err = RunResticSrcReconciler(ctx, inst, r, logger)
-	} else {
-		return ctrl.Result{}, nil
+	result, err = reconcileSrcUsingCatalog(ctx, inst, r, logger)
+	if errors.Is(err, errNoMoverFound) { // do the old stuff
+		if inst.Spec.Rsync != nil {
+			result, err = RunRsyncSrcReconciler(ctx, inst, r, logger)
+		} else if inst.Spec.Rclone != nil {
+			result, err = RunRcloneSrcReconciler(ctx, inst, r, logger)
+		} else {
+			return ctrl.Result{}, nil
+		}
 	}
 
 	// Set reconcile status condition
@@ -137,6 +139,53 @@ func (r *ReplicationSourceReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		}
 	}
 	return result, err
+}
+
+var errNoMoverFound = fmt.Errorf("no matching data mover was found")
+
+func reconcileSrcUsingCatalog(
+	ctx context.Context,
+	instance *scribev1alpha1.ReplicationSource,
+	sr *ReplicationSourceReconciler,
+	logger logr.Logger,
+) (ctrl.Result, error) {
+	// Search the Mover catalog for a suitable data mover
+	var dataMover mover.Mover
+	for _, builder := range mover.Catalog {
+		if candidate, err := builder.FromSource(sr.Client, logger, instance); err == nil {
+			if dataMover != nil && candidate != nil {
+				// Found 2 movers claiming this CR...
+				return ctrl.Result{}, fmt.Errorf("only a single replication method can be provided")
+			}
+			dataMover = candidate
+		}
+	}
+	if dataMover == nil { // No mover matched
+		return ctrl.Result{}, errNoMoverFound
+	}
+
+	metrics := newScribeMetrics(prometheus.Labels{
+		"obj_name":      instance.Name,
+		"obj_namespace": instance.Namespace,
+		"role":          "source",
+		"method":        dataMover.Name(),
+	})
+	shouldSync, err := awaitNextSyncSource(instance, metrics, logger)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	var mResult mover.Result
+	if shouldSync {
+		mResult, err = dataMover.Synchronize(ctx)
+		if mResult.Completed {
+			if ok, err := updateLastSyncSource(instance, metrics, logger); !ok {
+				return mover.InProgress().ReconcileResult(), err
+			}
+		}
+	} else {
+		mResult, err = dataMover.Cleanup(ctx)
+	}
+	return mResult.ReconcileResult(), err
 }
 
 func (r *ReplicationSourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
