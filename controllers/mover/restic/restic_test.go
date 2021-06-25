@@ -15,7 +15,7 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-package controllers
+package restic
 
 import (
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"

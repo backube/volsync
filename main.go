@@ -87,7 +87,6 @@ func main() {
 	setupLog.Info(fmt.Sprintf("Go OS/Arch: %s/%s", runtime.GOOS, runtime.GOARCH))
 	setupLog.Info(fmt.Sprintf("Operator Version: %s", scribeVersion))
 	setupLog.Info(fmt.Sprintf("Rclone container: %s", controllers.RcloneContainerImage))
-	setupLog.Info(fmt.Sprintf("Restic container: %s", controllers.ResticContainerImage))
 	setupLog.Info(fmt.Sprintf("Rsync container: %s", controllers.RsyncContainerImage))
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{

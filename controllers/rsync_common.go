@@ -40,7 +40,6 @@ import (
 const (
 	dataVolumeName = "data"
 	rcloneSecret   = "rclone-secret"
-	resticCache    = "cache"
 )
 
 type rsyncSvcDescription struct {

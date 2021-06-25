@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Scribe authors.
+Copyright 2021 The Scribe authors.
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published
@@ -15,11 +15,10 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-package controllers
+package restic
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"time"
 
@@ -41,104 +40,14 @@ import (
 )
 
 const (
-	// DefaultResticContainerImage is the default container image for the restic
-	// data mover
-	DefaultResticContainerImage = "quay.io/backube/scribe-mover-restic:latest"
-	resticCacheMountPath        = "/cache"
+	resticCacheMountPath = "/cache"
+	mountPath            = "/data"
+	dataVolumeName       = "data"
+	resticCache          = "cache"
 )
 
-var (
-	// ResticContainerImage is the container image name of the restic data mover
-	ResticContainerImage string
-)
-
-// Register the mover so that it's available to the operator
-func init() {
-	mover.Register(&ResticBuilder{})
-}
-
-type ResticBuilder struct{}
-
-var _ mover.Builder = &ResticBuilder{}
-
-func (rb *ResticBuilder) Initialize() {
-	// Register the Restic-related command line flags
-	flag.StringVar(&ResticContainerImage, "restic-container-image",
-		DefaultResticContainerImage, "The container image for the restic data mover")
-}
-
-func (rb *ResticBuilder) FromSource(client client.Client, logger logr.Logger,
-	source *scribev1alpha1.ReplicationSource) (mover.Mover, error) {
-	// Only build if the CR belongs to us
-	if source.Spec.Restic == nil {
-		return nil, nil
-	}
-
-	// Create ReplicationSourceResticStatus to write restic status
-	if source.Status.Restic == nil {
-		source.Status.Restic = &scribev1alpha1.ReplicationSourceResticStatus{}
-	}
-
-	vh, err := volumehandler.NewVolumeHandler(
-		volumehandler.WithClient(client),
-		volumehandler.WithOwner(source),
-		volumehandler.FromSource(&source.Spec.Restic.ReplicationSourceVolumeOptions),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return &ResticMover{
-		client:                client,
-		logger:                logger.WithValues("method", "Restic"),
-		owner:                 source,
-		vh:                    vh,
-		cacheAccessModes:      source.Spec.Restic.CacheAccessModes,
-		cacheCapacity:         source.Spec.Restic.CacheCapacity,
-		cacheStorageClassName: source.Spec.Restic.CacheStorageClassName,
-		repositoryName:        source.Spec.Restic.Repository,
-		isSource:              true,
-		paused:                source.Spec.Paused,
-		mainPVCName:           &source.Spec.SourcePVC,
-		pruneInterval:         source.Spec.Restic.PruneIntervalDays,
-		retainPolicy:          source.Spec.Restic.Retain,
-		sourceStatus:          source.Status.Restic,
-	}, nil
-}
-
-func (rb *ResticBuilder) FromDestination(client client.Client, logger logr.Logger,
-	destination *scribev1alpha1.ReplicationDestination) (mover.Mover, error) {
-	// Only build if the CR belongs to us
-	if destination.Spec.Restic == nil {
-		return nil, nil
-	}
-
-	vh, err := volumehandler.NewVolumeHandler(
-		volumehandler.WithClient(client),
-		volumehandler.WithOwner(destination),
-		volumehandler.FromDestination(&destination.Spec.Restic.ReplicationDestinationVolumeOptions),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return &ResticMover{
-		client:                client,
-		logger:                logger.WithValues("method", "Restic"),
-		owner:                 destination,
-		vh:                    vh,
-		cacheAccessModes:      destination.Spec.Restic.CacheAccessModes,
-		cacheCapacity:         destination.Spec.Restic.CacheCapacity,
-		cacheStorageClassName: destination.Spec.Restic.CacheStorageClassName,
-		repositoryName:        destination.Spec.Restic.Repository,
-		isSource:              false,
-		paused:                destination.Spec.Paused,
-		mainPVCName:           destination.Spec.Restic.DestinationPVC,
-	}, nil
-}
-
-// ResticMover is the reconciliation logic for the Restic-based data mover.
-type ResticMover struct {
+// Mover is the reconciliation logic for the Restic-based data mover.
+type Mover struct {
 	client                client.Client
 	logger                logr.Logger
 	owner                 metav1.Object
@@ -156,7 +65,7 @@ type ResticMover struct {
 	sourceStatus  *scribev1alpha1.ReplicationSourceResticStatus
 }
 
-var _ mover.Mover = &ResticMover{}
+var _ mover.Mover = &Mover{}
 
 // All object types that are temporary/per-iteration should be listed here. The
 // individual objects to be cleaned up must also be marked.
@@ -166,9 +75,9 @@ var cleanupTypes = []client.Object{
 	&batchv1.Job{},
 }
 
-func (m *ResticMover) Name() string { return "restic" }
+func (m *Mover) Name() string { return "restic" }
 
-func (m *ResticMover) Synchronize(ctx context.Context) (mover.Result, error) {
+func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 	var err error
 	// Allocate temporary data PVC
 	var dataPVC *v1.PersistentVolumeClaim
@@ -218,7 +127,7 @@ func (m *ResticMover) Synchronize(ctx context.Context) (mover.Result, error) {
 	return mover.Complete(), nil
 }
 
-func (m *ResticMover) Cleanup(ctx context.Context) (mover.Result, error) {
+func (m *Mover) Cleanup(ctx context.Context) (mover.Result, error) {
 	err := utils.CleanupObjects(ctx, m.client, m.logger, m.owner, cleanupTypes)
 	if err != nil {
 		return mover.InProgress(), err
@@ -226,7 +135,7 @@ func (m *ResticMover) Cleanup(ctx context.Context) (mover.Result, error) {
 	return mover.Complete(), nil
 }
 
-func (m *ResticMover) ensureCache(ctx context.Context,
+func (m *Mover) ensureCache(ctx context.Context,
 	dataPVC *v1.PersistentVolumeClaim) (*v1.PersistentVolumeClaim, error) {
 	// Create a separate vh for the Restic cache volume that's based on the main
 	// vh, but override options where necessary.
@@ -267,7 +176,7 @@ func (m *ResticMover) ensureCache(ctx context.Context,
 	return cacheVh.EnsureNewPVC(ctx, m.logger, cacheName)
 }
 
-func (m *ResticMover) ensureSourcePVC(ctx context.Context) (*v1.PersistentVolumeClaim, error) {
+func (m *Mover) ensureSourcePVC(ctx context.Context) (*v1.PersistentVolumeClaim, error) {
 	srcPVC := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      *m.mainPVCName,
@@ -281,7 +190,7 @@ func (m *ResticMover) ensureSourcePVC(ctx context.Context) (*v1.PersistentVolume
 	return m.vh.EnsurePVCFromSrc(ctx, m.logger, srcPVC, dataName, true)
 }
 
-func (m *ResticMover) ensureDestinationPVC(ctx context.Context) (*v1.PersistentVolumeClaim, error) {
+func (m *Mover) ensureDestinationPVC(ctx context.Context) (*v1.PersistentVolumeClaim, error) {
 	if m.mainPVCName == nil {
 		// Need to allocate the incoming data volume
 		dataPVCName := "scribe-" + m.owner.GetName() + "-dest"
@@ -299,7 +208,7 @@ func (m *ResticMover) ensureDestinationPVC(ctx context.Context) (*v1.PersistentV
 	return pvc, err
 }
 
-func (m *ResticMover) ensureSA(ctx context.Context) (*v1.ServiceAccount, error) {
+func (m *Mover) ensureSA(ctx context.Context) (*v1.ServiceAccount, error) {
 	dir := "src"
 	if !m.isSource {
 		dir = "dst"
@@ -318,7 +227,7 @@ func (m *ResticMover) ensureSA(ctx context.Context) (*v1.ServiceAccount, error) 
 	return nil, err
 }
 
-func (m *ResticMover) validateRepository(ctx context.Context) (*v1.Secret, error) {
+func (m *Mover) validateRepository(ctx context.Context) (*v1.Secret, error) {
 	secret := &v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      m.repositoryName,
@@ -335,7 +244,7 @@ func (m *ResticMover) validateRepository(ctx context.Context) (*v1.Secret, error
 }
 
 //nolint:funlen
-func (m *ResticMover) ensureJob(ctx context.Context, cachePVC *v1.PersistentVolumeClaim,
+func (m *Mover) ensureJob(ctx context.Context, cachePVC *v1.PersistentVolumeClaim,
 	dataPVC *v1.PersistentVolumeClaim, sa *v1.ServiceAccount, repo *v1.Secret) (*batchv1.Job, error) {
 	dir := "src"
 	if !m.isSource {
@@ -475,7 +384,7 @@ func (m *ResticMover) ensureJob(ctx context.Context, cachePVC *v1.PersistentVolu
 	return job, nil
 }
 
-func (m *ResticMover) shouldPrune() bool {
+func (m *Mover) shouldPrune() bool {
 	delta := time.Hour * 24 * 7 // default prune every 7 days
 	if m.pruneInterval != nil {
 		delta = time.Hour * 24 * time.Duration(*m.pruneInterval)

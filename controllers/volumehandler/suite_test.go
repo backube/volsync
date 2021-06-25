@@ -55,7 +55,7 @@ func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
 
 	RunSpecsWithDefaultAndCustomReporters(t,
-		"Volumehandler Suite",
+		"Volumehandler",
 		[]Reporter{printer.NewlineReporter{}})
 }
 
