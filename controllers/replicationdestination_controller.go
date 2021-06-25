@@ -153,6 +153,7 @@ func (r *ReplicationDestinationReconciler) Reconcile(ctx context.Context, req ct
 	return result, err
 }
 
+//nolint:funlen
 func reconcileDestUsingCatalog(
 	ctx context.Context,
 	instance *scribev1alpha1.ReplicationDestination,
@@ -187,16 +188,36 @@ func reconcileDestUsingCatalog(
 	}
 
 	var result mover.Result
-	if shouldSync {
+	if shouldSync && !instance.Status.Conditions.IsFalseFor(scribev1alpha1.ConditionSynchronizing) {
 		result, err = dataMover.Synchronize(ctx)
 		if result.Completed && result.Image != nil {
 			instance.Status.LatestImage = result.Image
+			instance.Status.Conditions.SetCondition(
+				status.Condition{
+					Type:    scribev1alpha1.ConditionSynchronizing,
+					Status:  corev1.ConditionFalse,
+					Reason:  scribev1alpha1.SynchronizingReasonCleanup,
+					Message: "Cleaning up",
+				},
+			)
 			if ok, err := updateLastSyncDestination(instance, metrics, logger); !ok {
 				return mover.InProgress().ReconcileResult(), err
 			}
 		}
 	} else {
 		result, err = dataMover.Cleanup(ctx)
+		if result.Completed {
+			instance.Status.Conditions.SetCondition(
+				status.Condition{
+					Type:    scribev1alpha1.ConditionSynchronizing,
+					Status:  corev1.ConditionTrue,
+					Reason:  scribev1alpha1.SynchronizingReasonSync,
+					Message: "Synchronization in-progress",
+				},
+			)
+			// To update conditions
+			_, _ = awaitNextSyncDestination(instance, metrics, logger)
+		}
 	}
 	return result.ReconcileResult(), err
 }
@@ -272,6 +293,7 @@ func updateNextSyncDestination(
 	return true, nil
 }
 
+//nolint:funlen
 func awaitNextSyncDestination(
 	rd *scribev1alpha1.ReplicationDestination,
 	metrics scribeMetrics,
@@ -284,18 +306,56 @@ func awaitNextSyncDestination(
 
 	// When manual trigger is set, but the lastManualSync value already matches
 	// then we don't want to sync further.
-	if rd.Spec.Trigger != nil &&
-		rd.Spec.Trigger.Manual != "" &&
-		rd.Spec.Trigger.Manual == rd.Status.LastManualSync {
-		return false, nil
+	if rd.Spec.Trigger != nil && rd.Spec.Trigger.Manual != "" {
+		if rd.Spec.Trigger.Manual == rd.Status.LastManualSync {
+			rd.Status.Conditions.SetCondition(
+				status.Condition{
+					Type:    scribev1alpha1.ConditionSynchronizing,
+					Status:  corev1.ConditionFalse,
+					Reason:  scribev1alpha1.SynchronizingReasonManual,
+					Message: "Waiting for manual trigger",
+				},
+			)
+			return false, nil
+		}
+		rd.Status.Conditions.SetCondition(
+			status.Condition{
+				Type:    scribev1alpha1.ConditionSynchronizing,
+				Status:  corev1.ConditionTrue,
+				Reason:  scribev1alpha1.SynchronizingReasonSync,
+				Message: "Synchronization in-progress",
+			},
+		)
+		return true, nil
 	}
 
-	// If there's no next (no schedule) or we're past the nextSyncTime, we should sync
-	if !rd.Status.NextSyncTime.IsZero() && !rd.Status.NextSyncTime.Time.Before(time.Now()) {
-		return false, nil
+	// If there's no schedule, (and no manual trigger), we should sync
+	if rd.Status.NextSyncTime.IsZero() {
+		// Condition update omitted intentionally to work with Mover inteface.
+		return true, nil
 	}
 
-	return true, nil
+	// if it's past the nextSyncTime, we should sync
+	if rd.Status.NextSyncTime.Time.Before(time.Now()) {
+		rd.Status.Conditions.SetCondition(
+			status.Condition{
+				Type:    scribev1alpha1.ConditionSynchronizing,
+				Status:  corev1.ConditionTrue,
+				Reason:  scribev1alpha1.SynchronizingReasonSync,
+				Message: "Synchronization in-progress",
+			},
+		)
+		return true, nil
+	}
+	rd.Status.Conditions.SetCondition(
+		status.Condition{
+			Type:    scribev1alpha1.ConditionSynchronizing,
+			Status:  corev1.ConditionFalse,
+			Reason:  scribev1alpha1.SynchronizingReasonSched,
+			Message: "Waiting for next scheduled synchronization",
+		},
+	)
+	return false, nil
 }
 
 //nolint:dupl
