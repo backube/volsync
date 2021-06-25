@@ -49,8 +49,6 @@ const (
 	DefaultRsyncContainerImage = "quay.io/backube/scribe-mover-rsync:latest"
 	// DefaultRcloneContainerImage is the default container image name of the rclone data mover
 	DefaultRcloneContainerImage = "quay.io/backube/scribe-mover-rclone:latest"
-	// DefaultSCCName is the default name of the scribe security context constraint
-	DefaultSCCName = "scribe-mover"
 )
 
 var (
@@ -430,7 +428,7 @@ func RunRsyncDestReconciler(
 		return awaitNextSyncDestination(r.Instance, r.scribeMetrics, l)
 	}
 
-	_, err := reconcileBatch(l,
+	_, err := utils.ReconcileBatch(l,
 		awaitNextSync,
 		r.EnsurePVC,
 		r.ensureService,
@@ -471,7 +469,7 @@ func RunRcloneDestReconciler(
 	awaitNextSync := func(l logr.Logger) (bool, error) {
 		return awaitNextSyncDestination(r.Instance, r.scribeMetrics, l)
 	}
-	_, err := reconcileBatch(l,
+	_, err := utils.ReconcileBatch(l,
 		awaitNextSync,
 		r.validateRcloneSpec,
 		r.EnsurePVC,
@@ -599,7 +597,7 @@ func (r *rsyncDestReconciler) ensureServiceAccount(l logr.Logger) (bool, error) 
 			Namespace: r.Instance.Namespace,
 		},
 	}
-	saDesc := NewSAHandler(r.Ctx, r.Client, r.Instance, r.serviceAccount)
+	saDesc := utils.NewSAHandler(r.Ctx, r.Client, r.Instance, r.serviceAccount)
 	return saDesc.Reconcile(l)
 }
 
@@ -610,7 +608,7 @@ func (r *rcloneDestReconciler) ensureServiceAccount(l logr.Logger) (bool, error)
 			Namespace: r.Instance.Namespace,
 		},
 	}
-	saDesc := NewSAHandler(r.Ctx, r.Client, r.Instance, r.serviceAccount)
+	saDesc := utils.NewSAHandler(r.Ctx, r.Client, r.Instance, r.serviceAccount)
 	return saDesc.Reconcile(l)
 }
 

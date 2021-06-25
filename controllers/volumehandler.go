@@ -247,13 +247,13 @@ func (h *destinationVolumeHandler) recordPVC(l logr.Logger) (bool, error) {
 // replicated data.
 func (h *destinationVolumeHandler) PreserveImage(l logr.Logger) (bool, error) {
 	if h.Options.CopyMethod == scribev1alpha1.CopyMethodNone {
-		return reconcileBatch(l,
+		return utils.ReconcileBatch(l,
 			h.cleanupOldSnapshot,
 			h.recordPVC,
 		)
 	}
 	if h.Options.CopyMethod == scribev1alpha1.CopyMethodSnapshot {
-		return reconcileBatch(l,
+		return utils.ReconcileBatch(l,
 			h.createSnapshot,
 			h.cleanupOldSnapshot,
 			h.recordNewSnapshot,
@@ -311,7 +311,7 @@ func (h *sourceVolumeHandler) EnsurePVC(l logr.Logger) (bool, error) {
 	} else if h.Options.CopyMethod == scribev1alpha1.CopyMethodClone {
 		return h.ensureClone(l)
 	} else if h.Options.CopyMethod == scribev1alpha1.CopyMethodSnapshot {
-		return reconcileBatch(l,
+		return utils.ReconcileBatch(l,
 			h.snapshotSrc,
 			h.pvcFromSnap,
 		)

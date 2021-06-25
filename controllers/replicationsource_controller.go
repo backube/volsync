@@ -426,7 +426,7 @@ func RunRsyncSrcReconciler(
 		return awaitNextSyncSource(r.Instance, r.scribeMetrics, l)
 	}
 
-	_, err := reconcileBatch(l,
+	_, err := utils.ReconcileBatch(l,
 		awaitNextSync,
 		r.EnsurePVC,
 		r.ensureService,
@@ -469,7 +469,7 @@ func RunRcloneSrcReconciler(
 		return awaitNextSyncSource(r.Instance, r.scribeMetrics, l)
 	}
 
-	_, err := reconcileBatch(l,
+	_, err := utils.ReconcileBatch(l,
 		awaitNextSync,
 		r.validateRcloneSpec,
 		r.EnsurePVC,
@@ -679,7 +679,7 @@ func (r *rsyncSrcReconciler) ensureServiceAccount(l logr.Logger) (bool, error) {
 			Namespace: r.Instance.Namespace,
 		},
 	}
-	saDesc := NewSAHandler(r.Ctx, r.Client, r.Instance, r.serviceAccount)
+	saDesc := utils.NewSAHandler(r.Ctx, r.Client, r.Instance, r.serviceAccount)
 	return saDesc.Reconcile(l)
 }
 
@@ -690,7 +690,7 @@ func (r *rcloneSrcReconciler) ensureServiceAccount(l logr.Logger) (bool, error) 
 			Namespace: r.Instance.Namespace,
 		},
 	}
-	saDesc := NewSAHandler(r.Ctx, r.Client, r.Instance, r.serviceAccount)
+	saDesc := utils.NewSAHandler(r.Ctx, r.Client, r.Instance, r.serviceAccount)
 	return saDesc.Reconcile(l)
 }
 

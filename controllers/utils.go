@@ -86,21 +86,6 @@ func init() {
 	metrics.Registry.MustRegister(missedIntervals, outOfSync, syncDurations)
 }
 
-// reconcileFunc is a function that partially reconciles an object. It returns a
-// bool indicating whether reconciling should continue and an error.
-type reconcileFunc func(logr.Logger) (bool, error)
-
-// reconcileBatch steps through a list of reconcile functions until one returns
-// false or an error.
-func reconcileBatch(l logr.Logger, reconcileFuncs ...reconcileFunc) (bool, error) {
-	for _, f := range reconcileFuncs {
-		if cont, err := f(l); !cont || err != nil {
-			return cont, err
-		}
-	}
-	return true, nil
-}
-
 //nolint:funlen
 func (r *ReplicationSourceReconciler) countReplicationMethods(instance *scribev1alpha1.ReplicationSource,
 	logger logr.Logger) int {

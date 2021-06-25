@@ -38,6 +38,7 @@ import (
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
 	"github.com/backube/scribe/controllers"
 	"github.com/backube/scribe/controllers/mover"
+	"github.com/backube/scribe/controllers/utils"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -72,8 +73,8 @@ func main() {
 		controllers.DefaultRcloneContainerImage, "The container image for the rclone data mover")
 	flag.StringVar(&controllers.RsyncContainerImage, "rsync-container-image",
 		controllers.DefaultRsyncContainerImage, "The container image for the rsync data mover")
-	flag.StringVar(&controllers.SCCName, "scc-name",
-		controllers.DefaultSCCName, "The name of the scribe security context constraint")
+	flag.StringVar(&utils.SCCName, "scc-name",
+		utils.DefaultSCCName, "The name of the scribe security context constraint")
 	opts := zap.Options{
 		Development: true,
 	}

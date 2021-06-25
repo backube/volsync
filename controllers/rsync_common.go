@@ -171,7 +171,7 @@ func (k *rsyncSSHKeys) Reconcile(l logr.Logger) (bool, error) {
 			Namespace: k.Owner.GetNamespace(),
 		},
 	}
-	return reconcileBatch(l,
+	return utils.ReconcileBatch(l,
 		k.ensureMainSecret,
 		k.ensureSrcSecret,
 		k.ensureDestSecret,

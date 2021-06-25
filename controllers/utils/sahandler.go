@@ -15,12 +15,11 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-package controllers
+package utils
 
 import (
 	"context"
 
-	"github.com/backube/scribe/controllers/utils"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -29,6 +28,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
+
+// DefaultSCCName is the default name of the scribe security context constraint
+const DefaultSCCName = "scribe-mover"
+
+// SCCName is the name of the SCC to use for the mover Jobs
+var SCCName string
 
 type SAHandler struct {
 	Context     context.Context
@@ -49,7 +54,7 @@ func NewSAHandler(ctx context.Context, c client.Client, owner metav1.Object, sa 
 }
 
 func (d *SAHandler) Reconcile(l logr.Logger) (bool, error) {
-	return reconcileBatch(l,
+	return ReconcileBatch(l,
 		d.ensureSA,
 		d.ensureRole,
 		d.ensureRoleBinding,
@@ -57,7 +62,7 @@ func (d *SAHandler) Reconcile(l logr.Logger) (bool, error) {
 }
 
 func (d *SAHandler) ensureSA(l logr.Logger) (bool, error) {
-	logger := l.WithValues("ServiceAccount", utils.NameFor(d.SA))
+	logger := l.WithValues("ServiceAccount", NameFor(d.SA))
 	op, err := ctrlutil.CreateOrUpdate(d.Context, d.Client, d.SA, func() error {
 		if err := ctrl.SetControllerReference(d.Owner, d.SA, d.Client.Scheme()); err != nil {
 			logger.Error(err, "unable to set controller reference")
@@ -81,7 +86,7 @@ func (d *SAHandler) ensureRole(l logr.Logger) (bool, error) {
 			Namespace: d.SA.Namespace,
 		},
 	}
-	logger := l.WithValues("Role", utils.NameFor(d.role))
+	logger := l.WithValues("Role", NameFor(d.role))
 	op, err := ctrlutil.CreateOrUpdate(d.Context, d.Client, d.role, func() error {
 		if err := ctrl.SetControllerReference(d.Owner, d.role, d.Client.Scheme()); err != nil {
 			logger.Error(err, "unable to set controller reference")
@@ -115,7 +120,7 @@ func (d *SAHandler) ensureRoleBinding(l logr.Logger) (bool, error) {
 			Namespace: d.SA.Namespace,
 		},
 	}
-	logger := l.WithValues("RoleBinding", utils.NameFor(d.roleBinding))
+	logger := l.WithValues("RoleBinding", NameFor(d.roleBinding))
 	op, err := ctrlutil.CreateOrUpdate(d.Context, d.Client, d.roleBinding, func() error {
 		if err := ctrl.SetControllerReference(d.Owner, d.roleBinding, d.Client.Scheme()); err != nil {
 			logger.Error(err, "unable to set controller reference")
