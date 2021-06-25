@@ -28,26 +28,21 @@ import (
 	"github.com/backube/scribe/controllers/volumehandler"
 )
 
-// DefaultResticContainerImage is the default container image for the restic
+// defaultResticContainerImage is the default container image for the restic
 // data mover
-const DefaultResticContainerImage = "quay.io/backube/scribe-mover-restic:latest"
+const defaultResticContainerImage = "quay.io/backube/scribe-mover-restic:latest"
 
-// ResticContainerImage is the container image name of the restic data mover
-var ResticContainerImage string
-
-// Register the mover so that it's available to the operator
-func init() {
-	mover.Register(&Builder{})
-}
+// resticContainerImage is the container image name of the restic data mover
+var resticContainerImage string
 
 type Builder struct{}
 
 var _ mover.Builder = &Builder{}
 
-func (rb *Builder) Initialize() {
-	// Register the Restic-related command line flags
-	flag.StringVar(&ResticContainerImage, "restic-container-image",
-		DefaultResticContainerImage, "The container image for the restic data mover")
+func Register() {
+	flag.StringVar(&resticContainerImage, "restic-container-image",
+		defaultResticContainerImage, "The container image for the restic data mover")
+	mover.Register(&Builder{})
 }
 
 func (rb *Builder) FromSource(client client.Client, logger logr.Logger,

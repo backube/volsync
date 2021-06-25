@@ -37,11 +37,6 @@ func Register(builder Builder) {
 // Builder is used to construct Mover instances for the different data
 // mover types.
 type Builder interface {
-	// Initialize is called once at operator startup to allow the Builder to
-	// initialize any necessary state such as registering command line options.
-	// It is called before main() begins executing.
-	Initialize()
-
 	// FromSource attempts to construct a Mover from the provided
 	// ReplicationSource. If the RS does not reference the Builder's mover type,
 	// this function should return (nil, nil).

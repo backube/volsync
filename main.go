@@ -37,7 +37,7 @@ import (
 
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
 	"github.com/backube/scribe/controllers"
-	"github.com/backube/scribe/controllers/mover"
+	"github.com/backube/scribe/controllers/mover/restic"
 	"github.com/backube/scribe/controllers/utils"
 	//+kubebuilder:scaffold:imports
 )
@@ -57,10 +57,9 @@ func init() {
 
 //nolint:funlen
 func main() {
-	// Initialize the data movers so they can add command line flags
-	for _, builder := range mover.Catalog {
-		builder.Initialize()
-	}
+	// Register the data movers
+	restic.Register()
+
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string

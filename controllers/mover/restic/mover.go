@@ -334,7 +334,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *v1.PersistentVolumeClai
 			},
 			Command: []string{"/entry.sh"},
 			Args:    actions,
-			Image:   ResticContainerImage,
+			Image:   resticContainerImage,
 			SecurityContext: &corev1.SecurityContext{
 				RunAsUser: &runAsUser,
 			},

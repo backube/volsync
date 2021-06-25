@@ -23,7 +23,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Restic mover", func() {
+var _ = Describe("Restic policy", func() {
 	Context("When a retain policy is omitted", func() {
 		It("has forget options that keep only the last backup", func() {
 			var policy *scribev1alpha1.ResticRetainPolicy = nil
