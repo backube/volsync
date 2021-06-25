@@ -310,13 +310,7 @@ func (m *ResticMover) ensureSA(ctx context.Context) (*v1.ServiceAccount, error) 
 			Namespace: m.owner.GetNamespace(),
 		},
 	}
-	saDesc := rsyncSADescription{
-		Context: ctx,
-		Client:  m.client,
-		Scheme:  m.client.Scheme(),
-		SA:      sa,
-		Owner:   m.owner,
-	}
+	saDesc := NewSAHandler(ctx, m.client, m.owner, sa)
 	cont, err := saDesc.Reconcile(m.logger)
 	if cont {
 		return sa, err

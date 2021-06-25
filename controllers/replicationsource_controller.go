@@ -679,13 +679,7 @@ func (r *rsyncSrcReconciler) ensureServiceAccount(l logr.Logger) (bool, error) {
 			Namespace: r.Instance.Namespace,
 		},
 	}
-	saDesc := rsyncSADescription{
-		Context: r.Ctx,
-		Client:  r.Client,
-		Scheme:  r.Scheme,
-		SA:      r.serviceAccount,
-		Owner:   r.Instance,
-	}
+	saDesc := NewSAHandler(r.Ctx, r.Client, r.Instance, r.serviceAccount)
 	return saDesc.Reconcile(l)
 }
 
@@ -696,13 +690,7 @@ func (r *rcloneSrcReconciler) ensureServiceAccount(l logr.Logger) (bool, error) 
 			Namespace: r.Instance.Namespace,
 		},
 	}
-	saDesc := rsyncSADescription{
-		Context: r.Ctx,
-		Client:  r.Client,
-		Scheme:  r.Scheme,
-		SA:      r.serviceAccount,
-		Owner:   r.Instance,
-	}
+	saDesc := NewSAHandler(r.Ctx, r.Client, r.Instance, r.serviceAccount)
 	return saDesc.Reconcile(l)
 }
 
