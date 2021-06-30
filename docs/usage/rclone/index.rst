@@ -148,8 +148,8 @@ A minimal destination configuration is shown here:
     name: database-destination
     namespace: dest
   spec:
-  trigger:
-    schedule: "*/6 * * * *"
+    trigger:
+      schedule: "*/6 * * * *"
     rclone:
       rcloneConfigSection: "aws-s3-bucket"
       rcloneDestPath: "scribe-test-bucket"
@@ -185,14 +185,14 @@ Scribe provides status information on the state of the replication via the
   Kind:         ReplicationDestination
   #  ... omitted ...
   Spec:
-  Rclone:
-    Access Modes:
-      ReadWriteOnce
-    Capacity:               10Gi
-    Copy Method:            Snapshot
-    Rclone Config:          rclone-secret
-    Rclone Config Section:  aws-s3-bucket
-    Rclone Dest Path:       scribe-test-bucket
+    Rclone:
+      Access Modes:
+        ReadWriteOnce
+      Capacity:               10Gi
+      Copy Method:            Snapshot
+      Rclone Config:          rclone-secret
+      Rclone Config Section:  aws-s3-bucket
+      Rclone Dest Path:       scribe-test-bucket
     Status:
       Conditions:
         Last Transition Time:  2021-01-19T22:16:02Z
