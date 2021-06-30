@@ -34,7 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
-	sc "github.com/backube/scribe/controllers"
+	//sc "github.com/backube/scribe/controllers"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -99,19 +99,19 @@ var _ = BeforeSuite(func(done Done) {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
-	err = (&sc.ReplicationDestinationReconciler{
-		Client: k8sManager.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("Destination"),
-		Scheme: k8sManager.GetScheme(),
-	}).SetupWithManager(k8sManager)
-	Expect(err).ToNot(HaveOccurred())
+	// err = (&sc.ReplicationDestinationReconciler{
+	// 	Client: k8sManager.GetClient(),
+	// 	Log:    ctrl.Log.WithName("controllers").WithName("Destination"),
+	// 	Scheme: k8sManager.GetScheme(),
+	// }).SetupWithManager(k8sManager)
+	// Expect(err).ToNot(HaveOccurred())
 
-	err = (&sc.ReplicationSourceReconciler{
-		Client: k8sManager.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("Source"),
-		Scheme: k8sManager.GetScheme(),
-	}).SetupWithManager(k8sManager)
-	Expect(err).ToNot(HaveOccurred())
+	// err = (&sc.ReplicationSourceReconciler{
+	// 	Client: k8sManager.GetClient(),
+	// 	Log:    ctrl.Log.WithName("controllers").WithName("Source"),
+	// 	Scheme: k8sManager.GetScheme(),
+	// }).SetupWithManager(k8sManager)
+	// Expect(err).ToNot(HaveOccurred())
 
 	go func() {
 		defer GinkgoRecover()
