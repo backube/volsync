@@ -278,7 +278,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *v1.PersistentVolumeClai
 		var actions []string
 		if m.isSource {
 			actions = []string{"backup"}
-			if m.shouldPrune() {
+			if m.shouldPrune(time.Now()) {
 				actions = append(actions, "prune")
 			}
 		} else {
@@ -375,7 +375,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *v1.PersistentVolumeClai
 	}
 
 	logger.Info("job completed")
-	if m.isSource && m.shouldPrune() {
+	if m.isSource && m.shouldPrune(time.Now()) {
 		now := metav1.Now()
 		m.sourceStatus.LastPruned = &now
 		logger.Info("prune completed", ".Status.Restic.LastPruned", m.sourceStatus.LastPruned)
@@ -384,7 +384,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *v1.PersistentVolumeClai
 	return job, nil
 }
 
-func (m *Mover) shouldPrune() bool {
+func (m *Mover) shouldPrune(current time.Time) bool {
 	delta := time.Hour * 24 * 7 // default prune every 7 days
 	if m.pruneInterval != nil {
 		delta = time.Hour * 24 * time.Duration(*m.pruneInterval)
@@ -394,7 +394,7 @@ func (m *Mover) shouldPrune() bool {
 	if !m.sourceStatus.LastPruned.IsZero() {
 		lastPruned = m.sourceStatus.LastPruned.Time
 	}
-	return time.Now().After(lastPruned.Add(delta))
+	return current.After(lastPruned.Add(delta))
 }
 
 func generateForgetOptions(policy *scribev1alpha1.ResticRetainPolicy) string {
