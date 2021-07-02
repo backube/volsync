@@ -1,13 +1,14 @@
-FROM centos:8
+FROM registry.access.redhat.com/ubi8-minimal
 
-ARG rclone_version=v1.53.2
+ARG rclone_version=v1.55.1
 
-RUN yum update -y && \
-    yum install -y \
-      bash \
+RUN microdnf update -y && \
+    microdnf install -y \
       acl \
+    && \
+    rpm -ivh \
       https://github.com/rclone/rclone/releases/download/${rclone_version}/rclone-${rclone_version}-linux-amd64.rpm \
-    && yum clean all && \
+    && microdnf clean all && \
     rm -rf /var/cache/yum
 
 COPY active.sh \
