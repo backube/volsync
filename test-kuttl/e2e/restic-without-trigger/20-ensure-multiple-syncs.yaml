@@ -1,0 +1,11 @@
+---
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+commands:
+  - timeout: 300
+    command: |
+      sh -c "
+      kubectl -n $NAMESPACE wait --for=condition=Synchronizing=true --timeout=5m ReplicationSource/source &&
+      kubectl -n $NAMESPACE wait --for=condition=Synchronizing=false --timeout=5m ReplicationSource/source &&
+      kubectl -n $NAMESPACE wait --for=condition=Synchronizing=true --timeout=5m ReplicationSource/source
+      "

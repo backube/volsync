@@ -62,3 +62,11 @@ const (
 	// reconciling the CR
 	ReconciledReasonError status.ConditionReason = "ReconcileError"
 )
+
+const (
+	ConditionSynchronizing     status.ConditionType   = "Synchronizing"
+	SynchronizingReasonSync    status.ConditionReason = "SyncInProgress"
+	SynchronizingReasonSched   status.ConditionReason = "WaitingForSchedule"
+	SynchronizingReasonManual  status.ConditionReason = "WaitingForManual"
+	SynchronizingReasonCleanup status.ConditionReason = "CleaningUp"
+)
