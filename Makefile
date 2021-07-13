@@ -124,7 +124,7 @@ bin/kubectl-scribe: lint
 	go build -o $@ -ldflags -X=main.scribeVersion=$(VERSION) ./cmd/scribe
 
 .PHONY: run
-run: manifests generate  ## Run a controller from your host.
+run: manifests generate lint  ## Run a controller from your host.
 	go run -ldflags -X=main.scribeVersion=$(VERSION) ./main.go
 
 .PHONY: docker-build

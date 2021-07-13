@@ -91,7 +91,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 		Expect(k8sClient.Delete(ctx, namespace)).To(Succeed())
 	})
 	JustBeforeEach(func() {
-		// create necessary services
+		// create necessary resources
 		Expect(k8sClient.Create(ctx, pvc)).To(Succeed())
 		Expect(k8sClient.Create(ctx, rcloneSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, rd)).To(Succeed())
@@ -308,7 +308,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 		})
 	})
 
-	When("Secret has weird values", func() {
+	When("Secret has incorrect values", func() {
 		Context("Secret isn't provided incorrect fields", func() {
 			BeforeEach(func() {
 				// setup a sus secret

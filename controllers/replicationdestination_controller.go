@@ -971,11 +971,6 @@ func (r *rcloneDestReconciler) cleanupJob(l logr.Logger) (bool, error) {
 
 func (r *rcloneDestReconciler) validateRcloneSpec(l logr.Logger) (bool, error) {
 	l.V(1).Info("Initiate RcloneSpec validation")
-	if r.destinationVolumeHandler.Instance != nil {
-		if r.destinationVolumeHandler.Instance.Spec.Rclone != nil {
-			l.V(1).Info("destinationVolumeHandler.Instance.Spec.Rclone is not nil")
-		}
-	}
 	rclone := r.destinationVolumeHandler.Instance.Spec.Rclone
 	if len(*rclone.RcloneConfig) == 0 {
 		l.V(1).Info("couldnt validate rcloneconfig")
