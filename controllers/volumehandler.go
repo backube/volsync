@@ -24,12 +24,12 @@ import (
 	"time"
 
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
+	"github.com/backube/scribe/controllers/utils"
 	"github.com/go-logr/logr"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -45,12 +45,11 @@ const (
 
 type destinationVolumeHandler struct {
 	ReplicationDestinationReconciler
-	Ctx         context.Context
-	Instance    *scribev1alpha1.ReplicationDestination
-	Options     *scribev1alpha1.ReplicationDestinationVolumeOptions
-	PVC         *v1.PersistentVolumeClaim
-	Snapshot    *snapv1.VolumeSnapshot
-	resticCache *v1.PersistentVolumeClaim
+	Ctx      context.Context
+	Instance *scribev1alpha1.ReplicationDestination
+	Options  *scribev1alpha1.ReplicationDestinationVolumeOptions
+	PVC      *v1.PersistentVolumeClaim
+	Snapshot *snapv1.VolumeSnapshot
 }
 
 func (h *destinationVolumeHandler) useProvidedPVC(l logr.Logger) (bool, error) {
@@ -248,13 +247,13 @@ func (h *destinationVolumeHandler) recordPVC(l logr.Logger) (bool, error) {
 // replicated data.
 func (h *destinationVolumeHandler) PreserveImage(l logr.Logger) (bool, error) {
 	if h.Options.CopyMethod == scribev1alpha1.CopyMethodNone {
-		return reconcileBatch(l,
+		return utils.ReconcileBatch(l,
 			h.cleanupOldSnapshot,
 			h.recordPVC,
 		)
 	}
 	if h.Options.CopyMethod == scribev1alpha1.CopyMethodSnapshot {
-		return reconcileBatch(l,
+		return utils.ReconcileBatch(l,
 			h.createSnapshot,
 			h.cleanupOldSnapshot,
 			h.recordNewSnapshot,
@@ -266,13 +265,12 @@ func (h *destinationVolumeHandler) PreserveImage(l logr.Logger) (bool, error) {
 
 type sourceVolumeHandler struct {
 	ReplicationSourceReconciler
-	Ctx         context.Context
-	Instance    *scribev1alpha1.ReplicationSource
-	Options     *scribev1alpha1.ReplicationSourceVolumeOptions
-	srcPVC      *v1.PersistentVolumeClaim
-	srcSnap     *snapv1.VolumeSnapshot
-	PVC         *v1.PersistentVolumeClaim
-	resticCache *v1.PersistentVolumeClaim
+	Ctx      context.Context
+	Instance *scribev1alpha1.ReplicationSource
+	Options  *scribev1alpha1.ReplicationSourceVolumeOptions
+	srcPVC   *v1.PersistentVolumeClaim
+	srcSnap  *snapv1.VolumeSnapshot
+	PVC      *v1.PersistentVolumeClaim
 }
 
 // Cleans up the temporary PVC (and optional snapshot) after the synchronization
@@ -280,13 +278,13 @@ type sourceVolumeHandler struct {
 func (h *sourceVolumeHandler) CleanupPVC(l logr.Logger) (bool, error) {
 	if h.PVC != nil && h.PVC != h.srcPVC {
 		if err := h.Client.Delete(h.Ctx, h.PVC); err != nil {
-			l.Error(err, "unable to delete temporary PVC", "PVC", nameFor(h.PVC))
+			l.Error(err, "unable to delete temporary PVC", "PVC", utils.NameFor(h.PVC))
 			return false, err
 		}
 	}
 	if h.srcSnap != nil {
 		if err := h.Client.Delete(h.Ctx, h.srcSnap); err != nil {
-			l.Error(err, "unable to delete temporary snapshot", "snapshot", nameFor(h.srcSnap))
+			l.Error(err, "unable to delete temporary snapshot", "snapshot", utils.NameFor(h.srcSnap))
 			return false, err
 		}
 	}
@@ -302,8 +300,8 @@ func (h *sourceVolumeHandler) EnsurePVC(l logr.Logger) (bool, error) {
 			Namespace: h.Instance.Namespace,
 		},
 	}
-	if err := h.Client.Get(h.Ctx, nameFor(h.srcPVC), h.srcPVC); err != nil {
-		l.Error(err, "unable to get source PVC", "PVC", nameFor(h.srcPVC))
+	if err := h.Client.Get(h.Ctx, utils.NameFor(h.srcPVC), h.srcPVC); err != nil {
+		l.Error(err, "unable to get source PVC", "PVC", utils.NameFor(h.srcPVC))
 		return false, err
 	}
 
@@ -313,7 +311,7 @@ func (h *sourceVolumeHandler) EnsurePVC(l logr.Logger) (bool, error) {
 	} else if h.Options.CopyMethod == scribev1alpha1.CopyMethodClone {
 		return h.ensureClone(l)
 	} else if h.Options.CopyMethod == scribev1alpha1.CopyMethodSnapshot {
-		return reconcileBatch(l,
+		return utils.ReconcileBatch(l,
 			h.snapshotSrc,
 			h.pvcFromSnap,
 		)
@@ -328,7 +326,7 @@ func (h *sourceVolumeHandler) pvcFromSnap(l logr.Logger) (bool, error) {
 			Namespace: h.Instance.Namespace,
 		},
 	}
-	logger := l.WithValues("pvc", nameFor(h.PVC))
+	logger := l.WithValues("pvc", utils.NameFor(h.PVC))
 
 	op, err := ctrlutil.CreateOrUpdate(h.Ctx, h.Client, h.PVC, func() error {
 		if err := ctrl.SetControllerReference(h.Instance, h.PVC, h.Scheme); err != nil {
@@ -371,114 +369,6 @@ func (h *sourceVolumeHandler) pvcFromSnap(l logr.Logger) (bool, error) {
 	return true, nil
 }
 
-//nolint:funlen,dupl
-func (h *sourceVolumeHandler) pvcForCache(l logr.Logger) (bool, error) {
-	h.resticCache = &v1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "scribe-rcs-" + h.Instance.Name,
-			Namespace: h.Instance.Namespace,
-		},
-	}
-	logger := l.WithValues("pvc", nameFor(h.resticCache))
-
-	capacity := resource.MustParse("1Gi")
-	if h.Instance.Spec.Restic != nil && h.Instance.Spec.Restic.CacheCapacity != nil {
-		capacity = *h.Instance.Spec.Restic.CacheCapacity
-	}
-
-	scName := h.srcPVC.Spec.StorageClassName
-	if h.Options.StorageClassName != nil {
-		scName = h.Options.StorageClassName
-	}
-	if h.Instance.Spec.Restic != nil && h.Instance.Spec.Restic.CacheStorageClassName != nil {
-		scName = h.Instance.Spec.Restic.CacheStorageClassName
-	}
-
-	aModes := h.srcPVC.Spec.AccessModes
-	if h.Options.AccessModes != nil {
-		aModes = h.Options.AccessModes
-	}
-	if h.Instance.Spec.Restic != nil && h.Instance.Spec.Restic.CacheAccessModes != nil {
-		aModes = h.Instance.Spec.Restic.CacheAccessModes
-	}
-
-	op, err := ctrlutil.CreateOrUpdate(h.Ctx, h.Client, h.resticCache, func() error {
-		if err := ctrl.SetControllerReference(h.Instance, h.resticCache, h.Scheme); err != nil {
-			logger.Error(err, "Unable to set controller refrenece")
-			return err
-		}
-		if h.resticCache.CreationTimestamp.IsZero() {
-			h.resticCache.Spec.Resources.Requests = corev1.ResourceList{
-				corev1.ResourceStorage: capacity,
-			}
-			h.resticCache.Spec.StorageClassName = scName
-			h.resticCache.Spec.AccessModes = aModes
-		}
-		return nil
-	})
-	if err != nil {
-		logger.Error(err, "reconcile failed")
-		return false, err
-	}
-	logger.V(1).Info("restic cache pvc reconciled", "operation", op)
-
-	return true, nil
-}
-
-//nolint:funlen,dupl
-func (h *destinationVolumeHandler) pvcForCache(l logr.Logger) (bool, error) {
-	h.resticCache = &v1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "scribe-rcd-" + h.Instance.Name,
-			Namespace: h.Instance.Namespace,
-		},
-	}
-	logger := l.WithValues("pvc", nameFor(h.resticCache))
-
-	capacity := resource.MustParse("1Gi")
-	if h.Instance.Spec.Restic != nil && h.Instance.Spec.Restic.CacheCapacity != nil {
-		capacity = *h.Instance.Spec.Restic.CacheCapacity
-	}
-
-	scName := h.PVC.Spec.StorageClassName
-	if h.Options.StorageClassName != nil {
-		scName = h.Options.StorageClassName
-	}
-	if h.Instance.Spec.Restic != nil && h.Instance.Spec.Restic.CacheStorageClassName != nil {
-		scName = h.Instance.Spec.Restic.CacheStorageClassName
-	}
-
-	aModes := h.PVC.Spec.AccessModes
-	if h.Options.AccessModes != nil {
-		aModes = h.Options.AccessModes
-	}
-	if h.Instance.Spec.Restic != nil && h.Instance.Spec.Restic.CacheAccessModes != nil {
-		aModes = h.Instance.Spec.Restic.CacheAccessModes
-	}
-
-	op, err := ctrlutil.CreateOrUpdate(h.Ctx, h.Client, h.resticCache, func() error {
-		if err := ctrl.SetControllerReference(h.Instance, h.resticCache, h.Scheme); err != nil {
-			logger.Error(err, "Unable to set controller refrenece")
-			return err
-		}
-		if h.resticCache.CreationTimestamp.IsZero() {
-			h.resticCache.Spec.Resources.Requests = corev1.ResourceList{
-				corev1.ResourceStorage: capacity,
-			}
-			h.resticCache.Spec.StorageClassName = scName
-			h.resticCache.Spec.AccessModes = aModes
-		}
-		return nil
-	})
-	if err != nil {
-		logger.Error(err, "reconcile failed")
-		return false, err
-	}
-	logger.V(1).Info("restic cache pvc reconciled", "operation", op)
-
-	return true, nil
-}
-
 func (h *sourceVolumeHandler) snapshotSrc(l logr.Logger) (bool, error) {
 	h.srcSnap = &snapv1.VolumeSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
@@ -486,7 +376,7 @@ func (h *sourceVolumeHandler) snapshotSrc(l logr.Logger) (bool, error) {
 			Namespace: h.Instance.Namespace,
 		},
 	}
-	logger := l.WithValues("SourceSnap", nameFor(h.srcSnap))
+	logger := l.WithValues("SourceSnap", utils.NameFor(h.srcSnap))
 
 	op, err := ctrlutil.CreateOrUpdate(h.Ctx, h.Client, h.srcSnap, func() error {
 		if err := ctrl.SetControllerReference(h.Instance, h.srcSnap, h.Scheme); err != nil {

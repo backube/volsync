@@ -37,6 +37,8 @@ import (
 
 	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
 	"github.com/backube/scribe/controllers"
+	"github.com/backube/scribe/controllers/mover/restic"
+	"github.com/backube/scribe/controllers/utils"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -55,6 +57,9 @@ func init() {
 
 //nolint:funlen
 func main() {
+	// Register the data movers
+	restic.Register()
+
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
@@ -65,12 +70,10 @@ func main() {
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.StringVar(&controllers.RcloneContainerImage, "rclone-container-image",
 		controllers.DefaultRcloneContainerImage, "The container image for the rclone data mover")
-	flag.StringVar(&controllers.ResticContainerImage, "restic-container-image",
-		controllers.DefaultResticContainerImage, "The container image for the restic data mover")
 	flag.StringVar(&controllers.RsyncContainerImage, "rsync-container-image",
 		controllers.DefaultRsyncContainerImage, "The container image for the rsync data mover")
-	flag.StringVar(&controllers.SCCName, "scc-name",
-		controllers.DefaultSCCName, "The name of the scribe security context constraint")
+	flag.StringVar(&utils.SCCName, "scc-name",
+		utils.DefaultSCCName, "The name of the scribe security context constraint")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -83,7 +86,6 @@ func main() {
 	setupLog.Info(fmt.Sprintf("Go OS/Arch: %s/%s", runtime.GOOS, runtime.GOARCH))
 	setupLog.Info(fmt.Sprintf("Operator Version: %s", scribeVersion))
 	setupLog.Info(fmt.Sprintf("Rclone container: %s", controllers.RcloneContainerImage))
-	setupLog.Info(fmt.Sprintf("Restic container: %s", controllers.ResticContainerImage))
 	setupLog.Info(fmt.Sprintf("Rsync container: %s", controllers.RsyncContainerImage))
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{

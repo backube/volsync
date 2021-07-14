@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Scribe authors.
+Copyright 2021 The Scribe authors.
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published
@@ -15,10 +15,9 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-package controllers
+package volumehandler
 
 import (
-	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -26,8 +25,6 @@ import (
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1beta1"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	gomegatypes "github.com/onsi/gomega/types"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -41,14 +38,14 @@ import (
 	//+kubebuilder:scaffold:imports
 )
 
+// These tests use Ginkgo (BDD-style Go testing framework). Refer to
+// http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
+
 const (
-	duration = 10 * time.Second
+	//duration = 10 * time.Second
 	maxWait  = 60 * time.Second
 	interval = 250 * time.Millisecond
 )
-
-// These tests use Ginkgo (BDD-style Go testing framework). Refer to
-// http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
 var cfg *rest.Config
 var k8sClient client.Client
@@ -58,7 +55,7 @@ func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
 
 	RunSpecsWithDefaultAndCustomReporters(t,
-		"Controller",
+		"Volumehandler",
 		[]Reporter{printer.NewlineReporter{}})
 }
 
@@ -69,9 +66,9 @@ var _ = BeforeSuite(func(done Done) {
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			// Scribe CRDs
-			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "..", "config", "crd", "bases"),
 			// Snapshot CRDs
-			filepath.Join("..", "hack", "crds"),
+			filepath.Join("..", "..", "hack", "crds"),
 		},
 		ErrorIfCRDPathMissing: true,
 	}
@@ -102,19 +99,21 @@ var _ = BeforeSuite(func(done Done) {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
-	err = (&ReplicationDestinationReconciler{
-		Client: k8sManager.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("Destination"),
-		Scheme: k8sManager.GetScheme(),
-	}).SetupWithManager(k8sManager)
-	Expect(err).ToNot(HaveOccurred())
+	// Don't start the controllers. We're testing volumehandler directly
 
-	err = (&ReplicationSourceReconciler{
-		Client: k8sManager.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("Source"),
-		Scheme: k8sManager.GetScheme(),
-	}).SetupWithManager(k8sManager)
-	Expect(err).ToNot(HaveOccurred())
+	// err = (&sc.ReplicationDestinationReconciler{
+	// 	Client: k8sManager.GetClient(),
+	// 	Log:    ctrl.Log.WithName("controllers").WithName("Destination"),
+	// 	Scheme: k8sManager.GetScheme(),
+	// }).SetupWithManager(k8sManager)
+	// Expect(err).ToNot(HaveOccurred())
+
+	// err = (&sc.ReplicationSourceReconciler{
+	// 	Client: k8sManager.GetClient(),
+	// 	Log:    ctrl.Log.WithName("controllers").WithName("Source"),
+	// 	Scheme: k8sManager.GetScheme(),
+	// }).SetupWithManager(k8sManager)
+	// Expect(err).ToNot(HaveOccurred())
 
 	go func() {
 		defer GinkgoRecover()
@@ -134,6 +133,7 @@ var _ = AfterSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 })
 
+/*
 // beOwnedBy is a GomegaMatcher that ensures a Kubernetes Object is owned by a
 // specific other object.
 func beOwnedBy(owner interface{}) gomegatypes.GomegaMatcher {
@@ -183,3 +183,4 @@ func (m *ownerRefMatcher) FailureMessage(actual interface{}) (message string) {
 func (m *ownerRefMatcher) NegatedFailureMessage(actual interface{}) (message string) {
 	return fmt.Sprintf("Expected\n\t%#v\nnot to be owned by\n\t%#v", actual, m.owner)
 }
+*/

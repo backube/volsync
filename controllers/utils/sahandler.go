@@ -15,7 +15,7 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-package controllers
+package utils
 
 import (
 	"context"
@@ -24,34 +24,47 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
-type rsyncSADescription struct {
+// DefaultSCCName is the default name of the scribe security context constraint
+const DefaultSCCName = "scribe-mover"
+
+// SCCName is the name of the SCC to use for the mover Jobs
+var SCCName string
+
+type SAHandler struct {
 	Context     context.Context
 	Client      client.Client
-	Scheme      *runtime.Scheme
 	SA          *corev1.ServiceAccount
 	Owner       metav1.Object
 	role        *rbacv1.Role
 	roleBinding *rbacv1.RoleBinding
 }
 
-func (d *rsyncSADescription) Reconcile(l logr.Logger) (bool, error) {
-	return reconcileBatch(l,
+func NewSAHandler(ctx context.Context, c client.Client, owner metav1.Object, sa *corev1.ServiceAccount) SAHandler {
+	return SAHandler{
+		Context: ctx,
+		Client:  c,
+		SA:      sa,
+		Owner:   owner,
+	}
+}
+
+func (d *SAHandler) Reconcile(l logr.Logger) (bool, error) {
+	return ReconcileBatch(l,
 		d.ensureSA,
 		d.ensureRole,
 		d.ensureRoleBinding,
 	)
 }
 
-func (d *rsyncSADescription) ensureSA(l logr.Logger) (bool, error) {
-	logger := l.WithValues("ServiceAccount", nameFor(d.SA))
+func (d *SAHandler) ensureSA(l logr.Logger) (bool, error) {
+	logger := l.WithValues("ServiceAccount", NameFor(d.SA))
 	op, err := ctrlutil.CreateOrUpdate(d.Context, d.Client, d.SA, func() error {
-		if err := ctrl.SetControllerReference(d.Owner, d.SA, d.Scheme); err != nil {
+		if err := ctrl.SetControllerReference(d.Owner, d.SA, d.Client.Scheme()); err != nil {
 			logger.Error(err, "unable to set controller reference")
 			return err
 		}
@@ -66,16 +79,16 @@ func (d *rsyncSADescription) ensureSA(l logr.Logger) (bool, error) {
 	return true, nil
 }
 
-func (d *rsyncSADescription) ensureRole(l logr.Logger) (bool, error) {
+func (d *SAHandler) ensureRole(l logr.Logger) (bool, error) {
 	d.role = &rbacv1.Role{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      d.SA.Name,
 			Namespace: d.SA.Namespace,
 		},
 	}
-	logger := l.WithValues("Role", nameFor(d.role))
+	logger := l.WithValues("Role", NameFor(d.role))
 	op, err := ctrlutil.CreateOrUpdate(d.Context, d.Client, d.role, func() error {
-		if err := ctrl.SetControllerReference(d.Owner, d.role, d.Scheme); err != nil {
+		if err := ctrl.SetControllerReference(d.Owner, d.role, d.Client.Scheme()); err != nil {
 			logger.Error(err, "unable to set controller reference")
 			return err
 		}
@@ -100,16 +113,16 @@ func (d *rsyncSADescription) ensureRole(l logr.Logger) (bool, error) {
 	return true, nil
 }
 
-func (d *rsyncSADescription) ensureRoleBinding(l logr.Logger) (bool, error) {
+func (d *SAHandler) ensureRoleBinding(l logr.Logger) (bool, error) {
 	d.roleBinding = &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      d.SA.Name,
 			Namespace: d.SA.Namespace,
 		},
 	}
-	logger := l.WithValues("RoleBinding", nameFor(d.roleBinding))
+	logger := l.WithValues("RoleBinding", NameFor(d.roleBinding))
 	op, err := ctrlutil.CreateOrUpdate(d.Context, d.Client, d.roleBinding, func() error {
-		if err := ctrl.SetControllerReference(d.Owner, d.roleBinding, d.Scheme); err != nil {
+		if err := ctrl.SetControllerReference(d.Owner, d.roleBinding, d.Client.Scheme()); err != nil {
 			logger.Error(err, "unable to set controller reference")
 			return err
 		}
