@@ -566,7 +566,6 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 						rs.Spec.Rclone.ReplicationSourceVolumeOptions.CopyMethod = scribev1alpha1.CopyMethodClone
 					})
 
-					// attempts to invoke rloneReconcile
 					//nolint:dupl
 					It("creates a clone of the source PVC as the sync source", func() {
 						Eventually(func() error {
