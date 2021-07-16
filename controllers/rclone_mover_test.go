@@ -653,7 +653,9 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 					rs.Spec.Rclone.RcloneConfig = &rcloneSecret.Name
 				})
 				It("does not start", func() {
-					Expect(k8sClient.Get(ctx, utils.NameFor(job), job)).NotTo(Succeed())
+					Consistently(func() error {
+						return k8sClient.Get(ctx, utils.NameFor(job), job)
+					}, duration, interval).ShouldNot(Succeed())
 				})
 			})
 			When("rclone has secret + rcloneConfigSection but not DestPath", func() {
@@ -662,7 +664,9 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 					rs.Spec.Rclone.RcloneConfigSection = &configSection
 				})
 				It("Existing RcloneConfig + RcloneConfigSection", func() {
-					Expect(k8sClient.Get(ctx, utils.NameFor(job), job)).NotTo(Succeed())
+					Consistently(func() error {
+						return k8sClient.Get(ctx, utils.NameFor(job), job)
+					}, duration, interval).ShouldNot(Succeed())
 				})
 			})
 			When("rclone has all fields filled", func() {
