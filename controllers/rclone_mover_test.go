@@ -129,181 +129,180 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 					Capacity:    &capacity,
 				}
 			})
-
-			JustBeforeEach(func() {
-				// force job to succeed
-				Eventually(func() error {
-					return k8sClient.Get(ctx, utils.NameFor(job), job)
-				}, maxWait, interval).Should(Succeed())
-				job.Status.Succeeded = 1
-				job.Status.StartTime = &metav1.Time{ // provide job with a start time to get a duration
-					Time: time.Now(),
-				}
-				Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
-			})
-
-			When("Using a CopyMethod of None", func() {
-				BeforeEach(func() {
-					rd.Spec.Rclone.CopyMethod = scribev1alpha1.CopyMethodNone
-				})
-
-				It("Ensure that ReplicationDestination starts", func() {
-					// get RD & ensure a status is set
-					Eventually(func() bool {
-						inst := &scribev1alpha1.ReplicationDestination{}
-						if err := k8sClient.Get(ctx, utils.NameFor(rd), inst); err != nil {
-							return false
-						}
-						return inst.Status != nil
-					}, maxWait, interval).Should(BeTrue())
-					// validate necessary fields
-					inst := &scribev1alpha1.ReplicationDestination{}
-					Expect(k8sClient.Get(ctx, utils.NameFor(rd), inst)).To(Succeed())
-					Expect(inst.Status).NotTo(BeNil())
-					Expect(inst.Status.Conditions).NotTo(BeNil())
-					Expect(inst.Status.NextSyncTime).NotTo(BeNil())
-				})
-
-				It("Ensure LastSyncTime & LatestImage is set properly after reconciliation", func() {
-					Eventually(func() bool {
-						inst := &scribev1alpha1.ReplicationDestination{}
-						err := k8sClient.Get(ctx, utils.NameFor(rd), inst)
-						if err != nil || inst.Status == nil {
-							return false
-						}
-						return inst.Status.LastSyncTime != nil
-					}, maxWait, interval).Should(BeTrue())
-					// get ReplicationDestination
-					inst := &scribev1alpha1.ReplicationDestination{}
-					Expect(k8sClient.Get(ctx, utils.NameFor(rd), inst)).To(Succeed())
-					// ensure Status holds correct data
-					Expect(inst.Status.LatestImage).NotTo(BeNil())
-					latestImage := inst.Status.LatestImage
-					Expect(latestImage.Kind).To(Equal("PersistentVolumeClaim"))
-					Expect(*latestImage.APIGroup).To(Equal(""))
-					Expect(latestImage.Name).NotTo(Equal(""))
-				})
-
-				It("Duration is set if job is successful", func() {
-					// Make sure that LastSyncDuration gets set
-					Eventually(func() *metav1.Duration {
-						inst := &scribev1alpha1.ReplicationDestination{}
-						_ = k8sClient.Get(ctx, utils.NameFor(rd), inst)
-						return inst.Status.LastSyncDuration
-					}, maxWait, interval).Should(Not(BeNil()))
-				})
-
-				When("The ReplicationDestinaton spec is paused", func() {
-					parallelism := int32(0)
-					BeforeEach(func() {
-						// set paused to true so no more processes will be created
-						rd.Spec.Paused = true
-					})
-					It("Job has parallelism disabled", func() {
-						job := &batchv1.Job{
-							ObjectMeta: metav1.ObjectMeta{
-								Name:      "scribe-rclone-src-" + rd.Name,
-								Namespace: rd.Namespace,
-							},
-						}
-						Eventually(func() error {
-							return k8sClient.Get(ctx, utils.NameFor(job), job)
-						}, maxWait, interval).Should(Succeed())
-						Expect(*job.Spec.Parallelism).To(Equal(parallelism))
-					})
-				})
-
-				When("A Storage Class is specified", func() {
-					scName := "mysc"
-					BeforeEach(func() {
-						rd.Spec.Rclone.ReplicationDestinationVolumeOptions.StorageClassName = &scName
-					})
-					It("Is used in the destination PVC", func() {
-						// gets the pvcs used by the job spec
-						Expect(k8sClient.Get(ctx, utils.NameFor(job), job)).To(Succeed())
-						var pvcName string
-						volumes := job.Spec.Template.Spec.Volumes
-						for _, v := range volumes {
-							if v.PersistentVolumeClaim != nil && v.Name == dataVolumeName {
-								pvcName = v.PersistentVolumeClaim.ClaimName
-							}
-						}
-						pvc = &corev1.PersistentVolumeClaim{}
-						Eventually(func() error {
-							return k8sClient.Get(ctx, types.NamespacedName{Name: pvcName, Namespace: rd.Namespace}, pvc)
-						}, maxWait, interval).Should(Succeed())
-						Expect(*pvc.Spec.StorageClassName).To(Equal(scName))
-					})
-				})
-			})
-
-			When("Using a copy method of Snapshot", func() {
-				BeforeEach(func() {
-					rd.Spec.Rclone.CopyMethod = scribev1alpha1.CopyMethodSnapshot
-				})
-
-				It("Ensure that a VolumeSnapshot is created at the end of an iteration", func() {
-					// get list of volume snapshots in the ns
-					snapshots := &snapv1.VolumeSnapshotList{}
-					Eventually(func() []snapv1.VolumeSnapshot {
-						_ = k8sClient.List(ctx, snapshots, client.InNamespace(rd.Namespace))
-						return snapshots.Items
-					}, maxWait, interval).Should(Not(BeEmpty()))
-					// update the VS name
-					snapshot := snapshots.Items[0]
-					foo := "dummysnapshot"
-					snapshot.Status = &snapv1.VolumeSnapshotStatus{
-						BoundVolumeSnapshotContentName: &foo,
+			When("Job Status is set to succeeded", func() {
+				JustBeforeEach(func() {
+					// force job to succeed
+					Eventually(func() error {
+						return k8sClient.Get(ctx, utils.NameFor(job), job)
+					}, maxWait, interval).Should(Succeed())
+					job.Status.Succeeded = 1
+					job.Status.StartTime = &metav1.Time{ // provide job with a start time to get a duration
+						Time: time.Now(),
 					}
-					Expect(k8sClient.Status().Update(ctx, &snapshot)).To(Succeed())
-					// wait for an image to be set for RD
-					Eventually(func() *corev1.TypedLocalObjectReference {
-						_ = k8sClient.Get(ctx, utils.NameFor(rd), rd)
-						return rd.Status.LatestImage
-					}, maxWait, interval).Should(Not(BeNil()))
-					latestImage := rd.Status.LatestImage
-					// ensure the name was correctly set
-					Expect(latestImage.Kind).To(Equal("VolumeSnapshot"))
-					Expect(*latestImage.APIGroup).To(Equal(snapv1.SchemeGroupVersion.Group))
-					Expect(latestImage).To(Not(Equal("")))
+					Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
 				})
 
-				When("When a VolumeSnapshotClass is specified", func() {
-					vscName := "MyVolumeSnapshotClass"
+				When("Using a CopyMethod of None", func() {
 					BeforeEach(func() {
-						rd.Spec.Rclone.ReplicationDestinationVolumeOptions.VolumeSnapshotClassName = &vscName
+						rd.Spec.Rclone.CopyMethod = scribev1alpha1.CopyMethodNone
 					})
 
-					It("is used as the VSC for the Snapshot", func() {
-						// create a snapshot & verify the VSC matches
+					It("Ensure that ReplicationDestination starts", func() {
+						// get RD & ensure a status is set
+						Eventually(func() bool {
+							inst := &scribev1alpha1.ReplicationDestination{}
+							if err := k8sClient.Get(ctx, utils.NameFor(rd), inst); err != nil {
+								return false
+							}
+							return inst.Status != nil
+						}, maxWait, interval).Should(BeTrue())
+						// validate necessary fields
+						inst := &scribev1alpha1.ReplicationDestination{}
+						Expect(k8sClient.Get(ctx, utils.NameFor(rd), inst)).To(Succeed())
+						Expect(inst.Status).NotTo(BeNil())
+						Expect(inst.Status.Conditions).NotTo(BeNil())
+						Expect(inst.Status.NextSyncTime).NotTo(BeNil())
+					})
+
+					It("Ensure LastSyncTime & LatestImage is set properly after reconciliation", func() {
+						Eventually(func() bool {
+							inst := &scribev1alpha1.ReplicationDestination{}
+							err := k8sClient.Get(ctx, utils.NameFor(rd), inst)
+							if err != nil || inst.Status == nil {
+								return false
+							}
+							return inst.Status.LastSyncTime != nil
+						}, maxWait, interval).Should(BeTrue())
+						// get ReplicationDestination
+						inst := &scribev1alpha1.ReplicationDestination{}
+						Expect(k8sClient.Get(ctx, utils.NameFor(rd), inst)).To(Succeed())
+						// ensure Status holds correct data
+						Expect(inst.Status.LatestImage).NotTo(BeNil())
+						latestImage := inst.Status.LatestImage
+						Expect(latestImage.Kind).To(Equal("PersistentVolumeClaim"))
+						Expect(*latestImage.APIGroup).To(Equal(""))
+						Expect(latestImage.Name).NotTo(Equal(""))
+					})
+
+					It("Duration is set if job is successful", func() {
+						// Make sure that LastSyncDuration gets set
+						Eventually(func() *metav1.Duration {
+							inst := &scribev1alpha1.ReplicationDestination{}
+							_ = k8sClient.Get(ctx, utils.NameFor(rd), inst)
+							return inst.Status.LastSyncDuration
+						}, maxWait, interval).Should(Not(BeNil()))
+					})
+
+					When("The ReplicationDestinaton spec is paused", func() {
+						parallelism := int32(0)
+						BeforeEach(func() {
+							// set paused to true so no more processes will be created
+							rd.Spec.Paused = true
+						})
+						It("Job has parallelism disabled", func() {
+							job := &batchv1.Job{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:      "scribe-rclone-src-" + rd.Name,
+									Namespace: rd.Namespace,
+								},
+							}
+							Eventually(func() error {
+								return k8sClient.Get(ctx, utils.NameFor(job), job)
+							}, maxWait, interval).Should(Succeed())
+							Expect(*job.Spec.Parallelism).To(Equal(parallelism))
+						})
+					})
+
+					When("A Storage Class is specified", func() {
+						scName := "mysc"
+						BeforeEach(func() {
+							rd.Spec.Rclone.ReplicationDestinationVolumeOptions.StorageClassName = &scName
+						})
+						It("Is used in the destination PVC", func() {
+							// gets the pvcs used by the job spec
+							Expect(k8sClient.Get(ctx, utils.NameFor(job), job)).To(Succeed())
+							var pvcName string
+							volumes := job.Spec.Template.Spec.Volumes
+							for _, v := range volumes {
+								if v.PersistentVolumeClaim != nil && v.Name == dataVolumeName {
+									pvcName = v.PersistentVolumeClaim.ClaimName
+								}
+							}
+							pvc = &corev1.PersistentVolumeClaim{}
+							Eventually(func() error {
+								return k8sClient.Get(ctx, types.NamespacedName{Name: pvcName, Namespace: rd.Namespace}, pvc)
+							}, maxWait, interval).Should(Succeed())
+							Expect(*pvc.Spec.StorageClassName).To(Equal(scName))
+						})
+					})
+				})
+
+				When("Using a copy method of Snapshot", func() {
+					BeforeEach(func() {
+						rd.Spec.Rclone.CopyMethod = scribev1alpha1.CopyMethodSnapshot
+					})
+
+					It("Ensure that a VolumeSnapshot is created at the end of an iteration", func() {
+						// get list of volume snapshots in the ns
 						snapshots := &snapv1.VolumeSnapshotList{}
 						Eventually(func() []snapv1.VolumeSnapshot {
 							_ = k8sClient.List(ctx, snapshots, client.InNamespace(rd.Namespace))
 							return snapshots.Items
 						}, maxWait, interval).Should(Not(BeEmpty()))
+						// update the VS name
 						snapshot := snapshots.Items[0]
-						Expect(*snapshot.Spec.VolumeSnapshotClassName).To(Equal(vscName))
+						foo := "dummysnapshot"
+						snapshot.Status = &snapv1.VolumeSnapshotStatus{
+							BoundVolumeSnapshotContentName: &foo,
+						}
+						Expect(k8sClient.Status().Update(ctx, &snapshot)).To(Succeed())
+						// wait for an image to be set for RD
+						Eventually(func() *corev1.TypedLocalObjectReference {
+							_ = k8sClient.Get(ctx, utils.NameFor(rd), rd)
+							return rd.Status.LatestImage
+						}, maxWait, interval).Should(Not(BeNil()))
+						latestImage := rd.Status.LatestImage
+						// ensure the name was correctly set
+						Expect(latestImage.Kind).To(Equal("VolumeSnapshot"))
+						Expect(*latestImage.APIGroup).To(Equal(snapv1.SchemeGroupVersion.Group))
+						Expect(latestImage).To(Not(Equal("")))
+					})
+
+					When("When a VolumeSnapshotClass is specified", func() {
+						vscName := "MyVolumeSnapshotClass"
+						BeforeEach(func() {
+							rd.Spec.Rclone.ReplicationDestinationVolumeOptions.VolumeSnapshotClassName = &vscName
+						})
+
+						It("is used as the VSC for the Snapshot", func() {
+							// create a snapshot & verify the VSC matches
+							snapshots := &snapv1.VolumeSnapshotList{}
+							Eventually(func() []snapv1.VolumeSnapshot {
+								_ = k8sClient.List(ctx, snapshots, client.InNamespace(rd.Namespace))
+								return snapshots.Items
+							}, maxWait, interval).Should(Not(BeEmpty()))
+							snapshot := snapshots.Items[0]
+							Expect(*snapshot.Spec.VolumeSnapshotClassName).To(Equal(vscName))
+						})
 					})
 				})
 			})
-
 			It("Job set to fail", func() {
+				tempJob := &batchv1.Job{}
 				Eventually(func() error {
-					return k8sClient.Get(ctx, utils.NameFor(job), job)
+					return k8sClient.Get(ctx, utils.NameFor(job), tempJob)
 				}, maxWait, interval).Should(Succeed())
 				// force job fail state
-				Eventually(func() error {
-					// make sure job object is consistent
-					if err := k8sClient.Get(ctx, utils.NameFor(job), job); err != nil {
-						return err
+				tempJob.Status.Failed = *tempJob.Spec.BackoffLimit + 12345
+				Expect(k8sClient.Status().Update(ctx, tempJob)).To(Succeed())
+				Expect(tempJob.Status.Failed).NotTo(BeNumerically("==", 0))
+				// ensure job eventually gets restarted
+				Eventually(func() bool {
+					if err := k8sClient.Get(ctx, utils.NameFor(job), tempJob); err != nil {
+						return false
 					}
-					job.Status.Failed = *job.Spec.BackoffLimit + 1000
-					return k8sClient.Status().Update(ctx, job)
-				}, maxWait, interval).Should(Succeed())
-				// job should eventually be restarted
-				Eventually(func() error {
-					return k8sClient.Get(ctx, utils.NameFor(job), job)
-				}, maxWait, interval).Should(Succeed())
+					return tempJob.Status.Failed == 0
+				}, maxWait, interval).Should(BeTrue())
 			})
 		})
 	})
@@ -560,22 +559,6 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 							})
 						})
 					})
-
-					It("Uses the Source PVC as the sync source", func() {
-						Eventually(func() error {
-							return k8sClient.Get(ctx, utils.NameFor(job), job)
-						}, maxWait, interval).Should(Succeed())
-						// look for the source PVC in the job's volume list
-						volumes := job.Spec.Template.Spec.Volumes
-						found := false
-						for _, v := range volumes {
-							if v.PersistentVolumeClaim != nil && v.PersistentVolumeClaim.ClaimName == srcPVC.Name {
-								found = true
-							}
-						}
-						Expect(found).To(BeTrue())
-						Expect(srcPVC).NotTo(beOwnedBy(rs))
-					})
 				})
 
 				When("copyMethod of Clone is specified", func() {
@@ -619,6 +602,32 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 					})
 				})
 			})
+			Context("Rclone is provided schedule + CopyMethodNone, ", func() {
+				var schedule string
+				BeforeEach(func() {
+					schedule = "4 * * * *"
+					rs.Spec.Trigger = &scribev1alpha1.ReplicationSourceTriggerSpec{
+						Schedule: &schedule,
+					}
+					// provide a copy method
+					rs.Spec.Rclone.CopyMethod = scribev1alpha1.CopyMethodNone
+				})
+				It("Uses the Source PVC as the sync source", func() {
+					Eventually(func() error {
+						return k8sClient.Get(ctx, utils.NameFor(job), job)
+					}, maxWait, interval).Should(Succeed())
+					// look for the source PVC in the job's volume list
+					volumes := job.Spec.Template.Spec.Volumes
+					found := false
+					for _, v := range volumes {
+						if v.PersistentVolumeClaim != nil && v.PersistentVolumeClaim.ClaimName == srcPVC.Name {
+							found = true
+						}
+					}
+					Expect(found).To(BeTrue())
+					Expect(srcPVC).NotTo(beOwnedBy(rs))
+				})
+			})
 		})
 		When("rclone is given an incorrect config", func() {
 			var emptyString = ""
@@ -634,7 +643,9 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 			})
 			When("All fields are empty", func() {
 				It("should not start", func() {
-					Expect(k8sClient.Get(ctx, utils.NameFor(job), job)).NotTo(Succeed())
+					Consistently(func() error {
+						return k8sClient.Get(ctx, utils.NameFor(job), job)
+					}, duration, interval).ShouldNot(Succeed())
 				})
 			})
 			When("rclone has secret but nothing else", func() {
