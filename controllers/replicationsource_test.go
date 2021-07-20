@@ -272,6 +272,7 @@ var _ = Describe("ReplicationSource", func() {
 				},
 			}
 		})
+		//nolint:dupl
 		It("creates a clone of the source PVC as the sync source", func() {
 			job := &batchv1.Job{}
 			Eventually(func() error {

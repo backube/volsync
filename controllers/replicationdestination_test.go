@@ -178,6 +178,7 @@ var _ = Describe("ReplicationDestination", func() {
 		})
 	})
 
+	//nolint:dupl
 	Context("when a destinationPVC is specified", func() {
 		var pvc *v1.PersistentVolumeClaim
 		BeforeEach(func() {
@@ -313,6 +314,7 @@ var _ = Describe("ReplicationDestination", func() {
 			})
 		})
 
+		//nolint:dupl
 		It("creates a PVC", func() {
 			job := &batchv1.Job{}
 			Eventually(func() error {

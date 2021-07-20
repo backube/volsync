@@ -626,7 +626,6 @@ func (r *rsyncDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 			Namespace: jobName.Namespace,
 		},
 	}
-
 	op, err := ctrlutil.CreateOrUpdate(r.Ctx, r.Client, r.job, func() error {
 		if err := ctrl.SetControllerReference(r.Instance, r.job, r.Scheme); err != nil {
 			logger.Error(err, "unable to set controller reference")
@@ -838,8 +837,9 @@ func (r *rcloneDestReconciler) cleanupJob(l logr.Logger) (bool, error) {
 
 func (r *rcloneDestReconciler) validateRcloneSpec(l logr.Logger) (bool, error) {
 	l.V(1).Info("Initiate RcloneSpec validation")
-
-	if len(*r.Instance.Spec.Rclone.RcloneConfig) == 0 {
+	rclone := r.destinationVolumeHandler.Instance.Spec.Rclone
+	if len(*rclone.RcloneConfig) == 0 {
+		l.V(1).Info("couldnt validate rcloneconfig")
 		err := errors.New("Unable to get Rclone config secret name")
 		l.V(1).Info("Unable to get Rclone config secret name")
 		return false, err
