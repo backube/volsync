@@ -179,3 +179,6 @@ fi
 
 # Make VSC the cluster default
 kubectl annotate volumesnapshotclass/csi-hostpath-snapclass snapshot.storage.kubernetes.io/is-default-class="true"
+
+# Add a node topology key so that e2e tests can run
+kubectl label nodes --all topology.kubernetes.io/zone=z1
