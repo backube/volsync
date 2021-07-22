@@ -51,7 +51,7 @@ set +e
 while [[ ${rc} -ne 0 && ${RETRY} -lt ${MAX_RETRIES} ]]
 do
     RETRY=$((RETRY + 1))
-    rsync -aAhHSxz --delete --itemize-changes --info=stats2,misc2 /data/ "root@${DESTINATION_ADDRESS}":. 
+    rsync -aAhHSxz --delete --itemize-changes --info=stats2,misc2 /data/ "root@${DESTINATION_ADDRESS}":.
     rc=$?
     if [[ ${rc} -ne 0 ]]; then
         echo "Syncronization failed. Retrying in ${DELAY} seconds. Retry ${RETRY}/${MAX_RETRIES}."
@@ -61,6 +61,7 @@ do
 done
 set -e
 echo "Rsync completed in $(( SECONDS - START_TIME ))s"
+sync
 if [[ $rc -eq 0 ]]; then
     echo "Synchronization completed successfully. Notifying destination..."
     ssh "root@${DESTINATION_ADDRESS}" shutdown 0

@@ -107,5 +107,5 @@ for op in "$@"; do
             ;;
     esac
 done
-
+sync
 echo "=== Done ==="

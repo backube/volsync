@@ -22,5 +22,6 @@ if [[ -e /tmp/exit_code ]]; then
         CODE="$CODE_IN"
     fi
 fi
+sync
 echo "Exiting... Exit code: $CODE"
 exit "$CODE"

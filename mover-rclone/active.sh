@@ -36,5 +36,6 @@ destination)
     error 1 "unknown value for DIRECTION: ${DIRECTION}"
     ;;
 esac
+sync
 echo "Rclone completed in $(( SECONDS - START_TIME ))s rc=$rc"
 exit "$rc"
