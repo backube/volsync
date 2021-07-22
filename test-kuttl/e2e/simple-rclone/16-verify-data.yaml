@@ -10,7 +10,7 @@ spec:
         - name: busybox
           image: busybox
           command: ["/bin/sh", "-c"]
-          args: ["diff -rs /mnt /mnt2"]
+          args: ["rm -rf /mnt/lost+found; rm -rf /mnt2/lost+found; diff -rs /mnt /mnt2"]
           volumeMounts:
             - name: data-src
               mountPath: "/mnt"
