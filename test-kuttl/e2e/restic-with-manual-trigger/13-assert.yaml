@@ -1,0 +1,11 @@
+---
+apiVersion: kuttl.dev/v1beta1
+kind: TestAssert
+timeout: 90
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: affinity-setter
+status:
+  succeeded: 1

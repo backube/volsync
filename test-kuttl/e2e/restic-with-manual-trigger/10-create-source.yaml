@@ -14,5 +14,5 @@ spec:
       hourly: 3
       daily: 2
       monthly: 1
-    copyMethod: Clone
+    copyMethod: Snapshot
     cacheCapacity: 1Gi
