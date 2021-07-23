@@ -18,5 +18,5 @@ spec:
   rsync:
     sshKeys: $KEYNAME
     address: $ADDRESS
-    copyMethod: Clone
+    copyMethod: Snapshot
 EOF
