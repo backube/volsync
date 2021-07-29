@@ -1,0 +1,15 @@
+---
+apiVersion: volsync.backube/v1alpha1
+kind: ReplicationSource
+metadata:
+  name: database-source
+  namespace: source
+spec:
+  sourcePVC: mysql-pv-claim
+  trigger:
+    schedule: "*/10 * * * *"
+  rclone:
+    rcloneConfigSection: "aws-s3-bucket"
+    rcloneDestPath: "volsync-test-bucket"
+    rcloneConfig: "rclone-secret"
+    copyMethod: Snapshot

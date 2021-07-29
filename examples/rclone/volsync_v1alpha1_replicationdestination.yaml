@@ -1,0 +1,16 @@
+---
+apiVersion: volsync.backube/v1alpha1
+kind: ReplicationDestination
+metadata:
+  name: database-destination
+  namespace: dest
+spec:
+  trigger:
+    schedule: "*/5 * * * *"
+  rclone:
+    rcloneConfigSection: "aws-s3-bucket"
+    rcloneDestPath: "volsync-test-bucket"
+    rcloneConfig: "rclone-secret"
+    copyMethod: Snapshot
+    accessModes: [ReadWriteOnce]
+    capacity: 2Gi

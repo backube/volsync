@@ -1,0 +1,34 @@
+---
+# See: https://docs.codecov.io/docs/codecov-yaml
+# Validate: curl --data-binary @codecov.yml https://codecov.io/validate
+codecov:
+  require_ci_to_pass: true
+
+comment:
+  layout: "diff,flags,files"
+  behavior: default
+  require_changes: true
+
+coverage:
+  precision: 1
+  round: down
+  range: "70...100"
+  status:
+    patch:
+      default:
+        # Must match current coverage
+        target: auto
+        threshold: 0%
+    project:
+      default:
+        target: auto
+        # Don't fail if coverage threshold not met
+        informational: true
+
+parsers:
+  gcov:
+    branch_detection:
+      conditional: true
+      loop: true
+      method: false
+      macro: false

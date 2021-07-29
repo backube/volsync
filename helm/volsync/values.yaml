@@ -1,0 +1,66 @@
+# Default values for volsync.
+replicaCount: 1
+
+image:
+  repository: quay.io/backube/volsync
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+rclone:
+  repository: quay.io/backube/volsync-mover-rclone
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+restic:
+  repository: quay.io/backube/volsync-mover-restic
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+rsync:
+  repository: quay.io/backube/volsync-mover-rsync
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+
+metrics:
+  # Disable auth checks when scraping metrics (allow anyone to scrape)
+  disableAuth: false
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext:
+  # fsGroup: 2000
+  runAsNonRoot: true
+
+securityContext:
+  allowPrivilegeEscalation: false
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+resources:
+  limits:
+    cpu: 100m
+    memory: 300Mi
+  requests:
+    cpu: 100m
+    memory: 20Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

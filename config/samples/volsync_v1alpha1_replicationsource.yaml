@@ -1,0 +1,12 @@
+apiVersion: volsync.backube/v1alpha1
+kind: ReplicationSource
+metadata:
+  name: replicationsource-sample
+spec:
+  sourcePVC: pvcname
+  trigger:
+    schedule: "0 * * * *"  # hourly
+  rsync:
+    sshKeys: secretRef
+    address: my.host.com
+    copyMethod: Clone

@@ -1,0 +1,5 @@
+bases:
+- ../default
+
+resources:
+- mover_scc.yaml

@@ -1,0 +1,21 @@
+{{- if .Capabilities.APIVersions.Has "monitoring.coreos.com/v1/ServiceMonitor" }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: volsync
+  labels:
+    control-plane: {{ include "volsync.fullname" . }}-controller
+    {{- include "volsync.labels" . | nindent 4 }}
+spec:
+  endpoints:
+    - interval: 30s
+      path: /metrics
+      port: https
+      scheme: https
+      tlsConfig:
+        # Using self-signed cert for connection
+        insecureSkipVerify: true
+  selector:
+    matchLabels:
+      control-plane: {{ include "volsync.fullname" . }}-controller
+{{- end }}

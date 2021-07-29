@@ -1,0 +1,5 @@
+
+The VolSync operator has been installed into the {{ .Release.Namespace }}
+namespace.
+
+Please see https://volsync-replication.readthedocs.org for documentation.
