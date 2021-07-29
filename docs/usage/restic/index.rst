@@ -13,11 +13,11 @@ Restic-based backup
 
 
 
-Scribe supports taking backups of PersistentVolume data using the Restic-based
+VolSync supports taking backups of PersistentVolume data using the Restic-based
 data mover. A ReplicationSource defines the backup policy (target, frequency,
 and retention), while a ReplicationDestination is used for restores.
 
-The Restic mover is different than most of Scribe's other movers because it is
+The Restic mover is different than most of VolSync's other movers because it is
 not meant for synchronizing data between clusters. This mover is specifically
 meant for data backup.
 
@@ -63,7 +63,7 @@ replication method.
 .. code-block:: yaml
 
    ---
-   apiVersion: scribe.backube/v1alpha1
+   apiVersion: volsync.backube/v1alpha1
    kind: ReplicationSource
    metadata:
      name: mydata-backup
@@ -93,7 +93,7 @@ Backup options
 --------------
 
 There are a number of additional configuration options not shown in the above
-example. Scribe's Restic mover options closely follow those of Restic itself.
+example. VolSync's Restic mover options closely follow those of Restic itself.
 
 .. include:: ../inc_src_opts.rst
 
@@ -161,7 +161,7 @@ Restore the data into ``datavol``:
 .. code-block:: yaml
 
    ---
-   apiVersion: scribe.backube/v1alpha1
+   apiVersion: volsync.backube/v1alpha1
    kind: ReplicationDestination
    metadata:
      name: datavol-dest
@@ -180,7 +180,7 @@ it is specified via ``destinationPVC``, and no snapshot will be created since a
 The restore operation only needs to be performed once, so instead of using a cronspec-based schedule, a manual trigger is used. After the restore completes, the ReplicationDestination object can be deleted.
 
 .. note::
-   Currently, Scribe only supports restoring the latest backup. However, older
+   Currently, VolSync only supports restoring the latest backup. However, older
    backups may be present in the repository (according to the retain
    parameters). Those can be accessed directly using the Restic utility plus the
    connection information and credentials from the repository Secret.

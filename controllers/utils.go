@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Scribe authors.
+Copyright 2020 The VolSync authors.
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published
@@ -20,18 +20,18 @@ package controllers
 import (
 	"time"
 
-	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
 const (
-	metricsNamespace = "scribe"
+	metricsNamespace = "volsync"
 )
 
-// scribeMetrics holds references to fully qualified instances of the metrics
-type scribeMetrics struct {
+// volsyncMetrics holds references to fully qualified instances of the metrics
+type volsyncMetrics struct {
 	MissedIntervals prometheus.Counter
 	OutOfSync       prometheus.Gauge
 	SyncDurations   prometheus.Observer
@@ -73,8 +73,8 @@ var (
 	)
 )
 
-func newScribeMetrics(labels prometheus.Labels) scribeMetrics {
-	return scribeMetrics{
+func newVolSyncMetrics(labels prometheus.Labels) volsyncMetrics {
+	return volsyncMetrics{
 		MissedIntervals: missedIntervals.With(labels),
 		OutOfSync:       outOfSync.With(labels),
 		SyncDurations:   syncDurations.With(labels),
@@ -87,7 +87,7 @@ func init() {
 }
 
 //nolint:funlen
-func (r *ReplicationSourceReconciler) countReplicationMethods(instance *scribev1alpha1.ReplicationSource,
+func (r *ReplicationSourceReconciler) countReplicationMethods(instance *volsyncv1alpha1.ReplicationSource,
 	logger logr.Logger) int {
 	var numOfReplication int
 	logger.Info("Counting number of Reconciliation methods", "instance", instance)
@@ -108,7 +108,7 @@ func (r *ReplicationSourceReconciler) countReplicationMethods(instance *scribev1
 }
 
 //nolint:funlen
-func (r *ReplicationDestinationReconciler) countReplicationMethods(instance *scribev1alpha1.ReplicationDestination,
+func (r *ReplicationDestinationReconciler) countReplicationMethods(instance *volsyncv1alpha1.ReplicationDestination,
 	logger logr.Logger) int {
 	var numOfReplication int
 	logger.Info("Counting number of Reconciliation methods", "instance", instance)

@@ -11,7 +11,7 @@ configuration.
 .. code:: bash
 
    $ kubectl create ns dest
-   $ kubectl create -n dest -f examples/rsync/scribe_v1alpha1_replicationdestination.yaml
+   $ kubectl create -n dest -f examples/rsync/volsync_v1alpha1_replicationdestination.yaml
 
 A Service is created which will be used by the ReplicationSource to Rsync the
 data. Record the service IP address as it will be used for the
@@ -42,20 +42,20 @@ secret from the dest namespace.
 
 .. code:: bash
 
-   $ kubectl get secret -n dest scribe-rsync-dest-src-database-destination -o yaml > /tmp/secret.yaml
+   $ kubectl get secret -n dest volsync-rsync-dest-src-database-destination -o yaml > /tmp/secret.yaml
    $ vi /tmp/secret.yaml
    # ^^^ change the namespace to "source"
    # ^^^ remove the owner reference (.metadata.ownerReferences)
    $ kubectl create -f /tmp/secret.yaml
 
 Using the IP address that relates to the ReplicationDestination that was
-recorded earlier. Modify ``scribe_v1alpha1_replicationsource.yaml`` replacing
+recorded earlier. Modify ``volsync_v1alpha1_replicationsource.yaml`` replacing
 the value of the address and create the ReplicationSource object.
 
 .. code:: bash
 
-   $ sed -i 's/my.host.com/10.107.249.72/g' examples/rsync/scribe_v1alpha1_replicationsource.yaml
-   $ kubectl create -n source -f examples/rsync/scribe_v1alpha1_replicationsource.yaml
+   $ sed -i 's/my.host.com/10.107.249.72/g' examples/rsync/volsync_v1alpha1_replicationsource.yaml
+   $ kubectl create -n source -f examples/rsync/volsync_v1alpha1_replicationsource.yaml
 
 To verify the replication has completed describe the Replication source.
 
@@ -106,12 +106,12 @@ data that has been replicated. First we need to identify the latest snapshot
 from the ReplicationDestination object. Record the values of the latest snapshot
 as it will be used to create a pvc. Then create the Deployment, Service, PVC,
 and Secret. Ensure the Snapshots Age is not greater than 3 minutes as it will be
-replaced by Scribe before it can be used.
+replaced by VolSync before it can be used.
 
 .. code:: bash
 
    $ kubectl get replicationdestination database-destination -n dest --template={{.status.latestImage.name}}
-   $ sed -i 's/snapshotToReplace/scribe-dest-database-destination-20201203174504/g' examples/destination-database/mysql-pvc.yaml
+   $ sed -i 's/snapshotToReplace/volsync-dest-database-destination-20201203174504/g' examples/destination-database/mysql-pvc.yaml
    $ kubectl create -n dest -f examples/destination-database/
 
 Validate that the mysql pod is running within the environment.

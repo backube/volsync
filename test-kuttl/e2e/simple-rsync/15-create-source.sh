@@ -7,7 +7,7 @@ ADDRESS=$(kubectl -n "$NAMESPACE" get ReplicationDestination/test -otemplate="{{
 
 kubectl -n "$NAMESPACE" apply -f - <<EOF
 ---
-apiVersion: scribe.backube/v1alpha1
+apiVersion: volsync.backube/v1alpha1
 kind: ReplicationSource
 metadata:
   name: source

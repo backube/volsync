@@ -2,7 +2,7 @@
 Configuration and CRDs
 ======================
 
-This document covers the rationale for how Scribe is configured and the
+This document covers the rationale for how VolSync is configured and the
 structure of the CustomResourceDefinitions.
 
 .. contents::
@@ -11,10 +11,10 @@ structure of the CustomResourceDefinitions.
 Representation of relationships
 ===============================
 
-One of the main interaction points between users and Scribe will be centered
+One of the main interaction points between users and VolSync will be centered
 around configuring the replication relationships between volumes. When looking
 at the :ref:`use cases <case-for-use-cases>` presented in the overview of
-Scribe, there are several commonalities and differences.
+VolSync, there are several commonalities and differences.
 
 Replication triggers
 --------------------
@@ -65,7 +65,7 @@ Since one of the main objectives in the design is to allow storage system
 specific replication methods, this must be considered when designing the CRDs
 that will control replication. In order to accommodate separate release
 timelines and licensing models, it is also desirable for those replication
-methods to be external to the main Scribe operator. Only a baseline, general
+methods to be external to the main VolSync operator. Only a baseline, general
 replication method needs to be directly integrated.
 
 To achieve the desired flexibility, the CRDs can be structured similar to the
@@ -78,7 +78,7 @@ With the above considerations in mind, the primary side of the replication relat
 .. code-block:: yaml
    :caption: CRD defining the source volume to replicate
 
-    apiVersion: scribe/v1alpha1
+    apiVersion: volsync/v1alpha1
     kind: Source
     metadata:
       name: myVolMirror
@@ -108,7 +108,7 @@ trigger specification:
 .. code-block:: yaml
    :caption: CRD defining the replication destination
 
-    apiVersion: scribe/v1alpha1
+    apiVersion: volsync/v1alpha1
     kind: Destination
     metadata:
       name: myVolMirror

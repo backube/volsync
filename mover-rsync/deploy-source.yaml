@@ -47,23 +47,23 @@ subjects:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: scribe-rsync-source
+  name: volsync-rsync-source
 spec:
   template:
     metadata:
-      name: scribe-rsync-source
+      name: volsync-rsync-source
       labels:
         app.kubernetes.io/name: rsync-source
         app.kubernetes.io/component: mover
-        app.kubernetes.io/part-of: scribe
+        app.kubernetes.io/part-of: volsync
     spec:
       containers:
         - name: rsync
           command: ["/bin/bash", "-c", "/source.sh"]
           env:
             - name: DESTINATION_ADDRESS
-              value: scribe-rsync-destination.scribe.svc.cluster.local
-          image: quay.io/backube/scribe-mover-rsync:latest
+              value: volsync-rsync-destination.volsync.svc.cluster.local
+          image: quay.io/backube/volsync-mover-rsync:latest
           imagePullPolicy: IfNotPresent
           securityContext:
             runAsUser: 0

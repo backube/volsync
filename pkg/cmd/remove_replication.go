@@ -15,39 +15,39 @@ import (
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
 
-	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
 
 var (
-	scribeRemoveReplicationLong = templates.LongDesc(`
-        Scribe is a command line tool for a scribe operator running in a Kubernetes cluster.
-		Scribe asynchronously replicates Kubernetes persistent volumes between clusters or namespaces
-		using rsync, rclone, or restic. The remove-replication command will remove the scribe
+	volsyncRemoveReplicationLong = templates.LongDesc(`
+        VolSync is a command line tool for a volsync operator running in a Kubernetes cluster.
+		VolSync asynchronously replicates Kubernetes persistent volumes between clusters or namespaces
+		using rsync, rclone, or restic. The remove-replication command will remove the volsync
 		replication destination, replication source, and their resources. This command should be
 		executed after the destination application is verified to be up-to-date and the destination PVC
 		is bound to the destination application. The destination PVC and the source PVC are not modified.
-		PVCs will never be deleted by Scribe.
+		PVCs will never be deleted by VolSync.
 `)
-	scribeRemoveReplicationExample = templates.Examples(`
-        # View all flags for remove-replication. 'scribe-config' can hold flag values.
-		# Scribe config holds values for source PVC, source and destination context, and other options.
-        $ scribe remove-replication --help
+	volsyncRemoveReplicationExample = templates.Examples(`
+        # View all flags for remove-replication. 'volsync-config' can hold flag values.
+		# VolSync config holds values for source PVC, source and destination context, and other options.
+        $ volsync remove-replication --help
 
-		# Remove a scribe replication and its resources. The destination PVC is not deleted or modified.
-        $ scribe remove-replication
+		# Remove a volsync replication and its resources. The destination PVC is not deleted or modified.
+        $ volsync remove-replication
 
     `)
 )
 
-func NewCmdScribeRemoveReplication(streams genericclioptions.IOStreams) *cobra.Command {
+func NewCmdVolSyncRemoveReplication(streams genericclioptions.IOStreams) *cobra.Command {
 	v := viper.New()
 	o := NewFinalizeOptions(streams)
 	cmd := &cobra.Command{
 		Use:     "remove-replication [OPTIONS]",
-		Short:   i18n.T("Remove a scribe replication and its resources."),
-		Long:    fmt.Sprint(scribeRemoveReplicationLong),
-		Example: fmt.Sprint(scribeRemoveReplicationExample),
-		Version: ScribeVersion,
+		Short:   i18n.T("Remove a volsync replication and its resources."),
+		Long:    fmt.Sprint(volsyncRemoveReplicationLong),
+		Example: fmt.Sprint(volsyncRemoveReplicationExample),
+		Version: VolSyncVersion,
 		Run: func(cmd *cobra.Command, args []string) {
 			kcmdutil.CheckErr(o.Complete())
 			kcmdutil.CheckErr(o.RemoveReplication())
@@ -68,7 +68,7 @@ func NewCmdScribeRemoveReplication(streams genericclioptions.IOStreams) *cobra.C
 // 3) Removed ReplicationDestination
 func (o *FinalizeOptions) RemoveReplication() error {
 	ctx := context.Background()
-	repSource := &scribev1alpha1.ReplicationSource{}
+	repSource := &volsyncv1alpha1.ReplicationSource{}
 	sourceNSName := types.NamespacedName{
 		Namespace: o.RepOpts.Source.Namespace,
 		Name:      o.sourceName,
@@ -76,7 +76,7 @@ func (o *FinalizeOptions) RemoveReplication() error {
 	if err := o.RepOpts.Source.Client.Get(ctx, sourceNSName, repSource); err != nil {
 		return err
 	}
-	repDest := &scribev1alpha1.ReplicationDestination{}
+	repDest := &volsyncv1alpha1.ReplicationDestination{}
 	destNSName := types.NamespacedName{
 		Namespace: o.RepOpts.Dest.Namespace,
 		Name:      o.destName,
@@ -111,6 +111,6 @@ func (o *FinalizeOptions) RemoveReplication() error {
 	}
 	klog.Infof("Deleted replication destination %s in namespace %s", o.destName, o.RepOpts.Dest.Namespace)
 
-	klog.Infof("Scribe remove-replication complete.")
+	klog.Infof("VolSync remove-replication complete.")
 	return nil
 }

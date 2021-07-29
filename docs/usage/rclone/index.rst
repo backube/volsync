@@ -17,7 +17,7 @@ cases such as:
 
 - High fan-out data replication from a central site to many (edge) sites
 
-With this method, Scribe synchronizes data from a ReplicationSource to a ReplicationDestination
+With this method, VolSync synchronizes data from a ReplicationSource to a ReplicationDestination
 using `Rclone <https://rclone.org/>`_ using an intermediary storage system like AWS S3. 
 
 ----------------------------------
@@ -29,11 +29,11 @@ Following are the sequences of events happening in each iterations.
 
 - A point-in-time (PiT) copy of the source volume is created using CSI drivers. It will be used as the source data.
 - A temporary PVC is created out of the PiT copy and mounted on Rclone data mover job pod.
-- The Scribe Rclone data mover then connects to the intermediary storage system (e.g. AWS S3) using configurations
+- The VolSync Rclone data mover then connects to the intermediary storage system (e.g. AWS S3) using configurations
   based on ``rclone-secret``. It uses ``rclone sync`` to copy source data to S3.
 - At the conclusion of the transfer, the destination creates a PiT copy to preserve the incoming source data.
 
-Scribe is configured via two CustomResources (CRs), one on the source side and
+VolSync is configured via two CustomResources (CRs), one on the source side and
 one on the destination side of the replication relationship.
 
 Source configuration
@@ -44,7 +44,7 @@ Start by configuring the source; a minimal example is shown below:
 .. code:: yaml
 
   ---
-  apiVersion: scribe.backube/v1alpha1
+  apiVersion: volsync.backube/v1alpha1
   kind: ReplicationSource
   metadata:
     name: database-source
@@ -55,7 +55,7 @@ Start by configuring the source; a minimal example is shown below:
       schedule: "*/6 * * * *"
     rclone:
       rcloneConfigSection: "aws-s3-bucket"
-      rcloneDestPath: "scribe-test-bucket"
+      rcloneDestPath: "volsync-test-bucket"
       rcloneConfig: "rclone-secret"
       copyMethod: Snapshot
 
@@ -67,17 +67,17 @@ The synchronization schedule, ``.spec.trigger.schedule``, is defined by a
 very flexible. Both intervals (shown above) as well as specific times and/or
 days can be specified.
 
-It then creates a temproray pvc ``scribe-src-database-source`` out of the VolumeSnapshot to transfer source
+It then creates a temproray pvc ``volsync-src-database-source`` out of the VolumeSnapshot to transfer source
 data to the intermediary storage system like AWS S3 using the configurations provided in ``rclone-secret``
 
 Source status
 -----------------
-Once the ``ReplicationSource`` is deployed, Scribe updates the ``nextSyncTime`` in the ``ReplicationSource`` object.
+Once the ``ReplicationSource`` is deployed, VolSync updates the ``nextSyncTime`` in the ``ReplicationSource`` object.
 
 .. code:: yaml
 
   ---
-  apiVersion:  scribe.backube/v1alpha1
+  apiVersion:  volsync.backube/v1alpha1
   kind:         ReplicationSource
   #  ... omitted ...
   spec:
@@ -85,7 +85,7 @@ Once the ``ReplicationSource`` is deployed, Scribe updates the ``nextSyncTime`` 
       copyMethod:           Snapshot
       rcloneConfig:         rclone-secret
       rcloneConfigSection:  aws-s3-bucket
-      rcloneDestPath:       scribe-test-bucket
+      rcloneDestPath:       volsync-test-bucket
     sourcePVC:              mysql-pv-claim
     trigger:
       schedule:  "*/6 * * * *"
@@ -142,7 +142,7 @@ A minimal destination configuration is shown here:
 .. code:: yaml
 
   ---
-  apiVersion: scribe.backube/v1alpha1
+  apiVersion: volsync.backube/v1alpha1
   kind: ReplicationDestination
   metadata:
     name: database-destination
@@ -152,7 +152,7 @@ A minimal destination configuration is shown here:
       schedule: "*/6 * * * *"
     rclone:
       rcloneConfigSection: "aws-s3-bucket"
-      rcloneDestPath: "scribe-test-bucket"
+      rcloneDestPath: "volsync-test-bucket"
       rcloneConfig: "rclone-secret"
       copyMethod: Snapshot
       accessModes: [ReadWriteOnce]
@@ -175,13 +175,13 @@ holding the latest synced data will be placed in ``.status.latestImage``.
 Destination status
 ------------------
 
-Scribe provides status information on the state of the replication via the
+VolSync provides status information on the state of the replication via the
 ``.status`` field in the ReplicationDestination object:
 
 .. code:: yaml
 
   ---
-  API Version:  scribe.backube/v1alpha1
+  API Version:  volsync.backube/v1alpha1
   Kind:         ReplicationDestination
   #  ... omitted ...
   Spec:
@@ -192,7 +192,7 @@ Scribe provides status information on the state of the replication via the
       Copy Method:            Snapshot
       Rclone Config:          rclone-secret
       Rclone Config Section:  aws-s3-bucket
-      Rclone Dest Path:       scribe-test-bucket
+      Rclone Dest Path:       volsync-test-bucket
     Status:
       Conditions:
         Last Transition Time:  2021-01-19T22:16:02Z
@@ -205,7 +205,7 @@ Scribe provides status information on the state of the replication via the
       Latest Image:
         API Group:  snapshot.storage.k8s.io
         Kind:       VolumeSnapshot
-        Name:       scribe-dest-database-destination-20210119221601
+        Name:       volsync-dest-database-destination-20210119221601
 
 
 In the above example,
@@ -221,7 +221,7 @@ available:
 - ``Latest Image`` references the object with the most recent copy of the data. If
   the copyMethod is Snapshot, this will be a VolumeSnapshot object. If the
   copyMethod is None, this will be the PVC that is used as the destination by
-  Scribe.
+  VolSync.
 
 Additional destination options
 ------------------------------

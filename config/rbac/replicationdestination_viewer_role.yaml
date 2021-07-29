@@ -5,7 +5,7 @@ metadata:
   name: replicationdestination-viewer-role
 rules:
 - apiGroups:
-  - scribe.backube
+  - volsync.backube
   resources:
   - replicationdestinations
   verbs:
@@ -13,7 +13,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - scribe.backube
+  - volsync.backube
   resources:
   - replicationdestinations/status
   verbs:

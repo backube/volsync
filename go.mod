@@ -1,4 +1,4 @@
-module github.com/backube/scribe
+module github.com/backube/volsync
 
 go 1.15
 

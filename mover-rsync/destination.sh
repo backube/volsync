@@ -2,7 +2,7 @@
 
 set -e -o pipefail
 
-echo "Scribe rsync container version: ${version:-unknown}"
+echo "VolSync rsync container version: ${version:-unknown}"
 
 # Allow source's key to access, but restrict what it can do.
 mkdir -p ~/.ssh

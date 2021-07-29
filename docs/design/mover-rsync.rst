@@ -10,7 +10,7 @@ This document covers the design of the rsync-based data mover.
 Overview
 ========
 
-To meet the goal of being able to replicate arbitrary volumes, Scribe must have
+To meet the goal of being able to replicate arbitrary volumes, VolSync must have
 a built-in, baseline replication method. `Rsync <https://rsync.samba.org/>`_ is
 a well-known and reasonably efficient method to synchronize file data between
 two locations. It supports both data compression as well as differential

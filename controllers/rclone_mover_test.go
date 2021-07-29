@@ -13,8 +13,8 @@ import (
 	// "github.com/operator-framework/operator-lib/status"
 	//batchv1 "k8s.io/api/batch/v1"
 
-	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
-	utils "github.com/backube/scribe/controllers/utils"
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
+	utils "github.com/backube/volsync/controllers/utils"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -26,7 +26,7 @@ import (
 var _ = Describe("ReplicationDestination [rclone]", func() {
 	var ctx = context.Background()
 	var namespace *corev1.Namespace
-	var rd *scribev1alpha1.ReplicationDestination
+	var rd *volsyncv1alpha1.ReplicationDestination
 	var rcloneSecret *corev1.Secret
 	var configSection = "foo"
 	var destPath = "bar"
@@ -39,7 +39,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 	BeforeEach(func() {
 		namespace = &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
-				GenerateName: "scribe-rclone-dest-",
+				GenerateName: "volsync-rclone-dest-",
 			},
 		}
 		// crete ns
@@ -71,7 +71,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 			},
 		}
 		// scaffolded ReplicationDestination - extra fields will be set in subsequent tests
-		rd = &scribev1alpha1.ReplicationDestination{
+		rd = &volsyncv1alpha1.ReplicationDestination{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "instance",
 				Namespace: namespace.Name,
@@ -80,7 +80,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 		// setup a minimal job
 		job = &batchv1.Job{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "scribe-rclone-src-" + rd.Name,
+				Name:      "volsync-rclone-src-" + rd.Name,
 				Namespace: rd.Namespace,
 			},
 		}
@@ -97,7 +97,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 		Expect(k8sClient.Create(ctx, rd)).To(Succeed())
 		// wait for the ReplicationDestination to actually come up
 		Eventually(func() error {
-			inst := &scribev1alpha1.ReplicationDestination{}
+			inst := &volsyncv1alpha1.ReplicationDestination{}
 			return k8sClient.Get(ctx, utils.NameFor(rd), inst)
 		}, maxWait, interval).Should(Succeed())
 	})
@@ -105,13 +105,13 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 	//nolint:dupl
 	When("ReplicationDestination is provided with a minimal rclone spec", func() {
 		BeforeEach(func() {
-			rd.Spec.Rclone = &scribev1alpha1.ReplicationDestinationRcloneSpec{
-				ReplicationDestinationVolumeOptions: scribev1alpha1.ReplicationDestinationVolumeOptions{},
+			rd.Spec.Rclone = &volsyncv1alpha1.ReplicationDestinationRcloneSpec{
+				ReplicationDestinationVolumeOptions: volsyncv1alpha1.ReplicationDestinationVolumeOptions{},
 				RcloneConfigSection:                 &configSection,
 				RcloneDestPath:                      &destPath,
 				RcloneConfig:                        &rcloneSecret.Name,
 			}
-			rd.Spec.Trigger = &scribev1alpha1.ReplicationDestinationTriggerSpec{
+			rd.Spec.Trigger = &volsyncv1alpha1.ReplicationDestinationTriggerSpec{
 				Schedule: &schedule,
 			}
 		})
@@ -124,7 +124,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 
 		When("ReplicationDestination is provided AccessModes & Capacity", func() {
 			BeforeEach(func() {
-				rd.Spec.Rclone.ReplicationDestinationVolumeOptions = scribev1alpha1.ReplicationDestinationVolumeOptions{
+				rd.Spec.Rclone.ReplicationDestinationVolumeOptions = volsyncv1alpha1.ReplicationDestinationVolumeOptions{
 					AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 					Capacity:    &capacity,
 				}
@@ -144,20 +144,20 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 
 				When("Using a CopyMethod of None", func() {
 					BeforeEach(func() {
-						rd.Spec.Rclone.CopyMethod = scribev1alpha1.CopyMethodNone
+						rd.Spec.Rclone.CopyMethod = volsyncv1alpha1.CopyMethodNone
 					})
 
 					It("Ensure that ReplicationDestination starts", func() {
 						// get RD & ensure a status is set
 						Eventually(func() bool {
-							inst := &scribev1alpha1.ReplicationDestination{}
+							inst := &volsyncv1alpha1.ReplicationDestination{}
 							if err := k8sClient.Get(ctx, utils.NameFor(rd), inst); err != nil {
 								return false
 							}
 							return inst.Status != nil
 						}, maxWait, interval).Should(BeTrue())
 						// validate necessary fields
-						inst := &scribev1alpha1.ReplicationDestination{}
+						inst := &volsyncv1alpha1.ReplicationDestination{}
 						Expect(k8sClient.Get(ctx, utils.NameFor(rd), inst)).To(Succeed())
 						Expect(inst.Status).NotTo(BeNil())
 						Expect(inst.Status.Conditions).NotTo(BeNil())
@@ -166,7 +166,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 
 					It("Ensure LastSyncTime & LatestImage is set properly after reconciliation", func() {
 						Eventually(func() bool {
-							inst := &scribev1alpha1.ReplicationDestination{}
+							inst := &volsyncv1alpha1.ReplicationDestination{}
 							err := k8sClient.Get(ctx, utils.NameFor(rd), inst)
 							if err != nil || inst.Status == nil {
 								return false
@@ -174,7 +174,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 							return inst.Status.LastSyncTime != nil
 						}, maxWait, interval).Should(BeTrue())
 						// get ReplicationDestination
-						inst := &scribev1alpha1.ReplicationDestination{}
+						inst := &volsyncv1alpha1.ReplicationDestination{}
 						Expect(k8sClient.Get(ctx, utils.NameFor(rd), inst)).To(Succeed())
 						// ensure Status holds correct data
 						Expect(inst.Status.LatestImage).NotTo(BeNil())
@@ -187,7 +187,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 					It("Duration is set if job is successful", func() {
 						// Make sure that LastSyncDuration gets set
 						Eventually(func() *metav1.Duration {
-							inst := &scribev1alpha1.ReplicationDestination{}
+							inst := &volsyncv1alpha1.ReplicationDestination{}
 							_ = k8sClient.Get(ctx, utils.NameFor(rd), inst)
 							return inst.Status.LastSyncDuration
 						}, maxWait, interval).Should(Not(BeNil()))
@@ -202,7 +202,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 						It("Job has parallelism disabled", func() {
 							job := &batchv1.Job{
 								ObjectMeta: metav1.ObjectMeta{
-									Name:      "scribe-rclone-src-" + rd.Name,
+									Name:      "volsync-rclone-src-" + rd.Name,
 									Namespace: rd.Namespace,
 								},
 							}
@@ -239,7 +239,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 
 				When("Using a copy method of Snapshot", func() {
 					BeforeEach(func() {
-						rd.Spec.Rclone.CopyMethod = scribev1alpha1.CopyMethodSnapshot
+						rd.Spec.Rclone.CopyMethod = volsyncv1alpha1.CopyMethodSnapshot
 					})
 
 					It("Ensure that a VolumeSnapshot is created at the end of an iteration", func() {
@@ -321,8 +321,8 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 					},
 				}
 				// valid rclone spec
-				rd.Spec.Rclone = &scribev1alpha1.ReplicationDestinationRcloneSpec{
-					ReplicationDestinationVolumeOptions: scribev1alpha1.ReplicationDestinationVolumeOptions{
+				rd.Spec.Rclone = &volsyncv1alpha1.ReplicationDestinationRcloneSpec{
+					ReplicationDestinationVolumeOptions: volsyncv1alpha1.ReplicationDestinationVolumeOptions{
 						AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 						Capacity:    &capacity,
 					},
@@ -333,14 +333,14 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 			})
 			It("Reconcile Condition is set to false", func() {
 				// make sure that the condition is set to not be reconciled
-				inst := &scribev1alpha1.ReplicationDestination{}
+				inst := &volsyncv1alpha1.ReplicationDestination{}
 				// wait for replicationdestination to have a status
-				Eventually(func() *scribev1alpha1.ReplicationDestinationStatus {
+				Eventually(func() *volsyncv1alpha1.ReplicationDestinationStatus {
 					_ = k8sClient.Get(ctx, utils.NameFor(rd), inst)
 					return inst.Status
 				}, duration, interval).Should(Not(BeNil()))
 				Expect(inst.Status.Conditions).ToNot(BeEmpty())
-				reconcileCondition := inst.Status.Conditions.GetCondition(scribev1alpha1.ConditionReconciled)
+				reconcileCondition := inst.Status.Conditions.GetCondition(volsyncv1alpha1.ConditionReconciled)
 				Expect(reconcileCondition).ToNot(BeNil())
 				Expect(reconcileCondition.Status).To(Equal(corev1.ConditionFalse))
 			})
@@ -351,8 +351,8 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 			BeforeEach(func() {
 				// initialize all config sections to zero length
 				var zeroLength = ""
-				rd.Spec.Rclone = &scribev1alpha1.ReplicationDestinationRcloneSpec{
-					ReplicationDestinationVolumeOptions: scribev1alpha1.ReplicationDestinationVolumeOptions{
+				rd.Spec.Rclone = &volsyncv1alpha1.ReplicationDestinationRcloneSpec{
+					ReplicationDestinationVolumeOptions: volsyncv1alpha1.ReplicationDestinationVolumeOptions{
 						AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 						Capacity:    &capacity,
 					},
@@ -360,13 +360,13 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 					RcloneDestPath:      &zeroLength,
 					RcloneConfig:        &zeroLength,
 				}
-				rd.Spec.Trigger = &scribev1alpha1.ReplicationDestinationTriggerSpec{
+				rd.Spec.Trigger = &volsyncv1alpha1.ReplicationDestinationTriggerSpec{
 					Schedule: &schedule,
 				}
 				// setup a minimal job
 				job = &batchv1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "scribe-rclone-src-" + rd.Name,
+						Name:      "volsync-rclone-src-" + rd.Name,
 						Namespace: rd.Namespace,
 					},
 				}
@@ -421,7 +421,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 //nolint:dupl
 var _ = Describe("ReplicationSource [rclone]", func() {
 	var namespace *corev1.Namespace
-	var rs *scribev1alpha1.ReplicationSource
+	var rs *volsyncv1alpha1.ReplicationSource
 	var srcPVC *corev1.PersistentVolumeClaim
 	var job *batchv1.Job
 	var rcloneSecret *corev1.Secret
@@ -434,7 +434,7 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 	BeforeEach(func() {
 		namespace = &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
-				GenerateName: "scribe-rclone-test-",
+				GenerateName: "volsync-rclone-test-",
 			},
 		}
 		// crete ns
@@ -465,19 +465,19 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 			},
 		}
 		// baseline spec
-		rs = &scribev1alpha1.ReplicationSource{
+		rs = &volsyncv1alpha1.ReplicationSource{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "instance",
 				Namespace: namespace.Name,
 			},
-			Spec: scribev1alpha1.ReplicationSourceSpec{
+			Spec: volsyncv1alpha1.ReplicationSourceSpec{
 				SourcePVC: srcPVC.Name,
 			},
 		}
 		// minimal job
 		job = &batchv1.Job{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "scribe-rclone-src-" + rs.Name,
+				Name:      "volsync-rclone-src-" + rs.Name,
 				Namespace: namespace.Name,
 			},
 		}
@@ -498,15 +498,15 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 			Expect(k8sClient.Create(ctx, rs)).To(Succeed())
 			// wait for the ReplicationSource to actually come up
 			Eventually(func() error {
-				inst := &scribev1alpha1.ReplicationSource{}
+				inst := &volsyncv1alpha1.ReplicationSource{}
 				return k8sClient.Get(ctx, utils.NameFor(rs), inst)
 			}, maxWait, interval).Should(Succeed())
 		})
 
 		When("ReplicationSource is provided with an Rclone spec", func() {
 			BeforeEach(func() {
-				rs.Spec.Rclone = &scribev1alpha1.ReplicationSourceRcloneSpec{
-					ReplicationSourceVolumeOptions: scribev1alpha1.ReplicationSourceVolumeOptions{},
+				rs.Spec.Rclone = &volsyncv1alpha1.ReplicationSourceRcloneSpec{
+					ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{},
 					RcloneConfigSection:            &configSection,
 					RcloneDestPath:                 &destPath,
 					RcloneConfig:                   &rcloneSecret.Name,
@@ -523,7 +523,7 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 				})
 				When("copyMethod of None is specified for Rclone", func() {
 					BeforeEach(func() {
-						rs.Spec.Rclone.ReplicationSourceVolumeOptions.CopyMethod = scribev1alpha1.CopyMethodNone
+						rs.Spec.Rclone.ReplicationSourceVolumeOptions.CopyMethod = volsyncv1alpha1.CopyMethodNone
 					})
 
 					When("No schedule is provided to ReplicationSource", func() {
@@ -544,7 +544,7 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 						When("Schedule is a proper cron format", func() {
 							BeforeEach(func() {
 								schedule = "1 3 3 7 *"
-								rs.Spec.Trigger = &scribev1alpha1.ReplicationSourceTriggerSpec{
+								rs.Spec.Trigger = &volsyncv1alpha1.ReplicationSourceTriggerSpec{
 									Schedule: &schedule,
 								}
 							})
@@ -563,7 +563,7 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 
 				When("copyMethod of Clone is specified", func() {
 					BeforeEach(func() {
-						rs.Spec.Rclone.ReplicationSourceVolumeOptions.CopyMethod = scribev1alpha1.CopyMethodClone
+						rs.Spec.Rclone.ReplicationSourceVolumeOptions.CopyMethod = volsyncv1alpha1.CopyMethodClone
 					})
 
 					//nolint:dupl
@@ -605,11 +605,11 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 				var schedule string
 				BeforeEach(func() {
 					schedule = "4 * * * *"
-					rs.Spec.Trigger = &scribev1alpha1.ReplicationSourceTriggerSpec{
+					rs.Spec.Trigger = &volsyncv1alpha1.ReplicationSourceTriggerSpec{
 						Schedule: &schedule,
 					}
 					// provide a copy method
-					rs.Spec.Rclone.CopyMethod = scribev1alpha1.CopyMethodNone
+					rs.Spec.Rclone.CopyMethod = volsyncv1alpha1.CopyMethodNone
 				})
 				It("Uses the Source PVC as the sync source", func() {
 					Eventually(func() error {
@@ -631,9 +631,9 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 		When("rclone is given an incorrect config", func() {
 			var emptyString = ""
 			BeforeEach(func() {
-				rs.Spec.Rclone = &scribev1alpha1.ReplicationSourceRcloneSpec{
-					ReplicationSourceVolumeOptions: scribev1alpha1.ReplicationSourceVolumeOptions{
-						CopyMethod: scribev1alpha1.CopyMethodNone,
+				rs.Spec.Rclone = &volsyncv1alpha1.ReplicationSourceRcloneSpec{
+					ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
+						CopyMethod: volsyncv1alpha1.CopyMethodNone,
 					},
 					RcloneConfig:        &emptyString,
 					RcloneConfigSection: &emptyString,

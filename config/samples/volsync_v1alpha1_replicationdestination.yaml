@@ -1,0 +1,10 @@
+apiVersion: volsync.backube/v1alpha1
+kind: ReplicationDestination
+metadata:
+  name: replicationdestination-sample
+spec:
+  rsync:
+    serviceType: ClusterIP
+    copyMethod: Snapshot
+    capacity: 10Gi
+    accessModes: [ReadWriteOnce]

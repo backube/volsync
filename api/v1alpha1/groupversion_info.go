@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Scribe authors.
+Copyright 2020 The VolSync authors.
 
 This file may be used, at your option, according to either the GNU AGPL 3.0 or
 the Apache V2 license.
@@ -31,9 +31,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package v1alpha1 contains API Schema definitions for the scribe v1alpha1 API group
+// Package v1alpha1 contains API Schema definitions for the volsync v1alpha1 API group
 //+kubebuilder:object:generate=true
-//+groupName=scribe.backube
+//+groupName=volsync.backube
 package v1alpha1
 
 import (
@@ -43,7 +43,7 @@ import (
 
 var (
 	// GroupVersion is group version used to register these objects
-	GroupVersion = schema.GroupVersion{Group: "scribe.backube", Version: "v1alpha1"}
+	GroupVersion = schema.GroupVersion{Group: "volsync.backube", Version: "v1alpha1"}
 
 	// SchemeBuilder is used to add go types to the GroupVersionKind scheme
 	SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion}

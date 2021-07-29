@@ -49,7 +49,7 @@ Now, deploy the ``rclone-secret`` followed by ``ReplicationSource`` configuratio
 .. code:: bash
 
    $ kubectl create secret generic rclone-secret --from-file=rclone.conf=./examples/rclone/rclone.conf -n source
-   $ kubectl create -f examples/rclone/scribe_v1alpha1_replicationsource.yaml -n source
+   $ kubectl create -f examples/rclone/volsync_v1alpha1_replicationsource.yaml -n source
 
 To verify the replication has completed describe the Replication source.
 
@@ -71,7 +71,7 @@ lines:
     Type:                  Reconciled
   Next Sync Time:          2021-01-18T22:00:00Z
 
-At ``Next Sync Time`` Scribe will create the next Rclone data mover job. 
+At ``Next Sync Time`` VolSync will create the next Rclone data mover job. 
 
 -----------------------------------------
 
@@ -82,11 +82,11 @@ on the destination.
 
    $ kubectl create ns dest
    $ kubectl create secret generic rclone-secret --from-file=rclone.conf=./examples/rclone/rclone.conf -n dest
-   $ kubectl create -f examples/rclone/scribe_v1alpha1_replicationdestination.yaml -n dest
+   $ kubectl create -f examples/rclone/volsync_v1alpha1_replicationdestination.yaml -n dest
 
 
 
-Once the ``ReplicationDestination`` is deployed, Scribe will create a Rclone data mover job on the
+Once the ``ReplicationDestination`` is deployed, VolSync will create a Rclone data mover job on the
 destination side. At the end of the each successful reconcilation iteration, the ``ReplicationDestination`` is 
 updated with the lastest snapshot image.
 
@@ -95,12 +95,12 @@ First we need to identify the latest snapshot from the ``ReplicationDestination`
 the latest snapshot as it will be used to create a pvc. Then create the Deployment, Service, PVC,
 and Secret. 
 
-Ensure the Snapshots Age is not greater than 3 minutes as it will be replaced by Scribe before it can be used.
+Ensure the Snapshots Age is not greater than 3 minutes as it will be replaced by VolSync before it can be used.
 
 .. code:: bash
 
    $ kubectl get replicationdestination database-destination -n dest --template={{.status.latestImage.name}}
-   $ sed -i 's/snapshotToReplace/scribe-dest-database-destination-20201203174504/g' examples/destination-database/mysql-pvc.yaml
+   $ sed -i 's/snapshotToReplace/volsync-dest-database-destination-20201203174504/g' examples/destination-database/mysql-pvc.yaml
    $ kubectl create -n dest -f examples/destination-database/
 
 Validate that the mysql pod is running within the environment.

@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Scribe authors.
+Copyright 2021 The VolSync authors.
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published
@@ -23,14 +23,14 @@ import (
 	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
-	"github.com/backube/scribe/controllers/mover"
-	"github.com/backube/scribe/controllers/volumehandler"
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
+	"github.com/backube/volsync/controllers/mover"
+	"github.com/backube/volsync/controllers/volumehandler"
 )
 
 // defaultResticContainerImage is the default container image for the restic
 // data mover
-const defaultResticContainerImage = "quay.io/backube/scribe-mover-restic:latest"
+const defaultResticContainerImage = "quay.io/backube/volsync-mover-restic:latest"
 
 // resticContainerImage is the container image name of the restic data mover
 var resticContainerImage string
@@ -46,7 +46,7 @@ func Register() {
 }
 
 func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
-	source *scribev1alpha1.ReplicationSource) (mover.Mover, error) {
+	source *volsyncv1alpha1.ReplicationSource) (mover.Mover, error) {
 	// Only build if the CR belongs to us
 	if source.Spec.Restic == nil {
 		return nil, nil
@@ -54,7 +54,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 
 	// Create ReplicationSourceResticStatus to write restic status
 	if source.Status.Restic == nil {
-		source.Status.Restic = &scribev1alpha1.ReplicationSourceResticStatus{}
+		source.Status.Restic = &volsyncv1alpha1.ReplicationSourceResticStatus{}
 	}
 
 	vh, err := volumehandler.NewVolumeHandler(
@@ -85,7 +85,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 }
 
 func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
-	destination *scribev1alpha1.ReplicationDestination) (mover.Mover, error) {
+	destination *volsyncv1alpha1.ReplicationDestination) (mover.Mover, error) {
 	// Only build if the CR belongs to us
 	if destination.Spec.Restic == nil {
 		return nil, nil

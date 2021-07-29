@@ -7,10 +7,10 @@ Restic-based data mover
    Status: Proposed
 
 This is a proposal to add `Restic <https://restic.readthedocs.io/en/stable/>`_
-as an additional data mover within Scribe. Restic is a data backup utility that
+as an additional data mover within VolSync. Restic is a data backup utility that
 copies the data to an object store (among other options).
 
-While the main purpose of Scribe is to perform asynchronous data replication,
+While the main purpose of VolSync is to perform asynchronous data replication,
 there are some use cases that are more "backup oriented" but that don't require
 a full backup application (such as Velero). For example, some users may deploy
 and version control their application via GitOps techniques. These users may be
@@ -20,7 +20,7 @@ their storage so that it can be restored if necessary.
 Considerations
 ==============
 
-The ReplicationSource and ReplicationDestination CRs of Scribe would correspond
+The ReplicationSource and ReplicationDestination CRs of VolSync would correspond
 to the ``backup`` and ``restore`` operations, respectively, of Restic.
 Furthermore, there are repository maintenance operations that need to be
 addressed. For example, Restic manages the retention of old backups (via its
@@ -55,7 +55,7 @@ repository maintenance options should be set there.
 .. code:: yaml
 
    ---
-   apiVersion: scribe/v1alpha1
+   apiVersion: volsync/v1alpha1
    kind: ReplicationSource
    metadata:
      name: source
@@ -106,7 +106,7 @@ correspond directly to the environment variables supported by Restic.
 Restore
 -------
 
-For now, with Scribe, the intention is to only support restoring the latest
+For now, with VolSync, the intention is to only support restoring the latest
 version of the backed-up data. For retrieving previous backups (that are still
 retained), Restic can be directly run against the repository, using the same
 information as in the Secret, above.
@@ -116,7 +116,7 @@ Restore would be handled by the following ReplicationDestination:
 .. code:: yaml
 
    ---
-   apiVersion: scribe.backube/v1alpha1
+   apiVersion: volsync.backube/v1alpha1
    kind: ReplicationDestination
    metadata:
      name: dest-sample

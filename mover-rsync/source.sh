@@ -2,7 +2,7 @@
 
 set -e -o pipefail
 
-echo "Scribe rsync container version: ${version:-unknown}"
+echo "VolSync rsync container version: ${version:-unknown}"
 
 # Ensure we have connection info for the destination
 DESTINATION_PORT="${DESTINATION_PORT:-22}"

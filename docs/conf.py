@@ -18,9 +18,9 @@ import sphinx_rtd_theme
 
 # -- Project information -----------------------------------------------------
 
-project = 'Scribe'
-copyright = '2020, The Scribe authors'
-author = 'The Scribe authors'
+project = 'VolSync'
+copyright = '2020, The VolSync authors'
+author = 'The VolSync authors'
 
 
 # -- General configuration ---------------------------------------------------

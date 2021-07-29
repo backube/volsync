@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Scribe authors.
+Copyright 2021 The VolSync authors.
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published
@@ -21,7 +21,7 @@ import (
 	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
 
 // Catalog is the list of the available Builders for the controller to use when
@@ -29,7 +29,7 @@ import (
 var Catalog []Builder
 
 // Register should be called by each mover via an init function to register the
-// mover w/ the main Scribe codebase.
+// mover w/ the main VolSync codebase.
 func Register(builder Builder) {
 	Catalog = append(Catalog, builder)
 }
@@ -41,11 +41,11 @@ type Builder interface {
 	// ReplicationSource. If the RS does not reference the Builder's mover type,
 	// this function should return (nil, nil).
 	FromSource(client client.Client, logger logr.Logger,
-		source *scribev1alpha1.ReplicationSource) (Mover, error)
+		source *volsyncv1alpha1.ReplicationSource) (Mover, error)
 
 	// FromDestination attempts to construct a Mover from the provided
 	// ReplicationDestination. If the RS does not reference the Builder's mover
 	// type, this function should return (nil, nil).
 	FromDestination(client client.Client, logger logr.Logger,
-		destination *scribev1alpha1.ReplicationDestination) (Mover, error)
+		destination *volsyncv1alpha1.ReplicationDestination) (Mover, error)
 }

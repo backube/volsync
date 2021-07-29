@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Scribe authors.
+Copyright 2020 The VolSync authors.
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published
@@ -39,9 +39,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
-	"github.com/backube/scribe/controllers/mover"
-	"github.com/backube/scribe/controllers/utils"
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
+	"github.com/backube/volsync/controllers/mover"
+	"github.com/backube/volsync/controllers/utils"
 )
 
 const (
@@ -58,9 +58,9 @@ type ReplicationSourceReconciler struct {
 
 //nolint:lll
 //nolint:funlen
-//+kubebuilder:rbac:groups=scribe.backube,resources=replicationsources,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=scribe.backube,resources=replicationsources/finalizers,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=scribe.backube,resources=replicationsources/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=volsync.backube,resources=replicationsources,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=volsync.backube,resources=replicationsources/finalizers,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=volsync.backube,resources=replicationsources/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete;deletecollection
 //+kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete;deletecollection
 //+kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
@@ -68,13 +68,13 @@ type ReplicationSourceReconciler struct {
 //+kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=roles,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=security.openshift.io,resources=securitycontextconstraints,resourceNames=scribe-mover,verbs=use
+//+kubebuilder:rbac:groups=security.openshift.io,resources=securitycontextconstraints,resourceNames=volsync-mover,verbs=use
 //+kubebuilder:rbac:groups=snapshot.storage.k8s.io,resources=volumesnapshots,verbs=get;list;watch;create;update;patch;delete;deletecollection
 
 //nolint:funlen
 func (r *ReplicationSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Log.WithValues("replicationsource", req.NamespacedName)
-	inst := &scribev1alpha1.ReplicationSource{}
+	inst := &volsyncv1alpha1.ReplicationSource{}
 	if err := r.Client.Get(ctx, req.NamespacedName, inst); err != nil {
 		if kerrors.IsNotFound(err) {
 			logger.Error(err, "Failed to get Source")
@@ -83,7 +83,7 @@ func (r *ReplicationSourceReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	if inst.Status == nil {
-		inst.Status = &scribev1alpha1.ReplicationSourceStatus{}
+		inst.Status = &volsyncv1alpha1.ReplicationSourceStatus{}
 	}
 	if inst.Status.Conditions == nil {
 		inst.Status.Conditions = status.Conditions{}
@@ -110,17 +110,17 @@ func (r *ReplicationSourceReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	if err == nil {
 		inst.Status.Conditions.SetCondition(
 			status.Condition{
-				Type:    scribev1alpha1.ConditionReconciled,
+				Type:    volsyncv1alpha1.ConditionReconciled,
 				Status:  corev1.ConditionTrue,
-				Reason:  scribev1alpha1.ReconciledReasonComplete,
+				Reason:  volsyncv1alpha1.ReconciledReasonComplete,
 				Message: "Reconcile complete",
 			})
 	} else {
 		inst.Status.Conditions.SetCondition(
 			status.Condition{
-				Type:    scribev1alpha1.ConditionReconciled,
+				Type:    volsyncv1alpha1.ConditionReconciled,
 				Status:  corev1.ConditionFalse,
-				Reason:  scribev1alpha1.ReconciledReasonError,
+				Reason:  volsyncv1alpha1.ReconciledReasonError,
 				Message: err.Error(),
 			})
 	}
@@ -146,7 +146,7 @@ var errNoMoverFound = fmt.Errorf("no matching data mover was found")
 //nolint:funlen
 func reconcileSrcUsingCatalog(
 	ctx context.Context,
-	instance *scribev1alpha1.ReplicationSource,
+	instance *volsyncv1alpha1.ReplicationSource,
 	sr *ReplicationSourceReconciler,
 	logger logr.Logger,
 ) (ctrl.Result, error) {
@@ -165,7 +165,7 @@ func reconcileSrcUsingCatalog(
 		return ctrl.Result{}, errNoMoverFound
 	}
 
-	metrics := newScribeMetrics(prometheus.Labels{
+	metrics := newVolSyncMetrics(prometheus.Labels{
 		"obj_name":      instance.Name,
 		"obj_namespace": instance.Namespace,
 		"role":          "source",
@@ -177,14 +177,14 @@ func reconcileSrcUsingCatalog(
 	}
 
 	var mResult mover.Result
-	if shouldSync && !instance.Status.Conditions.IsFalseFor(scribev1alpha1.ConditionSynchronizing) {
+	if shouldSync && !instance.Status.Conditions.IsFalseFor(volsyncv1alpha1.ConditionSynchronizing) {
 		mResult, err = dataMover.Synchronize(ctx)
 		if mResult.Completed {
 			instance.Status.Conditions.SetCondition(
 				status.Condition{
-					Type:    scribev1alpha1.ConditionSynchronizing,
+					Type:    volsyncv1alpha1.ConditionSynchronizing,
 					Status:  corev1.ConditionFalse,
-					Reason:  scribev1alpha1.SynchronizingReasonCleanup,
+					Reason:  volsyncv1alpha1.SynchronizingReasonCleanup,
 					Message: "Cleaning up",
 				},
 			)
@@ -197,9 +197,9 @@ func reconcileSrcUsingCatalog(
 		if mResult.Completed {
 			instance.Status.Conditions.SetCondition(
 				status.Condition{
-					Type:    scribev1alpha1.ConditionSynchronizing,
+					Type:    volsyncv1alpha1.ConditionSynchronizing,
 					Status:  corev1.ConditionTrue,
-					Reason:  scribev1alpha1.SynchronizingReasonSync,
+					Reason:  volsyncv1alpha1.SynchronizingReasonSync,
 					Message: "Synchronization in-progress",
 				},
 			)
@@ -212,7 +212,7 @@ func reconcileSrcUsingCatalog(
 
 func (r *ReplicationSourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&scribev1alpha1.ReplicationSource{}).
+		For(&volsyncv1alpha1.ReplicationSource{}).
 		Owns(&batchv1.Job{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
 		Owns(&corev1.Secret{}).
@@ -235,8 +235,8 @@ func pastScheduleDeadline(schedule cron.Schedule, lastCompleted time.Time, now t
 
 //nolint:dupl
 func updateNextSyncSource(
-	rs *scribev1alpha1.ReplicationSource,
-	metrics scribeMetrics,
+	rs *volsyncv1alpha1.ReplicationSource,
+	metrics volsyncMetrics,
 	logger logr.Logger,
 ) (bool, error) {
 	// if there's a schedule, and no manual trigger is set
@@ -274,8 +274,8 @@ func updateNextSyncSource(
 
 //nolint:funlen
 func awaitNextSyncSource(
-	rs *scribev1alpha1.ReplicationSource,
-	metrics scribeMetrics,
+	rs *volsyncv1alpha1.ReplicationSource,
+	metrics volsyncMetrics,
 	logger logr.Logger,
 ) (bool, error) {
 	// Ensure nextSyncTime is correct
@@ -289,9 +289,9 @@ func awaitNextSyncSource(
 		if rs.Spec.Trigger.Manual == rs.Status.LastManualSync {
 			rs.Status.Conditions.SetCondition(
 				status.Condition{
-					Type:    scribev1alpha1.ConditionSynchronizing,
+					Type:    volsyncv1alpha1.ConditionSynchronizing,
 					Status:  corev1.ConditionFalse,
-					Reason:  scribev1alpha1.SynchronizingReasonManual,
+					Reason:  volsyncv1alpha1.SynchronizingReasonManual,
 					Message: "Waiting for manual trigger",
 				},
 			)
@@ -299,9 +299,9 @@ func awaitNextSyncSource(
 		}
 		rs.Status.Conditions.SetCondition(
 			status.Condition{
-				Type:    scribev1alpha1.ConditionSynchronizing,
+				Type:    volsyncv1alpha1.ConditionSynchronizing,
 				Status:  corev1.ConditionTrue,
-				Reason:  scribev1alpha1.SynchronizingReasonSync,
+				Reason:  volsyncv1alpha1.SynchronizingReasonSync,
 				Message: "Synchronization in-progress",
 			},
 		)
@@ -318,9 +318,9 @@ func awaitNextSyncSource(
 	if rs.Status.NextSyncTime.Time.Before(time.Now()) {
 		rs.Status.Conditions.SetCondition(
 			status.Condition{
-				Type:    scribev1alpha1.ConditionSynchronizing,
+				Type:    volsyncv1alpha1.ConditionSynchronizing,
 				Status:  corev1.ConditionTrue,
-				Reason:  scribev1alpha1.SynchronizingReasonSync,
+				Reason:  volsyncv1alpha1.SynchronizingReasonSync,
 				Message: "Synchronization in-progress",
 			},
 		)
@@ -328,9 +328,9 @@ func awaitNextSyncSource(
 	}
 	rs.Status.Conditions.SetCondition(
 		status.Condition{
-			Type:    scribev1alpha1.ConditionSynchronizing,
+			Type:    volsyncv1alpha1.ConditionSynchronizing,
 			Status:  corev1.ConditionFalse,
-			Reason:  scribev1alpha1.SynchronizingReasonSched,
+			Reason:  volsyncv1alpha1.SynchronizingReasonSched,
 			Message: "Waiting for next scheduled synchronization",
 		},
 	)
@@ -339,8 +339,8 @@ func awaitNextSyncSource(
 
 //nolint:dupl
 func updateLastSyncSource(
-	rs *scribev1alpha1.ReplicationSource,
-	metrics scribeMetrics,
+	rs *volsyncv1alpha1.ReplicationSource,
+	metrics volsyncMetrics,
 	logger logr.Logger,
 ) (bool, error) {
 	// if there's a schedule see if we've made the deadline
@@ -376,7 +376,7 @@ func updateLastSyncSource(
 
 type rsyncSrcReconciler struct {
 	sourceVolumeHandler
-	scribeMetrics
+	volsyncMetrics
 	service        *corev1.Service
 	destSecret     *corev1.Secret
 	srcSecret      *corev1.Secret
@@ -386,7 +386,7 @@ type rsyncSrcReconciler struct {
 
 type rcloneSrcReconciler struct {
 	sourceVolumeHandler
-	scribeMetrics
+	volsyncMetrics
 	rcloneConfigSecret *corev1.Secret
 	serviceAccount     *corev1.ServiceAccount
 	job                *batchv1.Job
@@ -395,7 +395,7 @@ type rcloneSrcReconciler struct {
 //nolint:dupl
 func RunRsyncSrcReconciler(
 	ctx context.Context,
-	instance *scribev1alpha1.ReplicationSource,
+	instance *volsyncv1alpha1.ReplicationSource,
 	sr *ReplicationSourceReconciler,
 	logger logr.Logger,
 ) (ctrl.Result, error) {
@@ -406,7 +406,7 @@ func RunRsyncSrcReconciler(
 			ReplicationSourceReconciler: *sr,
 			Options:                     &instance.Spec.Rsync.ReplicationSourceVolumeOptions,
 		},
-		scribeMetrics: newScribeMetrics(prometheus.Labels{
+		volsyncMetrics: newVolSyncMetrics(prometheus.Labels{
 			"obj_name":      instance.Name,
 			"obj_namespace": instance.Namespace,
 			"role":          "source",
@@ -418,12 +418,12 @@ func RunRsyncSrcReconciler(
 
 	// Make sure there's a place to write status info
 	if r.Instance.Status.Rsync == nil {
-		r.Instance.Status.Rsync = &scribev1alpha1.ReplicationSourceRsyncStatus{}
+		r.Instance.Status.Rsync = &volsyncv1alpha1.ReplicationSourceRsyncStatus{}
 	}
 
 	// wrap the scheduling functions as reconcileFuncs
 	awaitNextSync := func(l logr.Logger) (bool, error) {
-		return awaitNextSyncSource(r.Instance, r.scribeMetrics, l)
+		return awaitNextSyncSource(r.Instance, r.volsyncMetrics, l)
 	}
 
 	_, err := utils.ReconcileBatch(l,
@@ -443,7 +443,7 @@ func RunRsyncSrcReconciler(
 // RunRcloneSrcReconciler is invoked when ReplicationSource.Spec.Rclone != nil
 func RunRcloneSrcReconciler(
 	ctx context.Context,
-	instance *scribev1alpha1.ReplicationSource,
+	instance *volsyncv1alpha1.ReplicationSource,
 	sr *ReplicationSourceReconciler,
 	logger logr.Logger,
 ) (ctrl.Result, error) {
@@ -454,7 +454,7 @@ func RunRcloneSrcReconciler(
 			ReplicationSourceReconciler: *sr,
 			Options:                     &instance.Spec.Rclone.ReplicationSourceVolumeOptions,
 		},
-		scribeMetrics: newScribeMetrics(prometheus.Labels{
+		volsyncMetrics: newVolSyncMetrics(prometheus.Labels{
 			"obj_name":      instance.Name,
 			"obj_namespace": instance.Namespace,
 			"role":          "source",
@@ -466,7 +466,7 @@ func RunRcloneSrcReconciler(
 
 	// wrap the scheduling functions as reconcileFuncs
 	awaitNextSync := func(l logr.Logger) (bool, error) {
-		return awaitNextSyncSource(r.Instance, r.scribeMetrics, l)
+		return awaitNextSyncSource(r.Instance, r.volsyncMetrics, l)
 	}
 
 	_, err := utils.ReconcileBatch(l,
@@ -486,7 +486,7 @@ func RunRcloneSrcReconciler(
 func (r *rcloneSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 	r.job = &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "scribe-rclone-src-" + r.Instance.Name,
+			Name:      "volsync-rclone-src-" + r.Instance.Name,
 			Namespace: r.Instance.Namespace,
 		},
 	}
@@ -569,7 +569,7 @@ func (r *rsyncSrcReconciler) serviceSelector() map[string]string {
 	return map[string]string{
 		"app.kubernetes.io/name":      "src-" + r.Instance.Name,
 		"app.kubernetes.io/component": "rsync-mover",
-		"app.kubernetes.io/part-of":   "scribe",
+		"app.kubernetes.io/part-of":   "volsync",
 	}
 }
 
@@ -583,7 +583,7 @@ func (r *rsyncSrcReconciler) ensureService(l logr.Logger) (bool, error) {
 
 	r.service = &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "scribe-rsync-src-" + r.Instance.Name,
+			Name:      "volsync-rsync-src-" + r.Instance.Name,
 			Namespace: r.Instance.Namespace,
 		},
 	}
@@ -642,7 +642,7 @@ func (r *rsyncSrcReconciler) ensureKeys(l logr.Logger) (bool, error) {
 		Client:       r.Client,
 		Scheme:       r.Scheme,
 		Owner:        r.Instance,
-		NameTemplate: "scribe-rsync-src",
+		NameTemplate: "volsync-rsync-src",
 	}
 	cont, err := keyInfo.Reconcile(l)
 	if !cont || err != nil {
@@ -675,7 +675,7 @@ func (r *rcloneSrcReconciler) ensureRcloneConfig(l logr.Logger) (bool, error) {
 func (r *rsyncSrcReconciler) ensureServiceAccount(l logr.Logger) (bool, error) {
 	r.serviceAccount = &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "scribe-rsync-src-" + r.Instance.Name,
+			Name:      "volsync-rsync-src-" + r.Instance.Name,
 			Namespace: r.Instance.Namespace,
 		},
 	}
@@ -686,7 +686,7 @@ func (r *rsyncSrcReconciler) ensureServiceAccount(l logr.Logger) (bool, error) {
 func (r *rcloneSrcReconciler) ensureServiceAccount(l logr.Logger) (bool, error) {
 	r.serviceAccount = &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "scribe-src-" + r.Instance.Name,
+			Name:      "volsync-src-" + r.Instance.Name,
 			Namespace: r.Instance.Namespace,
 		},
 	}
@@ -698,7 +698,7 @@ func (r *rcloneSrcReconciler) ensureServiceAccount(l logr.Logger) (bool, error) 
 func (r *rsyncSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 	r.job = &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "scribe-rsync-src-" + r.Instance.Name,
+			Name:      "volsync-rsync-src-" + r.Instance.Name,
 			Namespace: r.Instance.Namespace,
 		},
 	}
@@ -799,7 +799,7 @@ func (r *rsyncSrcReconciler) ensureJob(l logr.Logger) (bool, error) {
 func (r *rsyncSrcReconciler) cleanupJob(l logr.Logger) (bool, error) {
 	logger := l.WithValues("job", r.job)
 	// update time/duration
-	if cont, err := updateLastSyncSource(r.Instance, r.scribeMetrics, logger); !cont || err != nil {
+	if cont, err := updateLastSyncSource(r.Instance, r.volsyncMetrics, logger); !cont || err != nil {
 		return cont, err
 	}
 	if r.job.Status.StartTime != nil {
@@ -819,7 +819,7 @@ func (r *rsyncSrcReconciler) cleanupJob(l logr.Logger) (bool, error) {
 func (r *rcloneSrcReconciler) cleanupJob(l logr.Logger) (bool, error) {
 	logger := l.WithValues("job", r.job)
 	// update time/duration
-	if cont, err := updateLastSyncSource(r.Instance, r.scribeMetrics, logger); !cont || err != nil {
+	if cont, err := updateLastSyncSource(r.Instance, r.volsyncMetrics, logger); !cont || err != nil {
 		return cont, err
 	}
 	if r.job.Status.StartTime != nil {

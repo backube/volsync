@@ -2,15 +2,15 @@
 SSH keys
 ========
 
-Scribe generates SSH keys upon the deployment of a ReplicationDestination object
-but SSH keys can also be provided to Scribe rather than generating new ones. The
-steps below will describe the process to provide Scribe SSH keys.
+VolSync generates SSH keys upon the deployment of a ReplicationDestination object
+but SSH keys can also be provided to VolSync rather than generating new ones. The
+steps below will describe the process to provide VolSync SSH keys.
 
 Generating keys
 ===============
 
 ``ssh-keygen`` can be used to generate SSH keys. The keys that are created will
-be used to create secrets which will be used by Scribe.
+be used to create secrets which will be used by VolSync.
 
 Two keys need to be generated. The first SSH key will called ``destination``.
 
@@ -71,26 +71,26 @@ the public source key:
 .. code::
 
    $ kubectl create ns dest
-   $ kubectl create secret generic scribe-rsync-dest-dest-database-destination --from-file=destination=destination --from-file=source.pub=source.pub --from-file=destination.pub=destination.pub -n dest
+   $ kubectl create secret generic volsync-rsync-dest-dest-database-destination --from-file=destination=destination --from-file=source.pub=source.pub --from-file=destination.pub=destination.pub -n dest
 
 The source needs access to the public and private source keys but only the public destination key:
 
 .. code::
 
    $ kubectl create ns source
-   $ kubectl create secret generic scribe-rsync-dest-src-database-destination --from-file=source=source --from-file=source.pub=source.pub --from-file=destination.pub=destination.pub -n source
+   $ kubectl create secret generic volsync-rsync-dest-src-database-destination --from-file=source=source --from-file=source.pub=source.pub --from-file=destination.pub=destination.pub -n source
 
 Replication destination configuration
 =====================================
 
 The last step to use these keys is to provide the value of ``sshKeys`` to the
 ReplicationDestination object as a field. As an example we will modify
-``examples/rsync/scribe_v1alpha1_replicationdestination.yaml``.
+``examples/rsync/volsync_v1alpha1_replicationdestination.yaml``.
 
 .. code:: yaml
 
    ---
-   apiVersion: scribe.backube/v1alpha1
+   apiVersion: volsync.backube/v1alpha1
    kind: ReplicationDestination
    metadata:
      name: database-destination
@@ -102,13 +102,13 @@ ReplicationDestination object as a field. As an example we will modify
        capacity: 2Gi
        accessModes: [ReadWriteOnce]
        # This is the name of the Secret we created, above
-       sshKeys: scribe-rsync-dest-dest-database-destination
+       sshKeys: volsync-rsync-dest-dest-database-destination
 
 The ReplicationDestination object can now be created:
 
 .. code::
 
-   $ kubectl create -f examples/rsync/scribe_v1alpha1_replicationdestination.yaml
+   $ kubectl create -f examples/rsync/volsync_v1alpha1_replicationdestination.yaml
 
 The above steps should be repeated to modify set the ``sshKeys`` field in the
 ReplicationSource.

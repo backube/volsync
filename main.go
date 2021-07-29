@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Scribe authors.
+Copyright 2021 The VolSync authors.
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published
@@ -35,23 +35,23 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
-	"github.com/backube/scribe/controllers"
-	"github.com/backube/scribe/controllers/mover/restic"
-	"github.com/backube/scribe/controllers/utils"
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
+	"github.com/backube/volsync/controllers"
+	"github.com/backube/volsync/controllers/mover/restic"
+	"github.com/backube/volsync/controllers/utils"
 	//+kubebuilder:scaffold:imports
 )
 
 var (
-	scheme        = kruntime.NewScheme()
-	setupLog      = ctrl.Log.WithName("setup")
-	scribeVersion = "0.0.0"
+	scheme         = kruntime.NewScheme()
+	setupLog       = ctrl.Log.WithName("setup")
+	volsyncVersion = "0.0.0"
 )
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(snapv1.AddToScheme(scheme))
-	utilruntime.Must(scribev1alpha1.AddToScheme(scheme))
+	utilruntime.Must(volsyncv1alpha1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
@@ -73,7 +73,7 @@ func main() {
 	flag.StringVar(&controllers.RsyncContainerImage, "rsync-container-image",
 		controllers.DefaultRsyncContainerImage, "The container image for the rsync data mover")
 	flag.StringVar(&utils.SCCName, "scc-name",
-		utils.DefaultSCCName, "The name of the scribe security context constraint")
+		utils.DefaultSCCName, "The name of the volsync security context constraint")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -84,7 +84,7 @@ func main() {
 
 	setupLog.Info(fmt.Sprintf("Go Version: %s", runtime.Version()))
 	setupLog.Info(fmt.Sprintf("Go OS/Arch: %s/%s", runtime.GOOS, runtime.GOARCH))
-	setupLog.Info(fmt.Sprintf("Operator Version: %s", scribeVersion))
+	setupLog.Info(fmt.Sprintf("Operator Version: %s", volsyncVersion))
 	setupLog.Info(fmt.Sprintf("Rclone container: %s", controllers.RcloneContainerImage))
 	setupLog.Info(fmt.Sprintf("Rsync container: %s", controllers.RsyncContainerImage))
 

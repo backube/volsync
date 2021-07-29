@@ -23,7 +23,7 @@ cases such as:
 - Mirroring to a test environment
 - Sending data to a remote site for processing
 
-With this method, Scribe synchronizes data from a ReplicationSource to a
+With this method, VolSync synchronizes data from a ReplicationSource to a
 ReplicationDestination using `Rsync <https://rsync.samba.org/>`_ across an ssh
 connection. By using Rsync, the amount of data transferred during each
 synchronization is kept to a minimum, and the ssh connection ensures that the
@@ -36,12 +36,12 @@ replication. A schedule or other trigger is used on the source side of the
 relationship to trigger each replication iteration.
 
 During each iteration, (optionally) a point-in-time (PiT) copy of the source
-volume is created and used as the source data. The Scribe Rsync data mover then
+volume is created and used as the source data. The VolSync Rsync data mover then
 connects to the destination using ssh (exposed via a Service or load balancer)
 and sends any updates. At the conclusion of the transfer, the destination
 (optionally) creates a VolumeSnapshot to preserve the updated data.
 
-Scribe is configured via two CustomResources (CRs), one on the source side and
+VolSync is configured via two CustomResources (CRs), one on the source side and
 one on the destination side of the replication relationship.
 
 Destination configuration
@@ -52,7 +52,7 @@ Start by configuring the destination; a minimal example is shown below:
 .. code:: yaml
 
    ---
-   apiVersion: scribe/v1alpha1
+   apiVersion: volsync/v1alpha1
    kind: ReplicationDestination
    metadata:
      name: myDest
@@ -74,13 +74,13 @@ would be used to gain access to the replicated data. The name of the current Vol
 Destination status
 ------------------
 
-Scribe provides status information on the state of the replication via the
+VolSync provides status information on the state of the replication via the
 ``.status`` field in the ReplicationDestination object:
 
 .. code:: yaml
 
    ---
-   apiVersion: scribe/v1alpha1
+   apiVersion: volsync/v1alpha1
    kind: ReplicationDestination
    metadata:
      name: myDest
@@ -100,10 +100,10 @@ Scribe provides status information on the state of the replication via the
      latestImage:
        apiGroup: snapshot.storage.k8s.io
        kind: VolumeSnapshot
-       name: scribe-dest-test-20210114194305
+       name: volsync-dest-test-20210114194305
      rsync:
        address: 10.99.236.225
-       sshKeys: scribe-rsync-dest-src-test
+       sshKeys: volsync-rsync-dest-src-test
 
 In the above example,
 
@@ -121,7 +121,7 @@ available:
 - latestImage references the object with the most recent copy of the data. If
   the copyMethod is Snapshot, this will be a VolumeSnapshot object. If the
   copyMethod is None, this will be the PVC that is used as the destination by
-  Scribe.
+  VolSync.
 
 Additional destination options
 ------------------------------
@@ -139,7 +139,7 @@ sshKeys
    Secret. The name of that new Secret will be placed in
    ``.status.rsync.sshKeys``.
 serviceType
-   Scribe creates a Service to allow the source to connect to the destination.
+   VolSync creates a Service to allow the source to connect to the destination.
    This field determines the type of that Service. Allowed values are ClusterIP
    or LoadBalancer. The default is ClusterIP.
 port
@@ -154,7 +154,7 @@ A minimal source configuration is shown here:
 .. code:: yaml
 
    ---
-   apiVersion: scribe.backube/v1alpha1
+   apiVersion: volsync.backube/v1alpha1
    kind: ReplicationSource
    metadata:
      name: mySource
@@ -164,7 +164,7 @@ A minimal source configuration is shown here:
      trigger:
        schedule: "*/5 * * * *"
      rsync:
-       sshKeys: scribe-rsync-dest-src-database-destination
+       sshKeys: volsync-rsync-dest-src-database-destination
        address: my.host.com
        copyMethod: Clone
 
@@ -189,7 +189,7 @@ The state of the replication from the source's point of view is available in the
 .. code:: yaml
 
    ---
-   apiVersion: scribe.backube/v1alpha1
+   apiVersion: volsync.backube/v1alpha1
    kind: ReplicationSource
    metadata:
      name: mySource

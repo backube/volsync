@@ -99,7 +99,7 @@ Start by configuring the source; a minimal example is shown below
 .. code-block:: yaml
 
    ---
-   apiVersion: scribe.backube/v1alpha1
+   apiVersion: volsync.backube/v1alpha1
    kind: ReplicationSource
    metadata:
       name: database-source
@@ -139,7 +139,7 @@ Now, deploy the ``restic-config`` followed by ``ReplicationSource`` configuratio
 .. code-block:: none
 
    $ kubectl create -f examples/restic/source-restic/source-restic.yaml -n source
-   $ kubectl create -f examples/restic/scribe_v1alpha1_replicationsource.yaml -n source
+   $ kubectl create -f examples/restic/volsync_v1alpha1_replicationsource.yaml -n source
 
 To verify the replication has completed, view the the ReplicationSource
 ``.status`` field.
@@ -148,7 +148,7 @@ To verify the replication has completed, view the the ReplicationSource
 
    $ kubectl -n source get ReplicationSource/database-source -oyaml
 
-   apiVersion: scribe.backube/v1alpha1
+   apiVersion: volsync.backube/v1alpha1
    kind: ReplicationSource
    metadata:
      name: database-source
@@ -172,7 +172,7 @@ completed.
 
 -----------------------------------------
 
-The backup created by Scribe can be seen by directly accessing the Restic
+The backup created by VolSync can be seen by directly accessing the Restic
 repository:
 
 .. code-block:: none
@@ -187,7 +187,7 @@ repository:
    created new cache in /home/jstrunk/.cache/restic
    ID        Time                 Host        Tags        Paths
    ------------------------------------------------------------
-   caebaa8e  2021-05-17 14:19:42  scribe                  /data
+   caebaa8e  2021-05-17 14:19:42  volsync                  /data
    ------------------------------------------------------------
    1 snapshots
 
@@ -216,7 +216,7 @@ Create the ReplicationDestination in the ``dest`` namespace to restore the data:
 .. code-block:: yaml
 
    ---
-   apiVersion: scribe.backube/v1alpha1
+   apiVersion: volsync.backube/v1alpha1
    kind: ReplicationDestination
    metadata:
      name: database-destination
@@ -231,7 +231,7 @@ Create the ReplicationDestination in the ``dest`` namespace to restore the data:
 
 .. code-block:: none
 
-   $ kubectl -n dest create -f examples/restic/scribe_v1alpha1_replicationdestination.yaml
+   $ kubectl -n dest create -f examples/restic/volsync_v1alpha1_replicationdestination.yaml
 
 Once the restore is complete, the ``.status.lastManualSync`` field will match
 ``.spec.trigger.manual``.

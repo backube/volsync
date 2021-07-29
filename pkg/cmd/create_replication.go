@@ -21,29 +21,29 @@ import (
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
 
-	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
 
 var (
-	scribeStartReplicationLong = templates.LongDesc(`
-        Scribe is a command line tool for a scribe operator running in a Kubernetes cluster.
-		Scribe asynchronously replicates Kubernetes persistent volumes between clusters or namespaces
-		using rsync, rclone, or restic. Scribe uses a ReplicationDestination and a ReplicationSource to
+	volsyncStartReplicationLong = templates.LongDesc(`
+        VolSync is a command line tool for a volsync operator running in a Kubernetes cluster.
+		VolSync asynchronously replicates Kubernetes persistent volumes between clusters or namespaces
+		using rsync, rclone, or restic. VolSync uses a ReplicationDestination and a ReplicationSource to
 		replicate a volume. Data will be synced according to the configured sync schedule.
 		The start-replication command will create a ReplicationDestination, ReplicationSource,
 		synced SSH keys secret from destination to source, and destination PVC that is a copy of
 		the source PVC, with specified modifications, such as storage-class. 
 `)
-	scribeStartReplicationExample = templates.Examples(`
-        # View all flags for start-replication. 'scribe-config' can hold flag values.
-		# Scribe config holds values for source PVC, source and destination context, and other options.
-        $ scribe start-replication --help
+	volsyncStartReplicationExample = templates.Examples(`
+        # View all flags for start-replication. 'volsync-config' can hold flag values.
+		# VolSync config holds values for source PVC, source and destination context, and other options.
+        $ volsync start-replication --help
 
-        # Start a Replication with 'scribe-config' file holding flag values in current directory.
-		# Scribe config holds values for source PVC, source and destination context, and other options.
+        # Start a Replication with 'volsync-config' file holding flag values in current directory.
+		# VolSync config holds values for source PVC, source and destination context, and other options.
 		# You may also pass any flags as command line options. Command line options will override those
 		# in the config file.
-        $ scribe start-replication
+        $ volsync start-replication
 
     `)
 )
@@ -76,15 +76,15 @@ func NewSetupReplicationOptions(streams genericclioptions.IOStreams) *SetupRepli
 	}
 }
 
-func NewCmdScribeStartReplication(streams genericclioptions.IOStreams) *cobra.Command {
+func NewCmdVolSyncStartReplication(streams genericclioptions.IOStreams) *cobra.Command {
 	v := viper.New()
 	o := NewSetupReplicationOptions(streams)
 	cmd := &cobra.Command{
 		Use:     "start-replication [OPTIONS]",
-		Short:   i18n.T("Start a scribe replication for  a persistent volume."),
-		Long:    fmt.Sprint(scribeStartReplicationLong),
-		Example: fmt.Sprint(scribeStartReplicationExample),
-		Version: ScribeVersion,
+		Short:   i18n.T("Start a volsync replication for  a persistent volume."),
+		Long:    fmt.Sprint(volsyncStartReplicationLong),
+		Example: fmt.Sprint(volsyncStartReplicationExample),
+		Version: VolSyncVersion,
 		Run: func(cmd *cobra.Command, args []string) {
 			kcmdutil.CheckErr(o.Complete())
 			kcmdutil.CheckErr(o.Validate())
@@ -145,7 +145,7 @@ func (o *SetupReplicationOptions) bindFlags(cmd *cobra.Command, v *viper.Viper) 
 }
 
 func (o *SetupReplicationOptions) Bind(cmd *cobra.Command, v *viper.Viper) error {
-	v.SetConfigName(scribeConfig)
+	v.SetConfigName(volsyncConfig)
 	v.AddConfigPath(".")
 	v.SetConfigType("yaml")
 	if err := v.ReadInConfig(); err != nil {
@@ -207,7 +207,7 @@ func (o *SetupReplicationOptions) sourceCommonOptions() error {
 		Provider:                o.Provider,
 		ProviderParameters:      o.ProviderParameters,
 	}
-	return o.getCommonOptions(sharedOpts, scribeSource)
+	return o.getCommonOptions(sharedOpts, volsyncSource)
 }
 
 func (o *SetupReplicationOptions) destCommonOptions() error {
@@ -224,7 +224,7 @@ func (o *SetupReplicationOptions) destCommonOptions() error {
 		Provider:                o.DestOpts.Provider,
 		ProviderParameters:      o.DestOpts.ProviderParameters,
 	}
-	return o.getCommonOptions(sharedOpts, scribeDest)
+	return o.getCommonOptions(sharedOpts, volsyncDest)
 }
 
 //nolint:funlen
@@ -245,7 +245,7 @@ func (o *SetupReplicationOptions) StartReplication() error {
 	}
 
 	klog.Infof("Extracting ReplicationDestination RSync address")
-	repDest := &scribev1alpha1.ReplicationDestination{}
+	repDest := &volsyncv1alpha1.ReplicationDestination{}
 	nsName := types.NamespacedName{
 		Namespace: o.RepOpts.Dest.Namespace,
 		Name:      o.DestOpts.Name,
@@ -276,7 +276,7 @@ func (o *SetupReplicationOptions) StartReplication() error {
 	case len(o.SSHKeysSecretOptions.SSHKeysSecret) > 0:
 		sshKeysSecret = &o.SSHKeysSecretOptions.SSHKeysSecret
 	default:
-		s := fmt.Sprintf("scribe-rsync-dest-src-%s", repDest.Name)
+		s := fmt.Sprintf("volsync-rsync-dest-src-%s", repDest.Name)
 		sshKeysSecret = &s
 	}
 	sshSecret := &corev1.Secret{}
@@ -310,14 +310,14 @@ func (o *SetupReplicationOptions) StartReplication() error {
 		}
 	}
 
-	triggerSpec := &scribev1alpha1.ReplicationSourceTriggerSpec{
+	triggerSpec := &volsyncv1alpha1.ReplicationSourceTriggerSpec{
 		Schedule: &o.Schedule,
 	}
 	if len(o.Schedule) == 0 {
 		triggerSpec = nil
 	}
-	rsyncSpec := &scribev1alpha1.ReplicationSourceRsyncSpec{
-		ReplicationSourceVolumeOptions: scribev1alpha1.ReplicationSourceVolumeOptions{
+	rsyncSpec := &volsyncv1alpha1.ReplicationSourceRsyncSpec{
+		ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
 			CopyMethod:              o.RepOpts.Source.CopyMethod,
 			Capacity:                &o.RepOpts.Source.Capacity,
 			StorageClassName:        o.RepOpts.Source.StorageClass,
@@ -331,23 +331,23 @@ func (o *SetupReplicationOptions) StartReplication() error {
 		Path:        repDest.Spec.Rsync.Path,
 		SSHUser:     o.RepOpts.Source.SSHUser,
 	}
-	var externalSpec *scribev1alpha1.ReplicationSourceExternalSpec
+	var externalSpec *volsyncv1alpha1.ReplicationSourceExternalSpec
 	if len(o.RepOpts.Source.Provider) > 0 && o.RepOpts.Source.Parameters != nil {
-		externalSpec = &scribev1alpha1.ReplicationSourceExternalSpec{
+		externalSpec = &volsyncv1alpha1.ReplicationSourceExternalSpec{
 			Provider:   o.RepOpts.Source.Provider,
 			Parameters: o.RepOpts.Source.Parameters,
 		}
 	}
-	rs := &scribev1alpha1.ReplicationSource{
+	rs := &volsyncv1alpha1.ReplicationSource{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: "scribe.backube/v1alpha1",
+			APIVersion: "volsync.backube/v1alpha1",
 			Kind:       "ReplicationSource",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      o.Name,
 			Namespace: o.RepOpts.Source.Namespace,
 		},
-		Spec: scribev1alpha1.ReplicationSourceSpec{
+		Spec: volsyncv1alpha1.ReplicationSourceSpec{
 			SourcePVC: o.SourcePVC,
 			Trigger:   triggerSpec,
 			Rsync:     rsyncSpec,
@@ -452,7 +452,7 @@ func (o *SetupReplicationOptions) CreateDestinationPVCFromSource(
 func (o *SetupReplicationOptions) CreateDestination(ctx context.Context) error {
 	var destPVCName string
 	var err error
-	if o.RepOpts.Dest.CopyMethod == scribev1alpha1.CopyMethodNone {
+	if o.RepOpts.Dest.CopyMethod == volsyncv1alpha1.CopyMethodNone {
 		destPVCName, err = o.CreateDestinationPVCFromSource(ctx, nil)
 		if err != nil {
 			return err
@@ -465,7 +465,7 @@ func (o *SetupReplicationOptions) CreateDestination(ctx context.Context) error {
 	default:
 		sshKeysSecret = nil
 	}
-	triggerSpec := &scribev1alpha1.ReplicationDestinationTriggerSpec{
+	triggerSpec := &volsyncv1alpha1.ReplicationDestinationTriggerSpec{
 		Schedule: &o.DestOpts.Schedule,
 	}
 	if len(o.DestOpts.Schedule) == 0 {
@@ -480,8 +480,8 @@ func (o *SetupReplicationOptions) CreateDestination(ctx context.Context) error {
 		path = nil
 	}
 
-	rsyncSpec := &scribev1alpha1.ReplicationDestinationRsyncSpec{
-		ReplicationDestinationVolumeOptions: scribev1alpha1.ReplicationDestinationVolumeOptions{
+	rsyncSpec := &volsyncv1alpha1.ReplicationDestinationRsyncSpec{
+		ReplicationDestinationVolumeOptions: volsyncv1alpha1.ReplicationDestinationVolumeOptions{
 			CopyMethod:              o.RepOpts.Dest.CopyMethod,
 			Capacity:                &o.RepOpts.Dest.Capacity,
 			StorageClassName:        o.RepOpts.Dest.StorageClass,
@@ -497,26 +497,26 @@ func (o *SetupReplicationOptions) CreateDestination(ctx context.Context) error {
 		Path:        path,
 	}
 
-	if o.RepOpts.Dest.CopyMethod != scribev1alpha1.CopyMethodNone && len(o.DestOpts.DestPVC) == 0 {
+	if o.RepOpts.Dest.CopyMethod != volsyncv1alpha1.CopyMethodNone && len(o.DestOpts.DestPVC) == 0 {
 		rsyncSpec.ReplicationDestinationVolumeOptions.DestinationPVC = nil
 	}
-	var externalSpec *scribev1alpha1.ReplicationDestinationExternalSpec
+	var externalSpec *volsyncv1alpha1.ReplicationDestinationExternalSpec
 	if len(o.RepOpts.Dest.Provider) > 0 && o.RepOpts.Dest.Parameters != nil {
-		externalSpec = &scribev1alpha1.ReplicationDestinationExternalSpec{
+		externalSpec = &volsyncv1alpha1.ReplicationDestinationExternalSpec{
 			Provider:   o.RepOpts.Dest.Provider,
 			Parameters: o.RepOpts.Dest.Parameters,
 		}
 	}
-	rd := &scribev1alpha1.ReplicationDestination{
+	rd := &volsyncv1alpha1.ReplicationDestination{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: "scribe.backube/v1alpha1",
+			APIVersion: "volsync.backube/v1alpha1",
 			Kind:       "ReplicationDestination",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      o.DestOpts.Name,
 			Namespace: o.RepOpts.Dest.Namespace,
 		},
-		Spec: scribev1alpha1.ReplicationDestinationSpec{
+		Spec: volsyncv1alpha1.ReplicationDestinationSpec{
 			Trigger:  triggerSpec,
 			Rsync:    rsyncSpec,
 			External: externalSpec,

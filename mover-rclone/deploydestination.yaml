@@ -22,14 +22,14 @@ spec:
       name: mover-rclone
     spec:
       containers:
-        - name: scribe-mover-rclone
-          image: quay.io/backube/scribe-mover-rclone
+        - name: volsync-mover-rclone
+          image: quay.io/backube/volsync-mover-rclone
           command: ["./active.sh"]
           env:
             - name: RCLONE_CONFIG
               value: /rclone-config/rclone.conf
             - name: RCLONE_DEST_PATH
-              value: scribe-test-bucket
+              value: volsync-test-bucket
             - name: DIRECTION
               value: destination
             - name: MOUNT_PATH

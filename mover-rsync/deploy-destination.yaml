@@ -13,7 +13,7 @@ spec:
 apiVersion: security.openshift.io/v1
 kind: SecurityContextConstraints
 metadata:
-  name: scribe-rsync
+  name: volsync-rsync
 allowHostDirVolumePlugin: false
 allowHostIPC: false
 allowHostNetwork: false
@@ -58,7 +58,7 @@ rules:
 - apiGroups:
   - security.openshift.io
   resourceNames:
-  - scribe-rsync
+  - volsync-rsync
   resources:
   - securitycontextconstraints
   verbs:
@@ -81,20 +81,20 @@ subjects:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: scribe-rsync-destination
+  name: volsync-rsync-destination
 spec:
   template:
     metadata:
-      name: scribe-rsync-destination
+      name: volsync-rsync-destination
       labels:
         app.kubernetes.io/name: rsync-destination
         app.kubernetes.io/component: mover
-        app.kubernetes.io/part-of: scribe
+        app.kubernetes.io/part-of: volsync
     spec:
       containers:
       - name: rsync
         command: ["/bin/bash", "-c", "/destination.sh"]
-        image: quay.io/backube/scribe-mover-rsync:latest
+        image: quay.io/backube/volsync-mover-rsync:latest
         imagePullPolicy: IfNotPresent
         securityContext:
           capabilities:
@@ -122,14 +122,14 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: scribe-rsync-destination
+  name: volsync-rsync-destination
   annotations:
     service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
 spec:
   selector:
     app.kubernetes.io/name: rsync-destination
     app.kubernetes.io/component: mover
-    app.kubernetes.io/part-of: scribe
+    app.kubernetes.io/part-of: volsync
   ports:
   - protocol: TCP
     port: 22

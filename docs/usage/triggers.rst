@@ -2,7 +2,7 @@
 Triggers
 ========
 
-There are three types of triggers in scribe:
+There are three types of triggers in volsync:
 
 1. Always - no trigger, always run.
 2. Schedule - defined by a cronspec.
@@ -89,7 +89,7 @@ Here is an example of how to use manual trigger to run two replications:
 
    # create source replication with first manual trigger (will start immediately)
    kubectl create -f - <<EOF
-   apiVersion: scribe.backube/v1alpha1
+   apiVersion: volsync.backube/v1alpha1
    kind: ReplicationSource
    metadata:
      name: $SOURCE

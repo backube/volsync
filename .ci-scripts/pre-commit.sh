@@ -55,6 +55,6 @@ run_check '.*\.(ba)?sh' shellcheck
 run_check '.*\.ya?ml' yamllint -s -c "${scriptdir}/yamlconfig.yaml"
 
 # CRDs in the Helm chart must match generated CRDs
-diff -qr config/crd/bases helm/scribe/crds
+diff -qr config/crd/bases helm/volsync/crds
 
 echo "ALL OK."

@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Scribe authors.
+Copyright 2021 The VolSync authors.
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published
@@ -29,9 +29,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
-	"github.com/backube/scribe/controllers/utils"
-	//sc "github.com/backube/scribe/controllers"
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
+	"github.com/backube/volsync/controllers/utils"
+	//sc "github.com/backube/volsync/controllers"
 )
 
 var _ = Describe("Volumehandler", func() {
@@ -55,18 +55,18 @@ var _ = Describe("Volumehandler", func() {
 	})
 
 	Context("A VolumeHandler (from destination)", func() {
-		var rd *scribev1alpha1.ReplicationDestination
+		var rd *volsyncv1alpha1.ReplicationDestination
 		BeforeEach(func() {
 			// Scaffold RD
-			rd = &scribev1alpha1.ReplicationDestination{
+			rd = &volsyncv1alpha1.ReplicationDestination{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "mydest",
 					Namespace: ns.Name,
 				},
-				Spec: scribev1alpha1.ReplicationDestinationSpec{
-					Rsync: &scribev1alpha1.ReplicationDestinationRsyncSpec{
-						ReplicationDestinationVolumeOptions: scribev1alpha1.ReplicationDestinationVolumeOptions{
-							CopyMethod:              scribev1alpha1.CopyMethodSnapshot,
+				Spec: volsyncv1alpha1.ReplicationDestinationSpec{
+					Rsync: &volsyncv1alpha1.ReplicationDestinationRsyncSpec{
+						ReplicationDestinationVolumeOptions: volsyncv1alpha1.ReplicationDestinationVolumeOptions{
+							CopyMethod:              volsyncv1alpha1.CopyMethodSnapshot,
 							Capacity:                nil,
 							StorageClassName:        nil,
 							AccessModes:             []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
@@ -83,7 +83,7 @@ var _ = Describe("Volumehandler", func() {
 			Expect(k8sClient.Create(ctx, rd)).To(Succeed())
 			// Wait for it to show up in the API server
 			Eventually(func() error {
-				inst := &scribev1alpha1.ReplicationDestination{}
+				inst := &volsyncv1alpha1.ReplicationDestination{}
 				return k8sClient.Get(ctx, utils.NameFor(rd), inst)
 			}, maxWait, interval).Should(Succeed())
 		})
@@ -117,7 +117,7 @@ var _ = Describe("Volumehandler", func() {
 
 		When("CopyMethod is None", func() {
 			BeforeEach(func() {
-				rd.Spec.Rsync.CopyMethod = scribev1alpha1.CopyMethodNone
+				rd.Spec.Rsync.CopyMethod = volsyncv1alpha1.CopyMethodNone
 			})
 
 			It("the preserved image is the PVC", func() {
@@ -164,7 +164,7 @@ var _ = Describe("Volumehandler", func() {
 
 		When("CopyMethod is Snapshot", func() {
 			BeforeEach(func() {
-				rd.Spec.Rsync.CopyMethod = scribev1alpha1.CopyMethodSnapshot
+				rd.Spec.Rsync.CopyMethod = volsyncv1alpha1.CopyMethodSnapshot
 			})
 
 			It("the preserved image is a snapshot of the PVC", func() {
@@ -235,19 +235,19 @@ var _ = Describe("Volumehandler", func() {
 	})
 
 	Context("A VolumeHandler (from source)", func() {
-		var rs *scribev1alpha1.ReplicationSource
+		var rs *volsyncv1alpha1.ReplicationSource
 		var src *v1.PersistentVolumeClaim
 		BeforeEach(func() {
 			// Scaffold RS
-			rs = &scribev1alpha1.ReplicationSource{
+			rs = &volsyncv1alpha1.ReplicationSource{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "mysrc",
 					Namespace: ns.Name,
 				},
-				Spec: scribev1alpha1.ReplicationSourceSpec{
-					Rsync: &scribev1alpha1.ReplicationSourceRsyncSpec{
-						ReplicationSourceVolumeOptions: scribev1alpha1.ReplicationSourceVolumeOptions{
-							CopyMethod:              scribev1alpha1.CopyMethodSnapshot,
+				Spec: volsyncv1alpha1.ReplicationSourceSpec{
+					Rsync: &volsyncv1alpha1.ReplicationSourceRsyncSpec{
+						ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
+							CopyMethod:              volsyncv1alpha1.CopyMethodSnapshot,
 							Capacity:                nil,
 							StorageClassName:        nil,
 							AccessModes:             nil,
@@ -283,7 +283,7 @@ var _ = Describe("Volumehandler", func() {
 			Expect(k8sClient.Create(ctx, src)).To(Succeed())
 			// Wait for it to show up in the API server
 			Eventually(func() error {
-				inst := &scribev1alpha1.ReplicationSource{}
+				inst := &volsyncv1alpha1.ReplicationSource{}
 				return k8sClient.Get(ctx, utils.NameFor(rs), inst)
 			}, maxWait, interval).Should(Succeed())
 			Eventually(func() error {
@@ -294,7 +294,7 @@ var _ = Describe("Volumehandler", func() {
 
 		When("CopyMethod is Clone", func() {
 			BeforeEach(func() {
-				rs.Spec.Rsync.CopyMethod = scribev1alpha1.CopyMethodClone
+				rs.Spec.Rsync.CopyMethod = volsyncv1alpha1.CopyMethodClone
 			})
 			It("creates a temporary PVC from a source", func() {
 				vh, err := NewVolumeHandler(
@@ -346,7 +346,7 @@ var _ = Describe("Volumehandler", func() {
 		})
 		When("CopyMethod is Snapshot", func() {
 			BeforeEach(func() {
-				rs.Spec.Rsync.CopyMethod = scribev1alpha1.CopyMethodSnapshot
+				rs.Spec.Rsync.CopyMethod = volsyncv1alpha1.CopyMethodSnapshot
 			})
 			It("creates a temporary PVC from a source", func() {
 				vh, err := NewVolumeHandler(

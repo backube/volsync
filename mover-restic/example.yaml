@@ -49,7 +49,7 @@ spec:
     spec:
       containers:
         - name: restic
-          image: quay.io/backube/scribe-mover-restic:latest
+          image: quay.io/backube/volsync-mover-restic:latest
           imagePullPolicy: IfNotPresent
           command: [/entry.sh]
           # This can be "backup", "restore", or "prune"

@@ -35,15 +35,15 @@ BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 # This variable is used to construct full image tags for bundle and catalog images.
 #
 # For example, running 'make bundle-build bundle-push catalog-build catalog-push' will build and push both
-# backube/scribe-bundle:$VERSION and backube/scribe-catalog:$VERSION.
-IMAGE_TAG_BASE ?= quay.io/backube/scribe
+# backube/volsync-bundle:$VERSION and backube/volsync-catalog:$VERSION.
+IMAGE_TAG_BASE ?= quay.io/backube/volsync
 
 # BUNDLE_IMG defines the image:tag used for the bundle.
 # You can use it as an arg. (E.g make bundle-build BUNDLE_IMG=<some-registry>/<project-name-bundle>:<tag>)
 BUNDLE_IMG ?= $(IMAGE_TAG_BASE)-bundle:v$(VERSION)
 
 # Image URL to use all building/pushing image targets
-IMG ?= quay.io/backube/scribe:latest
+IMG ?= quay.io/backube/volsync:latest
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
 CRD_OPTIONS ?= "crd:trivialVersions=true,preserveUnknownFields=false"
 
@@ -84,7 +84,7 @@ help: ## Display this help.
 .PHONY: manifests
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
-	cp config/crd/bases/* helm/scribe/crds
+	cp config/crd/bases/* helm/volsync/crds
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
@@ -96,7 +96,7 @@ lint: golangci-lint ## Lint source code
 
 .PHONY: helm-lint
 helm-lint: helm ## Lint Helm chart
-	cd helm && $(HELM) lint scribe
+	cd helm && $(HELM) lint volsync
 
 .PHONY: test
 ENVTEST_ASSETS_DIR=$(shell pwd)/testbin
@@ -108,7 +108,7 @@ test: manifests generate lint helm-lint ginkgo ## Run tests.
 	source ${ENVTEST_ASSETS_DIR}/setup-envtest.sh; fetch_envtest_tools $(ENVTEST_ASSETS_DIR); setup_envtest_env $(ENVTEST_ASSETS_DIR); $(GINKGO) $(TEST_ARGS) $(TEST_PACKAGES)
 
 .PHONY: test-e2e
-test-e2e: kuttl ## Run e2e tests. Requires cluster w/ Scribe already installed
+test-e2e: kuttl ## Run e2e tests. Requires cluster w/ VolSync already installed
 	cd test-kuttl && $(KUTTL) test
 	rm -f test-kuttl/kubeconfig
 
@@ -116,17 +116,17 @@ test-e2e: kuttl ## Run e2e tests. Requires cluster w/ Scribe already installed
 
 .PHONY: build
 build: generate lint ## Build manager binary.
-	go build -o bin/manager -ldflags -X=main.scribeVersion=$(VERSION) main.go
+	go build -o bin/manager -ldflags -X=main.volsyncVersion=$(VERSION) main.go
 
 .PHONY: cli
-cli: bin/kubectl-scribe ## Build Scribe kubectl plugin
+cli: bin/kubectl-volsync ## Build VolSync kubectl plugin
 
-bin/kubectl-scribe: lint
-	go build -o $@ -ldflags -X=main.scribeVersion=$(VERSION) ./cmd/scribe
+bin/kubectl-volsync: lint
+	go build -o $@ -ldflags -X=main.volsyncVersion=$(VERSION) ./cmd/volsync
 
 .PHONY: run
 run: manifests generate lint  ## Run a controller from your host.
-	go run -ldflags -X=main.scribeVersion=$(VERSION) ./main.go
+	go run -ldflags -X=main.volsyncVersion=$(VERSION) ./main.go
 
 .PHONY: docker-build
 docker-build: test ## Build docker image with the manager.

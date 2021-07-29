@@ -1,7 +1,7 @@
 # Documentation
 
 This documentation is hosted at
-[scribe-replication.readthedocs.io](https://scribe-replication.readthedocs.io/).
+[volsync-replication.readthedocs.io](https://volsync-replication.readthedocs.io/).
 
 ## New to reStructuredText?
 

@@ -1,6 +1,6 @@
-=================
-A case for Scribe
-=================
+==================
+A case for VolSync
+==================
 
 .. contents::
    :depth: 2
@@ -84,12 +84,12 @@ operator that watches this CR would then initialize and control the replication
 process.
 
 As stated above, remote replication should be supported regardless of the
-capabilities of the underlying storage system. To accomplish this, the Scribe
+capabilities of the underlying storage system. To accomplish this, the VolSync
 operator would have one or more built-in generic replication methods plus a
 mechanism to allow offloading the replication directly to the storage system
 when possible.
 
-Replication by Scribe is solely targeted at replicating PVCs, not objects.
+Replication by VolSync is solely targeted at replicating PVCs, not objects.
 However, the source and destination volumes should not need to be of the same
 volume access mode (e.g., RWO, RWX), StorageClass, or even use the same CSI
 driver, but they would be expected to be of the same volume mode (e.g., Block,
@@ -106,7 +106,7 @@ replication method, if the operator does not recognize the specified method as
 one internal to the operator, it would ignore the replication object so that an
 different (storage system-specific) operator could respond. This permits
 vendor-specific replication methods without requiring them to exist in the main
-Scribe codebase.
+VolSync codebase.
 
 There are several methods that could be used for replication. From
 (approximately) least-to-most efficient:
@@ -148,10 +148,10 @@ Built-in replication
 --------------------
 
 With the exception of the storage system specific method, the other options
-require the replication to be handled by Scribe, copying the data from the
+require the replication to be handled by VolSync, copying the data from the
 source to the destination volume.
 
-It is desirable for Scribe's replication to be relatively efficient and only
+It is desirable for VolSync's replication to be relatively efficient and only
 transfer data that has changed. As a starting point for development, it should
 be possible to use a pod running `rsync <https://rsync.samba.org/>`_,
 transferring data over an ssh connection.
@@ -159,7 +159,7 @@ transferring data over an ssh connection.
 Initial implementation
 ======================
 
-The initial Scribe implementation should be focused on providing a minimal
+The initial VolSync implementation should be focused on providing a minimal
 baseline of functionality that provides value. As such, the focus will be
 providing clone-based replication via an `rsync data mover <mover-rsync.html>`_, and this
 implementation will assume both the source and destination are Kubernetes

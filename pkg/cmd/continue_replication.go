@@ -13,38 +13,38 @@ import (
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
 
-	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
 
 var (
-	scribeContinueReplicationLong = templates.LongDesc(`
-        Scribe is a command line tool for a scribe operator running in a Kubernetes cluster.
-		Scribe asynchronously replicates Kubernetes persistent volumes between clusters or namespaces
+	volsyncContinueReplicationLong = templates.LongDesc(`
+        VolSync is a command line tool for a volsync operator running in a Kubernetes cluster.
+		VolSync asynchronously replicates Kubernetes persistent volumes between clusters or namespaces
 		The 'continue' command will remove a manual trigger from a replication source and replication
 		will resume according to the replication source schedule. Subsequent execution of 'set-replication'
-		will result in a new destination PVC. PVCs will never be deleted by Scribe.
+		will result in a new destination PVC. PVCs will never be deleted by VolSync.
 `)
-	scribeContinueReplicationExample = templates.Examples(`
-        # View all flags for continue-replication. 'scribe-config' can hold flag values.
-		# Scribe config holds values for source PVC, source and destination context, and other options.
-        $ scribe continue-replication --help
+	volsyncContinueReplicationExample = templates.Examples(`
+        # View all flags for continue-replication. 'volsync-config' can hold flag values.
+		# VolSync config holds values for source PVC, source and destination context, and other options.
+        $ volsync continue-replication --help
 
 		# Remove the manual trigger from a SourceDestination to resume replications.
 		# This command should be run after ensuring the destination application is up-to-date.
-        $ scribe continue
+        $ volsync continue
 
     `)
 )
 
-func NewCmdScribeContinueReplication(streams genericclioptions.IOStreams) *cobra.Command {
+func NewCmdVolSyncContinueReplication(streams genericclioptions.IOStreams) *cobra.Command {
 	v := viper.New()
 	o := NewFinalizeOptions(streams)
 	cmd := &cobra.Command{
 		Use:     "continue-replication [OPTIONS]",
-		Short:   i18n.T("remove a manual trigger from a scribe replication source to resume replications."),
-		Long:    fmt.Sprint(scribeContinueReplicationLong),
-		Example: fmt.Sprint(scribeContinueReplicationExample),
-		Version: ScribeVersion,
+		Short:   i18n.T("remove a manual trigger from a volsync replication source to resume replications."),
+		Long:    fmt.Sprint(volsyncContinueReplicationLong),
+		Example: fmt.Sprint(volsyncContinueReplicationExample),
+		Version: VolSyncVersion,
 		Run: func(cmd *cobra.Command, args []string) {
 			kcmdutil.CheckErr(o.Complete())
 			kcmdutil.CheckErr(o.Continue())
@@ -63,7 +63,7 @@ func NewCmdScribeContinueReplication(streams genericclioptions.IOStreams) *cobra
 func (o *FinalizeOptions) Continue() error {
 	ctx := context.Background()
 	klog.Infof("Fetching ReplicationSource %s in namespace %s", o.sourceName, o.RepOpts.Source.Namespace)
-	repSource := &scribev1alpha1.ReplicationSource{}
+	repSource := &volsyncv1alpha1.ReplicationSource{}
 	sourceNSName := types.NamespacedName{
 		Namespace: o.RepOpts.Source.Namespace,
 		Name:      o.sourceName,
@@ -72,7 +72,7 @@ func (o *FinalizeOptions) Continue() error {
 		return err
 	}
 	klog.Infof("Removing manual trigger from ReplicationSource: %s namespace: %s", o.RepOpts.Source.Namespace, o.sourceName)
-	repSource.Spec.Trigger = &scribev1alpha1.ReplicationSourceTriggerSpec{
+	repSource.Spec.Trigger = &volsyncv1alpha1.ReplicationSourceTriggerSpec{
 		Schedule: repSource.Spec.Trigger.Schedule,
 	}
 	if err := o.RepOpts.Source.Client.Update(ctx, repSource); err != nil {

@@ -8,12 +8,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 
-	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
 
 const (
-	scribeSource = "source"
-	scribeDest   = "dest"
+	volsyncSource = "source"
+	volsyncDest   = "dest"
 )
 
 type sharedOptions struct {
@@ -49,7 +49,7 @@ func (o *SetupReplicationOptions) getCommonOptions(c *sharedOptions, mode string
 		return err
 	}
 	switch mode {
-	case scribeDest:
+	case volsyncDest:
 		o.RepOpts.Dest.Port = port
 		o.RepOpts.Dest.SSHUser = getOption(c.SSHUser)
 		o.RepOpts.Dest.StorageClass = getOption(c.StorageClass)
@@ -66,7 +66,7 @@ func (o *SetupReplicationOptions) getCommonOptions(c *sharedOptions, mode string
 				o.RepOpts.Dest.Parameters[pair[0]] = pair[1]
 			}
 		}
-	case scribeSource:
+	case volsyncSource:
 		o.RepOpts.Source.Port = port
 		o.RepOpts.Source.SSHUser = getOption(c.SSHUser)
 		o.RepOpts.Source.StorageClass = getOption(c.StorageClass)
@@ -102,14 +102,14 @@ func (o *SetupReplicationOptions) getCapacity(c string, mode string) error {
 		return err
 	}
 	switch mode {
-	case scribeDest:
+	case volsyncDest:
 		if len(c) > 0 {
 			o.RepOpts.Dest.Capacity = resource.MustParse(c)
 		} else {
 			capacity = srcPVC.Spec.Resources.Requests[corev1.ResourceStorage]
 			o.RepOpts.Dest.Capacity = capacity
 		}
-	case scribeSource:
+	case volsyncSource:
 		if len(c) > 0 {
 			o.RepOpts.Source.Capacity = resource.MustParse(c)
 		} else {
@@ -121,22 +121,22 @@ func (o *SetupReplicationOptions) getCapacity(c string, mode string) error {
 }
 
 func (o *SetupReplicationOptions) getCopyMethod(c string, mode string) error {
-	var cm scribev1alpha1.CopyMethodType
+	var cm volsyncv1alpha1.CopyMethodType
 	// CopyMethod is always required
 	switch strings.ToLower(c) {
 	case "none":
-		cm = scribev1alpha1.CopyMethodNone
+		cm = volsyncv1alpha1.CopyMethodNone
 	case "clone":
-		cm = scribev1alpha1.CopyMethodClone
+		cm = volsyncv1alpha1.CopyMethodClone
 	case "snapshot":
-		cm = scribev1alpha1.CopyMethodSnapshot
+		cm = volsyncv1alpha1.CopyMethodSnapshot
 	default:
 		return fmt.Errorf("unsupported %s copyMethod %s", mode, c)
 	}
 	switch mode {
-	case scribeDest:
+	case volsyncDest:
 		o.RepOpts.Dest.CopyMethod = cm
-	case scribeSource:
+	case volsyncSource:
 		o.RepOpts.Source.CopyMethod = cm
 	}
 	return nil
@@ -158,9 +158,9 @@ func (o *SetupReplicationOptions) getAccessModes(c string, mode string) error {
 		}
 	}
 	switch mode {
-	case scribeDest:
+	case volsyncDest:
 		o.RepOpts.Dest.AccessModes = am
-	case scribeSource:
+	case volsyncSource:
 		o.RepOpts.Source.AccessModes = am
 	}
 	return nil
@@ -180,9 +180,9 @@ func (o *SetupReplicationOptions) getServiceType(c string, mode string) error {
 		}
 	}
 	switch mode {
-	case scribeDest:
+	case volsyncDest:
 		o.RepOpts.Dest.ServiceType = st
-	case scribeSource:
+	case volsyncSource:
 		o.RepOpts.Source.ServiceType = st
 	}
 	return nil

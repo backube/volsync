@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
-	"github.com/backube/scribe/controllers/utils"
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
+	"github.com/backube/volsync/controllers/utils"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1beta1"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -24,20 +24,20 @@ import (
 
 //nolint:dupl
 var _ = Describe("Source trigger", func() {
-	var rs *scribev1alpha1.ReplicationSource
+	var rs *volsyncv1alpha1.ReplicationSource
 	logger := zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
 
 	BeforeEach(func() {
-		rs = &scribev1alpha1.ReplicationSource{
-			Status: &scribev1alpha1.ReplicationSourceStatus{},
+		rs = &volsyncv1alpha1.ReplicationSource{
+			Status: &volsyncv1alpha1.ReplicationSourceStatus{},
 		}
 	})
 
 	Context("When a schedule is specified", func() {
 		var schedule = "0 */2 * * *"
-		metrics := newScribeMetrics(prometheus.Labels{"obj_name": "a", "obj_namespace": "b", "role": "c", "method": "d"})
+		metrics := newVolSyncMetrics(prometheus.Labels{"obj_name": "a", "obj_namespace": "b", "role": "c", "method": "d"})
 		BeforeEach(func() {
-			rs.Spec.Trigger = &scribev1alpha1.ReplicationSourceTriggerSpec{
+			rs.Spec.Trigger = &volsyncv1alpha1.ReplicationSourceTriggerSpec{
 				Schedule: &schedule,
 			}
 		})
@@ -68,11 +68,11 @@ var _ = Describe("Source trigger", func() {
 
 	Context("When a manual trigger is specified", func() {
 		BeforeEach(func() {
-			rs.Spec.Trigger = &scribev1alpha1.ReplicationSourceTriggerSpec{
+			rs.Spec.Trigger = &volsyncv1alpha1.ReplicationSourceTriggerSpec{
 				Manual: "1",
 			}
 		})
-		metrics := newScribeMetrics(prometheus.Labels{"obj_name": "a", "obj_namespace": "b", "role": "c", "method": "d"})
+		metrics := newVolSyncMetrics(prometheus.Labels{"obj_name": "a", "obj_namespace": "b", "role": "c", "method": "d"})
 		It("if never synced a manual trigger, sync now", func() {
 			rs.Status.LastManualSync = ""
 			b, e := awaitNextSyncSource(rs, metrics, logger)
@@ -97,7 +97,7 @@ var _ = Describe("Source trigger", func() {
 	})
 
 	Context("When the trigger is empty", func() {
-		metrics := newScribeMetrics(prometheus.Labels{"obj_name": "a", "obj_namespace": "b", "role": "c", "method": "d"})
+		metrics := newVolSyncMetrics(prometheus.Labels{"obj_name": "a", "obj_namespace": "b", "role": "c", "method": "d"})
 		It("if never synced, sync now", func() {
 			rs.Status.LastSyncTime = nil
 			b, e := awaitNextSyncSource(rs, metrics, logger)
@@ -127,7 +127,7 @@ var _ = Describe("Source trigger", func() {
 var _ = Describe("ReplicationSource", func() {
 	var ctx = context.Background()
 	var namespace *corev1.Namespace
-	var rs *scribev1alpha1.ReplicationSource
+	var rs *volsyncv1alpha1.ReplicationSource
 	var srcPVC *corev1.PersistentVolumeClaim
 	srcPVCCapacity := resource.MustParse("7Gi")
 
@@ -135,7 +135,7 @@ var _ = Describe("ReplicationSource", func() {
 		// Each test is run in its own namespace
 		namespace = &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
-				GenerateName: "scribe-test-",
+				GenerateName: "volsync-test-",
 			},
 		}
 		Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
@@ -158,12 +158,12 @@ var _ = Describe("ReplicationSource", func() {
 
 		// Scaffold the ReplicationSource, but don't create so that it can
 		// be customized per test scenario.
-		rs = &scribev1alpha1.ReplicationSource{
+		rs = &volsyncv1alpha1.ReplicationSource{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "instance",
 				Namespace: namespace.Name,
 			},
-			Spec: scribev1alpha1.ReplicationSourceSpec{
+			Spec: volsyncv1alpha1.ReplicationSourceSpec{
 				SourcePVC: srcPVC.Name,
 			},
 		}
@@ -180,17 +180,17 @@ var _ = Describe("ReplicationSource", func() {
 		Expect(k8sClient.Create(ctx, rs)).To(Succeed())
 		// Wait for it to show up in the API server
 		Eventually(func() error {
-			inst := &scribev1alpha1.ReplicationSource{}
+			inst := &volsyncv1alpha1.ReplicationSource{}
 			return k8sClient.Get(ctx, utils.NameFor(rs), inst)
 		}, maxWait, interval).Should(Succeed())
 	})
 
 	Context("when an external replication method is specified", func() {
 		BeforeEach(func() {
-			rs.Spec.External = &scribev1alpha1.ReplicationSourceExternalSpec{}
+			rs.Spec.External = &volsyncv1alpha1.ReplicationSourceExternalSpec{}
 		})
 		It("the CR is not reconciled", func() {
-			Consistently(func() *scribev1alpha1.ReplicationSourceStatus {
+			Consistently(func() *volsyncv1alpha1.ReplicationSourceStatus {
 				Expect(k8sClient.Get(ctx, utils.NameFor(rs), rs)).To(Succeed())
 				return rs.Status
 			}, duration, interval).Should(BeNil())
@@ -199,13 +199,13 @@ var _ = Describe("ReplicationSource", func() {
 
 	Context("when a schedule is specified", func() {
 		BeforeEach(func() {
-			rs.Spec.Rsync = &scribev1alpha1.ReplicationSourceRsyncSpec{
-				ReplicationSourceVolumeOptions: scribev1alpha1.ReplicationSourceVolumeOptions{
-					CopyMethod: scribev1alpha1.CopyMethodNone,
+			rs.Spec.Rsync = &volsyncv1alpha1.ReplicationSourceRsyncSpec{
+				ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
+					CopyMethod: volsyncv1alpha1.CopyMethodNone,
 				},
 			}
 			schedule := "* * * * *"
-			rs.Spec.Trigger = &scribev1alpha1.ReplicationSourceTriggerSpec{
+			rs.Spec.Trigger = &volsyncv1alpha1.ReplicationSourceTriggerSpec{
 				Schedule: &schedule,
 			}
 		})
@@ -222,9 +222,9 @@ var _ = Describe("ReplicationSource", func() {
 
 	Context("when a schedule is not specified", func() {
 		BeforeEach(func() {
-			rs.Spec.Rsync = &scribev1alpha1.ReplicationSourceRsyncSpec{
-				ReplicationSourceVolumeOptions: scribev1alpha1.ReplicationSourceVolumeOptions{
-					CopyMethod: scribev1alpha1.CopyMethodNone,
+			rs.Spec.Rsync = &volsyncv1alpha1.ReplicationSourceRsyncSpec{
+				ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
+					CopyMethod: volsyncv1alpha1.CopyMethodNone,
 				},
 			}
 		})
@@ -241,16 +241,16 @@ var _ = Describe("ReplicationSource", func() {
 
 	Context("when a copyMethod of None is specified", func() {
 		BeforeEach(func() {
-			rs.Spec.Rsync = &scribev1alpha1.ReplicationSourceRsyncSpec{
-				ReplicationSourceVolumeOptions: scribev1alpha1.ReplicationSourceVolumeOptions{
-					CopyMethod: scribev1alpha1.CopyMethodNone,
+			rs.Spec.Rsync = &volsyncv1alpha1.ReplicationSourceRsyncSpec{
+				ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
+					CopyMethod: volsyncv1alpha1.CopyMethodNone,
 				},
 			}
 		})
 		It("uses the source PVC as the sync source", func() {
 			job := &batchv1.Job{}
 			Eventually(func() error {
-				return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
+				return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
 			}, maxWait, interval).Should(Succeed())
 			volumes := job.Spec.Template.Spec.Volumes
 			found := false
@@ -266,9 +266,9 @@ var _ = Describe("ReplicationSource", func() {
 
 	Context("when a copyMethod of Clone is specified", func() {
 		BeforeEach(func() {
-			rs.Spec.Rsync = &scribev1alpha1.ReplicationSourceRsyncSpec{
-				ReplicationSourceVolumeOptions: scribev1alpha1.ReplicationSourceVolumeOptions{
-					CopyMethod: scribev1alpha1.CopyMethodClone,
+			rs.Spec.Rsync = &volsyncv1alpha1.ReplicationSourceRsyncSpec{
+				ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
+					CopyMethod: volsyncv1alpha1.CopyMethodClone,
 				},
 			}
 		})
@@ -276,7 +276,7 @@ var _ = Describe("ReplicationSource", func() {
 		It("creates a clone of the source PVC as the sync source", func() {
 			job := &batchv1.Job{}
 			Eventually(func() error {
-				return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
+				return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
 			}, maxWait, interval).Should(Succeed())
 			volumes := job.Spec.Template.Spec.Volumes
 			pvc := &corev1.PersistentVolumeClaim{}
@@ -307,7 +307,7 @@ var _ = Describe("ReplicationSource", func() {
 			It("cloned PVC has overridden values", func() {
 				job := &batchv1.Job{}
 				Eventually(func() error {
-					return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
+					return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
 				}, maxWait, interval).Should(Succeed())
 				volumes := job.Spec.Template.Spec.Volumes
 				pvc := &corev1.PersistentVolumeClaim{}
@@ -331,9 +331,9 @@ var _ = Describe("ReplicationSource", func() {
 
 	Context("when a copyMethod of Snapshot is specified", func() {
 		BeforeEach(func() {
-			rs.Spec.Rsync = &scribev1alpha1.ReplicationSourceRsyncSpec{
-				ReplicationSourceVolumeOptions: scribev1alpha1.ReplicationSourceVolumeOptions{
-					CopyMethod: scribev1alpha1.CopyMethodSnapshot,
+			rs.Spec.Rsync = &volsyncv1alpha1.ReplicationSourceRsyncSpec{
+				ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
+					CopyMethod: volsyncv1alpha1.CopyMethodSnapshot,
 				},
 			}
 		})
@@ -342,7 +342,7 @@ var _ = Describe("ReplicationSource", func() {
 			// Job, so we need to fake the binding
 			snap := &snapv1.VolumeSnapshot{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "scribe-rsync-src-" + rs.Name,
+					Name:      "volsync-rsync-src-" + rs.Name,
 					Namespace: rs.Namespace,
 				},
 			}
@@ -357,7 +357,7 @@ var _ = Describe("ReplicationSource", func() {
 			// Continue checking
 			job := &batchv1.Job{}
 			Eventually(func() error {
-				return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
+				return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
 			}, maxWait, interval).Should(Succeed())
 			volumes := job.Spec.Template.Spec.Volumes
 			pvc := &corev1.PersistentVolumeClaim{}
@@ -388,7 +388,7 @@ var _ = Describe("ReplicationSource", func() {
 				// Job, so we need to fake the binding
 				snap := &snapv1.VolumeSnapshot{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "scribe-src-" + rs.Name,
+						Name:      "volsync-src-" + rs.Name,
 						Namespace: rs.Namespace,
 					},
 				}
@@ -403,7 +403,7 @@ var _ = Describe("ReplicationSource", func() {
 				// Continue checking
 				job := &batchv1.Job{}
 				Eventually(func() error {
-					return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
+					return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
 				}, maxWait, interval).Should(Succeed())
 				volumes := job.Spec.Template.Spec.Volumes
 				pvc := &corev1.PersistentVolumeClaim{}
@@ -429,16 +429,16 @@ var _ = Describe("ReplicationSource", func() {
 		parallelism := int32(0)
 		BeforeEach(func() {
 			rs.Spec.Paused = true
-			rs.Spec.Rsync = &scribev1alpha1.ReplicationSourceRsyncSpec{
-				ReplicationSourceVolumeOptions: scribev1alpha1.ReplicationSourceVolumeOptions{
-					CopyMethod: scribev1alpha1.CopyMethodClone,
+			rs.Spec.Rsync = &volsyncv1alpha1.ReplicationSourceRsyncSpec{
+				ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
+					CopyMethod: volsyncv1alpha1.CopyMethodClone,
 				},
 			}
 		})
 		It("the job will create but will not run", func() {
 			job := &batchv1.Job{}
 			Eventually(func() error {
-				return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
+				return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
 			}, maxWait, interval).Should(Succeed())
 			Expect(*job.Spec.Parallelism).To(Equal(parallelism))
 		})
@@ -446,16 +446,16 @@ var _ = Describe("ReplicationSource", func() {
 
 	Context("rsync: when no remote address is specified", func() {
 		BeforeEach(func() {
-			rs.Spec.Rsync = &scribev1alpha1.ReplicationSourceRsyncSpec{
-				ReplicationSourceVolumeOptions: scribev1alpha1.ReplicationSourceVolumeOptions{
-					CopyMethod: scribev1alpha1.CopyMethodClone,
+			rs.Spec.Rsync = &volsyncv1alpha1.ReplicationSourceRsyncSpec{
+				ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
+					CopyMethod: volsyncv1alpha1.CopyMethodClone,
 				},
 			}
 		})
 		It("Creates a Service for incoming connections", func() {
 			svc := &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "scribe-rsync-src-" + rs.Name,
+					Name:      "volsync-rsync-src-" + rs.Name,
 					Namespace: rs.Namespace,
 				},
 			}
@@ -477,9 +477,9 @@ var _ = Describe("ReplicationSource", func() {
 	Context("rsync: when a remote address is specified", func() {
 		BeforeEach(func() {
 			remoteAddr := "my.remote.host.com"
-			rs.Spec.Rsync = &scribev1alpha1.ReplicationSourceRsyncSpec{
-				ReplicationSourceVolumeOptions: scribev1alpha1.ReplicationSourceVolumeOptions{
-					CopyMethod: scribev1alpha1.CopyMethodClone,
+			rs.Spec.Rsync = &volsyncv1alpha1.ReplicationSourceRsyncSpec{
+				ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
+					CopyMethod: volsyncv1alpha1.CopyMethodClone,
 				},
 				Address: &remoteAddr,
 			}
@@ -487,7 +487,7 @@ var _ = Describe("ReplicationSource", func() {
 		It("No Service is created", func() {
 			svc := &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "scribe-rsync-src-" + rs.Name,
+					Name:      "volsync-rsync-src-" + rs.Name,
 					Namespace: rs.Namespace,
 				},
 			}
@@ -501,9 +501,9 @@ var _ = Describe("ReplicationSource", func() {
 		BeforeEach(func() {
 			remotePort := int32(2222)
 			remoteAddr := "my.remote.host.com"
-			rs.Spec.Rsync = &scribev1alpha1.ReplicationSourceRsyncSpec{
-				ReplicationSourceVolumeOptions: scribev1alpha1.ReplicationSourceVolumeOptions{
-					CopyMethod: scribev1alpha1.CopyMethodClone,
+			rs.Spec.Rsync = &volsyncv1alpha1.ReplicationSourceRsyncSpec{
+				ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
+					CopyMethod: volsyncv1alpha1.CopyMethodClone,
 				},
 				Address: &remoteAddr,
 				Port:    &remotePort,
@@ -512,7 +512,7 @@ var _ = Describe("ReplicationSource", func() {
 		It("an environment variable is created", func() {
 			job := &batchv1.Job{}
 			Eventually(func() error {
-				return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
+				return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
 			}, maxWait, interval).Should(Succeed())
 			port := job.Spec.Template.Spec.Containers[0].Env
 			remotePort := strconv.Itoa(int(2222))
@@ -528,19 +528,19 @@ var _ = Describe("ReplicationSource", func() {
 
 	Context("rsync: when no key is provided", func() {
 		BeforeEach(func() {
-			rs.Spec.Rsync = &scribev1alpha1.ReplicationSourceRsyncSpec{
-				ReplicationSourceVolumeOptions: scribev1alpha1.ReplicationSourceVolumeOptions{
-					CopyMethod: scribev1alpha1.CopyMethodClone,
+			rs.Spec.Rsync = &volsyncv1alpha1.ReplicationSourceRsyncSpec{
+				ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
+					CopyMethod: volsyncv1alpha1.CopyMethodClone,
 				},
 			}
 		})
 		It("generates ssh keys automatically", func() {
 			secret := &corev1.Secret{}
-			Eventually(func() *scribev1alpha1.ReplicationSourceStatus {
+			Eventually(func() *volsyncv1alpha1.ReplicationSourceStatus {
 				_ = k8sClient.Get(ctx, utils.NameFor(rs), rs)
 				return rs.Status
 			}, maxWait, interval).ShouldNot(BeNil())
-			Eventually(func() *scribev1alpha1.ReplicationSourceRsyncStatus {
+			Eventually(func() *volsyncv1alpha1.ReplicationSourceRsyncStatus {
 				_ = k8sClient.Get(ctx, utils.NameFor(rs), rs)
 				return rs.Status.Rsync
 			}, maxWait, interval).Should(Not(BeNil()))
@@ -573,9 +573,9 @@ var _ = Describe("ReplicationSource", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
-			rs.Spec.Rsync = &scribev1alpha1.ReplicationSourceRsyncSpec{
-				ReplicationSourceVolumeOptions: scribev1alpha1.ReplicationSourceVolumeOptions{
-					CopyMethod: scribev1alpha1.CopyMethodClone,
+			rs.Spec.Rsync = &volsyncv1alpha1.ReplicationSourceRsyncSpec{
+				ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
+					CopyMethod: volsyncv1alpha1.CopyMethodClone,
 				},
 				SSHKeys: &secret.Name,
 			}
@@ -584,7 +584,7 @@ var _ = Describe("ReplicationSource", func() {
 			job := &batchv1.Job{}
 			Eventually(func() error {
 				return k8sClient.Get(ctx, types.NamespacedName{
-					Name:      "scribe-rsync-src-" + rs.Name,
+					Name:      "volsync-rsync-src-" + rs.Name,
 					Namespace: rs.Namespace,
 				}, job)
 			}, maxWait, interval).Should(Succeed())

@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Scribe authors.
+Copyright 2021 The VolSync authors.
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published
@@ -25,7 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const cleanupLabelKey = "scribe.backube/cleanup"
+const cleanupLabelKey = "volsync.backube/cleanup"
 
 // MarkForCleanup marks the provided "obj" to be deleted at the end of the
 // synchronization iteration.

@@ -1,5 +1,5 @@
 ---
-apiVersion: scribe.backube/v1alpha1
+apiVersion: volsync.backube/v1alpha1
 kind: ReplicationDestination
 metadata:
   name: destination
@@ -8,7 +8,7 @@ spec:
     schedule: "*/5 * * * *"
   rclone:
     rcloneConfigSection: "rclone-data-mover"
-    rcloneDestPath: "scribe-test-bucket"
+    rcloneDestPath: "volsync-test-bucket"
     rcloneConfig: "rclone-secret"
     copyMethod: Snapshot
     accessModes: [ReadWriteOnce]

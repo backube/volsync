@@ -2,7 +2,7 @@
 External Rsync
 ==============
 A situation may occur where data needs to be imported into a Kubernetes environment.
-In the Scribe repository, the script `bin/external-rsync-source` can be executed
+In the VolSync repository, the script `bin/external-rsync-source` can be executed
 which will serve as the `replicationsource` allowing data to be replicated to a
 Kubernetes cluster.
 
@@ -57,7 +57,7 @@ Acquire the private key by running the following.
 
 .. code:: bash
 
-   $ kubectl get secret -n database scribe-rsync-dest-src-database-destination --template {{.data.source}} | base64 -d > ~/replication-key
+   $ kubectl get secret -n database volsync-rsync-dest-src-database-destination --template {{.data.source}} | base64 -d > ~/replication-key
    $ chmod 0600 ~/replication-key
 
 From the server, run the `external-rsync-source` binary specifying the Loadbalancer, SSH private key, and MySQL directory.

@@ -5,7 +5,7 @@ metadata:
   name: replicationdestination-editor-role
 rules:
 - apiGroups:
-  - scribe.backube
+  - volsync.backube
   resources:
   - replicationdestinations
   verbs:
@@ -17,7 +17,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - scribe.backube
+  - volsync.backube
   resources:
   - replicationdestinations/status
   verbs:

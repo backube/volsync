@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Scribe authors.
+Copyright 2021 The VolSync authors.
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published
@@ -32,13 +32,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
-	"github.com/backube/scribe/controllers/utils"
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
+	"github.com/backube/volsync/controllers/utils"
 )
 
 const (
 	// Annotation used to track the name of the snapshot being created
-	snapshotAnnotation = "scribe.backube/snapname"
+	snapshotAnnotation = "volsync.backube/snapname"
 	// Time format for snapshot names and labels
 	timeYYYYMMDDHHMMSS = "20060102150405"
 )
@@ -46,7 +46,7 @@ const (
 type VolumeHandler struct {
 	client                  client.Client
 	owner                   metav1.Object
-	copyMethod              scribev1alpha1.CopyMethodType
+	copyMethod              volsyncv1alpha1.CopyMethodType
 	capacity                *resource.Quantity
 	storageClassName        *string
 	accessModes             []v1.PersistentVolumeAccessMode
@@ -60,11 +60,11 @@ type VolumeHandler struct {
 func (vh *VolumeHandler) EnsurePVCFromSrc(ctx context.Context, log logr.Logger,
 	src *v1.PersistentVolumeClaim, name string, isTemporary bool) (*v1.PersistentVolumeClaim, error) {
 	switch vh.copyMethod {
-	case scribev1alpha1.CopyMethodNone:
+	case volsyncv1alpha1.CopyMethodNone:
 		return src, nil
-	case scribev1alpha1.CopyMethodClone:
+	case volsyncv1alpha1.CopyMethodClone:
 		return vh.ensureClone(ctx, log, src, name, isTemporary)
-	case scribev1alpha1.CopyMethodSnapshot:
+	case volsyncv1alpha1.CopyMethodSnapshot:
 		snap, err := vh.ensureSnapshot(ctx, log, src, name, isTemporary)
 		if snap == nil || err != nil {
 			return nil, err
@@ -82,13 +82,13 @@ func (vh *VolumeHandler) EnsurePVCFromSrc(ctx context.Context, log logr.Logger,
 func (vh *VolumeHandler) EnsureImage(ctx context.Context, log logr.Logger,
 	src *v1.PersistentVolumeClaim) (*v1.TypedLocalObjectReference, error) {
 	switch vh.copyMethod { //nolint: exhaustive
-	case scribev1alpha1.CopyMethodNone:
+	case volsyncv1alpha1.CopyMethodNone:
 		return &v1.TypedLocalObjectReference{
 			APIGroup: &v1.SchemeGroupVersion.Group,
 			Kind:     src.Kind,
 			Name:     src.Name,
 		}, nil
-	case scribev1alpha1.CopyMethodSnapshot:
+	case volsyncv1alpha1.CopyMethodSnapshot:
 		snap, err := vh.ensureImageSnapshot(ctx, log, src)
 		if snap == nil || err != nil {
 			return nil, err

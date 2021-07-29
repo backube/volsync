@@ -2,12 +2,12 @@
 
 set -e -o pipefail
 
-echo "Scribe restic container version: ${version:-unknown}"
+echo "VolSync restic container version: ${version:-unknown}"
 echo  "$@"
 
 
-# Force the associated backup host name to be "scribe"
-RESTIC_HOST="scribe"
+# Force the associated backup host name to be "volsync"
+RESTIC_HOST="volsync"
 # Make restic output progress reports every 10s
 export RESTIC_PROGRESS_FPS=0.1
 

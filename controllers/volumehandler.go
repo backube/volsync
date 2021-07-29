@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Scribe authors.
+Copyright 2020 The VolSync authors.
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published
@@ -23,8 +23,8 @@ import (
 	"fmt"
 	"time"
 
-	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
-	"github.com/backube/scribe/controllers/utils"
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
+	"github.com/backube/volsync/controllers/utils"
 	"github.com/go-logr/logr"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1beta1"
 	corev1 "k8s.io/api/core/v1"
@@ -38,7 +38,7 @@ import (
 
 const (
 	// Annotation used to track the name of the snapshot being created
-	snapshotAnnotation = "scribe.backube/snapname"
+	snapshotAnnotation = "volsync.backube/snapname"
 	// Time format for snapshot names and labels
 	timeYYYYMMDDHHMMSS = "20060102150405"
 )
@@ -46,8 +46,8 @@ const (
 type destinationVolumeHandler struct {
 	ReplicationDestinationReconciler
 	Ctx      context.Context
-	Instance *scribev1alpha1.ReplicationDestination
-	Options  *scribev1alpha1.ReplicationDestinationVolumeOptions
+	Instance *volsyncv1alpha1.ReplicationDestination
+	Options  *volsyncv1alpha1.ReplicationDestinationVolumeOptions
 	PVC      *v1.PersistentVolumeClaim
 	Snapshot *snapv1.VolumeSnapshot
 }
@@ -72,7 +72,7 @@ func (h *destinationVolumeHandler) EnsurePVC(l logr.Logger) (bool, error) {
 		return h.useProvidedPVC(l)
 	}
 
-	pvcName := types.NamespacedName{Name: "scribe-dest-" + h.Instance.Name, Namespace: h.Instance.Namespace}
+	pvcName := types.NamespacedName{Name: "volsync-dest-" + h.Instance.Name, Namespace: h.Instance.Namespace}
 	logger := l.WithValues("PVC", pvcName)
 	// Ensure required configuration parameters have been provided in order to create volume
 	if h.Options.AccessModes == nil || len(h.Options.AccessModes) == 0 {
@@ -126,7 +126,7 @@ func (h *destinationVolumeHandler) createSnapshot(l logr.Logger) (bool, error) {
 		snapName.Name = name
 	} else {
 		ts := time.Now().Format(timeYYYYMMDDHHMMSS)
-		snapName.Name = "scribe-dest-" + h.Instance.Name + "-" + ts
+		snapName.Name = "volsync-dest-" + h.Instance.Name + "-" + ts
 		h.PVC.Annotations[snapshotAnnotation] = snapName.Name
 		if err := h.Client.Update(h.Ctx, h.PVC); err != nil {
 			l.Error(err, "unable to update PVC")
@@ -246,13 +246,13 @@ func (h *destinationVolumeHandler) recordPVC(l logr.Logger) (bool, error) {
 // PreserveImage implements the methods for preserving a PiT copy of the
 // replicated data.
 func (h *destinationVolumeHandler) PreserveImage(l logr.Logger) (bool, error) {
-	if h.Options.CopyMethod == scribev1alpha1.CopyMethodNone {
+	if h.Options.CopyMethod == volsyncv1alpha1.CopyMethodNone {
 		return utils.ReconcileBatch(l,
 			h.cleanupOldSnapshot,
 			h.recordPVC,
 		)
 	}
-	if h.Options.CopyMethod == scribev1alpha1.CopyMethodSnapshot {
+	if h.Options.CopyMethod == volsyncv1alpha1.CopyMethodSnapshot {
 		return utils.ReconcileBatch(l,
 			h.createSnapshot,
 			h.cleanupOldSnapshot,
@@ -266,8 +266,8 @@ func (h *destinationVolumeHandler) PreserveImage(l logr.Logger) (bool, error) {
 type sourceVolumeHandler struct {
 	ReplicationSourceReconciler
 	Ctx      context.Context
-	Instance *scribev1alpha1.ReplicationSource
-	Options  *scribev1alpha1.ReplicationSourceVolumeOptions
+	Instance *volsyncv1alpha1.ReplicationSource
+	Options  *volsyncv1alpha1.ReplicationSourceVolumeOptions
 	srcPVC   *v1.PersistentVolumeClaim
 	srcSnap  *snapv1.VolumeSnapshot
 	PVC      *v1.PersistentVolumeClaim
@@ -305,12 +305,12 @@ func (h *sourceVolumeHandler) EnsurePVC(l logr.Logger) (bool, error) {
 		return false, err
 	}
 
-	if h.Options.CopyMethod == scribev1alpha1.CopyMethodNone {
+	if h.Options.CopyMethod == volsyncv1alpha1.CopyMethodNone {
 		h.PVC = h.srcPVC
 		return true, nil
-	} else if h.Options.CopyMethod == scribev1alpha1.CopyMethodClone {
+	} else if h.Options.CopyMethod == volsyncv1alpha1.CopyMethodClone {
 		return h.ensureClone(l)
-	} else if h.Options.CopyMethod == scribev1alpha1.CopyMethodSnapshot {
+	} else if h.Options.CopyMethod == volsyncv1alpha1.CopyMethodSnapshot {
 		return utils.ReconcileBatch(l,
 			h.snapshotSrc,
 			h.pvcFromSnap,
@@ -322,7 +322,7 @@ func (h *sourceVolumeHandler) EnsurePVC(l logr.Logger) (bool, error) {
 func (h *sourceVolumeHandler) pvcFromSnap(l logr.Logger) (bool, error) {
 	h.PVC = &v1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "scribe-src-" + h.Instance.Name,
+			Name:      "volsync-src-" + h.Instance.Name,
 			Namespace: h.Instance.Namespace,
 		},
 	}
@@ -372,7 +372,7 @@ func (h *sourceVolumeHandler) pvcFromSnap(l logr.Logger) (bool, error) {
 func (h *sourceVolumeHandler) snapshotSrc(l logr.Logger) (bool, error) {
 	h.srcSnap = &snapv1.VolumeSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "scribe-src-" + h.Instance.Name,
+			Name:      "volsync-src-" + h.Instance.Name,
 			Namespace: h.Instance.Namespace,
 		},
 	}
@@ -405,7 +405,7 @@ func (h *sourceVolumeHandler) snapshotSrc(l logr.Logger) (bool, error) {
 
 func (h *sourceVolumeHandler) ensureClone(l logr.Logger) (bool, error) {
 	pvcName := types.NamespacedName{
-		Name:      "scribe-src-" + h.Instance.Name,
+		Name:      "volsync-src-" + h.Instance.Name,
 		Namespace: h.Instance.Namespace,
 	}
 	logger := l.WithValues("pvc", pvcName)

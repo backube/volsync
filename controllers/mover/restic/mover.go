@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Scribe authors.
+Copyright 2021 The VolSync authors.
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published
@@ -33,10 +33,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
-	"github.com/backube/scribe/controllers/mover"
-	"github.com/backube/scribe/controllers/utils"
-	"github.com/backube/scribe/controllers/volumehandler"
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
+	"github.com/backube/volsync/controllers/mover"
+	"github.com/backube/volsync/controllers/utils"
+	"github.com/backube/volsync/controllers/volumehandler"
 )
 
 const (
@@ -61,8 +61,8 @@ type Mover struct {
 	mainPVCName           *string
 	// Source-only fields
 	pruneInterval *int32
-	retainPolicy  *scribev1alpha1.ResticRetainPolicy
-	sourceStatus  *scribev1alpha1.ReplicationSourceResticStatus
+	retainPolicy  *volsyncv1alpha1.ResticRetainPolicy
+	sourceStatus  *volsyncv1alpha1.ReplicationSourceResticStatus
 }
 
 var _ mover.Mover = &Mover{}
@@ -171,7 +171,7 @@ func (m *Mover) ensureCache(ctx context.Context,
 	}
 
 	// Allocate cache volume
-	cacheName := "scribe-" + m.owner.GetName() + "-cache"
+	cacheName := "volsync-" + m.owner.GetName() + "-cache"
 	m.logger.Info("allocating cache volume", "PVC", cacheName)
 	return cacheVh.EnsureNewPVC(ctx, m.logger, cacheName)
 }
@@ -186,14 +186,14 @@ func (m *Mover) ensureSourcePVC(ctx context.Context) (*v1.PersistentVolumeClaim,
 	if err := m.client.Get(ctx, utils.NameFor(srcPVC), srcPVC); err != nil {
 		return nil, err
 	}
-	dataName := "scribe-" + m.owner.GetName() + "-src"
+	dataName := "volsync-" + m.owner.GetName() + "-src"
 	return m.vh.EnsurePVCFromSrc(ctx, m.logger, srcPVC, dataName, true)
 }
 
 func (m *Mover) ensureDestinationPVC(ctx context.Context) (*v1.PersistentVolumeClaim, error) {
 	if m.mainPVCName == nil {
 		// Need to allocate the incoming data volume
-		dataPVCName := "scribe-" + m.owner.GetName() + "-dest"
+		dataPVCName := "volsync-" + m.owner.GetName() + "-dest"
 		return m.vh.EnsureNewPVC(ctx, m.logger, dataPVCName)
 	}
 
@@ -215,7 +215,7 @@ func (m *Mover) ensureSA(ctx context.Context) (*v1.ServiceAccount, error) {
 	}
 	sa := &v1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "scribe-" + dir + "-" + m.owner.GetName(),
+			Name:      "volsync-" + dir + "-" + m.owner.GetName(),
 			Namespace: m.owner.GetNamespace(),
 		},
 	}
@@ -253,7 +253,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *v1.PersistentVolumeClai
 
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "scribe-" + dir + "-" + m.owner.GetName(),
+			Name:      "volsync-" + dir + "-" + m.owner.GetName(),
 			Namespace: m.owner.GetNamespace(),
 		},
 	}
@@ -397,7 +397,7 @@ func (m *Mover) shouldPrune(current time.Time) bool {
 	return current.After(lastPruned.Add(delta))
 }
 
-func generateForgetOptions(policy *scribev1alpha1.ResticRetainPolicy) string {
+func generateForgetOptions(policy *volsyncv1alpha1.ResticRetainPolicy) string {
 	const defaultForget = "--keep-last 1"
 
 	if policy == nil { // Retain policy isn't present

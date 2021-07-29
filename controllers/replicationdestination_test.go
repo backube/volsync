@@ -20,26 +20,26 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
-	"github.com/backube/scribe/controllers/utils"
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
+	"github.com/backube/volsync/controllers/utils"
 )
 
 //nolint:dupl
 var _ = Describe("Destination trigger", func() {
-	var rd *scribev1alpha1.ReplicationDestination
+	var rd *volsyncv1alpha1.ReplicationDestination
 	logger := zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
 
 	BeforeEach(func() {
-		rd = &scribev1alpha1.ReplicationDestination{
-			Status: &scribev1alpha1.ReplicationDestinationStatus{},
+		rd = &volsyncv1alpha1.ReplicationDestination{
+			Status: &volsyncv1alpha1.ReplicationDestinationStatus{},
 		}
 	})
 
 	Context("When a schedule is specified", func() {
 		var schedule = "0 */2 * * *"
-		metrics := newScribeMetrics(prometheus.Labels{"obj_name": "a", "obj_namespace": "b", "role": "c", "method": "d"})
+		metrics := newVolSyncMetrics(prometheus.Labels{"obj_name": "a", "obj_namespace": "b", "role": "c", "method": "d"})
 		BeforeEach(func() {
-			rd.Spec.Trigger = &scribev1alpha1.ReplicationDestinationTriggerSpec{
+			rd.Spec.Trigger = &volsyncv1alpha1.ReplicationDestinationTriggerSpec{
 				Schedule: &schedule,
 			}
 		})
@@ -70,11 +70,11 @@ var _ = Describe("Destination trigger", func() {
 
 	Context("When a manual trigger is specified", func() {
 		BeforeEach(func() {
-			rd.Spec.Trigger = &scribev1alpha1.ReplicationDestinationTriggerSpec{
+			rd.Spec.Trigger = &volsyncv1alpha1.ReplicationDestinationTriggerSpec{
 				Manual: "1",
 			}
 		})
-		metrics := newScribeMetrics(prometheus.Labels{"obj_name": "a", "obj_namespace": "b", "role": "c", "method": "d"})
+		metrics := newVolSyncMetrics(prometheus.Labels{"obj_name": "a", "obj_namespace": "b", "role": "c", "method": "d"})
 		It("if never synced a manual trigger, sync now", func() {
 			rd.Status.LastManualSync = ""
 			b, e := awaitNextSyncDestination(rd, metrics, logger)
@@ -99,7 +99,7 @@ var _ = Describe("Destination trigger", func() {
 	})
 
 	Context("When the trigger is empty", func() {
-		metrics := newScribeMetrics(prometheus.Labels{"obj_name": "a", "obj_namespace": "b", "role": "c", "method": "d"})
+		metrics := newVolSyncMetrics(prometheus.Labels{"obj_name": "a", "obj_namespace": "b", "role": "c", "method": "d"})
 		It("if never synced, sync now", func() {
 			rd.Status.LastSyncTime = nil
 			b, e := awaitNextSyncDestination(rd, metrics, logger)
@@ -129,13 +129,13 @@ var _ = Describe("Destination trigger", func() {
 var _ = Describe("ReplicationDestination", func() {
 	var ctx = context.Background()
 	var namespace *corev1.Namespace
-	var rd *scribev1alpha1.ReplicationDestination
+	var rd *volsyncv1alpha1.ReplicationDestination
 
 	BeforeEach(func() {
 		// Each test is run in its own namespace
 		namespace = &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
-				GenerateName: "scribe-test-",
+				GenerateName: "volsync-test-",
 			},
 		}
 		Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
@@ -143,7 +143,7 @@ var _ = Describe("ReplicationDestination", func() {
 
 		// Scaffold the ReplicationDestination, but don't create so that it can
 		// be customized per test scenario.
-		rd = &scribev1alpha1.ReplicationDestination{
+		rd = &volsyncv1alpha1.ReplicationDestination{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "instance",
 				Namespace: namespace.Name,
@@ -161,17 +161,17 @@ var _ = Describe("ReplicationDestination", func() {
 		Expect(k8sClient.Create(ctx, rd)).To(Succeed())
 		// Wait for it to show up in the API server
 		Eventually(func() error {
-			inst := &scribev1alpha1.ReplicationDestination{}
+			inst := &volsyncv1alpha1.ReplicationDestination{}
 			return k8sClient.Get(ctx, utils.NameFor(rd), inst)
 		}, maxWait, interval).Should(Succeed())
 	})
 
 	Context("when an external replication method is specified", func() {
 		BeforeEach(func() {
-			rd.Spec.External = &scribev1alpha1.ReplicationDestinationExternalSpec{}
+			rd.Spec.External = &volsyncv1alpha1.ReplicationDestinationExternalSpec{}
 		})
 		It("the CR is not reconciled", func() {
-			Consistently(func() *scribev1alpha1.ReplicationDestinationStatus {
+			Consistently(func() *volsyncv1alpha1.ReplicationDestinationStatus {
 				Expect(k8sClient.Get(ctx, utils.NameFor(rd), rd)).To(Succeed())
 				return rd.Status
 			}, duration, interval).Should(BeNil())
@@ -197,8 +197,8 @@ var _ = Describe("ReplicationDestination", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, pvc)).To(Succeed())
-			rd.Spec.Rsync = &scribev1alpha1.ReplicationDestinationRsyncSpec{
-				ReplicationDestinationVolumeOptions: scribev1alpha1.ReplicationDestinationVolumeOptions{
+			rd.Spec.Rsync = &volsyncv1alpha1.ReplicationDestinationRsyncSpec{
+				ReplicationDestinationVolumeOptions: volsyncv1alpha1.ReplicationDestinationVolumeOptions{
 					DestinationPVC: &pvc.Name,
 				},
 			}
@@ -206,7 +206,7 @@ var _ = Describe("ReplicationDestination", func() {
 		It("is used as the target PVC", func() {
 			job := &batchv1.Job{}
 			Eventually(func() error {
-				return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, job)
+				return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, job)
 			}, maxWait, interval).Should(Succeed())
 			volumes := job.Spec.Template.Spec.Volumes
 			found := false
@@ -222,23 +222,23 @@ var _ = Describe("ReplicationDestination", func() {
 
 	Context("when none of capacity, accessMode, or destinationPVC are specified", func() {
 		BeforeEach(func() {
-			rd.Spec.Rsync = &scribev1alpha1.ReplicationDestinationRsyncSpec{
-				ReplicationDestinationVolumeOptions: scribev1alpha1.ReplicationDestinationVolumeOptions{},
+			rd.Spec.Rsync = &volsyncv1alpha1.ReplicationDestinationRsyncSpec{
+				ReplicationDestinationVolumeOptions: volsyncv1alpha1.ReplicationDestinationVolumeOptions{},
 			}
 		})
 		It("generates a reconcile error", func() {
-			Eventually(func() *scribev1alpha1.ReplicationDestinationStatus {
+			Eventually(func() *volsyncv1alpha1.ReplicationDestinationStatus {
 				_ = k8sClient.Get(ctx, utils.NameFor(rd), rd)
 				return rd.Status
 			}, maxWait, interval).Should(Not(BeNil()))
 			var cond *status.Condition
 			Eventually(func() *status.Condition {
 				_ = k8sClient.Get(ctx, utils.NameFor(rd), rd)
-				cond = rd.Status.Conditions.GetCondition(scribev1alpha1.ConditionReconciled)
+				cond = rd.Status.Conditions.GetCondition(volsyncv1alpha1.ConditionReconciled)
 				return cond
 			}, maxWait, interval).Should(Not(BeNil()))
 			Expect(cond.Status).To(Equal(corev1.ConditionFalse))
-			Expect(cond.Reason).To(Equal(scribev1alpha1.ReconciledReasonError))
+			Expect(cond.Reason).To(Equal(volsyncv1alpha1.ReconciledReasonError))
 		})
 	})
 
@@ -246,8 +246,8 @@ var _ = Describe("ReplicationDestination", func() {
 		capacity := resource.MustParse("2Gi")
 		accessModes := []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce}
 		BeforeEach(func() {
-			rd.Spec.Rsync = &scribev1alpha1.ReplicationDestinationRsyncSpec{
-				ReplicationDestinationVolumeOptions: scribev1alpha1.ReplicationDestinationVolumeOptions{
+			rd.Spec.Rsync = &volsyncv1alpha1.ReplicationDestinationRsyncSpec{
+				ReplicationDestinationVolumeOptions: volsyncv1alpha1.ReplicationDestinationVolumeOptions{
 					Capacity:    &capacity,
 					AccessModes: accessModes,
 				},
@@ -257,7 +257,7 @@ var _ = Describe("ReplicationDestination", func() {
 		It("creates a ClusterIP service by default", func() {
 			svc := &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "scribe-rsync-dest-" + rd.Name,
+					Name:      "volsync-rsync-dest-" + rd.Name,
 					Namespace: rd.Namespace,
 				},
 			}
@@ -291,7 +291,7 @@ var _ = Describe("ReplicationDestination", func() {
 			It("a LoadBalancer service is created", func() {
 				svc := &corev1.Service{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "scribe-rsync-dest-" + rd.Name,
+						Name:      "volsync-rsync-dest-" + rd.Name,
 						Namespace: rd.Namespace,
 					},
 				}
@@ -318,7 +318,7 @@ var _ = Describe("ReplicationDestination", func() {
 		It("creates a PVC", func() {
 			job := &batchv1.Job{}
 			Eventually(func() error {
-				return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, job)
+				return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, job)
 			}, maxWait, interval).Should(Succeed())
 			var pvcName string
 			volumes := job.Spec.Template.Spec.Volumes
@@ -344,7 +344,7 @@ var _ = Describe("ReplicationDestination", func() {
 			It("is used in the PVC", func() {
 				job := &batchv1.Job{}
 				Eventually(func() error {
-					return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, job)
+					return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, job)
 				}, maxWait, interval).Should(Succeed())
 				var pvcName string
 				volumes := job.Spec.Template.Spec.Volumes
@@ -368,7 +368,7 @@ var _ = Describe("ReplicationDestination", func() {
 			It("is used to define parallelism", func() {
 				job := &batchv1.Job{}
 				Eventually(func() error {
-					return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, job)
+					return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, job)
 				}, maxWait, interval).Should(Succeed())
 				Expect(*job.Spec.Parallelism).To(Equal(parallelism))
 			})
@@ -376,11 +376,11 @@ var _ = Describe("ReplicationDestination", func() {
 
 		It("Generates ssh keys automatically", func() {
 			secret := &v1.Secret{}
-			Eventually(func() *scribev1alpha1.ReplicationDestinationStatus {
+			Eventually(func() *volsyncv1alpha1.ReplicationDestinationStatus {
 				_ = k8sClient.Get(ctx, utils.NameFor(rd), rd)
 				return rd.Status
 			}, maxWait, interval).Should(Not(BeNil()))
-			Eventually(func() *scribev1alpha1.ReplicationDestinationRsyncStatus {
+			Eventually(func() *volsyncv1alpha1.ReplicationDestinationRsyncStatus {
 				_ = k8sClient.Get(ctx, utils.NameFor(rd), rd)
 				return rd.Status.Rsync
 			}, maxWait, interval).Should(Not(BeNil()))
@@ -418,7 +418,7 @@ var _ = Describe("ReplicationDestination", func() {
 			It("they are used by the sync Job", func() {
 				job := &batchv1.Job{}
 				Eventually(func() error {
-					return k8sClient.Get(ctx, types.NamespacedName{Name: "scribe-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, job)
+					return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-dest-" + rd.Name, Namespace: rd.Namespace}, job)
 				}, maxWait, interval).Should(Succeed())
 				volumes := job.Spec.Template.Spec.Volumes
 				found := false
@@ -436,8 +436,8 @@ var _ = Describe("ReplicationDestination", func() {
 	Context("after sync is complete", func() {
 		BeforeEach(func() {
 			capacity := resource.MustParse("10Gi")
-			rd.Spec.Rsync = &scribev1alpha1.ReplicationDestinationRsyncSpec{
-				ReplicationDestinationVolumeOptions: scribev1alpha1.ReplicationDestinationVolumeOptions{
+			rd.Spec.Rsync = &volsyncv1alpha1.ReplicationDestinationRsyncSpec{
+				ReplicationDestinationVolumeOptions: volsyncv1alpha1.ReplicationDestinationVolumeOptions{
 					Capacity:    &capacity,
 					AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
 				},
@@ -446,7 +446,7 @@ var _ = Describe("ReplicationDestination", func() {
 		JustBeforeEach(func() {
 			job := &batchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "scribe-rsync-dest-" + rd.Name,
+					Name:      "volsync-rsync-dest-" + rd.Name,
 					Namespace: rd.Namespace,
 				},
 			}
@@ -460,7 +460,7 @@ var _ = Describe("ReplicationDestination", func() {
 		})
 		Context("with a CopyMethod of None", func() {
 			BeforeEach(func() {
-				rd.Spec.Rsync.CopyMethod = scribev1alpha1.CopyMethodNone
+				rd.Spec.Rsync.CopyMethod = volsyncv1alpha1.CopyMethodNone
 			})
 			It("the PVC should be the latestImage", func() {
 				Eventually(func() *v1.TypedLocalObjectReference {
@@ -475,7 +475,7 @@ var _ = Describe("ReplicationDestination", func() {
 		})
 		Context("with a CopyMethod of Snapshot", func() {
 			BeforeEach(func() {
-				rd.Spec.Rsync.CopyMethod = scribev1alpha1.CopyMethodSnapshot
+				rd.Spec.Rsync.CopyMethod = volsyncv1alpha1.CopyMethodSnapshot
 			})
 			It("a snapshot should be the latestImage", func() {
 				By("once snapshot is created, force it to be bound")

@@ -4,10 +4,10 @@
 name: operator
 on:  # yamllint disable-line rule:truthy
   push:
-    branches: ["master", "release*"]
+    branches: ["main", "release*"]
     tags: ["*"]
   pull_request:
-    branches: ["master", "release*"]
+    branches: ["main", "release*"]
   schedule:
     - cron: "15 4 * * 1"  # 4:15 every Monday
 
@@ -15,10 +15,10 @@ env:
   GO_VERSION: "1.16"
   KIND_VERSION: "0.11.1"
   GO111MODULE: "on"
-  OPERATOR_IMAGE: "quay.io/backube/scribe"
-  RCLONE_IMAGE: "quay.io/backube/scribe-mover-rclone"
-  RESTIC_IMAGE: "quay.io/backube/scribe-mover-restic"
-  RSYNC_IMAGE: "quay.io/backube/scribe-mover-rsync"
+  OPERATOR_IMAGE: "quay.io/backube/volsync"
+  RCLONE_IMAGE: "quay.io/backube/volsync-mover-rclone"
+  RESTIC_IMAGE: "quay.io/backube/volsync-mover-restic"
+  RSYNC_IMAGE: "quay.io/backube/volsync-mover-rsync"
 
 jobs:
   lint:
@@ -68,7 +68,7 @@ jobs:
       - name: Save container as artifact
         uses: actions/upload-artifact@v1
         with:
-          name: scribe-operator
+          name: volsync-operator
           path: /tmp/image.tar
 
       - name: Build cli
@@ -77,8 +77,8 @@ jobs:
       - name: Save cli as artifact
         uses: actions/upload-artifact@v1
         with:
-          name: kubectl-scribe
-          path: bin/kubectl-scribe
+          name: kubectl-volsync
+          path: bin/kubectl-volsync
 
   build-rclone:
     name: Build-mover-rclone
@@ -97,7 +97,7 @@ jobs:
       - name: Save container as artifact
         uses: actions/upload-artifact@v1
         with:
-          name: scribe-mover-rclone-container
+          name: volsync-mover-rclone-container
           path: /tmp/image.tar
 
   build-restic:
@@ -117,7 +117,7 @@ jobs:
       - name: Save container as artifact
         uses: actions/upload-artifact@v1
         with:
-          name: scribe-mover-restic-container
+          name: volsync-mover-restic-container
           path: /tmp/image.tar
 
   build-rsync:
@@ -137,7 +137,7 @@ jobs:
       - name: Save container as artifact
         uses: actions/upload-artifact@v1
         with:
-          name: scribe-mover-rsync-container
+          name: volsync-mover-rsync-container
           path: /tmp/image.tar
 
   e2e:
@@ -189,7 +189,7 @@ jobs:
       - name: Load operator container artifact
         uses: actions/download-artifact@v1
         with:
-          name: scribe-operator
+          name: volsync-operator
           path: /tmp
 
       - name: Import container image into cluster
@@ -202,7 +202,7 @@ jobs:
       - name: Load rclone container artifact
         uses: actions/download-artifact@v1
         with:
-          name: scribe-mover-rclone-container
+          name: volsync-mover-rclone-container
           path: /tmp
 
       - name: Import container image into cluster
@@ -215,7 +215,7 @@ jobs:
       - name: Load restic container artifact
         uses: actions/download-artifact@v1
         with:
-          name: scribe-mover-restic-container
+          name: volsync-mover-restic-container
           path: /tmp
 
       - name: Import container image into cluster
@@ -228,7 +228,7 @@ jobs:
       - name: Load rsync container artifact
         uses: actions/download-artifact@v1
         with:
-          name: scribe-mover-rsync-container
+          name: volsync-mover-rsync-container
           path: /tmp
 
       - name: Import container image into cluster
@@ -240,22 +240,22 @@ jobs:
 
       - name: Start operator
         run: |
-          helm install --create-namespace -n scribe-system \
+          helm install --create-namespace -n volsync-system \
               --set image.tag=ci-build \
               --set rclone.tag=ci-build \
               --set rsync.tag=ci-build \
               --set restic.tag=ci-build \
               --wait --timeout=300s \
-              scribe-ghaction ./helm/scribe
+              volsync-ghaction ./helm/volsync
 
       - name: Load cli artifact
         uses: actions/download-artifact@v1
         with:
-          name: kubectl-scribe
+          name: kubectl-volsync
           path: bin
 
       - name: Make cli executable
-        run: chmod a+x bin/kubectl-scribe
+        run: chmod a+x bin/kubectl-volsync
 
       - name: Run e2e tests
         run: |
@@ -279,14 +279,14 @@ jobs:
     needs: e2e-success
     if: >
       (github.event_name == 'push' || github.event_name == 'schedule') &&
-      (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-20.04
 
     steps:
       - name: Load container artifact
         uses: actions/download-artifact@v1
         with:
-          name: scribe-operator
+          name: volsync-operator
           path: /tmp
 
       - name: Import container image
@@ -303,7 +303,7 @@ jobs:
       - name: Push to registry (latest)
         if: >
           (github.event_name == 'push' || github.event_name == 'schedule') &&
-          github.ref == 'refs/heads/master'
+          github.ref == 'refs/heads/main'
         run: |
           docker push "${OPERATOR_IMAGE}"
       - name: Push to registry (version tag)
@@ -322,14 +322,14 @@ jobs:
     needs: e2e-success
     if: >
       (github.event_name == 'push' || github.event_name == 'schedule') &&
-      (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-20.04
 
     steps:
       - name: Load container artifact
         uses: actions/download-artifact@v1
         with:
-          name: scribe-mover-rclone-container
+          name: volsync-mover-rclone-container
           path: /tmp
 
       - name: Import container image
@@ -346,7 +346,7 @@ jobs:
       - name: Push to registry (latest)
         if: >
           (github.event_name == 'push' || github.event_name == 'schedule') &&
-          github.ref == 'refs/heads/master'
+          github.ref == 'refs/heads/main'
         run: |
           docker push "${RCLONE_IMAGE}"
       - name: Push to registry (version tag)
@@ -365,14 +365,14 @@ jobs:
     needs: e2e-success
     if: >
       (github.event_name == 'push' || github.event_name == 'schedule') &&
-      (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-20.04
 
     steps:
       - name: Load container artifact
         uses: actions/download-artifact@v1
         with:
-          name: scribe-mover-restic-container
+          name: volsync-mover-restic-container
           path: /tmp
 
       - name: Import container image
@@ -389,7 +389,7 @@ jobs:
       - name: Push to registry (latest)
         if: >
           (github.event_name == 'push' || github.event_name == 'schedule') &&
-          github.ref == 'refs/heads/master'
+          github.ref == 'refs/heads/main'
         run: |
           docker push "${RESTIC_IMAGE}"
       - name: Push to registry (version tag)
@@ -408,14 +408,14 @@ jobs:
     needs: e2e-success
     if: >
       (github.event_name == 'push' || github.event_name == 'schedule') &&
-      (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-20.04
 
     steps:
       - name: Load container artifact
         uses: actions/download-artifact@v1
         with:
-          name: scribe-mover-rsync-container
+          name: volsync-mover-rsync-container
           path: /tmp
 
       - name: Import container image
@@ -432,7 +432,7 @@ jobs:
       - name: Push to registry (latest)
         if: >
           (github.event_name == 'push' || github.event_name == 'schedule') &&
-          github.ref == 'refs/heads/master'
+          github.ref == 'refs/heads/main'
         run: |
           docker push "${RSYNC_IMAGE}"
       - name: Push to registry (version tag)

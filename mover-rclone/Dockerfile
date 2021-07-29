@@ -22,12 +22,12 @@ ENV builddate="${builddate_arg}"
 ENV version="${version_arg}"
 
 LABEL org.label-schema.build-date="${builddate}" \
-      org.label-schema.description="rclone-based data mover for Scribe" \
+      org.label-schema.description="rclone-based data mover for VolSync" \
       org.label-schema.license="AGPL v3" \
-      org.label-schema.name="scribe-mover-rclone" \
+      org.label-schema.name="volsync-mover-rclone" \
       org.label-schema.schema-version="1.0" \
       org.label-schema.vcs-ref="${version}" \
-      org.label-schema.vcs-url="https://github.com/backube/scribe" \
+      org.label-schema.vcs-url="https://github.com/backube/volsync" \
       org.label-schema.vendor="Backube" \
       org.label-schema.version="${version}"
 

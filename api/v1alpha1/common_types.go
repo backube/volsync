@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Scribe authors.
+Copyright 2020 The VolSync authors.
 
 This file may be used, at your option, according to either the GNU AGPL 3.0 or
 the Apache V2 license.

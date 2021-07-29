@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Scribe authors.
+Copyright 2021 The VolSync authors.
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published
@@ -20,7 +20,7 @@ package volumehandler
 import (
 	"errors"
 
-	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -69,7 +69,7 @@ func From(v *VolumeHandler) VHOption {
 
 // FromSource populates the VolumeHandler configuration based on the common
 // source volume options
-func FromSource(s *scribev1alpha1.ReplicationSourceVolumeOptions) VHOption {
+func FromSource(s *volsyncv1alpha1.ReplicationSourceVolumeOptions) VHOption {
 	return func(vh *VolumeHandler) {
 		vh.copyMethod = s.CopyMethod
 		vh.capacity = s.Capacity
@@ -81,7 +81,7 @@ func FromSource(s *scribev1alpha1.ReplicationSourceVolumeOptions) VHOption {
 
 // FromDestination populates the VolumeHandler configuration based on the common
 // destination volume options
-func FromDestination(d *scribev1alpha1.ReplicationDestinationVolumeOptions) VHOption {
+func FromDestination(d *volsyncv1alpha1.ReplicationDestinationVolumeOptions) VHOption {
 	return func(vh *VolumeHandler) {
 		vh.copyMethod = d.CopyMethod
 		vh.capacity = d.Capacity
@@ -97,7 +97,7 @@ func AccessModes(am []v1.PersistentVolumeAccessMode) VHOption {
 	}
 }
 
-func CopyMethod(cm scribev1alpha1.CopyMethodType) VHOption {
+func CopyMethod(cm volsyncv1alpha1.CopyMethodType) VHOption {
 	return func(vh *VolumeHandler) {
 		vh.copyMethod = cm
 	}

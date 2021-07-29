@@ -93,73 +93,9 @@ rules:
   - update
   - watch
 - apiGroups:
-  - scribe.backube
-  resources:
-  - replicationdestinations
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - scribe.backube
-  resources:
-  - replicationdestinations/finalizers
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - scribe.backube
-  resources:
-  - replicationdestinations/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - scribe.backube
-  resources:
-  - replicationsources
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - scribe.backube
-  resources:
-  - replicationsources/finalizers
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - scribe.backube
-  resources:
-  - replicationsources/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
   - security.openshift.io
   resourceNames:
-  - scribe-mover
+  - volsync-mover
   resources:
   - securitycontextconstraints
   verbs:
@@ -177,3 +113,67 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - volsync.backube
+  resources:
+  - replicationdestinations
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - volsync.backube
+  resources:
+  - replicationdestinations/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - volsync.backube
+  resources:
+  - replicationdestinations/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - volsync.backube
+  resources:
+  - replicationsources
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - volsync.backube
+  resources:
+  - replicationsources/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - volsync.backube
+  resources:
+  - replicationsources/status
+  verbs:
+  - get
+  - patch
+  - update

@@ -28,7 +28,7 @@ bin
 # Dependency directories (remove the comment below to include it)
 vendor/
 
-# Scribe related
+# VolSync related
 # Secret files to prevent accidental commit of keys
 examples/rclone.conf
 

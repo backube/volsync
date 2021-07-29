@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Scribe authors.
+Copyright 2020 The VolSync authors.
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published
@@ -39,16 +39,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
-	"github.com/backube/scribe/controllers/mover"
-	"github.com/backube/scribe/controllers/utils"
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
+	"github.com/backube/volsync/controllers/mover"
+	"github.com/backube/volsync/controllers/utils"
 )
 
 const (
 	// DefaultRsyncContainerImage is the default container image name of the rsync data mover
-	DefaultRsyncContainerImage = "quay.io/backube/scribe-mover-rsync:latest"
+	DefaultRsyncContainerImage = "quay.io/backube/volsync-mover-rsync:latest"
 	// DefaultRcloneContainerImage is the default container image name of the rclone data mover
-	DefaultRcloneContainerImage = "quay.io/backube/scribe-mover-rclone:latest"
+	DefaultRcloneContainerImage = "quay.io/backube/volsync-mover-rclone:latest"
 )
 
 var (
@@ -56,7 +56,7 @@ var (
 	RsyncContainerImage string
 	// RcloneContainerImage is the container image name of the rclone data mover
 	RcloneContainerImage string
-	// SCCName is the name of the scribe security context constraint
+	// SCCName is the name of the volsync security context constraint
 	SCCName string
 )
 
@@ -68,9 +68,9 @@ type ReplicationDestinationReconciler struct {
 }
 
 //nolint:lll
-//+kubebuilder:rbac:groups=scribe.backube,resources=replicationdestinations,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=scribe.backube,resources=replicationdestinations/finalizers,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=scribe.backube,resources=replicationdestinations/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=volsync.backube,resources=replicationdestinations,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=volsync.backube,resources=replicationdestinations/finalizers,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=volsync.backube,resources=replicationdestinations/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete;deletecollection
 //+kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete;deletecollection
 //+kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
@@ -78,14 +78,14 @@ type ReplicationDestinationReconciler struct {
 //+kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=roles,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=security.openshift.io,resources=securitycontextconstraints,resourceNames=scribe-mover,verbs=use
+//+kubebuilder:rbac:groups=security.openshift.io,resources=securitycontextconstraints,resourceNames=volsync-mover,verbs=use
 //+kubebuilder:rbac:groups=snapshot.storage.k8s.io,resources=volumesnapshots,verbs=get;list;watch;create;update;patch;delete;deletecollection
 
 //nolint:funlen
 func (r *ReplicationDestinationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Log.WithValues("replicationdestination", req.NamespacedName)
 	// Get CR instance
-	inst := &scribev1alpha1.ReplicationDestination{}
+	inst := &volsyncv1alpha1.ReplicationDestination{}
 	if err := r.Client.Get(ctx, req.NamespacedName, inst); err != nil {
 		if !kerrors.IsNotFound(err) {
 			logger.Error(err, "Failed to get Destination")
@@ -94,7 +94,7 @@ func (r *ReplicationDestinationReconciler) Reconcile(ctx context.Context, req ct
 	}
 	// Prepare the .Status fields if necessary
 	if inst.Status == nil {
-		inst.Status = &scribev1alpha1.ReplicationDestinationStatus{}
+		inst.Status = &volsyncv1alpha1.ReplicationDestinationStatus{}
 	}
 	if inst.Status.Conditions == nil {
 		inst.Status.Conditions = status.Conditions{}
@@ -121,17 +121,17 @@ func (r *ReplicationDestinationReconciler) Reconcile(ctx context.Context, req ct
 	if err == nil {
 		inst.Status.Conditions.SetCondition(
 			status.Condition{
-				Type:    scribev1alpha1.ConditionReconciled,
+				Type:    volsyncv1alpha1.ConditionReconciled,
 				Status:  corev1.ConditionTrue,
-				Reason:  scribev1alpha1.ReconciledReasonComplete,
+				Reason:  volsyncv1alpha1.ReconciledReasonComplete,
 				Message: "Reconcile complete",
 			})
 	} else {
 		inst.Status.Conditions.SetCondition(
 			status.Condition{
-				Type:    scribev1alpha1.ConditionReconciled,
+				Type:    volsyncv1alpha1.ConditionReconciled,
 				Status:  corev1.ConditionFalse,
-				Reason:  scribev1alpha1.ReconciledReasonError,
+				Reason:  volsyncv1alpha1.ReconciledReasonError,
 				Message: err.Error(),
 			})
 	}
@@ -154,7 +154,7 @@ func (r *ReplicationDestinationReconciler) Reconcile(ctx context.Context, req ct
 //nolint:funlen
 func reconcileDestUsingCatalog(
 	ctx context.Context,
-	instance *scribev1alpha1.ReplicationDestination,
+	instance *volsyncv1alpha1.ReplicationDestination,
 	dr *ReplicationDestinationReconciler,
 	logger logr.Logger,
 ) (ctrl.Result, error) {
@@ -173,7 +173,7 @@ func reconcileDestUsingCatalog(
 		return ctrl.Result{}, errNoMoverFound
 	}
 
-	metrics := newScribeMetrics(prometheus.Labels{
+	metrics := newVolSyncMetrics(prometheus.Labels{
 		"obj_name":      instance.Name,
 		"obj_namespace": instance.Namespace,
 		"role":          "destination",
@@ -186,15 +186,15 @@ func reconcileDestUsingCatalog(
 	}
 
 	var result mover.Result
-	if shouldSync && !instance.Status.Conditions.IsFalseFor(scribev1alpha1.ConditionSynchronizing) {
+	if shouldSync && !instance.Status.Conditions.IsFalseFor(volsyncv1alpha1.ConditionSynchronizing) {
 		result, err = dataMover.Synchronize(ctx)
 		if result.Completed && result.Image != nil {
 			instance.Status.LatestImage = result.Image
 			instance.Status.Conditions.SetCondition(
 				status.Condition{
-					Type:    scribev1alpha1.ConditionSynchronizing,
+					Type:    volsyncv1alpha1.ConditionSynchronizing,
 					Status:  corev1.ConditionFalse,
-					Reason:  scribev1alpha1.SynchronizingReasonCleanup,
+					Reason:  volsyncv1alpha1.SynchronizingReasonCleanup,
 					Message: "Cleaning up",
 				},
 			)
@@ -207,9 +207,9 @@ func reconcileDestUsingCatalog(
 		if result.Completed {
 			instance.Status.Conditions.SetCondition(
 				status.Condition{
-					Type:    scribev1alpha1.ConditionSynchronizing,
+					Type:    volsyncv1alpha1.ConditionSynchronizing,
 					Status:  corev1.ConditionTrue,
-					Reason:  scribev1alpha1.SynchronizingReasonSync,
+					Reason:  volsyncv1alpha1.SynchronizingReasonSync,
 					Message: "Synchronization in-progress",
 				},
 			)
@@ -222,7 +222,7 @@ func reconcileDestUsingCatalog(
 
 func (r *ReplicationDestinationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&scribev1alpha1.ReplicationDestination{}).
+		For(&volsyncv1alpha1.ReplicationDestination{}).
 		Owns(&batchv1.Job{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
 		Owns(&corev1.Secret{}).
@@ -236,7 +236,7 @@ func (r *ReplicationDestinationReconciler) SetupWithManager(mgr ctrl.Manager) er
 
 type rsyncDestReconciler struct {
 	destinationVolumeHandler
-	scribeMetrics
+	volsyncMetrics
 	service        *corev1.Service
 	destSecret     *corev1.Secret
 	srcSecret      *corev1.Secret
@@ -246,7 +246,7 @@ type rsyncDestReconciler struct {
 
 type rcloneDestReconciler struct {
 	destinationVolumeHandler
-	scribeMetrics
+	volsyncMetrics
 	rcloneConfigSecret *corev1.Secret
 	serviceAccount     *corev1.ServiceAccount
 	job                *batchv1.Job
@@ -254,8 +254,8 @@ type rcloneDestReconciler struct {
 
 //nolint:dupl
 func updateNextSyncDestination(
-	rd *scribev1alpha1.ReplicationDestination,
-	metrics scribeMetrics,
+	rd *volsyncv1alpha1.ReplicationDestination,
+	metrics volsyncMetrics,
 	logger logr.Logger,
 ) (bool, error) {
 	// if there's a schedule, and no manual trigger is set
@@ -293,8 +293,8 @@ func updateNextSyncDestination(
 
 //nolint:funlen
 func awaitNextSyncDestination(
-	rd *scribev1alpha1.ReplicationDestination,
-	metrics scribeMetrics,
+	rd *volsyncv1alpha1.ReplicationDestination,
+	metrics volsyncMetrics,
 	logger logr.Logger,
 ) (bool, error) {
 	// Ensure nextSyncTime is correct
@@ -308,9 +308,9 @@ func awaitNextSyncDestination(
 		if rd.Spec.Trigger.Manual == rd.Status.LastManualSync {
 			rd.Status.Conditions.SetCondition(
 				status.Condition{
-					Type:    scribev1alpha1.ConditionSynchronizing,
+					Type:    volsyncv1alpha1.ConditionSynchronizing,
 					Status:  corev1.ConditionFalse,
-					Reason:  scribev1alpha1.SynchronizingReasonManual,
+					Reason:  volsyncv1alpha1.SynchronizingReasonManual,
 					Message: "Waiting for manual trigger",
 				},
 			)
@@ -318,9 +318,9 @@ func awaitNextSyncDestination(
 		}
 		rd.Status.Conditions.SetCondition(
 			status.Condition{
-				Type:    scribev1alpha1.ConditionSynchronizing,
+				Type:    volsyncv1alpha1.ConditionSynchronizing,
 				Status:  corev1.ConditionTrue,
-				Reason:  scribev1alpha1.SynchronizingReasonSync,
+				Reason:  volsyncv1alpha1.SynchronizingReasonSync,
 				Message: "Synchronization in-progress",
 			},
 		)
@@ -337,9 +337,9 @@ func awaitNextSyncDestination(
 	if rd.Status.NextSyncTime.Time.Before(time.Now()) {
 		rd.Status.Conditions.SetCondition(
 			status.Condition{
-				Type:    scribev1alpha1.ConditionSynchronizing,
+				Type:    volsyncv1alpha1.ConditionSynchronizing,
 				Status:  corev1.ConditionTrue,
-				Reason:  scribev1alpha1.SynchronizingReasonSync,
+				Reason:  volsyncv1alpha1.SynchronizingReasonSync,
 				Message: "Synchronization in-progress",
 			},
 		)
@@ -347,9 +347,9 @@ func awaitNextSyncDestination(
 	}
 	rd.Status.Conditions.SetCondition(
 		status.Condition{
-			Type:    scribev1alpha1.ConditionSynchronizing,
+			Type:    volsyncv1alpha1.ConditionSynchronizing,
 			Status:  corev1.ConditionFalse,
-			Reason:  scribev1alpha1.SynchronizingReasonSched,
+			Reason:  volsyncv1alpha1.SynchronizingReasonSched,
 			Message: "Waiting for next scheduled synchronization",
 		},
 	)
@@ -358,8 +358,8 @@ func awaitNextSyncDestination(
 
 //nolint:dupl
 func updateLastSyncDestination(
-	rd *scribev1alpha1.ReplicationDestination,
-	metrics scribeMetrics,
+	rd *volsyncv1alpha1.ReplicationDestination,
+	metrics volsyncMetrics,
 	logger logr.Logger,
 ) (bool, error) {
 	// if there's a schedule see if we've made the deadline
@@ -396,7 +396,7 @@ func updateLastSyncDestination(
 //nolint:dupl
 func RunRsyncDestReconciler(
 	ctx context.Context,
-	instance *scribev1alpha1.ReplicationDestination,
+	instance *volsyncv1alpha1.ReplicationDestination,
 	dr *ReplicationDestinationReconciler,
 	logger logr.Logger,
 ) (ctrl.Result, error) {
@@ -408,7 +408,7 @@ func RunRsyncDestReconciler(
 			ReplicationDestinationReconciler: *dr,
 			Options:                          &instance.Spec.Rsync.ReplicationDestinationVolumeOptions,
 		},
-		scribeMetrics: newScribeMetrics(prometheus.Labels{
+		volsyncMetrics: newVolSyncMetrics(prometheus.Labels{
 			"obj_name":      instance.Name,
 			"obj_namespace": instance.Namespace,
 			"role":          "destination",
@@ -420,12 +420,12 @@ func RunRsyncDestReconciler(
 
 	// Make sure there's a place to write status info
 	if r.Instance.Status.Rsync == nil {
-		r.Instance.Status.Rsync = &scribev1alpha1.ReplicationDestinationRsyncStatus{}
+		r.Instance.Status.Rsync = &volsyncv1alpha1.ReplicationDestinationRsyncStatus{}
 	}
 
 	// wrap the scheduling functions as reconcileFuncs
 	awaitNextSync := func(l logr.Logger) (bool, error) {
-		return awaitNextSyncDestination(r.Instance, r.scribeMetrics, l)
+		return awaitNextSyncDestination(r.Instance, r.volsyncMetrics, l)
 	}
 
 	_, err := utils.ReconcileBatch(l,
@@ -445,7 +445,7 @@ func RunRsyncDestReconciler(
 // RunRcloneDestReconciler reconciles rclone mover related objects.
 func RunRcloneDestReconciler(
 	ctx context.Context,
-	instance *scribev1alpha1.ReplicationDestination,
+	instance *volsyncv1alpha1.ReplicationDestination,
 	dr *ReplicationDestinationReconciler,
 	logger logr.Logger,
 ) (ctrl.Result, error) {
@@ -457,7 +457,7 @@ func RunRcloneDestReconciler(
 			ReplicationDestinationReconciler: *dr,
 			Options:                          &instance.Spec.Rclone.ReplicationDestinationVolumeOptions,
 		},
-		scribeMetrics: newScribeMetrics(prometheus.Labels{
+		volsyncMetrics: newVolSyncMetrics(prometheus.Labels{
 			"obj_name":      instance.Name,
 			"obj_namespace": instance.Namespace,
 			"role":          "destination",
@@ -467,7 +467,7 @@ func RunRcloneDestReconciler(
 	l := logger.WithValues("method", "Rclone")
 	// wrap the scheduling functions as reconcileFuncs
 	awaitNextSync := func(l logr.Logger) (bool, error) {
-		return awaitNextSyncDestination(r.Instance, r.scribeMetrics, l)
+		return awaitNextSyncDestination(r.Instance, r.volsyncMetrics, l)
 	}
 	_, err := utils.ReconcileBatch(l,
 		awaitNextSync,
@@ -486,7 +486,7 @@ func (r *rsyncDestReconciler) serviceSelector() map[string]string {
 	return map[string]string{
 		"app.kubernetes.io/name":      "dest-" + r.Instance.Name,
 		"app.kubernetes.io/component": "rsync-mover",
-		"app.kubernetes.io/part-of":   "scribe",
+		"app.kubernetes.io/part-of":   "volsync",
 	}
 }
 
@@ -500,7 +500,7 @@ func (r *rsyncDestReconciler) ensureService(l logr.Logger) (bool, error) {
 
 	r.service = &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "scribe-rsync-dest-" + r.Instance.Name,
+			Name:      "volsync-rsync-dest-" + r.Instance.Name,
 			Namespace: r.Instance.Namespace,
 		},
 	}
@@ -559,7 +559,7 @@ func (r *rsyncDestReconciler) ensureSecrets(l logr.Logger) (bool, error) {
 		Client:       r.Client,
 		Scheme:       r.Scheme,
 		Owner:        r.Instance,
-		NameTemplate: "scribe-rsync-dest",
+		NameTemplate: "volsync-rsync-dest",
 	}
 	cont, err := keyInfo.Reconcile(l)
 	if !cont || err != nil {
@@ -593,7 +593,7 @@ func (r *rcloneDestReconciler) ensureRcloneConfig(l logr.Logger) (bool, error) {
 func (r *rsyncDestReconciler) ensureServiceAccount(l logr.Logger) (bool, error) {
 	r.serviceAccount = &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "scribe-rsync-dest-" + r.Instance.Name,
+			Name:      "volsync-rsync-dest-" + r.Instance.Name,
 			Namespace: r.Instance.Namespace,
 		},
 	}
@@ -604,7 +604,7 @@ func (r *rsyncDestReconciler) ensureServiceAccount(l logr.Logger) (bool, error) 
 func (r *rcloneDestReconciler) ensureServiceAccount(l logr.Logger) (bool, error) {
 	r.serviceAccount = &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "scribe-src-" + r.Instance.Name,
+			Name:      "volsync-src-" + r.Instance.Name,
 			Namespace: r.Instance.Namespace,
 		},
 	}
@@ -615,7 +615,7 @@ func (r *rcloneDestReconciler) ensureServiceAccount(l logr.Logger) (bool, error)
 //nolint:funlen
 func (r *rsyncDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 	jobName := types.NamespacedName{
-		Name:      "scribe-rsync-dest-" + r.Instance.Name,
+		Name:      "volsync-rsync-dest-" + r.Instance.Name,
 		Namespace: r.Instance.Namespace,
 	}
 	logger := l.WithValues("job", jobName)
@@ -708,7 +708,7 @@ func (r *rsyncDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 func (r *rcloneDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 	r.job = &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "scribe-rclone-src-" + r.Instance.Name,
+			Name:      "volsync-rclone-src-" + r.Instance.Name,
 			Namespace: r.Instance.Namespace,
 		},
 	}
@@ -792,7 +792,7 @@ func (r *rcloneDestReconciler) ensureJob(l logr.Logger) (bool, error) {
 //nolint:dupl
 func (r *rsyncDestReconciler) cleanupJob(l logr.Logger) (bool, error) {
 	logger := l.WithValues("job", r.job)
-	if cont, err := updateLastSyncDestination(r.Instance, r.scribeMetrics, logger); !cont || err != nil {
+	if cont, err := updateLastSyncDestination(r.Instance, r.volsyncMetrics, logger); !cont || err != nil {
 		return cont, err
 	}
 	if r.job.Status.StartTime != nil {
@@ -814,7 +814,7 @@ func (r *rsyncDestReconciler) cleanupJob(l logr.Logger) (bool, error) {
 func (r *rcloneDestReconciler) cleanupJob(l logr.Logger) (bool, error) {
 	logger := l.WithValues("job", r.job)
 	// update time/duration
-	if cont, err := updateLastSyncDestination(r.Instance, r.scribeMetrics, logger); !cont || err != nil {
+	if cont, err := updateLastSyncDestination(r.Instance, r.volsyncMetrics, logger); !cont || err != nil {
 		return cont, err
 	}
 	if r.job.Status.StartTime != nil {

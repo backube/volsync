@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Scribe authors.
+Copyright 2021 The VolSync authors.
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published
@@ -15,7 +15,7 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-// Scribe data movers are created by implementing the interfaces in this
+// VolSync data movers are created by implementing the interfaces in this
 // package. Each data mover must implement the Builder interface that constructs
 // instances of the Mover (interface) given a ReplicationSource or
 // ReplicationDestination CR. These builders must be created and Register()-ed

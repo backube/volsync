@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Scribe authors.
+Copyright 2021 The VolSync authors.
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published
@@ -30,8 +30,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
-	"github.com/backube/scribe/controllers/mover"
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
+	"github.com/backube/volsync/controllers/mover"
 )
 
 const (
@@ -42,14 +42,14 @@ const (
 var _ = Describe("Restic retain policy", func() {
 	Context("When a retain policy is omitted", func() {
 		It("has forget options that keep only the last backup", func() {
-			var policy *scribev1alpha1.ResticRetainPolicy = nil
+			var policy *volsyncv1alpha1.ResticRetainPolicy = nil
 			forget := generateForgetOptions(policy)
 			Expect(forget).To(MatchRegexp("^\\s*--keep-last\\s+1\\s*$"))
 		})
 	})
 	Context("When a retain policy is empty", func() {
 		It("has forget options that keep only the last backup", func() {
-			policy := &scribev1alpha1.ResticRetainPolicy{}
+			policy := &volsyncv1alpha1.ResticRetainPolicy{}
 			forget := generateForgetOptions(policy)
 			Expect(forget).To(MatchRegexp("^\\s*--keep-last\\s+1\\s*$"))
 		})
@@ -61,7 +61,7 @@ var _ = Describe("Restic retain policy", func() {
 			three := int32(3)
 			four := int32(4)
 			five := int32(5)
-			policy := &scribev1alpha1.ResticRetainPolicy{
+			policy := &volsyncv1alpha1.ResticRetainPolicy{
 				Hourly:  &five,
 				Daily:   &four,
 				Weekly:  &three,
@@ -79,7 +79,7 @@ var _ = Describe("Restic retain policy", func() {
 		})
 		It("permits time-based retention", func() {
 			duration := "5m3w1d"
-			policy := &scribev1alpha1.ResticRetainPolicy{
+			policy := &volsyncv1alpha1.ResticRetainPolicy{
 				Within: &duration,
 			}
 			forget := generateForgetOptions(policy)
@@ -108,7 +108,7 @@ var _ = Describe("Restic prune policy", func() {
 			logger:        logger,
 			owner:         owner,
 			pruneInterval: nil,
-			sourceStatus:  &scribev1alpha1.ReplicationSourceResticStatus{},
+			sourceStatus:  &volsyncv1alpha1.ReplicationSourceResticStatus{},
 		}
 	})
 	When("Interval is omitted it defaults to 1 week", func() {
@@ -175,12 +175,12 @@ var _ = Describe("Restic ignores other movers", func() {
 	logger := zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
 	When("An RS isn't for restic", func() {
 		It("is ignored", func() {
-			rs := &scribev1alpha1.ReplicationSource{
+			rs := &volsyncv1alpha1.ReplicationSource{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "cr",
 					Namespace: "blah",
 				},
-				Spec: scribev1alpha1.ReplicationSourceSpec{
+				Spec: volsyncv1alpha1.ReplicationSourceSpec{
 					Restic: nil,
 				},
 			}
@@ -192,12 +192,12 @@ var _ = Describe("Restic ignores other movers", func() {
 	})
 	When("An RD isn't for restic", func() {
 		It("is ignored", func() {
-			rd := &scribev1alpha1.ReplicationDestination{
+			rd := &volsyncv1alpha1.ReplicationDestination{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "x",
 					Namespace: "y",
 				},
-				Spec: scribev1alpha1.ReplicationDestinationSpec{
+				Spec: volsyncv1alpha1.ReplicationDestinationSpec{
 					Restic: nil,
 				},
 			}
@@ -213,7 +213,7 @@ var _ = Describe("Restic as a source", func() {
 	var ctx = context.TODO()
 	var ns *v1.Namespace
 	logger := zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
-	var rs *scribev1alpha1.ReplicationSource
+	var rs *volsyncv1alpha1.ReplicationSource
 	var sPVC *v1.PersistentVolumeClaim
 	var mover *Mover
 	BeforeEach(func() {
@@ -247,15 +247,15 @@ var _ = Describe("Restic as a source", func() {
 		Expect(k8sClient.Create(ctx, sPVC)).To(Succeed())
 
 		// Scaffold ReplicationSource
-		rs = &scribev1alpha1.ReplicationSource{
+		rs = &volsyncv1alpha1.ReplicationSource{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "rs",
 				Namespace: ns.Name,
 			},
-			Spec: scribev1alpha1.ReplicationSourceSpec{
+			Spec: volsyncv1alpha1.ReplicationSourceSpec{
 				SourcePVC: sPVC.Name,
-				Trigger:   &scribev1alpha1.ReplicationSourceTriggerSpec{},
-				Restic:    &scribev1alpha1.ReplicationSourceResticSpec{},
+				Trigger:   &volsyncv1alpha1.ReplicationSourceTriggerSpec{},
+				Restic:    &volsyncv1alpha1.ReplicationSourceResticSpec{},
 				Paused:    false,
 			},
 		}
@@ -270,7 +270,7 @@ var _ = Describe("Restic as a source", func() {
 	When("used as source", func() {
 		JustBeforeEach(func() {
 			// Controller sets status to non-nil
-			rs.Status = &scribev1alpha1.ReplicationSourceStatus{}
+			rs.Status = &volsyncv1alpha1.ReplicationSourceStatus{}
 			// Instantiate a restic mover for the tests
 			b := Builder{}
 			var err error
@@ -425,7 +425,7 @@ var _ = Describe("Restic as a source", func() {
 		Context("Source volume is handled properly", func() {
 			When("CopyMethod is None", func() {
 				BeforeEach(func() {
-					rs.Spec.Restic.CopyMethod = scribev1alpha1.CopyMethodNone
+					rs.Spec.Restic.CopyMethod = volsyncv1alpha1.CopyMethodNone
 				})
 				It("the source is used as the data PVC", func() {
 					dataPVC, err := mover.ensureSourcePVC(ctx)
@@ -434,12 +434,12 @@ var _ = Describe("Restic as a source", func() {
 					// It's not owned by the CR
 					Expect(dataPVC.OwnerReferences).To(BeEmpty())
 					// It won't be cleaned up at the end of the transfer
-					Expect(dataPVC.Labels).NotTo(HaveKey("scribe.backube/cleanup"))
+					Expect(dataPVC.Labels).NotTo(HaveKey("volsync.backube/cleanup"))
 				})
 			})
 			When("CopyMethod is Clone", func() {
 				BeforeEach(func() {
-					rs.Spec.Restic.CopyMethod = scribev1alpha1.CopyMethodClone
+					rs.Spec.Restic.CopyMethod = volsyncv1alpha1.CopyMethodClone
 				})
 				It("the source is NOT used as the data PVC", func() {
 					dataPVC, err := mover.ensureSourcePVC(ctx)
@@ -448,7 +448,7 @@ var _ = Describe("Restic as a source", func() {
 					// It's owned by the CR
 					Expect(dataPVC.OwnerReferences).NotTo(BeEmpty())
 					// It will be cleaned up at the end of the transfer
-					Expect(dataPVC.Labels).To(HaveKey("scribe.backube/cleanup"))
+					Expect(dataPVC.Labels).To(HaveKey("volsync.backube/cleanup"))
 				})
 			})
 		})
@@ -462,7 +462,7 @@ var _ = Describe("Restic as a source", func() {
 			BeforeEach(func() {
 				// hardcoded since we don't get access unless the job is
 				// completed
-				jobName = "scribe-src-" + rs.Name
+				jobName = "volsync-src-" + rs.Name
 				cache = &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "thecache",
@@ -570,7 +570,7 @@ var _ = Describe("Restic as a source", func() {
 					lastMonth.Time = time.Now().Add(-28 * 24 * time.Hour)
 					// Mover has already been built, so we can't just update
 					// rs.Status.Restic.LastPruned
-					mover.sourceStatus = &scribev1alpha1.ReplicationSourceResticStatus{
+					mover.sourceStatus = &volsyncv1alpha1.ReplicationSourceResticStatus{
 						LastPruned: &lastMonth,
 					}
 				})
@@ -633,7 +633,7 @@ var _ = Describe("Restic as a destination", func() {
 	var ctx = context.TODO()
 	var ns *v1.Namespace
 	logger := zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
-	var rd *scribev1alpha1.ReplicationDestination
+	var rd *volsyncv1alpha1.ReplicationDestination
 	var mover *Mover
 	BeforeEach(func() {
 		// Create namespace for test
@@ -646,14 +646,14 @@ var _ = Describe("Restic as a destination", func() {
 		Expect(ns.Name).NotTo(BeEmpty())
 
 		// Scaffold ReplicationDestination
-		rd = &scribev1alpha1.ReplicationDestination{
+		rd = &volsyncv1alpha1.ReplicationDestination{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "rd",
 				Namespace: ns.Name,
 			},
-			Spec: scribev1alpha1.ReplicationDestinationSpec{
-				Trigger: &scribev1alpha1.ReplicationDestinationTriggerSpec{},
-				Restic:  &scribev1alpha1.ReplicationDestinationResticSpec{},
+			Spec: volsyncv1alpha1.ReplicationDestinationSpec{
+				Trigger: &volsyncv1alpha1.ReplicationDestinationTriggerSpec{},
+				Restic:  &volsyncv1alpha1.ReplicationDestinationResticSpec{},
 			},
 		}
 	})
@@ -667,7 +667,7 @@ var _ = Describe("Restic as a destination", func() {
 	When("used as destination", func() {
 		JustBeforeEach(func() {
 			// Controller sets status to non-nil
-			rd.Status = &scribev1alpha1.ReplicationDestinationStatus{}
+			rd.Status = &volsyncv1alpha1.ReplicationDestinationStatus{}
 			// Instantiate a restic mover for the tests
 			b := Builder{}
 			var err error
@@ -751,7 +751,7 @@ var _ = Describe("Restic as a destination", func() {
 			BeforeEach(func() {
 				// hardcoded since we don't get access unless the job is
 				// completed
-				jobName = "scribe-dst-" + rd.Name
+				jobName = "volsync-dst-" + rd.Name
 				dPVC = &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "dest",

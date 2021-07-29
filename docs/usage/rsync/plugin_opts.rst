@@ -1,12 +1,12 @@
-.. These are available flags for scribe plugin that may be set by including as "./config.yaml" or on the command line.
+.. These are available flags for volsync plugin that may be set by including as "./config.yaml" or on the command line.
 
-Scribe Plugin Options with Defaults
+VolSync Plugin Options with Defaults
 ====================================
 
 These may be passed as :code:`key: value` pairs in a file, on the command-line, or a combination of both.
 Command-line values override the config file values.
 
-Scribe Plugin will look for this file in :code:`./config.yaml`, :code:`~/.scribeconfig/config.yaml`, or from
+VolSync Plugin will look for this file in :code:`./config.yaml`, :code:`~/.volsyncconfig/config.yaml`, or from
 the command-line passed :code:`--config` value that is a path to a local file.
 
 .. code:: yaml
@@ -19,7 +19,7 @@ the command-line passed :code:`--config` value that is a path to a local file.
     dest-access-mode: one of ReadWriteOnce|ReadOnlyMany|ReadWriteMany
     dest-capacity: <source-capacity>
     dest-cron-spec: <continuous>
-    dest-pvc: <if not provided, scribe will provision one>
+    dest-pvc: <if not provided, volsync will provision one>
     dest-service-type: 'ClusterIP'
     dest-ssh-user: 'root'
     dest-storage-class-name: <default sc>
@@ -45,4 +45,4 @@ the command-line passed :code:`--config` value that is a path to a local file.
     source-port: 22
     source-provider: <external replication provider, pass as 'domain.com/provider'>
     source-provider-params: <key=value configuration parameters, if external provider; pass as 'key=value,key1=value1'>
-    ssh-keys-secret: <scribe-rsync->dest-src-<name-of-replication-destination>
+    ssh-keys-secret: <volsync-rsync->dest-src-<name-of-replication-destination>

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "volsync.fullname" . }}-metrics
+  labels:
+    control-plane: {{ include "volsync.fullname" . }}-controller
+    {{- include "volsync.labels" . | nindent 4 }}
+spec:
+  ports:
+  - name: https
+    port: 8443
+    targetPort: https
+  selector:
+    control-plane: {{ include "volsync.fullname" . }}-controller

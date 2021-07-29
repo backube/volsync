@@ -16,7 +16,7 @@ COPY controllers/ controllers/
 
 # Build
 ARG VERSION="(unknown)"
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o manager -ldflags "-X=main.scribeVersion=${VERSION}" main.go
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o manager -ldflags "-X=main.volsyncVersion=${VERSION}" main.go
 
 # Final container
 FROM registry.access.redhat.com/ubi8-minimal:8.3

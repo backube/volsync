@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Scribe authors.
+Copyright 2020 The VolSync authors.
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published
@@ -29,8 +29,8 @@ import (
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
-// DefaultSCCName is the default name of the scribe security context constraint
-const DefaultSCCName = "scribe-mover"
+// DefaultSCCName is the default name of the volsync security context constraint
+const DefaultSCCName = "volsync-mover"
 
 // SCCName is the name of the SCC to use for the mover Jobs
 var SCCName string

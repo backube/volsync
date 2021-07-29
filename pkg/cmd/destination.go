@@ -9,7 +9,7 @@ import (
 	kcmdutil "k8s.io/kubectl/pkg/cmd/util"
 )
 
-// This will be passed to scribe as 'nil' that will
+// This will be passed to volsync as 'nil' that will
 // result in defaulting to the cluster's default storage class
 var destPVCDefaultStorageClass = ""
 
@@ -61,7 +61,7 @@ func (o *DestinationOptions) Bind(cmd *cobra.Command, v *viper.Viper) error {
 	flags.StringVar(&o.ServiceType, "dest-service-type", o.ServiceType, ""+
 		"one of ClusterIP|LoadBalancer. Service type to be created for incoming SSH connections. (default 'ClusterIP')")
 	// TODO: Defaulted in CLI, should it be??
-	flags.StringVar(&o.Name, "dest-name", o.Name, "name of the ReplicationDestination resource. (default '<current-namespace>-scribe-destination')")
+	flags.StringVar(&o.Name, "dest-name", o.Name, "name of the ReplicationDestination resource. (default '<current-namespace>-volsync-destination')")
 	flags.Int32Var(&o.Port, "dest-port", o.Port, "SSH port to connect to for replication. (default 22)")
 	flags.StringVar(&o.Provider, "dest-provider", o.Provider, "name of an external replication provider, if applicable; pass as 'domain.com/provider'")
 	// TODO: I don't know how many params providers have? If a lot, can pass a file instead

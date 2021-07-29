@@ -19,13 +19,13 @@ import (
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
 
-	scribev1alpha1 "github.com/backube/scribe/api/v1alpha1"
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
 
 var (
-	scribeSetReplicationLong = templates.LongDesc(`
-        Scribe is a command line tool for a scribe operator running in a Kubernetes cluster.
-		Scribe asynchronously replicates Kubernetes persistent volumes between clusters or namespaces
+	volsyncSetReplicationLong = templates.LongDesc(`
+        VolSync is a command line tool for a volsync operator running in a Kubernetes cluster.
+		VolSync asynchronously replicates Kubernetes persistent volumes between clusters or namespaces
 		using rsync, rclone, or restic. The set-replication command creates a PersistentVolumeClaim in
 		the destination namespace with the latest image from the ReplicationDestination used as the
 		data source for the PVC, in the case of destination CopyMethod=Snapshot.
@@ -34,16 +34,16 @@ var (
 		One more full data sync will be completed, then replications are paused. This leaves your
 		destination application ready to bind to the destination PVC.
 `)
-	scribeSetReplicationExample = templates.Examples(`
-        # View all flags for set-replication. 'scribe-config' can hold flag values.
-		# Scribe config holds values for source PVC, source and destination context, and other options.
-        $ scribe set-replication --help
+	volsyncSetReplicationExample = templates.Examples(`
+        # View all flags for set-replication. 'volsync-config' can hold flag values.
+		# VolSync config holds values for source PVC, source and destination context, and other options.
+        $ volsync set-replication --help
 
-        # Start a Replication with 'scribe-config' file holding flag values in current directory.
-		# Scribe config holds values for source PVC, source and destination context, and other options.
+        # Start a Replication with 'volsync-config' file holding flag values in current directory.
+		# VolSync config holds values for source PVC, source and destination context, and other options.
 		# You may also pass any flags as command line options. Command line options will override those
 		# in the config file.
-        $ scribe set-replication
+        $ volsync set-replication
 
     `)
 )
@@ -66,15 +66,15 @@ func NewFinalizeOptions(streams genericclioptions.IOStreams) *FinalizeOptions {
 	}
 }
 
-func NewCmdScribeSetReplication(streams genericclioptions.IOStreams) *cobra.Command {
+func NewCmdVolSyncSetReplication(streams genericclioptions.IOStreams) *cobra.Command {
 	v := viper.New()
 	o := NewFinalizeOptions(streams)
 	cmd := &cobra.Command{
 		Use:     "set-replication [OPTIONS]",
-		Short:   i18n.T("Set and pause a scribe replication and ensure a destination PVC with synced data."),
-		Long:    fmt.Sprint(scribeSetReplicationLong),
-		Example: fmt.Sprint(scribeSetReplicationExample),
-		Version: ScribeVersion,
+		Short:   i18n.T("Set and pause a volsync replication and ensure a destination PVC with synced data."),
+		Long:    fmt.Sprint(volsyncSetReplicationLong),
+		Example: fmt.Sprint(volsyncSetReplicationExample),
+		Version: VolSyncVersion,
 		Run: func(cmd *cobra.Command, args []string) {
 			kcmdutil.CheckErr(o.Complete())
 			kcmdutil.CheckErr(o.SetReplication())
@@ -108,7 +108,7 @@ func (o *FinalizeOptions) bindFlags(cmd *cobra.Command, v *viper.Viper) error {
 }
 
 func (o *FinalizeOptions) Bind(cmd *cobra.Command, v *viper.Viper) error {
-	v.SetConfigName(scribeConfig)
+	v.SetConfigName(volsyncConfig)
 	v.AddConfigPath(".")
 	v.SetConfigType("yaml")
 	if err := v.ReadInConfig(); err != nil {
@@ -142,7 +142,7 @@ func (o *FinalizeOptions) SetReplication() error {
 	lastManualSync := time.Now().Format("2006-01-02t15-04-05")
 	ctx := context.Background()
 	klog.Infof("Fetching ReplicationSource %s in namespace %s", o.sourceName, o.RepOpts.Source.Namespace)
-	repSource := &scribev1alpha1.ReplicationSource{}
+	repSource := &volsyncv1alpha1.ReplicationSource{}
 	sourceNSName := types.NamespacedName{
 		Namespace: o.RepOpts.Source.Namespace,
 		Name:      o.sourceName,
@@ -151,7 +151,7 @@ func (o *FinalizeOptions) SetReplication() error {
 		return err
 	}
 	klog.Infof("Triggering final data sync")
-	repSource.Spec.Trigger = &scribev1alpha1.ReplicationSourceTriggerSpec{
+	repSource.Spec.Trigger = &volsyncv1alpha1.ReplicationSourceTriggerSpec{
 		Schedule: repSource.Spec.Trigger.Schedule,
 		Manual:   lastManualSync,
 	}
@@ -178,7 +178,7 @@ func (o *FinalizeOptions) SetReplication() error {
 	if err := o.RepOpts.Source.Client.Get(ctx, sourcePVCName, srcPVC); err != nil {
 		return err
 	}
-	repDest := &scribev1alpha1.ReplicationDestination{}
+	repDest := &volsyncv1alpha1.ReplicationDestination{}
 	destNSName := types.NamespacedName{
 		Namespace: o.RepOpts.Dest.Namespace,
 		Name:      o.destName,
@@ -191,7 +191,7 @@ func (o *FinalizeOptions) SetReplication() error {
 		destPVCName string
 		err         error
 	)
-	if repDest.Spec.Rsync.CopyMethod == scribev1alpha1.CopyMethodNone {
+	if repDest.Spec.Rsync.CopyMethod == volsyncv1alpha1.CopyMethodNone {
 		destPVCName = *repDest.Spec.Rsync.DestinationPVC
 		if len(destPVCName) == 0 {
 			return fmt.Errorf("destination PVC not listed in ReplicationDestination: %s", repDest.Name)
@@ -214,7 +214,7 @@ func (o *FinalizeOptions) SetReplication() error {
 		if len(o.destCapacity) == 0 {
 			repOpts.RepOpts.Dest.Capacity = srcPVC.Spec.Resources.Requests[corev1.ResourceStorage]
 		} else {
-			if err = repOpts.getCapacity(o.destCapacity, scribeDest); err != nil {
+			if err = repOpts.getCapacity(o.destCapacity, volsyncDest); err != nil {
 				return err
 			}
 		}
@@ -224,8 +224,8 @@ func (o *FinalizeOptions) SetReplication() error {
 		}
 	}
 
-	klog.Infof("Scribe set-replication complete.")
-	klog.Infof("Scribe data sync complete. Destination CopyMethod %v.", repSource.Spec.Rsync.CopyMethod)
+	klog.Infof("VolSync set-replication complete.")
+	klog.Infof("VolSync data sync complete. Destination CopyMethod %v.", repSource.Spec.Rsync.CopyMethod)
 	klog.Infof("Replications paused until manual trigger is removed from source %s", repSource.Name)
 	klog.Infof("It is now possible to edit the destination application to connect to the destination PVC: %s", destPVCName)
 	klog.Info("Run 'continue-replication' to unpause and continue replications")
