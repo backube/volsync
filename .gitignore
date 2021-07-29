@@ -1,0 +1,40 @@
+.venv/
+/.vscode/
+/docs/_build/
+/testbin/
+
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin
+
+# Test binary, build with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Kubernetes Generated files - skip generated files, except for vendored files
+
+# editor and IDE paraphernalia
+.idea
+*.swp
+*.swo
+*~
+
+# Dependency directories (remove the comment below to include it)
+vendor/
+
+# Scribe related
+# Secret files to prevent accidental commit of keys
+examples/rclone.conf
+
+# Config with CLI flag values
+config.yaml
+
+# test dir
+test-kuttl/kubeconfig
+test-kuttl/e2e/simple-rclone/rclone.conf

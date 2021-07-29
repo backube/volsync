@@ -1,0 +1,32 @@
+---
+# yamllint disable rule:line-length
+
+name: Documentation
+on:  # yamllint disable-line rule:truthy
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  schedule:
+    - cron: "15 4 * * 1"  # 4:15 every Monday
+
+jobs:
+  build-docs:
+    name: Build docs
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v2
+
+      - name: Install prereqs
+        run: |
+          echo 'APT::Acquire::Retries "5";' | sudo tee /etc/apt/apt.conf.d/80-retries
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3-pip python3-venv
+
+      - name: Build docs
+        run: |
+          cd docs
+          . ./setup-env.sh
+          make html
