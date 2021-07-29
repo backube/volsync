@@ -31,9 +31,9 @@ var (
 `)
 	volsyncExplain = templates.LongDesc(`
         To start using VolSync, login to your cluster and install the VolSync operator.
-		Installation instructions at https://volsync-replication.readthedocs.io/en/latest/installation/index.html
+		Installation instructions at https://volsync.readthedocs.io/en/latest/installation/index.html
 
-		For more on VolSync, see the documentation at https://volsync-replication.readthedocs.io/
+		For more on VolSync, see the documentation at https://volsync.readthedocs.io/
 
 		To see the full list of commands supported, run 'volsync --help'.`)
 

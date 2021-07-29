@@ -38,7 +38,7 @@ VolSync has several replication methods than can be used to replicate data.
   securely and efficiently transfer data.
 
 **Please see the [📖 full documentation
-📖](https://volsync-replication.readthedocs.io/) for more details.**
+📖](https://volsync.readthedocs.io/) for more details.**
 
 ## Requirements
 
@@ -68,7 +68,7 @@ NOTES:
 
 The VolSync operator has been installed into the volsync-system namespace.
 
-Please see https://volsync-replication.readthedocs.org for documentation.
+Please see https://volsync.readthedocs.org for documentation.
 ```
 
 ## Configuration
