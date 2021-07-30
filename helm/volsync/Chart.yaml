@@ -2,7 +2,7 @@ apiVersion: v2
 name: volsync
 type: application
 description: Asynchronous data replication for Kubernetes
-home: https://volsync-replication.readthedocs.io/
+home: https://volsync.readthedocs.io/
 icon: https://raw.githubusercontent.com/backube/volsync/main/docs/media/volsync.svg?sanitize=true
 sources:
   - https://github.com/backube/volsync

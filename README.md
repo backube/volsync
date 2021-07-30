@@ -4,7 +4,7 @@ VolSync asynchronously replicates Kubernetes persistent volumes between clusters
 using either rsync or rclone depending on the number of destinations.
 
 [![Documentation
-Status](https://readthedocs.org/projects/volsync/badge/?version=latest)](https://volsync-replication.readthedocs.io/en/latest/?badge=latest)
+Status](https://readthedocs.org/projects/volsync/badge/?version=latest)](https://volsync.readthedocs.io/en/latest/?badge=latest)
 [![Go Report
 Card](https://goreportcard.com/badge/github.com/backube/volsync)](https://goreportcard.com/report/github.com/backube/volsync)
 [![codecov](https://codecov.io/gh/backube/volsync/branch/master/graph/badge.svg)](https://codecov.io/gh/backube/volsync)
@@ -23,9 +23,9 @@ For a convenient script to start a `kind cluster`, try this
 ### Try VolSync in a Kind, Kubernetes, or Openshift cluster
 
 Follow the steps in the [installation
-instructions](https://volsync-replication.readthedocs.io/en/latest/installation/index.html).
+instructions](https://volsync.readthedocs.io/en/latest/installation/index.html).
 Here are
-[useful commands to configure cluster storage classes](https://volsync-replication.readthedocs.io/en/latest/installation/index.html#configure-default-csi-storage).
+[useful commands to configure cluster storage classes](https://volsync.readthedocs.io/en/latest/installation/index.html#configure-default-csi-storage).
 
 ## VolSync kubectl plugin
 
@@ -54,7 +54,7 @@ kubectl volsync remove-replication
 
 ## Helpful links
 
-* [VolSync documentation](https://volsync-replication.readthedocs.io)
+* [VolSync documentation](https://volsync.readthedocs.io)
 * [Changelog](CHANGELOG.md)
 * [Contributing guidelines](https://github.com/backube/.github/blob/master/CONTRIBUTING.md)
 * [Organization code of conduct](https://github.com/backube/.github/blob/master/CODE_OF_CONDUCT.md)
