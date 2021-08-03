@@ -32,6 +32,7 @@ import (
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers/mover"
+	"github.com/backube/volsync/controllers/utils"
 )
 
 const (
@@ -245,6 +246,11 @@ var _ = Describe("Restic as a source", func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, sPVC)).To(Succeed())
+		Eventually(func() error {
+			pvc := &corev1.PersistentVolumeClaim{}
+			err := k8sClient.Get(ctx, utils.NameFor(sPVC), pvc)
+			return err
+		}, timeout, interval).Should(Succeed())
 
 		// Scaffold ReplicationSource
 		rs = &volsyncv1alpha1.ReplicationSource{
