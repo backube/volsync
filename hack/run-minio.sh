@@ -12,4 +12,5 @@ helm install --create-namespace -n minio \
     --set securityContext.enabled=false \
     --set defaultBuckets=mybucket \
     --set volumePermissions.enabled=true \
+    --wait --timeout=300s \
     minio bitnami/minio
