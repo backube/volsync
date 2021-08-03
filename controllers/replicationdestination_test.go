@@ -12,7 +12,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -180,17 +179,17 @@ var _ = Describe("ReplicationDestination", func() {
 
 	//nolint:dupl
 	Context("when a destinationPVC is specified", func() {
-		var pvc *v1.PersistentVolumeClaim
+		var pvc *corev1.PersistentVolumeClaim
 		BeforeEach(func() {
-			pvc = &v1.PersistentVolumeClaim{
+			pvc = &corev1.PersistentVolumeClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "foo",
 					Namespace: rd.Namespace,
 				},
-				Spec: v1.PersistentVolumeClaimSpec{
-					AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
-					Resources: v1.ResourceRequirements{
-						Requests: v1.ResourceList{
+				Spec: corev1.PersistentVolumeClaimSpec{
+					AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+					Resources: corev1.ResourceRequirements{
+						Requests: corev1.ResourceList{
 							"storage": resource.MustParse("10Gi"),
 						},
 					},
@@ -244,7 +243,7 @@ var _ = Describe("ReplicationDestination", func() {
 
 	Context("when capacity and accessModes are specified", func() {
 		capacity := resource.MustParse("2Gi")
-		accessModes := []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce}
+		accessModes := []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
 		BeforeEach(func() {
 			rd.Spec.Rsync = &volsyncv1alpha1.ReplicationDestinationRsyncSpec{
 				ReplicationDestinationVolumeOptions: volsyncv1alpha1.ReplicationDestinationVolumeOptions{
@@ -285,7 +284,7 @@ var _ = Describe("ReplicationDestination", func() {
 
 		Context("when serviceType is LoadBalancer", func() {
 			BeforeEach(func() {
-				lb := v1.ServiceTypeLoadBalancer
+				lb := corev1.ServiceTypeLoadBalancer
 				rd.Spec.Rsync.ServiceType = &lb
 			})
 			It("a LoadBalancer service is created", func() {
@@ -327,7 +326,7 @@ var _ = Describe("ReplicationDestination", func() {
 					pvcName = v.PersistentVolumeClaim.ClaimName
 				}
 			}
-			pvc := &v1.PersistentVolumeClaim{}
+			pvc := &corev1.PersistentVolumeClaim{}
 			Eventually(func() error {
 				return k8sClient.Get(ctx, types.NamespacedName{Name: pvcName, Namespace: rd.Namespace}, pvc)
 			}, maxWait, interval).Should(Succeed())
@@ -353,7 +352,7 @@ var _ = Describe("ReplicationDestination", func() {
 						pvcName = v.PersistentVolumeClaim.ClaimName
 					}
 				}
-				pvc := &v1.PersistentVolumeClaim{}
+				pvc := &corev1.PersistentVolumeClaim{}
 				Eventually(func() error {
 					return k8sClient.Get(ctx, types.NamespacedName{Name: pvcName, Namespace: rd.Namespace}, pvc)
 				}, maxWait, interval).Should(Succeed())
@@ -375,7 +374,7 @@ var _ = Describe("ReplicationDestination", func() {
 		})
 
 		It("Generates ssh keys automatically", func() {
-			secret := &v1.Secret{}
+			secret := &corev1.Secret{}
 			Eventually(func() *volsyncv1alpha1.ReplicationDestinationStatus {
 				_ = k8sClient.Get(ctx, utils.NameFor(rd), rd)
 				return rd.Status
@@ -399,9 +398,9 @@ var _ = Describe("ReplicationDestination", func() {
 
 		//nolint:dupl
 		Context("when ssh keys are provided", func() {
-			var secret *v1.Secret
+			var secret *corev1.Secret
 			BeforeEach(func() {
-				secret = &v1.Secret{
+				secret = &corev1.Secret{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "keys",
 						Namespace: rd.Namespace,
@@ -439,7 +438,7 @@ var _ = Describe("ReplicationDestination", func() {
 			rd.Spec.Rsync = &volsyncv1alpha1.ReplicationDestinationRsyncSpec{
 				ReplicationDestinationVolumeOptions: volsyncv1alpha1.ReplicationDestinationVolumeOptions{
 					Capacity:    &capacity,
-					AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+					AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 				},
 			}
 		})
@@ -463,7 +462,7 @@ var _ = Describe("ReplicationDestination", func() {
 				rd.Spec.Rsync.CopyMethod = volsyncv1alpha1.CopyMethodNone
 			})
 			It("the PVC should be the latestImage", func() {
-				Eventually(func() *v1.TypedLocalObjectReference {
+				Eventually(func() *corev1.TypedLocalObjectReference {
 					_ = k8sClient.Get(ctx, utils.NameFor(rd), rd)
 					return rd.Status.LatestImage
 				}, maxWait, interval).Should(Not(BeNil()))
@@ -491,7 +490,7 @@ var _ = Describe("ReplicationDestination", func() {
 				}
 				Expect(k8sClient.Status().Update(ctx, &snap)).To(Succeed())
 				By("seeing the now-bound snap in the LatestImage field")
-				Eventually(func() *v1.TypedLocalObjectReference {
+				Eventually(func() *corev1.TypedLocalObjectReference {
 					_ = k8sClient.Get(ctx, utils.NameFor(rd), rd)
 					return rd.Status.LatestImage
 				}, maxWait, interval).Should(Not(BeNil()))

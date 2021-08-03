@@ -28,7 +28,6 @@ import (
 	"github.com/go-logr/logr"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1beta1"
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -48,12 +47,12 @@ type destinationVolumeHandler struct {
 	Ctx      context.Context
 	Instance *volsyncv1alpha1.ReplicationDestination
 	Options  *volsyncv1alpha1.ReplicationDestinationVolumeOptions
-	PVC      *v1.PersistentVolumeClaim
+	PVC      *corev1.PersistentVolumeClaim
 	Snapshot *snapv1.VolumeSnapshot
 }
 
 func (h *destinationVolumeHandler) useProvidedPVC(l logr.Logger) (bool, error) {
-	h.PVC = &v1.PersistentVolumeClaim{}
+	h.PVC = &corev1.PersistentVolumeClaim{}
 	pvcName := types.NamespacedName{Name: *h.Options.DestinationPVC, Namespace: h.Instance.Namespace}
 	err := h.Client.Get(h.Ctx, pvcName, h.PVC)
 	if err != nil {
@@ -206,7 +205,7 @@ func (h *destinationVolumeHandler) cleanupOldSnapshot(l logr.Logger) (bool, erro
 }
 
 func (h *destinationVolumeHandler) recordNewSnapshot(l logr.Logger) (bool, error) {
-	h.Instance.Status.LatestImage = &v1.TypedLocalObjectReference{
+	h.Instance.Status.LatestImage = &corev1.TypedLocalObjectReference{
 		APIGroup: &snapv1.SchemeGroupVersion.Group,
 		Kind:     h.Snapshot.Kind,
 		Name:     h.Snapshot.Name,
@@ -230,7 +229,7 @@ func (h *destinationVolumeHandler) removeSnapshotAnnotation(l logr.Logger) (bool
 
 func (h *destinationVolumeHandler) recordPVC(l logr.Logger) (bool, error) {
 	coreAPI := ""
-	h.Instance.Status.LatestImage = &v1.TypedLocalObjectReference{
+	h.Instance.Status.LatestImage = &corev1.TypedLocalObjectReference{
 		APIGroup: &coreAPI,
 		Kind:     h.PVC.Kind,
 		Name:     h.PVC.Name,
@@ -268,9 +267,9 @@ type sourceVolumeHandler struct {
 	Ctx      context.Context
 	Instance *volsyncv1alpha1.ReplicationSource
 	Options  *volsyncv1alpha1.ReplicationSourceVolumeOptions
-	srcPVC   *v1.PersistentVolumeClaim
+	srcPVC   *corev1.PersistentVolumeClaim
 	srcSnap  *snapv1.VolumeSnapshot
-	PVC      *v1.PersistentVolumeClaim
+	PVC      *corev1.PersistentVolumeClaim
 }
 
 // Cleans up the temporary PVC (and optional snapshot) after the synchronization
@@ -294,7 +293,7 @@ func (h *sourceVolumeHandler) CleanupPVC(l logr.Logger) (bool, error) {
 // Ensures there is a source PVC to sync from, using whatever method is
 // specified by CopyMethod.
 func (h *sourceVolumeHandler) EnsurePVC(l logr.Logger) (bool, error) {
-	h.srcPVC = &v1.PersistentVolumeClaim{
+	h.srcPVC = &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      h.Instance.Spec.SourcePVC,
 			Namespace: h.Instance.Namespace,
@@ -320,7 +319,7 @@ func (h *sourceVolumeHandler) EnsurePVC(l logr.Logger) (bool, error) {
 }
 
 func (h *sourceVolumeHandler) pvcFromSnap(l logr.Logger) (bool, error) {
-	h.PVC = &v1.PersistentVolumeClaim{
+	h.PVC = &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "volsync-src-" + h.Instance.Name,
 			Namespace: h.Instance.Namespace,
@@ -353,7 +352,7 @@ func (h *sourceVolumeHandler) pvcFromSnap(l logr.Logger) (bool, error) {
 			} else {
 				h.PVC.Spec.AccessModes = h.srcPVC.Spec.AccessModes
 			}
-			h.PVC.Spec.DataSource = &v1.TypedLocalObjectReference{
+			h.PVC.Spec.DataSource = &corev1.TypedLocalObjectReference{
 				APIGroup: &snapv1.SchemeGroupVersion.Group,
 				Kind:     "VolumeSnapshot",
 				Name:     h.srcSnap.Name,
@@ -410,7 +409,7 @@ func (h *sourceVolumeHandler) ensureClone(l logr.Logger) (bool, error) {
 	}
 	logger := l.WithValues("pvc", pvcName)
 
-	h.PVC = &v1.PersistentVolumeClaim{
+	h.PVC = &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      pvcName.Name,
 			Namespace: pvcName.Namespace,
@@ -441,7 +440,7 @@ func (h *sourceVolumeHandler) ensureClone(l logr.Logger) (bool, error) {
 			} else {
 				h.PVC.Spec.AccessModes = h.srcPVC.Spec.AccessModes
 			}
-			h.PVC.Spec.DataSource = &v1.TypedLocalObjectReference{
+			h.PVC.Spec.DataSource = &corev1.TypedLocalObjectReference{
 				APIGroup: nil,
 				Kind:     "PersistentVolumeClaim",
 				Name:     h.srcPVC.Name,

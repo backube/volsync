@@ -26,7 +26,6 @@ import (
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1beta1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -52,7 +51,7 @@ type Mover struct {
 	logger                logr.Logger
 	owner                 metav1.Object
 	vh                    *volumehandler.VolumeHandler
-	cacheAccessModes      []v1.PersistentVolumeAccessMode
+	cacheAccessModes      []corev1.PersistentVolumeAccessMode
 	cacheCapacity         *resource.Quantity
 	cacheStorageClassName *string
 	repositoryName        string
@@ -70,7 +69,7 @@ var _ mover.Mover = &Mover{}
 // All object types that are temporary/per-iteration should be listed here. The
 // individual objects to be cleaned up must also be marked.
 var cleanupTypes = []client.Object{
-	&v1.PersistentVolumeClaim{},
+	&corev1.PersistentVolumeClaim{},
 	&snapv1.VolumeSnapshot{},
 	&batchv1.Job{},
 }
@@ -80,7 +79,7 @@ func (m *Mover) Name() string { return "restic" }
 func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 	var err error
 	// Allocate temporary data PVC
-	var dataPVC *v1.PersistentVolumeClaim
+	var dataPVC *corev1.PersistentVolumeClaim
 	if m.isSource {
 		dataPVC, err = m.ensureSourcePVC(ctx)
 	} else {
@@ -136,7 +135,7 @@ func (m *Mover) Cleanup(ctx context.Context) (mover.Result, error) {
 }
 
 func (m *Mover) ensureCache(ctx context.Context,
-	dataPVC *v1.PersistentVolumeClaim) (*v1.PersistentVolumeClaim, error) {
+	dataPVC *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error) {
 	// Create a separate vh for the Restic cache volume that's based on the main
 	// vh, but override options where necessary.
 	cacheConfig := []volumehandler.VHOption{
@@ -176,7 +175,7 @@ func (m *Mover) ensureCache(ctx context.Context,
 	return cacheVh.EnsureNewPVC(ctx, m.logger, cacheName)
 }
 
-func (m *Mover) ensureSourcePVC(ctx context.Context) (*v1.PersistentVolumeClaim, error) {
+func (m *Mover) ensureSourcePVC(ctx context.Context) (*corev1.PersistentVolumeClaim, error) {
 	srcPVC := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      *m.mainPVCName,
@@ -190,7 +189,7 @@ func (m *Mover) ensureSourcePVC(ctx context.Context) (*v1.PersistentVolumeClaim,
 	return m.vh.EnsurePVCFromSrc(ctx, m.logger, srcPVC, dataName, true)
 }
 
-func (m *Mover) ensureDestinationPVC(ctx context.Context) (*v1.PersistentVolumeClaim, error) {
+func (m *Mover) ensureDestinationPVC(ctx context.Context) (*corev1.PersistentVolumeClaim, error) {
 	if m.mainPVCName == nil {
 		// Need to allocate the incoming data volume
 		dataPVCName := "volsync-" + m.owner.GetName() + "-dest"
@@ -198,7 +197,7 @@ func (m *Mover) ensureDestinationPVC(ctx context.Context) (*v1.PersistentVolumeC
 	}
 
 	// use provided PVC
-	pvc := &v1.PersistentVolumeClaim{
+	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      *m.mainPVCName,
 			Namespace: m.owner.GetNamespace(),
@@ -208,12 +207,12 @@ func (m *Mover) ensureDestinationPVC(ctx context.Context) (*v1.PersistentVolumeC
 	return pvc, err
 }
 
-func (m *Mover) ensureSA(ctx context.Context) (*v1.ServiceAccount, error) {
+func (m *Mover) ensureSA(ctx context.Context) (*corev1.ServiceAccount, error) {
 	dir := "src"
 	if !m.isSource {
 		dir = "dst"
 	}
-	sa := &v1.ServiceAccount{
+	sa := &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "volsync-" + dir + "-" + m.owner.GetName(),
 			Namespace: m.owner.GetNamespace(),
@@ -227,8 +226,8 @@ func (m *Mover) ensureSA(ctx context.Context) (*v1.ServiceAccount, error) {
 	return nil, err
 }
 
-func (m *Mover) validateRepository(ctx context.Context) (*v1.Secret, error) {
-	secret := &v1.Secret{
+func (m *Mover) validateRepository(ctx context.Context) (*corev1.Secret, error) {
+	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      m.repositoryName,
 			Namespace: m.owner.GetNamespace(),
@@ -244,8 +243,8 @@ func (m *Mover) validateRepository(ctx context.Context) (*v1.Secret, error) {
 }
 
 //nolint:funlen
-func (m *Mover) ensureJob(ctx context.Context, cachePVC *v1.PersistentVolumeClaim,
-	dataPVC *v1.PersistentVolumeClaim, sa *v1.ServiceAccount, repo *v1.Secret) (*batchv1.Job, error) {
+func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolumeClaim,
+	dataPVC *corev1.PersistentVolumeClaim, sa *corev1.ServiceAccount, repo *corev1.Secret) (*batchv1.Job, error) {
 	dir := "src"
 	if !m.isSource {
 		dir = "dst"
@@ -286,9 +285,9 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *v1.PersistentVolumeClai
 		}
 		logger.Info("job actions", "actions", actions)
 
-		job.Spec.Template.Spec.Containers = []v1.Container{{
+		job.Spec.Template.Spec.Containers = []corev1.Container{{
 			Name: "restic",
-			Env: []v1.EnvVar{
+			Env: []corev1.EnvVar{
 				{Name: "FORGET_OPTIONS", Value: forgetOptions},
 				{Name: "DATA_DIR", Value: mountPath},
 				{Name: "RESTIC_CACHE_DIR", Value: resticCacheMountPath},
@@ -343,9 +342,9 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *v1.PersistentVolumeClai
 				{Name: resticCache, MountPath: resticCacheMountPath},
 			},
 		}}
-		job.Spec.Template.Spec.RestartPolicy = v1.RestartPolicyNever
+		job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
 		job.Spec.Template.Spec.ServiceAccountName = sa.Name
-		job.Spec.Template.Spec.Volumes = []v1.Volume{
+		job.Spec.Template.Spec.Volumes = []corev1.Volume{
 			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
 				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 					ClaimName: dataPVC.Name,

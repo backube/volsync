@@ -23,7 +23,7 @@ import (
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1beta1"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -36,12 +36,12 @@ import (
 
 var _ = Describe("Volumehandler", func() {
 	var ctx = context.TODO()
-	var ns *v1.Namespace
+	var ns *corev1.Namespace
 	logger := zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
 
 	BeforeEach(func() {
 		// Create namespace for test
-		ns = &v1.Namespace{
+		ns = &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
 				GenerateName: "vh-",
 			},
@@ -69,7 +69,7 @@ var _ = Describe("Volumehandler", func() {
 							CopyMethod:              volsyncv1alpha1.CopyMethodSnapshot,
 							Capacity:                nil,
 							StorageClassName:        nil,
-							AccessModes:             []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+							AccessModes:             []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 							VolumeSnapshotClassName: nil,
 							DestinationPVC:          nil,
 						},
@@ -130,17 +130,17 @@ var _ = Describe("Volumehandler", func() {
 				Expect(vh).ToNot(BeNil())
 
 				pvcSC := "pvcsc"
-				pvc := &v1.PersistentVolumeClaim{
+				pvc := &corev1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "mypvc",
 						Namespace: ns.Name,
 					},
-					Spec: v1.PersistentVolumeClaimSpec{
-						AccessModes: []v1.PersistentVolumeAccessMode{
-							v1.ReadWriteMany,
+					Spec: corev1.PersistentVolumeClaimSpec{
+						AccessModes: []corev1.PersistentVolumeAccessMode{
+							corev1.ReadWriteMany,
 						},
-						Resources: v1.ResourceRequirements{
-							Requests: v1.ResourceList{
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
 								"storage": resource.MustParse("2Gi"),
 							},
 						},
@@ -150,7 +150,7 @@ var _ = Describe("Volumehandler", func() {
 				Expect(k8sClient.Create(ctx, pvc)).To(Succeed())
 				// Wait for it to show up in the API server
 				Eventually(func() error {
-					inst := &v1.PersistentVolumeClaim{}
+					inst := &corev1.PersistentVolumeClaim{}
 					return k8sClient.Get(ctx, types.NamespacedName{Name: "mypvc", Namespace: ns.Name}, inst)
 				}, maxWait, interval).Should(Succeed())
 
@@ -158,7 +158,7 @@ var _ = Describe("Volumehandler", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(tlor.Kind).To(Equal(pvc.Kind))
 				Expect(tlor.Name).To(Equal(pvc.Name))
-				Expect(*tlor.APIGroup).To(Equal(v1.SchemeGroupVersion.Group))
+				Expect(*tlor.APIGroup).To(Equal(corev1.SchemeGroupVersion.Group))
 			})
 		})
 
@@ -177,17 +177,17 @@ var _ = Describe("Volumehandler", func() {
 				Expect(vh).ToNot(BeNil())
 
 				pvcSC := "pvcsc"
-				pvc := &v1.PersistentVolumeClaim{
+				pvc := &corev1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "mypvc",
 						Namespace: ns.Name,
 					},
-					Spec: v1.PersistentVolumeClaimSpec{
-						AccessModes: []v1.PersistentVolumeAccessMode{
-							v1.ReadWriteMany,
+					Spec: corev1.PersistentVolumeClaimSpec{
+						AccessModes: []corev1.PersistentVolumeAccessMode{
+							corev1.ReadWriteMany,
 						},
-						Resources: v1.ResourceRequirements{
-							Requests: v1.ResourceList{
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
 								"storage": resource.MustParse("2Gi"),
 							},
 						},
@@ -197,7 +197,7 @@ var _ = Describe("Volumehandler", func() {
 				Expect(k8sClient.Create(ctx, pvc)).To(Succeed())
 				// Wait for it to show up in the API server
 				Eventually(func() error {
-					inst := &v1.PersistentVolumeClaim{}
+					inst := &corev1.PersistentVolumeClaim{}
 					return k8sClient.Get(ctx, types.NamespacedName{Name: "mypvc", Namespace: ns.Name}, inst)
 				}, maxWait, interval).Should(Succeed())
 
@@ -220,7 +220,7 @@ var _ = Describe("Volumehandler", func() {
 				Expect(k8sClient.Status().Update(ctx, snap)).To(Succeed())
 
 				// Retry expecting success
-				Eventually(func() *v1.TypedLocalObjectReference {
+				Eventually(func() *corev1.TypedLocalObjectReference {
 					tlor, err = vh.EnsureImage(ctx, logger, pvc)
 					if err != nil {
 						return nil
@@ -236,7 +236,7 @@ var _ = Describe("Volumehandler", func() {
 
 	Context("A VolumeHandler (from source)", func() {
 		var rs *volsyncv1alpha1.ReplicationSource
-		var src *v1.PersistentVolumeClaim
+		var src *corev1.PersistentVolumeClaim
 		BeforeEach(func() {
 			// Scaffold RS
 			rs = &volsyncv1alpha1.ReplicationSource{
@@ -258,17 +258,17 @@ var _ = Describe("Volumehandler", func() {
 			}
 			// Create a source PVC to use
 			srcSC := "srcsc"
-			src = &v1.PersistentVolumeClaim{
+			src = &corev1.PersistentVolumeClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "mypvc",
 					Namespace: ns.Name,
 				},
-				Spec: v1.PersistentVolumeClaimSpec{
-					AccessModes: []v1.PersistentVolumeAccessMode{
-						v1.ReadWriteMany,
+				Spec: corev1.PersistentVolumeClaimSpec{
+					AccessModes: []corev1.PersistentVolumeAccessMode{
+						corev1.ReadWriteMany,
 					},
-					Resources: v1.ResourceRequirements{
-						Requests: v1.ResourceList{
+					Resources: corev1.ResourceRequirements{
+						Requests: corev1.ResourceList{
 							"storage": resource.MustParse("2Gi"),
 						},
 					},
@@ -287,7 +287,7 @@ var _ = Describe("Volumehandler", func() {
 				return k8sClient.Get(ctx, utils.NameFor(rs), inst)
 			}, maxWait, interval).Should(Succeed())
 			Eventually(func() error {
-				inst := &v1.PersistentVolumeClaim{}
+				inst := &corev1.PersistentVolumeClaim{}
 				return k8sClient.Get(ctx, utils.NameFor(src), inst)
 			}, maxWait, interval).Should(Succeed())
 		})
@@ -317,7 +317,7 @@ var _ = Describe("Volumehandler", func() {
 			When("options are overridden", func() {
 				newSC := "thenewsc"
 				newCap := resource.MustParse("9Gi")
-				newAccessModes := []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce}
+				newAccessModes := []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
 				BeforeEach(func() {
 					rs.Spec.Rsync.StorageClassName = &newSC
 					rs.Spec.Rsync.Capacity = &newCap
@@ -376,7 +376,7 @@ var _ = Describe("Volumehandler", func() {
 				Expect(snap.Spec.VolumeSnapshotClassName).To(BeNil())
 
 				// Retry expecting success
-				Eventually(func() *v1.PersistentVolumeClaim {
+				Eventually(func() *corev1.PersistentVolumeClaim {
 					new, err = vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc", true)
 					if err != nil {
 						return nil
@@ -393,7 +393,7 @@ var _ = Describe("Volumehandler", func() {
 			When("options are overridden", func() {
 				newSC := "thenewsc"
 				newCap := resource.MustParse("7Gi")
-				newAccessModes := []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce}
+				newAccessModes := []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
 				newVSC := "newvsc"
 				BeforeEach(func() {
 					rs.Spec.Rsync.StorageClassName = &newSC
@@ -429,7 +429,7 @@ var _ = Describe("Volumehandler", func() {
 					Expect(*snap.Spec.VolumeSnapshotClassName).To(Equal(newVSC))
 
 					// Retry expecting success
-					Eventually(func() *v1.PersistentVolumeClaim {
+					Eventually(func() *corev1.PersistentVolumeClaim {
 						new, err = vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc", true)
 						if err != nil {
 							return nil

@@ -15,7 +15,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -147,7 +146,7 @@ var _ = Describe("ReplicationSource", func() {
 				Namespace: namespace.Name,
 			},
 			Spec: corev1.PersistentVolumeClaimSpec{
-				AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+				AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 				Resources: corev1.ResourceRequirements{
 					Requests: corev1.ResourceList{
 						corev1.ResourceStorage: srcPVCCapacity,
@@ -559,9 +558,9 @@ var _ = Describe("ReplicationSource", func() {
 	})
 	//nolint:dupl
 	Context("rsync: when ssh keys are provided", func() {
-		var secret *v1.Secret
+		var secret *corev1.Secret
 		BeforeEach(func() {
-			secret = &v1.Secret{
+			secret = &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "keys",
 					Namespace: rs.Namespace,
