@@ -4,22 +4,19 @@ import (
 	"context"
 	"time"
 
+	utils "github.com/backube/volsync/controllers/utils"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1beta1"
-
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	// "github.com/operator-framework/operator-lib/status"
-	//batchv1 "k8s.io/api/batch/v1"
-
-	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
-	utils "github.com/backube/volsync/controllers/utils"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
 
 //nolint:dupl
@@ -340,9 +337,9 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 					return inst.Status
 				}, duration, interval).Should(Not(BeNil()))
 				Expect(inst.Status.Conditions).ToNot(BeEmpty())
-				reconcileCondition := inst.Status.Conditions.GetCondition(volsyncv1alpha1.ConditionReconciled)
+				reconcileCondition := apimeta.FindStatusCondition(inst.Status.Conditions, volsyncv1alpha1.ConditionReconciled)
 				Expect(reconcileCondition).ToNot(BeNil())
-				Expect(reconcileCondition.Status).To(Equal(corev1.ConditionFalse))
+				Expect(reconcileCondition.Status).To(Equal(metav1.ConditionFalse))
 			})
 		})
 

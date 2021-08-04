@@ -8,10 +8,10 @@ import (
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1beta1"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/operator-framework/operator-lib/status"
 	"github.com/prometheus/client_golang/prometheus"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -230,13 +230,13 @@ var _ = Describe("ReplicationDestination", func() {
 				_ = k8sClient.Get(ctx, utils.NameFor(rd), rd)
 				return rd.Status
 			}, maxWait, interval).Should(Not(BeNil()))
-			var cond *status.Condition
-			Eventually(func() *status.Condition {
+			var cond *metav1.Condition
+			Eventually(func() *metav1.Condition {
 				_ = k8sClient.Get(ctx, utils.NameFor(rd), rd)
-				cond = rd.Status.Conditions.GetCondition(volsyncv1alpha1.ConditionReconciled)
+				cond = apimeta.FindStatusCondition(rd.Status.Conditions, volsyncv1alpha1.ConditionReconciled)
 				return cond
 			}, maxWait, interval).Should(Not(BeNil()))
-			Expect(cond.Status).To(Equal(corev1.ConditionFalse))
+			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(cond.Reason).To(Equal(volsyncv1alpha1.ReconciledReasonError))
 		})
 	})

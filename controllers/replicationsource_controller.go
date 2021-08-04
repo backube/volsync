@@ -26,13 +26,13 @@ import (
 
 	"github.com/go-logr/logr"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1beta1"
-	"github.com/operator-framework/operator-lib/status"
 	"github.com/prometheus/client_golang/prometheus"
 	cron "github.com/robfig/cron/v3"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -85,9 +85,6 @@ func (r *ReplicationSourceReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	if inst.Status == nil {
 		inst.Status = &volsyncv1alpha1.ReplicationSourceStatus{}
 	}
-	if inst.Status.Conditions == nil {
-		inst.Status.Conditions = status.Conditions{}
-	}
 
 	var result ctrl.Result
 	var err error
@@ -108,21 +105,19 @@ func (r *ReplicationSourceReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	// Set reconcile status condition
 	if err == nil {
-		inst.Status.Conditions.SetCondition(
-			status.Condition{
-				Type:    volsyncv1alpha1.ConditionReconciled,
-				Status:  corev1.ConditionTrue,
-				Reason:  volsyncv1alpha1.ReconciledReasonComplete,
-				Message: "Reconcile complete",
-			})
+		apimeta.SetStatusCondition(&inst.Status.Conditions, metav1.Condition{
+			Type:    volsyncv1alpha1.ConditionReconciled,
+			Status:  metav1.ConditionTrue,
+			Reason:  volsyncv1alpha1.ReconciledReasonComplete,
+			Message: "Reconcile complete",
+		})
 	} else {
-		inst.Status.Conditions.SetCondition(
-			status.Condition{
-				Type:    volsyncv1alpha1.ConditionReconciled,
-				Status:  corev1.ConditionFalse,
-				Reason:  volsyncv1alpha1.ReconciledReasonError,
-				Message: err.Error(),
-			})
+		apimeta.SetStatusCondition(&inst.Status.Conditions, metav1.Condition{
+			Type:    volsyncv1alpha1.ConditionReconciled,
+			Status:  metav1.ConditionFalse,
+			Reason:  volsyncv1alpha1.ReconciledReasonError,
+			Message: err.Error(),
+		})
 	}
 
 	// Update instance status
@@ -177,17 +172,15 @@ func reconcileSrcUsingCatalog(
 	}
 
 	var mResult mover.Result
-	if shouldSync && !instance.Status.Conditions.IsFalseFor(volsyncv1alpha1.ConditionSynchronizing) {
+	if shouldSync && !apimeta.IsStatusConditionFalse(instance.Status.Conditions, volsyncv1alpha1.ConditionSynchronizing) {
 		mResult, err = dataMover.Synchronize(ctx)
 		if mResult.Completed {
-			instance.Status.Conditions.SetCondition(
-				status.Condition{
-					Type:    volsyncv1alpha1.ConditionSynchronizing,
-					Status:  corev1.ConditionFalse,
-					Reason:  volsyncv1alpha1.SynchronizingReasonCleanup,
-					Message: "Cleaning up",
-				},
-			)
+			apimeta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{
+				Type:    volsyncv1alpha1.ConditionSynchronizing,
+				Status:  metav1.ConditionFalse,
+				Reason:  volsyncv1alpha1.SynchronizingReasonCleanup,
+				Message: "Cleaning up",
+			})
 			if ok, err := updateLastSyncSource(instance, metrics, logger); !ok {
 				return mover.InProgress().ReconcileResult(), err
 			}
@@ -195,14 +188,12 @@ func reconcileSrcUsingCatalog(
 	} else {
 		mResult, err = dataMover.Cleanup(ctx)
 		if mResult.Completed {
-			instance.Status.Conditions.SetCondition(
-				status.Condition{
-					Type:    volsyncv1alpha1.ConditionSynchronizing,
-					Status:  corev1.ConditionTrue,
-					Reason:  volsyncv1alpha1.SynchronizingReasonSync,
-					Message: "Synchronization in-progress",
-				},
-			)
+			apimeta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{
+				Type:    volsyncv1alpha1.ConditionSynchronizing,
+				Status:  metav1.ConditionTrue,
+				Reason:  volsyncv1alpha1.SynchronizingReasonSync,
+				Message: "Synchronization in-progress",
+			})
 			// To update conditions
 			_, _ = awaitNextSyncSource(instance, metrics, logger)
 		}
@@ -287,24 +278,20 @@ func awaitNextSyncSource(
 	// then we don't want to sync further.
 	if rs.Spec.Trigger != nil && rs.Spec.Trigger.Manual != "" {
 		if rs.Spec.Trigger.Manual == rs.Status.LastManualSync {
-			rs.Status.Conditions.SetCondition(
-				status.Condition{
-					Type:    volsyncv1alpha1.ConditionSynchronizing,
-					Status:  corev1.ConditionFalse,
-					Reason:  volsyncv1alpha1.SynchronizingReasonManual,
-					Message: "Waiting for manual trigger",
-				},
-			)
+			apimeta.SetStatusCondition(&rs.Status.Conditions, metav1.Condition{
+				Type:    volsyncv1alpha1.ConditionSynchronizing,
+				Status:  metav1.ConditionFalse,
+				Reason:  volsyncv1alpha1.SynchronizingReasonManual,
+				Message: "Waiting for manual trigger",
+			})
 			return false, nil
 		}
-		rs.Status.Conditions.SetCondition(
-			status.Condition{
-				Type:    volsyncv1alpha1.ConditionSynchronizing,
-				Status:  corev1.ConditionTrue,
-				Reason:  volsyncv1alpha1.SynchronizingReasonSync,
-				Message: "Synchronization in-progress",
-			},
-		)
+		apimeta.SetStatusCondition(&rs.Status.Conditions, metav1.Condition{
+			Type:    volsyncv1alpha1.ConditionSynchronizing,
+			Status:  metav1.ConditionTrue,
+			Reason:  volsyncv1alpha1.SynchronizingReasonSync,
+			Message: "Synchronization in-progress",
+		})
 		return true, nil
 	}
 
@@ -316,24 +303,20 @@ func awaitNextSyncSource(
 
 	// if it's past the nextSyncTime, we should sync
 	if rs.Status.NextSyncTime.Time.Before(time.Now()) {
-		rs.Status.Conditions.SetCondition(
-			status.Condition{
-				Type:    volsyncv1alpha1.ConditionSynchronizing,
-				Status:  corev1.ConditionTrue,
-				Reason:  volsyncv1alpha1.SynchronizingReasonSync,
-				Message: "Synchronization in-progress",
-			},
-		)
+		apimeta.SetStatusCondition(&rs.Status.Conditions, metav1.Condition{
+			Type:    volsyncv1alpha1.ConditionSynchronizing,
+			Status:  metav1.ConditionTrue,
+			Reason:  volsyncv1alpha1.SynchronizingReasonSync,
+			Message: "Synchronization in-progress",
+		})
 		return true, nil
 	}
-	rs.Status.Conditions.SetCondition(
-		status.Condition{
-			Type:    volsyncv1alpha1.ConditionSynchronizing,
-			Status:  corev1.ConditionFalse,
-			Reason:  volsyncv1alpha1.SynchronizingReasonSched,
-			Message: "Waiting for next scheduled synchronization",
-		},
-	)
+	apimeta.SetStatusCondition(&rs.Status.Conditions, metav1.Condition{
+		Type:    volsyncv1alpha1.ConditionSynchronizing,
+		Status:  metav1.ConditionFalse,
+		Reason:  volsyncv1alpha1.SynchronizingReasonSched,
+		Message: "Waiting for next scheduled synchronization",
+	})
 	return false, nil
 }
 
