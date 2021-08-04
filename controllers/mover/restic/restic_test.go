@@ -28,11 +28,11 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers/mover"
-	"github.com/backube/volsync/controllers/utils"
 )
 
 const (
@@ -248,7 +248,7 @@ var _ = Describe("Restic as a source", func() {
 		Expect(k8sClient.Create(ctx, sPVC)).To(Succeed())
 		Eventually(func() error {
 			pvc := &corev1.PersistentVolumeClaim{}
-			err := k8sClient.Get(ctx, utils.NameFor(sPVC), pvc)
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(sPVC), pvc)
 			return err
 		}, timeout, interval).Should(Succeed())
 
