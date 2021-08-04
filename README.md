@@ -7,7 +7,7 @@ using either rsync or rclone depending on the number of destinations.
 Status](https://readthedocs.org/projects/volsync/badge/?version=latest)](https://volsync.readthedocs.io/en/latest/?badge=latest)
 [![Go Report
 Card](https://goreportcard.com/badge/github.com/backube/volsync)](https://goreportcard.com/report/github.com/backube/volsync)
-[![codecov](https://codecov.io/gh/backube/volsync/branch/master/graph/badge.svg)](https://codecov.io/gh/backube/volsync)
+[![codecov](https://codecov.io/gh/backube/volsync/branch/main/graph/badge.svg)](https://codecov.io/gh/backube/volsync)
 ![maturity](https://img.shields.io/static/v1?label=maturity&message=alpha&color=red)
 
 ![Documentation](https://github.com/backube/volsync/workflows/Documentation/badge.svg)
