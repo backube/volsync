@@ -19,6 +19,8 @@ coverage:
         # Must match current coverage
         target: auto
         threshold: 0%
+        # Don't fail if coverage threshold not met
+        informational: true
     project:
       default:
         target: auto
