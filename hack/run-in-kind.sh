@@ -33,4 +33,5 @@ helm upgrade --install --create-namespace -n volsync-system \
     --set restic.tag="${KIND_TAG}" \
     --set rsync.tag="${KIND_TAG}" \
     --set metrics.disableAuth=true \
+    --wait --timeout=300s \
     volsync ./helm/volsync
