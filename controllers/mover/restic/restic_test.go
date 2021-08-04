@@ -24,7 +24,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	batchv1 "k8s.io/api/batch/v1"
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -90,14 +90,14 @@ var _ = Describe("Restic retain policy", func() {
 
 var _ = Describe("Restic prune policy", func() {
 	var m *Mover
-	var owner *v1.ConfigMap
+	var owner *corev1.ConfigMap
 	logger := zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
 	var start metav1.Time
 
 	BeforeEach(func() {
 		start = metav1.Now()
 		// The underlying type of owner doesn't matter
-		owner = &v1.ConfigMap{
+		owner = &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:              "name",
 				Namespace:         "ns",
@@ -211,14 +211,14 @@ var _ = Describe("Restic ignores other movers", func() {
 
 var _ = Describe("Restic as a source", func() {
 	var ctx = context.TODO()
-	var ns *v1.Namespace
+	var ns *corev1.Namespace
 	logger := zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
 	var rs *volsyncv1alpha1.ReplicationSource
-	var sPVC *v1.PersistentVolumeClaim
+	var sPVC *corev1.PersistentVolumeClaim
 	var mover *Mover
 	BeforeEach(func() {
 		// Create namespace for test
-		ns = &v1.Namespace{
+		ns = &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
 				GenerateName: "vh-",
 			},
@@ -227,17 +227,17 @@ var _ = Describe("Restic as a source", func() {
 		Expect(ns.Name).NotTo(BeEmpty())
 
 		sc := "spvcsc"
-		sPVC = &v1.PersistentVolumeClaim{
+		sPVC = &corev1.PersistentVolumeClaim{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "s",
 				Namespace: ns.Name,
 			},
-			Spec: v1.PersistentVolumeClaimSpec{
-				AccessModes: []v1.PersistentVolumeAccessMode{
-					v1.ReadWriteOnce,
+			Spec: corev1.PersistentVolumeClaimSpec{
+				AccessModes: []corev1.PersistentVolumeAccessMode{
+					corev1.ReadWriteOnce,
 				},
-				Resources: v1.ResourceRequirements{
-					Requests: v1.ResourceList{
+				Resources: corev1.ResourceRequirements{
+					Requests: corev1.ResourceList{
 						"storage": resource.MustParse("7Gi"),
 					},
 				},
@@ -282,9 +282,9 @@ var _ = Describe("Restic as a source", func() {
 		})
 
 		Context("validate repo secret", func() {
-			var repo *v1.Secret
+			var repo *corev1.Secret
 			BeforeEach(func() {
-				repo = &v1.Secret{
+				repo = &corev1.Secret{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "x",
 						Namespace: ns.Name,
@@ -322,7 +322,7 @@ var _ = Describe("Restic as a source", func() {
 		})
 
 		Context("Restic cache is created correctly", func() {
-			var dataPVC *v1.PersistentVolumeClaim
+			var dataPVC *corev1.PersistentVolumeClaim
 			BeforeEach(func() {
 				dataPVC = sPVC
 			})
@@ -363,24 +363,24 @@ var _ = Describe("Restic as a source", func() {
 			})
 			When("options accessMode is set", func() {
 				BeforeEach(func() {
-					rs.Spec.Restic.AccessModes = []v1.PersistentVolumeAccessMode{v1.ReadWriteMany}
+					rs.Spec.Restic.AccessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany}
 					rs.Spec.Restic.CacheAccessModes = nil
 				})
 				It("matches the specified option", func() {
 					cache, err := mover.ensureCache(ctx, dataPVC)
 					Expect(err).ToNot(HaveOccurred())
-					Expect(cache.Spec.AccessModes).To(Equal([]v1.PersistentVolumeAccessMode{v1.ReadWriteMany}))
+					Expect(cache.Spec.AccessModes).To(Equal([]corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany}))
 				})
 			})
 			When("cache accessMode is set", func() {
 				BeforeEach(func() {
-					rs.Spec.Restic.AccessModes = []v1.PersistentVolumeAccessMode{v1.ReadWriteMany}
-					rs.Spec.Restic.CacheAccessModes = []v1.PersistentVolumeAccessMode{v1.ReadOnlyMany}
+					rs.Spec.Restic.AccessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany}
+					rs.Spec.Restic.CacheAccessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadOnlyMany}
 				})
 				It("uses the cache-specific mode", func() {
 					cache, err := mover.ensureCache(ctx, dataPVC)
 					Expect(err).ToNot(HaveOccurred())
-					Expect(cache.Spec.AccessModes).To(Equal([]v1.PersistentVolumeAccessMode{v1.ReadOnlyMany}))
+					Expect(cache.Spec.AccessModes).To(Equal([]corev1.PersistentVolumeAccessMode{corev1.ReadOnlyMany}))
 				})
 			})
 
@@ -455,28 +455,28 @@ var _ = Describe("Restic as a source", func() {
 
 		Context("mover Job is handled properly", func() {
 			var jobName string
-			var cache *v1.PersistentVolumeClaim
-			var sa *v1.ServiceAccount
-			var repo *v1.Secret
+			var cache *corev1.PersistentVolumeClaim
+			var sa *corev1.ServiceAccount
+			var repo *corev1.Secret
 			var job *batchv1.Job
 			BeforeEach(func() {
 				// hardcoded since we don't get access unless the job is
 				// completed
 				jobName = "volsync-src-" + rs.Name
-				cache = &v1.PersistentVolumeClaim{
+				cache = &corev1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "thecache",
 						Namespace: ns.Name,
 					},
 				}
 				sPVC.Spec.DeepCopyInto(&cache.Spec)
-				sa = &v1.ServiceAccount{
+				sa = &corev1.ServiceAccount{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "thesa",
 						Namespace: ns.Name,
 					},
 				}
-				repo = &v1.Secret{
+				repo = &corev1.Secret{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "mysecret",
 						Namespace: ns.Name,
@@ -631,13 +631,13 @@ var _ = Describe("Restic as a source", func() {
 
 var _ = Describe("Restic as a destination", func() {
 	var ctx = context.TODO()
-	var ns *v1.Namespace
+	var ns *corev1.Namespace
 	logger := zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
 	var rd *volsyncv1alpha1.ReplicationDestination
 	var mover *Mover
 	BeforeEach(func() {
 		// Create namespace for test
-		ns = &v1.Namespace{
+		ns = &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
 				GenerateName: "vh-",
 			},
@@ -679,10 +679,10 @@ var _ = Describe("Restic as a destination", func() {
 		})
 		When("no destination volume is supplied", func() {
 			var cap resource.Quantity
-			var am v1.PersistentVolumeAccessMode
+			var am corev1.PersistentVolumeAccessMode
 			BeforeEach(func() {
-				am = v1.ReadWriteMany
-				rd.Spec.Restic.AccessModes = []v1.PersistentVolumeAccessMode{
+				am = corev1.ReadWriteMany
+				rd.Spec.Restic.AccessModes = []corev1.PersistentVolumeAccessMode{
 					am,
 				}
 				cap = resource.MustParse("6Gi")
@@ -697,19 +697,19 @@ var _ = Describe("Restic as a destination", func() {
 			})
 		})
 		When("a destination volume is supplied", func() {
-			var dPVC *v1.PersistentVolumeClaim
+			var dPVC *corev1.PersistentVolumeClaim
 			BeforeEach(func() {
-				dPVC = &v1.PersistentVolumeClaim{
+				dPVC = &corev1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "dest",
 						Namespace: ns.Name,
 					},
-					Spec: v1.PersistentVolumeClaimSpec{
-						AccessModes: []v1.PersistentVolumeAccessMode{
-							v1.ReadWriteOnce,
+					Spec: corev1.PersistentVolumeClaimSpec{
+						AccessModes: []corev1.PersistentVolumeAccessMode{
+							corev1.ReadWriteOnce,
 						},
-						Resources: v1.ResourceRequirements{
-							Requests: v1.ResourceList{
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
 								"storage": resource.MustParse("1Gi"),
 							},
 						},
@@ -731,7 +731,7 @@ var _ = Describe("Restic as a destination", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(sa).NotTo(BeNil())
 				saName := sa.Name
-				sa2 := &v1.ServiceAccount{}
+				sa2 := &corev1.ServiceAccount{}
 				Eventually(func() error {
 					return k8sClient.Get(ctx, types.NamespacedName{
 						Name:      saName,
@@ -743,54 +743,54 @@ var _ = Describe("Restic as a destination", func() {
 		})
 		Context("mover Job is handled properly", func() {
 			var jobName string
-			var dPVC *v1.PersistentVolumeClaim
-			var cache *v1.PersistentVolumeClaim
-			var sa *v1.ServiceAccount
-			var repo *v1.Secret
+			var dPVC *corev1.PersistentVolumeClaim
+			var cache *corev1.PersistentVolumeClaim
+			var sa *corev1.ServiceAccount
+			var repo *corev1.Secret
 			var job *batchv1.Job
 			BeforeEach(func() {
 				// hardcoded since we don't get access unless the job is
 				// completed
 				jobName = "volsync-dst-" + rd.Name
-				dPVC = &v1.PersistentVolumeClaim{
+				dPVC = &corev1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "dest",
 						Namespace: ns.Name,
 					},
-					Spec: v1.PersistentVolumeClaimSpec{
-						AccessModes: []v1.PersistentVolumeAccessMode{
-							v1.ReadWriteOnce,
+					Spec: corev1.PersistentVolumeClaimSpec{
+						AccessModes: []corev1.PersistentVolumeAccessMode{
+							corev1.ReadWriteOnce,
 						},
-						Resources: v1.ResourceRequirements{
-							Requests: v1.ResourceList{
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
 								"storage": resource.MustParse("1Gi"),
 							},
 						},
 					},
 				}
-				cache = &v1.PersistentVolumeClaim{
+				cache = &corev1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "thecache",
 						Namespace: ns.Name,
 					},
-					Spec: v1.PersistentVolumeClaimSpec{
-						AccessModes: []v1.PersistentVolumeAccessMode{
-							v1.ReadWriteOnce,
+					Spec: corev1.PersistentVolumeClaimSpec{
+						AccessModes: []corev1.PersistentVolumeAccessMode{
+							corev1.ReadWriteOnce,
 						},
-						Resources: v1.ResourceRequirements{
-							Requests: v1.ResourceList{
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
 								"storage": resource.MustParse("1Gi"),
 							},
 						},
 					},
 				}
-				sa = &v1.ServiceAccount{
+				sa = &corev1.ServiceAccount{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "thesa",
 						Namespace: ns.Name,
 					},
 				}
-				repo = &v1.Secret{
+				repo = &corev1.Secret{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "mysecret",
 						Namespace: ns.Name,

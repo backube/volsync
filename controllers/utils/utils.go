@@ -22,7 +22,7 @@ import (
 	"fmt"
 
 	"github.com/go-logr/logr"
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -36,7 +36,7 @@ func NameFor(obj metav1.Object) types.NamespacedName {
 }
 
 func GetAndValidateSecret(ctx context.Context, client client.Client,
-	logger logr.Logger, secret *v1.Secret, fields ...string) error {
+	logger logr.Logger, secret *corev1.Secret, fields ...string) error {
 	if err := client.Get(ctx, NameFor(secret), secret); err != nil {
 		logger.Error(err, "failed to get Secret with provided name", "Secret", NameFor(secret))
 		return err
@@ -48,7 +48,7 @@ func GetAndValidateSecret(ctx context.Context, client client.Client,
 	return nil
 }
 
-func secretHasFields(secret *v1.Secret, fields ...string) error {
+func secretHasFields(secret *corev1.Secret, fields ...string) error {
 	data := secret.Data
 	if data == nil || len(data) < len(fields) {
 		return fmt.Errorf("secret shoud have fields: %v", fields)
@@ -61,12 +61,12 @@ func secretHasFields(secret *v1.Secret, fields ...string) error {
 	return nil
 }
 
-func EnvFromSecret(secretName string, field string, optional bool) v1.EnvVar {
-	return v1.EnvVar{
+func EnvFromSecret(secretName string, field string, optional bool) corev1.EnvVar {
+	return corev1.EnvVar{
 		Name: field,
-		ValueFrom: &v1.EnvVarSource{
-			SecretKeyRef: &v1.SecretKeySelector{
-				LocalObjectReference: v1.LocalObjectReference{
+		ValueFrom: &corev1.EnvVarSource{
+			SecretKeyRef: &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{
 					Name: secretName,
 				},
 				Key:      field,

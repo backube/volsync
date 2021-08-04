@@ -36,7 +36,7 @@ package v1alpha1
 
 import (
 	"github.com/operator-framework/operator-lib/status"
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -86,7 +86,7 @@ type ReplicationSourceVolumeOptions struct {
 	// accessModes can be used to override the accessModes of the PiT image.
 	//+kubebuilder:validation:MinItems=1
 	//+optional
-	AccessModes []v1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
+	AccessModes []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
 	// volumeSnapshotClassName can be used to specify the VSC to be used if
 	// copyMethod is Snapshot. If not set, the default VSC is used.
 	//+optional
@@ -102,7 +102,7 @@ type ReplicationSourceRsyncSpec struct {
 	// serviceType determines the Service type that will be created for incoming
 	// SSH connections.
 	//+optional
-	ServiceType *v1.ServiceType `json:"serviceType,omitempty"`
+	ServiceType *corev1.ServiceType `json:"serviceType,omitempty"`
 	// address is the remote address to connect to for replication.
 	//+optional
 	Address *string `json:"address,omitempty"`
@@ -171,7 +171,7 @@ type ReplicationSourceResticSpec struct {
 	CacheStorageClassName *string `json:"cacheStorageClassName,omitempty"`
 	// accessModes can be used to set the accessModes of restic metadata cache volume
 	//+optional
-	CacheAccessModes []v1.PersistentVolumeAccessMode `json:"cacheAccessModes,omitempty"`
+	CacheAccessModes []corev1.PersistentVolumeAccessMode `json:"cacheAccessModes,omitempty"`
 }
 
 //ReplicationSourceResticStatus defines the field for ReplicationSourceStatus in ReplicationSourceStatus

@@ -21,7 +21,7 @@ import (
 	"errors"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -91,7 +91,7 @@ func FromDestination(d *volsyncv1alpha1.ReplicationDestinationVolumeOptions) VHO
 	}
 }
 
-func AccessModes(am []v1.PersistentVolumeAccessMode) VHOption {
+func AccessModes(am []corev1.PersistentVolumeAccessMode) VHOption {
 	return func(vh *VolumeHandler) {
 		vh.accessModes = am
 	}

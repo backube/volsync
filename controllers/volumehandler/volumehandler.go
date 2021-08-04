@@ -25,7 +25,7 @@ import (
 
 	"github.com/go-logr/logr"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1beta1"
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -49,7 +49,7 @@ type VolumeHandler struct {
 	copyMethod              volsyncv1alpha1.CopyMethodType
 	capacity                *resource.Quantity
 	storageClassName        *string
-	accessModes             []v1.PersistentVolumeAccessMode
+	accessModes             []corev1.PersistentVolumeAccessMode
 	volumeSnapshotClassName *string
 }
 
@@ -58,7 +58,7 @@ type VolumeHandler struct {
 // be the same PVC as src. Note: it's possible to return nil, nil. In this case,
 // the operation should be retried.
 func (vh *VolumeHandler) EnsurePVCFromSrc(ctx context.Context, log logr.Logger,
-	src *v1.PersistentVolumeClaim, name string, isTemporary bool) (*v1.PersistentVolumeClaim, error) {
+	src *corev1.PersistentVolumeClaim, name string, isTemporary bool) (*corev1.PersistentVolumeClaim, error) {
 	switch vh.copyMethod {
 	case volsyncv1alpha1.CopyMethodNone:
 		return src, nil
@@ -80,11 +80,11 @@ func (vh *VolumeHandler) EnsurePVCFromSrc(ctx context.Context, log logr.Logger,
 // of type PersistentVolumeClaim or VolumeSnapshot. It may even be the same PVC
 // as src.
 func (vh *VolumeHandler) EnsureImage(ctx context.Context, log logr.Logger,
-	src *v1.PersistentVolumeClaim) (*v1.TypedLocalObjectReference, error) {
+	src *corev1.PersistentVolumeClaim) (*corev1.TypedLocalObjectReference, error) {
 	switch vh.copyMethod { //nolint: exhaustive
 	case volsyncv1alpha1.CopyMethodNone:
-		return &v1.TypedLocalObjectReference{
-			APIGroup: &v1.SchemeGroupVersion.Group,
+		return &corev1.TypedLocalObjectReference{
+			APIGroup: &corev1.SchemeGroupVersion.Group,
 			Kind:     src.Kind,
 			Name:     src.Name,
 		}, nil
@@ -93,7 +93,7 @@ func (vh *VolumeHandler) EnsureImage(ctx context.Context, log logr.Logger,
 		if snap == nil || err != nil {
 			return nil, err
 		}
-		return &v1.TypedLocalObjectReference{
+		return &corev1.TypedLocalObjectReference{
 			APIGroup: &snapv1.SchemeGroupVersion.Group,
 			Kind:     snap.Kind,
 			Name:     snap.Name,
@@ -104,7 +104,7 @@ func (vh *VolumeHandler) EnsureImage(ctx context.Context, log logr.Logger,
 }
 
 func (vh *VolumeHandler) EnsureNewPVC(ctx context.Context, log logr.Logger,
-	name string) (*v1.PersistentVolumeClaim, error) {
+	name string) (*corev1.PersistentVolumeClaim, error) {
 	logger := log.WithValues("PVC", name)
 
 	// Ensure required configuration parameters have been provided in order to
@@ -120,7 +120,7 @@ func (vh *VolumeHandler) EnsureNewPVC(ctx context.Context, log logr.Logger,
 		return nil, err
 	}
 
-	pvc := &v1.PersistentVolumeClaim{
+	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: vh.owner.GetNamespace(),
@@ -135,12 +135,12 @@ func (vh *VolumeHandler) EnsureNewPVC(ctx context.Context, log logr.Logger,
 		if pvc.CreationTimestamp.IsZero() { // set immutable fields
 			pvc.Spec.AccessModes = vh.accessModes
 			pvc.Spec.StorageClassName = vh.storageClassName
-			volumeMode := v1.PersistentVolumeFilesystem
+			volumeMode := corev1.PersistentVolumeFilesystem
 			pvc.Spec.VolumeMode = &volumeMode
 		}
 
-		pvc.Spec.Resources.Requests = v1.ResourceList{
-			v1.ResourceStorage: *vh.capacity,
+		pvc.Spec.Resources.Requests = corev1.ResourceList{
+			corev1.ResourceStorage: *vh.capacity,
 		}
 		return nil
 	})
@@ -153,16 +153,16 @@ func (vh *VolumeHandler) EnsureNewPVC(ctx context.Context, log logr.Logger,
 	return pvc, nil
 }
 
-func (vh *VolumeHandler) SetAccessModes(accessModes []v1.PersistentVolumeAccessMode) {
+func (vh *VolumeHandler) SetAccessModes(accessModes []corev1.PersistentVolumeAccessMode) {
 	vh.accessModes = accessModes
 }
 
-func (vh *VolumeHandler) GetAccessModes() []v1.PersistentVolumeAccessMode {
+func (vh *VolumeHandler) GetAccessModes() []corev1.PersistentVolumeAccessMode {
 	return vh.accessModes
 }
 
 func (vh *VolumeHandler) ensureImageSnapshot(ctx context.Context, log logr.Logger,
-	src *v1.PersistentVolumeClaim) (*snapv1.VolumeSnapshot, error) {
+	src *corev1.PersistentVolumeClaim) (*snapv1.VolumeSnapshot, error) {
 	// create & record name (if necessary)
 	if src.Annotations == nil {
 		src.Annotations = make(map[string]string)
@@ -216,8 +216,8 @@ func (vh *VolumeHandler) ensureImageSnapshot(ctx context.Context, log logr.Logge
 }
 
 func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,
-	src *v1.PersistentVolumeClaim, name string, isTemporary bool) (*v1.PersistentVolumeClaim, error) {
-	clone := &v1.PersistentVolumeClaim{
+	src *corev1.PersistentVolumeClaim, name string, isTemporary bool) (*corev1.PersistentVolumeClaim, error) {
+	clone := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: vh.owner.GetNamespace(),
@@ -235,12 +235,12 @@ func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,
 		}
 		if clone.CreationTimestamp.IsZero() {
 			if vh.capacity != nil {
-				clone.Spec.Resources.Requests = v1.ResourceList{
-					v1.ResourceStorage: *vh.capacity,
+				clone.Spec.Resources.Requests = corev1.ResourceList{
+					corev1.ResourceStorage: *vh.capacity,
 				}
 			} else {
-				clone.Spec.Resources.Requests = v1.ResourceList{
-					v1.ResourceStorage: *src.Spec.Resources.Requests.Storage(),
+				clone.Spec.Resources.Requests = corev1.ResourceList{
+					corev1.ResourceStorage: *src.Spec.Resources.Requests.Storage(),
 				}
 			}
 			if vh.storageClassName != nil {
@@ -253,7 +253,7 @@ func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,
 			} else {
 				clone.Spec.AccessModes = src.Spec.AccessModes
 			}
-			clone.Spec.DataSource = &v1.TypedLocalObjectReference{
+			clone.Spec.DataSource = &corev1.TypedLocalObjectReference{
 				APIGroup: nil,
 				Kind:     "PersistentVolumeClaim",
 				Name:     src.Name,
@@ -274,7 +274,7 @@ func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,
 }
 
 func (vh *VolumeHandler) ensureSnapshot(ctx context.Context, log logr.Logger,
-	src *v1.PersistentVolumeClaim, name string, isTemporary bool) (*snapv1.VolumeSnapshot, error) {
+	src *corev1.PersistentVolumeClaim, name string, isTemporary bool) (*snapv1.VolumeSnapshot, error) {
 	snap := &snapv1.VolumeSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -314,9 +314,9 @@ func (vh *VolumeHandler) ensureSnapshot(ctx context.Context, log logr.Logger,
 }
 
 func (vh *VolumeHandler) pvcFromSnapshot(ctx context.Context, log logr.Logger,
-	snap *snapv1.VolumeSnapshot, original *v1.PersistentVolumeClaim,
-	name string, isTemporary bool) (*v1.PersistentVolumeClaim, error) {
-	pvc := &v1.PersistentVolumeClaim{
+	snap *snapv1.VolumeSnapshot, original *corev1.PersistentVolumeClaim,
+	name string, isTemporary bool) (*corev1.PersistentVolumeClaim, error) {
+	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: vh.owner.GetNamespace(),
@@ -334,16 +334,16 @@ func (vh *VolumeHandler) pvcFromSnapshot(ctx context.Context, log logr.Logger,
 		}
 		if pvc.CreationTimestamp.IsZero() {
 			if vh.capacity != nil {
-				pvc.Spec.Resources.Requests = v1.ResourceList{
-					v1.ResourceStorage: *vh.capacity,
+				pvc.Spec.Resources.Requests = corev1.ResourceList{
+					corev1.ResourceStorage: *vh.capacity,
 				}
 			} else if snap.Status != nil && snap.Status.RestoreSize != nil {
-				pvc.Spec.Resources.Requests = v1.ResourceList{
-					v1.ResourceStorage: *snap.Status.RestoreSize,
+				pvc.Spec.Resources.Requests = corev1.ResourceList{
+					corev1.ResourceStorage: *snap.Status.RestoreSize,
 				}
 			} else {
-				pvc.Spec.Resources.Requests = v1.ResourceList{
-					v1.ResourceStorage: *original.Spec.Resources.Requests.Storage(),
+				pvc.Spec.Resources.Requests = corev1.ResourceList{
+					corev1.ResourceStorage: *original.Spec.Resources.Requests.Storage(),
 				}
 			}
 			if vh.storageClassName != nil {
@@ -356,7 +356,7 @@ func (vh *VolumeHandler) pvcFromSnapshot(ctx context.Context, log logr.Logger,
 			} else {
 				pvc.Spec.AccessModes = original.Spec.AccessModes
 			}
-			pvc.Spec.DataSource = &v1.TypedLocalObjectReference{
+			pvc.Spec.DataSource = &corev1.TypedLocalObjectReference{
 				APIGroup: &snapv1.SchemeGroupVersion.Group,
 				Kind:     "VolumeSnapshot",
 				Name:     snap.Name,
