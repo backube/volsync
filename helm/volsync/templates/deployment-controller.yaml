@@ -47,13 +47,13 @@ spec:
             - --health-probe-bind-address=:8081
             - --metrics-bind-address=127.0.0.1:8080
             - --leader-elect
-            - --rclone-container-image={{ .Values.rclone.repository }}:{{ .Values.rclone.tag | default .Chart.AppVersion }}
-            - --restic-container-image={{ .Values.restic.repository }}:{{ .Values.restic.tag | default .Chart.AppVersion }}
-            - --rsync-container-image={{ .Values.rsync.repository }}:{{ .Values.rsync.tag | default .Chart.AppVersion }}
+            - --rclone-container-image={{ include "container-image" (list . .Values.rclone) }}
+            - --restic-container-image={{ include "container-image" (list . .Values.restic) }}
+            - --rsync-container-image={{ include "container-image" (list . .Values.rsync) }}
             - --scc-name={{ include "volsync.fullname" . }}-mover
           command:
             - /manager
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          image: "{{ include "container-image" (list . .Values.image) }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           livenessProbe:
             httpGet:

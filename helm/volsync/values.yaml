@@ -6,18 +6,23 @@ image:
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
+  # Directly specifies the SHA hash of the container image to deploy
+  image: ""
 rclone:
   repository: quay.io/backube/volsync-mover-rclone
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
+  image: ""
 restic:
   repository: quay.io/backube/volsync-mover-restic
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
+  image: ""
 rsync:
   repository: quay.io/backube/volsync-mover-rsync
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
+  image: ""
 
 metrics:
   # Disable auth checks when scraping metrics (allow anyone to scrape)
