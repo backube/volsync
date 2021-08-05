@@ -60,3 +60,19 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Determine the container image to use
+Usage: {{- include "container-image" (list $ .Values.image) }}
+This horrible hack from: https://blog.flant.com/advanced-helm-templating/
+*/}}
+{{- define "container-image" -}}
+{{- $ := index . 0 }}
+{{- with index . 1 }}
+{{- if .image -}}
+{{ .image }}
+{{- else -}}
+{{ .repository }}:{{ .tag | default $.Chart.AppVersion }}
+{{- end -}}
+{{- end -}}
+{{- end }}
