@@ -19,22 +19,22 @@ keywords:
   - storage
 annotations:  # https://artifacthub.io/docs/topics/annotations/helm/
   # Changelog for current chart & app version
-  # Prefix w/ added, changed, deprecated, removed, fixed and security
+  # Kinds: added, changed, deprecated, removed, fixed, and security
   artifacthub.io/changes: |
     - kind: added
-      description: Support for creating Restic backups
+      description: Introduced internal "Mover" interface to make adding/maintaining data movers more modular
     - kind: added
-      description: Metrics for monitoring replication status
+      description: Added a Condition on the CRs to indicate whether they are synchronizing or idle
     - kind: added
-      description: Support for manually triggering replication
+      description: Rclone - Added unit tests
+    - kind: changed
+      description: Renamed project - Scribe is now VolSync
+    - kind: changed
+      description: CRD group has changed from `scribe.backube` to `volsync.backube`
+    - kind: changed
+      description: CRD status Conditions changed from operator-lib to the implementation in apimachinery
     - kind: fixed
-      description: Fixed deployment on OpenShift w/ deployments not named "volsync"
-    - kind: fixed
-      description: Support retries in rsync pod to tolerate Submariner DNS delays
-    - kind: fixed
-      description: Custom rsync port number was being ignored
-    - kind: fixed
-      description: Don't overwrite annotations on the rsync Service
+      description: Restic - Fixed error when the volume is empty
   artifacthub.io/crds: |
     - kind: ReplicationDestination
       version: v1alpha1
@@ -58,10 +58,10 @@ kubeVersion: "^1.17.0-0"
 # This is the chart version. This version number should be incremented each time
 # you make changes to the chart and its templates, including the app version.
 # Versions are expected to follow Semantic Versioning (https://semver.org/)
-version: "0.2.0"
+version: "0.3.0"
 
 # This is the version number of the application being deployed. This version
 # number should be incremented each time you make changes to the application.
 # Versions are not expected to follow Semantic Versioning. They should reflect
 # the version the application is using. It is recommended to use it with quotes.
-appVersion: "0.2.0"
+appVersion: "0.3.0"
