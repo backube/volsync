@@ -35,7 +35,6 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"github.com/operator-framework/operator-lib/status"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -249,7 +248,7 @@ type ReplicationSourceStatus struct {
 	External map[string]string `json:"external,omitempty"`
 	// conditions represent the latest available observations of the
 	// source's state.
-	Conditions status.Conditions `json:"conditions,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 	// restic contains status information for Restic-based replication.
 	Restic *ReplicationSourceResticStatus `json:"restic,omitempty"`
 }

@@ -33,10 +33,6 @@ limitations under the License.
 
 package v1alpha1
 
-import (
-	"github.com/operator-framework/operator-lib/status"
-)
-
 // CopyMethodType defines the methods for creating point-in-time copies of
 // volumes.
 //+kubebuilder:validation:Enum=None;Clone;Snapshot
@@ -55,18 +51,18 @@ const (
 const (
 	// ConditionReconciled is a status condition type that indicates whether the
 	// CR has been successfully reconciled
-	ConditionReconciled status.ConditionType = "Reconciled"
+	ConditionReconciled string = "Reconciled"
 	// ReconciledReasonComplete indicates the CR was successfully reconciled
-	ReconciledReasonComplete status.ConditionReason = "ReconcileComplete"
+	ReconciledReasonComplete string = "ReconcileComplete"
 	// ReconciledReasonError indicates an error was encountered while
 	// reconciling the CR
-	ReconciledReasonError status.ConditionReason = "ReconcileError"
+	ReconciledReasonError string = "ReconcileError"
 )
 
 const (
-	ConditionSynchronizing     status.ConditionType   = "Synchronizing"
-	SynchronizingReasonSync    status.ConditionReason = "SyncInProgress"
-	SynchronizingReasonSched   status.ConditionReason = "WaitingForSchedule"
-	SynchronizingReasonManual  status.ConditionReason = "WaitingForManual"
-	SynchronizingReasonCleanup status.ConditionReason = "CleaningUp"
+	ConditionSynchronizing     string = "Synchronizing"
+	SynchronizingReasonSync    string = "SyncInProgress"
+	SynchronizingReasonSched   string = "WaitingForSchedule"
+	SynchronizingReasonManual  string = "WaitingForManual"
+	SynchronizingReasonCleanup string = "CleaningUp"
 )
