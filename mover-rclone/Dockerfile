@@ -1,6 +1,6 @@
 FROM registry.access.redhat.com/ubi8-minimal
 
-ARG rclone_version=v1.55.1
+ARG rclone_version=v1.56.0
 
 RUN microdnf update -y && \
     microdnf install -y \

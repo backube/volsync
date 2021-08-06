@@ -170,10 +170,8 @@ func (o *SetupReplicationOptions) Complete() error {
 	if len(o.DestOpts.StorageClass) == 0 {
 		o.DestOpts.StorageClass = destPVCDefaultStorageClass
 	}
-	if err := o.Validate(); err != nil {
-		return err
-	}
-	return nil
+	err := o.Validate()
+	return err
 }
 
 //nolint:lll

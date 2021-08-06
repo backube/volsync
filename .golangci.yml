@@ -21,7 +21,6 @@ linters:
     - goconst
     - gocyclo
     - goimports  # Supersedes gofmt
-    - golint
     - gosec
     - gosimple
     - govet
@@ -30,6 +29,7 @@ linters:
     - makezero
     - misspell
     - nakedret
+    - revive
     - staticcheck
     - structcheck
     - typecheck

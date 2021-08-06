@@ -41,6 +41,7 @@ spec:
           image: gcr.io/kubebuilder/kube-rbac-proxy:v0.8.0
           ports:
             - containerPort: 8443
+              protocol: TCP
               name: https
         - name: manager
           args:

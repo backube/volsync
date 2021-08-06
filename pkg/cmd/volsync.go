@@ -180,10 +180,8 @@ func (o *Config) complete(v *viper.Viper) error {
 
 func (o *Config) Bind(cmd *cobra.Command, v *viper.Viper) error {
 	o.bindFlags(cmd, v)
-	if err := o.complete(v); err != nil {
-		return err
-	}
-	return nil
+	err := o.complete(v)
+	return err
 }
 
 func (o *ReplicationOptions) Bind(cmd *cobra.Command, v *viper.Viper) {
