@@ -150,11 +150,28 @@ func (o *FinalizeOptions) SetReplication() error {
 	if err := o.RepOpts.Source.Client.Get(ctx, sourceNSName, repSource); err != nil {
 		return err
 	}
+
+	// Keep the oldImage saved to for the reference
+	var oldImage *corev1.TypedLocalObjectReference
+	repDest := &volsyncv1alpha1.ReplicationDestination{}
+	destNSName := types.NamespacedName{
+		Namespace: o.RepOpts.Dest.Namespace,
+		Name:      o.destName,
+	}
+
+	if err := o.RepOpts.Dest.Client.Get(ctx, destNSName, repDest); err != nil {
+		return err
+	}
+	if repDest.Status != nil {
+		oldImage = repDest.Status.LatestImage
+	}
+
 	klog.Infof("Triggering final data sync")
 	repSource.Spec.Trigger = &volsyncv1alpha1.ReplicationSourceTriggerSpec{
 		Schedule: repSource.Spec.Trigger.Schedule,
 		Manual:   lastManualSync,
 	}
+
 	if err := o.RepOpts.Source.Client.Update(ctx, repSource); err != nil {
 		return fmt.Errorf("unable to set manual trigger for last sync")
 	}
@@ -175,19 +192,43 @@ func (o *FinalizeOptions) SetReplication() error {
 		Namespace: o.RepOpts.Source.Namespace,
 		Name:      repSource.Spec.SourcePVC,
 	}
+
 	if err := o.RepOpts.Source.Client.Get(ctx, sourcePVCName, srcPVC); err != nil {
 		return err
 	}
-	repDest := &volsyncv1alpha1.ReplicationDestination{}
-	destNSName := types.NamespacedName{
+
+	var latestImage *corev1.TypedLocalObjectReference
+	repDest = &volsyncv1alpha1.ReplicationDestination{}
+	destNSName = types.NamespacedName{
 		Namespace: o.RepOpts.Dest.Namespace,
 		Name:      o.destName,
 	}
-	if err := o.RepOpts.Dest.Client.Get(ctx, destNSName, repDest); err != nil {
+
+	if err := wait.PollImmediate(5*time.Second, o.timeout, func() (bool, error) {
+		if err := o.RepOpts.Dest.Client.Get(ctx, destNSName, repDest); err != nil {
+			return false, err
+		}
+
+		if (repDest.Status == nil) || (repDest.Status.LatestImage == nil) {
+			klog.Infof("failed to get ReplicationDestination status after data sync, retrying")
+			return false, nil
+		}
+		latestImage = repDest.Status.LatestImage
+
+		// oldImage can be nil during first set-replication attempt.
+		// If oldImage is nil in any case then continue with latestImage retrieved in previous step
+		if (oldImage != nil) && (latestImage.Name == oldImage.Name) {
+			klog.Infof("Image name is still not updated with latestImage name, retrying")
+			return false, nil
+		}
+
+		klog.Infof("Latest Image found at ReplicationDestination: %v", latestImage.Name)
+		return true, nil
+	}); err != nil {
 		return err
 	}
+
 	var (
-		latestImage *corev1.TypedLocalObjectReference
 		destPVCName string
 		err         error
 	)
@@ -197,10 +238,6 @@ func (o *FinalizeOptions) SetReplication() error {
 			return fmt.Errorf("destination PVC not listed in ReplicationDestination: %s", repDest.Name)
 		}
 	} else {
-		latestImage = repDest.Status.LatestImage
-		if latestImage == nil {
-			return fmt.Errorf("ReplicationDestination does not have a latest snapshot image, exiting")
-		}
 		// if destPVC is empty, destination PVC name will be generated from source PVC
 		destOpts := DestinationOptions{
 			DestPVC: o.destPVC,
