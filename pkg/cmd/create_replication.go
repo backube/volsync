@@ -49,7 +49,7 @@ var (
 )
 
 type SetupReplicationOptions struct {
-	Name                    string
+	SourceName              string
 	Config                  Config
 	RepOpts                 ReplicationOptions
 	SSHKeysSecretOptions    SSHKeysSecretOptions
@@ -109,7 +109,7 @@ func (o *SetupReplicationOptions) bindFlags(cmd *cobra.Command, v *viper.Viper) 
 	flags.StringVar(&o.StorageClass, "source-storage-class-name", o.StorageClass, "provided to override the StorageClass of the point-in-Time image.")
 	flags.StringVar(&o.AccessMode, "source-access-mode", o.AccessMode, "provided to override the accessModes of the point-in-Time image. "+
 		"One of 'ReadWriteOnce|ReadOnlyMany|ReadWriteMany")
-	flags.StringVar(&o.VolumeSnapshotClassName, "source-volume-snapshot-class", o.VolumeSnapshotClassName, ""+
+	flags.StringVar(&o.VolumeSnapshotClassName, "source-volume-snapshot-class-name", o.VolumeSnapshotClassName, ""+
 		"name of VolumeSnapshotClass for the source volume, only if copyMethod is 'Snapshot'. If empty, default VSC will be used.")
 	flags.StringVar(&o.SourcePVC, "source-pvc", o.SourcePVC, "name of an existing PersistentVolumeClaim (PVC) to replicate.")
 	// TODO: Default to every 3min for source?
@@ -120,13 +120,13 @@ func (o *SetupReplicationOptions) bindFlags(cmd *cobra.Command, v *viper.Viper) 
 	flags.StringVar(&o.ServiceType, "source-service-type", o.ServiceType, ""+
 		"one of ClusterIP|LoadBalancer. Service type that will be created for incoming SSH connections. (default 'ClusterIP')")
 	// TODO: Defaulted in CLI, should it be??
-	flags.StringVar(&o.Name, "source-name", o.Name, "name of the ReplicationSource resource (default '<source-ns>-source')")
+	flags.StringVar(&o.SourceName, "source-name", o.SourceName, "name of the ReplicationSource resource (default '<source-ns>-source')")
 	// defaults to 22 after creation
 	flags.Int32Var(&o.Port, "source-port", o.Port, "SSH port to connect to for replication. (default 22)")
 	flags.StringVar(&o.Provider, "source-provider", o.Provider, "name of an external replication provider, if applicable. "+
 		"Provide as 'domain.com/provider'")
 	// TODO: I don't know how many params providers have? If a lot, can pass a file instead
-	flags.StringVar(&o.ProviderParameters, "source-provider-parameters", o.ProviderParameters, ""+
+	flags.StringVar(&o.ProviderParameters, "source-provider-params", o.ProviderParameters, ""+
 		"provider-specific key=value configuration parameters, for an external provider; pass 'key=value,key1=value1'")
 	// TODO: Defaulted with CLI, should it be??
 	if err := cmd.MarkFlagRequired("source-copy-method"); err != nil {
@@ -161,11 +161,11 @@ func (o *SetupReplicationOptions) Complete() error {
 	if err := o.RepOpts.Complete(); err != nil {
 		return err
 	}
-	if len(o.Name) == 0 {
-		o.Name = o.RepOpts.Source.Namespace + "-source"
+	if len(o.SourceName) == 0 {
+		o.SourceName = o.RepOpts.Source.Namespace + "-source"
 	}
-	if len(o.DestOpts.Name) == 0 {
-		o.DestOpts.Name = fmt.Sprintf("%s-destination", o.RepOpts.Dest.Namespace)
+	if len(o.DestOpts.DestName) == 0 {
+		o.DestOpts.DestName = fmt.Sprintf("%s-destination", o.RepOpts.Dest.Namespace)
 	}
 	if len(o.DestOpts.StorageClass) == 0 {
 		o.DestOpts.StorageClass = destPVCDefaultStorageClass
@@ -248,7 +248,7 @@ func (o *SetupReplicationOptions) StartReplication() error {
 	repDest := &volsyncv1alpha1.ReplicationDestination{}
 	nsName := types.NamespacedName{
 		Namespace: o.RepOpts.Dest.Namespace,
-		Name:      o.DestOpts.Name,
+		Name:      o.DestOpts.DestName,
 	}
 	var address *string
 	err := wait.PollImmediate(5*time.Second, 2*time.Minute, func() (bool, error) {
@@ -344,7 +344,7 @@ func (o *SetupReplicationOptions) StartReplication() error {
 			Kind:       "ReplicationSource",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      o.Name,
+			Name:      o.SourceName,
 			Namespace: o.RepOpts.Source.Namespace,
 		},
 		Spec: volsyncv1alpha1.ReplicationSourceSpec{
@@ -357,7 +357,7 @@ func (o *SetupReplicationOptions) StartReplication() error {
 	if err := o.RepOpts.Source.Client.Create(ctx, rs); err != nil {
 		return err
 	}
-	klog.Infof("ReplicationSource %s created in namespace %s", o.Name, o.RepOpts.Source.Namespace)
+	klog.Infof("ReplicationSource %s created in namespace %s", o.SourceName, o.RepOpts.Source.Namespace)
 	return nil
 }
 
@@ -513,7 +513,7 @@ func (o *SetupReplicationOptions) CreateDestination(ctx context.Context) error {
 			Kind:       "ReplicationDestination",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      o.DestOpts.Name,
+			Name:      o.DestOpts.DestName,
 			Namespace: o.RepOpts.Dest.Namespace,
 		},
 		Spec: volsyncv1alpha1.ReplicationDestinationSpec{
@@ -522,10 +522,10 @@ func (o *SetupReplicationOptions) CreateDestination(ctx context.Context) error {
 			External: externalSpec,
 		},
 	}
-	klog.V(2).Infof("Creating ReplicationDestination %s in namespace %s", o.DestOpts.Name, o.RepOpts.Dest.Namespace)
+	klog.V(2).Infof("Creating ReplicationDestination %s in namespace %s", o.DestOpts.DestName, o.RepOpts.Dest.Namespace)
 	if err := o.RepOpts.Dest.Client.Create(ctx, rd); err != nil {
 		return err
 	}
-	klog.V(0).Infof("ReplicationDestination %s created in namespace %s", o.DestOpts.Name, o.RepOpts.Dest.Namespace)
+	klog.V(0).Infof("ReplicationDestination %s created in namespace %s", o.DestOpts.DestName, o.RepOpts.Dest.Namespace)
 	return nil
 }

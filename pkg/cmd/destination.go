@@ -14,7 +14,7 @@ import (
 var destPVCDefaultStorageClass = ""
 
 type DestinationOptions struct {
-	Name                    string
+	DestName                string
 	Config                  Config
 	RepOpts                 ReplicationOptions
 	SSHKeysSecretOptions    SSHKeysSecretOptions
@@ -43,12 +43,12 @@ func (o *DestinationOptions) Bind(cmd *cobra.Command, v *viper.Viper) error {
 	flags.StringVar(&o.Address, "dest-address", o.Address, "the remote address to connect to for replication.")
 	// TODO: Defaulted with CLI, should it be??
 	flags.StringVar(&o.Capacity, "dest-capacity", "2Gi", "Size of the destination volume to create. Must be provided if --dest-pvc is not provided.")
-	flags.StringVar(&o.StorageClass, "dest-storage-class", o.StorageClass, ""+
+	flags.StringVar(&o.StorageClass, "dest-storage-class-name", o.StorageClass, ""+
 		"name of the StorageClass of the destination volume. If not set, the default StorageClass will be used.")
 	flags.StringVar(&o.AccessMode, "dest-access-mode", o.AccessMode, ""+
 		"the access modes for the destination volume. Must be provided if --dest-pvc is not provided. "+
 		"One of 'ReadWriteOnce|ReadOnlyMany|ReadWriteMany")
-	flags.StringVar(&o.VolumeSnapshotClassName, "dest-volume-snapshot-class", o.VolumeSnapshotClassName, ""+
+	flags.StringVar(&o.VolumeSnapshotClassName, "dest-volume-snapshot-class-name", o.VolumeSnapshotClassName, ""+
 		"name of the VolumeSnapshotClass to be used for the destination volume, only if the copyMethod is 'Snapshot'. "+
 		"If not set, the default VSC will be used.")
 	flags.StringVar(&o.DestPVC, "dest-pvc", o.DestPVC, ""+
@@ -61,11 +61,11 @@ func (o *DestinationOptions) Bind(cmd *cobra.Command, v *viper.Viper) error {
 	flags.StringVar(&o.ServiceType, "dest-service-type", o.ServiceType, ""+
 		"one of ClusterIP|LoadBalancer. Service type to be created for incoming SSH connections. (default 'ClusterIP')")
 	// TODO: Defaulted in CLI, should it be??
-	flags.StringVar(&o.Name, "dest-name", o.Name, "name of the ReplicationDestination resource. (default '<current-namespace>-volsync-destination')")
+	flags.StringVar(&o.DestName, "dest-name", o.DestName, "name of the ReplicationDestination resource. (default '<current-namespace>-volsync-destination')")
 	flags.Int32Var(&o.Port, "dest-port", o.Port, "SSH port to connect to for replication. (default 22)")
 	flags.StringVar(&o.Provider, "dest-provider", o.Provider, "name of an external replication provider, if applicable; pass as 'domain.com/provider'")
 	// TODO: I don't know how many params providers have? If a lot, can pass a file instead
-	flags.StringVar(&o.ProviderParameters, "dest-provider-parameters", o.ProviderParameters, ""+
+	flags.StringVar(&o.ProviderParameters, "dest-provider-params", o.ProviderParameters, ""+
 		"provider-specific key=value configuration parameters, for an external provider; pass 'key=value,key1=value1'")
 	// defaults to "/" after creation
 	flags.StringVar(&o.Path, "dest-path", o.Path, "the remote path to rsync to (default '/')")
