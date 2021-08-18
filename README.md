@@ -1,7 +1,9 @@
 # VolSync
 
 VolSync asynchronously replicates Kubernetes persistent volumes between clusters
-using either rsync or rclone depending on the number of destinations.
+using either [rsync](https://rsync.samba.org/) or [rclone](https://rclone.org/).
+It also supports creating backups of persistent volumes via
+[restic](https://restic.net/).
 
 [![Documentation
 Status](https://readthedocs.org/projects/volsync/badge/?version=latest)](https://volsync.readthedocs.io/en/latest/?badge=latest)
@@ -15,42 +17,52 @@ Card](https://goreportcard.com/badge/github.com/backube/volsync)](https://gorepo
 
 ## Getting started
 
-### Try VolSync in Kind
+The fastest way to get started is to install VolSync in a [kind
+cluster](https://kind.sigs.k8s.io/):
 
-For a convenient script to start a `kind cluster`, try this
-[script to setup a kind cluster](hack/setup-kind-cluster.sh).
+* Install kind if you don't already have it:  
+  `$ go install sigs.k8s.io/kind@latest`
+* Use our convenient script to start a cluster, install the CSI hostpath driver,
+  and the snapshot controller.  
+  `$ ./hack/setup-kind-cluster.sh`
+* Install the latest release via [Helm](https://helm.sh/)  
+  `$ helm repo add backube https://backube.github.io/helm-charts/`  
+  `$ helm install --create-namespace -n volsync-system volsync backube/volsync`
+* See the [usage
+  instructions](https://volsync.readthedocs.io/en/latest/usage/index.html) for
+  information on setting up replication relationships.
 
-### Try VolSync in a Kind, Kubernetes, or Openshift cluster
-
-Follow the steps in the [installation
-instructions](https://volsync.readthedocs.io/en/latest/installation/index.html).
-Here are
-[useful commands to configure cluster storage classes](https://volsync.readthedocs.io/en/latest/installation/index.html#configure-default-csi-storage).
+More detailed information on installation and usage can be found in the
+[official documentation](https://volsync.readthedocs.io/).
 
 ## VolSync kubectl plugin
 
-To try out VolSync with a command line interface `volsync`:
+We're also working on a command line interface to VolSync via a kubectl plugin.
+To try that out:
 
-```bash
+```console
 make cli
 cp bin/kubectl-volsync /usr/local/bin/
 ```
 
-**NOTE:** `volsync` tool is being actively developed. Options, flags,
-and names are likely to be updated frequently. PRs and new issues are welcome!
+**NOTE:** `volsync` plugin is being actively developed. Options, flags, and
+names are likely to be updated frequently. PRs and new issues are welcome!
 
 Available commands:
 
-```bash
+```console
 kubectl volsync start-replication
 kubectl volsync set-replication
 kubectl volsync continue-replication
 kubectl volsync remove-replication
 ```
 
-* Try the current examples:
-  * [single cluster cross namespace example](./docs/usage/rsync/db-example-cli.md)
-  * [multiple cluster example](./docs/usage/rsync/multi-context-sync-cli.md)
+Try the current examples:
+
+* [single cluster cross namespace
+  example](https://volsync.readthedocs.io/en/latest/usage/rsync/db_example_cli.html)
+* [multiple cluster
+  example](https://volsync.readthedocs.io/en/latest/usage/rsync/db_example_cli.html)
 
 ## Helpful links
 
