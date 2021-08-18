@@ -85,7 +85,8 @@ function do_prune {
 #   Timestamp in format YYYY-MM-DD HH:mm:ss.ns
 #######################################
 function trim_timestamp() {
-    local trimmed_timestamp=$(cut -d'.' -f1 <<<"$1")
+    local trimmed_timestamp
+    trimmed_timestamp=$(cut -d'.' -f1 <<<"$1")
     echo "${trimmed_timestamp}"
 }
 
@@ -98,7 +99,8 @@ function trim_timestamp() {
 #######################################
 function get_epoch_from_timestamp() {
     local timestamp="$1"
-    local date_as_epoch=$(date --date="${timestamp}" +%s)
+    local date_as_epoch
+    date_as_epoch=$(date --date="${timestamp}" +%s)
     echo "${date_as_epoch}"
 }
 
@@ -118,7 +120,7 @@ function reverse_array() {
     local -i left=0
     local -i right=$((${#_arr[@]} - 1))
 
-    while ((${left} < ${right})); do
+    while ((left < right)); do
         # triangle swap
         local -i temp="${_arr[$left]}"
         _arr[$left]="${_arr[$right]}"
@@ -151,14 +153,20 @@ function select_restic_snapshot_to_restore() {
     # create an associative array that maps numeric epoch to the restic snapshot IDs
     declare -A epochs_to_snapshots
 
+    # declare vars to be used in the loop
+    local snapshot_id
+    local snapshot_ts
+    local trimmed_timestamp
+    local snapshot_epoch 
+
     # go through the timestamps received from restic
     IFS=$'\n'
-    for line in $(restic -r ${RESTIC_REPOSITORY} snapshots | grep /data | awk '{print $1 "\t" $2 " " $3}'); do
+    for line in $(restic -r "${RESTIC_REPOSITORY}" snapshots | grep /data | awk '{print $1 "\t" $2 " " $3}'); do
         # extract the proper variables
-        local snapshot_id=$(echo -e ${line} | cut -d$'\t' -f1)
-        local snapshot_ts=$(echo -e ${line} | cut -d$'\t' -f2)
-        local trimmed_timestamp=$(trim_timestamp "${snapshot_ts}")
-        local snapshot_epoch=$(get_epoch_from_timestamp "${trimmed_timestamp}")
+        snapshot_id=$(echo -e "${line}" | cut -d$'\t' -f1)
+        snapshot_ts=$(echo -e "${line}" | cut -d$'\t' -f2)
+        trimmed_timestamp=$(trim_timestamp "${snapshot_ts}")
+        snapshot_epoch=$(get_epoch_from_timestamp "${trimmed_timestamp}")
         epochs+=("${snapshot_epoch}")
         epochs_to_snapshots[${snapshot_epoch}]="${snapshot_id}"
     done
@@ -167,11 +175,12 @@ function select_restic_snapshot_to_restore() {
     reverse_array epochs
 
     local -i offset=0
+    local target_epoch
     if [[ -n ${RESTORE_AS_OF} ]]; then
         # move to the position of the satisfying epoch
-        local target_epoch=$(get_epoch_from_timestamp "${RESTORE_AS_OF}")
-        while ((${offset} < ${#epochs[@]})); do 
-            if ((${epochs[${offset}]} <= ${target_epoch})); then
+        target_epoch=$(get_epoch_from_timestamp "${RESTORE_AS_OF}")
+        while ((offset < ${#epochs[@]})); do 
+            if ((${epochs[${offset}]} <= target_epoch)); then
                 break
             fi
             ((offset++))
@@ -181,14 +190,14 @@ function select_restic_snapshot_to_restore() {
     # offset the epoch selection if SELECT_PREVIOUS is defined
     if [[ -n ${SELECT_PREVIOUS} ]]; then
         local -i select_previous="${SELECT_PREVIOUS}"
-        ((offset+=${select_previous}))
+        ((offset+=select_previous))
     fi
 
     # when timestamp isnt provided, just retrieve the latest snapshot
-    if (( ${offset} < ${#epochs[@]} )); then
+    if (( offset < ${#epochs[@]} )); then
         local selected_epoch=${epochs[${offset}]}
         local selected_id=${epochs_to_snapshots[${selected_epoch}]}
-        echo ${selected_id}
+        echo "${selected_id}"
     fi
 }
 
@@ -207,11 +216,12 @@ function select_restic_snapshot_to_restore() {
 function do_restore {
     echo "=== Starting restore ==="
     # restore from specific snapshot specified by timestamp, or latest
-    local snapshot_id=$(select_restic_snapshot_to_restore)
+    local snapshot_id
+    snapshot_id=$(select_restic_snapshot_to_restore)
     if [[ -z ${snapshot_id} ]]; then 
         echo "No eligible snapshots found"
     else
-        pushd "${DATA_DIR}"
+    pushd "${DATA_DIR}"
         echo "Selected restic snapshot with id: ${snapshot_id}"
         restic restore -t . --host "${RESTIC_HOST}" "${snapshot_id}"
         popd
