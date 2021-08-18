@@ -1,7 +1,9 @@
 ---
 apiVersion: kuttl.dev/v1beta1
 kind: TestAssert
-timeout: 90
+timeout: 600
+collectors:
+  - selector: job-name=verify
 ---
 apiVersion: batch/v1
 kind: Job

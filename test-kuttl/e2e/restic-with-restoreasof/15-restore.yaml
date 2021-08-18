@@ -12,4 +12,3 @@ spec:
     copyMethod: None
     cacheCapacity: 1Gi
     restoreAsOf: 1980-08-10T23:59:59-04:00
-

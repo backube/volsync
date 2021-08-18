@@ -3,7 +3,8 @@
 set -e -o pipefail
 
 CURRENT_TIME=$(date --rfc-3339=seconds)
-TIME_ARRAY=("${CURRENT_TIME}")
+# split the time string by space so we can convert it to proper k8s date-time format
+read -r -a TIME_ARRAY <<< "${CURRENT_TIME}"
 DATE_TIME_STRING="${TIME_ARRAY[0]}T${TIME_ARRAY[1]}"
 # save the timestamp so it can be recalled later
 echo "${DATE_TIME_STRING}" > 22-timestamp.txt

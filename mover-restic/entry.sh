@@ -188,10 +188,8 @@ function select_restic_snapshot_to_restore() {
     fi
 
     # offset the epoch selection if SELECT_PREVIOUS is defined
-    if [[ -n ${SELECT_PREVIOUS} ]]; then
-        local -i select_previous="${SELECT_PREVIOUS}"
-        ((offset+=select_previous))
-    fi
+    local -i select_offset=${SELECT_PREVIOUS-0}
+    ((offset+=select_offset))
 
     # when timestamp isnt provided, just retrieve the latest snapshot
     if (( offset < ${#epochs[@]} )); then

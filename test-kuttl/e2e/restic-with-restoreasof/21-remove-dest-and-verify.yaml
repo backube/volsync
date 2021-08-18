@@ -8,4 +8,3 @@ delete:
 - apiVersion: volsync.backube/v1alpha1
   kind: ReplicationDestination
   name: restore
-
