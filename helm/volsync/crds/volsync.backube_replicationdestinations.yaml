@@ -173,9 +173,19 @@ spec:
                       instead of automatically provisioning one. Either this field
                       or both capacity and accessModes must be specified.
                     type: string
+                  previous:
+                    description: Previous specifies the number of image to skip before
+                      selecting one to restore from
+                    format: int32
+                    type: integer
                   repository:
                     description: Repository is the secret name containing repository
                       info
+                    type: string
+                  restoreAsOf:
+                    description: RestoreAsOf refers to the backup that is most recent
+                      as of that time.
+                    format: date-time
                     type: string
                   storageClassName:
                     description: storageClassName can be used to specify the StorageClass

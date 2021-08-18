@@ -1,0 +1,12 @@
+---
+apiVersion: kuttl.dev/v1beta1
+kind: TestAssert
+timeout: 180
+
+---
+kind: ReplicationDestination
+apiVersion: volsync.backube/v1alpha1
+metadata:
+  name: restore
+status:
+  lastManualSync: restore-once
