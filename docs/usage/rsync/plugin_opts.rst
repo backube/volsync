@@ -6,7 +6,7 @@ VolSync Plugin Options with Defaults
 These may be passed as :code:`key: value` pairs in a file, on the command-line, or a combination of both.
 Command-line values override the config file values.
 
-VolSync Plugin will look for this file in :code:`./config.yaml`, :code:`~/.volsyncconfig/config.yaml`, or from
+VolSync Plugin will look for this file in :code:`./config.yaml`, :code:`~/.volsync/config.yaml`, or from
 the command-line passed :code:`--config` value that is a path to a local file.
 
 .. code:: yaml

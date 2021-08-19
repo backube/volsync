@@ -75,8 +75,8 @@ config file is usually a good option. You can add any, some, or all flags
 to the config file. For multiple clusters, you must pass the source and destination
 contexts and cluster names.
 
-Create the config file at :code:`./config.yaml` *or* :code:`~/.volsyncconfig/config.yaml`,
-volsync will look for that file in the current directory or in :code:`~/.volsyncconfig`.
+Create the config file at :code:`./config.yaml` *or* :code:`~/.volsync/config.yaml`,
+volsync will look for that file in the current directory or in :code:`~/.volsync`.
 For complete list of options for a command, run the following or consult the API:
 
 .. code:: bash
