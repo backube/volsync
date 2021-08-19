@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -95,8 +94,8 @@ func (o *SourceOptions) Bind(cmd *cobra.Command, v *viper.Viper) error {
 	v.AddConfigPath(".")
 	v.SetConfigType("yaml")
 	if err := v.ReadInConfig(); err != nil {
-		var nf *viper.ConfigFileNotFoundError
-		if !errors.As(err, &nf) {
+		//nolint:errorlint
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
 			return err
 		}
 	}

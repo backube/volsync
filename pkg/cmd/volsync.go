@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -128,7 +127,7 @@ func (o *VolSyncDestinationOptions) Bind(cmd *cobra.Command, v *viper.Viper) {
 func (o *Config) bindFlags(cmd *cobra.Command, v *viper.Viper) {
 	flags := cmd.Flags()
 	flags.StringVar(&o.config, "config", o.config, ""+
-		"the path to file holding flag values. If empty, looks for ./config.yaml then ~/.volsyncconfig/config.yaml. "+
+		"the path to file holding flag values. If empty, looks for ./config.yaml then ~/.volsync/config.yaml. "+
 		"Command line values override config file.")
 	flags.VisitAll(func(f *pflag.Flag) {
 		// Apply the viper config value to the flag when the flag is not set and viper has a value
@@ -144,7 +143,7 @@ func (o *Config) complete(v *viper.Viper) error {
 	if err != nil {
 		return err
 	}
-	configPath := filepath.Join(home, ".volsyncconfig")
+	configPath := filepath.Join(home, ".volsync")
 	v.SetConfigName(volsyncConfig)
 	v.AddConfigPath(configPath)
 	v.SetConfigType("yaml")
@@ -170,8 +169,8 @@ func (o *Config) complete(v *viper.Viper) error {
 		}
 	}
 	if err = v.ReadInConfig(); err != nil {
-		var nf *viper.ConfigFileNotFoundError
-		if !errors.As(err, &nf) {
+		//nolint:errorlint
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
 			return err
 		}
 	}
@@ -312,6 +311,6 @@ func writeToConfig(source, configFile string) error {
 	if err != nil {
 		return err
 	}
-	klog.V(2).Infof("Wrote config %s to ~/.volsyncconfig/volsync-config.yaml", source)
+	klog.V(2).Infof("Wrote config %s to ~/.volsync/config.yaml", source)
 	return nil
 }
