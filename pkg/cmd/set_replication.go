@@ -243,16 +243,17 @@ func (o *FinalizeOptions) SetReplication() error {
 		destOpts := ResourceOptions{
 			PVC: o.destPVC,
 		}
+		sourceOpts := ResourceOptions{
+			PVC:          srcPVC.Name,
+			StorageClass: o.destStorageClass,
+		}
 		repOpts := &SetupReplicationOptions{
 			RepOpts: o.RepOpts,
 			Dest: DestinationOptions{
 				destOpts,
 			},
 			Source: SourceOptions{
-				ResourceOptions: ResourceOptions{
-					PVC:          srcPVC.Name,
-					StorageClass: o.destStorageClass,
-				},
+				sourceOpts,
 			},
 		}
 		if len(o.destCapacity) == 0 {
