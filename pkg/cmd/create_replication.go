@@ -2,13 +2,11 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	corev1 "k8s.io/api/core/v1"
 	kerrs "k8s.io/apimachinery/pkg/api/errors"
@@ -49,24 +47,10 @@ var (
 )
 
 type SetupReplicationOptions struct {
-	SourceName              string
-	Config                  Config
-	RepOpts                 ReplicationOptions
-	SSHKeysSecretOptions    SSHKeysSecretOptions
-	DestOpts                DestinationOptions
-	SourcePVC               string
-	Schedule                string
-	CopyMethod              string
-	Capacity                string
-	StorageClass            string
-	AccessMode              string
-	VolumeSnapshotClassName string
-	SSHUser                 string
-	ServiceType             string
-	Port                    int32
-	RcloneConfig            string
-	Provider                string
-	ProviderParameters      string
+	RepOpts ReplicationOptions
+	Dest    DestinationOptions
+	Source  SourceOptions
+
 	genericclioptions.IOStreams
 }
 
@@ -91,84 +75,27 @@ func NewCmdVolSyncStartReplication(streams genericclioptions.IOStreams) *cobra.C
 			kcmdutil.CheckErr(o.StartReplication())
 		},
 	}
-	kcmdutil.CheckErr(o.Config.Bind(cmd, v))
-	kcmdutil.CheckErr(o.DestOpts.Bind(cmd, v))
+	kcmdutil.CheckErr(o.Source.Config.Bind(cmd, v))
+	kcmdutil.CheckErr(o.Dest.Bind(cmd, v))
 	o.RepOpts.Bind(cmd, v)
-	o.SSHKeysSecretOptions.Bind(cmd, v)
-	kcmdutil.CheckErr(o.Bind(cmd, v))
+	o.Source.SSHKeysSecretOptions.Bind(cmd, v)
+	kcmdutil.CheckErr(o.Source.Bind(cmd, v))
 
 	return cmd
-}
-
-//nolint:lll
-func (o *SetupReplicationOptions) bindFlags(cmd *cobra.Command, v *viper.Viper) error {
-	flags := cmd.Flags()
-	flags.StringVar(&o.CopyMethod, "source-copy-method", o.CopyMethod, "the method of creating a point-in-time image of the source volume. "+
-		"one of 'None|Clone|Snapshot'")
-	flags.StringVar(&o.Capacity, "source-capacity", o.Capacity, "provided to override the capacity of the point-in-Time image.")
-	flags.StringVar(&o.StorageClass, "source-storage-class-name", o.StorageClass, "provided to override the StorageClass of the point-in-Time image.")
-	flags.StringVar(&o.AccessMode, "source-access-mode", o.AccessMode, "provided to override the accessModes of the point-in-Time image. "+
-		"One of 'ReadWriteOnce|ReadOnlyMany|ReadWriteMany")
-	flags.StringVar(&o.VolumeSnapshotClassName, "source-volume-snapshot-class-name", o.VolumeSnapshotClassName, ""+
-		"name of VolumeSnapshotClass for the source volume, only if copyMethod is 'Snapshot'. If empty, default VSC will be used.")
-	flags.StringVar(&o.SourcePVC, "source-pvc", o.SourcePVC, "name of an existing PersistentVolumeClaim (PVC) to replicate.")
-	// TODO: Default to every 3min for source?
-	flags.StringVar(&o.Schedule, "source-cron-spec", "*/5 * * * *", "cronspec to be used to schedule capturing the state of the source volume.")
-	// Defaults to "root" after creation
-	flags.StringVar(&o.SSHUser, "source-ssh-user", o.SSHUser, "username for outgoing SSH connections (default 'root')")
-	// Defaults to ClusterIP after creation
-	flags.StringVar(&o.ServiceType, "source-service-type", o.ServiceType, ""+
-		"one of ClusterIP|LoadBalancer. Service type that will be created for incoming SSH connections. (default 'ClusterIP')")
-	// TODO: Defaulted in CLI, should it be??
-	flags.StringVar(&o.SourceName, "source-name", o.SourceName, "name of the ReplicationSource resource (default '<source-ns>-source')")
-	// defaults to 22 after creation
-	flags.Int32Var(&o.Port, "source-port", o.Port, "SSH port to connect to for replication. (default 22)")
-	flags.StringVar(&o.Provider, "source-provider", o.Provider, "name of an external replication provider, if applicable. "+
-		"Provide as 'domain.com/provider'")
-	// TODO: I don't know how many params providers have? If a lot, can pass a file instead
-	flags.StringVar(&o.ProviderParameters, "source-provider-params", o.ProviderParameters, ""+
-		"provider-specific key=value configuration parameters, for an external provider; pass 'key=value,key1=value1'")
-	// TODO: Defaulted with CLI, should it be??
-	if err := cmd.MarkFlagRequired("source-copy-method"); err != nil {
-		return err
-	}
-	if err := cmd.MarkFlagRequired("source-pvc"); err != nil {
-		return err
-	}
-	flags.VisitAll(func(f *pflag.Flag) {
-		if !f.Changed && v.IsSet(f.Name) {
-			val := v.Get(f.Name)
-			kcmdutil.CheckErr(flags.Set(f.Name, fmt.Sprintf("%v", val)))
-		}
-	})
-	return nil
-}
-
-func (o *SetupReplicationOptions) Bind(cmd *cobra.Command, v *viper.Viper) error {
-	v.SetConfigName(volsyncConfig)
-	v.AddConfigPath(".")
-	v.SetConfigType("yaml")
-	if err := v.ReadInConfig(); err != nil {
-		var nf *viper.ConfigFileNotFoundError
-		if !errors.As(err, &nf) {
-			return err
-		}
-	}
-	return o.bindFlags(cmd, v)
 }
 
 func (o *SetupReplicationOptions) Complete() error {
 	if err := o.RepOpts.Complete(); err != nil {
 		return err
 	}
-	if len(o.SourceName) == 0 {
-		o.SourceName = o.RepOpts.Source.Namespace + "-source"
+	if len(o.Source.Name) == 0 {
+		o.Source.Name = o.RepOpts.Source.Namespace + "-source"
 	}
-	if len(o.DestOpts.DestName) == 0 {
-		o.DestOpts.DestName = fmt.Sprintf("%s-destination", o.RepOpts.Dest.Namespace)
+	if len(o.Dest.Name) == 0 {
+		o.Dest.Name = fmt.Sprintf("%s-destination", o.RepOpts.Dest.Namespace)
 	}
-	if len(o.DestOpts.StorageClass) == 0 {
-		o.DestOpts.StorageClass = destPVCDefaultStorageClass
+	if len(o.Dest.StorageClass) == 0 {
+		o.Dest.StorageClass = destPVCDefaultStorageClass
 	}
 	if err := o.Validate(); err != nil {
 		return err
@@ -178,16 +105,16 @@ func (o *SetupReplicationOptions) Complete() error {
 
 //nolint:lll
 func (o *SetupReplicationOptions) Validate() error {
-	if len(o.CopyMethod) == 0 {
+	if len(o.Source.CopyMethod) == 0 {
 		return fmt.Errorf("must provide --source-copy-method; one of 'None|Clone|Snapshot'")
 	}
-	if len(o.DestOpts.CopyMethod) == 0 {
+	if len(o.Dest.CopyMethod) == 0 {
 		return fmt.Errorf("must provide --dest-copy-method; one of 'None|Clone|Snapshot'")
 	}
-	if len(o.DestOpts.Capacity) == 0 && len(o.DestOpts.DestPVC) == 0 {
+	if len(o.Dest.Capacity) == 0 && len(o.Dest.PVC) == 0 {
 		return fmt.Errorf("must either provide --dest-capacity & --dest-access-mode OR --dest-pvc")
 	}
-	if len(o.DestOpts.AccessMode) == 0 && len(o.DestOpts.DestPVC) == 0 {
+	if len(o.Dest.AccessMode) == 0 && len(o.Dest.PVC) == 0 {
 		return fmt.Errorf("must either provide --dest-capacity & --dest-access-mode OR --dest-pvc")
 	}
 	return nil
@@ -195,34 +122,34 @@ func (o *SetupReplicationOptions) Validate() error {
 
 func (o *SetupReplicationOptions) sourceCommonOptions() error {
 	sharedOpts := &sharedOptions{
-		CopyMethod:              o.CopyMethod,
-		Capacity:                o.Capacity,
-		StorageClass:            o.StorageClass,
-		AccessMode:              o.AccessMode,
-		VolumeSnapshotClassName: o.VolumeSnapshotClassName,
-		SSHUser:                 o.SSHUser,
-		ServiceType:             o.ServiceType,
-		Port:                    o.Port,
-		RcloneConfig:            o.RcloneConfig,
-		Provider:                o.Provider,
-		ProviderParameters:      o.ProviderParameters,
+		CopyMethod:              o.Source.CopyMethod,
+		Capacity:                o.Source.Capacity,
+		StorageClass:            o.Source.StorageClass,
+		AccessMode:              o.Source.AccessMode,
+		VolumeSnapshotClassName: o.Source.VolumeSnapshotClassName,
+		SSHUser:                 o.Source.SSHUser,
+		ServiceType:             o.Source.ServiceType,
+		Port:                    o.Source.Port,
+		RcloneConfig:            o.Source.RcloneConfig,
+		Provider:                o.Source.Provider,
+		ProviderParameters:      o.Source.ProviderParameters,
 	}
 	return o.getCommonOptions(sharedOpts, volsyncSource)
 }
 
 func (o *SetupReplicationOptions) destCommonOptions() error {
 	sharedOpts := &sharedOptions{
-		CopyMethod:              o.DestOpts.CopyMethod,
-		Capacity:                o.DestOpts.Capacity,
-		StorageClass:            o.DestOpts.StorageClass,
-		AccessMode:              o.DestOpts.AccessMode,
-		VolumeSnapshotClassName: o.DestOpts.VolumeSnapshotClassName,
-		SSHUser:                 o.DestOpts.SSHUser,
-		ServiceType:             o.DestOpts.ServiceType,
-		Port:                    o.DestOpts.Port,
-		RcloneConfig:            o.DestOpts.RcloneConfig,
-		Provider:                o.DestOpts.Provider,
-		ProviderParameters:      o.DestOpts.ProviderParameters,
+		CopyMethod:              o.Dest.CopyMethod,
+		Capacity:                o.Dest.Capacity,
+		StorageClass:            o.Dest.StorageClass,
+		AccessMode:              o.Dest.AccessMode,
+		VolumeSnapshotClassName: o.Dest.VolumeSnapshotClassName,
+		SSHUser:                 o.Dest.SSHUser,
+		ServiceType:             o.Dest.ServiceType,
+		Port:                    o.Dest.Port,
+		RcloneConfig:            o.Dest.RcloneConfig,
+		Provider:                o.Dest.Provider,
+		ProviderParameters:      o.Dest.ProviderParameters,
 	}
 	return o.getCommonOptions(sharedOpts, volsyncDest)
 }
@@ -248,7 +175,7 @@ func (o *SetupReplicationOptions) StartReplication() error {
 	repDest := &volsyncv1alpha1.ReplicationDestination{}
 	nsName := types.NamespacedName{
 		Namespace: o.RepOpts.Dest.Namespace,
-		Name:      o.DestOpts.DestName,
+		Name:      o.Dest.Name,
 	}
 	var address *string
 	err := wait.PollImmediate(5*time.Second, 2*time.Minute, func() (bool, error) {
@@ -273,8 +200,8 @@ func (o *SetupReplicationOptions) StartReplication() error {
 
 	var sshKeysSecret *string
 	switch {
-	case len(o.SSHKeysSecretOptions.SSHKeysSecret) > 0:
-		sshKeysSecret = &o.SSHKeysSecretOptions.SSHKeysSecret
+	case len(o.Source.SSHKeysSecretOptions.SSHKeysSecret) > 0:
+		sshKeysSecret = &o.Source.SSHKeysSecretOptions.SSHKeysSecret
 	default:
 		s := fmt.Sprintf("volsync-rsync-dest-src-%s", repDest.Name)
 		sshKeysSecret = &s
@@ -311,9 +238,9 @@ func (o *SetupReplicationOptions) StartReplication() error {
 	}
 
 	triggerSpec := &volsyncv1alpha1.ReplicationSourceTriggerSpec{
-		Schedule: &o.Schedule,
+		Schedule: &o.Source.Schedule,
 	}
-	if len(o.Schedule) == 0 {
+	if len(o.Source.Schedule) == 0 {
 		triggerSpec = nil
 	}
 	rsyncSpec := &volsyncv1alpha1.ReplicationSourceRsyncSpec{
@@ -344,11 +271,11 @@ func (o *SetupReplicationOptions) StartReplication() error {
 			Kind:       "ReplicationSource",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      o.SourceName,
+			Name:      o.Source.Name,
 			Namespace: o.RepOpts.Source.Namespace,
 		},
 		Spec: volsyncv1alpha1.ReplicationSourceSpec{
-			SourcePVC: o.SourcePVC,
+			SourcePVC: o.Source.PVC,
 			Trigger:   triggerSpec,
 			Rsync:     rsyncSpec,
 			External:  externalSpec,
@@ -357,16 +284,16 @@ func (o *SetupReplicationOptions) StartReplication() error {
 	if err := o.RepOpts.Source.Client.Create(ctx, rs); err != nil {
 		return err
 	}
-	klog.Infof("ReplicationSource %s created in namespace %s", o.SourceName, o.RepOpts.Source.Namespace)
+	klog.Infof("ReplicationSource %s created in namespace %s", o.Source.Name, o.RepOpts.Source.Namespace)
 	return nil
 }
 
 // NameDestinationPVC returns the name that will be given to the destination PVC
 func (o *SetupReplicationOptions) NameDestinationPVC(ctx context.Context) (string, error) {
 	// can't have 2 PVCs in same ns, same name
-	destPVCName := o.DestOpts.DestPVC
+	destPVCName := o.Dest.PVC
 	if len(destPVCName) == 0 {
-		destPVCName = o.SourcePVC
+		destPVCName = o.Source.PVC
 	}
 
 	// check for PVC of same name in dest location. If so, then tag the new PVC to avoid name conflict
@@ -384,7 +311,7 @@ func (o *SetupReplicationOptions) NameDestinationPVC(ctx context.Context) (strin
 		}
 	}
 
-	if len(o.DestOpts.DestPVC) == 0 || destPVCExists {
+	if len(o.Dest.PVC) == 0 || destPVCExists {
 		t := time.Now().Format("2006-01-02T15:04:05")
 		tag := strings.ReplaceAll(t, ":", "-")
 		destPVCName = strings.ToLower(fmt.Sprintf("%s-%s", destPVCName, tag))
@@ -396,7 +323,7 @@ func (o *SetupReplicationOptions) GetSourcePVC(ctx context.Context) (*corev1.Per
 	srcPVC := &corev1.PersistentVolumeClaim{}
 	nsName := types.NamespacedName{
 		Namespace: o.RepOpts.Source.Namespace,
-		Name:      o.SourcePVC,
+		Name:      o.Source.PVC,
 	}
 	if err := o.RepOpts.Source.Client.Get(ctx, nsName, srcPVC); err != nil {
 		return nil, err
@@ -460,23 +387,23 @@ func (o *SetupReplicationOptions) CreateDestination(ctx context.Context) error {
 	}
 	var sshKeysSecret *string
 	switch {
-	case len(o.SSHKeysSecretOptions.SSHKeysSecret) > 0:
-		sshKeysSecret = &o.SSHKeysSecretOptions.SSHKeysSecret
+	case len(o.Source.SSHKeysSecretOptions.SSHKeysSecret) > 0:
+		sshKeysSecret = &o.Source.SSHKeysSecretOptions.SSHKeysSecret
 	default:
 		sshKeysSecret = nil
 	}
 	triggerSpec := &volsyncv1alpha1.ReplicationDestinationTriggerSpec{
-		Schedule: &o.DestOpts.Schedule,
+		Schedule: &o.Dest.Schedule,
 	}
-	if len(o.DestOpts.Schedule) == 0 {
+	if len(o.Dest.Schedule) == 0 {
 		triggerSpec = nil
 	}
-	address := &o.DestOpts.Address
-	if len(o.DestOpts.Address) == 0 {
+	address := &o.Dest.Address
+	if len(o.Dest.Address) == 0 {
 		address = nil
 	}
-	path := &o.DestOpts.Path
-	if len(o.DestOpts.Path) == 0 {
+	path := &o.Dest.Path
+	if len(o.Dest.Path) == 0 {
 		path = nil
 	}
 
@@ -497,7 +424,7 @@ func (o *SetupReplicationOptions) CreateDestination(ctx context.Context) error {
 		Path:        path,
 	}
 
-	if o.RepOpts.Dest.CopyMethod != volsyncv1alpha1.CopyMethodNone && len(o.DestOpts.DestPVC) == 0 {
+	if o.RepOpts.Dest.CopyMethod != volsyncv1alpha1.CopyMethodNone && len(o.Dest.PVC) == 0 {
 		rsyncSpec.ReplicationDestinationVolumeOptions.DestinationPVC = nil
 	}
 	var externalSpec *volsyncv1alpha1.ReplicationDestinationExternalSpec
@@ -513,7 +440,7 @@ func (o *SetupReplicationOptions) CreateDestination(ctx context.Context) error {
 			Kind:       "ReplicationDestination",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      o.DestOpts.DestName,
+			Name:      o.Dest.Name,
 			Namespace: o.RepOpts.Dest.Namespace,
 		},
 		Spec: volsyncv1alpha1.ReplicationDestinationSpec{
@@ -522,10 +449,10 @@ func (o *SetupReplicationOptions) CreateDestination(ctx context.Context) error {
 			External: externalSpec,
 		},
 	}
-	klog.V(2).Infof("Creating ReplicationDestination %s in namespace %s", o.DestOpts.DestName, o.RepOpts.Dest.Namespace)
+	klog.V(2).Infof("Creating ReplicationDestination %s in namespace %s", o.Dest.Name, o.RepOpts.Dest.Namespace)
 	if err := o.RepOpts.Dest.Client.Create(ctx, rd); err != nil {
 		return err
 	}
-	klog.V(0).Infof("ReplicationDestination %s created in namespace %s", o.DestOpts.DestName, o.RepOpts.Dest.Namespace)
+	klog.V(0).Infof("ReplicationDestination %s created in namespace %s", o.Dest.Name, o.RepOpts.Dest.Namespace)
 	return nil
 }

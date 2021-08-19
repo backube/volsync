@@ -240,14 +240,20 @@ func (o *FinalizeOptions) SetReplication() error {
 		}
 	} else {
 		// if destPVC is empty, destination PVC name will be generated from source PVC
-		destOpts := DestinationOptions{
-			DestPVC: o.destPVC,
+		destOpts := ResourceOptions{
+			PVC: o.destPVC,
 		}
 		repOpts := &SetupReplicationOptions{
-			RepOpts:      o.RepOpts,
-			DestOpts:     destOpts,
-			SourcePVC:    srcPVC.Name,
-			StorageClass: o.destStorageClass,
+			RepOpts: o.RepOpts,
+			Dest: DestinationOptions{
+				destOpts,
+			},
+			Source: SourceOptions{
+				ResourceOptions: ResourceOptions{
+					PVC:          srcPVC.Name,
+					StorageClass: o.destStorageClass,
+				},
+			},
 		}
 		if len(o.destCapacity) == 0 {
 			repOpts.RepOpts.Dest.Capacity = srcPVC.Spec.Resources.Requests[corev1.ResourceStorage]
