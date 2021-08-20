@@ -18,6 +18,5 @@ Steps:
 - 24 - Remove attached pods
 - 25 - Append new data into the source volume
 - 26 - Create a new restore snapshot
-- 27 - Attempt to restore from a snapshot made earlier than the previously recorded
-timestamp
+- 27 - Try restoring from a snapshot earlier than the previously recorded timestamp
 - 28 - Verify that the restore did not take place
