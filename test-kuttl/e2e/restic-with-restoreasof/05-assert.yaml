@@ -1,3 +1,7 @@
+apiVersion: kuttl.dev/v1beta1
+kind: TestAssert
+timeout: 360
+
 ---
 kind: Pod
 apiVersion: v1
