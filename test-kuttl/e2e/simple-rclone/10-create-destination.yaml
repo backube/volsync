@@ -5,7 +5,7 @@ metadata:
   name: destination
 spec:
   trigger:
-    schedule: "*/5 * * * *"
+    schedule: "*/2 * * * *"
   rclone:
     rcloneConfigSection: "rclone-data-mover"
     rcloneDestPath: "volsync-test-bucket"
