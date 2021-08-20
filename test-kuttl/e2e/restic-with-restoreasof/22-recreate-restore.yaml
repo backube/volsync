@@ -1,7 +1,7 @@
-# issues a command to create the restic secret
+# issues a command to recreate the restic snapshot
 ---
 apiVersion: kuttl.dev/v1beta1
 kind: TestStep
 commands:
-  - timeout: 600
+  - timeout: 2400
     command: ./22-recreate-restore.sh
