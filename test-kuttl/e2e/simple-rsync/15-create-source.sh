@@ -14,7 +14,7 @@ metadata:
 spec:
   sourcePVC: data-source
   trigger:
-    schedule: "*/2 * * * *"
+    schedule: "*/10 * * * *"
   rsync:
     sshKeys: $KEYNAME
     address: $ADDRESS
