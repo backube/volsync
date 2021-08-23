@@ -13,7 +13,7 @@ metadata:
   name: restic-repo
 type: Opaque
 stringData:
-  RESTIC_REPOSITORY: s3:http://minio.minio.svc.cluster.local:9000/restic-bucket
+  RESTIC_REPOSITORY: s3:http://minio.minio.svc.cluster.local:9000/restic-manual-trigger
   RESTIC_PASSWORD: ThisIsTheResticPassword
   AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY}
   AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY}
