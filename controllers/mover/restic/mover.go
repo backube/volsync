@@ -268,7 +268,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 		}
 		utils.MarkForCleanup(m.owner, job)
 		job.Spec.Template.ObjectMeta.Name = job.Name
-		backoffLimit := int32(999999999)
+		backoffLimit := int32(8)
 		job.Spec.BackoffLimit = &backoffLimit
 		parallelism := int32(1)
 		if m.paused {

@@ -4,7 +4,6 @@ kind: Job
 metadata:
   name: verify
 spec:
-  backoffLimit: 99
   template:
     spec:
       containers:

@@ -191,7 +191,7 @@ function select_restic_snapshot_to_restore() {
     local -i select_offset=${SELECT_PREVIOUS-0}
     ((offset+=select_offset))
 
-    # when timestamp isnt provided, just retrieve the latest snapshot
+    # if there is a snapshot matching the provided parameters
     if (( offset < ${#epochs[@]} )); then
         local selected_epoch=${epochs[${offset}]}
         local selected_id=${epochs_to_snapshots[${selected_epoch}]}

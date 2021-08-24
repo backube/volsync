@@ -3,5 +3,5 @@
 apiVersion: kuttl.dev/v1beta1
 kind: TestStep
 commands:
-  - timeout: 2400
+  - timeout: 600
     command: ./22-recreate-restore.sh
