@@ -1,0 +1,42 @@
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: data-dest
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: affinity-setter
+spec:
+  template:
+    spec:
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: affinity
+                    operator: In
+                    values:
+                      - source
+              topologyKey: topology.kubernetes.io/zone
+      containers:
+        - name: busybox
+          image: busybox
+          command: ["/bin/true"]
+          volumeMounts:
+            - name: data-dest
+              mountPath: "/mnt"
+      volumes:
+        - name: data-dest
+          persistentVolumeClaim:
+            claimName: data-dest
+      restartPolicy: Never

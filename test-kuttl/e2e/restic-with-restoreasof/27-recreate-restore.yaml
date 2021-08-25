@@ -1,0 +1,7 @@
+# issues a command to create the replicationdestination
+---
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+commands:
+  - timeout: 360
+    command: ./27-recreate-restore.sh

@@ -205,7 +205,18 @@ cacheAccessModes
    This is the access mode(s) that should be used to provision the cache volume.
    It defaults to ``.spec.accessModes``, then to the access modes used by the
    source PVC.
+previous
+   Non-negative integer which specifies an offset for how many snapshots ago we want to restore 
+   from. When ``restoreAsOf`` is provided, the behavior is the same, however 
+   the starting snapshot considered will be the first one taken before ``restoreAsOf``.
 repository
    This is the name of the Secret (in the same Namespace) that holds the
    connection information for the backup repository. The repository path should
    be unique for each PV.
+restoreAsOf
+   An RFC-3339 timestamp which specifies an upper-limit on the snapshots that 
+   we should be looking through when preparing to restore. Snapshots made 
+   after this timestamp will not be considered. 
+   Note: though this is an RFC-3339 timestamp, Kubernetes will only accept ones
+   with the day and hour fields separated by a ``T``. E.g, ``2022-08-10T20:01:03-04:00``
+   will work but ``2022-08-10 20:01:03-04:00`` will fail.  

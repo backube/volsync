@@ -1,0 +1,21 @@
+---
+kind: Pod
+apiVersion: v1
+metadata:
+  name: source
+  labels:
+    affinity: source
+spec:
+  containers:
+    - name: busybox
+      image: busybox
+      command: ["/bin/sh", "-c"]
+      args: ["echo 'newdata' >> /mnt/datafile; sync; sleep 99999"]
+      volumeMounts:
+        - name: data
+          mountPath: "/mnt"
+  terminationGracePeriodSeconds: 2
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: data-source

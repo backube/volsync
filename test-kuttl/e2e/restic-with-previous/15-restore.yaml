@@ -1,0 +1,14 @@
+---
+apiVersion: volsync.backube/v1alpha1
+kind: ReplicationDestination
+metadata:
+  name: restore
+spec:
+  trigger:
+    manual: restore-once
+  restic:
+    repository: restic-repo
+    destinationPVC: data-dest
+    copyMethod: None
+    cacheCapacity: 1Gi
+    previous: 9999

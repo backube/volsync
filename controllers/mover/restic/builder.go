@@ -112,5 +112,7 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		isSource:              false,
 		paused:                destination.Spec.Paused,
 		mainPVCName:           destination.Spec.Restic.DestinationPVC,
+		restoreAsOf:           destination.Spec.Restic.RestoreAsOf,
+		previous:              destination.Spec.Restic.Previous,
 	}, nil
 }

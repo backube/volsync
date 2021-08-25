@@ -20,6 +20,7 @@ package restic
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -62,6 +63,9 @@ type Mover struct {
 	pruneInterval *int32
 	retainPolicy  *volsyncv1alpha1.ResticRetainPolicy
 	sourceStatus  *volsyncv1alpha1.ReplicationSourceResticStatus
+	// Destination-only fields
+	previous    *int32
+	restoreAsOf *string
 }
 
 var _ mover.Mover = &Mover{}
@@ -273,6 +277,9 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 		job.Spec.Parallelism = &parallelism
 		forgetOptions := generateForgetOptions(m.retainPolicy)
 		runAsUser := int64(0)
+		// set default values
+		var restoreAsOf = ""
+		var previous = strconv.Itoa(int(int32(0)))
 
 		var actions []string
 		if m.isSource {
@@ -282,6 +289,13 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 			}
 		} else {
 			actions = []string{"restore"}
+			// set the restore selection options when the mover has them
+			if m.restoreAsOf != nil {
+				restoreAsOf = *m.restoreAsOf
+			}
+			if m.previous != nil {
+				previous = strconv.Itoa(int(*m.previous))
+			}
 		}
 		logger.Info("job actions", "actions", actions)
 
@@ -291,6 +305,8 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 				{Name: "FORGET_OPTIONS", Value: forgetOptions},
 				{Name: "DATA_DIR", Value: mountPath},
 				{Name: "RESTIC_CACHE_DIR", Value: resticCacheMountPath},
+				{Name: "RESTORE_AS_OF", Value: restoreAsOf},
+				{Name: "SELECT_PREVIOUS", Value: previous},
 				// We populate environment variables from the restic repo
 				// Secret. They are taken 1-for-1 from the Secret into env vars.
 				// The allowed variables are defined by restic.

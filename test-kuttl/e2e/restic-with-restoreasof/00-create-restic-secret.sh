@@ -1,5 +1,5 @@
 #! /bin/bash
-
+# creates the base restic secret 
 set -e -o pipefail
 
 MINIO_ACCESS_KEY=$(kubectl get secret --namespace minio minio -o jsonpath="{.data.access-key}" | base64 --decode)
@@ -13,7 +13,7 @@ metadata:
   name: restic-repo
 type: Opaque
 stringData:
-  RESTIC_REPOSITORY: s3:http://minio.minio.svc.cluster.local:9000/restic-manual-trigger
+  RESTIC_REPOSITORY: s3:http://minio.minio.svc.cluster.local:9000/restic-restoreasof
   RESTIC_PASSWORD: ThisIsTheResticPassword
   AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY}
   AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY}
