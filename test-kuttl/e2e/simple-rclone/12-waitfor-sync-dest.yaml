@@ -2,6 +2,5 @@
 apiVersion: kuttl.dev/v1beta1
 kind: TestStep
 commands:
-  # Timeout must be longer than sync interval in ReplicationDestination
-  - timeout: 150
+  - timeout: 300
     command: ./12-waitfor-sync-dest.sh
