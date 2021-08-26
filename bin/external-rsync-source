@@ -11,6 +11,7 @@ OPTIONS:
    -d   Destination address to rsync the data
    -h   Help
    -i   Path to SSH key
+   -p   [optional] Port number to rsync the data
    -s   Source directory
 EOF
 }
@@ -24,8 +25,8 @@ while getopts h:s:d:i:p: flag
 do
     case "${flag}" in
         d) DESTINATION_ADDRESS=${OPTARG};;
-        p) PORT=${OPTARG};;
         i) SSHKEY=${OPTARG};;
+        p) PORT=${OPTARG};;
         s) SOURCE=${OPTARG};;
         h)
             usage
@@ -42,7 +43,7 @@ then
 fi
 
 if [ "$PORT" ]; then
-	SSHOPTS="-o ServerAliveInterval=30 -o ServerAliveCountMax=4 -o TCPKeepAlive=no -o ControlPersist=5 -o ConnectTimeout=30 -o ControlMaster=auto -o CheckHostIP=no -p $PORT"
+	SSHOPTS+=" -p $PORT"
 fi
 
 ssh-keygen -F ${DESTINATION_ADDRESS} 2>/dev/null 1>/dev/null
