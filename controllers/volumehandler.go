@@ -339,7 +339,7 @@ func (h *sourceVolumeHandler) pvcFromSnap(l logr.Logger) (bool, error) {
 				}
 			} else {
 				h.PVC.Spec.Resources.Requests = corev1.ResourceList{
-					corev1.ResourceStorage: *h.srcPVC.Spec.Resources.Requests.Storage(),
+					corev1.ResourceStorage: *h.srcPVC.Status.Capacity.Storage(),
 				}
 			}
 			if h.Options.StorageClassName != nil {
@@ -427,7 +427,7 @@ func (h *sourceVolumeHandler) ensureClone(l logr.Logger) (bool, error) {
 				}
 			} else {
 				h.PVC.Spec.Resources.Requests = corev1.ResourceList{
-					corev1.ResourceStorage: *h.srcPVC.Spec.Resources.Requests.Storage(),
+					corev1.ResourceStorage: *h.srcPVC.Status.Capacity.Storage(),
 				}
 			}
 			if h.Options.StorageClassName != nil {
