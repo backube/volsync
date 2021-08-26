@@ -190,6 +190,12 @@ func (o *SetupReplicationOptions) StartReplication() error {
 			klog.Infof("Waiting for ReplicationDestination %s RSync address to populate", repDest.Name)
 			return false, nil
 		}
+
+		if repDest.Status.Rsync.SSHKeys == nil {
+			klog.Infof("Waiting for ReplicationDestination %s RSync sshkeys to populate", repDest.Name)
+			return false, nil
+		}
+
 		klog.Infof("Found ReplicationDestination RSync Address: %s", *repDest.Status.Rsync.Address)
 		address = repDest.Status.Rsync.Address
 		return true, nil
@@ -203,8 +209,7 @@ func (o *SetupReplicationOptions) StartReplication() error {
 	case len(o.Source.SSHKeysSecretOptions.SSHKeysSecret) > 0:
 		sshKeysSecret = &o.Source.SSHKeysSecretOptions.SSHKeysSecret
 	default:
-		s := fmt.Sprintf("volsync-rsync-dest-src-%s", repDest.Name)
-		sshKeysSecret = &s
+		sshKeysSecret = repDest.Status.Rsync.SSHKeys
 	}
 	sshSecret := &corev1.Secret{}
 	nsName = types.NamespacedName{
