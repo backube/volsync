@@ -11,7 +11,7 @@ metadata:
 spec:
   sourcePVC: data-source
   trigger:
-    schedule: "*/2 * * * *"
+    manual: once
   rclone:
     rcloneConfigSection: "rclone-data-mover"
     rcloneDestPath: "volsync-test-bucket"
