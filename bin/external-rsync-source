@@ -20,10 +20,11 @@ if ! command -v rsync > /dev/null 2>&1; then
 	exit 1
 fi
 
-while getopts h:s:d:i: flag
+while getopts h:s:d:i:p: flag
 do
     case "${flag}" in
         d) DESTINATION_ADDRESS=${OPTARG};;
+        p) PORT=${OPTARG};;
         i) SSHKEY=${OPTARG};;
         s) SOURCE=${OPTARG};;
         h)
@@ -40,6 +41,10 @@ then
     exit 1
 fi
 
+if [ "$PORT" ]; then
+	SSHOPTS="-o ServerAliveInterval=30 -o ServerAliveCountMax=4 -o TCPKeepAlive=no -o ControlPersist=5 -o ConnectTimeout=30 -o ControlMaster=auto -o CheckHostIP=no -p $PORT"
+fi
+
 ssh-keygen -F ${DESTINATION_ADDRESS} 2>/dev/null 1>/dev/null
 if [ $? -eq 1 ]; then
    echo "Adding known host entry"
@@ -53,7 +58,7 @@ rc=$?
 echo "Rsync completed in $(( SECONDS - START_TIME ))s"
 if [[ $rc -eq 0 ]]; then
     echo "Synchronization completed successfully. Notifying destination..."
-    ssh -i ${SSHKEY} "root@${DESTINATION_ADDRESS}" shutdown 0
+    ssh -i ${SSHKEY} ${SSHOPTS} "root@${DESTINATION_ADDRESS}" shutdown 0
 else
     echo "Synchronization failed. rsync returned: $rc"
     exit $rc
