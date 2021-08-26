@@ -52,24 +52,14 @@ type Config struct {
 }
 
 type VolSyncSourceOptions struct {
-	Config              Config
-	KubeContext         string
-	KubeClusterName     string
-	Namespace           string
-	Client              client.Client
-	CopyMethod          volsyncv1alpha1.CopyMethodType
-	Capacity            resource.Quantity
-	StorageClass        *string
-	AccessModes         []corev1.PersistentVolumeAccessMode
-	VolumeSnapClassName *string
-	SSHUser             *string
-	ServiceType         corev1.ServiceType
-	Port                *int32
-	Provider            string
-	Parameters          map[string]string
+	VolSyncOptions
 }
 
 type VolSyncDestinationOptions struct {
+	VolSyncOptions
+}
+
+type VolSyncOptions struct {
 	Config              Config
 	KubeContext         string
 	KubeClusterName     string
