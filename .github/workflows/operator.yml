@@ -151,9 +151,10 @@ jobs:
         # See: https://hub.docker.com/r/kindest/node/tags?page=1&ordering=name
         # Or: skopeo list-tags docker://kindest/node
         KUBERNETES_VERSIONS:
-          - "1.19.7"  # OCP 4.6
-          - "1.20.7"  # OCP 4.7
-          - "1.21.1"  # OCP 4.8
+          - "1.19.11"  # OCP 4.6
+          - "1.20.7"   # OCP 4.7
+          - "1.21.2"   # OCP 4.8
+          - "1.22.1"
     env:
       KUBECONFIG: /tmp/kubeconfig
       KUBERNETES_VERSION: ${{ matrix.KUBERNETES_VERSIONS }}
