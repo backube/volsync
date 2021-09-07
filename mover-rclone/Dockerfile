@@ -1,3 +1,22 @@
+# Build rclone
+FROM golang:1.16 as rclone-builder
+
+WORKDIR /workspace
+
+ARG RCLONE_VERSION=v1.55.1
+# hash: git rev-list -n 1 ${RCLONE_VERSION}
+ARG RCLONE_GIT_HASH=825dd65e1de3b2a1d3926659194298f10b611923
+
+RUN git clone --depth 1 -b ${RCLONE_VERSION} https://github.com/rclone/rclone.git
+
+WORKDIR /workspace/rclone
+
+# Make sure the Rclone version tag matches the git hash we're expecting
+RUN /bin/bash -c "[[ $(git rev-list -n 1 HEAD) == ${RCLONE_GIT_HASH} ]]"
+
+RUN make rclone
+
+# Build final container
 FROM registry.access.redhat.com/ubi8-minimal
 
 ARG rclone_version=v1.55.1
@@ -5,12 +24,10 @@ ARG rclone_version=v1.55.1
 RUN microdnf update -y && \
     microdnf install -y \
       acl \
-    && \
-    rpm -ivh \
-      https://github.com/rclone/rclone/releases/download/${rclone_version}/rclone-${rclone_version}-linux-amd64.rpm \
     && microdnf clean all && \
     rm -rf /var/cache/yum
 
+COPY --from=rclone-builder /workspace/rclone/rclone /usr/local/bin/rclone
 COPY active.sh \
      /
 
