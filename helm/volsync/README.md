@@ -13,9 +13,13 @@ storage systems that do not support replication natively. Data can also be
 replicated across different types (and vendors) of storage.
 
 VolSync supports both 1:1 replication relationships as well as 1:many
-relationships. This provides the flexibility to support use cases such as
-disaster recovery, mirroring data to a test environment, or data distribution to
-a set of remote clusters from a central site.
+relationships. This provides the flexibility to support use cases such as:
+
+- Disaster recovery
+- Mirroring data to a test environment
+- Data distribution to a set of remote clusters from a central site
+- Migrating between storage vendors (changing the StorageClass of a PVC)
+- Creating periodic data backups
 
 ### How it works
 
@@ -32,6 +36,11 @@ VolSync has several replication methods than can be used to replicate data.
   intermediate cloud storage service ([supported by
   Rclone](https://rclone.org/#providers)). The destination(s) then retrieve the
   data from this intermediate location.
+- Restic-based backup of PVC contents  
+  This data mover uses [restic](https://restic.net/) to create backups of the
+  data in a PVC. This works well for situations when the application's
+  deployment configuration is already source controlled, and all that's needed
+  is preservation of its persistent state.
 - Rsync-based replication for 1:1 data replication  
   This replication method is designed to replicate data directly to a remote
   location. It uses [Rsync](https://rsync.samba.org/) over an ssh connection to
@@ -86,18 +95,28 @@ on the command line or via a custom `values.yaml` file.
 - `image.tag`: (current appVersion)
   - The tag to use when retrieving the operator image. This defaults to the tag
     for the current application version associated with this chart release.
+- `image.image`: (empty)
+  - Allows overriding the repository & tag as a single field to support
+    specifying a specific container version by hash (e.g.,
+    `quay.io/backube/volsync@sha256:XXXXXXX`).
 - `rclone.repository`: `quay.io/backube/volsync-mover-rclone`
   - The container image for VolSync's rclone-based data mover
 - `rclone.tag`: (current appVersion)
   - The tag to use for the rclone-based data mover
+- `rclone.image`: (empty)
+  - Allows overriding the repository & tag as a single field.
 - `restic.repository`: `quay.io/backube/volsync-mover-restic`
   - The container image for VolSync's restic-based data mover
 - `restic.tag`: (current appVersion)
   - The tag to use for the restic-based data mover
+- `restic.image`: (empty)
+  - Allows overriding the repository & tag as a single field.
 - `rsync.repository`: `quay.io/backube/volsync-mover-rsync`
   - The container image for VolSync's rsync-based data mover
 - `rsync.tag`: (current appVersion)
   - The tag to use for the rsync-based data mover
+- `rsync.image`: (empty)
+  - Allows overriding the repository & tag as a single field.
 - `imagePullSecrets`: none
   - May be set if pull secret(s) are needed to retrieve the operator image
 - `serviceAccount.create`: `true`
