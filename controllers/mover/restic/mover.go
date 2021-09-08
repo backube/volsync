@@ -186,7 +186,7 @@ func (m *Mover) ensureSourcePVC(ctx context.Context) (*corev1.PersistentVolumeCl
 			Namespace: m.owner.GetNamespace(),
 		},
 	}
-	if err := m.client.Get(ctx, utils.NameFor(srcPVC), srcPVC); err != nil {
+	if err := m.client.Get(ctx, client.ObjectKeyFromObject(srcPVC), srcPVC); err != nil {
 		return nil, err
 	}
 	dataName := "volsync-" + m.owner.GetName() + "-src"
@@ -207,7 +207,7 @@ func (m *Mover) ensureDestinationPVC(ctx context.Context) (*corev1.PersistentVol
 			Namespace: m.owner.GetNamespace(),
 		},
 	}
-	err := m.client.Get(ctx, utils.NameFor(pvc), pvc)
+	err := m.client.Get(ctx, client.ObjectKeyFromObject(pvc), pvc)
 	return pvc, err
 }
 
@@ -237,7 +237,7 @@ func (m *Mover) validateRepository(ctx context.Context) (*corev1.Secret, error) 
 			Namespace: m.owner.GetNamespace(),
 		},
 	}
-	logger := m.logger.WithValues("repositorySecret", utils.NameFor(secret))
+	logger := m.logger.WithValues("repositorySecret", client.ObjectKeyFromObject(secret))
 	if err := utils.GetAndValidateSecret(ctx, m.client, logger, secret,
 		"RESTIC_REPOSITORY", "RESTIC_PASSWORD"); err != nil {
 		logger.Error(err, "Restic config secret does not contain the proper fields")
@@ -260,7 +260,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 			Namespace: m.owner.GetNamespace(),
 		},
 	}
-	logger := m.logger.WithValues("job", utils.NameFor(job))
+	logger := m.logger.WithValues("job", client.ObjectKeyFromObject(job))
 	_, err := ctrlutil.CreateOrUpdate(ctx, m.client, job, func() error {
 		if err := ctrl.SetControllerReference(m.owner, job, m.client.Scheme()); err != nil {
 			logger.Error(err, "unable to set controller reference")

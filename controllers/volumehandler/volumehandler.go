@@ -223,7 +223,7 @@ func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,
 			Namespace: vh.owner.GetNamespace(),
 		},
 	}
-	logger := log.WithValues("clone", utils.NameFor(clone))
+	logger := log.WithValues("clone", client.ObjectKeyFromObject(clone))
 
 	op, err := ctrlutil.CreateOrUpdate(ctx, vh.client, clone, func() error {
 		if err := ctrl.SetControllerReference(vh.owner, clone, vh.client.Scheme()); err != nil {
@@ -281,7 +281,7 @@ func (vh *VolumeHandler) ensureSnapshot(ctx context.Context, log logr.Logger,
 			Namespace: vh.owner.GetNamespace(),
 		},
 	}
-	logger := log.WithValues("snapshot", utils.NameFor(snap))
+	logger := log.WithValues("snapshot", client.ObjectKeyFromObject(snap))
 
 	op, err := ctrlutil.CreateOrUpdate(ctx, vh.client, snap, func() error {
 		if err := ctrl.SetControllerReference(vh.owner, snap, vh.client.Scheme()); err != nil {
@@ -322,7 +322,7 @@ func (vh *VolumeHandler) pvcFromSnapshot(ctx context.Context, log logr.Logger,
 			Namespace: vh.owner.GetNamespace(),
 		},
 	}
-	logger := log.WithValues("pvc", utils.NameFor(pvc))
+	logger := log.WithValues("pvc", client.ObjectKeyFromObject(pvc))
 
 	op, err := ctrlutil.CreateOrUpdate(ctx, vh.client, pvc, func() error {
 		if err := ctrl.SetControllerReference(vh.owner, pvc, vh.client.Scheme()); err != nil {

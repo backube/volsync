@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	utils "github.com/backube/volsync/controllers/utils"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1beta1"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -95,7 +94,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 		// wait for the ReplicationDestination to actually come up
 		Eventually(func() error {
 			inst := &volsyncv1alpha1.ReplicationDestination{}
-			return k8sClient.Get(ctx, utils.NameFor(rd), inst)
+			return k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), inst)
 		}, maxWait, interval).Should(Succeed())
 	})
 
@@ -115,7 +114,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 
 		It("should start", func() {
 			Eventually(func() error {
-				return k8sClient.Get(ctx, utils.NameFor(rd), rd)
+				return k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)
 			}, duration, interval).Should(Succeed())
 		})
 
@@ -130,7 +129,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 				JustBeforeEach(func() {
 					// force job to succeed
 					Eventually(func() error {
-						return k8sClient.Get(ctx, utils.NameFor(job), job)
+						return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
 					}, maxWait, interval).Should(Succeed())
 					job.Status.Succeeded = 1
 					job.Status.StartTime = &metav1.Time{ // provide job with a start time to get a duration
@@ -148,14 +147,14 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 						// get RD & ensure a status is set
 						Eventually(func() bool {
 							inst := &volsyncv1alpha1.ReplicationDestination{}
-							if err := k8sClient.Get(ctx, utils.NameFor(rd), inst); err != nil {
+							if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), inst); err != nil {
 								return false
 							}
 							return inst.Status != nil
 						}, maxWait, interval).Should(BeTrue())
 						// validate necessary fields
 						inst := &volsyncv1alpha1.ReplicationDestination{}
-						Expect(k8sClient.Get(ctx, utils.NameFor(rd), inst)).To(Succeed())
+						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), inst)).To(Succeed())
 						Expect(inst.Status).NotTo(BeNil())
 						Expect(inst.Status.Conditions).NotTo(BeNil())
 						Expect(inst.Status.NextSyncTime).NotTo(BeNil())
@@ -164,7 +163,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 					It("Ensure LastSyncTime & LatestImage is set properly after reconciliation", func() {
 						Eventually(func() bool {
 							inst := &volsyncv1alpha1.ReplicationDestination{}
-							err := k8sClient.Get(ctx, utils.NameFor(rd), inst)
+							err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), inst)
 							if err != nil || inst.Status == nil {
 								return false
 							}
@@ -172,7 +171,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 						}, maxWait, interval).Should(BeTrue())
 						// get ReplicationDestination
 						inst := &volsyncv1alpha1.ReplicationDestination{}
-						Expect(k8sClient.Get(ctx, utils.NameFor(rd), inst)).To(Succeed())
+						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), inst)).To(Succeed())
 						// ensure Status holds correct data
 						Expect(inst.Status.LatestImage).NotTo(BeNil())
 						latestImage := inst.Status.LatestImage
@@ -185,7 +184,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 						// Make sure that LastSyncDuration gets set
 						Eventually(func() *metav1.Duration {
 							inst := &volsyncv1alpha1.ReplicationDestination{}
-							_ = k8sClient.Get(ctx, utils.NameFor(rd), inst)
+							_ = k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), inst)
 							return inst.Status.LastSyncDuration
 						}, maxWait, interval).Should(Not(BeNil()))
 					})
@@ -204,7 +203,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 								},
 							}
 							Eventually(func() error {
-								return k8sClient.Get(ctx, utils.NameFor(job), job)
+								return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
 							}, maxWait, interval).Should(Succeed())
 							Expect(*job.Spec.Parallelism).To(Equal(parallelism))
 						})
@@ -217,7 +216,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 						})
 						It("Is used in the destination PVC", func() {
 							// gets the pvcs used by the job spec
-							Expect(k8sClient.Get(ctx, utils.NameFor(job), job)).To(Succeed())
+							Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)).To(Succeed())
 							var pvcName string
 							volumes := job.Spec.Template.Spec.Volumes
 							for _, v := range volumes {
@@ -255,7 +254,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 						Expect(k8sClient.Status().Update(ctx, &snapshot)).To(Succeed())
 						// wait for an image to be set for RD
 						Eventually(func() *corev1.TypedLocalObjectReference {
-							_ = k8sClient.Get(ctx, utils.NameFor(rd), rd)
+							_ = k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)
 							return rd.Status.LatestImage
 						}, maxWait, interval).Should(Not(BeNil()))
 						latestImage := rd.Status.LatestImage
@@ -287,7 +286,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 			It("Job set to fail", func() {
 				tempJob := &batchv1.Job{}
 				Eventually(func() error {
-					return k8sClient.Get(ctx, utils.NameFor(job), tempJob)
+					return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), tempJob)
 				}, maxWait, interval).Should(Succeed())
 				// force job fail state
 				tempJob.Status.Failed = *tempJob.Spec.BackoffLimit + 12345
@@ -295,7 +294,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 				Expect(tempJob.Status.Failed).NotTo(BeNumerically("==", 0))
 				// ensure job eventually gets restarted
 				Eventually(func() bool {
-					if err := k8sClient.Get(ctx, utils.NameFor(job), tempJob); err != nil {
+					if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(job), tempJob); err != nil {
 						return false
 					}
 					return tempJob.Status.Failed == 0
@@ -333,7 +332,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 				inst := &volsyncv1alpha1.ReplicationDestination{}
 				// wait for replicationdestination to have a status
 				Eventually(func() *volsyncv1alpha1.ReplicationDestinationStatus {
-					_ = k8sClient.Get(ctx, utils.NameFor(rd), inst)
+					_ = k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), inst)
 					return inst.Status
 				}, duration, interval).Should(Not(BeNil()))
 				Expect(inst.Status.Conditions).ToNot(BeEmpty())
@@ -371,7 +370,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 			When("All of the fields are zero-length", func() {
 				It("Job fails to start", func() {
 					Consistently(func() error {
-						return k8sClient.Get(ctx, utils.NameFor(job), job)
+						return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
 					}, time.Second, interval).ShouldNot(Succeed())
 				})
 			})
@@ -383,7 +382,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 					})
 					It("RcloneConfig is provided", func() {
 						Consistently(func() error {
-							return k8sClient.Get(ctx, utils.NameFor(job), job)
+							return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
 						}, time.Second, interval).ShouldNot(Succeed())
 					})
 				})
@@ -394,7 +393,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 					})
 					It("RcloneConfig & RcloneConfigSection are set to non-nil", func() {
 						Consistently(func() error {
-							return k8sClient.Get(ctx, utils.NameFor(job), job)
+							return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
 						}, time.Second, interval).ShouldNot(Succeed())
 					})
 				})
@@ -406,7 +405,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 					})
 					It("Job successfully starts", func() {
 						Eventually(func() error {
-							return k8sClient.Get(ctx, utils.NameFor(job), job)
+							return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
 						}, maxWait, interval).Should(Succeed())
 					})
 				})
@@ -496,7 +495,7 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 			// wait for the ReplicationSource to actually come up
 			Eventually(func() error {
 				inst := &volsyncv1alpha1.ReplicationSource{}
-				return k8sClient.Get(ctx, utils.NameFor(rs), inst)
+				return k8sClient.Get(ctx, client.ObjectKeyFromObject(rs), inst)
 			}, maxWait, interval).Should(Succeed())
 		})
 
@@ -512,7 +511,7 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 			When("The Job Succeeds", func() {
 				JustBeforeEach(func() {
 					Eventually(func() error {
-						return k8sClient.Get(ctx, utils.NameFor(job), job)
+						return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
 					}, maxWait, interval).Should(Succeed())
 					// just so the tests will run for now
 					job.Status.Succeeded = 1
@@ -527,7 +526,7 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 						It("NextSyncTime is never set", func() {
 							Consistently(func() bool {
 								// replication source should exist within k8s cluster
-								Expect(k8sClient.Get(ctx, utils.NameFor(rs), rs)).To(Succeed())
+								Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rs), rs)).To(Succeed())
 								if rs.Status == nil || rs.Status.NextSyncTime.IsZero() {
 									return false
 								}
@@ -547,7 +546,7 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 							})
 							It("the next sync time is set in Status.NextSyncTime", func() {
 								Eventually(func() bool {
-									Expect(k8sClient.Get(ctx, utils.NameFor(rs), rs)).To(Succeed())
+									Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rs), rs)).To(Succeed())
 									if rs.Status == nil || rs.Status.NextSyncTime.IsZero() {
 										return false
 									}
@@ -566,7 +565,7 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 					//nolint:dupl
 					It("creates a clone of the source PVC as the sync source", func() {
 						Eventually(func() error {
-							return k8sClient.Get(ctx, utils.NameFor(job), job)
+							return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
 						}, maxWait, interval).Should(Succeed())
 						volumes := job.Spec.Template.Spec.Volumes
 						pvc := &corev1.PersistentVolumeClaim{}
@@ -579,7 +578,7 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 							}
 						}
 						Expect(found).To(BeTrue())
-						Expect(k8sClient.Get(ctx, utils.NameFor(pvc), pvc)).To(Succeed())
+						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pvc), pvc)).To(Succeed())
 						Expect(pvc.Spec.DataSource.Name).To(Equal(srcPVC.Name))
 						Expect(pvc).To(beOwnedBy(rs))
 					})
@@ -591,7 +590,7 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 						})
 						It("job will be created but won't start", func() {
 							Eventually(func() error {
-								return k8sClient.Get(ctx, utils.NameFor(job), job)
+								return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
 							}, maxWait, interval).Should(Succeed())
 							Expect(*job.Spec.Parallelism).To(Equal(parallelism))
 						})
@@ -610,7 +609,7 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 				})
 				It("Uses the Source PVC as the sync source", func() {
 					Eventually(func() error {
-						return k8sClient.Get(ctx, utils.NameFor(job), job)
+						return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
 					}, maxWait, interval).Should(Succeed())
 					// look for the source PVC in the job's volume list
 					volumes := job.Spec.Template.Spec.Volumes
@@ -640,7 +639,7 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 			When("All fields are empty", func() {
 				It("should not start", func() {
 					Consistently(func() error {
-						return k8sClient.Get(ctx, utils.NameFor(job), job)
+						return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
 					}, duration, interval).ShouldNot(Succeed())
 				})
 			})
@@ -650,7 +649,7 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 				})
 				It("does not start", func() {
 					Consistently(func() error {
-						return k8sClient.Get(ctx, utils.NameFor(job), job)
+						return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
 					}, duration, interval).ShouldNot(Succeed())
 				})
 			})
@@ -661,7 +660,7 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 				})
 				It("Existing RcloneConfig + RcloneConfigSection", func() {
 					Consistently(func() error {
-						return k8sClient.Get(ctx, utils.NameFor(job), job)
+						return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
 					}, duration, interval).ShouldNot(Succeed())
 				})
 			})
@@ -673,7 +672,7 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 				})
 				It("should start", func() {
 					Eventually(func() error {
-						return k8sClient.Get(ctx, utils.NameFor(job), job)
+						return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
 					}, maxWait, interval).Should(Succeed())
 				})
 			})

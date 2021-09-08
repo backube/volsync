@@ -20,7 +20,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
-	"github.com/backube/volsync/controllers/utils"
 )
 
 //nolint:dupl
@@ -161,7 +160,7 @@ var _ = Describe("ReplicationDestination", func() {
 		// Wait for it to show up in the API server
 		Eventually(func() error {
 			inst := &volsyncv1alpha1.ReplicationDestination{}
-			return k8sClient.Get(ctx, utils.NameFor(rd), inst)
+			return k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), inst)
 		}, maxWait, interval).Should(Succeed())
 	})
 
@@ -171,7 +170,7 @@ var _ = Describe("ReplicationDestination", func() {
 		})
 		It("the CR is not reconciled", func() {
 			Consistently(func() *volsyncv1alpha1.ReplicationDestinationStatus {
-				Expect(k8sClient.Get(ctx, utils.NameFor(rd), rd)).To(Succeed())
+				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)).To(Succeed())
 				return rd.Status
 			}, duration, interval).Should(BeNil())
 		})
@@ -227,13 +226,14 @@ var _ = Describe("ReplicationDestination", func() {
 		})
 		It("generates a reconcile error", func() {
 			Eventually(func() *volsyncv1alpha1.ReplicationDestinationStatus {
-				_ = k8sClient.Get(ctx, utils.NameFor(rd), rd)
+				_ = k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)
 				return rd.Status
 			}, maxWait, interval).Should(Not(BeNil()))
 			var cond *metav1.Condition
 			Eventually(func() *metav1.Condition {
-				_ = k8sClient.Get(ctx, utils.NameFor(rd), rd)
+				_ = k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)
 				cond = apimeta.FindStatusCondition(rd.Status.Conditions, volsyncv1alpha1.ConditionReconciled)
+
 				return cond
 			}, maxWait, interval).Should(Not(BeNil()))
 			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
@@ -261,11 +261,11 @@ var _ = Describe("ReplicationDestination", func() {
 				},
 			}
 			Eventually(func() error {
-				return k8sClient.Get(ctx, utils.NameFor(svc), svc)
+				return k8sClient.Get(ctx, client.ObjectKeyFromObject(svc), svc)
 			}, maxWait, interval).Should(Succeed())
 			Expect(svc.Spec.Type).To(Equal(corev1.ServiceTypeClusterIP))
 			Eventually(func() *string {
-				_ = k8sClient.Get(ctx, utils.NameFor(rd), rd)
+				_ = k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)
 				if rd.Status == nil || rd.Status.Rsync == nil {
 					return nil
 				}
@@ -295,7 +295,7 @@ var _ = Describe("ReplicationDestination", func() {
 					},
 				}
 				Eventually(func() error {
-					return k8sClient.Get(ctx, utils.NameFor(svc), svc)
+					return k8sClient.Get(ctx, client.ObjectKeyFromObject(svc), svc)
 				}, maxWait, interval).Should(Succeed())
 				Expect(svc.Spec.Type).To(Equal(corev1.ServiceTypeLoadBalancer))
 				// test env doesn't support LB, so fake the address
@@ -304,7 +304,7 @@ var _ = Describe("ReplicationDestination", func() {
 				}
 				Expect(k8sClient.Status().Update(ctx, svc)).To(Succeed())
 				Eventually(func() *string {
-					_ = k8sClient.Get(ctx, utils.NameFor(rd), rd)
+					_ = k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)
 					if rd.Status == nil || rd.Status.Rsync == nil {
 						return nil
 					}
@@ -376,15 +376,15 @@ var _ = Describe("ReplicationDestination", func() {
 		It("Generates ssh keys automatically", func() {
 			secret := &corev1.Secret{}
 			Eventually(func() *volsyncv1alpha1.ReplicationDestinationStatus {
-				_ = k8sClient.Get(ctx, utils.NameFor(rd), rd)
+				_ = k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)
 				return rd.Status
 			}, maxWait, interval).Should(Not(BeNil()))
 			Eventually(func() *volsyncv1alpha1.ReplicationDestinationRsyncStatus {
-				_ = k8sClient.Get(ctx, utils.NameFor(rd), rd)
+				_ = k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)
 				return rd.Status.Rsync
 			}, maxWait, interval).Should(Not(BeNil()))
 			Eventually(func() *string {
-				_ = k8sClient.Get(ctx, utils.NameFor(rd), rd)
+				_ = k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)
 				return rd.Status.Rsync.SSHKeys
 			}, maxWait, interval).Should(Not(BeNil()))
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: *rd.Status.Rsync.SSHKeys,
@@ -451,7 +451,7 @@ var _ = Describe("ReplicationDestination", func() {
 			}
 			// Wait for the Rsync Job to be created
 			Eventually(func() error {
-				return k8sClient.Get(ctx, utils.NameFor(job), job)
+				return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
 			}, maxWait, interval).Should(Succeed())
 			// Mark it as succeeded
 			job.Status.Succeeded = 1
@@ -463,7 +463,7 @@ var _ = Describe("ReplicationDestination", func() {
 			})
 			It("the PVC should be the latestImage", func() {
 				Eventually(func() *corev1.TypedLocalObjectReference {
-					_ = k8sClient.Get(ctx, utils.NameFor(rd), rd)
+					_ = k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)
 					return rd.Status.LatestImage
 				}, maxWait, interval).Should(Not(BeNil()))
 				li := rd.Status.LatestImage
@@ -491,7 +491,7 @@ var _ = Describe("ReplicationDestination", func() {
 				Expect(k8sClient.Status().Update(ctx, &snap)).To(Succeed())
 				By("seeing the now-bound snap in the LatestImage field")
 				Eventually(func() *corev1.TypedLocalObjectReference {
-					_ = k8sClient.Get(ctx, utils.NameFor(rd), rd)
+					_ = k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)
 					return rd.Status.LatestImage
 				}, maxWait, interval).Should(Not(BeNil()))
 				li := rd.Status.LatestImage

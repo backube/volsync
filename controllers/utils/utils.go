@@ -23,26 +23,17 @@ import (
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func NameFor(obj metav1.Object) types.NamespacedName {
-	return types.NamespacedName{
-		Name:      obj.GetName(),
-		Namespace: obj.GetNamespace(),
-	}
-}
-
-func GetAndValidateSecret(ctx context.Context, client client.Client,
+func GetAndValidateSecret(ctx context.Context, cl client.Client,
 	logger logr.Logger, secret *corev1.Secret, fields ...string) error {
-	if err := client.Get(ctx, NameFor(secret), secret); err != nil {
-		logger.Error(err, "failed to get Secret with provided name", "Secret", NameFor(secret))
+	if err := cl.Get(ctx, client.ObjectKeyFromObject(secret), secret); err != nil {
+		logger.Error(err, "failed to get Secret with provided name", "Secret", client.ObjectKeyFromObject(secret))
 		return err
 	}
 	if err := secretHasFields(secret, fields...); err != nil {
-		logger.Error(err, "secret does not contain the proper fields", "Secret", NameFor(secret))
+		logger.Error(err, "secret does not contain the proper fields", "Secret", client.ObjectKeyFromObject(secret))
 		return err
 	}
 	return nil

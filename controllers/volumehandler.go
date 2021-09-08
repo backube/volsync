@@ -32,6 +32,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
@@ -277,13 +278,13 @@ type sourceVolumeHandler struct {
 func (h *sourceVolumeHandler) CleanupPVC(l logr.Logger) (bool, error) {
 	if h.PVC != nil && h.PVC != h.srcPVC {
 		if err := h.Client.Delete(h.Ctx, h.PVC); err != nil {
-			l.Error(err, "unable to delete temporary PVC", "PVC", utils.NameFor(h.PVC))
+			l.Error(err, "unable to delete temporary PVC", "PVC", client.ObjectKeyFromObject(h.PVC))
 			return false, err
 		}
 	}
 	if h.srcSnap != nil {
 		if err := h.Client.Delete(h.Ctx, h.srcSnap); err != nil {
-			l.Error(err, "unable to delete temporary snapshot", "snapshot", utils.NameFor(h.srcSnap))
+			l.Error(err, "unable to delete temporary snapshot", "snapshot", client.ObjectKeyFromObject(h.srcSnap))
 			return false, err
 		}
 	}
@@ -299,8 +300,8 @@ func (h *sourceVolumeHandler) EnsurePVC(l logr.Logger) (bool, error) {
 			Namespace: h.Instance.Namespace,
 		},
 	}
-	if err := h.Client.Get(h.Ctx, utils.NameFor(h.srcPVC), h.srcPVC); err != nil {
-		l.Error(err, "unable to get source PVC", "PVC", utils.NameFor(h.srcPVC))
+	if err := h.Client.Get(h.Ctx, client.ObjectKeyFromObject(h.srcPVC), h.srcPVC); err != nil {
+		l.Error(err, "unable to get source PVC", "PVC", client.ObjectKeyFromObject(h.srcPVC))
 		return false, err
 	}
 
@@ -325,7 +326,7 @@ func (h *sourceVolumeHandler) pvcFromSnap(l logr.Logger) (bool, error) {
 			Namespace: h.Instance.Namespace,
 		},
 	}
-	logger := l.WithValues("pvc", utils.NameFor(h.PVC))
+	logger := l.WithValues("pvc", client.ObjectKeyFromObject(h.PVC))
 
 	op, err := ctrlutil.CreateOrUpdate(h.Ctx, h.Client, h.PVC, func() error {
 		if err := ctrl.SetControllerReference(h.Instance, h.PVC, h.Scheme); err != nil {
@@ -375,7 +376,7 @@ func (h *sourceVolumeHandler) snapshotSrc(l logr.Logger) (bool, error) {
 			Namespace: h.Instance.Namespace,
 		},
 	}
-	logger := l.WithValues("SourceSnap", utils.NameFor(h.srcSnap))
+	logger := l.WithValues("SourceSnap", client.ObjectKeyFromObject(h.srcSnap))
 
 	op, err := ctrlutil.CreateOrUpdate(h.Ctx, h.Client, h.srcSnap, func() error {
 		if err := ctrl.SetControllerReference(h.Instance, h.srcSnap, h.Scheme); err != nil {
