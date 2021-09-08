@@ -1,19 +1,29 @@
+# Build restic
+FROM golang:1.16 as restic-builder
+
+WORKDIR /workspace
+
+ARG RESTIC_VERSION=v0.12.0
+# hash: git rev-list -n 1 ${RESTIC_VERSION}
+ARG RESTIC_GIT_HASH=27f241334e9245a212bc2aba4956a5c0392e5940
+
+RUN git clone --depth 1 -b ${RESTIC_VERSION} https://github.com/restic/restic.git
+
+WORKDIR /workspace/restic
+
+# Make sure the Restic version tag matches the git hash we're expecting
+RUN /bin/bash -c "[[ $(git rev-list -n 1 HEAD) == ${RESTIC_GIT_HASH} ]]"
+
+RUN make restic
+
+# Build final container
 FROM registry.access.redhat.com/ubi8-minimal
 
-RUN microdnf install -y \
-      bzip2 \
-    && microdnf clean all
+RUN microdnf update -y && \
+    microdnf clean all && \
+    rm -rf /var/cache/yum
 
-ARG RESTIC_VERSION=0.12.0
-ARG RESTIC_SHA256=63d13d53834ea8aa4d461f0bfe32a89c70ec47e239b91f029ed10bd88b8f4b80
-
-RUN curl -Lo /restic.bz2 https://github.com/restic/restic/releases/download/v${RESTIC_VERSION}/restic_${RESTIC_VERSION}_linux_amd64.bz2 && \
-    echo "${RESTIC_SHA256} /restic.bz2" > /restic.sum && \
-    sha256sum --check --strict /restic.sum && \
-    bzcat restic.bz2 > /usr/local/bin/restic && \
-    chmod a+x /usr/local/bin/restic && \
-    rm -f /restic.*
-
+COPY --from=restic-builder /workspace/restic/restic /usr/local/bin/restic
 COPY entry.sh \
      /
 
