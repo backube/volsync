@@ -216,7 +216,9 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 						})
 						It("Is used in the destination PVC", func() {
 							// gets the pvcs used by the job spec
-							Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)).To(Succeed())
+							Eventually(func() error {
+								return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
+							}).Should(Succeed())
 							var pvcName string
 							volumes := job.Spec.Template.Spec.Volumes
 							for _, v := range volumes {
