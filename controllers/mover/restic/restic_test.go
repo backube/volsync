@@ -725,8 +725,14 @@ var _ = Describe("Restic as a destination", func() {
 				rd.Spec.Restic.DestinationPVC = &dPVC.Name
 			})
 			It("is used directly", func() {
-				pvc, e := mover.ensureDestinationPVC(ctx)
-				Expect(e).NotTo(HaveOccurred())
+				var pvc *corev1.PersistentVolumeClaim
+				Eventually(func() error {
+					tempPVC, e := mover.ensureDestinationPVC(ctx)
+					if e == nil {
+						pvc = tempPVC
+					}
+					return e
+				}).ShouldNot(HaveOccurred())
 				Expect(pvc).NotTo(BeNil())
 				Expect(pvc.Name).To(Equal(dPVC.Name))
 			})
