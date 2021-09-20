@@ -1,7 +1,6 @@
 ---
 apiVersion: kuttl.dev/v1beta1
 kind: TestAssert
-timeout: 120
 
 ---
 kind: ReplicationDestination

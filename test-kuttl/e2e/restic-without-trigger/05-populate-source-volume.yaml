@@ -26,7 +26,7 @@ spec:
       volumeMounts:
         - name: data
           mountPath: "/mnt"
-  terminationGracePeriodSeconds: 2
+  terminationGracePeriodSeconds: 10
   volumes:
     - name: data
       persistentVolumeClaim:

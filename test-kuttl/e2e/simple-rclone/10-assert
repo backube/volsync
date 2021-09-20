@@ -1,12 +1,11 @@
 ---
 apiVersion: kuttl.dev/v1beta1
 kind: TestAssert
-timeout: 600  # Allow time for pvc->snap->pvc
 
 ---
-kind: ReplicationSource
+kind: ReplicationDestination
 apiVersion: volsync.backube/v1alpha1
 metadata:
-  name: source
+  name: destination
 status:
   lastManualSync: once
