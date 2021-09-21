@@ -1,6 +1,9 @@
 ---
 apiVersion: kuttl.dev/v1beta1
 kind: TestAssert
+collectors:
+  - type: command
+    command: kubectl -n "$NAMESPACE" describe all,pvc,volumesnapshot,replicationsource,replicationdestination
 
 ---
 apiVersion: batch/v1
