@@ -48,4 +48,8 @@ type Builder interface {
 	// type, this function should return (nil, nil).
 	FromDestination(client client.Client, logger logr.Logger,
 		destination *volsyncv1alpha1.ReplicationDestination) (Mover, error)
+
+	// VersionInfo returns a string describing the version of this mover. In
+	// most cases, this is the container image/tag that will be used.
+	VersionInfo() string
 }
