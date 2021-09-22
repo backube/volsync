@@ -17,36 +17,27 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
+	"k8s.io/kubectl/pkg/util/i18n"
+	"k8s.io/kubectl/pkg/util/templates"
 )
+
+var migrationName string
 
 // migrationCmd represents the migration command
 var migrationCmd = &cobra.Command{
 	Use:   "migration",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Short: i18n.T("Migrate data into a PersistentVolume"),
+	Long: templates.LongDesc(i18n.T(`
+	Copy data from an external file system into a Kubernetes PersistentVolume.
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("migration called")
-	},
+	This set of commands is designed to help provision a PV and copy data from
+	a directory tree into that newly provisioned volume.
+	`)),
 }
 
 func init() {
 	rootCmd.AddCommand(migrationCmd)
 
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// migrationCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// migrationCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	migrationCmd.PersistentFlags().StringVarP(&migrationName, "relationship", "r", "", "relationship name")
 }

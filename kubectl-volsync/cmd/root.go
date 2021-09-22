@@ -17,38 +17,55 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 package cmd
 
 import (
+	"os"
+	"path"
+
 	"github.com/spf13/cobra"
+	"k8s.io/kubectl/pkg/util/i18n"
+	"k8s.io/kubectl/pkg/util/templates"
 )
+
+// volsyncVersion value is set at build time via ldflags
+var volsyncVersion = "0.0.0"
+
+var configDir string
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "kubectl-volsync",
-	Short: "A brief description of your application",
-	Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
+	Short: i18n.T("A kubectl plugin to interact with the VolSync operator"),
+	Long: templates.LongDesc(i18n.T(`
+	This plugin can be used to configure replication relationships using the
+	VolSync operator.
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	// Uncomment the following line if your bare application
-	// has an action associated with it:
-	// Run: func(cmd *cobra.Command, args []string) { },
+	The plugin has a number of sub-commands that are organized based on common
+	data movement tasks such as:
+
+	* Creating a cross-cluster data replication relationship
+	* Migrating data into a Kubernetes cluster
+	* Establishing a simple PV backup schedule
+	`)),
+	Version: volsyncVersion,
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
+	setupConfigDir()
 	cobra.CheckErr(rootCmd.Execute())
 }
 
 func init() {
-	// Here you will define your flags and configuration settings.
-	// Cobra supports persistent flags, which, if defined here,
-	// will be global for your application.
+	rootCmd.PersistentFlags().StringVar(&configDir, "config-dir", "",
+		"directory for VolSync config files (default is $HOME/.volsync)")
+}
 
-	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.kubectl-volsync.yaml)")
-
-	// Cobra also supports local flags, which will only run
-	// when this action is called directly.
-	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+func setupConfigDir() {
+	if configDir == "" {
+		home, err := os.UserHomeDir()
+		cobra.CheckErr(err)
+		configDir = path.Join(home, ".volsync")
+		err = os.MkdirAll(configDir, 0755)
+		cobra.CheckErr(err)
+	}
 }

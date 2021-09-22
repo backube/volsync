@@ -20,18 +20,28 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"k8s.io/kubectl/pkg/util/i18n"
+	"k8s.io/kubectl/pkg/util/templates"
 )
+
+type migrationCreateOptions struct {
+	Capacity     string
+	StorageClass string
+}
+
+var mco migrationCreateOptions
 
 // createCmd represents the create command
 var createCmd = &cobra.Command{
-	Use:   "create",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Use:   "create -r name [--capacity cap] [--storageclass class]",
+	Short: i18n.T("Create a new migration destination"),
+	Long: templates.LongDesc(i18n.T(`
+	This command creates and prepares new migration destination to receive data.
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	It creates the named PersistentVolumeClaim if it does not already exist,
+	and it sets up an associated ReplicationDestination that will be configured
+	to accept incoming transfers via rsync over ssh.
+	`)),
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("create called")
 	},
@@ -40,13 +50,6 @@ to quickly create a Cobra application.`,
 func init() {
 	migrationCmd.AddCommand(createCmd)
 
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// createCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// createCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	createCmd.Flags().StringVar(&mco.Capacity, "capacity", "1Gi", "capacity of the PVC to create")
+	createCmd.Flags().StringVar(&mco.StorageClass, "storageclass", "", "StorageClass name for the PVC")
 }
