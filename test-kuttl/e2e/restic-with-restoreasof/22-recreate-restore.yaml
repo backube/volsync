@@ -1,7 +1,0 @@
-# issues a command to recreate the restic snapshot
----
-apiVersion: kuttl.dev/v1beta1
-kind: TestStep
-commands:
-  - timeout: 600
-    command: ./22-recreate-restore.sh

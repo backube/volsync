@@ -1,7 +1,11 @@
 ---
 apiVersion: kuttl.dev/v1beta1
 kind: TestAssert
-timeout: 600
+timeout: 600  # Allow time for pvc->snap->pvc of dest volume
+collectors:
+  - type: command
+    command: kubectl -n "$NAMESPACE" describe all,pvc,volumesnapshot,replicationsource,replicationdestination
+
 ---
 apiVersion: batch/v1
 kind: Job

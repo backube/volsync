@@ -1,6 +1,6 @@
 # Testing Restic's restoreAsOf field
 
-This test verfies that Restic will restore from the correct snapshots when
+This test verifies that Restic will restore from the correct snapshots when
 provided with timestamps.
 
 Steps:

@@ -162,6 +162,14 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v2
 
+      # We set bash as the default shell (instead of dash) because the kuttl
+      # test steps require bash, but the "script" directive executes them as "sh
+      # -c ..."
+      - name: Set bash as default shell
+        run: |
+          sudo ln -s bash /bin/sh.bash && sudo mv /bin/sh.bash /bin/sh
+          sudo ln -s bash /usr/bin/sh.bash && sudo mv /usr/bin/sh.bash /usr/bin/sh
+
       - name: Install kubectl
         run: |
           curl -LO "https://storage.googleapis.com/kubernetes-release/release/v${KUBERNETES_VERSION}/bin/linux/amd64/kubectl"

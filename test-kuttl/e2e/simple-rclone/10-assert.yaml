@@ -6,9 +6,9 @@ collectors:
     command: kubectl -n "$NAMESPACE" describe all,pvc,volumesnapshot,replicationsource,replicationdestination
 
 ---
-apiVersion: batch/v1
-kind: Job
+kind: ReplicationDestination
+apiVersion: volsync.backube/v1alpha1
 metadata:
-  name: verify
+  name: destination
 status:
-  succeeded: 1
+  lastManualSync: once

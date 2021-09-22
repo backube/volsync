@@ -1,6 +1,0 @@
----
-apiVersion: kuttl.dev/v1beta1
-kind: TestStep
-commands:
-  - timeout: 300
-    command: ./12-waitfor-sync-dest.sh
