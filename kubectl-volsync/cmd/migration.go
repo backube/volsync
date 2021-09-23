@@ -18,11 +18,13 @@ package cmd
 
 import (
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
 )
 
-var migrationName string
+// MigrationRelationship defines the "type" of migration Relationships
+const MigrationRelationship RelationshipType = "migration"
 
 // migrationCmd represents the migration command
 var migrationCmd = &cobra.Command{
@@ -39,5 +41,7 @@ var migrationCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(migrationCmd)
 
-	migrationCmd.PersistentFlags().StringVarP(&migrationName, "relationship", "r", "", "relationship name")
+	migrationCmd.PersistentFlags().StringP("relationship", "r", "", "relationship name")
+	cobra.CheckErr(migrationCmd.MarkPersistentFlagRequired("relationship"))
+	cobra.CheckErr(viper.BindPFlag("relationship", migrationCmd.PersistentFlags().Lookup("relationship")))
 }

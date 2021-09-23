@@ -22,8 +22,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// deleteCmd represents the delete command
-var deleteCmd = &cobra.Command{
+// migrationDeleteCmd represents the delete command
+var migrationDeleteCmd = &cobra.Command{
 	Use:   "delete",
 	Short: "A brief description of your command",
 	Long: `A longer description that spans multiple lines and likely contains examples
@@ -38,7 +38,7 @@ to quickly create a Cobra application.`,
 }
 
 func init() {
-	migrationCmd.AddCommand(deleteCmd)
+	migrationCmd.AddCommand(migrationDeleteCmd)
 
 	// Here you will define your flags and configuration settings.
 

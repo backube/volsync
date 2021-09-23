@@ -21,14 +21,13 @@ import (
 	"path"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
 )
 
 // volsyncVersion value is set at build time via ldflags
 var volsyncVersion = "0.0.0"
-
-var configDir string
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -45,6 +44,7 @@ var rootCmd = &cobra.Command{
 	* Migrating data into a Kubernetes cluster
 	* Establishing a simple PV backup schedule
 	`)),
+	// Use Cobra's built-in version command
 	Version: volsyncVersion,
 }
 
@@ -56,16 +56,19 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVar(&configDir, "config-dir", "",
+	rootCmd.PersistentFlags().String("config-dir", "",
 		"directory for VolSync config files (default is $HOME/.volsync)")
+	cobra.CheckErr(viper.BindPFlag("config-dir", rootCmd.PersistentFlags().Lookup("config-dir")))
 }
 
 func setupConfigDir() {
-	if configDir == "" {
+	cdir := viper.GetString("config-dir")
+	if cdir == "" {
 		home, err := os.UserHomeDir()
 		cobra.CheckErr(err)
-		configDir = path.Join(home, ".volsync")
-		err = os.MkdirAll(configDir, 0755)
+		cdir = path.Join(home, ".volsync")
+		err = os.MkdirAll(cdir, 0755)
 		cobra.CheckErr(err)
+		viper.Set("config-dir", cdir)
 	}
 }

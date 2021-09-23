@@ -20,20 +20,15 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
 )
 
-type migrationCreateOptions struct {
-	Capacity     string
-	StorageClass string
-}
-
-var mco migrationCreateOptions
-
-// createCmd represents the create command
-var createCmd = &cobra.Command{
-	Use:   "create -r name [--capacity cap] [--storageclass class]",
+// migrationCreateCmd represents the create command
+var migrationCreateCmd = &cobra.Command{
+	Use:   "create",
 	Short: i18n.T("Create a new migration destination"),
 	Long: templates.LongDesc(i18n.T(`
 	This command creates and prepares new migration destination to receive data.
@@ -42,14 +37,46 @@ var createCmd = &cobra.Command{
 	and it sets up an associated ReplicationDestination that will be configured
 	to accept incoming transfers via rsync over ssh.
 	`)),
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("create called")
-	},
+	RunE: doMigrationCreate,
+	Args: validateMigrationCreate,
 }
 
 func init() {
-	migrationCmd.AddCommand(createCmd)
+	migrationCmd.AddCommand(migrationCreateCmd)
 
-	createCmd.Flags().StringVar(&mco.Capacity, "capacity", "1Gi", "capacity of the PVC to create")
-	createCmd.Flags().StringVar(&mco.StorageClass, "storageclass", "", "StorageClass name for the PVC")
+	migrationCreateCmd.Flags().String("capacity", "", "capacity of the PVC to create")
+	cobra.CheckErr(viper.BindPFlag("capacity", migrationCreateCmd.Flags().Lookup("capacity")))
+	migrationCreateCmd.Flags().String("storageclass", "", "StorageClass name for the PVC")
+	cobra.CheckErr(viper.BindPFlag("storageclass", migrationCreateCmd.Flags().Lookup("storageclass")))
+}
+
+func validateMigrationCreate(cmd *cobra.Command, args []string) error {
+	// If specified, the PVC's capacity must parse to a valid resource.Quantity
+	capacity := cmd.Flags().Lookup("capacity").Value.String()
+	if len(capacity) > 0 {
+		if _, err := resource.ParseQuantity(capacity); err != nil {
+			return fmt.Errorf("capacity must be a valid resource.Quantity: %w", err)
+		}
+	}
+	return nil
+}
+
+func doMigrationCreate(cmd *cobra.Command, args []string) error {
+	// Create the empty relationship
+	configDir := viper.GetString("config-dir")
+	rName := viper.GetString("relationship")
+	relation, err := CreateRelationship(configDir, rName, MigrationRelationship)
+	if err != nil {
+		return err
+	}
+
+	relation.Set("capacity", viper.GetString("capacity"))
+
+	if err = relation.Save(); err != nil {
+		return fmt.Errorf("unable to save relationship configuration: %w", err)
+	}
+
+	// TODO: Set up objects on the cluster
+
+	return nil
 }
