@@ -17,11 +17,15 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 package cmd
 
 import (
+	"flag"
 	"os"
 	"path"
 
+	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
+	// to ensure that exec-entrypoint and run can make use of them.
+	_ "k8s.io/client-go/plugin/pkg/client/auth"
+
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
 )
@@ -48,27 +52,21 @@ var rootCmd = &cobra.Command{
 	Version: volsyncVersion,
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
+// Execute adds all child commands to the root command and sets flags
+// appropriately. This is called by main.main(). It only needs to happen once to
+// the rootCmd.
 func Execute() {
-	setupConfigDir()
 	cobra.CheckErr(rootCmd.Execute())
 }
 
 func init() {
-	rootCmd.PersistentFlags().String("config-dir", "",
-		"directory for VolSync config files (default is $HOME/.volsync)")
-	cobra.CheckErr(viper.BindPFlag("config-dir", rootCmd.PersistentFlags().Lookup("config-dir")))
-}
-
-func setupConfigDir() {
-	cdir := viper.GetString("config-dir")
-	if cdir == "" {
-		home, err := os.UserHomeDir()
-		cobra.CheckErr(err)
-		cdir = path.Join(home, ".volsync")
-		err = os.MkdirAll(cdir, 0755)
-		cobra.CheckErr(err)
-		viper.Set("config-dir", cdir)
+	configDirDefault := ""
+	if home, err := os.UserHomeDir(); err == nil {
+		configDirDefault = path.Join(home, ".volsync")
 	}
+	rootCmd.PersistentFlags().String("config-dir", configDirDefault,
+		"directory for VolSync config files")
+	// Add flags that are set by other packages:
+	// - controller-runtime/pkg/client/config provides kubeconfig
+	rootCmd.PersistentFlags().AddGoFlagSet(flag.CommandLine)
 }
