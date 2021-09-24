@@ -91,7 +91,7 @@ func doMigrationCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	// TODO: Set up objects on the cluster
-	//kclient, err = newClient(clustercontext)
+	_, _ = newClient("")
 
 	return nil
 }
