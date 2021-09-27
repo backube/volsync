@@ -22,6 +22,7 @@ import (
 	"os"
 	"path"
 
+	"github.com/google/uuid"
 	"github.com/spf13/viper"
 )
 
@@ -42,6 +43,7 @@ func CreateRelationship(configDir string, name string, rType RelationshipType) (
 	v := viper.New()
 	v.SetConfigFile(filename)
 	v.Set("type", string(rType))
+	v.Set("id", uuid.New())
 	return &Relationship{
 		Viper: *v,
 		name:  name,
