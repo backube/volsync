@@ -61,6 +61,14 @@ func validateMigrationCreate(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("capacity must be a valid resource.Quantity: %w", err)
 		}
 	}
+	// The PVC name must be specified, and it needs to be in the right format
+	pvcname, err := cmd.Flags().GetString("pvcname")
+	if err != nil {
+		return err
+	}
+	if _, err := ParseXClusterName(pvcname); err != nil {
+		return err
+	}
 	return nil
 }
 
