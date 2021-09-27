@@ -19,6 +19,7 @@ package restic
 
 import (
 	"flag"
+	"fmt"
 
 	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -43,6 +44,10 @@ func Register() {
 	flag.StringVar(&resticContainerImage, "restic-container-image",
 		defaultResticContainerImage, "The container image for the restic data mover")
 	mover.Register(&Builder{})
+}
+
+func (rb *Builder) VersionInfo() string {
+	return fmt.Sprintf("Restic container: %s", resticContainerImage)
 }
 
 func (rb *Builder) FromSource(client client.Client, logger logr.Logger,

@@ -37,6 +37,7 @@ import (
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers"
+	"github.com/backube/volsync/controllers/mover"
 	"github.com/backube/volsync/controllers/mover/restic"
 	"github.com/backube/volsync/controllers/utils"
 	//+kubebuilder:scaffold:imports
@@ -87,6 +88,9 @@ func main() {
 	setupLog.Info(fmt.Sprintf("Operator Version: %s", volsyncVersion))
 	setupLog.Info(fmt.Sprintf("Rclone container: %s", controllers.RcloneContainerImage))
 	setupLog.Info(fmt.Sprintf("Rsync container: %s", controllers.RsyncContainerImage))
+	for _, b := range mover.Catalog {
+		setupLog.Info(b.VersionInfo())
+	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
