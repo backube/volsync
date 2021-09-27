@@ -122,7 +122,7 @@ build: generate lint ## Build manager binary.
 cli: bin/kubectl-volsync ## Build VolSync kubectl plugin
 
 bin/kubectl-volsync: lint
-	go build -o $@ -ldflags -X=main.volsyncVersion=$(VERSION) ./cmd/volsync
+	go build -o $@ -ldflags -X=github.com/backube/volsync/kubectl-volsync/cmd.volsyncVersion=$(VERSION) ./kubectl-volsync/main.go
 
 .PHONY: run
 run: manifests generate lint  ## Run a controller from your host.
