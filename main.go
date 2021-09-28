@@ -20,7 +20,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/backube/volsync/lib/endpoint/route"
 	"os"
 	"runtime"
 
@@ -41,6 +40,7 @@ import (
 	"github.com/backube/volsync/controllers/mover"
 	"github.com/backube/volsync/controllers/mover/restic"
 	"github.com/backube/volsync/controllers/utils"
+	"github.com/backube/volsync/lib/endpoint/route"
 	//+kubebuilder:scaffold:imports
 )
 

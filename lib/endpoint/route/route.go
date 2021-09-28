@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
@@ -47,7 +48,7 @@ func APIsToWatch(c client.Client) ([]client.Object, error) {
 	})
 	noResourceError := &metaapi.NoResourceMatchError{}
 	if errors.As(err, &noResourceError) {
-		return []client.Object{}, fmt.Errorf("route package unusuable")
+		return []client.Object{}, fmt.Errorf("route package unusable")
 	}
 	if err != nil {
 		return []client.Object{}, fmt.Errorf("unable to find the resource needed for this package")
@@ -78,7 +79,6 @@ func NewEndpoint(c client.Client,
 	namespacedName types.NamespacedName,
 	eType EndpointType,
 	metaMutation meta.ObjectMetaMutation) (endpoint.Endpoint, error) {
-
 	if eType != EndpointTypePassthrough && eType != EndpointTypeInsecureEdge {
 		panic("unsupported endpoint type for routes")
 	}
