@@ -20,6 +20,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/backube/volsync/lib/endpoint/route"
 	"os"
 	"runtime"
 
@@ -102,6 +103,12 @@ func main() {
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
+		os.Exit(1)
+	}
+
+	_, err = route.APIsToWatch(mgr.GetClient())
+	if err != nil {
+		setupLog.Error(err, "unable to get the APIs")
 		os.Exit(1)
 	}
 
