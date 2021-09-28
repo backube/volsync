@@ -2,13 +2,17 @@ package route
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/backube/volsync/lib/endpoint"
 	"github.com/backube/volsync/lib/meta"
 	"github.com/backube/volsync/lib/utils"
 	routev1 "github.com/openshift/api/route/v1"
 	corev1 "k8s.io/api/core/v1"
+	metaapi "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -22,6 +26,34 @@ const (
 	InsecureEdgeTerminationPolicyPort   = 8080
 	TLSTerminationPassthroughPolicyPort = 6443
 )
+
+// Register should be used as soon as scheme is created to add
+// route objects for encoding/decoding
+func Register(scheme *runtime.Scheme) error {
+	return routev1.AddToScheme(scheme)
+}
+
+// APIsToWatch give a list of APIs to watch if using this package
+// to deploy the endpoint. The error can be checked as follows to determine if
+// the package is not usable with the given kube apiserver
+//  	noResourceError := &metaapi.NoResourceMatchError{}
+//		if errors.As(err, &noResourceError) {
+// 		}
+func APIsToWatch(c client.Client) ([]client.Object, error) {
+	_, err := c.RESTMapper().ResourceFor(schema.GroupVersionResource{
+		Group:    "route.openshift.io",
+		Version:  "v1",
+		Resource: "routes",
+	})
+	noResourceError := &metaapi.NoResourceMatchError{}
+	if errors.As(err, &noResourceError) {
+		return []client.Object{}, fmt.Errorf("route package unusuable")
+	}
+	if err != nil {
+		return []client.Object{}, fmt.Errorf("unable to find the resource needed for this package")
+	}
+	return []client.Object{&routev1.Route{}, &corev1.Service{}}, nil
+}
 
 var IngressPort int32 = 443
 
@@ -39,14 +71,13 @@ type Endpoint struct {
 // NewEndpoint creates the route endpoint object, deploys the resource on the cluster
 // and then checks for the health of the route. Before using the fields of the route
 // it is always recommended to check if the route is healthy.
+//
+// +kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 func NewEndpoint(c client.Client,
 	namespacedName types.NamespacedName,
 	eType EndpointType,
 	metaMutation meta.ObjectMetaMutation) (endpoint.Endpoint, error) {
-	err := routev1.AddToScheme(c.Scheme())
-	if err != nil {
-		return nil, err
-	}
 
 	if eType != EndpointTypePassthrough && eType != EndpointTypeInsecureEdge {
 		panic("unsupported endpoint type for routes")
@@ -58,7 +89,7 @@ func NewEndpoint(c client.Client,
 		endpointType:   eType,
 	}
 
-	err = r.reconcileServiceForRoute(c)
+	err := r.reconcileServiceForRoute(c)
 	if err != nil {
 		return nil, err
 	}

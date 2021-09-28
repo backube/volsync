@@ -3,6 +3,7 @@ package loadbalancer
 import (
 	"context"
 	"fmt"
+	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/backube/volsync/lib/endpoint"
 
@@ -24,9 +25,23 @@ type Endpoint struct {
 	objMeta        meta.ObjectMetaMutation
 }
 
+// Register should be used as soon as scheme is created to add
+// route objects for encoding/decoding
+func Register(scheme *runtime.Scheme) error {
+	return nil
+}
+
+// APIsToWatch give a list of APIs to watch if using this package
+// to deploy the endpoint
+func APIsToWatch() ([]client.Object, error) {
+	return []client.Object{&corev1.Service{}}, nil
+}
+
 // NewEndpoint creates a loadbalancer endpoint object, deploys the resources on  the cluster
 // and then checks for the health of the loadbalancer. Before using the fields
 // it is always recommended to check if the loadbalancer is healthy.
+//
+// +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 func NewEndpoint(c client.Client,
 	name types.NamespacedName,
 	metaMutation meta.ObjectMetaMutation,
