@@ -17,8 +17,12 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 package cmd
 
 import (
+	"fmt"
+	"strings"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 
@@ -48,4 +52,33 @@ func newClient(kubeContext string) (client.Client, error) {
 	}
 
 	return client.New(clientConfig, client.Options{Scheme: scheme})
+}
+
+// XClusterName is the equivlent of NamespacedName, but also containing a
+// cluster context
+type XClusterName struct {
+	Cluster string
+	types.NamespacedName
+}
+
+// Parses a string of the format [context/]namespace/name into an XClusterName
+func ParseXClusterName(name string) (*XClusterName, error) {
+	components := strings.Split(name, "/")
+	if len(components) == 3 {
+		return &XClusterName{
+			Cluster: components[0],
+			NamespacedName: types.NamespacedName{
+				Namespace: components[1],
+				Name:      components[2],
+			},
+		}, nil
+	} else if len(components) == 2 {
+		return &XClusterName{
+			NamespacedName: types.NamespacedName{
+				Namespace: components[0],
+				Name:      components[1],
+			},
+		}, nil
+	}
+	return nil, fmt.Errorf("name is not in the format [context/]namespace/objname: %s", name)
 }
