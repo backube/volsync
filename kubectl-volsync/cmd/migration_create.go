@@ -95,7 +95,6 @@ func init() {
 	cobra.CheckErr(migrationCreateCmd.MarkFlagRequired("pvcname"))
 	migrationCreateCmd.Flags().String("storageclass", "", "StorageClass name for the PVC")
 	migrationCreateCmd.Flags().String("servicetype", "", "ServiceType for the cluster, ex: ClusterIP, LoadBalancer")
-	cobra.CheckErr(migrationCreateCmd.MarkFlagRequired("servicetype"))
 }
 
 func validateMigrationCreate(cmd *cobra.Command, args []string) error {
@@ -137,12 +136,12 @@ func doMigrationCreate(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("%w", err)
 	}
-
+	// Prepare the MigrationParams struct from cmd args
 	migParams, err := prepMigrationParamsStruct(cmd, relation)
 	if err != nil {
 		return fmt.Errorf("failed to build migration params structure from the cmd flags %w", err)
 	}
-
+	// Check the namespace, if not present already then create the same
 	err = checkAndCreateNamespace(ctx, migParams)
 	if kerrs.IsAlreadyExists(err) {
 		klog.V(2).Info("Namespace: %v already present, proceeding with this namespace", migParams.Dest.Namespace)
