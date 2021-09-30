@@ -15,6 +15,8 @@ COPY api/ api/
 COPY controllers/ controllers/
 
 # Build
+# We don't vendor modules. Enforce that behavior
+ARG GOFLAGS=-mod=readonly
 ARG VERSION="(unknown)"
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o manager -ldflags "-X=main.volsyncVersion=${VERSION}" main.go
 
