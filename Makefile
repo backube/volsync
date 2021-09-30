@@ -12,6 +12,9 @@ HELM_VERSION := v3.6.2
 OPERATOR_SDK_VERSION := v1.9.0
 KUTTL_VERSION := 0.10.0
 
+# We don't vendor modules. Enforce that behavior
+export GOFLAGS := -mod=readonly
+
 # CHANNELS define the bundle channels used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "preview,fast,stable")
 # To re-generate a bundle for other specific channels without changing the standard setup, you can:
