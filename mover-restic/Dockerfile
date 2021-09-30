@@ -15,7 +15,7 @@ WORKDIR /workspace/restic
 RUN /bin/bash -c "[[ $(git rev-list -n 1 HEAD) == ${RESTIC_GIT_HASH} ]]"
 
 # We don't vendor modules. Enforce that behavior
-ARG GOFLAGS=-mod=readonly
+ENV GOFLAGS=-mod=readonly
 RUN make restic
 
 # Build final container
