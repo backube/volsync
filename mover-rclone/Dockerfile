@@ -15,7 +15,7 @@ WORKDIR /workspace/rclone
 RUN /bin/bash -c "[[ $(git rev-list -n 1 HEAD) == ${RCLONE_GIT_HASH} ]]"
 
 # We don't vendor modules. Enforce that behavior
-ARG GOFLAGS=-mod=readonly
+ENV GOFLAGS=-mod=readonly
 RUN make rclone
 
 # Build final container
