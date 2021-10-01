@@ -57,24 +57,10 @@ func init() {
 	replicationCmd.AddCommand(replicationDeleteCmd)
 }
 
-func (cmd *replicationDelete) loadRelationship() error {
-	configDir, err := cmd.Flags().GetString("config-dir")
-	if err != nil {
-		return err
-	}
-	rName, err := cmd.Flags().GetString("relationship")
-	if err != nil {
-		return err
-	}
-	cmd.rel, err = LoadRelationship(configDir, rName, ReplicationRelationship)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 func (cmd *replicationDelete) Run() error {
-	if err := cmd.loadRelationship(); err != nil {
+	var err error
+	cmd.rel, err = LoadRelationshipFromCommand(&cmd.Command, ReplicationRelationship)
+	if err != nil {
 		return err
 	}
 

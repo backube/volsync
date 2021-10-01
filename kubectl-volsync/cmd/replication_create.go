@@ -51,18 +51,11 @@ func init() {
 }
 
 func (cmd *replicationCreate) Run() error {
-	configDir, err := cmd.Flags().GetString("config-dir")
+	relation, err := CreateRelationshipFromCommand(&cmd.Command, ReplicationRelationship)
 	if err != nil {
 		return err
 	}
-	rName, err := cmd.Flags().GetString("relationship")
-	if err != nil {
-		return err
-	}
-	relation, err := CreateRelationship(configDir, rName, ReplicationRelationship)
-	if err != nil {
-		return err
-	}
+
 	if err = relation.Save(); err != nil {
 		return fmt.Errorf("unable to save relationship configuration: %w", err)
 	}

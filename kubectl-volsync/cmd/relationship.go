@@ -23,6 +23,7 @@ import (
 	"path"
 
 	"github.com/google/uuid"
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
@@ -50,6 +51,20 @@ func CreateRelationship(configDir string, name string, rType RelationshipType) (
 	}, nil
 }
 
+// CreateRelationshipFromCommand wraps the relationship creation, automatically
+// extracting the config dir and name from the command flags.
+func CreateRelationshipFromCommand(cmd *cobra.Command, rType RelationshipType) (*Relationship, error) {
+	configDir, err := cmd.Flags().GetString("config-dir")
+	if err != nil {
+		return nil, err
+	}
+	rName, err := cmd.Flags().GetString("relationship")
+	if err != nil {
+		return nil, err
+	}
+	return CreateRelationship(configDir, rName, rType)
+}
+
 // LoadRelationship creates a relationship structure based on an existing
 // relationship file. If the relationship does not exist or is of the wrong
 // type, this function will return an error.
@@ -70,6 +85,24 @@ func LoadRelationship(configDir string, name string, rType RelationshipType) (*R
 		Viper: *v,
 		name:  name,
 	}, nil
+}
+
+// LoadRelationshipFromCommand wraps the relationship loading, automatically
+// extracting the config dir and name from the command flags.
+func LoadRelationshipFromCommand(cmd *cobra.Command, rType RelationshipType) (*Relationship, error) {
+	configDir, err := cmd.Flags().GetString("config-dir")
+	if err != nil {
+		return nil, err
+	}
+	rName, err := cmd.Flags().GetString("relationship")
+	if err != nil {
+		return nil, err
+	}
+	rel, err := LoadRelationship(configDir, rName, rType)
+	if err != nil {
+		return nil, err
+	}
+	return rel, nil
 }
 
 // Save persists the relationship information into the associated relationship
