@@ -24,6 +24,10 @@ import (
 	"k8s.io/kubectl/pkg/util/templates"
 )
 
+type replicationCreate struct {
+	cobra.Command
+}
+
 // replicationCreateCmd represents the create command
 var replicationCreateCmd = &cobra.Command{
 	Use:   "create",
@@ -34,14 +38,19 @@ var replicationCreateCmd = &cobra.Command{
 	Once created, both a source (set-source) and a destination (set-destination)
 	must be added.
 	`)),
-	RunE: doReplicationCreate,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		r := &replicationCreate{
+			Command: *cmd,
+		}
+		return r.Run()
+	},
 }
 
 func init() {
 	replicationCmd.AddCommand(replicationCreateCmd)
 }
 
-func doReplicationCreate(cmd *cobra.Command, args []string) error {
+func (cmd *replicationCreate) Run() error {
 	configDir, err := cmd.Flags().GetString("config-dir")
 	if err != nil {
 		return err
