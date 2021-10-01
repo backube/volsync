@@ -57,8 +57,8 @@ func newClient(kubeContext string) (client.Client, error) {
 // XClusterName is the equivlent of NamespacedName, but also containing a
 // cluster context
 type XClusterName struct {
-	Cluster string
-	types.NamespacedName
+	Cluster              string
+	types.NamespacedName `mapstructure:",squash"`
 }
 
 // Parses a string of the format [context/]namespace/name into an XClusterName
@@ -81,4 +81,15 @@ func ParseXClusterName(name string) (*XClusterName, error) {
 		}, nil
 	}
 	return nil, fmt.Errorf("name is not in the format [context/]namespace/objname: %s", name)
+}
+
+func XClusterNameFromRelationship(relation *Relationship, name string) (*XClusterName, error) {
+	if !relation.IsSet(name) {
+		return nil, fmt.Errorf("key %s not found in relationship", name)
+	}
+	var obj XClusterName
+	if err := relation.UnmarshalKey(name, &obj); err != nil {
+		return nil, err
+	}
+	return &obj, nil
 }

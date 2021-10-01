@@ -17,17 +17,20 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 package cmd
 
 import (
-	"context"
 	"fmt"
 
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
+
+type replicationDelete struct {
+	cobra.Command
+	rel *Relationship
+}
 
 // replicationDeleteCmd represents the delete command
 var replicationDeleteCmd = &cobra.Command{
@@ -42,14 +45,19 @@ var replicationDeleteCmd = &cobra.Command{
 	data, the destination should be "promote"-ed prior to deleting the
 	relationship.
 	`)),
-	RunE: doReplicationDelete,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		r := &replicationDelete{
+			Command: *cmd,
+		}
+		return r.Run()
+	},
 }
 
 func init() {
 	replicationCmd.AddCommand(replicationDeleteCmd)
 }
 
-func doReplicationDelete(cmd *cobra.Command, args []string) error {
+func (cmd *replicationDelete) loadRelationship() error {
 	configDir, err := cmd.Flags().GetString("config-dir")
 	if err != nil {
 		return err
@@ -58,60 +66,55 @@ func doReplicationDelete(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	relation, err := LoadRelationship(configDir, rName, ReplicationRelationship)
+	cmd.rel, err = LoadRelationship(configDir, rName, ReplicationRelationship)
 	if err != nil {
 		return err
 	}
+	return nil
+}
 
-	var obj XClusterName
-	if relation.IsSet("source") {
-		if err := relation.UnmarshalKey("source", &obj); err == nil {
-			if err := deleteReplicationSource(cmd.Context(), obj); err != nil {
-				fmt.Printf("error removing ReplicationSource %v: %v\n", obj, err)
-			}
-		}
-	}
-	if relation.IsSet("destination") {
-		if err := relation.UnmarshalKey("destination", &obj); err == nil {
-			if err := deleteReplicationDestination(cmd.Context(), obj); err != nil {
-				fmt.Printf("error removing ReplicationDestination %v: %v\n", obj, err)
-			}
-		}
+func (cmd *replicationDelete) Run() error {
+	if err := cmd.loadRelationship(); err != nil {
+		return err
 	}
 
-	if err := relation.Delete(); err != nil {
+	if obj, err := XClusterNameFromRelationship(cmd.rel, "source"); err == nil {
+		cl, err := newClient(obj.Cluster)
+		if err != nil {
+			return fmt.Errorf("unable to create client for cluster context: %s: %w", obj.Cluster, err)
+		}
+		rs := volsyncv1alpha1.ReplicationSource{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      obj.Name,
+				Namespace: obj.Namespace,
+			},
+		}
+		err = cl.Delete(cmd.Context(), &rs, client.PropagationPolicy(metav1.DeletePropagationForeground))
+		if err != nil {
+			fmt.Printf("error removing ReplicationSource %v: %v\n", obj, err)
+		}
+	}
+
+	if obj, err := XClusterNameFromRelationship(cmd.rel, "destination"); err == nil {
+		cl, err := newClient(obj.Cluster)
+		if err != nil {
+			return fmt.Errorf("unable to create client for cluster context: %s: %w", obj.Cluster, err)
+		}
+		rs := volsyncv1alpha1.ReplicationDestination{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      obj.Name,
+				Namespace: obj.Namespace,
+			},
+		}
+		err = cl.Delete(cmd.Context(), &rs, client.PropagationPolicy(metav1.DeletePropagationForeground))
+		if err != nil {
+			fmt.Printf("error removing ReplicationDestination %v: %v\n", obj, err)
+		}
+	}
+
+	if err := cmd.rel.Delete(); err != nil {
 		return err
 	}
 
 	return nil
-}
-
-func deleteReplicationSource(ctx context.Context, rs XClusterName) error {
-	cl, err := newClient(rs.Cluster)
-	if err != nil {
-		return err
-	}
-	obj := volsyncv1alpha1.ReplicationSource{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      rs.Name,
-			Namespace: rs.Namespace,
-		},
-	}
-	err = cl.Delete(ctx, &obj, client.PropagationPolicy(metav1.DeletePropagationBackground))
-	return err
-}
-
-func deleteReplicationDestination(ctx context.Context, rd XClusterName) error {
-	cl, err := newClient(rd.Cluster)
-	if err != nil {
-		return err
-	}
-	obj := volsyncv1alpha1.ReplicationDestination{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      rd.Name,
-			Namespace: rd.Namespace,
-		},
-	}
-	err = cl.Delete(ctx, &obj, client.PropagationPolicy(metav1.DeletePropagationBackground))
-	return err
 }
