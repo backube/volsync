@@ -60,7 +60,7 @@ var IngressPort int32 = 443
 
 type EndpointType string
 
-type Endpoint struct {
+type Route struct {
 	hostname string
 
 	port           int32
@@ -69,13 +69,13 @@ type Endpoint struct {
 	objMeta        meta.ObjectMetaMutation
 }
 
-// NewEndpoint creates the route endpoint object, deploys the resource on the cluster
+// New creates the route endpoint object, deploys the resource on the cluster
 // and then checks for the health of the route. Before using the fields of the route
 // it is always recommended to check if the route is healthy.
 //
 // +kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
-func NewEndpoint(c client.Client,
+func New(c client.Client,
 	namespacedName types.NamespacedName,
 	eType EndpointType,
 	metaMutation meta.ObjectMetaMutation) (endpoint.Endpoint, error) {
@@ -83,7 +83,7 @@ func NewEndpoint(c client.Client,
 		panic("unsupported endpoint type for routes")
 	}
 
-	r := &Endpoint{
+	r := &Route{
 		namespacedName: namespacedName,
 		objMeta:        metaMutation,
 		endpointType:   eType,
@@ -111,23 +111,23 @@ func NewEndpoint(c client.Client,
 	return r, nil
 }
 
-func (r *Endpoint) NamespacedName() types.NamespacedName {
+func (r *Route) NamespacedName() types.NamespacedName {
 	return r.namespacedName
 }
 
-func (r *Endpoint) Hostname() string {
+func (r *Route) Hostname() string {
 	return r.hostname
 }
 
-func (r *Endpoint) BackendPort() int32 {
+func (r *Route) BackendPort() int32 {
 	return r.port
 }
 
-func (r *Endpoint) IngressPort() int32 {
+func (r *Route) IngressPort() int32 {
 	return IngressPort
 }
 
-func (r *Endpoint) IsHealthy(c client.Client) (bool, error) {
+func (r *Route) IsHealthy(c client.Client) (bool, error) {
 	route := &routev1.Route{}
 	err := c.Get(context.TODO(), r.NamespacedName(), route)
 	if err != nil {
@@ -154,7 +154,7 @@ func (r *Endpoint) IsHealthy(c client.Client) (bool, error) {
 	return false, fmt.Errorf("route status is not in valid state: %s", route.Status)
 }
 
-func (r *Endpoint) MarkForCleanup(c client.Client, key, value string) error {
+func (r *Route) MarkForCleanup(c client.Client, key, value string) error {
 	// update service
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -176,7 +176,7 @@ func (r *Endpoint) MarkForCleanup(c client.Client, key, value string) error {
 	return utils.UpdateWithLabel(c, route, key, value)
 }
 
-func (r *Endpoint) reconcileServiceForRoute(c client.Client) error {
+func (r *Route) reconcileServiceForRoute(c client.Client) error {
 	port := r.BackendPort()
 
 	serviceSelector := r.objMeta.Labels()
@@ -216,7 +216,7 @@ func (r *Endpoint) reconcileServiceForRoute(c client.Client) error {
 	return err
 }
 
-func (r *Endpoint) reconcileRoute(c client.Client) error {
+func (r *Route) reconcileRoute(c client.Client) error {
 	termination := &routev1.TLSConfig{}
 	switch r.endpointType {
 	case EndpointTypeInsecureEdge:
@@ -260,7 +260,7 @@ func (r *Endpoint) reconcileRoute(c client.Client) error {
 	return err
 }
 
-func (r *Endpoint) getRoute(c client.Client) (*routev1.Route, error) {
+func (r *Route) getRoute(c client.Client) (*routev1.Route, error) {
 	route := &routev1.Route{}
 	err := c.Get(context.TODO(),
 		types.NamespacedName{Name: r.NamespacedName().Name, Namespace: r.NamespacedName().Namespace},
@@ -271,7 +271,7 @@ func (r *Endpoint) getRoute(c client.Client) (*routev1.Route, error) {
 	return route, err
 }
 
-func (r *Endpoint) setFields(c client.Client) error {
+func (r *Route) setFields(c client.Client) error {
 	route, err := r.getRoute(c)
 	if err != nil {
 		return err

@@ -18,7 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
-type Endpoint struct {
+type LoadBalancer struct {
 	hostname       string
 	ingressPort    int32
 	backendPort    int32
@@ -38,16 +38,16 @@ func APIsToWatch() ([]client.Object, error) {
 	return []client.Object{&corev1.Service{}}, nil
 }
 
-// NewEndpoint creates a loadbalancer endpoint object, deploys the resources on  the cluster
+// New creates a loadbalancer endpoint object, deploys the resources on  the cluster
 // and then checks for the health of the loadbalancer. Before using the fields
 // it is always recommended to check if the loadbalancer is healthy.
 //
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
-func NewEndpoint(c client.Client,
+func New(c client.Client,
 	name types.NamespacedName,
 	metaMutation meta.ObjectMetaMutation,
 	backendPort, ingressPort int32) (endpoint.Endpoint, error) {
-	s := &Endpoint{
+	s := &LoadBalancer{
 		namespacedName: name,
 		objMeta:        metaMutation,
 		backendPort:    backendPort,
@@ -71,59 +71,59 @@ func NewEndpoint(c client.Client,
 	return s, err
 }
 
-func (e *Endpoint) NamespacedName() types.NamespacedName {
-	return e.namespacedName
+func (l *LoadBalancer) NamespacedName() types.NamespacedName {
+	return l.namespacedName
 }
 
-func (e *Endpoint) Hostname() string {
-	return e.hostname
+func (l *LoadBalancer) Hostname() string {
+	return l.hostname
 }
 
-func (e *Endpoint) BackendPort() int32 {
-	return e.backendPort
+func (l *LoadBalancer) BackendPort() int32 {
+	return l.backendPort
 }
 
-func (e *Endpoint) IngressPort() int32 {
-	return e.ingressPort
+func (l *LoadBalancer) IngressPort() int32 {
+	return l.ingressPort
 }
 
-func (e *Endpoint) IsHealthy(c client.Client) (bool, error) {
+func (l *LoadBalancer) IsHealthy(c client.Client) (bool, error) {
 	svc := &corev1.Service{}
-	err := c.Get(context.Background(), e.NamespacedName(), svc)
+	err := c.Get(context.Background(), l.NamespacedName(), svc)
 	if err != nil {
 		return false, err
 	}
 
 	if len(svc.Status.LoadBalancer.Ingress) > 0 {
 		if svc.Status.LoadBalancer.Ingress[0].Hostname != "" {
-			e.hostname = svc.Status.LoadBalancer.Ingress[0].Hostname
+			l.hostname = svc.Status.LoadBalancer.Ingress[0].Hostname
 		}
 		if svc.Status.LoadBalancer.Ingress[0].IP != "" {
-			e.hostname = svc.Status.LoadBalancer.Ingress[0].IP
+			l.hostname = svc.Status.LoadBalancer.Ingress[0].IP
 		}
 		return true, nil
 	}
 	return false, nil
 }
 
-func (e *Endpoint) MarkForCleanup(c client.Client, key, value string) error {
+func (l *LoadBalancer) MarkForCleanup(c client.Client, key, value string) error {
 	// mark service for deletion
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      e.namespacedName.Name,
-			Namespace: e.namespacedName.Namespace,
+			Name:      l.namespacedName.Name,
+			Namespace: l.namespacedName.Namespace,
 		},
 	}
 	return utils.UpdateWithLabel(c, svc, key, value)
 }
 
-func (e *Endpoint) reconcileService(c client.Client) error {
-	serviceSelector := e.objMeta.Labels()
+func (l *LoadBalancer) reconcileService(c client.Client) error {
+	serviceSelector := l.objMeta.Labels()
 
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      e.NamespacedName().Name,
-			Namespace: e.NamespacedName().Namespace,
+			Name:      l.NamespacedName().Name,
+			Namespace: l.NamespacedName().Namespace,
 		},
 	}
 
@@ -133,12 +133,12 @@ func (e *Endpoint) reconcileService(c client.Client) error {
 			service.Spec = corev1.ServiceSpec{
 				Ports: []corev1.ServicePort{
 					{
-						Name:     e.NamespacedName().Name,
+						Name:     l.NamespacedName().Name,
 						Protocol: corev1.ProtocolTCP,
-						Port:     e.IngressPort(),
+						Port:     l.IngressPort(),
 						TargetPort: intstr.IntOrString{
 							Type:   intstr.Int,
-							IntVal: e.BackendPort(),
+							IntVal: l.BackendPort(),
 						},
 					},
 				},
@@ -147,8 +147,8 @@ func (e *Endpoint) reconcileService(c client.Client) error {
 			}
 		}
 
-		service.Labels = e.objMeta.Labels()
-		service.OwnerReferences = e.objMeta.OwnerReferences()
+		service.Labels = l.objMeta.Labels()
+		service.OwnerReferences = l.objMeta.OwnerReferences()
 		return nil
 	})
 
