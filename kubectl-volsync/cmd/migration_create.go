@@ -38,7 +38,6 @@ type DestinationInfo struct {
 	Name         string
 	Namespace    string
 	Opts         VolSyncOptions
-	Schedule     string
 	CopyMethod   string
 	Capacity     string
 	StorageClass string
@@ -87,8 +86,6 @@ var migrationCreateCmd = &cobra.Command{
 func init() {
 	migrationCmd.AddCommand(migrationCreateCmd)
 
-	migrationCreateCmd.Flags().String("namespace", "", "namespace to create or use: [context/]namespace/name")
-	cobra.CheckErr(migrationCreateCmd.MarkFlagRequired("namespace"))
 	migrationCreateCmd.Flags().String("accessmodes", "", "AccessModes of the PVC to create")
 	migrationCreateCmd.Flags().String("capacity", "", "capacity of the PVC to create")
 	migrationCreateCmd.Flags().String("pvcname", "", "name of the PVC to create or use: [context/]namespace/name")
@@ -121,8 +118,7 @@ func validateMigrationCreate(cmd *cobra.Command, args []string) error {
 
 //nolint:funlen
 func doMigrationCreate(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
-
+	ctx := cmd.Context()
 	configDir, err := cmd.Flags().GetString("config-dir")
 	if err != nil {
 		return err
@@ -134,7 +130,7 @@ func doMigrationCreate(cmd *cobra.Command, args []string) error {
 	// Create the empty relationship
 	relation, err := CreateRelationship(configDir, rName, MigrationRelationship)
 	if err != nil {
-		return fmt.Errorf("%w", err)
+		return err
 	}
 	// Prepare the MigrationParams struct from cmd args
 	migParams, err := prepMigrationParamsStruct(cmd, relation)
@@ -143,24 +139,17 @@ func doMigrationCreate(cmd *cobra.Command, args []string) error {
 	}
 	// Check the namespace, if not present already then create the same
 	err = checkAndCreateNamespace(ctx, migParams)
-	if kerrs.IsAlreadyExists(err) {
-		klog.V(2).Info("Namespace: %v already present, proceeding with this namespace", migParams.Dest.Namespace)
-	} else {
+	if err != nil {
 		return err
 	}
 
-	// Check if the pvc already present
-	destPVCExists := false
+	// Check create dest pvc if the pvc already present
 	_, err = GetDestinationPVC(ctx, migParams)
 	if err != nil {
-		if len(migParams.Dest.Capacity) == 0 {
-			return fmt.Errorf("%w, please provide the storage capacity to create destination pvc", err)
-		}
-	} else {
-		destPVCExists = true
+		return err
 	}
 
-	err = CreateDestination(ctx, migParams, destPVCExists)
+	err = CreateDestination(ctx, migParams)
 	if err != nil {
 		return fmt.Errorf("%w", err)
 	}
@@ -168,29 +157,18 @@ func doMigrationCreate(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func CreateDestination(ctx context.Context, migParams *MigrationParams, destPVCExists bool) error {
-	qCap, _ := resource.ParseQuantity(migParams.Dest.Capacity)
-	accessModes := []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
+func CreateDestination(ctx context.Context, migParams *MigrationParams) error {
 	rsyncSpec := &volsyncv1alpha1.ReplicationDestinationRsyncSpec{
 		ReplicationDestinationVolumeOptions: volsyncv1alpha1.ReplicationDestinationVolumeOptions{
-			CopyMethod:  volsyncv1alpha1.CopyMethodNone,
-			Capacity:    &qCap,
-			AccessModes: accessModes,
+			CopyMethod:     volsyncv1alpha1.CopyMethodNone,
+			DestinationPVC: &migParams.Dest.PVC,
 		},
 		ServiceType: &migParams.Dest.Opts.ServiceType,
 	}
 
-	if destPVCExists {
-		rsyncSpec.DestinationPVC = &migParams.Dest.PVC
-	}
-
 	rd := &volsyncv1alpha1.ReplicationDestination{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "volsync.backube/v1alpha1",
-			Kind:       "ReplicationDestination",
-		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "migration-destination",
+			Name:      migParams.Dest.Name,
 			Namespace: migParams.Dest.Namespace,
 		},
 		Spec: volsyncv1alpha1.ReplicationDestinationSpec{
@@ -214,17 +192,18 @@ func prepMigrationParamsStruct(cmd *cobra.Command, relation *Relationship) (*Mig
 	}
 	relation.Set("capacity", cap)
 
-	nsName, err := cmd.Flags().GetString("namespace")
-	if err != nil {
-		return nil, err
-	}
-	relation.Set("namespace", nsName)
-
 	pvcName, err := cmd.Flags().GetString("pvcname")
 	if err != nil {
 		return nil, err
 	}
 	relation.Set("pvcname", pvcName)
+
+	x, err := ParseXClusterName(pvcName)
+	if err != nil {
+		return nil, err
+	}
+	nsName := x.Namespace
+	pvc := x.Name
 
 	accessMode, err := cmd.Flags().GetString("accessmodes")
 	if err != nil {
@@ -242,16 +221,19 @@ func prepMigrationParamsStruct(cmd *cobra.Command, relation *Relationship) (*Mig
 	}
 
 	// TODO: Set up objects on the cluster
-	clientObject, _ := newClient("")
+	clientObject, _ := newClient(x.Cluster)
 
 	return &MigrationParams{
 		Dest: DestinationInfo{
+			//Replication Destination name can be pvc name
+			Name:        pvc,
 			Namespace:   nsName,
-			PVC:         pvcName,
+			PVC:         pvc,
 			Capacity:    cap,
 			ServiceType: serviceType,
 			Opts: VolSyncOptions{
-				Client: clientObject,
+				KubeClusterName: x.Cluster,
+				Client:          clientObject,
 			},
 		},
 	}, nil
@@ -266,7 +248,33 @@ func GetDestinationPVC(ctx context.Context, migParams *MigrationParams) (*corev1
 	}
 
 	err := migParams.Dest.Opts.Client.Get(ctx, pvcInfo, destPVC)
-	if err != nil {
+	if err == nil {
+		return destPVC, nil
+	}
+
+	/* Create PVC is not pre-exists */
+	if len(migParams.Dest.Capacity) == 0 {
+		return nil, fmt.Errorf("%w, please provide the storage capacity to create destination pvc", err)
+	}
+
+	capacity, _ := resource.ParseQuantity(migParams.Dest.Capacity)
+	accessModes := []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
+	destPVC = &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      migParams.Dest.PVC,
+			Namespace: migParams.Dest.Namespace,
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: accessModes,
+			Resources: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceStorage: capacity,
+				},
+			},
+		},
+	}
+
+	if err := migParams.Dest.Opts.Client.Create(ctx, destPVC); err != nil {
 		return nil, err
 	}
 
@@ -275,10 +283,6 @@ func GetDestinationPVC(ctx context.Context, migParams *MigrationParams) (*corev1
 
 func checkAndCreateNamespace(ctx context.Context, migParams *MigrationParams) error {
 	ns := &corev1.Namespace{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Namespace",
-		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name: migParams.Dest.Namespace,
 		},
@@ -286,6 +290,10 @@ func checkAndCreateNamespace(ctx context.Context, migParams *MigrationParams) er
 
 	klog.V(2).Infof("Creating NameSpace %s ", migParams.Dest.Namespace)
 	if err := migParams.Dest.Opts.Client.Create(ctx, ns); err != nil {
+		if kerrs.IsAlreadyExists(err) {
+			klog.V(2).Info("Namespace: %v already present, proceeding with this namespace", migParams.Dest.Namespace)
+			return nil
+		}
 		return err
 	}
 	klog.Infof("Created destination namespace: %s", migParams.Dest.Namespace)
