@@ -75,7 +75,7 @@ type Route struct {
 //
 // +kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
-func New(c client.Client,
+func New(ctx context.Context, c client.Client,
 	namespacedName types.NamespacedName,
 	eType EndpointType,
 	metaMutation meta.ObjectMetaMutation) (endpoint.Endpoint, error) {
@@ -89,17 +89,17 @@ func New(c client.Client,
 		endpointType:   eType,
 	}
 
-	err := r.reconcileServiceForRoute(c)
+	err := r.reconcileServiceForRoute(ctx, c)
 	if err != nil {
 		return nil, err
 	}
 
-	err = r.reconcileRoute(c)
+	err = r.reconcileRoute(ctx, c)
 	if err != nil {
 		return nil, err
 	}
 
-	healthy, err := r.IsHealthy(c)
+	healthy, err := r.IsHealthy(ctx, c)
 	if err != nil {
 		return nil, err
 	}
@@ -127,9 +127,9 @@ func (r *Route) IngressPort() int32 {
 	return IngressPort
 }
 
-func (r *Route) IsHealthy(c client.Client) (bool, error) {
+func (r *Route) IsHealthy(ctx context.Context, c client.Client) (bool, error) {
 	route := &routev1.Route{}
-	err := c.Get(context.TODO(), r.NamespacedName(), route)
+	err := c.Get(ctx, r.NamespacedName(), route)
 	if err != nil {
 		return false, err
 	}
@@ -142,7 +142,7 @@ func (r *Route) IsHealthy(c client.Client) (bool, error) {
 			if condition.Type == routev1.RouteAdmitted && condition.Status == corev1.ConditionTrue {
 				// TODO: remove setHostname and configure the hostname after this condition has been satisfied,
 				//  this is the implementation detail that we dont need the users of the interface work with
-				err := r.setFields(c)
+				err := r.setFields(ctx, c)
 				if err != nil {
 					return true, err
 				}
@@ -154,7 +154,7 @@ func (r *Route) IsHealthy(c client.Client) (bool, error) {
 	return false, fmt.Errorf("route status is not in valid state: %s", route.Status)
 }
 
-func (r *Route) MarkForCleanup(c client.Client, key, value string) error {
+func (r *Route) MarkForCleanup(ctx context.Context, c client.Client, key, value string) error {
 	// update service
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -162,7 +162,7 @@ func (r *Route) MarkForCleanup(c client.Client, key, value string) error {
 			Namespace: r.namespacedName.Namespace,
 		},
 	}
-	err := utils.UpdateWithLabel(c, svc, key, value)
+	err := utils.UpdateWithLabel(ctx, c, svc, key, value)
 	if err != nil {
 		return err
 	}
@@ -173,10 +173,10 @@ func (r *Route) MarkForCleanup(c client.Client, key, value string) error {
 			Namespace: r.namespacedName.Namespace,
 		},
 	}
-	return utils.UpdateWithLabel(c, route, key, value)
+	return utils.UpdateWithLabel(ctx, c, route, key, value)
 }
 
-func (r *Route) reconcileServiceForRoute(c client.Client) error {
+func (r *Route) reconcileServiceForRoute(ctx context.Context, c client.Client) error {
 	port := r.BackendPort()
 
 	serviceSelector := r.objMeta.Labels()
@@ -189,7 +189,7 @@ func (r *Route) reconcileServiceForRoute(c client.Client) error {
 	}
 
 	// TODO: log the return operation from CreateOrUpdate
-	_, err := controllerutil.CreateOrUpdate(context.TODO(), c, service, func() error {
+	_, err := controllerutil.CreateOrUpdate(ctx, c, service, func() error {
 		service.Spec = corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
 				{
@@ -214,7 +214,7 @@ func (r *Route) reconcileServiceForRoute(c client.Client) error {
 	return err
 }
 
-func (r *Route) reconcileRoute(c client.Client) error {
+func (r *Route) reconcileRoute(ctx context.Context, c client.Client) error {
 	termination := &routev1.TLSConfig{}
 	switch r.endpointType {
 	case EndpointTypeInsecureEdge:
@@ -258,7 +258,7 @@ func (r *Route) reconcileRoute(c client.Client) error {
 	return err
 }
 
-func (r *Route) getRoute(c client.Client) (*routev1.Route, error) {
+func (r *Route) getRoute(ctx context.Context, c client.Client) (*routev1.Route, error) {
 	route := &routev1.Route{}
 	err := c.Get(context.TODO(),
 		types.NamespacedName{Name: r.NamespacedName().Name, Namespace: r.NamespacedName().Namespace},
@@ -269,8 +269,8 @@ func (r *Route) getRoute(c client.Client) (*routev1.Route, error) {
 	return route, err
 }
 
-func (r *Route) setFields(c client.Client) error {
-	route, err := r.getRoute(c)
+func (r *Route) setFields(ctx context.Context, c client.Client) error {
+	route, err := r.getRoute(ctx, c)
 	if err != nil {
 		return err
 	}

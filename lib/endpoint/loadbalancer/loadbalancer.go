@@ -43,7 +43,7 @@ func APIsToWatch() ([]client.Object, error) {
 // it is always recommended to check if the loadbalancer is healthy.
 //
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
-func New(c client.Client,
+func New(ctx context.Context, c client.Client,
 	name types.NamespacedName,
 	metaMutation meta.ObjectMetaMutation,
 	backendPort, ingressPort int32) (endpoint.Endpoint, error) {
@@ -54,12 +54,12 @@ func New(c client.Client,
 		ingressPort:    ingressPort,
 	}
 
-	err := s.reconcileService(c)
+	err := s.reconcileService(ctx, c)
 	if err != nil {
 		return nil, err
 	}
 
-	healthy, err := s.IsHealthy(c)
+	healthy, err := s.IsHealthy(ctx, c)
 	if err != nil {
 		return nil, err
 	}
@@ -87,9 +87,9 @@ func (l *LoadBalancer) IngressPort() int32 {
 	return l.ingressPort
 }
 
-func (l *LoadBalancer) IsHealthy(c client.Client) (bool, error) {
+func (l *LoadBalancer) IsHealthy(ctx context.Context, c client.Client) (bool, error) {
 	svc := &corev1.Service{}
-	err := c.Get(context.Background(), l.NamespacedName(), svc)
+	err := c.Get(ctx, l.NamespacedName(), svc)
 	if err != nil {
 		return false, err
 	}
@@ -106,7 +106,7 @@ func (l *LoadBalancer) IsHealthy(c client.Client) (bool, error) {
 	return false, nil
 }
 
-func (l *LoadBalancer) MarkForCleanup(c client.Client, key, value string) error {
+func (l *LoadBalancer) MarkForCleanup(ctx context.Context, c client.Client, key, value string) error {
 	// mark service for deletion
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -114,10 +114,10 @@ func (l *LoadBalancer) MarkForCleanup(c client.Client, key, value string) error 
 			Namespace: l.namespacedName.Namespace,
 		},
 	}
-	return utils.UpdateWithLabel(c, svc, key, value)
+	return utils.UpdateWithLabel(ctx, c, svc, key, value)
 }
 
-func (l *LoadBalancer) reconcileService(c client.Client) error {
+func (l *LoadBalancer) reconcileService(ctx context.Context, c client.Client) error {
 	serviceSelector := l.objMeta.Labels()
 
 	service := &corev1.Service{
@@ -128,7 +128,7 @@ func (l *LoadBalancer) reconcileService(c client.Client) error {
 	}
 
 	// TODO: log the return operation from CreateOrUpdate
-	_, err := controllerutil.CreateOrUpdate(context.TODO(), c, service, func() error {
+	_, err := controllerutil.CreateOrUpdate(ctx, c, service, func() error {
 		if service.CreationTimestamp.IsZero() {
 			service.Spec = corev1.ServiceSpec{
 				Ports: []corev1.ServicePort{

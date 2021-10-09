@@ -1,6 +1,7 @@
 package endpoint
 
 import (
+	"context"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -16,7 +17,7 @@ type Endpoint interface {
 	// IngressPort is a port which is used by the clients to connect to the endpoint
 	IngressPort() int32
 	// IsHealthy returns whether or not all Kube resources used by endpoint are healthy
-	IsHealthy(c client.Client) (bool, error)
+	IsHealthy(ctx context.Context, c client.Client) (bool, error)
 	// MarkForCleanup
-	MarkForCleanup(c client.Client, key, value string) error
+	MarkForCleanup(ctx context.Context, c client.Client, key, value string) error
 }

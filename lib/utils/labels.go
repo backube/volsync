@@ -7,8 +7,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func UpdateWithLabel(c client.Client, obj client.Object, key, value string) error {
-	err := c.Get(context.TODO(), types.NamespacedName{
+func UpdateWithLabel(ctx context.Context, c client.Client, obj client.Object, key, value string) error {
+	err := c.Get(ctx, types.NamespacedName{
 		Namespace: obj.GetNamespace(),
 		Name:      obj.GetName(),
 	}, obj)
