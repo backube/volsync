@@ -134,7 +134,7 @@ func (r *Route) IsHealthy(c client.Client) (bool, error) {
 		return false, err
 	}
 	if route.Spec.Host == "" {
-		return false, fmt.Errorf("hostname not set for rsync route: %s", route)
+		return false, fmt.Errorf("hostname not set for route: %s", route)
 	}
 
 	if len(route.Status.Ingress) > 0 && len(route.Status.Ingress[0].Conditions) > 0 {
@@ -190,25 +190,23 @@ func (r *Route) reconcileServiceForRoute(c client.Client) error {
 
 	// TODO: log the return operation from CreateOrUpdate
 	_, err := controllerutil.CreateOrUpdate(context.TODO(), c, service, func() error {
-		if service.CreationTimestamp.IsZero() {
-			service.Spec = corev1.ServiceSpec{
-				Ports: []corev1.ServicePort{
-					{
-						Name:     r.NamespacedName().Name,
-						Protocol: corev1.ProtocolTCP,
-						Port:     port,
-						TargetPort: intstr.IntOrString{
-							Type:   intstr.Int,
-							IntVal: port,
-						},
+		service.Spec = corev1.ServiceSpec{
+			Ports: []corev1.ServicePort{
+				{
+					Name:     r.NamespacedName().Name,
+					Protocol: corev1.ProtocolTCP,
+					Port:     port,
+					TargetPort: intstr.IntOrString{
+						Type:   intstr.Int,
+						IntVal: port,
 					},
 				},
-				Selector: serviceSelector,
-				Type:     corev1.ServiceTypeClusterIP,
-			}
+			},
+			Selector: serviceSelector,
+			Type:     corev1.ServiceTypeClusterIP,
 		}
 
-		service.Labels = r.objMeta.Labels()
+		service.Labels = serviceSelector
 		service.OwnerReferences = r.objMeta.OwnerReferences()
 		return nil
 	})
