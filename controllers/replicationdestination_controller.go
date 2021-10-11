@@ -60,6 +60,21 @@ var (
 	SCCName string
 )
 
+var replicationDestinationOwns = []client.Object{
+	&batchv1.Job{},
+	&corev1.PersistentVolumeClaim{},
+	&corev1.Secret{},
+	&corev1.Service{},
+	&corev1.ServiceAccount{},
+	&rbacv1.Role{},
+	&rbacv1.RoleBinding{},
+	&snapv1.VolumeSnapshot{},
+}
+
+func AddToReplicationDestinationOwns(objs []client.Object) {
+	replicationDestinationOwns = append(replicationDestinationOwns, objs...)
+}
+
 // ReplicationDestinationReconciler reconciles a ReplicationDestination object
 type ReplicationDestinationReconciler struct {
 	client.Client
@@ -213,17 +228,12 @@ func reconcileDestUsingCatalog(
 }
 
 func (r *ReplicationDestinationReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&volsyncv1alpha1.ReplicationDestination{}).
-		Owns(&batchv1.Job{}).
-		Owns(&corev1.PersistentVolumeClaim{}).
-		Owns(&corev1.Secret{}).
-		Owns(&corev1.Service{}).
-		Owns(&corev1.ServiceAccount{}).
-		Owns(&rbacv1.Role{}).
-		Owns(&rbacv1.RoleBinding{}).
-		Owns(&snapv1.VolumeSnapshot{}).
-		Complete(r)
+	builder := ctrl.NewControllerManagedBy(mgr).
+		For(&volsyncv1alpha1.ReplicationDestination{})
+	for _, obj := range replicationDestinationOwns {
+		builder.Owns(obj)
+	}
+	return builder.Complete(r)
 }
 
 type rsyncDestReconciler struct {

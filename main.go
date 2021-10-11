@@ -18,6 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -27,20 +28,21 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
-	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1beta1"
-	kruntime "k8s.io/apimachinery/pkg/runtime"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers"
 	"github.com/backube/volsync/controllers/mover"
 	"github.com/backube/volsync/controllers/mover/restic"
 	"github.com/backube/volsync/controllers/utils"
 	"github.com/backube/volsync/lib/endpoint/route"
+	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1beta1"
+	metaapi "k8s.io/apimachinery/pkg/api/meta"
+	kruntime "k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -106,10 +108,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	_, err = route.APIsToWatch(mgr.GetClient())
-	if err != nil {
+	apisForRoute, err := route.APIsToWatch(mgr.GetClient())
+	noResourceError := &metaapi.NoResourceMatchError{}
+	switch {
+	case errors.As(err, &noResourceError):
+		// log route is not available, discard apisForRoute
+		setupLog.Info("route.openshift.io is unavailable, route endpoint will be disabled")
+	case err != nil:
+		// unable to talk to discovery API, exit the controller
 		setupLog.Error(err, "unable to get the APIs")
 		os.Exit(1)
+	default:
+		// add additional API objects to watch source
+		addRouteToWatchSource(apisForRoute)
 	}
 
 	if err = (&controllers.ReplicationSourceReconciler{
@@ -144,4 +155,9 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+func addRouteToWatchSource(objs []client.Object) {
+	controllers.AddToReplicationSourceOwns(objs)
+	controllers.AddToReplicationDestinationOwns(objs)
 }

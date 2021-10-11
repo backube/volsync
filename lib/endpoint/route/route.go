@@ -4,10 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-
 	"github.com/backube/volsync/lib/endpoint"
 	"github.com/backube/volsync/lib/meta"
 	"github.com/backube/volsync/lib/utils"
@@ -15,6 +11,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metaapi "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -48,7 +46,7 @@ func APIsToWatch(c client.Client) ([]client.Object, error) {
 	})
 	noResourceError := &metaapi.NoResourceMatchError{}
 	if errors.As(err, &noResourceError) {
-		return []client.Object{}, fmt.Errorf("route package unusable")
+		return []client.Object{}, fmt.Errorf("route package unusable: %w", err)
 	}
 	if err != nil {
 		return []client.Object{}, fmt.Errorf("unable to find the resource needed for this package")
@@ -73,6 +71,15 @@ type Route struct {
 // and then checks for the health of the route. Before using the fields of the route
 // it is always recommended to check if the route is healthy.
 //
+// In order to identify if the route API exists check for the following error after calling
+// New()
+// noResourceError := &metaapi.NoResourceMatchError{}
+//	switch {
+//	case errors.As(err, &noResourceError):
+//		// log route is not available, reconcilers should not requeue at this point
+//		log.Info("route.openshift.io is unavailable, route endpoint will be disabled")
+//  }
+//
 // +kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 func New(ctx context.Context, c client.Client,
@@ -80,7 +87,7 @@ func New(ctx context.Context, c client.Client,
 	eType EndpointType,
 	metaMutation meta.ObjectMetaMutation) (endpoint.Endpoint, error) {
 	if eType != EndpointTypePassthrough && eType != EndpointTypeInsecureEdge {
-		panic("unsupported endpoint type for routes")
+		return nil, fmt.Errorf("unsupported endpoint type for routes")
 	}
 
 	r := &Route{
@@ -237,18 +244,16 @@ func (r *Route) reconcileRoute(ctx context.Context, c client.Client) error {
 		},
 	}
 
-	_, err := controllerutil.CreateOrUpdate(context.TODO(), c, route, func() error {
-		if route.CreationTimestamp.IsZero() {
-			route.Spec = routev1.RouteSpec{
-				Port: &routev1.RoutePort{
-					TargetPort: intstr.FromInt(int(r.port)),
-				},
-				To: routev1.RouteTargetReference{
-					Kind: "Service",
-					Name: r.NamespacedName().Name,
-				},
-				TLS: termination,
-			}
+	_, err := controllerutil.CreateOrUpdate(ctx, c, route, func() error {
+		route.Spec = routev1.RouteSpec{
+			Port: &routev1.RoutePort{
+				TargetPort: intstr.FromInt(int(r.port)),
+			},
+			To: routev1.RouteTargetReference{
+				Kind: "Service",
+				Name: r.NamespacedName().Name,
+			},
+			TLS: termination,
 		}
 		route.Labels = r.objMeta.Labels()
 		route.OwnerReferences = r.objMeta.OwnerReferences()

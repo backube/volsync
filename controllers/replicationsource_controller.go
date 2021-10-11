@@ -49,6 +49,21 @@ const (
 	mountPath = "/data"
 )
 
+var replicationSourceOwns = []client.Object{
+	&batchv1.Job{},
+	&corev1.PersistentVolumeClaim{},
+	&corev1.Secret{},
+	&corev1.Service{},
+	&corev1.ServiceAccount{},
+	&rbacv1.Role{},
+	&rbacv1.RoleBinding{},
+	&snapv1.VolumeSnapshot{},
+}
+
+func AddToReplicationSourceOwns(objs []client.Object) {
+	replicationSourceOwns = append(replicationSourceOwns, objs...)
+}
+
 // ReplicationSourceReconciler reconciles a ReplicationSource object
 type ReplicationSourceReconciler struct {
 	client.Client
@@ -202,17 +217,11 @@ func reconcileSrcUsingCatalog(
 }
 
 func (r *ReplicationSourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&volsyncv1alpha1.ReplicationSource{}).
-		Owns(&batchv1.Job{}).
-		Owns(&corev1.PersistentVolumeClaim{}).
-		Owns(&corev1.Secret{}).
-		Owns(&corev1.Service{}).
-		Owns(&corev1.ServiceAccount{}).
-		Owns(&rbacv1.Role{}).
-		Owns(&rbacv1.RoleBinding{}).
-		Owns(&snapv1.VolumeSnapshot{}).
-		Complete(r)
+	builder := ctrl.NewControllerManagedBy(mgr).For(&volsyncv1alpha1.ReplicationSource{})
+	for _, owns := range replicationSourceOwns {
+		builder.Owns(owns)
+	}
+	return builder.Complete(r)
 }
 
 // pastScheduleDeadline returns true if a scheduled sync hasn't been completed
