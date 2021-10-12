@@ -129,24 +129,19 @@ func (l *LoadBalancer) reconcileService(ctx context.Context, c client.Client) er
 
 	// TODO: log the return operation from CreateOrUpdate
 	_, err := controllerutil.CreateOrUpdate(ctx, c, service, func() error {
-		if service.CreationTimestamp.IsZero() {
-			service.Spec = corev1.ServiceSpec{
-				Ports: []corev1.ServicePort{
-					{
-						Name:     l.NamespacedName().Name,
-						Protocol: corev1.ProtocolTCP,
-						Port:     l.IngressPort(),
-						TargetPort: intstr.IntOrString{
-							Type:   intstr.Int,
-							IntVal: l.BackendPort(),
-						},
-					},
+		service.Spec.Ports = []corev1.ServicePort{
+			{
+				Name:     l.NamespacedName().Name,
+				Protocol: corev1.ProtocolTCP,
+				Port:     l.IngressPort(),
+				TargetPort: intstr.IntOrString{
+					Type:   intstr.Int,
+					IntVal: l.BackendPort(),
 				},
-				Selector: serviceSelector,
-				Type:     corev1.ServiceTypeLoadBalancer,
-			}
+			},
 		}
-
+		service.Spec.Selector = serviceSelector
+		service.Spec.Type = corev1.ServiceTypeLoadBalancer
 		service.Labels = l.objMeta.Labels()
 		service.OwnerReferences = l.objMeta.OwnerReferences()
 		return nil

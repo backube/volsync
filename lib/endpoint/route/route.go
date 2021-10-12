@@ -96,6 +96,13 @@ func New(ctx context.Context, c client.Client,
 		endpointType:   eType,
 	}
 
+	switch r.endpointType {
+	case EndpointTypeInsecureEdge:
+		r.port = int32(InsecureEdgeTerminationPolicyPort)
+	case EndpointTypePassthrough:
+		r.port = int32(TLSTerminationPassthroughPolicyPort)
+	}
+
 	err := r.reconcileServiceForRoute(ctx, c)
 	if err != nil {
 		return nil, err
@@ -196,23 +203,21 @@ func (r *Route) reconcileServiceForRoute(ctx context.Context, c client.Client) e
 	}
 
 	// TODO: log the return operation from CreateOrUpdate
-	_, err := controllerutil.CreateOrUpdate(ctx, c, service, func() error {
-		service.Spec = corev1.ServiceSpec{
-			Ports: []corev1.ServicePort{
-				{
-					Name:     r.NamespacedName().Name,
-					Protocol: corev1.ProtocolTCP,
-					Port:     port,
-					TargetPort: intstr.IntOrString{
-						Type:   intstr.Int,
-						IntVal: port,
-					},
+	_, err := controllerutil.CreateOrPatch(ctx, c, service, func() error {
+		service.Spec.Ports = []corev1.ServicePort{
+			{
+				Name:     r.NamespacedName().Name,
+				Protocol: corev1.ProtocolTCP,
+				Port:     port,
+				TargetPort: intstr.IntOrString{
+					Type:   intstr.Int,
+					IntVal: port,
 				},
 			},
-			Selector: serviceSelector,
-			Type:     corev1.ServiceTypeClusterIP,
 		}
 
+		service.Spec.Selector = serviceSelector
+		service.Spec.Type = corev1.ServiceTypeClusterIP
 		service.Labels = serviceSelector
 		service.OwnerReferences = r.objMeta.OwnerReferences()
 		return nil
@@ -229,12 +234,10 @@ func (r *Route) reconcileRoute(ctx context.Context, c client.Client) error {
 			Termination:                   routev1.TLSTerminationEdge,
 			InsecureEdgeTerminationPolicy: "Allow",
 		}
-		r.port = int32(InsecureEdgeTerminationPolicyPort)
 	case EndpointTypePassthrough:
 		termination = &routev1.TLSConfig{
 			Termination: routev1.TLSTerminationPassthrough,
 		}
-		r.port = int32(TLSTerminationPassthroughPolicyPort)
 	}
 
 	route := &routev1.Route{
@@ -245,16 +248,14 @@ func (r *Route) reconcileRoute(ctx context.Context, c client.Client) error {
 	}
 
 	_, err := controllerutil.CreateOrUpdate(ctx, c, route, func() error {
-		route.Spec = routev1.RouteSpec{
-			Port: &routev1.RoutePort{
-				TargetPort: intstr.FromInt(int(r.port)),
-			},
-			To: routev1.RouteTargetReference{
-				Kind: "Service",
-				Name: r.NamespacedName().Name,
-			},
-			TLS: termination,
+		route.Spec.Port = &routev1.RoutePort{
+			TargetPort: intstr.FromInt(int(r.port)),
 		}
+		route.Spec.To = routev1.RouteTargetReference{
+			Kind: "Service",
+			Name: r.NamespacedName().Name,
+		}
+		route.Spec.TLS = termination
 		route.Labels = r.objMeta.Labels()
 		route.OwnerReferences = r.objMeta.OwnerReferences()
 		return nil
