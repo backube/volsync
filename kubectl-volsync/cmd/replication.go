@@ -17,12 +17,88 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
+
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
 
-const ReplicationRelationship RelationshipType = "replication"
+const ReplicationRelationshipType RelationshipType = "replication"
+
+// replicationRelationship holds the config state for replication-type
+// relationships
+type replicationRelationship struct {
+	Relationship
+	data replicationRelationshipData
+}
+
+// replicationRelationshipData is the state that will be saved to the
+// relationship config file
+type replicationRelationshipData struct {
+	Version     int
+	Source      *replicationRelationshipSource
+	Destination *replicationRelationshipDestination
+}
+
+type replicationRelationshipSource struct {
+	Cluster   string
+	Namespace string
+	PVCName   string
+	RSName    string
+	Source    volsyncv1alpha1.ReplicationSourceRsyncSpec
+}
+
+type replicationRelationshipDestination struct {
+	Cluster     string
+	Namespace   string
+	RDName      string
+	Destination volsyncv1alpha1.ReplicationDestinationRsyncSpec
+}
+
+func (rr *replicationRelationship) Save() error {
+	rr.Set("data", rr.data)
+	return rr.Relationship.Save()
+}
+
+func newReplicationRelationship(cmd *cobra.Command) (*replicationRelationship, error) {
+	r, err := CreateRelationshipFromCommand(cmd, ReplicationRelationshipType)
+	if err != nil {
+		return nil, err
+	}
+
+	return &replicationRelationship{
+		Relationship: *r,
+		data: replicationRelationshipData{
+			Version: 1,
+		},
+	}, nil
+}
+
+func loadReplicationRelationship(cmd *cobra.Command) (*replicationRelationship, error) {
+	r, err := LoadRelationshipFromCommand(cmd, ReplicationRelationshipType)
+	if err != nil {
+		return nil, err
+	}
+
+	rr := &replicationRelationship{
+		Relationship: *r,
+	}
+	// Decode according to the file version
+	version := rr.GetInt("data.version")
+	switch version {
+	case 1:
+		err = rr.UnmarshalKey("data", &rr.data)
+		if err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("unsupported config file version %d", version)
+	}
+	return rr, nil
+}
 
 // replicationCmd represents the replication command
 var replicationCmd = &cobra.Command{

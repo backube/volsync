@@ -17,14 +17,25 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 package cmd
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/spf13/cobra"
+	corev1 "k8s.io/api/core/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
 
 type replicationSetSource struct {
-	cobra.Command
-	rel *Relationship
+	rel *replicationRelationship
+	// Parsed CLI options
+	copyMethod volsyncv1alpha1.CopyMethodType
+	pvcName    XClusterName
 }
 
 // replicationSetSourceCmd represents the replicationSetSource command
@@ -35,10 +46,15 @@ var replicationSetSourceCmd = &cobra.Command{
 	This command sets the source of the replication.
 	`)),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		r := &replicationSetSource{
-			Command: *cmd,
+		rss, err := newReplicationSetSource(cmd)
+		if err != nil {
+			return err
 		}
-		return r.Run()
+		rss.rel, err = loadReplicationRelationship(cmd)
+		if err != nil {
+			return err
+		}
+		return rss.Run(cmd.Context())
 	},
 }
 
@@ -50,21 +66,95 @@ func init() {
 	cobra.CheckErr(replicationSetSourceCmd.MarkFlagRequired("pvcname"))
 }
 
-func (cmd *replicationSetSource) Run() error {
-	var err error
-	cmd.rel, err = LoadRelationshipFromCommand(&cmd.Command, ReplicationRelationship)
+func newReplicationSetSource(cmd *cobra.Command) (*replicationSetSource, error) {
+	rss := &replicationSetSource{}
+	cm, err := cmd.Flags().GetString("copymethod")
+	if err != nil {
+		return nil, err
+	}
+	rss.copyMethod = volsyncv1alpha1.CopyMethodType(cm)
+	if rss.copyMethod != volsyncv1alpha1.CopyMethodNone &&
+		rss.copyMethod != volsyncv1alpha1.CopyMethodClone &&
+		rss.copyMethod != volsyncv1alpha1.CopyMethodSnapshot {
+		return nil, fmt.Errorf("unsupported copymethod: %v", rss.copyMethod)
+	}
+
+	pvcname, err := cmd.Flags().GetString("pvcname")
+	if err != nil {
+		return nil, err
+	}
+	xcr, err := ParseXClusterName(pvcname)
+	if err != nil {
+		return nil, err
+	}
+	rss.pvcName = *xcr
+
+	return rss, nil
+}
+
+func (rss *replicationSetSource) Run(ctx context.Context) error {
+	// Ensure PVC exists before we do anything
+	pvcClient, err := newClient(rss.pvcName.Cluster)
 	if err != nil {
 		return err
 	}
 
-	// Validate that the PVC exists
-	// if a source is already defined, delete it
-	// if key secret exists, delete it
-	// save relationship
-	// if a destination is not defined, stop
-	// if destination is defined, fetch keys & address
-	// create key secret
-	// create source
+	pvc := corev1.PersistentVolumeClaim{}
+	if err = pvcClient.Get(ctx, rss.pvcName.NamespacedName(), &pvc); err != nil {
+		if kerrors.IsNotFound(err) {
+			return fmt.Errorf("PVC %v not found in cluster context %s", rss.pvcName.NamespacedName(), rss.pvcName.Cluster)
+		}
+		return err
+	}
+
+	// Delete any previously defined source
+	if rss.rel.data.Source != nil {
+		srcClient, err := newClient(rss.rel.data.Source.Cluster)
+		if err != nil {
+			fmt.Printf("unable to create client for cluster context %s: %v", rss.rel.data.Source.Cluster, err)
+		}
+		if err = rss.deleteSource(ctx, srcClient); err != nil {
+			if !kerrors.IsNotFound(err) {
+				// We're unable to clean up the old, but maybe that's ok.
+				fmt.Printf("unable to remove old ReplicationSource: %v", err)
+			}
+		}
+	}
+
+	rss.rel.data.Source = &replicationRelationshipSource{
+		Cluster:   rss.pvcName.Cluster,
+		Namespace: rss.pvcName.Namespace,
+		RSName:    "", // Won't know the name until it's created
+		PVCName:   rss.pvcName.Name,
+		Source: volsyncv1alpha1.ReplicationSourceRsyncSpec{
+			ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
+				CopyMethod: rss.copyMethod,
+			},
+		},
+	}
+
+	if err = rss.rel.Save(); err != nil {
+		return fmt.Errorf("unable to save relationship configuration: %w", err)
+	}
 
 	return nil
+}
+
+func (rss *replicationSetSource) deleteSource(ctx context.Context, c client.Client) error {
+	if rss.rel.data.Source == nil || len(rss.rel.data.Source.RSName) == 0 {
+		return nil
+	}
+
+	rs := volsyncv1alpha1.ReplicationSource{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      rss.rel.data.Source.RSName,
+			Namespace: rss.rel.data.Source.Namespace,
+		},
+	}
+
+	err := c.Delete(ctx, &rs, client.PropagationPolicy(metav1.DeletePropagationForeground))
+	if err == nil || kerrors.IsNotFound(err) {
+		rss.rel.data.Source.RSName = ""
+	}
+	return err
 }

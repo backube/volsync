@@ -59,7 +59,7 @@ func init() {
 
 func (cmd *replicationDelete) Run() error {
 	var err error
-	cmd.rel, err = LoadRelationshipFromCommand(&cmd.Command, ReplicationRelationship)
+	cmd.rel, err = LoadRelationshipFromCommand(&cmd.Command, ReplicationRelationshipType)
 	if err != nil {
 		return err
 	}

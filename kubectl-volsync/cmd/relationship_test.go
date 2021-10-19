@@ -21,7 +21,6 @@ import (
 	"os"
 	"path"
 
-	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
@@ -117,11 +116,8 @@ var _ = Describe("Relationships", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(rel2).ToNot(BeNil())
 
-			id := rel2.GetString("id")
-			Expect(id).To(Equal(relID))
-			rel2Id, err := uuid.Parse(id)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(rel2Id.String()).To(Equal(relID))
+			id := rel2.ID()
+			Expect(id.String()).To(Equal(relID))
 		})
 	})
 })

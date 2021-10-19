@@ -57,5 +57,11 @@ var _ = Describe("XClusterName", func() {
 		Expect(xcn.Cluster).To(Equal("cn"))
 		Expect(xcn.Namespace).To(Equal("nn"))
 		Expect(xcn.Name).To(Equal("n"))
+
+		r.Set("struct", *xcn)
+		xcn2, err := XClusterNameFromRelationship(r, "struct")
+		Expect(err).ToNot(HaveOccurred())
+		Expect(xcn2).ToNot(BeNil())
+		Expect(xcn2.Name).To(Equal(xcn.Name))
 	})
 })

@@ -113,7 +113,7 @@ func (r *Relationship) Save() error {
 
 // Delete deletes a relationship's associated file.
 func (r *Relationship) Delete() error {
-	filename := r.Viper.ConfigFileUsed()
+	filename := r.ConfigFileUsed()
 	return os.Remove(filename)
 }
 
@@ -125,4 +125,9 @@ func (r *Relationship) Name() string {
 // Type returns the type of this relationship.
 func (r *Relationship) Type() RelationshipType {
 	return RelationshipType(r.GetString("type"))
+}
+
+// ID returns the UUID of this relationship.
+func (r *Relationship) ID() uuid.UUID {
+	return uuid.MustParse(r.GetString("id"))
 }

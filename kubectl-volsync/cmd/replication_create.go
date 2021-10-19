@@ -51,12 +51,12 @@ func init() {
 }
 
 func (cmd *replicationCreate) Run() error {
-	relation, err := CreateRelationshipFromCommand(&cmd.Command, ReplicationRelationship)
+	r, err := newReplicationRelationship(&cmd.Command)
 	if err != nil {
 		return err
 	}
 
-	if err = relation.Save(); err != nil {
+	if err = r.Save(); err != nil {
 		return fmt.Errorf("unable to save relationship configuration: %w", err)
 	}
 
