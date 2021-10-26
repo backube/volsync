@@ -44,22 +44,40 @@ type replicationRelationshipData struct {
 }
 
 type replicationRelationshipSource struct {
-	Cluster   string
+	// Cluster context name
+	Cluster string
+	// Namespace on source cluster
 	Namespace string
-	PVCName   string
-	RSName    string
-	Source    volsyncv1alpha1.ReplicationSourceRsyncSpec
+	// Name of PVC being replicated
+	PVCName string
+	// Name of ReplicationSource object
+	RSName string
+	// Name of Secret holding SSH keys
+	SSHKeyName string
+	// Parameters for the ReplicationSource
+	Source volsyncv1alpha1.ReplicationSourceRsyncSpec
 }
 
 type replicationRelationshipDestination struct {
-	Cluster     string
-	Namespace   string
-	RDName      string
+	// Cluster context name
+	Cluster string
+	// Namespace on destination cluster
+	Namespace string
+	// Name if the ReplicationDestination object
+	RDName string
+	// Parameters for the ReplicationDestination
 	Destination volsyncv1alpha1.ReplicationDestinationRsyncSpec
 }
 
 func (rr *replicationRelationship) Save() error {
 	rr.Set("data", rr.data)
+	// resource.Quantity doesn't properly encode, so we need to do it manually
+	if rr.data.Source.Source.Capacity != nil {
+		rr.Set("data.source.source.capacity", rr.data.Source.Source.Capacity.String())
+	}
+	if rr.data.Destination.Destination.Capacity != nil {
+		rr.Set("data.destination.destination.capacity", rr.data.Destination.Destination.Capacity.String())
+	}
 	return rr.Relationship.Save()
 }
 
