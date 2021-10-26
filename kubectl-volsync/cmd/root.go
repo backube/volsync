@@ -17,7 +17,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 package cmd
 
 import (
-	"flag"
+	goflag "flag"
 	"os"
 	"path"
 
@@ -26,6 +26,7 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"github.com/spf13/cobra"
+	"k8s.io/component-base/logs"
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
 )
@@ -56,6 +57,8 @@ var rootCmd = &cobra.Command{
 // appropriately. This is called by main.main(). It only needs to happen once to
 // the rootCmd.
 func Execute() {
+	logs.InitLogs()
+	defer logs.FlushLogs()
 	cobra.CheckErr(rootCmd.Execute())
 }
 
@@ -68,5 +71,6 @@ func init() {
 		"directory for VolSync config files")
 	// Add flags that are set by other packages:
 	// - controller-runtime/pkg/client/config provides kubeconfig
-	rootCmd.PersistentFlags().AddGoFlagSet(flag.CommandLine)
+	// - logging packages provide config flags for logs
+	rootCmd.PersistentFlags().AddGoFlagSet(goflag.CommandLine)
 }

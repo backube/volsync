@@ -143,6 +143,7 @@ func (sync *replicationSync) Run(ctx context.Context) error {
 	return nil
 }
 
+//nolint: funlen
 func (sync *replicationSync) createDestination(ctx context.Context) (*volsyncv1alpha1.ReplicationDestination, error) {
 	// If CM:N, we're going to use destination PVC instead of letting the
 	// operator create a temporary one. Either use the one that exists or create

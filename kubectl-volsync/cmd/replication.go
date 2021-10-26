@@ -72,10 +72,10 @@ type replicationRelationshipDestination struct {
 func (rr *replicationRelationship) Save() error {
 	rr.Set("data", rr.data)
 	// resource.Quantity doesn't properly encode, so we need to do it manually
-	if rr.data.Source.Source.Capacity != nil {
+	if rr.data.Source != nil && rr.data.Source.Source.Capacity != nil {
 		rr.Set("data.source.source.capacity", rr.data.Source.Source.Capacity.String())
 	}
-	if rr.data.Destination.Destination.Capacity != nil {
+	if rr.data.Destination != nil && rr.data.Destination.Destination.Capacity != nil {
 		rr.Set("data.destination.destination.capacity", rr.data.Destination.Destination.Capacity.String())
 	}
 	return rr.Relationship.Save()

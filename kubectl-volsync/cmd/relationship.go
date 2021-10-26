@@ -25,6 +25,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"k8s.io/klog/v2"
 )
 
 type RelationshipType string
@@ -75,6 +76,7 @@ func LoadRelationship(configDir string, name string, rType RelationshipType) (*R
 	}
 	v := viper.New()
 	v.SetConfigFile(filename)
+	klog.V(1).Infof("loading relationship from %s", filename)
 	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("loading relationship: %w", err)
 	}
@@ -108,12 +110,14 @@ func LoadRelationshipFromCommand(cmd *cobra.Command, rType RelationshipType) (*R
 // Save persists the relationship information into the associated relationship
 // file.
 func (r *Relationship) Save() error {
+	klog.V(1).Infof("saving relationship information to %s", r.ConfigFileUsed())
 	return r.WriteConfig()
 }
 
 // Delete deletes a relationship's associated file.
 func (r *Relationship) Delete() error {
 	filename := r.ConfigFileUsed()
+	klog.V(1).Infof("deleting relationship file %s", filename)
 	return os.Remove(filename)
 }
 

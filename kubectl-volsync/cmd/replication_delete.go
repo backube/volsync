@@ -17,10 +17,12 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 package cmd
 
 import (
+	"context"
 	"fmt"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/spf13/cobra"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
@@ -28,8 +30,7 @@ import (
 )
 
 type replicationDelete struct {
-	cobra.Command
-	rel *Relationship
+	rel *replicationRelationship
 }
 
 // replicationDeleteCmd represents the delete command
@@ -46,10 +47,15 @@ var replicationDeleteCmd = &cobra.Command{
 	relationship.
 	`)),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		r := &replicationDelete{
-			Command: *cmd,
+		r, err := newReplicationDelete(cmd)
+		if err != nil {
+			return err
 		}
-		return r.Run()
+		r.rel, err = loadReplicationRelationship(cmd)
+		if err != nil {
+			return err
+		}
+		return r.Run(cmd.Context())
 	},
 }
 
@@ -57,48 +63,47 @@ func init() {
 	replicationCmd.AddCommand(replicationDeleteCmd)
 }
 
-func (cmd *replicationDelete) Run() error {
-	var err error
-	cmd.rel, err = LoadRelationshipFromCommand(&cmd.Command, ReplicationRelationshipType)
-	if err != nil {
-		return err
-	}
+func newReplicationDelete(cmd *cobra.Command) (*replicationDelete, error) {
+	rdel := &replicationDelete{}
+	return rdel, nil
+}
 
-	if obj, err := XClusterNameFromRelationship(cmd.rel, "source"); err == nil {
-		cl, err := newClient(obj.Cluster)
+func (rdel *replicationDelete) Run(ctx context.Context) error {
+	if rdel.rel.data.Source != nil {
+		cl, err := newClient(rdel.rel.data.Source.Cluster)
 		if err != nil {
-			return fmt.Errorf("unable to create client for cluster context: %s: %w", obj.Cluster, err)
+			return fmt.Errorf("unable to create client for source cluster context: %w", err)
 		}
 		rs := volsyncv1alpha1.ReplicationSource{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      obj.Name,
-				Namespace: obj.Namespace,
+				Name:      rdel.rel.data.Source.RSName,
+				Namespace: rdel.rel.data.Source.Namespace,
 			},
 		}
-		err = cl.Delete(cmd.Context(), &rs, client.PropagationPolicy(metav1.DeletePropagationForeground))
-		if err != nil {
-			fmt.Printf("error removing ReplicationSource %v: %v\n", obj, err)
+		err = cl.Delete(ctx, &rs, client.PropagationPolicy(metav1.DeletePropagationForeground))
+		if err != nil && !kerrors.IsNotFound(err) {
+			fmt.Printf("error removing ReplicationSource %v: %v\n", rs, err)
 		}
 	}
 
-	if obj, err := XClusterNameFromRelationship(cmd.rel, "destination"); err == nil {
-		cl, err := newClient(obj.Cluster)
+	if rdel.rel.data.Destination != nil {
+		cl, err := newClient(rdel.rel.data.Destination.Cluster)
 		if err != nil {
-			return fmt.Errorf("unable to create client for cluster context: %s: %w", obj.Cluster, err)
+			return fmt.Errorf("unable to create client for destination cluster context: %w", err)
 		}
-		rs := volsyncv1alpha1.ReplicationDestination{
+		rd := volsyncv1alpha1.ReplicationDestination{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      obj.Name,
-				Namespace: obj.Namespace,
+				Name:      rdel.rel.data.Destination.RDName,
+				Namespace: rdel.rel.data.Destination.Namespace,
 			},
 		}
-		err = cl.Delete(cmd.Context(), &rs, client.PropagationPolicy(metav1.DeletePropagationForeground))
-		if err != nil {
-			fmt.Printf("error removing ReplicationDestination %v: %v\n", obj, err)
+		err = cl.Delete(ctx, &rd, client.PropagationPolicy(metav1.DeletePropagationForeground))
+		if err != nil && !kerrors.IsNotFound(err) {
+			fmt.Printf("error removing ReplicationDestination %v: %v\n", rd, err)
 		}
 	}
 
-	if err := cmd.rel.Delete(); err != nil {
+	if err := rdel.rel.Delete(); err != nil {
 		return err
 	}
 

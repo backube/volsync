@@ -86,14 +86,3 @@ func ParseXClusterName(name string) (*XClusterName, error) {
 	}
 	return nil, fmt.Errorf("name is not in the format [context/]namespace/objname: %s", name)
 }
-
-func XClusterNameFromRelationship(relation *Relationship, name string) (*XClusterName, error) {
-	if !relation.IsSet(name) {
-		return nil, fmt.Errorf("key %s not found in relationship", name)
-	}
-	var obj XClusterName
-	if err := relation.UnmarshalKey(name, &obj); err != nil {
-		return nil, err
-	}
-	return &obj, nil
-}
