@@ -185,9 +185,7 @@ func (sync *replicationSync) createDestination(ctx context.Context) (*volsyncv1a
 			Namespace: sync.rel.data.Destination.Namespace,
 		},
 	}
-	klog.V(1).InfoS("creating ReplicationDestination",
-		"name", client.ObjectKeyFromObject(rd),
-		"capacity", sync.rel.data.Destination.Destination.Capacity)
+	klog.V(1).Infof("creating ReplicationDestination %v", client.ObjectKeyFromObject(rd))
 	_, err := ctrlutil.CreateOrUpdate(ctx, sync.dstClient, rd, func() error {
 		rd.Spec = volsyncv1alpha1.ReplicationDestinationSpec{
 			Rsync: &sync.rel.data.Destination.Destination,
@@ -257,8 +255,12 @@ func (sync *replicationSync) createPVC(ctx context.Context) (*corev1.PersistentV
 		if statusCapacity != nil {
 			capacity = statusCapacity
 		}
-		pvc.Spec.Resources.Requests[corev1.ResourceStorage] = *capacity
+		pvc.Spec.Resources.Requests = corev1.ResourceList{
+			corev1.ResourceStorage: *capacity,
+		}
 	}
+	klog.V(1).Infof("creating destination PVC %v, size %s", client.ObjectKeyFromObject(pvc),
+		pvc.Spec.Resources.Requests.Storage().String())
 	err = sync.dstClient.Create(ctx, pvc)
 	if err != nil {
 		return nil, err
@@ -283,6 +285,7 @@ func (sync *replicationSync) copyKeySecret(ctx context.Context, dstKeyName strin
 			Namespace: sync.rel.data.Destination.Namespace,
 		},
 	}
+	klog.V(1).Infof("copying key secret from destination: %s", client.ObjectKeyFromObject(dstSecret))
 	err := sync.dstClient.Get(ctx, client.ObjectKeyFromObject(dstSecret), dstSecret)
 	if err != nil {
 		return err
