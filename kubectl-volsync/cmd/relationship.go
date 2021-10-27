@@ -23,19 +23,27 @@ import (
 	"path"
 
 	"github.com/google/uuid"
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"k8s.io/klog/v2"
 )
 
+// Each relationship type (e.g., replication, migration, backup, etc.) should
+// define its own type string so that the load/save routines can ensure that the
+// config files are used with the correct relationship type.
 type RelationshipType string
 
+// Relationship is the low-level structure that represents a volsync
+// relationship. Each specific type will define its own fields and wrap this
+// struct.
 type Relationship struct {
 	viper.Viper
 	name string
 }
 
-// CreateRelationship creates a new relationship structure. If an existing
+// createRelationship creates a new relationship structure. If an existing
 // relationship file is found, this will return an error.
-func CreateRelationship(configDir string, name string, rType RelationshipType) (*Relationship, error) {
+func createRelationship(configDir string, name string, rType RelationshipType) (*Relationship, error) {
 	filename := path.Join(configDir, name) + ".yaml"
 	if _, err := os.Stat(filename); !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("unable to create relationship: relationship exists")
@@ -50,16 +58,31 @@ func CreateRelationship(configDir string, name string, rType RelationshipType) (
 	}, nil
 }
 
-// LoadRelationship creates a relationship structure based on an existing
+// CreateRelationshipFromCommand wraps the relationship creation, automatically
+// extracting the config dir and name from the command flags.
+func CreateRelationshipFromCommand(cmd *cobra.Command, rType RelationshipType) (*Relationship, error) {
+	configDir, err := cmd.Flags().GetString("config-dir")
+	if err != nil {
+		return nil, err
+	}
+	rName, err := cmd.Flags().GetString("relationship")
+	if err != nil {
+		return nil, err
+	}
+	return createRelationship(configDir, rName, rType)
+}
+
+// loadRelationship creates a relationship structure based on an existing
 // relationship file. If the relationship does not exist or is of the wrong
 // type, this function will return an error.
-func LoadRelationship(configDir string, name string, rType RelationshipType) (*Relationship, error) {
+func loadRelationship(configDir string, name string, rType RelationshipType) (*Relationship, error) {
 	filename := path.Join(configDir, name) + ".yaml"
 	if _, err := os.Stat(filename); errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("relationship not found")
 	}
 	v := viper.New()
 	v.SetConfigFile(filename)
+	klog.V(1).Infof("loading relationship from %s", filename)
 	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("loading relationship: %w", err)
 	}
@@ -72,15 +95,36 @@ func LoadRelationship(configDir string, name string, rType RelationshipType) (*R
 	}, nil
 }
 
+// LoadRelationshipFromCommand wraps the relationship loading, automatically
+// extracting the config dir and name from the command flags.
+func LoadRelationshipFromCommand(cmd *cobra.Command, rType RelationshipType) (*Relationship, error) {
+	configDir, err := cmd.Flags().GetString("config-dir")
+	if err != nil {
+		return nil, err
+	}
+	rName, err := cmd.Flags().GetString("relationship")
+	if err != nil {
+		return nil, err
+	}
+	rel, err := loadRelationship(configDir, rName, rType)
+	if err != nil {
+		return nil, err
+	}
+	return rel, nil
+}
+
 // Save persists the relationship information into the associated relationship
-// file.
+// file. Prior to calling the save() method, the underlying Viper instance needs
+// to be updated with the state that will be saved.
 func (r *Relationship) Save() error {
+	klog.V(1).Infof("saving relationship information to %s", r.ConfigFileUsed())
 	return r.WriteConfig()
 }
 
 // Delete deletes a relationship's associated file.
 func (r *Relationship) Delete() error {
-	filename := r.Viper.ConfigFileUsed()
+	filename := r.ConfigFileUsed()
+	klog.V(1).Infof("deleting relationship file %s", filename)
 	return os.Remove(filename)
 }
 
@@ -92,4 +136,9 @@ func (r *Relationship) Name() string {
 // Type returns the type of this relationship.
 func (r *Relationship) Type() RelationshipType {
 	return RelationshipType(r.GetString("type"))
+}
+
+// ID returns the UUID of this relationship.
+func (r *Relationship) ID() uuid.UUID {
+	return uuid.MustParse(r.GetString("id"))
 }

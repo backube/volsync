@@ -82,7 +82,7 @@ func doMigrationCreate(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	relation, err := CreateRelationship(configDir, rName, MigrationRelationship)
+	relation, err := createRelationship(configDir, rName, MigrationRelationship)
 	if err != nil {
 		return err
 	}
