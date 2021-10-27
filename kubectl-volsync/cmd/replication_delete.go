@@ -24,6 +24,7 @@ import (
 	"github.com/spf13/cobra"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog/v2"
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -80,6 +81,7 @@ func (rdel *replicationDelete) Run(ctx context.Context) error {
 				Namespace: rdel.rel.data.Source.Namespace,
 			},
 		}
+		klog.Infof("deleting ReplicationSource: %v", client.ObjectKeyFromObject(&rs))
 		err = cl.Delete(ctx, &rs, client.PropagationPolicy(metav1.DeletePropagationForeground))
 		if err != nil && !kerrors.IsNotFound(err) {
 			fmt.Printf("error removing ReplicationSource %v: %v\n", rs, err)
@@ -97,6 +99,7 @@ func (rdel *replicationDelete) Run(ctx context.Context) error {
 				Namespace: rdel.rel.data.Destination.Namespace,
 			},
 		}
+		klog.Infof("deleting ReplicationDestination: %v", client.ObjectKeyFromObject(&rd))
 		err = cl.Delete(ctx, &rd, client.PropagationPolicy(metav1.DeletePropagationForeground))
 		if err != nil && !kerrors.IsNotFound(err) {
 			fmt.Printf("error removing ReplicationDestination %v: %v\n", rd, err)

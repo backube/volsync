@@ -26,6 +26,7 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/klog/v2"
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -95,6 +96,7 @@ func (sync *replicationSync) Run(ctx context.Context) error {
 	}
 
 	// Ensure destination
+	klog.Info("creating ReplicationDestination and waiting for keys")
 	rd, err := sync.createDestination(ctx)
 	if err != nil {
 		return fmt.Errorf("error creating ReplicationDestination: %w", err)
@@ -108,6 +110,7 @@ func (sync *replicationSync) Run(ctx context.Context) error {
 	// Create the source
 	sync.rel.data.Source.Source.Address = addr
 	sync.rel.data.Source.Source.SSHKeys = &sync.srcSecret.Name
+	klog.Info("creating ReplicationSource")
 	rs, err := sync.createSource(ctx)
 	if err != nil {
 		return fmt.Errorf("error creating ReplicationSource: %w", err)
@@ -124,6 +127,7 @@ func (sync *replicationSync) Run(ctx context.Context) error {
 	}
 
 	// Poll for completion
+	klog.Info("waiting for synchronization to complete")
 	err = wait.PollImmediate(5*time.Second, 10*time.Minute, func() (bool, error) {
 		nsn := client.ObjectKeyFromObject(rs)
 		err := sync.srcClient.Get(ctx, nsn, rs)
@@ -181,6 +185,9 @@ func (sync *replicationSync) createDestination(ctx context.Context) (*volsyncv1a
 			Namespace: sync.rel.data.Destination.Namespace,
 		},
 	}
+	klog.V(1).InfoS("creating ReplicationDestination",
+		"name", client.ObjectKeyFromObject(rd),
+		"capacity", sync.rel.data.Destination.Destination.Capacity)
 	_, err := ctrlutil.CreateOrUpdate(ctx, sync.dstClient, rd, func() error {
 		rd.Spec = volsyncv1alpha1.ReplicationDestinationSpec{
 			Rsync: &sync.rel.data.Destination.Destination,
