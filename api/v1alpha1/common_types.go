@@ -35,11 +35,13 @@ package v1alpha1
 
 // CopyMethodType defines the methods for creating point-in-time copies of
 // volumes.
-//+kubebuilder:validation:Enum=None;Clone;Snapshot
+//+kubebuilder:validation:Enum=Direct;None;Clone;Snapshot
 type CopyMethodType string
 
 const (
-	// CopyMethodNone indicates a copy should not be performed.
+	// CopyMethodDirect indicates a copy should not be performed. Data will be copied directly to/from the PVC.
+	CopyMethodDirect CopyMethodType = "Direct"
+	// CopyMethodNone indicates a copy should not be performed. Deprecated (replaced by CopyMethodDirect).
 	CopyMethodNone CopyMethodType = "None"
 	// CopyMethodClone indicates a copy should be created using volume cloning.
 	CopyMethodClone CopyMethodType = "Clone"

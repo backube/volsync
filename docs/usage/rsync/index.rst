@@ -120,7 +120,7 @@ available:
 - lastSyncTime contains the time of the last successful data synchronization.
 - latestImage references the object with the most recent copy of the data. If
   the copyMethod is Snapshot, this will be a VolumeSnapshot object. If the
-  copyMethod is None, this will be the PVC that is used as the destination by
+  copyMethod is Direct, this will be the PVC that is used as the destination by
   VolSync.
 
 Additional destination options

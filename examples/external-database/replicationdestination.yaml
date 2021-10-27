@@ -8,7 +8,7 @@ spec:
   rsync:
     serviceType: LoadBalancer
     destinationPVC: mysql-pvc
-    copyMethod: None
+    copyMethod: Direct
     storageClassName: gp2-csi
     capacity: 8Gi
     accessModes: [ReadWriteOnce]

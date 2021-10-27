@@ -9,6 +9,6 @@ spec:
   restic:
     repository: restic-repo
     destinationPVC: data-dest
-    copyMethod: None
+    copyMethod: Direct
     cacheCapacity: 1Gi
     previous: 9999

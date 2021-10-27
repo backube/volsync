@@ -115,52 +115,61 @@ var _ = Describe("Volumehandler", func() {
 			})
 		})
 
-		When("CopyMethod is None", func() {
-			BeforeEach(func() {
-				rd.Spec.Rsync.CopyMethod = volsyncv1alpha1.CopyMethodNone
-			})
+		directCopyMethodTypes := []volsyncv1alpha1.CopyMethodType{
+			volsyncv1alpha1.CopyMethodNone,
+			volsyncv1alpha1.CopyMethodDirect,
+		}
+		for i := range directCopyMethodTypes {
+			// Test both None and Direct (results should be the same)
+			When("CopyMethod is "+string(directCopyMethodTypes[i]), func() {
+				directCopyMethodType := directCopyMethodTypes[i]
 
-			It("the preserved image is the PVC", func() {
-				vh, err := NewVolumeHandler(
-					WithClient(k8sClient),
-					WithOwner(rd),
-					FromDestination(&rd.Spec.Rsync.ReplicationDestinationVolumeOptions),
-				)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(vh).ToNot(BeNil())
+				BeforeEach(func() {
+					rd.Spec.Rsync.CopyMethod = directCopyMethodType
+				})
 
-				pvcSC := "pvcsc"
-				pvc := &corev1.PersistentVolumeClaim{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "mypvc",
-						Namespace: ns.Name,
-					},
-					Spec: corev1.PersistentVolumeClaimSpec{
-						AccessModes: []corev1.PersistentVolumeAccessMode{
-							corev1.ReadWriteMany,
+				It("the preserved image is the PVC", func() {
+					vh, err := NewVolumeHandler(
+						WithClient(k8sClient),
+						WithOwner(rd),
+						FromDestination(&rd.Spec.Rsync.ReplicationDestinationVolumeOptions),
+					)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(vh).ToNot(BeNil())
+
+					pvcSC := "pvcsc"
+					pvc := &corev1.PersistentVolumeClaim{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "mypvc",
+							Namespace: ns.Name,
 						},
-						Resources: corev1.ResourceRequirements{
-							Requests: corev1.ResourceList{
-								"storage": resource.MustParse("2Gi"),
+						Spec: corev1.PersistentVolumeClaimSpec{
+							AccessModes: []corev1.PersistentVolumeAccessMode{
+								corev1.ReadWriteMany,
 							},
+							Resources: corev1.ResourceRequirements{
+								Requests: corev1.ResourceList{
+									"storage": resource.MustParse("2Gi"),
+								},
+							},
+							StorageClassName: &pvcSC,
 						},
-						StorageClassName: &pvcSC,
-					},
-				}
-				Expect(k8sClient.Create(ctx, pvc)).To(Succeed())
-				// Wait for it to show up in the API server
-				Eventually(func() error {
-					inst := &corev1.PersistentVolumeClaim{}
-					return k8sClient.Get(ctx, types.NamespacedName{Name: "mypvc", Namespace: ns.Name}, inst)
-				}, maxWait, interval).Should(Succeed())
+					}
+					Expect(k8sClient.Create(ctx, pvc)).To(Succeed())
+					// Wait for it to show up in the API server
+					Eventually(func() error {
+						inst := &corev1.PersistentVolumeClaim{}
+						return k8sClient.Get(ctx, types.NamespacedName{Name: "mypvc", Namespace: ns.Name}, inst)
+					}, maxWait, interval).Should(Succeed())
 
-				tlor, err := vh.EnsureImage(ctx, logger, pvc)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(tlor.Kind).To(Equal(pvc.Kind))
-				Expect(tlor.Name).To(Equal(pvc.Name))
-				Expect(*tlor.APIGroup).To(Equal(corev1.SchemeGroupVersion.Group))
+					tlor, err := vh.EnsureImage(ctx, logger, pvc)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(tlor.Kind).To(Equal(pvc.Kind))
+					Expect(tlor.Name).To(Equal(pvc.Name))
+					Expect(*tlor.APIGroup).To(Equal(corev1.SchemeGroupVersion.Group))
+				})
 			})
-		})
+		}
 
 		When("CopyMethod is Snapshot", func() {
 			BeforeEach(func() {

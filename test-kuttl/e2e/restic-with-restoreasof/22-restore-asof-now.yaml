@@ -25,7 +25,7 @@ commands:
         restic:
           repository: restic-repo
           destinationPVC: data-dest
-          copyMethod: None
+          copyMethod: Direct
           cacheCapacity: 1Gi
           restoreAsOf: ${DATE_TIME_STRING}
       EOF

@@ -9,4 +9,4 @@ spec:
   restic:
     destinationPVC: mysql-pv-claim
     repository: restic-config
-    copyMethod: None
+    copyMethod: Direct

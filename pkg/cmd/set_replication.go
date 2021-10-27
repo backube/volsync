@@ -28,7 +28,7 @@ var (
 		using rsync, rclone, or restic. The set-replication command creates a PersistentVolumeClaim in
 		the destination namespace with the latest image from the ReplicationDestination used as the
 		data source for the PVC, in the case of destination CopyMethod=Snapshot.
-		In the case of destination CopyMethod=None, the destination PVC is
+		In the case of destination CopyMethod=Direct, the destination PVC is
 		already created since the data is synced directly from source PVC to destination PVC.
 		One more full data sync will be completed, then replications are paused. This leaves your
 		destination application ready to bind to the destination PVC.
@@ -232,7 +232,8 @@ func (o *FinalizeOptions) SetReplication() error {
 		destPVCName string
 		err         error
 	)
-	if repDest.Spec.Rsync.CopyMethod == volsyncv1alpha1.CopyMethodNone {
+	if repDest.Spec.Rsync.CopyMethod == volsyncv1alpha1.CopyMethodNone ||
+		repDest.Spec.Rsync.CopyMethod == volsyncv1alpha1.CopyMethodDirect {
 		destPVCName = *repDest.Spec.Rsync.DestinationPVC
 		if len(destPVCName) == 0 {
 			return fmt.Errorf("destination PVC not listed in ReplicationDestination: %s", repDest.Name)

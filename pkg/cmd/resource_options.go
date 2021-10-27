@@ -47,7 +47,7 @@ type DestinationOptions struct {
 func (o *DestinationOptions) Bind(cmd *cobra.Command, v *viper.Viper) error {
 	flags := cmd.Flags()
 	flags.StringVar(&o.CopyMethod, "dest-copy-method", o.CopyMethod, ""+
-		"the method of creating a point-in-time image of the destination volume; one of 'None|Clone|Snapshot'")
+		"the method of creating a point-in-time image of the destination volume; one of 'Direct|Clone|Snapshot'")
 	flags.StringVar(&o.Address, "dest-address", o.Address, "the remote address to connect to for replication.")
 	// TODO: Defaulted with CLI, should it be??
 	flags.StringVar(&o.Capacity, "dest-capacity", "2Gi", "Size of the destination volume to create. Must be provided if --dest-pvc is not provided.")
@@ -106,7 +106,7 @@ func (o *SourceOptions) Bind(cmd *cobra.Command, v *viper.Viper) error {
 func (o *SourceOptions) bindFlags(cmd *cobra.Command, v *viper.Viper) error {
 	flags := cmd.Flags()
 	flags.StringVar(&o.CopyMethod, "source-copy-method", o.CopyMethod, "the method of creating a point-in-time image of the source volume. "+
-		"one of 'None|Clone|Snapshot'")
+		"one of 'Direct|Clone|Snapshot'")
 	flags.StringVar(&o.Capacity, "source-capacity", o.Capacity, "provided to override the capacity of the point-in-Time image.")
 	flags.StringVar(&o.StorageClass, "source-storage-class-name", o.StorageClass, "provided to override the StorageClass of the point-in-Time image.")
 	flags.StringVar(&o.AccessMode, "source-access-mode", o.AccessMode, "provided to override the accessModes of the point-in-Time image. "+

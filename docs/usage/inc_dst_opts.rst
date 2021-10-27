@@ -11,7 +11,7 @@ copyMethod
    This specifies how the data should be preserved at the end of each
    synchronization iteration. Valid values are:
 
-   - **None** - Do not create a point-in-time copy of the data.
+   - **Direct** - Do not create a point-in-time copy of the data.
    - **Snapshot** - Create a VolumeSnapshot at the end of each iteration
 destinationPVC
    Instead of having VolSync automatically provision the destination volume

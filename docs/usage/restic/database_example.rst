@@ -226,7 +226,7 @@ Create the ReplicationDestination in the ``dest`` namespace to restore the data:
      restic:
        destinationPVC: mysql-pv-claim
        repository: restic-config
-       copyMethod: None
+       copyMethod: Direct
 
 
 .. code-block:: none

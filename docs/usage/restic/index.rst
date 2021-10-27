@@ -171,11 +171,11 @@ Restore the data into ``datavol``:
      restic:
        repository: restic-repo
        destinationPVC: datavol
-       copyMethod: None
+       copyMethod: Direct
 
 In the above example, the data will be written directly into the new PVC since
 it is specified via ``destinationPVC``, and no snapshot will be created since a
-``copyMethod`` of ``None`` is used.
+``copyMethod`` of ``Direct`` is used.
 
 The restore operation only needs to be performed once, so instead of using a cronspec-based schedule, a manual trigger is used. After the restore completes, the ReplicationDestination object can be deleted.
 

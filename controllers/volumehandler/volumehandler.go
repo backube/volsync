@@ -61,6 +61,8 @@ func (vh *VolumeHandler) EnsurePVCFromSrc(ctx context.Context, log logr.Logger,
 	src *corev1.PersistentVolumeClaim, name string, isTemporary bool) (*corev1.PersistentVolumeClaim, error) {
 	switch vh.copyMethod {
 	case volsyncv1alpha1.CopyMethodNone:
+		fallthrough // Same as CopyMethodDirect
+	case volsyncv1alpha1.CopyMethodDirect:
 		return src, nil
 	case volsyncv1alpha1.CopyMethodClone:
 		return vh.ensureClone(ctx, log, src, name, isTemporary)
@@ -71,7 +73,7 @@ func (vh *VolumeHandler) EnsurePVCFromSrc(ctx context.Context, log logr.Logger,
 		}
 		return vh.pvcFromSnapshot(ctx, log, snap, src, name, isTemporary)
 	default:
-		return nil, fmt.Errorf("unsupported copyMethod: %v -- must be None, Clone, or Snapshot", vh.copyMethod)
+		return nil, fmt.Errorf("unsupported copyMethod: %v -- must be Direct, None, Clone, or Snapshot", vh.copyMethod)
 	}
 }
 
@@ -83,6 +85,8 @@ func (vh *VolumeHandler) EnsureImage(ctx context.Context, log logr.Logger,
 	src *corev1.PersistentVolumeClaim) (*corev1.TypedLocalObjectReference, error) {
 	switch vh.copyMethod { //nolint: exhaustive
 	case volsyncv1alpha1.CopyMethodNone:
+		fallthrough // Same as CopyMethodDirect
+	case volsyncv1alpha1.CopyMethodDirect:
 		return &corev1.TypedLocalObjectReference{
 			APIGroup: &corev1.SchemeGroupVersion.Group,
 			Kind:     src.Kind,
@@ -99,7 +103,7 @@ func (vh *VolumeHandler) EnsureImage(ctx context.Context, log logr.Logger,
 			Name:     snap.Name,
 		}, nil
 	default:
-		return nil, fmt.Errorf("unsupported copyMethod: %v -- must be None, or Snapshot", vh.copyMethod)
+		return nil, fmt.Errorf("unsupported copyMethod: %v -- must be Direct, None, or Snapshot", vh.copyMethod)
 	}
 }
 

@@ -246,7 +246,8 @@ func (h *destinationVolumeHandler) recordPVC(l logr.Logger) (bool, error) {
 // PreserveImage implements the methods for preserving a PiT copy of the
 // replicated data.
 func (h *destinationVolumeHandler) PreserveImage(l logr.Logger) (bool, error) {
-	if h.Options.CopyMethod == volsyncv1alpha1.CopyMethodNone {
+	if h.Options.CopyMethod == volsyncv1alpha1.CopyMethodNone ||
+		h.Options.CopyMethod == volsyncv1alpha1.CopyMethodDirect {
 		return utils.ReconcileBatch(l,
 			h.cleanupOldSnapshot,
 			h.recordPVC,
@@ -260,7 +261,7 @@ func (h *destinationVolumeHandler) PreserveImage(l logr.Logger) (bool, error) {
 			h.removeSnapshotAnnotation,
 		)
 	}
-	return false, fmt.Errorf("unsupported copyMethod: %v -- must be None or Snapshot", h.Options.CopyMethod)
+	return false, fmt.Errorf("unsupported copyMethod: %v -- must be None, Direct or Snapshot", h.Options.CopyMethod)
 }
 
 type sourceVolumeHandler struct {
@@ -305,7 +306,8 @@ func (h *sourceVolumeHandler) EnsurePVC(l logr.Logger) (bool, error) {
 		return false, err
 	}
 
-	if h.Options.CopyMethod == volsyncv1alpha1.CopyMethodNone {
+	if h.Options.CopyMethod == volsyncv1alpha1.CopyMethodNone ||
+		h.Options.CopyMethod == volsyncv1alpha1.CopyMethodDirect {
 		h.PVC = h.srcPVC
 		return true, nil
 	} else if h.Options.CopyMethod == volsyncv1alpha1.CopyMethodClone {
@@ -316,7 +318,8 @@ func (h *sourceVolumeHandler) EnsurePVC(l logr.Logger) (bool, error) {
 			h.pvcFromSnap,
 		)
 	}
-	return false, fmt.Errorf("unsupported copyMethod: %v -- must be None, Clone, or Snapshot", h.Options.CopyMethod)
+	return false, fmt.Errorf("unsupported copyMethod: %v -- must be None, Direct, Clone, or Snapshot",
+		h.Options.CopyMethod)
 }
 
 func (h *sourceVolumeHandler) pvcFromSnap(l logr.Logger) (bool, error) {

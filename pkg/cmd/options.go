@@ -126,6 +126,8 @@ func (o *SetupReplicationOptions) getCopyMethod(c string, mode string) error {
 	switch strings.ToLower(c) {
 	case "none":
 		cm = volsyncv1alpha1.CopyMethodNone
+	case "direct":
+		cm = volsyncv1alpha1.CopyMethodDirect
 	case "clone":
 		cm = volsyncv1alpha1.CopyMethodClone
 	case "snapshot":
