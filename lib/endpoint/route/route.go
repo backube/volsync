@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/backube/volsync/lib/endpoint"
 	"github.com/backube/volsync/lib/meta"
 	"github.com/backube/volsync/lib/utils"
@@ -58,13 +59,13 @@ var IngressPort int32 = 443
 
 type EndpointType string
 
-type Route struct {
+type route struct {
 	hostname string
 
 	port           int32
 	endpointType   EndpointType
 	namespacedName types.NamespacedName
-	objMeta        meta.ObjectMetaMutation
+	metaMutations  []meta.ObjectMetaMutation
 }
 
 // New creates the route endpoint object, deploys the resource on the cluster
@@ -85,14 +86,14 @@ type Route struct {
 func New(ctx context.Context, c client.Client,
 	namespacedName types.NamespacedName,
 	eType EndpointType,
-	metaMutation meta.ObjectMetaMutation) (endpoint.Endpoint, error) {
+	metaMutations ...meta.ObjectMetaMutation) (endpoint.Endpoint, error) {
 	if eType != EndpointTypePassthrough && eType != EndpointTypeInsecureEdge {
 		return nil, fmt.Errorf("unsupported endpoint type for routes")
 	}
 
-	r := &Route{
+	r := &route{
 		namespacedName: namespacedName,
-		objMeta:        metaMutation,
+		metaMutations:  metaMutations,
 		endpointType:   eType,
 	}
 
@@ -125,23 +126,23 @@ func New(ctx context.Context, c client.Client,
 	return r, nil
 }
 
-func (r *Route) NamespacedName() types.NamespacedName {
+func (r *route) NamespacedName() types.NamespacedName {
 	return r.namespacedName
 }
 
-func (r *Route) Hostname() string {
+func (r *route) Hostname() string {
 	return r.hostname
 }
 
-func (r *Route) BackendPort() int32 {
+func (r *route) BackendPort() int32 {
 	return r.port
 }
 
-func (r *Route) IngressPort() int32 {
+func (r *route) IngressPort() int32 {
 	return IngressPort
 }
 
-func (r *Route) IsHealthy(ctx context.Context, c client.Client) (bool, error) {
+func (r *route) IsHealthy(ctx context.Context, c client.Client) (bool, error) {
 	route := &routev1.Route{}
 	err := c.Get(ctx, r.NamespacedName(), route)
 	if err != nil {
@@ -168,7 +169,7 @@ func (r *Route) IsHealthy(ctx context.Context, c client.Client) (bool, error) {
 	return false, fmt.Errorf("route status is not in valid state: %s", route.Status)
 }
 
-func (r *Route) MarkForCleanup(ctx context.Context, c client.Client, key, value string) error {
+func (r *route) MarkForCleanup(ctx context.Context, c client.Client, key, value string) error {
 	// update service
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -190,20 +191,17 @@ func (r *Route) MarkForCleanup(ctx context.Context, c client.Client, key, value 
 	return utils.UpdateWithLabel(ctx, c, route, key, value)
 }
 
-func (r *Route) reconcileServiceForRoute(ctx context.Context, c client.Client) error {
+func (r *route) reconcileServiceForRoute(ctx context.Context, c client.Client) error {
 	port := r.BackendPort()
-
-	serviceSelector := r.objMeta.Labels()
-
-	service := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      r.NamespacedName().Name,
-			Namespace: r.NamespacedName().Namespace,
-		},
+	m, err := meta.GetMetaObjectWithMutations(r.NamespacedName(), r.metaMutations)
+	if err != nil {
+		return err
 	}
+	service := &corev1.Service{ObjectMeta: *m}
+	serviceSelector := service.Labels
 
 	// TODO: log the return operation from CreateOrUpdate
-	_, err := controllerutil.CreateOrPatch(ctx, c, service, func() error {
+	_, err = controllerutil.CreateOrPatch(ctx, c, service, func() error {
 		service.Spec.Ports = []corev1.ServicePort{
 			{
 				Name:     r.NamespacedName().Name,
@@ -218,15 +216,13 @@ func (r *Route) reconcileServiceForRoute(ctx context.Context, c client.Client) e
 
 		service.Spec.Selector = serviceSelector
 		service.Spec.Type = corev1.ServiceTypeClusterIP
-		service.Labels = serviceSelector
-		service.OwnerReferences = r.objMeta.OwnerReferences()
 		return nil
 	})
 
 	return err
 }
 
-func (r *Route) reconcileRoute(ctx context.Context, c client.Client) error {
+func (r *route) reconcileRoute(ctx context.Context, c client.Client) error {
 	termination := &routev1.TLSConfig{}
 	switch r.endpointType {
 	case EndpointTypeInsecureEdge:
@@ -240,14 +236,13 @@ func (r *Route) reconcileRoute(ctx context.Context, c client.Client) error {
 		}
 	}
 
-	route := &routev1.Route{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      r.NamespacedName().Name,
-			Namespace: r.NamespacedName().Namespace,
-		},
+	m, err := meta.GetMetaObjectWithMutations(r.NamespacedName(), r.metaMutations)
+	if err != nil {
+		return err
 	}
+	route := &routev1.Route{ObjectMeta: *m}
 
-	_, err := controllerutil.CreateOrUpdate(ctx, c, route, func() error {
+	_, err = controllerutil.CreateOrUpdate(ctx, c, route, func() error {
 		route.Spec.Port = &routev1.RoutePort{
 			TargetPort: intstr.FromInt(int(r.port)),
 		}
@@ -256,15 +251,13 @@ func (r *Route) reconcileRoute(ctx context.Context, c client.Client) error {
 			Name: r.NamespacedName().Name,
 		}
 		route.Spec.TLS = termination
-		route.Labels = r.objMeta.Labels()
-		route.OwnerReferences = r.objMeta.OwnerReferences()
 		return nil
 	})
 
 	return err
 }
 
-func (r *Route) getRoute(ctx context.Context, c client.Client) (*routev1.Route, error) {
+func (r *route) getRoute(ctx context.Context, c client.Client) (*routev1.Route, error) {
 	route := &routev1.Route{}
 	err := c.Get(context.TODO(),
 		types.NamespacedName{Name: r.NamespacedName().Name, Namespace: r.NamespacedName().Namespace},
@@ -275,7 +268,7 @@ func (r *Route) getRoute(ctx context.Context, c client.Client) (*routev1.Route, 
 	return route, err
 }
 
-func (r *Route) setFields(ctx context.Context, c client.Client) error {
+func (r *route) setFields(ctx context.Context, c client.Client) error {
 	route, err := r.getRoute(ctx, c)
 	if err != nil {
 		return err
