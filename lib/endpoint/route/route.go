@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/go-logr/logr"
 
 	"github.com/backube/volsync/lib/endpoint"
 	"github.com/backube/volsync/lib/meta"
@@ -61,6 +62,7 @@ type EndpointType string
 
 type route struct {
 	hostname string
+	logger   logr.Logger
 
 	port           int32
 	endpointType   EndpointType
@@ -83,7 +85,7 @@ type route struct {
 //
 // +kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
-func New(ctx context.Context, c client.Client,
+func New(ctx context.Context, c client.Client, logger logr.Logger,
 	namespacedName types.NamespacedName,
 	eType EndpointType,
 	metaMutations ...meta.ObjectMetaMutation) (endpoint.Endpoint, error) {
@@ -91,7 +93,9 @@ func New(ctx context.Context, c client.Client,
 		return nil, fmt.Errorf("unsupported endpoint type for routes")
 	}
 
+	rLogger := logger.WithValues("route", namespacedName)
 	r := &route{
+		logger:         rLogger,
 		namespacedName: namespacedName,
 		metaMutations:  metaMutations,
 		endpointType:   eType,
@@ -99,8 +103,10 @@ func New(ctx context.Context, c client.Client,
 
 	switch r.endpointType {
 	case EndpointTypeInsecureEdge:
+		r.logger.Info("endpoint with", "type", EndpointTypeInsecureEdge, "port", InsecureEdgeTerminationPolicyPort)
 		r.port = int32(InsecureEdgeTerminationPolicyPort)
 	case EndpointTypePassthrough:
+		r.logger.Info("endpoint with", "type", EndpointTypePassthrough, "port", TLSTerminationPassthroughPolicyPort)
 		r.port = int32(TLSTerminationPassthroughPolicyPort)
 	}
 
@@ -146,6 +152,7 @@ func (r *route) IsHealthy(ctx context.Context, c client.Client) (bool, error) {
 	route := &routev1.Route{}
 	err := c.Get(ctx, r.NamespacedName(), route)
 	if err != nil {
+		r.logger.Error(err, "unable to get route")
 		return false, err
 	}
 	if route.Spec.Host == "" {
@@ -166,11 +173,13 @@ func (r *route) IsHealthy(ctx context.Context, c client.Client) (bool, error) {
 		}
 	}
 	// TODO: probably using error.Wrap/Unwrap here makes much more sense
+	r.logger.Info("endpoint is unhealthy")
 	return false, fmt.Errorf("route status is not in valid state: %s", route.Status)
 }
 
 func (r *route) MarkForCleanup(ctx context.Context, c client.Client, key, value string) error {
 	// update service
+	r.logger.Info("marking service for route endpoint for deletion")
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      r.namespacedName.Name,
@@ -182,6 +191,7 @@ func (r *route) MarkForCleanup(ctx context.Context, c client.Client, key, value 
 		return err
 	}
 
+	r.logger.Info("marking route endpoint for deletion")
 	route := &routev1.Route{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      r.namespacedName.Name,
@@ -195,6 +205,7 @@ func (r *route) reconcileServiceForRoute(ctx context.Context, c client.Client) e
 	port := r.BackendPort()
 	m, err := meta.GetMetaObjectWithMutations(r.NamespacedName(), r.metaMutations)
 	if err != nil {
+		r.logger.Error(err, "unable to apply ObjectMeta mutations")
 		return err
 	}
 	service := &corev1.Service{ObjectMeta: *m}
@@ -238,6 +249,7 @@ func (r *route) reconcileRoute(ctx context.Context, c client.Client) error {
 
 	m, err := meta.GetMetaObjectWithMutations(r.NamespacedName(), r.metaMutations)
 	if err != nil {
+		r.logger.Error(err, "unable to apply ObjectMeta mutations")
 		return err
 	}
 	route := &routev1.Route{ObjectMeta: *m}
@@ -263,6 +275,7 @@ func (r *route) getRoute(ctx context.Context, c client.Client) (*routev1.Route, 
 		types.NamespacedName{Name: r.NamespacedName().Name, Namespace: r.NamespacedName().Namespace},
 		route)
 	if err != nil {
+		r.logger.Error(err, "unable to get route")
 		return nil, err
 	}
 	return route, err
