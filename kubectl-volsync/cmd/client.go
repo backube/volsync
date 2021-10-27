@@ -57,8 +57,16 @@ func newClient(kubeContext string) (client.Client, error) {
 // XClusterName is the equivlent of NamespacedName, but also containing a
 // cluster context
 type XClusterName struct {
-	Cluster string
-	types.NamespacedName
+	Cluster   string
+	Namespace string
+	Name      string
+}
+
+func (x XClusterName) NamespacedName() types.NamespacedName {
+	return types.NamespacedName{
+		Name:      x.Name,
+		Namespace: x.Namespace,
+	}
 }
 
 // Parses a string of the format [context/]namespace/name into an XClusterName
@@ -66,18 +74,14 @@ func ParseXClusterName(name string) (*XClusterName, error) {
 	components := strings.Split(name, "/")
 	if len(components) == 3 {
 		return &XClusterName{
-			Cluster: components[0],
-			NamespacedName: types.NamespacedName{
-				Namespace: components[1],
-				Name:      components[2],
-			},
+			Cluster:   components[0],
+			Namespace: components[1],
+			Name:      components[2],
 		}, nil
 	} else if len(components) == 2 {
 		return &XClusterName{
-			NamespacedName: types.NamespacedName{
-				Namespace: components[0],
-				Name:      components[1],
-			},
+			Namespace: components[0],
+			Name:      components[1],
 		}, nil
 	}
 	return nil, fmt.Errorf("name is not in the format [context/]namespace/objname: %s", name)
