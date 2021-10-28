@@ -106,10 +106,10 @@ func (o *SetupReplicationOptions) Complete() error {
 //nolint:lll
 func (o *SetupReplicationOptions) Validate() error {
 	if len(o.Source.CopyMethod) == 0 {
-		return fmt.Errorf("must provide --source-copy-method; one of 'None|Clone|Snapshot'")
+		return fmt.Errorf("must provide --source-copy-method; one of 'Direct|Clone|Snapshot'")
 	}
 	if len(o.Dest.CopyMethod) == 0 {
-		return fmt.Errorf("must provide --dest-copy-method; one of 'None|Clone|Snapshot'")
+		return fmt.Errorf("must provide --dest-copy-method; one of 'Direct|Clone|Snapshot'")
 	}
 	if len(o.Dest.Capacity) == 0 && len(o.Dest.PVC) == 0 {
 		return fmt.Errorf("must either provide --dest-capacity & --dest-access-mode OR --dest-pvc")
@@ -380,11 +380,12 @@ func (o *SetupReplicationOptions) CreateDestinationPVCFromSource(
 
 //nolint:funlen
 // CreateDestination creates a ReplicationDestination resource
-// along with a destination PVC if copyMethod "None"
+// along with a destination PVC if copyMethod "Direct" or "None"
 func (o *SetupReplicationOptions) CreateDestination(ctx context.Context) error {
 	var destPVCName string
 	var err error
-	if o.RepOpts.Dest.CopyMethod == volsyncv1alpha1.CopyMethodNone {
+	if o.RepOpts.Dest.CopyMethod == volsyncv1alpha1.CopyMethodNone ||
+		o.RepOpts.Dest.CopyMethod == volsyncv1alpha1.CopyMethodDirect {
 		destPVCName, err = o.CreateDestinationPVCFromSource(ctx, nil)
 		if err != nil {
 			return err
@@ -429,7 +430,9 @@ func (o *SetupReplicationOptions) CreateDestination(ctx context.Context) error {
 		Path:        path,
 	}
 
-	if o.RepOpts.Dest.CopyMethod != volsyncv1alpha1.CopyMethodNone && len(o.Dest.PVC) == 0 {
+	if o.RepOpts.Dest.CopyMethod != volsyncv1alpha1.CopyMethodNone &&
+		o.RepOpts.Dest.CopyMethod != volsyncv1alpha1.CopyMethodDirect &&
+		len(o.Dest.PVC) == 0 {
 		rsyncSpec.ReplicationDestinationVolumeOptions.DestinationPVC = nil
 	}
 	var externalSpec *volsyncv1alpha1.ReplicationDestinationExternalSpec

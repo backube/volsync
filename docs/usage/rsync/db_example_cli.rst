@@ -74,7 +74,7 @@ Start a VolSync Replication
     $ kubectl volsync start-replication
 
 The above command:
-* Creates destination PVC (if dest PVC not provided & if dest CopyMethod=None)
+* Creates destination PVC (if dest PVC not provided & if dest CopyMethod=Direct)
 * Creates replication destination
 * Syncs SSH secret from destination to source
 * Creates replication source

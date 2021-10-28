@@ -95,6 +95,7 @@ spec:
                     description: copyMethod describes how a point-in-time (PiT) image
                       of the source volume should be created.
                     enum:
+                    - Direct
                     - None
                     - Clone
                     - Snapshot
@@ -160,6 +161,7 @@ spec:
                     description: copyMethod describes how a point-in-time (PiT) image
                       of the source volume should be created.
                     enum:
+                    - Direct
                     - None
                     - Clone
                     - Snapshot
@@ -241,6 +243,7 @@ spec:
                     description: copyMethod describes how a point-in-time (PiT) image
                       of the source volume should be created.
                     enum:
+                    - Direct
                     - None
                     - Clone
                     - Snapshot

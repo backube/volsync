@@ -472,6 +472,21 @@ var _ = Describe("ReplicationDestination", func() {
 				Expect(li.Name).To(Not(Equal("")))
 			})
 		})
+		Context("with a CopyMethod of Direct", func() {
+			BeforeEach(func() {
+				rd.Spec.Rsync.CopyMethod = volsyncv1alpha1.CopyMethodDirect
+			})
+			It("the PVC should be the latestImage", func() {
+				Eventually(func() *corev1.TypedLocalObjectReference {
+					_ = k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)
+					return rd.Status.LatestImage
+				}, maxWait, interval).Should(Not(BeNil()))
+				li := rd.Status.LatestImage
+				Expect(li.Kind).To(Equal("PersistentVolumeClaim"))
+				Expect(*li.APIGroup).To(Equal(""))
+				Expect(li.Name).To(Not(Equal("")))
+			})
+		})
 		Context("with a CopyMethod of Snapshot", func() {
 			BeforeEach(func() {
 				rd.Spec.Rsync.CopyMethod = volsyncv1alpha1.CopyMethodSnapshot

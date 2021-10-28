@@ -443,6 +443,20 @@ var _ = Describe("Restic as a source", func() {
 					Expect(dataPVC.Labels).NotTo(HaveKey("volsync.backube/cleanup"))
 				})
 			})
+			When("CopyMethod is Direct", func() {
+				BeforeEach(func() {
+					rs.Spec.Restic.CopyMethod = volsyncv1alpha1.CopyMethodDirect
+				})
+				It("the source is used as the data PVC", func() {
+					dataPVC, err := mover.ensureSourcePVC(ctx)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(dataPVC.Name).To(Equal(sPVC.Name))
+					// It's not owned by the CR
+					Expect(dataPVC.OwnerReferences).To(BeEmpty())
+					// It won't be cleaned up at the end of the transfer
+					Expect(dataPVC.Labels).NotTo(HaveKey("volsync.backube/cleanup"))
+				})
+			})
 			When("CopyMethod is Clone", func() {
 				BeforeEach(func() {
 					rs.Spec.Restic.CopyMethod = volsyncv1alpha1.CopyMethodClone

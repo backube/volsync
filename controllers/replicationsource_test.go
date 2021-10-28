@@ -4,6 +4,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -200,7 +201,7 @@ var _ = Describe("ReplicationSource", func() {
 		BeforeEach(func() {
 			rs.Spec.Rsync = &volsyncv1alpha1.ReplicationSourceRsyncSpec{
 				ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
-					CopyMethod: volsyncv1alpha1.CopyMethodNone,
+					CopyMethod: volsyncv1alpha1.CopyMethodDirect,
 				},
 			}
 			schedule := "* * * * *"
@@ -223,7 +224,7 @@ var _ = Describe("ReplicationSource", func() {
 		BeforeEach(func() {
 			rs.Spec.Rsync = &volsyncv1alpha1.ReplicationSourceRsyncSpec{
 				ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
-					CopyMethod: volsyncv1alpha1.CopyMethodNone,
+					CopyMethod: volsyncv1alpha1.CopyMethodDirect,
 				},
 			}
 		})
@@ -238,30 +239,38 @@ var _ = Describe("ReplicationSource", func() {
 		})
 	})
 
-	Context("when a copyMethod of None is specified", func() {
-		BeforeEach(func() {
-			rs.Spec.Rsync = &volsyncv1alpha1.ReplicationSourceRsyncSpec{
-				ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
-					CopyMethod: volsyncv1alpha1.CopyMethodNone,
-				},
-			}
-		})
-		It("uses the source PVC as the sync source", func() {
-			job := &batchv1.Job{}
-			Eventually(func() error {
-				return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
-			}, maxWait, interval).Should(Succeed())
-			volumes := job.Spec.Template.Spec.Volumes
-			found := false
-			for _, v := range volumes {
-				if v.PersistentVolumeClaim != nil && v.PersistentVolumeClaim.ClaimName == srcPVC.Name {
-					found = true
+	directCopyMethodTypes := []volsyncv1alpha1.CopyMethodType{
+		volsyncv1alpha1.CopyMethodNone,
+		volsyncv1alpha1.CopyMethodDirect,
+	}
+	for i := range directCopyMethodTypes {
+		// Test both None and Direct (results should be the same)
+		Context(fmt.Sprintf("when a copyMethod of %s is specified", directCopyMethodTypes[i]), func() {
+			directCopyMethodType := directCopyMethodTypes[i]
+			BeforeEach(func() {
+				rs.Spec.Rsync = &volsyncv1alpha1.ReplicationSourceRsyncSpec{
+					ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
+						CopyMethod: directCopyMethodType,
+					},
 				}
-			}
-			Expect(found).To(BeTrue())
-			Expect(srcPVC).NotTo(beOwnedBy(rs))
+			})
+			It("uses the source PVC as the sync source", func() {
+				job := &batchv1.Job{}
+				Eventually(func() error {
+					return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
+				}, maxWait, interval).Should(Succeed())
+				volumes := job.Spec.Template.Spec.Volumes
+				found := false
+				for _, v := range volumes {
+					if v.PersistentVolumeClaim != nil && v.PersistentVolumeClaim.ClaimName == srcPVC.Name {
+						found = true
+					}
+				}
+				Expect(found).To(BeTrue())
+				Expect(srcPVC).NotTo(beOwnedBy(rs))
+			})
 		})
-	})
+	}
 
 	Context("when a copyMethod of Clone is specified", func() {
 		BeforeEach(func() {

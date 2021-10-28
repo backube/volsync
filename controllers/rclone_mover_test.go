@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1beta1"
@@ -30,6 +31,11 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 	var job *batchv1.Job
 	var schedule = "*/4 * * * *"
 	var capacity = resource.MustParse("2Gi")
+
+	directCopyMethodTypes := []volsyncv1alpha1.CopyMethodType{
+		volsyncv1alpha1.CopyMethodNone,
+		volsyncv1alpha1.CopyMethodDirect,
+	}
 
 	// setup namespace && PVC
 	BeforeEach(func() {
@@ -138,102 +144,106 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 					Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
 				})
 
-				When("Using a CopyMethod of None", func() {
-					BeforeEach(func() {
-						rd.Spec.Rclone.CopyMethod = volsyncv1alpha1.CopyMethodNone
-					})
-
-					It("Ensure that ReplicationDestination starts", func() {
-						// get RD & ensure a status is set
-						Eventually(func() bool {
-							inst := &volsyncv1alpha1.ReplicationDestination{}
-							if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), inst); err != nil {
-								return false
-							}
-							return inst.Status != nil
-						}, maxWait, interval).Should(BeTrue())
-						// validate necessary fields
-						inst := &volsyncv1alpha1.ReplicationDestination{}
-						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), inst)).To(Succeed())
-						Expect(inst.Status).NotTo(BeNil())
-						Expect(inst.Status.Conditions).NotTo(BeNil())
-						Expect(inst.Status.NextSyncTime).NotTo(BeNil())
-					})
-
-					It("Ensure LastSyncTime & LatestImage is set properly after reconciliation", func() {
-						Eventually(func() bool {
-							inst := &volsyncv1alpha1.ReplicationDestination{}
-							err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), inst)
-							if err != nil || inst.Status == nil {
-								return false
-							}
-							return inst.Status.LastSyncTime != nil
-						}, maxWait, interval).Should(BeTrue())
-						// get ReplicationDestination
-						inst := &volsyncv1alpha1.ReplicationDestination{}
-						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), inst)).To(Succeed())
-						// ensure Status holds correct data
-						Expect(inst.Status.LatestImage).NotTo(BeNil())
-						latestImage := inst.Status.LatestImage
-						Expect(latestImage.Kind).To(Equal("PersistentVolumeClaim"))
-						Expect(*latestImage.APIGroup).To(Equal(""))
-						Expect(latestImage.Name).NotTo(Equal(""))
-					})
-
-					It("Duration is set if job is successful", func() {
-						// Make sure that LastSyncDuration gets set
-						Eventually(func() *metav1.Duration {
-							inst := &volsyncv1alpha1.ReplicationDestination{}
-							_ = k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), inst)
-							return inst.Status.LastSyncDuration
-						}, maxWait, interval).Should(Not(BeNil()))
-					})
-
-					When("The ReplicationDestinaton spec is paused", func() {
-						parallelism := int32(0)
+				// Test both None and Direct (results should be the same)
+				for i := range directCopyMethodTypes {
+					When(fmt.Sprintf("Using a CopyMethod of %s", directCopyMethodTypes[i]), func() {
+						directCopyMethodType := directCopyMethodTypes[i]
 						BeforeEach(func() {
-							// set paused to true so no more processes will be created
-							rd.Spec.Paused = true
+							rd.Spec.Rclone.CopyMethod = directCopyMethodType
 						})
-						It("Job has parallelism disabled", func() {
-							job := &batchv1.Job{
-								ObjectMeta: metav1.ObjectMeta{
-									Name:      "volsync-rclone-src-" + rd.Name,
-									Namespace: rd.Namespace,
-								},
-							}
-							Eventually(func() error {
-								return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
-							}, maxWait, interval).Should(Succeed())
-							Expect(*job.Spec.Parallelism).To(Equal(parallelism))
-						})
-					})
 
-					When("A Storage Class is specified", func() {
-						scName := "mysc"
-						BeforeEach(func() {
-							rd.Spec.Rclone.ReplicationDestinationVolumeOptions.StorageClassName = &scName
-						})
-						It("Is used in the destination PVC", func() {
-							// gets the pvcs used by the job spec
-							Eventually(func() error {
-								return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
-							}).Should(Succeed())
-							var pvcName string
-							volumes := job.Spec.Template.Spec.Volumes
-							for _, v := range volumes {
-								if v.PersistentVolumeClaim != nil && v.Name == dataVolumeName {
-									pvcName = v.PersistentVolumeClaim.ClaimName
+						It("Ensure that ReplicationDestination starts", func() {
+							// get RD & ensure a status is set
+							Eventually(func() bool {
+								inst := &volsyncv1alpha1.ReplicationDestination{}
+								if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), inst); err != nil {
+									return false
 								}
-							}
-							pvc = &corev1.PersistentVolumeClaim{}
-							Eventually(func() error {
-								return k8sClient.Get(ctx, types.NamespacedName{Name: pvcName, Namespace: rd.Namespace}, pvc)
-							}, maxWait, interval).Should(Succeed())
-							Expect(*pvc.Spec.StorageClassName).To(Equal(scName))
+								return inst.Status != nil
+							}, maxWait, interval).Should(BeTrue())
+							// validate necessary fields
+							inst := &volsyncv1alpha1.ReplicationDestination{}
+							Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), inst)).To(Succeed())
+							Expect(inst.Status).NotTo(BeNil())
+							Expect(inst.Status.Conditions).NotTo(BeNil())
+							Expect(inst.Status.NextSyncTime).NotTo(BeNil())
+						})
+
+						It("Ensure LastSyncTime & LatestImage is set properly after reconciliation", func() {
+							Eventually(func() bool {
+								inst := &volsyncv1alpha1.ReplicationDestination{}
+								err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), inst)
+								if err != nil || inst.Status == nil {
+									return false
+								}
+								return inst.Status.LastSyncTime != nil
+							}, maxWait, interval).Should(BeTrue())
+							// get ReplicationDestination
+							inst := &volsyncv1alpha1.ReplicationDestination{}
+							Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), inst)).To(Succeed())
+							// ensure Status holds correct data
+							Expect(inst.Status.LatestImage).NotTo(BeNil())
+							latestImage := inst.Status.LatestImage
+							Expect(latestImage.Kind).To(Equal("PersistentVolumeClaim"))
+							Expect(*latestImage.APIGroup).To(Equal(""))
+							Expect(latestImage.Name).NotTo(Equal(""))
+						})
+
+						It("Duration is set if job is successful", func() {
+							// Make sure that LastSyncDuration gets set
+							Eventually(func() *metav1.Duration {
+								inst := &volsyncv1alpha1.ReplicationDestination{}
+								_ = k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), inst)
+								return inst.Status.LastSyncDuration
+							}, maxWait, interval).Should(Not(BeNil()))
+						})
+
+						When("The ReplicationDestinaton spec is paused", func() {
+							parallelism := int32(0)
+							BeforeEach(func() {
+								// set paused to true so no more processes will be created
+								rd.Spec.Paused = true
+							})
+							It("Job has parallelism disabled", func() {
+								job := &batchv1.Job{
+									ObjectMeta: metav1.ObjectMeta{
+										Name:      "volsync-rclone-src-" + rd.Name,
+										Namespace: rd.Namespace,
+									},
+								}
+								Eventually(func() error {
+									return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
+								}, maxWait, interval).Should(Succeed())
+								Expect(*job.Spec.Parallelism).To(Equal(parallelism))
+							})
+						})
+
+						When("A Storage Class is specified", func() {
+							scName := "mysc"
+							BeforeEach(func() {
+								rd.Spec.Rclone.ReplicationDestinationVolumeOptions.StorageClassName = &scName
+							})
+							It("Is used in the destination PVC", func() {
+								// gets the pvcs used by the job spec
+								Eventually(func() error {
+									return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
+								}).Should(Succeed())
+								var pvcName string
+								volumes := job.Spec.Template.Spec.Volumes
+								for _, v := range volumes {
+									if v.PersistentVolumeClaim != nil && v.Name == dataVolumeName {
+										pvcName = v.PersistentVolumeClaim.ClaimName
+									}
+								}
+								pvc = &corev1.PersistentVolumeClaim{}
+								Eventually(func() error {
+									return k8sClient.Get(ctx, types.NamespacedName{Name: pvcName, Namespace: rd.Namespace}, pvc)
+								}, maxWait, interval).Should(Succeed())
+								Expect(*pvc.Spec.StorageClassName).To(Equal(scName))
+							})
 						})
 					})
-				})
+				}
 
 				When("Using a copy method of Snapshot", func() {
 					BeforeEach(func() {
@@ -428,6 +438,11 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 	var configSection = "foo"
 	var destPath = "bar"
 
+	directCopyMethodTypes := []volsyncv1alpha1.CopyMethodType{
+		volsyncv1alpha1.CopyMethodNone,
+		volsyncv1alpha1.CopyMethodDirect,
+	}
+
 	// setup namespace && PVC
 	BeforeEach(func() {
 		namespace = &corev1.Namespace{
@@ -519,45 +534,50 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 					job.Status.Succeeded = 1
 					Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
 				})
-				When("copyMethod of None is specified for Rclone", func() {
-					BeforeEach(func() {
-						rs.Spec.Rclone.ReplicationSourceVolumeOptions.CopyMethod = volsyncv1alpha1.CopyMethodNone
-					})
 
-					When("No schedule is provided to ReplicationSource", func() {
-						It("NextSyncTime is never set", func() {
-							Consistently(func() bool {
-								// replication source should exist within k8s cluster
-								Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rs), rs)).To(Succeed())
-								if rs.Status == nil || rs.Status.NextSyncTime.IsZero() {
-									return false
-								}
-								return true
-							}, duration, interval).Should(BeFalse())
+				// Test both None and Direct (results should be the same)
+				for i := range directCopyMethodTypes {
+					When(fmt.Sprintf("copyMethod of %s is specified for Rclone", directCopyMethodTypes[i]), func() {
+						directCopyMethodType := directCopyMethodTypes[i]
+						BeforeEach(func() {
+							rs.Spec.Rclone.ReplicationSourceVolumeOptions.CopyMethod = directCopyMethodType
 						})
-					})
 
-					When("Schedule is provided", func() {
-						var schedule string
-						When("Schedule is a proper cron format", func() {
-							BeforeEach(func() {
-								schedule = "1 3 3 7 *"
-								rs.Spec.Trigger = &volsyncv1alpha1.ReplicationSourceTriggerSpec{
-									Schedule: &schedule,
-								}
-							})
-							It("the next sync time is set in Status.NextSyncTime", func() {
-								Eventually(func() bool {
+						When("No schedule is provided to ReplicationSource", func() {
+							It("NextSyncTime is never set", func() {
+								Consistently(func() bool {
+									// replication source should exist within k8s cluster
 									Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rs), rs)).To(Succeed())
 									if rs.Status == nil || rs.Status.NextSyncTime.IsZero() {
 										return false
 									}
 									return true
-								}, maxWait, interval).Should(BeTrue())
+								}, duration, interval).Should(BeFalse())
+							})
+						})
+
+						When("Schedule is provided", func() {
+							var schedule string
+							When("Schedule is a proper cron format", func() {
+								BeforeEach(func() {
+									schedule = "1 3 3 7 *"
+									rs.Spec.Trigger = &volsyncv1alpha1.ReplicationSourceTriggerSpec{
+										Schedule: &schedule,
+									}
+								})
+								It("the next sync time is set in Status.NextSyncTime", func() {
+									Eventually(func() bool {
+										Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rs), rs)).To(Succeed())
+										if rs.Status == nil || rs.Status.NextSyncTime.IsZero() {
+											return false
+										}
+										return true
+									}, maxWait, interval).Should(BeTrue())
+								})
 							})
 						})
 					})
-				})
+				}
 
 				When("copyMethod of Clone is specified", func() {
 					BeforeEach(func() {
@@ -599,39 +619,42 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 					})
 				})
 			})
-			Context("Rclone is provided schedule + CopyMethodNone, ", func() {
-				var schedule string
-				BeforeEach(func() {
-					schedule = "4 * * * *"
-					rs.Spec.Trigger = &volsyncv1alpha1.ReplicationSourceTriggerSpec{
-						Schedule: &schedule,
-					}
-					// provide a copy method
-					rs.Spec.Rclone.CopyMethod = volsyncv1alpha1.CopyMethodNone
-				})
-				It("Uses the Source PVC as the sync source", func() {
-					Eventually(func() error {
-						return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
-					}, maxWait, interval).Should(Succeed())
-					// look for the source PVC in the job's volume list
-					volumes := job.Spec.Template.Spec.Volumes
-					found := false
-					for _, v := range volumes {
-						if v.PersistentVolumeClaim != nil && v.PersistentVolumeClaim.ClaimName == srcPVC.Name {
-							found = true
+			for i := range directCopyMethodTypes {
+				Context(fmt.Sprintf("Rclone is provided schedule + CopyMethod%s, ", directCopyMethodTypes[i]), func() {
+					directCopyMethodType := directCopyMethodTypes[i]
+					var schedule string
+					BeforeEach(func() {
+						schedule = "4 * * * *"
+						rs.Spec.Trigger = &volsyncv1alpha1.ReplicationSourceTriggerSpec{
+							Schedule: &schedule,
 						}
-					}
-					Expect(found).To(BeTrue())
-					Expect(srcPVC).NotTo(beOwnedBy(rs))
+						// provide a copy method
+						rs.Spec.Rclone.CopyMethod = directCopyMethodType
+					})
+					It("Uses the Source PVC as the sync source", func() {
+						Eventually(func() error {
+							return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
+						}, maxWait, interval).Should(Succeed())
+						// look for the source PVC in the job's volume list
+						volumes := job.Spec.Template.Spec.Volumes
+						found := false
+						for _, v := range volumes {
+							if v.PersistentVolumeClaim != nil && v.PersistentVolumeClaim.ClaimName == srcPVC.Name {
+								found = true
+							}
+						}
+						Expect(found).To(BeTrue())
+						Expect(srcPVC).NotTo(beOwnedBy(rs))
+					})
 				})
-			})
+			}
 		})
 		When("rclone is given an incorrect config", func() {
 			var emptyString = ""
 			BeforeEach(func() {
 				rs.Spec.Rclone = &volsyncv1alpha1.ReplicationSourceRcloneSpec{
 					ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
-						CopyMethod: volsyncv1alpha1.CopyMethodNone,
+						CopyMethod: volsyncv1alpha1.CopyMethodDirect,
 					},
 					RcloneConfig:        &emptyString,
 					RcloneConfigSection: &emptyString,
