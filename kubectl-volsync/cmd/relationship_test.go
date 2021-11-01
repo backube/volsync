@@ -38,7 +38,7 @@ var _ = Describe("Relationships", func() {
 		os.RemoveAll(dirname)
 	})
 	It("Load()-ing fails if the relationship doesn't exist", func() {
-		rel, err := LoadRelationship(dirname, "noexist", "sometype")
+		rel, err := loadRelationship(dirname, "noexist", "sometype")
 		Expect(err).To(HaveOccurred())
 		Expect(rel).To(BeNil())
 	})
@@ -49,7 +49,7 @@ var _ = Describe("Relationships", func() {
 		BeforeEach(func() {
 			rname = utilrand.String(5)
 			var err error
-			rel, err = CreateRelationship(dirname, rname, rtype)
+			rel, err = createRelationship(dirname, rname, rtype)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(rel).ToNot(BeNil())
 		})
@@ -68,7 +68,7 @@ var _ = Describe("Relationships", func() {
 		})
 		It("Fails if one already exists", func() {
 			_ = rel.Save()
-			r2, err := CreateRelationship(dirname, rname, "type")
+			r2, err := createRelationship(dirname, rname, "type")
 			Expect(err).To(HaveOccurred())
 			Expect(r2).To(BeNil())
 		})
@@ -93,18 +93,18 @@ var _ = Describe("Relationships", func() {
 		It("can only be re-loaded if the type matches", func() {
 			Expect(rel.Save()).To(Succeed())
 
-			rel2, err := LoadRelationship(dirname, rname, "anothertype")
+			rel2, err := loadRelationship(dirname, rname, "anothertype")
 			Expect(err).To(HaveOccurred())
 			Expect(rel2).To(BeNil())
 
-			rel2, err = LoadRelationship(dirname, rname, rtype)
+			rel2, err = loadRelationship(dirname, rname, rtype)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(rel2).ToNot(BeNil())
 		})
 		It("preserves its data", func() {
 			rel.Set("akey", 7)
 			Expect(rel.Save()).To(Succeed())
-			rel2, err := LoadRelationship(dirname, rname, rtype)
+			rel2, err := loadRelationship(dirname, rname, rtype)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(rel2).ToNot(BeNil())
 			Expect(rel2.GetInt("akey")).To(Equal(7))
@@ -113,7 +113,7 @@ var _ = Describe("Relationships", func() {
 			relID := rel.GetString("id")
 			Expect(rel.Save()).To(Succeed())
 
-			rel2, err := LoadRelationship(dirname, rname, rtype)
+			rel2, err := loadRelationship(dirname, rname, rtype)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(rel2).ToNot(BeNil())
 
