@@ -32,12 +32,16 @@
 * Go
   * Change the version number in [operator.yml](.github/workflows/operator.yml)
   * Change the version number in [go.mod](go.mod)
-  * Change the version number in [Dockerfile](Dockerfile) (the builder image
-    version)
+  * Change the version number for the builder images in
+    * [Dockerfile](Dockerfile)
+    * [mover-rclone/Dockerfile](mover-rclone/Dockerfile)
+    * [mover-restic/Dockerfile](mover-restic/Dockerfile)
 * [golangci-lint](https://github.com/golangci/golangci-lint/releases)
   * Change the version number in [Makefile](Makefile)
   * Check for added/deprecated linters and adjust [.golangci.yml](.golangci.yml)
     as necessary
+* [Helm](https://github.com/helm/helm/releases)
+  * Change the version number in [Makefile](Makefile)
 * [Kind](https://github.com/kubernetes-sigs/kind/releases)
   * Change the version number in [operator.yml](.github/workflows/operator.yml)
 * [Kuttl](https://github.com/kudobuilder/kuttl/releases)
@@ -49,10 +53,8 @@
     appropriate
 * [Rclone](https://github.com/rclone/rclone/releases)
   * Change the version number in
-    [mover-rclone/Dockerfile](mover-rclone/Dockerfile)
+    [mover-rclone/Dockerfile](mover-rclone/Dockerfile) and update GIT hash to match
 * [Restic](https://github.com/restic/restic/releases)
   * Change the version number in
-    [mover-restic/Dockerfile](mover-restic/Dockerfile), and update the SHA256 to
+    [mover-restic/Dockerfile](mover-restic/Dockerfile), and update GIT hash to
     match
-* [Helm](https://github.com/helm/helm/releases)
-  * Change the version number in [Makefile](Makefile)
