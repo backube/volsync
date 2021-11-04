@@ -8,7 +8,7 @@ BUILDDATE := $(shell date -u '+%Y-%m-%dT%H:%M:%S.%NZ')
 
 # Helper software versions
 GOLANGCI_VERSION := v1.43.0
-HELM_VERSION := v3.6.2
+HELM_VERSION := v3.7.1
 OPERATOR_SDK_VERSION := v1.9.0
 KUTTL_VERSION := 0.11.1
 
