@@ -3,9 +3,9 @@ FROM golang:1.16 as restic-builder
 
 WORKDIR /workspace
 
-ARG RESTIC_VERSION=v0.12.0
+ARG RESTIC_VERSION=v0.12.1
 # hash: git rev-list -n 1 ${RESTIC_VERSION}
-ARG RESTIC_GIT_HASH=27f241334e9245a212bc2aba4956a5c0392e5940
+ARG RESTIC_GIT_HASH=dc7a8aab2426e7d78d0a41b1608e75edf56a74d0
 
 RUN git clone --depth 1 -b ${RESTIC_VERSION} https://github.com/restic/restic.git
 

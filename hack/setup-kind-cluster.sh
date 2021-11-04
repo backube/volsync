@@ -5,7 +5,7 @@ set -e -o pipefail
 # Possible versions:
 # https://hub.docker.com/r/kindest/node/tags?page=1&ordering=name
 # skopeo inspect docker://kindest/node:v1.17.0 | jq .RepoTags
-KUBE_VERSION="${1:-1.22.1}"
+KUBE_VERSION="${1:-1.22.2}"
 
 # Determine the Kube minor version
 [[ "${KUBE_VERSION}" =~ ^[0-9]+\.([0-9]+) ]] && KUBE_MINOR="${BASH_REMATCH[1]}" || exit 1
@@ -133,7 +133,7 @@ case "$KUBE_MINOR" in
     DEPLOY_SCRIPT="deploy.sh"
     ;;
   *)
-    HOSTPATH_BRANCH="v1.7.2"
+    HOSTPATH_BRANCH="v1.7.3"
     DEPLOY_SCRIPT="deploy.sh"
     ;;
 esac

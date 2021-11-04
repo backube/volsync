@@ -10,10 +10,13 @@ linters:
   disable-all: true
   enable:
     - asciicheck
+    - bidichk
+    - contextcheck
     - deadcode
     - dupl
     - errcheck
     - errorlint
+    - errname
     - exhaustive
     - exportloopref
     - forcetypeassert
@@ -21,7 +24,6 @@ linters:
     - goconst
     - gocyclo
     - goimports  # Supersedes gofmt
-    - golint
     - gosec
     - gosimple
     - govet
@@ -30,6 +32,7 @@ linters:
     - makezero
     - misspell
     - nakedret
+    - revive
     - staticcheck
     - structcheck
     - typecheck
