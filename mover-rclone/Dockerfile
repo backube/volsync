@@ -3,9 +3,9 @@ FROM golang:1.16 as rclone-builder
 
 WORKDIR /workspace
 
-ARG RCLONE_VERSION=v1.55.1
+ARG RCLONE_VERSION=v1.57.0
 # hash: git rev-list -n 1 ${RCLONE_VERSION}
-ARG RCLONE_GIT_HASH=825dd65e1de3b2a1d3926659194298f10b611923
+ARG RCLONE_GIT_HASH=169990e270b2977c39bd6ecd8a2921cf30a6d2b7
 
 RUN git clone --depth 1 -b ${RCLONE_VERSION} https://github.com/rclone/rclone.git
 
