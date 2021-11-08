@@ -9,7 +9,7 @@ BUILDDATE := $(shell date -u '+%Y-%m-%dT%H:%M:%S.%NZ')
 # Helper software versions
 GOLANGCI_VERSION := v1.43.0
 HELM_VERSION := v3.7.1
-OPERATOR_SDK_VERSION := v1.9.0
+OPERATOR_SDK_VERSION := v1.10.0
 KUTTL_VERSION := 0.11.1
 
 # We don't vendor modules. Enforce that behavior
@@ -102,13 +102,10 @@ helm-lint: helm ## Lint Helm chart
 	cd helm && $(HELM) lint volsync
 
 .PHONY: test
-ENVTEST_ASSETS_DIR=$(shell pwd)/testbin
 TEST_ARGS ?= -progress -randomizeAllSpecs -randomizeSuites -slowSpecThreshold 30 -p -cover -coverprofile cover.out -outputdir .
 TEST_PACKAGES ?= ./...
-test: manifests generate lint helm-lint ginkgo ## Run tests.
-	mkdir -p ${ENVTEST_ASSETS_DIR}
-	test -f ${ENVTEST_ASSETS_DIR}/setup-envtest.sh || curl -sSLo ${ENVTEST_ASSETS_DIR}/setup-envtest.sh https://raw.githubusercontent.com/kubernetes-sigs/controller-runtime/v0.8.3/hack/setup-envtest.sh
-	source ${ENVTEST_ASSETS_DIR}/setup-envtest.sh; fetch_envtest_tools $(ENVTEST_ASSETS_DIR); setup_envtest_env $(ENVTEST_ASSETS_DIR); $(GINKGO) $(TEST_ARGS) $(TEST_PACKAGES)
+test: manifests generate lint envtest helm-lint ginkgo ## Run tests.
+	$(GINKGO) $(TEST_ARGS) $(TEST_PACKAGES)
 
 .PHONY: test-e2e
 test-e2e: kuttl ## Run e2e tests. Requires cluster w/ VolSync already installed
@@ -171,12 +168,18 @@ undeploy-openshift: manifests kustomize ## Undeploy controller to the K8s cluste
 .PHONY: controller-gen
 CONTROLLER_GEN = $(shell pwd)/bin/controller-gen
 controller-gen: ## Download controller-gen locally if necessary.
-	$(call go-get-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen@v0.4.1)
+	$(call go-get-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen@v0.6.1)
 
 .PHONY: kustomize
 KUSTOMIZE = $(shell pwd)/bin/kustomize
 kustomize: ## Download kustomize locally if necessary.
 	$(call go-get-tool,$(KUSTOMIZE),sigs.k8s.io/kustomize/kustomize/v3@v3.8.7)
+
+.PHONY: envtest
+ENVTEST = $(shell pwd)/bin/setup-envtest
+envtest: ## Download envtest-setup locally if necessary.
+	$(call go-get-tool,$(ENVTEST),sigs.k8s.io/controller-runtime/tools/setup-envtest@latest)
+	$(ENVTEST) use 1.21
 
 # go-get-tool will 'go get' any package $2 and install it to $1.
 PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
