@@ -36,6 +36,7 @@
     * [Dockerfile](Dockerfile)
     * [mover-rclone/Dockerfile](mover-rclone/Dockerfile)
     * [mover-restic/Dockerfile](mover-restic/Dockerfile)
+  * Update the OpenShift CI builder images & image substitution rules
 * [golangci-lint](https://github.com/golangci/golangci-lint/releases)
   * Change the version number in [Makefile](Makefile)
   * Check for added/deprecated linters and adjust [.golangci.yml](.golangci.yml)
