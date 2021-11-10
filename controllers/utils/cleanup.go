@@ -21,6 +21,9 @@ import (
 	"context"
 
 	"github.com/go-logr/logr"
+	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1beta1"
+	corev1 "k8s.io/api/core/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -61,4 +64,60 @@ func CleanupObjects(ctx context.Context, c client.Client,
 		}
 	}
 	return nil
+}
+
+func MarkOldSnapshotForCleanup(ctx context.Context, c client.Client, logger logr.Logger,
+	owner metav1.Object, oldImage, latestImage *corev1.TypedLocalObjectReference) error {
+	// Make sure we only delete an old snapshot (it's a snapshot, but not the
+	// current one)
+
+	// There's no latestImage or type != snapshot
+	if !isSnapshot(latestImage) {
+		return nil
+	}
+	// No oldImage or type != snapshot
+	if !isSnapshot(oldImage) {
+		return nil
+	}
+
+	// Also don't clean it up if it's the snap we're trying to preserve
+	if latestImage.Name == oldImage.Name {
+		return nil
+	}
+
+	oldSnap := &snapv1.VolumeSnapshot{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      oldImage.Name,
+			Namespace: owner.GetNamespace(),
+		},
+	}
+	err := c.Get(ctx, client.ObjectKeyFromObject(oldSnap), oldSnap)
+	if kerrors.IsNotFound(err) {
+		// Nothing to cleanup
+		return nil
+	}
+	if err != nil {
+		logger.Error(err, "unable to get snapshot", "name", oldSnap.GetName(), "namespace", oldSnap.GetNamespace())
+		return err
+	}
+
+	// Update the old snapshot with the cleanup label
+	MarkForCleanup(owner, oldSnap)
+	err = c.Update(ctx, oldSnap)
+	if err != nil && !kerrors.IsNotFound(err) {
+		logger.Error(err, "unable to update snapshot with cleanup label",
+			"name", oldSnap.GetName(), "namespace", oldSnap.GetNamespace())
+		return err
+	}
+	return nil
+}
+
+func isSnapshot(image *corev1.TypedLocalObjectReference) bool {
+	if image == nil {
+		return false
+	}
+	if image.Kind != "VolumeSnapshot" || *image.APIGroup != snapv1.SchemeGroupVersion.Group {
+		return false
+	}
+	return true
 }

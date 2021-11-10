@@ -38,6 +38,7 @@ import (
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers"
 	"github.com/backube/volsync/controllers/mover"
+	"github.com/backube/volsync/controllers/mover/rclone"
 	"github.com/backube/volsync/controllers/mover/restic"
 	"github.com/backube/volsync/controllers/utils"
 	//+kubebuilder:scaffold:imports
@@ -59,6 +60,7 @@ func init() {
 //nolint:funlen
 func main() {
 	// Register the data movers
+	rclone.Register()
 	restic.Register()
 
 	var metricsAddr string
@@ -69,8 +71,8 @@ func main() {
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	flag.StringVar(&controllers.RcloneContainerImage, "rclone-container-image",
-		controllers.DefaultRcloneContainerImage, "The container image for the rclone data mover")
+	//flag.StringVar(&controllers.RcloneContainerImage, "rclone-container-image", //FIXME: remove
+	//	controllers.DefaultRcloneContainerImage, "The container image for the rclone data mover")
 	flag.StringVar(&controllers.RsyncContainerImage, "rsync-container-image",
 		controllers.DefaultRsyncContainerImage, "The container image for the rsync data mover")
 	flag.StringVar(&utils.SCCName, "scc-name",
@@ -86,7 +88,6 @@ func main() {
 	setupLog.Info(fmt.Sprintf("Go Version: %s", runtime.Version()))
 	setupLog.Info(fmt.Sprintf("Go OS/Arch: %s/%s", runtime.GOOS, runtime.GOARCH))
 	setupLog.Info(fmt.Sprintf("Operator Version: %s", volsyncVersion))
-	setupLog.Info(fmt.Sprintf("Rclone container: %s", controllers.RcloneContainerImage))
 	setupLog.Info(fmt.Sprintf("Rsync container: %s", controllers.RsyncContainerImage))
 	for _, b := range mover.Catalog {
 		setupLog.Info(b.VersionInfo())

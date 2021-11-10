@@ -38,6 +38,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
+	"github.com/backube/volsync/controllers/mover/rclone"
+	"github.com/backube/volsync/controllers/mover/restic"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -97,6 +99,10 @@ var _ = BeforeSuite(func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(k8sClient).ToNot(BeNil())
 	*/
+
+	// Register the data movers
+	rclone.Register()
+	restic.Register()
 
 	k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:             scheme.Scheme,

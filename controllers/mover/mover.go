@@ -22,6 +22,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
@@ -56,6 +57,10 @@ type Result struct {
 	// is modified. Setting to 0 indicates an immediate retry. Other values
 	// provide a delay.
 	RetryAfter *time.Duration
+
+	// StartTime will be used to calculate sync duration (time for the mover to complete the job)
+	// If set to nil (default) then no sync duration will be recorded after Synchronize() completes
+	StartTime *metav1.Time
 }
 
 // ReconcileResult converts a Result into controllerruntime's reconcile result
@@ -79,13 +84,19 @@ func InProgress() Result { return Result{} }
 func RetryAfter(s time.Duration) Result { return Result{RetryAfter: &s} }
 
 // Complete indicates that the operation has completed.
-func Complete() Result { return Result{Completed: true} }
+func Complete(startTime *metav1.Time) Result {
+	return Result{
+		Completed: true,
+		StartTime: startTime,
+	}
+}
 
 // CompleteWithImage indicates that the operation has completed, and it provides
 // the synchronized image to the controller.
-func CompleteWithImage(image *corev1.TypedLocalObjectReference) Result {
+func CompleteWithImage(image *corev1.TypedLocalObjectReference, startTime *metav1.Time) Result {
 	return Result{
 		Completed: true,
 		Image:     image,
+		StartTime: startTime,
 	}
 }

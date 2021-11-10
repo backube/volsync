@@ -42,7 +42,7 @@ func GetAndValidateSecret(ctx context.Context, cl client.Client,
 func secretHasFields(secret *corev1.Secret, fields ...string) error {
 	data := secret.Data
 	if data == nil || len(data) < len(fields) {
-		return fmt.Errorf("secret shoud have fields: %v", fields)
+		return fmt.Errorf("secret should have fields: %v", fields)
 	}
 	for _, k := range fields {
 		if _, found := data[k]; !found {
