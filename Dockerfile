@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM golang:1.16 as builder
+FROM golang:1.17 as builder
 
 WORKDIR /workspace
 # Copy the Go Modules manifests
@@ -21,7 +21,7 @@ ARG VERSION="(unknown)"
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o manager -ldflags "-X=main.volsyncVersion=${VERSION}" main.go
 
 # Final container
-FROM registry.access.redhat.com/ubi8-minimal:8.3
+FROM registry.access.redhat.com/ubi8-minimal
 
 # Needs openssh in order to generate ssh keys
 RUN microdnf --refresh update && \
