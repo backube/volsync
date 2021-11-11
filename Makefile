@@ -273,10 +273,10 @@ ginkgo: ## Download ginkgo
 
 .PHONY: golangci-lint
 GOLANGCILINT := $(PROJECT_DIR)/bin/golangci-lint
-GOLANGCI_URL := https://install.goreleaser.com/github.com/golangci/golangci-lint.sh
+GOLANGCI_URL := https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh
 golangci-lint: ## Download golangci-lint
 ifeq (,$(wildcard $(GOLANGCILINT)))
-	curl -sSL $(GOLANGCI_URL) | sh -s -- -b $(PROJECT_DIR)/bin $(GOLANGCI_VERSION)
+	curl -sSfL $(GOLANGCI_URL) | sh -s -- -b $(PROJECT_DIR)/bin $(GOLANGCI_VERSION)
 endif
 
 .PHONY: helm
