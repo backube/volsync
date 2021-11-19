@@ -1,5 +1,6 @@
 # Build the manager binary
-FROM golang:1.17 as builder
+FROM registry.access.redhat.com/ubi8/go-toolset as builder
+USER root
 
 WORKDIR /workspace
 # Copy the Go Modules manifests
@@ -18,7 +19,10 @@ COPY controllers/ controllers/
 # We don't vendor modules. Enforce that behavior
 ENV GOFLAGS=-mod=readonly
 ARG VERSION="(unknown)"
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o manager -ldflags "-X=main.volsyncVersion=${VERSION}" main.go
+RUN GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o manager -ldflags "-X=main.volsyncVersion=${VERSION}" main.go
+
+# Verify that FIPS crypto libs are accessible
+RUN nm manager | grep -q goboringcrypto
 
 # Final container
 FROM registry.access.redhat.com/ubi8-minimal

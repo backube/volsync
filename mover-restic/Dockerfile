@@ -1,5 +1,6 @@
 # Build restic
-FROM golang:1.17 as restic-builder
+FROM registry.access.redhat.com/ubi8/go-toolset as builder
+USER root
 
 WORKDIR /workspace
 
@@ -16,7 +17,12 @@ RUN /bin/bash -c "[[ $(git rev-list -n 1 HEAD) == ${RESTIC_GIT_HASH} ]]"
 
 # We don't vendor modules. Enforce that behavior
 ENV GOFLAGS=-mod=readonly
-RUN make restic
+# Preserve symbols so that we can verify crypto libs
+RUN sed -i 's/preserveSymbols := false/preserveSymbols := true/g' build.go
+RUN go run build.go --enable-cgo
+
+# Verify that FIPS crypto libs are accessible
+RUN nm restic | grep -q goboringcrypto
 
 # Build final container
 FROM registry.access.redhat.com/ubi8-minimal
@@ -25,7 +31,7 @@ RUN microdnf update -y && \
     microdnf clean all && \
     rm -rf /var/cache/yum
 
-COPY --from=restic-builder /workspace/restic/restic /usr/local/bin/restic
+COPY --from=builder /workspace/restic/restic /usr/local/bin/restic
 COPY entry.sh \
      /
 

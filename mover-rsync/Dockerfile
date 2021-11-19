@@ -1,14 +1,16 @@
-FROM centos:8
+FROM registry.access.redhat.com/ubi8-minimal
 
-RUN yum update -y && \
-    yum install -y \
+# Separate install for rsync is to install it w/ docs so that we get the rrsync
+# command
+RUN microdnf --refresh update && \
+    microdnf --nodocs install \
       bash \
       openssh-clients \
       openssh-server \
       perl \
+    && microdnf install \
       rsync \
-    && yum clean all && \
-    rm -rf /var/cache/yum
+    && microdnf clean all
 
 COPY source.sh \
      destination.sh \
