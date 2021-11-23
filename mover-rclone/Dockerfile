@@ -1,5 +1,6 @@
 # Build rclone
-FROM golang:1.17 as rclone-builder
+FROM registry.access.redhat.com/ubi8/go-toolset as builder
+USER root
 
 WORKDIR /workspace
 
@@ -16,12 +17,15 @@ RUN /bin/bash -c "[[ $(git rev-list -n 1 HEAD) == ${RCLONE_GIT_HASH} ]]"
 
 # We don't vendor modules. Enforce that behavior
 ENV GOFLAGS=-mod=readonly
+# Remove link flag that strips symbols so that we can verify crypto libs
+RUN sed -i 's/--ldflags "-s /--ldflags "/g' Makefile
 RUN make rclone
+
+# Verify that FIPS crypto libs are accessible
+RUN nm rclone | grep -q goboringcrypto
 
 # Build final container
 FROM registry.access.redhat.com/ubi8-minimal
-
-ARG rclone_version=v1.55.1
 
 RUN microdnf update -y && \
     microdnf install -y \
@@ -29,7 +33,7 @@ RUN microdnf update -y && \
     && microdnf clean all && \
     rm -rf /var/cache/yum
 
-COPY --from=rclone-builder /workspace/rclone/rclone /usr/local/bin/rclone
+COPY --from=builder /workspace/rclone/rclone /usr/local/bin/rclone
 COPY active.sh \
      /
 
