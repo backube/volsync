@@ -1,0 +1,15 @@
+---
+apiVersion: kuttl.dev/v1beta1
+kind: TestAssert
+timeout: 600  # Allow time for pvc->snap->pvc
+collectors:
+  - type: command
+    command: kubectl -n "$NAMESPACE" describe all,pvc,volumesnapshot,replicationsource,replicationdestination
+
+---
+kind: ReplicationSource
+apiVersion: volsync.backube/v1alpha1
+metadata:
+  name: source
+status:
+  lastManualSync: firstsync

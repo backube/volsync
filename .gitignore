@@ -39,3 +39,4 @@ config.yaml
 test-kuttl/kubeconfig
 test-kuttl/e2e/simple-rclone/rclone.conf
 /test-kuttl/e2e/restic-with-restoreasof/22-timestamp.txt
+/test-kuttl/e2e/*/*-snapshot.txt
