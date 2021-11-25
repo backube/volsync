@@ -131,6 +131,17 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 }
 
 func (m *Mover) Cleanup(ctx context.Context) (mover.Result, error) {
+	if !m.isSource {
+		m.logger.V(1).Info("removing snapshot annotations from pvc")
+		// Cleanup the snapshot annotation on pvc for replicationDestination scenario so that
+		// on the next sync (if snapshot CopyMethod is being used) a new snapshot will be created rather than re-using
+		_, destPVCName := m.getDestinationPVCName()
+		err := m.vh.RemoveSnapshotAnnotationFromPVC(ctx, m.logger, destPVCName)
+		if err != nil {
+			return mover.InProgress(), err
+		}
+	}
+
 	err := utils.CleanupObjects(ctx, m.client, m.logger, m.owner, cleanupTypes)
 	if err != nil {
 		return mover.InProgress(), err
@@ -194,13 +205,20 @@ func (m *Mover) ensureSourcePVC(ctx context.Context) (*corev1.PersistentVolumeCl
 }
 
 func (m *Mover) ensureDestinationPVC(ctx context.Context) (*corev1.PersistentVolumeClaim, error) {
-	if m.mainPVCName == nil {
-		// Need to allocate the incoming data volume
-		dataPVCName := "volsync-" + m.owner.GetName() + "-dest"
-		return m.vh.EnsureNewPVC(ctx, m.logger, dataPVCName)
+	isProvidedPVC, dataPVCName := m.getDestinationPVCName()
+	if isProvidedPVC {
+		return m.vh.UseProvidedPVC(ctx, dataPVCName)
 	}
+	// Need to allocate the incoming data volume
+	return m.vh.EnsureNewPVC(ctx, m.logger, dataPVCName)
+}
 
-	return m.vh.UseProvidedPVC(ctx, *m.mainPVCName)
+func (m *Mover) getDestinationPVCName() (bool, string) {
+	if m.mainPVCName == nil {
+		newPvcName := "volsync-" + m.owner.GetName() + "-dest"
+		return false, newPvcName
+	}
+	return true, *m.mainPVCName
 }
 
 func (m *Mover) ensureSA(ctx context.Context) (*corev1.ServiceAccount, error) {
