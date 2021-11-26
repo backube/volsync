@@ -8,7 +8,6 @@ spec:
     manual: firstsync
   restic:
     repository: restic-repo
-    #destinationPVC: data-dest
     cacheCapacity: 1Gi
     copyMethod: Snapshot
     accessModes: [ReadWriteOnce]
