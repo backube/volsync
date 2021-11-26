@@ -1,6 +1,6 @@
 # Testing multiple syncs with snapshot using rsync
 
-This test verifies that volsync can perform multiple syncs and 
+This test verifies that volsync can perform multiple syncs and
 create a new unique snapshot each time.  Will also verify that
 old replicationdestination snapshots are cleaned up.
 
@@ -9,7 +9,7 @@ Steps:
 - 00 - Creates a ReplicationDestination
 - 05 - Creates a source PVC & populate it with some dummy data
 - 08 - Waits for the Secret & address to be ready (from the rd)
-- 10 - Backup the source PVC by creating a ReplicationSource with a manual trigger - also confirm 
+- 10 - Backup the source PVC by creating a ReplicationSource with a manual trigger - also confirm
   ReplicationDestination sync is complete
 - 15 - Shutdown source Pod to prevent additional writes to source PVC
 - 25 - Create a PVC for the destination - save name of restore snapshot to 25-snapshot.txt
