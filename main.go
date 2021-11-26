@@ -71,8 +71,6 @@ func main() {
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	//flag.StringVar(&controllers.RcloneContainerImage, "rclone-container-image", //FIXME: remove
-	//	controllers.DefaultRcloneContainerImage, "The container image for the rclone data mover")
 	flag.StringVar(&controllers.RsyncContainerImage, "rsync-container-image",
 		controllers.DefaultRsyncContainerImage, "The container image for the rsync data mover")
 	flag.StringVar(&utils.SCCName, "scc-name",
