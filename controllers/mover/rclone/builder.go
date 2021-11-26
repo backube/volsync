@@ -107,6 +107,5 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		isSource:            false,
 		paused:              destination.Spec.Paused,
 		mainPVCName:         destination.Spec.Rclone.DestinationPVC,
-		destStatus:          destination.Status,
 	}, nil
 }

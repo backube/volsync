@@ -287,6 +287,12 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 							return snapshots.Items
 						}, maxWait, interval).Should(Not(BeEmpty()))
 						Expect(len(snapshots.Items)).To(Equal(1))
+
+						// sync should be waiting for snapshot - check that lastSyncStartTime
+						// is set
+						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)).To(Succeed())
+						Expect(rd.Status.LastSyncStartTime).Should(Not(BeNil()))
+
 						// update the VS name
 						snapshot1 := snapshots.Items[0]
 						foo := "dummysnapshot"
@@ -304,6 +310,10 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 						Expect(latestImage1.Kind).To(Equal("VolumeSnapshot"))
 						Expect(*latestImage1.APIGroup).To(Equal(snapv1.SchemeGroupVersion.Group))
 						Expect(latestImage1.Name).To(Equal(snapshot1.GetName()))
+						// Ensure the duration was set
+						Expect(rd.Status.LastSyncDuration).Should(Not(BeNil()))
+						// Ensure the lastSyncStartTime was unset
+						Expect(rd.Status.LastSyncStartTime).Should(BeNil())
 
 						// Sync completed, Job should now get cleaned up
 						Eventually(func() bool {
@@ -331,10 +341,13 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 						Eventually(func() error {
 							return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
 						}, maxWait, interval).Should(Succeed())
+
+						// sync should be waiting for job to complete - before forcing job to succeed,
+						// check that lastSyncStartTime is set
+						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)).To(Succeed())
+						Expect(rd.Status.LastSyncStartTime).Should(Not(BeNil()))
+
 						job.Status.Succeeded = 1
-						job.Status.StartTime = &metav1.Time{ // provide job with a start time to get a duration
-							Time: time.Now(),
-						}
 						Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
 
 						snapshotsAfter2ndSync := &snapv1.VolumeSnapshotList{}
@@ -400,6 +413,11 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 							}
 							return reconcileCondition
 						}, maxWait, interval).Should(Not(BeNil()))
+
+						// Ensure the duration was set
+						Expect(rd.Status.LastSyncDuration).Should(Not(BeNil()))
+						// Ensure the lastSyncStartTime was unset
+						Expect(rd.Status.LastSyncStartTime).Should(BeNil())
 
 						Eventually(func() *metav1.Condition {
 							_ = k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)
@@ -852,6 +870,32 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 						snapFoundErr := k8sClient.Get(ctx, client.ObjectKeyFromObject(&snapshot), &snapshot)
 						return kerrors.IsNotFound(snapFoundErr)
 					}, maxWait, interval).Should(BeTrue())
+				})
+
+				It("Ensure lastSyncDuration is set at the end of an iteration", func() {
+					Eventually(func() error {
+						return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
+					}, maxWait, interval).Should(Succeed())
+					// Job was found, so synchronization should be in-progress
+
+					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rs), rs)).To(Succeed())
+					Expect(rs.Status.LastSyncStartTime).Should(Not(BeNil())) // Make sure start time was set
+
+					// set the job to succeed so sync can finish
+					job.Status.Succeeded = 1
+					Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
+
+					// Sync should complete and last sync duration should be set
+					Eventually(func() bool {
+						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rs), rs)).To(Succeed())
+						if rs.Status == nil || rs.Status.LastSyncDuration == nil {
+							return false
+						}
+						return true
+					}, maxWait, interval).Should(BeTrue())
+
+					// Now confirm lastSyncStartTime was un-set
+					Expect(rs.Status.LastSyncStartTime).Should(BeNil())
 				})
 			})
 

@@ -205,6 +205,9 @@ type ReplicationDestinationStatus struct {
 	// lastSyncTime is the time of the most recent successful synchronization.
 	//+optional
 	LastSyncTime *metav1.Time `json:"lastSyncTime,omitempty"`
+	// lastSyncStartTime is the time the most recent synchronization started.
+	//+optional
+	LastSyncStartTime *metav1.Time `json:"lastSyncStartTime,omitempty"`
 	// lastSyncDuration is the amount of time required to send the most recent
 	// update.
 	//+optional

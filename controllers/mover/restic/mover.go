@@ -123,11 +123,11 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 		if image == nil || err != nil {
 			return mover.InProgress(), err
 		}
-		return mover.CompleteWithImage(image, job.Status.StartTime), nil
+		return mover.CompleteWithImage(image), nil
 	}
 
 	// On the source, just signal completion
-	return mover.Complete(job.Status.StartTime), nil
+	return mover.Complete(), nil
 }
 
 func (m *Mover) Cleanup(ctx context.Context) (mover.Result, error) {
@@ -146,7 +146,7 @@ func (m *Mover) Cleanup(ctx context.Context) (mover.Result, error) {
 	if err != nil {
 		return mover.InProgress(), err
 	}
-	return mover.Complete(nil), nil
+	return mover.Complete(), nil
 }
 
 func (m *Mover) ensureCache(ctx context.Context,

@@ -171,6 +171,8 @@ func reconcileSrcUsingCatalog(
 
 	var mResult mover.Result
 	if shouldSync && !apimeta.IsStatusConditionFalse(instance.Status.Conditions, volsyncv1alpha1.ConditionSynchronizing) {
+		updateLastSyncStartTimeSource(instance) // Make sure lastSyncStartTime is set
+
 		mResult, err = dataMover.Synchronize(ctx)
 		if mResult.Completed {
 			apimeta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{
@@ -181,11 +183,6 @@ func reconcileSrcUsingCatalog(
 			})
 			if ok, err := updateLastSyncSource(instance, metrics, logger); !ok {
 				return mover.InProgress().ReconcileResult(), err
-			}
-			if mResult.StartTime != nil {
-				d := instance.Status.LastSyncTime.Sub(mResult.StartTime.Time)
-				instance.Status.LastSyncDuration = &metav1.Duration{Duration: d}
-				metrics.SyncDurations.Observe(d.Seconds())
 			}
 		}
 	} else {
@@ -323,6 +320,14 @@ func awaitNextSyncSource(
 	return false, nil
 }
 
+// Should be called only if synchronizing - will assume if lastSyncStartTime is not
+// set that it should be set to now
+func updateLastSyncStartTimeSource(rs *volsyncv1alpha1.ReplicationSource) {
+	if rs.Status.LastSyncStartTime == nil {
+		rs.Status.LastSyncStartTime = &metav1.Time{Time: time.Now()}
+	}
+}
+
 //nolint:dupl
 func updateLastSyncSource(
 	rs *volsyncv1alpha1.ReplicationSource,
@@ -349,6 +354,16 @@ func updateLastSyncSource(
 	}
 
 	rs.Status.LastSyncTime = &metav1.Time{Time: time.Now()}
+
+	if rs.Status.LastSyncStartTime != nil {
+		// Calculate sync duration
+		d := rs.Status.LastSyncTime.Sub(rs.Status.LastSyncStartTime.Time)
+		rs.Status.LastSyncDuration = &metav1.Duration{Duration: d}
+		metrics.SyncDurations.Observe(d.Seconds())
+
+		// Clear out lastSyncStartTime so next sync can set it again
+		rs.Status.LastSyncStartTime = nil
+	}
 
 	// When a sync is completed we set lastManualSync
 	if rs.Spec.Trigger != nil {
