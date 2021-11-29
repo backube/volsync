@@ -21,10 +21,69 @@ import (
 	"github.com/spf13/viper"
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
+
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
 
 // MigrationRelationship defines the "type" of migration Relationships
-const MigrationRelationship RelationshipType = "migration"
+const MigrationRelationshipType RelationshipType = "migration"
+
+// migrationRelationship holds the config state for migration-type
+// relationships
+type migrationRelationship struct {
+	Relationship
+	data *migrationRelationshipData
+}
+
+// migrationRelationshipData is the state that will be saved to the
+// relationship config file
+type migrationRelationshipData struct {
+	Version     int
+	Destination *migrationRelationshipDestination
+}
+
+type migrationRelationshipDestination struct {
+	// Cluster context name
+	Cluster string
+	// Namespace on destination cluster
+	Namespace string
+	// Name of PVC being replicated
+	PVCName string
+	// Name of the ReplicationDestination object
+	RDName string
+	// Name of Secret holding SSH keys
+	SSHKeyName string
+	// Parameters for the ReplicationDestination
+	Destination volsyncv1alpha1.ReplicationDestinationRsyncSpec
+}
+
+func (mr *migrationRelationship) Save() error {
+	err := mr.SetData(mr.data)
+	if err != nil {
+		return err
+	}
+
+	if mr.data.Destination != nil && mr.data.Destination.Destination.Capacity != nil {
+		mr.Set("data.destination.destination.replicationdestinationvolumeoptions.capacity",
+			mr.data.Destination.Destination.Capacity.String())
+	}
+
+	return mr.Relationship.Save()
+}
+
+func newMigrationRelationship(cmd *cobra.Command) (*migrationRelationship, error) {
+	r, err := CreateRelationshipFromCommand(cmd, MigrationRelationshipType)
+	if err != nil {
+		return nil, err
+	}
+
+	return &migrationRelationship{
+		Relationship: *r,
+		data: &migrationRelationshipData{
+			Version: 1,
+		},
+	}, nil
+}
 
 // migrationCmd represents the migration command
 var migrationCmd = &cobra.Command{
