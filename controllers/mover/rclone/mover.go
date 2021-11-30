@@ -36,12 +36,9 @@ import (
 )
 
 const (
-	// resticCacheMountPath = "/cache"
 	mountPath      = "/data"
 	dataVolumeName = "data"
 	rcloneSecret   = "rclone-secret"
-
-// resticCache          = "cache"
 )
 
 // Mover is the reconciliation logic for the Restic-based data mover.
@@ -78,6 +75,12 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 		return mover.InProgress(), err
 	}
 
+	// Validate rCloneConfig Secret
+	rcloneConfigSecret, err := m.validateRcloneConfig(ctx)
+	if rcloneConfigSecret == nil || err != nil {
+		return mover.InProgress(), err
+	}
+
 	// Allocate temporary data PVC
 	var dataPVC *corev1.PersistentVolumeClaim
 	if m.isSource {
@@ -86,12 +89,6 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 		dataPVC, err = m.ensureDestinationPVC(ctx)
 	}
 	if dataPVC == nil || err != nil {
-		return mover.InProgress(), err
-	}
-
-	// Validate rCloneConfig Secret
-	rcloneConfigSecret, err := m.validateRcloneConfig(ctx)
-	if rcloneConfigSecret == nil || err != nil {
 		return mover.InProgress(), err
 	}
 
@@ -288,26 +285,23 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 }
 
 func (m *Mover) validateSpec() error {
-	m.logger.V(1).Info("Initiate RcloneSpec validation")
+	m.logger.V(1).Info("Initiate Rclone Spec validation")
 	if m.rcloneConfig == nil || len(*m.rcloneConfig) == 0 {
-		m.logger.V(1).Info("couldnt validate rcloneconfig")
 		err := errors.New("unable to get Rclone config secret name")
-		m.logger.V(1).Info("Unable to get Rclone config secret name")
+		m.logger.Error(err, "Rclone Spec validation error")
 		return err
 	}
 	if m.rcloneConfigSection == nil || len(*m.rcloneConfigSection) == 0 {
 		err := errors.New("unable to get Rclone config section name")
-		m.logger.V(1).Info("Unable to get Rclone config section name")
-
+		m.logger.Error(err, "Rclone Spec validation error")
 		return err
 	}
 	if m.rcloneDestPath == nil || len(*m.rcloneDestPath) == 0 {
 		err := errors.New("unable to get Rclone destination name")
-		m.logger.V(1).Info("Unable to get Rclone destination name")
-
+		m.logger.Error(err, "Rclone Spec validation error")
 		return err
 	}
-	m.logger.V(1).Info("Rclone config validation complete.")
+	m.logger.V(1).Info("Rclone Spec validation complete.")
 	return nil
 }
 

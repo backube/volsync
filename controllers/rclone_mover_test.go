@@ -321,6 +321,20 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 							return kerrors.IsNotFound(jobFoundErr)
 						}, maxWait, interval).Should(BeTrue())
 
+						Eventually(func() bool {
+							err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)
+							if err != nil {
+								return false
+							}
+							synchronizingCondition := apimeta.FindStatusCondition(rd.Status.Conditions,
+								volsyncv1alpha1.ConditionSynchronizing)
+							if synchronizingCondition == nil {
+								return false
+							}
+							return (synchronizingCondition.Status == metav1.ConditionFalse &&
+								synchronizingCondition.Reason == volsyncv1alpha1.SynchronizingReasonSched)
+						}, maxWait, interval).Should(BeTrue())
+
 						//
 						// Now manually trigger another sync to generate another snapshot
 						//
@@ -331,7 +345,6 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 							if err != nil {
 								return err
 							}
-							time.Sleep(1 * time.Second)
 							// Update RD with manual trigger to force another sync
 							rd.Spec.Trigger.Manual = manualTrigger
 							return k8sClient.Update(ctx, rd)

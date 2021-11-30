@@ -8,7 +8,7 @@ spec:
     manual: firstsync
   rclone:
     rcloneConfigSection: "rclone-data-mover"
-    rcloneDestPath: "volsync-test-bucket2"
+    rcloneDestPath: "test-e2e-multi-sync-snapshot-rclone"
     rcloneConfig: "rclone-secret"
     copyMethod: Snapshot
     accessModes: [ReadWriteOnce]
