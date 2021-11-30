@@ -10,6 +10,7 @@ import (
 	. "github.com/onsi/gomega"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -82,11 +83,10 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 		// setup a minimal job
 		job = &batchv1.Job{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "volsync-rclone-src-" + rd.Name,
+				Name:      "volsync-rclone-dst-" + rd.Name,
 				Namespace: rd.Namespace,
 			},
 		}
-		RcloneContainerImage = DefaultRcloneContainerImage
 	})
 	AfterEach(func() {
 		// delete each namespace on shutdown so resources can be reclaimed
@@ -193,7 +193,10 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 							// Make sure that LastSyncDuration gets set
 							Eventually(func() *metav1.Duration {
 								inst := &volsyncv1alpha1.ReplicationDestination{}
-								_ = k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), inst)
+								err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), inst)
+								if err != nil || inst == nil || inst.Status == nil {
+									return nil
+								}
 								return inst.Status.LastSyncDuration
 							}, maxWait, interval).Should(Not(BeNil()))
 						})
@@ -207,7 +210,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 							It("Job has parallelism disabled", func() {
 								job := &batchv1.Job{
 									ObjectMeta: metav1.ObjectMeta{
-										Name:      "volsync-rclone-src-" + rd.Name,
+										Name:      "volsync-rclone-dst-" + rd.Name,
 										Namespace: rd.Namespace,
 									},
 								}
@@ -274,6 +277,175 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 						Expect(latestImage.Kind).To(Equal("VolumeSnapshot"))
 						Expect(*latestImage.APIGroup).To(Equal(snapv1.SchemeGroupVersion.Group))
 						Expect(latestImage).To(Not(Equal("")))
+					})
+
+					It("Ensure that previous VolumeSnapshot is deleted at the end of an iteration", func() {
+						// get list of volume snapshots in the ns - this is the 1st snapshot
+						snapshots := &snapv1.VolumeSnapshotList{}
+						Eventually(func() []snapv1.VolumeSnapshot {
+							_ = k8sClient.List(ctx, snapshots, client.InNamespace(rd.Namespace))
+							return snapshots.Items
+						}, maxWait, interval).Should(Not(BeEmpty()))
+						Expect(len(snapshots.Items)).To(Equal(1))
+
+						// sync should be waiting for snapshot - check that lastSyncStartTime
+						// is set
+						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)).To(Succeed())
+						Expect(rd.Status.LastSyncStartTime).Should(Not(BeNil()))
+
+						// update the VS name
+						snapshot1 := snapshots.Items[0]
+						foo := "dummysnapshot"
+						snapshot1.Status = &snapv1.VolumeSnapshotStatus{
+							BoundVolumeSnapshotContentName: &foo,
+						}
+						Expect(k8sClient.Status().Update(ctx, &snapshot1)).To(Succeed())
+						// wait for an image to be set for RD
+						Eventually(func() *corev1.TypedLocalObjectReference {
+							_ = k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)
+							return rd.Status.LatestImage
+						}, maxWait, interval).Should(Not(BeNil()))
+						latestImage1 := rd.Status.LatestImage
+						// ensure the name was correctly set
+						Expect(latestImage1.Kind).To(Equal("VolumeSnapshot"))
+						Expect(*latestImage1.APIGroup).To(Equal(snapv1.SchemeGroupVersion.Group))
+						Expect(latestImage1.Name).To(Equal(snapshot1.GetName()))
+						// Ensure the duration was set
+						Expect(rd.Status.LastSyncDuration).Should(Not(BeNil()))
+						// Ensure the lastSyncStartTime was unset
+						Expect(rd.Status.LastSyncStartTime).Should(BeNil())
+
+						// Sync completed, Job should now get cleaned up
+						Eventually(func() bool {
+							jobFoundErr := k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
+							return kerrors.IsNotFound(jobFoundErr)
+						}, maxWait, interval).Should(BeTrue())
+
+						Eventually(func() bool {
+							err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)
+							if err != nil {
+								return false
+							}
+							synchronizingCondition := apimeta.FindStatusCondition(rd.Status.Conditions,
+								volsyncv1alpha1.ConditionSynchronizing)
+							if synchronizingCondition == nil {
+								return false
+							}
+							return (synchronizingCondition.Status == metav1.ConditionFalse &&
+								synchronizingCondition.Reason == volsyncv1alpha1.SynchronizingReasonSched)
+						}, maxWait, interval).Should(BeTrue())
+
+						//
+						// Now manually trigger another sync to generate another snapshot
+						//
+						manualTrigger := "testrightnow1"
+						Eventually(func() error {
+							// Put this in Eventually loop to avoid update issues (controller is also updating the rd)
+							err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)
+							if err != nil {
+								return err
+							}
+							// Update RD with manual trigger to force another sync
+							rd.Spec.Trigger.Manual = manualTrigger
+							return k8sClient.Update(ctx, rd)
+						}, maxWait, interval).Should(Succeed())
+
+						// Job should be recreated for 2nd sync, force 2nd job to succeed
+						Eventually(func() error {
+							return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
+						}, maxWait, interval).Should(Succeed())
+
+						// sync should be waiting for job to complete - before forcing job to succeed,
+						// check that lastSyncStartTime is set
+						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)).To(Succeed())
+						Expect(rd.Status.LastSyncStartTime).Should(Not(BeNil()))
+
+						job.Status.Succeeded = 1
+						Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
+
+						snapshotsAfter2ndSync := &snapv1.VolumeSnapshotList{}
+						Eventually(func() []snapv1.VolumeSnapshot {
+							_ = k8sClient.List(ctx, snapshotsAfter2ndSync, client.InNamespace(rd.Namespace))
+							return snapshotsAfter2ndSync.Items
+						}, maxWait, interval).Should(HaveLen(2))
+						// Find the new VS and update its BoundVolumeSnapshotContentName
+						var snapshot2 snapv1.VolumeSnapshot
+						for _, sn := range snapshotsAfter2ndSync.Items {
+							if sn.GetName() != snapshot1.GetName() {
+								snapshot2 = sn
+								break
+							}
+						}
+						Expect(snapshot2.GetName).To(Not(Equal("")))
+						foo2 := "dummysnapshot2"
+						snapshot2.Status = &snapv1.VolumeSnapshotStatus{
+							BoundVolumeSnapshotContentName: &foo2,
+						}
+						Expect(k8sClient.Status().Update(ctx, &snapshot2)).To(Succeed())
+
+						// wait for an image to be set for RD
+						Eventually(func() *corev1.TypedLocalObjectReference {
+							_ = k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)
+							if rd.Status.LatestImage == nil || rd.Status.LatestImage.Name == snapshot1.GetName() {
+								// Return nil if the status is still reporting the previous image
+								return nil
+							}
+							return rd.Status.LatestImage
+						}, maxWait, interval).Should(Not(BeNil()))
+						latestImage2 := rd.Status.LatestImage
+						// ensure the name was correctly set
+						Expect(latestImage2.Kind).To(Equal("VolumeSnapshot"))
+						Expect(*latestImage2.APIGroup).To(Equal(snapv1.SchemeGroupVersion.Group))
+						Expect(latestImage2.Name).To(Equal(snapshot2.GetName()))
+						Expect(rd.Status.LastManualSync).To(Equal(manualTrigger))
+
+						// Sync 2 completed, job and previous snapshot should be cleaned up
+						Eventually(func() bool {
+							jobFoundErr := k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
+							return kerrors.IsNotFound(jobFoundErr)
+						}, maxWait, interval).Should(BeTrue())
+
+						Eventually(func() bool {
+							snapFoundErr := k8sClient.Get(ctx, client.ObjectKeyFromObject(&snapshot1), &snapshot1)
+							return kerrors.IsNotFound(snapFoundErr)
+						}, maxWait, interval).Should(BeTrue())
+
+						// Confirm the latest snapshot is not cleaned up
+						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(&snapshot2), &snapshot2)).To(Succeed())
+
+						// Re-load RD to ensure we have the latest status after sync cycle completion
+						// and then check status conditions
+						Eventually(func() *metav1.Condition {
+							_ = k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)
+							reconcileCondition := apimeta.FindStatusCondition(rd.Status.Conditions, volsyncv1alpha1.ConditionReconciled)
+							if reconcileCondition == nil {
+								return nil
+							}
+							if reconcileCondition.Status != metav1.ConditionTrue {
+								return nil
+							}
+							return reconcileCondition
+						}, maxWait, interval).Should(Not(BeNil()))
+
+						// Ensure the duration was set
+						Expect(rd.Status.LastSyncDuration).Should(Not(BeNil()))
+						// Ensure the lastSyncStartTime was unset
+						Expect(rd.Status.LastSyncStartTime).Should(BeNil())
+
+						Eventually(func() *metav1.Condition {
+							_ = k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)
+							syncCondition := apimeta.FindStatusCondition(rd.Status.Conditions, volsyncv1alpha1.ConditionSynchronizing)
+							if syncCondition == nil {
+								return nil
+							}
+							if syncCondition.Status != metav1.ConditionFalse {
+								return nil
+							}
+							if syncCondition.Reason != volsyncv1alpha1.SynchronizingReasonManual {
+								return nil
+							}
+							return syncCondition
+						}, maxWait, interval).Should(Not(BeNil()))
 					})
 
 					When("When a VolumeSnapshotClass is specified", func() {
@@ -374,7 +546,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 				// setup a minimal job
 				job = &batchv1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "volsync-rclone-src-" + rd.Name,
+						Name:      "volsync-rclone-dst-" + rd.Name,
 						Namespace: rd.Namespace,
 					},
 				}
@@ -494,7 +666,6 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 				Namespace: namespace.Name,
 			},
 		}
-		RcloneContainerImage = DefaultRcloneContainerImage
 	})
 	AfterEach(func() {
 		// delete each namespace on shutdown so resources can be reclaimed
@@ -619,6 +790,128 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 					})
 				})
 			})
+
+			When("copyMethod of Snapshot is specified", func() {
+				BeforeEach(func() {
+					rs.Spec.Rclone.ReplicationSourceVolumeOptions.CopyMethod = volsyncv1alpha1.CopyMethodSnapshot
+
+					// Set a schedule
+					var schedule = "*/4 * * * *"
+					rs.Spec.Trigger = &volsyncv1alpha1.ReplicationSourceTriggerSpec{
+						Schedule: &schedule,
+					}
+				})
+
+				var snapshot snapv1.VolumeSnapshot
+
+				JustBeforeEach(func() {
+					// Set snapshot to be bound so the source reconcile can proceed
+					snapshots := &snapv1.VolumeSnapshotList{}
+					Eventually(func() []snapv1.VolumeSnapshot {
+						_ = k8sClient.List(ctx, snapshots, client.InNamespace(rs.Namespace))
+						return snapshots.Items
+					}, maxWait, interval).Should(Not(BeEmpty()))
+
+					// update the VS name
+					snapshot = snapshots.Items[0]
+					foo := "dummysourcesnapshot"
+					snapshot.Status = &snapv1.VolumeSnapshotStatus{
+						BoundVolumeSnapshotContentName: &foo,
+					}
+					Expect(k8sClient.Status().Update(ctx, &snapshot)).To(Succeed())
+				})
+
+				It("creates a snapshot of the source PVC as the sync source", func() {
+					Eventually(func() error {
+						return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
+					}, maxWait, interval).Should(Succeed())
+					volumes := job.Spec.Template.Spec.Volumes
+					pvc := &corev1.PersistentVolumeClaim{}
+					pvc.Namespace = rs.Namespace
+					found := false
+					for _, v := range volumes {
+						if v.PersistentVolumeClaim != nil {
+							found = true
+							pvc.Name = v.PersistentVolumeClaim.ClaimName
+						}
+					}
+					Expect(found).To(BeTrue())
+					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pvc), pvc)).To(Succeed())
+					Expect(pvc.Spec.DataSource.Name).To(Equal(snapshot.Name))
+					Expect(pvc.Spec.DataSource.Kind).To(Equal("VolumeSnapshot"))
+					Expect(pvc).To(beOwnedBy(rs))
+				})
+
+				It("Ensure that temp VolumeSnapshot and temp PVC are deleted at the end of an iteration", func() {
+					Eventually(func() error {
+						return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
+					}, maxWait, interval).Should(Succeed())
+					volumes := job.Spec.Template.Spec.Volumes
+					pvc := &corev1.PersistentVolumeClaim{}
+					pvc.Namespace = rs.Namespace
+					found := false
+					for _, v := range volumes {
+						if v.PersistentVolumeClaim != nil {
+							found = true
+							pvc.Name = v.PersistentVolumeClaim.ClaimName
+						}
+					}
+					Expect(found).To(BeTrue())
+					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pvc), pvc)).To(Succeed())
+
+					// Force job status to succeeded
+					Eventually(func() error {
+						return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
+					}, maxWait, interval).Should(Succeed())
+					// just so the tests will run for now
+					job.Status.Succeeded = 1
+					Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
+
+					// Check that temp pvc is cleaned up
+					Eventually(func() bool {
+						pvcFoundErr := k8sClient.Get(ctx, client.ObjectKeyFromObject(pvc), pvc)
+						if kerrors.IsNotFound(pvcFoundErr) {
+							return true
+						}
+						// PVC may be stuck because of pvc finalizer in test scenario but check it's
+						// marked for deletion
+						return !pvc.GetDeletionTimestamp().IsZero()
+					}, maxWait, interval).Should(BeTrue())
+
+					// Check that temp snapshot is cleaned up
+					Eventually(func() bool {
+						snapFoundErr := k8sClient.Get(ctx, client.ObjectKeyFromObject(&snapshot), &snapshot)
+						return kerrors.IsNotFound(snapFoundErr)
+					}, maxWait, interval).Should(BeTrue())
+				})
+
+				It("Ensure lastSyncDuration is set at the end of an iteration", func() {
+					Eventually(func() error {
+						return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
+					}, maxWait, interval).Should(Succeed())
+					// Job was found, so synchronization should be in-progress
+
+					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rs), rs)).To(Succeed())
+					Expect(rs.Status.LastSyncStartTime).Should(Not(BeNil())) // Make sure start time was set
+
+					// set the job to succeed so sync can finish
+					job.Status.Succeeded = 1
+					Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
+
+					// Sync should complete and last sync duration should be set
+					Eventually(func() bool {
+						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rs), rs)).To(Succeed())
+						if rs.Status == nil || rs.Status.LastSyncDuration == nil {
+							return false
+						}
+						return true
+					}, maxWait, interval).Should(BeTrue())
+
+					// Now confirm lastSyncStartTime was un-set
+					Expect(rs.Status.LastSyncStartTime).Should(BeNil())
+				})
+			})
+
 			for i := range directCopyMethodTypes {
 				Context(fmt.Sprintf("Rclone is provided schedule + CopyMethod%s, ", directCopyMethodTypes[i]), func() {
 					directCopyMethodType := directCopyMethodTypes[i]

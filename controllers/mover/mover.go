@@ -79,7 +79,11 @@ func InProgress() Result { return Result{} }
 func RetryAfter(s time.Duration) Result { return Result{RetryAfter: &s} }
 
 // Complete indicates that the operation has completed.
-func Complete() Result { return Result{Completed: true} }
+func Complete() Result {
+	return Result{
+		Completed: true,
+	}
+}
 
 // CompleteWithImage indicates that the operation has completed, and it provides
 // the synchronized image to the controller.

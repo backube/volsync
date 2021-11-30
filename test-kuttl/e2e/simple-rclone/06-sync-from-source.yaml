@@ -9,6 +9,6 @@ spec:
     manual: once
   rclone:
     rcloneConfigSection: "rclone-data-mover"
-    rcloneDestPath: "volsync-test-bucket"
+    rcloneDestPath: "test-e2e-simple-rclone"
     rcloneConfig: "rclone-secret"
     copyMethod: Snapshot

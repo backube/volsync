@@ -26,6 +26,7 @@ import (
 	"github.com/go-logr/logr"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1beta1"
 	corev1 "k8s.io/api/core/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -105,6 +106,21 @@ func (vh *VolumeHandler) EnsureImage(ctx context.Context, log logr.Logger,
 	default:
 		return nil, fmt.Errorf("unsupported copyMethod: %v -- must be Direct, None, or Snapshot", vh.copyMethod)
 	}
+}
+
+func (vh *VolumeHandler) UseProvidedPVC(ctx context.Context, pvcName string) (*corev1.PersistentVolumeClaim, error) {
+	return vh.getPVCByName(ctx, pvcName)
+}
+
+func (vh *VolumeHandler) getPVCByName(ctx context.Context, pvcName string) (*corev1.PersistentVolumeClaim, error) {
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      pvcName,
+			Namespace: vh.owner.GetNamespace(),
+		},
+	}
+	err := vh.client.Get(ctx, client.ObjectKeyFromObject(pvc), pvc)
+	return pvc, err
 }
 
 func (vh *VolumeHandler) EnsureNewPVC(ctx context.Context, log logr.Logger,
@@ -217,6 +233,23 @@ func (vh *VolumeHandler) ensureImageSnapshot(ctx context.Context, log logr.Logge
 	}
 
 	return snap, nil
+}
+
+func (vh *VolumeHandler) RemoveSnapshotAnnotationFromPVC(ctx context.Context, log logr.Logger, pvcName string) error {
+	pvc, err := vh.getPVCByName(ctx, pvcName)
+	if err != nil {
+		if kerrors.IsNotFound(err) {
+			return nil // PVC no longer exists, nothing to do
+		}
+		return err
+	}
+
+	delete(pvc.Annotations, snapshotAnnotation)
+	if err := vh.client.Update(ctx, pvc); err != nil {
+		log.Error(err, "unable to remove snapshot annotation from PVC", "pvc", pvc)
+		return err
+	}
+	return nil
 }
 
 func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,

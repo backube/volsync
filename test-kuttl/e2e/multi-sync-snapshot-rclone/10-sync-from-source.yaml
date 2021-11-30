@@ -1,0 +1,14 @@
+---
+apiVersion: volsync.backube/v1alpha1
+kind: ReplicationSource
+metadata:
+  name: source
+spec:
+  sourcePVC: data-source
+  trigger:
+    manual: firstsync
+  rclone:
+    rcloneConfigSection: "rclone-data-mover"
+    rcloneDestPath: "test-e2e-multi-sync-snapshot-rclone"
+    rcloneConfig: "rclone-secret"
+    copyMethod: Snapshot

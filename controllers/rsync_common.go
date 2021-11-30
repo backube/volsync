@@ -39,7 +39,6 @@ import (
 
 const (
 	dataVolumeName = "data"
-	rcloneSecret   = "rclone-secret"
 )
 
 type rsyncSvcDescription struct {
@@ -114,6 +113,7 @@ func getServiceAddress(svc *corev1.Service) string {
 	return address
 }
 
+//TODO: remove after refactor?
 func getAndValidateSecret(ctx context.Context, c client.Client, logger logr.Logger,
 	secret *corev1.Secret, fields []string) error {
 	if err := c.Get(ctx, client.ObjectKeyFromObject(secret), secret); err != nil {
@@ -127,6 +127,7 @@ func getAndValidateSecret(ctx context.Context, c client.Client, logger logr.Logg
 	return nil
 }
 
+//TODO: remove after refactor?
 func secretHasFields(secret *corev1.Secret, fields []string) error {
 	data := secret.Data
 	if data == nil || len(data) != len(fields) {
