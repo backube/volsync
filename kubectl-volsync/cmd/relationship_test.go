@@ -24,6 +24,7 @@ import (
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"k8s.io/apimachinery/pkg/api/resource"
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
 )
 
@@ -122,6 +123,47 @@ var _ = Describe("Relationships", func() {
 			rel2Id, err := uuid.Parse(id)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(rel2Id.String()).To(Equal(relID))
+		})
+		It("can be (de-)serialized w/ resource.Quantity", func() {
+			type rdata struct {
+				AnInt    int
+				AString  string
+				Quantity *resource.Quantity
+				RdataPtr *rdata
+			}
+
+			twoGi := resource.MustParse("2Gi")
+			initial := rdata{
+				AnInt:    7,
+				AString:  "foo",
+				Quantity: nil,
+				RdataPtr: &rdata{
+					AString:  "bar",
+					Quantity: &twoGi,
+				},
+			}
+
+			// We must set the Quantity's value explicitly
+			Expect(rel.SetData(initial)).To(Succeed())
+			rel.Set("data.rdataptr.quantity", twoGi.String())
+			Expect(rel.Save()).To(Succeed())
+
+			rel2, err := loadRelationship(dirname, rname, rtype)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(rel2).ToNot(BeNil())
+
+			var loaded rdata
+			Expect(rel2.GetData(&loaded)).To(Succeed())
+
+			Expect(initial.AnInt).To(Equal(loaded.AnInt))
+			Expect(initial.AString).To(Equal(loaded.AString))
+			Expect(initial.Quantity).To(Equal(loaded.Quantity))
+			Expect(loaded.RdataPtr).NotTo(BeNil())
+			Expect(initial.RdataPtr.AnInt).To(Equal(loaded.RdataPtr.AnInt))
+			Expect(initial.RdataPtr.AString).To(Equal(loaded.RdataPtr.AString))
+			Expect(initial.RdataPtr.Quantity.String()).To(Equal(loaded.RdataPtr.Quantity.String()))
+			Expect(initial.RdataPtr.RdataPtr).To(BeNil())
+			Expect(loaded.RdataPtr.RdataPtr).To(BeNil())
 		})
 	})
 })

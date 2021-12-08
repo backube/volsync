@@ -21,10 +21,13 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"reflect"
 
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"gopkg.in/yaml.v2"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/klog/v2"
 )
 
@@ -141,4 +144,36 @@ func (r *Relationship) Type() RelationshipType {
 // ID returns the UUID of this relationship.
 func (r *Relationship) ID() uuid.UUID {
 	return uuid.MustParse(r.GetString("id"))
+}
+
+// Sets the "data" subkey with the contents of a struct and flattens it so that
+// individual values may be overridden
+func (r *Relationship) SetData(data interface{}) error {
+	bytes, err := yaml.Marshal(data)
+	if err != nil {
+		return err
+	}
+	ms := map[string]interface{}{}
+	if err = yaml.Unmarshal(bytes, &ms); err != nil {
+		return err
+	}
+	r.Set("data", ms)
+	return nil
+}
+
+// Unmarshals the "data" subkey back into the provided struct, properly decoding
+// any embedded resource.Quantity fields.
+func (r *Relationship) GetData(data interface{}) error {
+	return r.UnmarshalKey("data", data, viper.DecodeHook(func(from reflect.Type,
+		to reflect.Type,
+		data interface{},
+	) (interface{}, error) {
+		if from.Kind() != reflect.String {
+			return data, nil
+		}
+		if to != reflect.TypeOf(resource.Quantity{}) {
+			return data, nil
+		}
+		return resource.ParseQuantity(data.(string))
+	}))
 }
