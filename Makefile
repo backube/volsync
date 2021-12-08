@@ -197,10 +197,10 @@ endef
 
 .PHONY: bundle
 bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
-	$(OPERATOR-SDK) generate kustomize manifests -q
+	$(OPERATOR_SDK) generate kustomize manifests -q
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
-	$(KUSTOMIZE) build config/manifests | $(OPERATOR-SDK) generate bundle -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
-	$(OPERATOR-SDK) bundle validate ./bundle
+	$(KUSTOMIZE) build config/manifests | $(OPERATOR_SDK) generate bundle -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
+	$(OPERATOR_SDK) bundle validate ./bundle
 
 .PHONY: bundle-build
 bundle-build: ## Build the bundle image.
@@ -219,7 +219,7 @@ ifeq (,$(shell which opm 2>/dev/null))
 	set -e ;\
 	mkdir -p $(dir $(OPM)) ;\
 	OS=$(shell go env GOOS) && ARCH=$(shell go env GOARCH) && \
-	curl -sSLo $(OPM) https://github.com/operator-framework/operator-registry/releases/download/v1.15.1/$${OS}-$${ARCH}-opm ;\
+	curl -sSLo $(OPM) https://github.com/operator-framework/operator-registry/releases/download/v1.15.3/$${OS}-$${ARCH}-opm ;\
 	chmod +x $(OPM) ;\
 	}
 else
@@ -282,7 +282,7 @@ endif
 
 .PHONY: helm
 HELM := $(PROJECT_DIR)/bin/helm
-HELM_URL := https://get.helm.sh/helm-$(HELM_VERSION)-linux-amd64.tar.gz
+HELM_URL := https://get.helm.sh/helm-$(HELM_VERSION)-$(OS)-$(ARCH).tar.gz
 helm: ## Download helm
 ifeq (,$(wildcard $(HELM)))
 	curl -sSL "$(HELM_URL)" | tar xzf - -C $(PROJECT_DIR)/bin --strip-components=1 --wildcards '*/helm'
@@ -290,7 +290,7 @@ endif
 
 .PHONY: kuttl
 KUTTL := $(PROJECT_DIR)/bin/kuttl
-KUTTL_URL := https://github.com/kudobuilder/kuttl/releases/download/v$(KUTTL_VERSION)/kubectl-kuttl_$(KUTTL_VERSION)_linux_x86_64
+KUTTL_URL := https://github.com/kudobuilder/kuttl/releases/download/v$(KUTTL_VERSION)/kubectl-kuttl_$(KUTTL_VERSION)_$(OS)_x86_64
 kuttl: ## Download kuttl
 	$(call download-tool,$(KUTTL),$(KUTTL_URL))
 
