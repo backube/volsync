@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1beta1"
@@ -334,6 +335,17 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 							return (synchronizingCondition.Status == metav1.ConditionFalse &&
 								synchronizingCondition.Reason == volsyncv1alpha1.SynchronizingReasonSched)
 						}, maxWait, interval).Should(BeTrue())
+
+						// About to trigger another sync - Snapshots use a time format for naming that uses seconds
+						// make sure test isn't running so fast that the next sync could use the same snapshot name
+						now := time.Now().Format("20060102150405")
+						snap1Name := snapshot1.GetName()
+						snap1NameSplit := strings.Split(snap1Name, "-")
+						snap1Time := snap1NameSplit[len(snap1NameSplit)-1]
+						if snap1Time == now {
+							// Sleep to make sure next snapshot will not have the same name as previous
+							time.Sleep(1 * time.Second)
+						}
 
 						//
 						// Now manually trigger another sync to generate another snapshot
