@@ -1,0 +1,102 @@
+# deployment that creates a pod using the syncthing/syncthing docker image and
+# mounts a PVC
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: syncthing
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: syncthing
+  template:
+    metadata:
+      labels:
+        app: syncthing
+    spec:
+      containers:
+      - name: syncthing
+        image: "docker.io/osilkin/syncthing:src"
+        command: ["/entry.sh"]
+        args:
+        - run
+        env:
+        - name: SYNCTHING_CONFIG_DIR
+          value: "/config"
+        - name: SYNCTHING_DATA_DIR
+          value: "/data"
+        - name: STGUIAPIKEY
+          valueFrom:
+            secretKeyRef:
+              name: st-apikey
+              key: apiKey
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8384
+        - containerPort: 22000
+        - containerPort: 21027
+        volumeMounts:
+        - name: syncthing-config
+          mountPath: /config
+        - name: synced-volume  # hook this up with whatever PVC you want to sync
+          mountPath: /data
+        resources:
+          limits:
+            cpu: 100m
+            memory: 1Gi
+      volumes:
+      - name: syncthing-config
+        persistentVolumeClaim:
+          claimName: syncthing-config
+      # the volume we want to sync
+      - name: synced-volume
+        persistentVolumeClaim:
+          # enter the PVC name here
+          claimName: dokuwiki-pvc
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: st-apikey
+type: Opaque
+data:
+  apiKey: 'cGFzc3dvcmQxMjM='
+---
+# create the PVC syncthing-config with a small footprint
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: syncthing-config
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: syncthing-data
+spec:
+  type: LoadBalancer
+  selector:
+    app: syncthing
+  ports:
+  - port: 22000
+    targetPort: 22000
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: syncthing-svc
+spec:
+  selector:
+    app: syncthing
+  ports:
+  - port: 8384
+    targetPort: 8384
+    protocol: TCP

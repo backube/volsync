@@ -19,6 +19,7 @@ env:
   RCLONE_IMAGE: "quay.io/backube/volsync-mover-rclone"
   RESTIC_IMAGE: "quay.io/backube/volsync-mover-restic"
   RSYNC_IMAGE: "quay.io/backube/volsync-mover-rsync"
+  SYNCTHING_IMAGE: "quay.io/backube/volsync-mover-syncthing"
 
 jobs:
   lint:
@@ -138,6 +139,26 @@ jobs:
         uses: actions/upload-artifact@v1
         with:
           name: volsync-mover-rsync-container
+          path: /tmp/image.tar
+
+  build-syncthing:
+    name: build-mover-syncthing
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v2
+
+      - name: Build operator container
+        run: make -C mover-syncthing image
+
+      - name: Export container image
+        run: docker save -o /tmp/image.tar ${SYNCTHING_IMAGE}
+
+      - name: Save container as artifact
+        uses: actions/upload-artifact@v1
+        with:
+          name: volsync-mover-syncthing-container
           path: /tmp/image.tar
 
   e2e:

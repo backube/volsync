@@ -1,0 +1,70 @@
+# Kubernetes deployment which creates a DokuWiki application, a LoadBalancer
+# that exposes the service, and a PVC that stores the data.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dokuwiki-deployment
+  labels:
+    app: dokuwiki
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dokuwiki
+  template:
+    metadata:
+      labels:
+        app: dokuwiki
+    spec:
+      containers:
+      - name: dokuwiki
+        image: lscr.io/linuxserver/dokuwiki
+        ports:
+        - containerPort: 80
+        - containerPort: 443
+        volumeMounts:
+        - name: dokuwiki-storage
+          mountPath: /config
+        env:
+        - name: PUID
+          value: '1000'
+        - name: PGID
+          value: '1000'
+        - name: TZ
+          value: 'Europe/London'
+        resources:
+          limits:
+            cpu: 512m
+            memory: 1Gi
+      volumes:
+      - name: dokuwiki-storage
+        persistentVolumeClaim:
+          claimName: dokuwiki-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dokuwiki-service
+  labels:
+    app: dokuwiki
+spec:
+  selector:
+    app: dokuwiki
+  ports:
+  - protocol: TCP
+    port: 5196
+    targetPort: 80
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dokuwiki-pvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
