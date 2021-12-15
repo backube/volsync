@@ -531,7 +531,7 @@ jobs:
           echo "Pushing to $TAG"
           docker tag "${RSYNC_IMAGE}" "${RSYNC_IMAGE}:${TAG}"
           docker push "${RSYNC_IMAGE}:${TAG}"
-  
+
   push-syncthing:
     name: Push syncthing container to registry
     needs: e2e-success
