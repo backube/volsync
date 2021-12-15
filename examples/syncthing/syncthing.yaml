@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: syncthing
-        image: "docker.io/osilkin/syncthing:src"
+        image: "quay.io/backube/volsync-mover-syncthing"
         command: ["/entry.sh"]
         args:
         - run
@@ -35,7 +35,6 @@ spec:
         ports:
         - containerPort: 8384
         - containerPort: 22000
-        - containerPort: 21027
         volumeMounts:
         - name: syncthing-config
           mountPath: /config
