@@ -18,8 +18,15 @@ WORKDIR /workspace/syncthing
 
 # Make sure we have the correct Syncthing release
 RUN /bin/bash -c "[[ $(git rev-list -n 1 HEAD) == ${SYNCTHING_GIT_HASH} ]]"
+
+# Ensure that FIPS is enabled
+ENV GOLANG_FIPS=1
+
 # Create the binary for syncthing 
 RUN go run build.go -no-upgrade
+
+# Verify that FIPS crypto libs are accessible
+RUN nm /workspace/syncthing/bin/syncthing | grep -q goboringcrypto
 
 # Build final container 
 FROM registry.access.redhat.com/ubi8-minimal
