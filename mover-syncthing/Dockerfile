@@ -19,8 +19,6 @@ WORKDIR /workspace/syncthing
 # Make sure we have the correct Syncthing release
 RUN /bin/bash -c "[[ $(git rev-list -n 1 HEAD) == ${SYNCTHING_GIT_HASH} ]]"
 
-# Ensure that syncthing builds with boringcryptolib 
-ENV GOLANG_FIPS=1
 ENV CGO_ENABLED=1
 
 # Create the binary for syncthing 
