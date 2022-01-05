@@ -1,0 +1,55 @@
+<configuration version="35">
+    <folder 
+        id="syncthing-folder-id" 
+        label="synced volume" 
+        path="SYNCTHING_DATA_DIR" 
+        type="SYNCTHING_DATA_TRANSFERMODE" 
+        rescanIntervalS="3600" 
+        fsWatcherEnabled="true" 
+        fsWatcherDelayS="10" 
+        ignorePerms="false" 
+        autoNormalize="true"
+    >
+        <filesystemType>basic</filesystemType>
+        <minDiskFree unit="%">1</minDiskFree>
+        <versioning>
+            <cleanupIntervalS>3600</cleanupIntervalS>
+            <fsPath></fsPath>
+            <fsType>basic</fsType>
+        </versioning>
+        <copiers>0</copiers>
+        <pullerMaxPendingKiB>0</pullerMaxPendingKiB>
+        <hashers>0</hashers>
+        <order>random</order>
+        <ignoreDelete>false</ignoreDelete>
+        <scanProgressIntervalS>0</scanProgressIntervalS>
+        <pullerPauseS>0</pullerPauseS>
+        <maxConflicts>10</maxConflicts>
+        <disableSparseFiles>false</disableSparseFiles>
+        <disableTempIndexes>false</disableTempIndexes>
+        <paused>false</paused>
+        <weakHashThresholdPct>25</weakHashThresholdPct>
+        <markerName>.stfolder</markerName>
+        <copyOwnershipFromParent>false</copyOwnershipFromParent>
+        <modTimeWindowS>0</modTimeWindowS>
+        <maxConcurrentWrites>2</maxConcurrentWrites>
+        <disableFsync>false</disableFsync>
+        <blockPullOrder>standard</blockPullOrder>
+        <copyRangeMethod>standard</copyRangeMethod>
+        <caseSensitiveFS>false</caseSensitiveFS>
+        <junctionsAsDirs>false</junctionsAsDirs>
+    </folder>
+    <gui enabled="true" tls="true" debugging="false">
+        <address>0.0.0.0:8384</address>
+        <theme>default</theme>
+    </gui>
+    <ldap></ldap>
+    <options>
+        <listenAddress>default</listenAddress>
+        <globalAnnounceEnabled>false</globalAnnounceEnabled>
+        <localAnnounceEnabled>false</localAnnounceEnabled>
+        <localAnnouncePort>21027</localAnnouncePort>
+        <relaysEnabled>false</relaysEnabled>
+        <startBrowser>false</startBrowser>
+    </options>
+</configuration>
