@@ -48,6 +48,9 @@ type Relationship struct {
 // relationship file is found, this will return an error.
 func createRelationship(configDir string, name string, rType RelationshipType) (*Relationship, error) {
 	filename := path.Join(configDir, name) + ".yaml"
+	if err := os.MkdirAll(configDir, 0711); err != nil {
+		return nil, fmt.Errorf("unable to create configuration directory (%s): %w", configDir, err)
+	}
 	if _, err := os.Stat(filename); !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("unable to create relationship: relationship exists")
 	}
