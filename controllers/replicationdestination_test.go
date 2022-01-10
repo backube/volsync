@@ -535,7 +535,7 @@ var _ = Describe("ReplicationDestination", func() {
 				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)).To(Succeed())
 				Expect(rd.Status.LastSyncStartTime).Should(Not(BeNil()))
 
-				// update the VS name
+				// make the snapshot appear to be bound
 				snapshot1 := snapshots.Items[0]
 				foo := "fakesnapshot"
 				snapshot1.Status = &snapv1.VolumeSnapshotStatus{
