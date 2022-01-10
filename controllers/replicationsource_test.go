@@ -199,6 +199,21 @@ var _ = Describe("ReplicationSource", func() {
 		})
 	})
 
+	Context("when no replication method is specified", func() {
+		It("the CR is reports an error in the status", func() {
+			Eventually(func() *volsyncv1alpha1.ReplicationSourceStatus {
+				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rs), rs)).To(Succeed())
+				return rs.Status
+			}, duration, interval).ShouldNot(BeNil())
+			Expect(len(rs.Status.Conditions)).To(Equal(1))
+			errCond := rs.Status.Conditions[0]
+			Expect(errCond.Type).To(Equal(volsyncv1alpha1.ConditionReconciled))
+			Expect(errCond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(errCond.Reason).To(Equal(volsyncv1alpha1.ReconciledReasonError))
+			Expect(errCond.Message).To(ContainSubstring("a replication method must be specified"))
+		})
+	})
+
 	Context("when a schedule is specified", func() {
 		BeforeEach(func() {
 			rs.Spec.Rsync = &volsyncv1alpha1.ReplicationSourceRsyncSpec{

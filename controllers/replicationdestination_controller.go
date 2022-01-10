@@ -87,10 +87,13 @@ func (r *ReplicationDestinationReconciler) Reconcile(ctx context.Context, req ct
 	}
 	result, err = reconcileDestUsingCatalog(ctx, inst, r, logger)
 	if errors.Is(err, errNoMoverFound) { // do the old stuff
-		// Not returning error at this point - preserves External as a possible RS Spec //TODO: is this correct?
-		// Not an internal method... we're done.
-		return ctrl.Result{}, nil
+		if inst.Spec.External != nil {
+			// Not an internal method... we're done.
+			return ctrl.Result{}, nil
+		}
+		err = fmt.Errorf("a replication method must be specified")
 	}
+
 	// Set reconcile status condition
 	if err == nil {
 		apimeta.SetStatusCondition(&inst.Status.Conditions, metav1.Condition{

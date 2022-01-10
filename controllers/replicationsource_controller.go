@@ -85,9 +85,12 @@ func (r *ReplicationSourceReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return result, err
 	}
 	result, err = reconcileSrcUsingCatalog(ctx, inst, r, logger)
-	if errors.Is(err, errNoMoverFound) { // do the old stuff
-		// Not returning error at this point - preserves External as a possible RD Spec //TODO: is this correct?
-		return ctrl.Result{}, nil
+	if errors.Is(err, errNoMoverFound) {
+		if inst.Spec.External != nil {
+			// Not an internal method... we're done.
+			return ctrl.Result{}, nil
+		}
+		err = fmt.Errorf("a replication method must be specified")
 	}
 
 	// Set reconcile status condition

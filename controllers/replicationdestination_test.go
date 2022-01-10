@@ -177,6 +177,21 @@ var _ = Describe("ReplicationDestination", func() {
 		})
 	})
 
+	Context("when no replication method is specified", func() {
+		It("the CR is reports an error in the status", func() {
+			Eventually(func() *volsyncv1alpha1.ReplicationDestinationStatus {
+				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)).To(Succeed())
+				return rd.Status
+			}, duration, interval).ShouldNot(BeNil())
+			Expect(len(rd.Status.Conditions)).To(Equal(1))
+			errCond := rd.Status.Conditions[0]
+			Expect(errCond.Type).To(Equal(volsyncv1alpha1.ConditionReconciled))
+			Expect(errCond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(errCond.Reason).To(Equal(volsyncv1alpha1.ReconciledReasonError))
+			Expect(errCond.Message).To(ContainSubstring("a replication method must be specified"))
+		})
+	})
+
 	//nolint:dupl
 	Context("when a destinationPVC is specified", func() {
 		var pvc *corev1.PersistentVolumeClaim
