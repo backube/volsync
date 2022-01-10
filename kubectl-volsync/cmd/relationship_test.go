@@ -24,7 +24,9 @@ import (
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
 )
 
@@ -164,6 +166,28 @@ var _ = Describe("Relationships", func() {
 			Expect(initial.RdataPtr.Quantity.String()).To(Equal(loaded.RdataPtr.Quantity.String()))
 			Expect(initial.RdataPtr.RdataPtr).To(BeNil())
 			Expect(loaded.RdataPtr.RdataPtr).To(BeNil())
+		})
+		It("can set the ID label on an object", func() {
+			pvcNoLabels := &corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "foo",
+					Namespace: "bar",
+				},
+			}
+			rel.AddIDLabel(pvcNoLabels)
+			Expect(pvcNoLabels.Labels).To(HaveKeyWithValue(RelationshipLabelKey, rel.ID().String()))
+			pvcLabels := &corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "foo",
+					Namespace: "bar",
+					Labels: map[string]string{
+						"one":   "two",
+						"three": "four",
+					},
+				},
+			}
+			rel.AddIDLabel(pvcLabels)
+			Expect(pvcLabels.Labels).To(HaveKeyWithValue(RelationshipLabelKey, rel.ID().String()))
 		})
 	})
 })
