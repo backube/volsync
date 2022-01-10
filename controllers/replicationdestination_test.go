@@ -530,7 +530,7 @@ var _ = Describe("ReplicationDestination", func() {
 				}, maxWait, interval).Should(Not(BeEmpty()))
 				Expect(len(snapshots.Items)).To(Equal(1))
 
-				// sync should be waiting for snapshot - check that lastSyncStartTime
+				// sync should be waiting for the snapshot to be bound - check that lastSyncStartTime
 				// is set
 				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)).To(Succeed())
 				Expect(rd.Status.LastSyncStartTime).Should(Not(BeNil()))
