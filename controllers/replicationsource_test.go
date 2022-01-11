@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -130,6 +131,8 @@ var _ = Describe("ReplicationSource", func() {
 	var rs *volsyncv1alpha1.ReplicationSource
 	var srcPVC *corev1.PersistentVolumeClaim
 	srcPVCCapacity := resource.MustParse("7Gi")
+	envvarDestinationAddress := "DESTINATION_ADDRESS"
+	envvarDestinationPort := "DESTINATION_PORT"
 
 	BeforeEach(func() {
 		// Each test is run in its own namespace
@@ -167,7 +170,6 @@ var _ = Describe("ReplicationSource", func() {
 				SourcePVC: srcPVC.Name,
 			},
 		}
-		RsyncContainerImage = DefaultRsyncContainerImage
 	})
 	AfterEach(func() {
 		// All resources are namespaced, so this should clean it all up
@@ -194,6 +196,21 @@ var _ = Describe("ReplicationSource", func() {
 				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rs), rs)).To(Succeed())
 				return rs.Status
 			}, duration, interval).Should(BeNil())
+		})
+	})
+
+	Context("when no replication method is specified", func() {
+		It("the CR is reports an error in the status", func() {
+			Eventually(func() *volsyncv1alpha1.ReplicationSourceStatus {
+				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rs), rs)).To(Succeed())
+				return rs.Status
+			}, duration, interval).ShouldNot(BeNil())
+			Expect(len(rs.Status.Conditions)).To(Equal(1))
+			errCond := rs.Status.Conditions[0]
+			Expect(errCond.Type).To(Equal(volsyncv1alpha1.ConditionReconciled))
+			Expect(errCond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(errCond.Reason).To(Equal(volsyncv1alpha1.ReconciledReasonError))
+			Expect(errCond.Message).To(ContainSubstring("a replication method must be specified"))
 		})
 	})
 
@@ -344,6 +361,11 @@ var _ = Describe("ReplicationSource", func() {
 					CopyMethod: volsyncv1alpha1.CopyMethodSnapshot,
 				},
 			}
+			// Set a schedule
+			var schedule = "*/4 * * * *"
+			rs.Spec.Trigger = &volsyncv1alpha1.ReplicationSourceTriggerSpec{
+				Schedule: &schedule,
+			}
 		})
 		XIt("creates a snapshot of the source PVC and restores it as the sync source", func() {
 			// Reconcile waits until the Snap is bound before creating the PVC &
@@ -381,6 +403,126 @@ var _ = Describe("ReplicationSource", func() {
 			Expect(pvc.Spec.DataSource.Kind).To(Equal("VolumeSnapshot"))
 			Expect(pvc).To(beOwnedBy(rs))
 		})
+
+		//nolint:dupl
+		Context("When snapshot is bound correctly", func() {
+			var snapshot snapv1.VolumeSnapshot
+			var job *batchv1.Job
+
+			JustBeforeEach(func() {
+				// Set snapshot to be bound so the source reconcile can proceed
+				snapshots := &snapv1.VolumeSnapshotList{}
+				Eventually(func() []snapv1.VolumeSnapshot {
+					_ = k8sClient.List(ctx, snapshots, client.InNamespace(rs.Namespace))
+					return snapshots.Items
+				}, maxWait, interval).Should(Not(BeEmpty()))
+
+				// update the VS name
+				snapshot = snapshots.Items[0]
+				foo := "dummysourcesnapshot"
+				snapshot.Status = &snapv1.VolumeSnapshotStatus{
+					BoundVolumeSnapshotContentName: &foo,
+				}
+				Expect(k8sClient.Status().Update(ctx, &snapshot)).To(Succeed())
+
+				job = &batchv1.Job{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "volsync-rsync-src-" + rs.Name,
+						Namespace: rs.Namespace,
+					},
+				}
+			})
+
+			It("creates a snapshot of the source PVC as the sync source", func() {
+				Eventually(func() error {
+					return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
+				}, maxWait, interval).Should(Succeed())
+				volumes := job.Spec.Template.Spec.Volumes
+				pvc := &corev1.PersistentVolumeClaim{}
+				pvc.Namespace = rs.Namespace
+				found := false
+				for _, v := range volumes {
+					if v.PersistentVolumeClaim != nil {
+						found = true
+						pvc.Name = v.PersistentVolumeClaim.ClaimName
+					}
+				}
+				Expect(found).To(BeTrue())
+				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pvc), pvc)).To(Succeed())
+				Expect(pvc.Spec.DataSource.Name).To(Equal(snapshot.Name))
+				Expect(pvc.Spec.DataSource.Kind).To(Equal("VolumeSnapshot"))
+				Expect(pvc).To(beOwnedBy(rs))
+			})
+
+			It("Ensure that temp VolumeSnapshot and temp PVC are deleted at the end of an iteration", func() {
+				Eventually(func() error {
+					return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
+				}, maxWait, interval).Should(Succeed())
+				volumes := job.Spec.Template.Spec.Volumes
+				pvc := &corev1.PersistentVolumeClaim{}
+				pvc.Namespace = rs.Namespace
+				found := false
+				for _, v := range volumes {
+					if v.PersistentVolumeClaim != nil {
+						found = true
+						pvc.Name = v.PersistentVolumeClaim.ClaimName
+					}
+				}
+				Expect(found).To(BeTrue())
+				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pvc), pvc)).To(Succeed())
+
+				// Force job status to succeeded
+				Eventually(func() error {
+					return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
+				}, maxWait, interval).Should(Succeed())
+				// just so the tests will run for now
+				job.Status.Succeeded = 1
+				Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
+
+				// Check that temp pvc is cleaned up
+				Eventually(func() bool {
+					pvcFoundErr := k8sClient.Get(ctx, client.ObjectKeyFromObject(pvc), pvc)
+					if kerrors.IsNotFound(pvcFoundErr) {
+						return true
+					}
+					// PVC may be stuck because of pvc finalizer in test scenario but check it's
+					// marked for deletion
+					return !pvc.GetDeletionTimestamp().IsZero()
+				}, maxWait, interval).Should(BeTrue())
+
+				// Check that temp snapshot is cleaned up
+				Eventually(func() bool {
+					snapFoundErr := k8sClient.Get(ctx, client.ObjectKeyFromObject(&snapshot), &snapshot)
+					return kerrors.IsNotFound(snapFoundErr)
+				}, maxWait, interval).Should(BeTrue())
+			})
+
+			It("Ensure lastSyncDuration is set at the end of an iteration", func() {
+				Eventually(func() error {
+					return k8sClient.Get(ctx, client.ObjectKeyFromObject(job), job)
+				}, maxWait, interval).Should(Succeed())
+				// Job was found, so synchronization should be in-progress
+
+				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rs), rs)).To(Succeed())
+				Expect(rs.Status.LastSyncStartTime).Should(Not(BeNil())) // Make sure start time was set
+
+				// set the job to succeed so sync can finish
+				job.Status.Succeeded = 1
+				Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
+
+				// Sync should complete and last sync duration should be set
+				Eventually(func() bool {
+					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rs), rs)).To(Succeed())
+					if rs.Status == nil || rs.Status.LastSyncDuration == nil {
+						return false
+					}
+					return true
+				}, maxWait, interval).Should(BeTrue())
+
+				// Now confirm lastSyncStartTime was un-set
+				Expect(rs.Status.LastSyncStartTime).Should(BeNil())
+			})
+		})
 		//nolint:dupl
 		Context("SC, capacity, accessModes can be overridden", func() {
 			newSC := "mysc2"
@@ -396,7 +538,7 @@ var _ = Describe("ReplicationSource", func() {
 				// Job, so we need to fake the binding
 				snap := &snapv1.VolumeSnapshot{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "volsync-src-" + rs.Name,
+						Name:      "volsync-" + rs.Name + "-src",
 						Namespace: rs.Namespace,
 					},
 				}
@@ -481,10 +623,31 @@ var _ = Describe("ReplicationSource", func() {
 			}, maxWait, interval).Should(Not(BeNil()))
 			Expect(*rs.Status.Rsync.Address).To(Equal(svc.Spec.ClusterIP))
 		})
+		It("No environment variables are set for address or port", func() {
+			job := &batchv1.Job{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
+			}, maxWait, interval).Should(Succeed())
+			env := job.Spec.Template.Spec.Containers[0].Env
+			foundPort := false
+			foundAddress := false
+			for _, v := range env {
+				if v.Name == envvarDestinationPort {
+					// Should not happen
+					foundPort = true
+				}
+				if v.Name == envvarDestinationAddress {
+					// Should not happen
+					foundAddress = true
+				}
+			}
+			Expect(foundPort).To(BeFalse())    // Port env var should not be set
+			Expect(foundAddress).To(BeFalse()) // Address env var should not be set
+		})
 	})
 	Context("rsync: when a remote address is specified", func() {
+		remoteAddr := "my.remote.host.com"
 		BeforeEach(func() {
-			remoteAddr := "my.remote.host.com"
 			rs.Spec.Rsync = &volsyncv1alpha1.ReplicationSourceRsyncSpec{
 				ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
 					CopyMethod: volsyncv1alpha1.CopyMethodClone,
@@ -503,12 +666,32 @@ var _ = Describe("ReplicationSource", func() {
 				return k8sClient.Get(ctx, client.ObjectKeyFromObject(svc), svc)
 			}, duration, interval).Should(Not(Succeed()))
 		})
+		It("an environment variable is created for address", func() {
+			job := &batchv1.Job{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
+			}, maxWait, interval).Should(Succeed())
+			env := job.Spec.Template.Spec.Containers[0].Env
+			foundPort := false
+			foundAddress := false
+			for _, v := range env {
+				if v.Name == envvarDestinationPort {
+					// Should not happen
+					foundPort = true
+				}
+				if v.Name == envvarDestinationAddress && v.Value == remoteAddr {
+					foundAddress = true
+				}
+			}
+			Expect(foundPort).To(BeFalse()) // Port env var should not be set
+			Expect(foundAddress).To(BeTrue())
+		})
 	})
 
 	Context("when a port is defined", func() {
+		remotePort := int32(2222)
+		remoteAddr := "my.remote.host.com"
 		BeforeEach(func() {
-			remotePort := int32(2222)
-			remoteAddr := "my.remote.host.com"
 			rs.Spec.Rsync = &volsyncv1alpha1.ReplicationSourceRsyncSpec{
 				ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
 					CopyMethod: volsyncv1alpha1.CopyMethodClone,
@@ -517,20 +700,25 @@ var _ = Describe("ReplicationSource", func() {
 				Port:    &remotePort,
 			}
 		})
-		It("an environment variable is created", func() {
+		It("an environment variable is created for port & address", func() {
 			job := &batchv1.Job{}
 			Eventually(func() error {
 				return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
 			}, maxWait, interval).Should(Succeed())
-			port := job.Spec.Template.Spec.Containers[0].Env
-			remotePort := strconv.Itoa(int(2222))
-			found := false
-			for _, v := range port {
-				if v.Value == remotePort {
-					found = true
+			env := job.Spec.Template.Spec.Containers[0].Env
+			remotePortStr := strconv.Itoa(int(remotePort))
+			foundPort := false
+			foundAddress := false
+			for _, v := range env {
+				if v.Name == envvarDestinationPort && v.Value == remotePortStr {
+					foundPort = true
+				}
+				if v.Name == envvarDestinationAddress && v.Value == remoteAddr {
+					foundAddress = true
 				}
 			}
-			Expect(found).To(BeTrue())
+			Expect(foundPort).To(BeTrue())
+			Expect(foundAddress).To(BeTrue())
 		})
 	})
 

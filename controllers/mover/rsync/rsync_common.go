@@ -15,11 +15,10 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-package controllers
+package rsync
 
 import (
 	"context"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -30,21 +29,15 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
-const (
-	dataVolumeName = "data"
-)
-
 type rsyncSvcDescription struct {
 	Context  context.Context
 	Client   client.Client
-	Scheme   *runtime.Scheme
 	Service  *corev1.Service
 	Owner    metav1.Object
 	Type     *corev1.ServiceType
@@ -52,11 +45,11 @@ type rsyncSvcDescription struct {
 	Port     *int32
 }
 
-func (d *rsyncSvcDescription) Reconcile(l logr.Logger) (bool, error) {
+func (d *rsyncSvcDescription) Reconcile(l logr.Logger) error {
 	logger := l.WithValues("service", client.ObjectKeyFromObject(d.Service))
 
 	op, err := ctrlutil.CreateOrUpdate(d.Context, d.Client, d.Service, func() error {
-		if err := ctrl.SetControllerReference(d.Owner, d.Service, d.Scheme); err != nil {
+		if err := ctrl.SetControllerReference(d.Owner, d.Service, d.Client.Scheme()); err != nil {
 			logger.Error(err, "unable to set controller reference")
 			return err
 		}
@@ -90,11 +83,11 @@ func (d *rsyncSvcDescription) Reconcile(l logr.Logger) (bool, error) {
 	})
 	if err != nil {
 		logger.Error(err, "Service reconcile failed")
-		return false, err
+		return err
 	}
 
 	logger.V(1).Info("Service reconciled", "operation", op)
-	return true, nil
+	return nil
 }
 
 func getServiceAddress(svc *corev1.Service) string {
@@ -113,38 +106,9 @@ func getServiceAddress(svc *corev1.Service) string {
 	return address
 }
 
-//TODO: remove after refactor?
-func getAndValidateSecret(ctx context.Context, c client.Client, logger logr.Logger,
-	secret *corev1.Secret, fields []string) error {
-	if err := c.Get(ctx, client.ObjectKeyFromObject(secret), secret); err != nil {
-		logger.Error(err, "failed to get Secret with provided name", "Secret", client.ObjectKeyFromObject(secret))
-		return err
-	}
-	if err := secretHasFields(secret, fields); err != nil {
-		logger.Error(err, "SSH keys Secret does not contain the proper fields", "Secret", client.ObjectKeyFromObject(secret))
-		return err
-	}
-	return nil
-}
-
-//TODO: remove after refactor?
-func secretHasFields(secret *corev1.Secret, fields []string) error {
-	data := secret.Data
-	if data == nil || len(data) != len(fields) {
-		return fmt.Errorf("secret shoud have fields: %v", fields)
-	}
-	for _, k := range fields {
-		if _, found := data[k]; !found {
-			return fmt.Errorf("secret is missing field: %v", k)
-		}
-	}
-	return nil
-}
-
 type rsyncSSHKeys struct {
 	Context      context.Context
 	Client       client.Client
-	Scheme       *runtime.Scheme
 	Owner        metav1.Object
 	NameTemplate string
 	MainSecret   *corev1.Secret
@@ -196,7 +160,7 @@ func (k *rsyncSSHKeys) ensureMainSecret(l logr.Logger) (bool, error) {
 		return false, err
 	}
 	if err == nil { // found it, make sure it has the right fields
-		if secretHasFields(k.MainSecret, []string{"source", "source.pub", "destination", "destination.pub"}) != nil {
+		if utils.SecretHasFields(k.MainSecret, []string{"source", "source.pub", "destination", "destination.pub"}...) != nil {
 			logger.V(1).Info("deleting invalid secret")
 			if err = k.Client.Delete(k.Context, k.MainSecret); err != nil {
 				logger.Error(err, "failed to delete secret")
@@ -243,7 +207,7 @@ func generateKeyPair(ctx context.Context, l logr.Logger) (private []byte, public
 
 func (k *rsyncSSHKeys) generateMainSecret(l logr.Logger) error {
 	k.MainSecret.Data = make(map[string][]byte, 4)
-	if err := ctrl.SetControllerReference(k.Owner, k.MainSecret, k.Scheme); err != nil {
+	if err := ctrl.SetControllerReference(k.Owner, k.MainSecret, k.Client.Scheme()); err != nil {
 		l.Error(err, "unable to set controller reference")
 		return err
 	}
@@ -272,7 +236,7 @@ func (k *rsyncSSHKeys) ensureSecret(l logr.Logger, secret *corev1.Secret, keys [
 	logger := l.WithValues("secret", client.ObjectKeyFromObject(secret))
 
 	op, err := ctrlutil.CreateOrUpdate(k.Context, k.Client, secret, func() error {
-		if err := ctrl.SetControllerReference(k.Owner, secret, k.Scheme); err != nil {
+		if err := ctrl.SetControllerReference(k.Owner, secret, k.Client.Scheme()); err != nil {
 			logger.Error(err, "unable to set controller reference")
 			return err
 		}

@@ -40,13 +40,15 @@ import (
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers/mover/rclone"
 	"github.com/backube/volsync/controllers/mover/restic"
+	"github.com/backube/volsync/controllers/mover/rsync"
 	//+kubebuilder:scaffold:imports
 )
 
 const (
-	duration = 10 * time.Second
-	maxWait  = 60 * time.Second
-	interval = 250 * time.Millisecond
+	duration       = 10 * time.Second
+	maxWait        = 60 * time.Second
+	interval       = 250 * time.Millisecond
+	dataVolumeName = "data"
 )
 
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
@@ -101,6 +103,7 @@ var _ = BeforeSuite(func() {
 	*/
 
 	// Register the data movers
+	rsync.Register()
 	rclone.Register()
 	restic.Register()
 

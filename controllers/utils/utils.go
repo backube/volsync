@@ -32,14 +32,14 @@ func GetAndValidateSecret(ctx context.Context, cl client.Client,
 		logger.Error(err, "failed to get Secret with provided name", "Secret", client.ObjectKeyFromObject(secret))
 		return err
 	}
-	if err := secretHasFields(secret, fields...); err != nil {
+	if err := SecretHasFields(secret, fields...); err != nil {
 		logger.Error(err, "secret does not contain the proper fields", "Secret", client.ObjectKeyFromObject(secret))
 		return err
 	}
 	return nil
 }
 
-func secretHasFields(secret *corev1.Secret, fields ...string) error {
+func SecretHasFields(secret *corev1.Secret, fields ...string) error {
 	data := secret.Data
 	if data == nil || len(data) < len(fields) {
 		return fmt.Errorf("secret should have fields: %v", fields)
