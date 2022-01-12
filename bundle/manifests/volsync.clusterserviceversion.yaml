@@ -158,6 +158,7 @@ spec:
         - apiGroups:
           - security.openshift.io
           resourceNames:
+          - privileged
           - volsync-mover
           resources:
           - securitycontextconstraints
@@ -283,6 +284,7 @@ spec:
                 - --health-probe-bind-address=:8081
                 - --metrics-bind-address=127.0.0.1:8080
                 - --leader-elect
+                - --scc-name=privileged
                 command:
                 - /manager
                 image: quay.io/backube/volsync:latest
@@ -348,7 +350,7 @@ spec:
         serviceAccountName: volsync-controller-manager
     strategy: deployment
   installModes:
-  - supported: true
+  - supported: false
     type: OwnNamespace
   - supported: false
     type: SingleNamespace
