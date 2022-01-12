@@ -6,6 +6,7 @@ Rsync-based replication
    :hidden:
 
    database_example
+   database_example_cross_cluster
    db_example_cli
    external_rsync
    multi_context_sync_cli
