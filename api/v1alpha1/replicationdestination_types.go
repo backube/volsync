@@ -111,7 +111,7 @@ type ReplicationDestinationRsyncSpec struct {
 	SSHUser *string `json:"sshUser,omitempty"`
 }
 
-// ReplicationDestinationRcloneSpec defines the field for rclone in replicationSource.
+// ReplicationDestinationRcloneSpec defines the field for rclone in replicationDestination.
 type ReplicationDestinationRcloneSpec struct {
 	ReplicationDestinationVolumeOptions `json:",inline"`
 	//RcloneConfigSection is the section in rclone_config file to use for the current job.
@@ -120,6 +120,12 @@ type ReplicationDestinationRcloneSpec struct {
 	RcloneDestPath *string `json:"rcloneDestPath,omitempty"`
 	// RcloneConfig is the rclone secret name
 	RcloneConfig *string `json:"rcloneConfig,omitempty"`
+}
+
+// define the Syncthing field
+type ReplicationDestinationSyncthingSpec struct {
+	ReplicationDestinationVolumeOptions `json:",inline"`
+	NodeList                            []*SyncthingNode `json:"nodeList,omitempty"`
 }
 
 // ReplicationDestinationExternalSpec defines the configuration when using an
@@ -150,6 +156,9 @@ type ReplicationDestinationSpec struct {
 	// restic defines the configuration when using Restic-based replication.
 	//+optional
 	Restic *ReplicationDestinationResticSpec `json:"restic,omitempty"`
+	// syncthing defines the configuration when using Syncthing-based replication.
+	//+optional
+	Syncthing *ReplicationDestinationSyncthingSpec `json:"syncthing,omitempty"`
 	// external defines the configuration when using an external replication
 	// provider.
 	//+optional
@@ -200,6 +209,12 @@ type ReplicationDestinationResticSpec struct {
 	RestoreAsOf *string `json:"restoreAsOf,omitempty"`
 }
 
+type ReplicationDestinationSyncthingStatus struct {
+	// NodeList is a list of the Syncthing nodes we are currently connected to.
+	NodeList []*SyncthingNode `json:"nodeList,omitempty"`
+	DeviceID string           `json:"deviceID,omitempty"`
+}
+
 // ReplicationDestinationStatus defines the observed state of ReplicationDestination
 type ReplicationDestinationStatus struct {
 	// lastSyncTime is the time of the most recent successful synchronization.
@@ -225,6 +240,9 @@ type ReplicationDestinationStatus struct {
 	LatestImage *corev1.TypedLocalObjectReference `json:"latestImage,omitempty"`
 	// rsync contains status information for Rsync-based replication.
 	Rsync *ReplicationDestinationRsyncStatus `json:"rsync,omitempty"`
+	// syncthing contains information regarding Syncthing-based replication.
+	//+optional
+	Syncthing *ReplicationDestinationSyncthingStatus `json:"syncthing,omitempty"`
 	// external contains provider-specific status information. For more details,
 	// please see the documentation of the specific replication provider being
 	// used.

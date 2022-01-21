@@ -180,6 +180,11 @@ type ReplicationSourceResticStatus struct {
 	LastPruned *metav1.Time `json:"lastPruned,omitempty"`
 }
 
+// define the Syncthing field
+type ReplicationSourceSyncthingSpec struct {
+	NodeList []*SyncthingNode `json:"nodeList,omitempty"`
+}
+
 // ReplicationSourceSpec defines the desired state of ReplicationSource
 type ReplicationSourceSpec struct {
 	// sourcePVC is the name of the PersistentVolumeClaim (PVC) to replicate.
@@ -197,6 +202,9 @@ type ReplicationSourceSpec struct {
 	// restic defines the configuration when using Restic-based replication.
 	//+optional
 	Restic *ReplicationSourceResticSpec `json:"restic,omitempty"`
+	// syncthing defines the configuration when using Syncthing-based replication.
+	//+optional
+	Syncthing *ReplicationSourceSyncthingSpec `json:"syncthing,omitempty"`
 	// external defines the configuration when using an external replication
 	// provider.
 	//+optional
@@ -221,6 +229,13 @@ type ReplicationSourceRsyncStatus struct {
 	// connections.
 	//+optional
 	Port *int32 `json:"port,omitempty"`
+}
+
+type ReplicationSourceSyncthingStatus struct {
+	// NodeList is a list of the Syncthing nodes we are currently connected to.
+	NodeList []*SyncthingNode `json:"nodeList,omitempty"`
+	// Device ID of the current syncthing device
+	DeviceID string `json:"deviceID,omitempty"`
 }
 
 // ReplicationSourceStatus defines the observed state of ReplicationSource
@@ -254,6 +269,9 @@ type ReplicationSourceStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 	// restic contains status information for Restic-based replication.
 	Restic *ReplicationSourceResticStatus `json:"restic,omitempty"`
+	// syncthing contains status information for Syncthing-based replication.
+	//+optional
+	Syncthing *ReplicationSourceSyncthingStatus `json:"syncthing,omitempty"`
 }
 
 // ReplicationSource defines the source for a replicated volume
