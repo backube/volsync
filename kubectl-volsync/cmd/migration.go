@@ -23,57 +23,15 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-<<<<<<< HEAD
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
-=======
-	v1 "k8s.io/api/core/v1"
->>>>>>> 18c9f71 (migration-delete : initial commit for delete)
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
-
-type migrationCreate struct {
-	// migration relationship object to be persisted to a config file
-	mr *migrationRelationship
-	// client object to communicate with a cluster
-	clientObject client.Client
-	// PVC object associated with pvcName used to create destination object
-	PVC *v1.PersistentVolumeClaim
-}
-
-// migrationRelationship holds the config state for migration-type
-// relationships
-type migrationRelationship struct {
-	Relationship
-	data *migrationRelationshipData
-}
-
-// migrationRelationshipData is the state that will be saved to the
-// relationship config file
-type migrationRelationshipData struct {
-	Version     int
-	Destination *migrationRelationshipDestination
-}
-
-type migrationRelationshipDestination struct {
-	// Cluster context name
-	Cluster string
-	// Namespace on destination cluster
-	Namespace string
-	// Name of PVC being replicated
-	PVCName string
-	// Name of the migrationDestination object
-	MDName string
-	// Name of Secret holding SSH keys
-	SSHKeyName string
-	// Parameters for the migrationDestination
-	Destination volsyncv1alpha1.ReplicationDestinationRsyncSpec
-}
 
 // MigrationRelationship defines the "type" of migration Relationships
 const MigrationRelationshipType RelationshipType = "migration"
@@ -178,16 +136,15 @@ func loadMigrationRelationship(cmd *cobra.Command) (*migrationRelationship, erro
 	return mr, nil
 }
 
-func (mrd *migrationRelationshipDestination) waitForRDStatus(ctx context.Context, clientObject client.Client) (
+func (mrd *migrationRelationshipDestination) waitForRDStatus(ctx context.Context, client client.Client) (
 	*volsyncv1alpha1.ReplicationDestination, error) {
 	// wait for migrationdestination to become ready
-	nsName := types.NamespacedName{
-		Namespace: mrd.Namespace,
-		Name:      mrd.RDName,
-	}
-	rd := &volsyncv1alpha1.ReplicationDestination{}
-	err := wait.PollImmediate(5*time.Second, 2*time.Minute, func() (bool, error) {
-		err := clientObject.Get(ctx, nsName, rd)
+	var (
+		rd  *volsyncv1alpha1.ReplicationDestination
+		err error
+	)
+	err = wait.PollImmediate(5*time.Second, 2*time.Minute, func() (bool, error) {
+		rd, err = mrd.getDestination(ctx, client)
 		if err != nil {
 			return false, err
 		}
@@ -209,6 +166,21 @@ func (mrd *migrationRelationshipDestination) waitForRDStatus(ctx context.Context
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch rd status: %w,", err)
+	}
+
+	return rd, nil
+}
+
+func (mrd *migrationRelationshipDestination) getDestination(ctx context.Context, client client.Client) (
+	*volsyncv1alpha1.ReplicationDestination, error) {
+	nsName := types.NamespacedName{
+		Namespace: mrd.Namespace,
+		Name:      mrd.RDName,
+	}
+	rd := &volsyncv1alpha1.ReplicationDestination{}
+	err := client.Get(ctx, nsName, rd)
+	if err != nil {
+		return nil, err
 	}
 
 	return rd, nil

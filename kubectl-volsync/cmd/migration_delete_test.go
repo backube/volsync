@@ -1,113 +1,112 @@
 package cmd
 
 import (
-
-	//. "github.com/golang/mock/gomock"
-
 	"context"
-	"errors"
 	"io/ioutil"
+	"os"
 
-	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"github.com/spf13/cobra"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
+	krand "k8s.io/apimachinery/pkg/util/rand"
 )
 
 var _ = Describe("migration delete", func() {
 	var (
-		mc               = &migrationCreate{}
-		rd               = &volsyncv1alpha1.ReplicationDestination{}
-		relationship     = &Relationship{}
-		relationshipName = "v3"
-		err              = errors.New("")
-		dirname          = ""
+		ns      *corev1.Namespace
+		cmd     *cobra.Command
+		dirname string
 	)
-	When("relationship is deleted", func() {
-		BeforeEach(func() {
-			dirname, err = ioutil.TempDir("", "relation")
-			Expect(err).NotTo(HaveOccurred())
-			relationship, _ = createRelationship(dirname, relationshipName, MigrationRelationship)
-			mc = &migrationCreate{
-				clientObject: k8sClient,
-				mr: &migrationRelationship{
-					data: &migrationRelationshipData{
-						Destination: &migrationRelationshipDestination{
-							MDName:    "barfoo",
-							Cluster:   "",
-							Namespace: "testnamespace",
-						},
-					},
-					Relationship: *relationship,
-				},
-			}
-			pvcname := "testnamespace/barfoo"
-			serviceType := "ClusterIP"
-			ns := &v1.Namespace{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "testnamespace",
-				},
-			}
-			_ = mc.clientObject.Create(context.Background(), ns)
 
-			rsyncSpec := &volsyncv1alpha1.ReplicationDestinationRsyncSpec{
-				ReplicationDestinationVolumeOptions: volsyncv1alpha1.ReplicationDestinationVolumeOptions{
-					CopyMethod:     "Direct",
-					DestinationPVC: &pvcname,
-				},
-				ServiceType: (*v1.ServiceType)(&serviceType),
-			}
-			rd = &volsyncv1alpha1.ReplicationDestination{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "barfoo",
-					Namespace: "testnamespace",
-				},
-				Spec: volsyncv1alpha1.ReplicationDestinationSpec{
-					Rsync: rsyncSpec,
-				},
-			}
-		})
+	BeforeEach(func() {
+		ns = &corev1.Namespace{}
+		cmd = &cobra.Command{}
+		mc := &migrationCreate{}
+		var err error
 
-		It("verify delete destination relationship with reslationship and ReplicationDestination", func() {
-			err = mc.clientObject.Create(context.Background(), rd)
-			Expect(err).ToNot(HaveOccurred())
+		migrationCmdArgs := map[string]string{
+			"capacity": "2Gi",
+			"pvcname":  "dest/volsync",
+		}
 
-			err = mc.mr.Save()
-			Expect(err).ToNot(HaveOccurred())
+		initMigrationCreateCmd(cmd)
+		cmd.Flags().String("relationship", "test", "")
 
-			err = mc.deleteReplicationDestination(context.Background())
-			Expect(err).To(BeNil())
+		dirname, err = ioutil.TempDir("", "relation")
+		Expect(err).NotTo(HaveOccurred())
+		cmd.Flags().String("config-dir", dirname, "")
 
-			Expect(err).ToNot(HaveOccurred())
-			err = relationship.Delete()
-			Expect(err).ToNot(HaveOccurred())
+		mr, err := newMigrationRelationship(cmd)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(mr).ToNot(BeNil())
+		mc.mr = mr
 
-		})
+		err = migrationCmdArgsSet(cmd, migrationCmdArgs)
+		Expect(err).ToNot(HaveOccurred())
 
-		It("verify delete destination relationship without relationship", func() {
-			err = mc.clientObject.Create(context.Background(), rd)
-			Expect(err).ToNot(HaveOccurred())
+		err = mc.parseCLI(cmd)
+		Expect(err).NotTo(HaveOccurred())
 
-			err = mc.deleteReplicationDestination(context.Background())
-			Expect(err).To(BeNil())
+		mc.client = k8sClient
+		mc.Namespace = "foo-" + krand.String(5)
+		// create namespace
+		ns, err = mc.ensureNamespace(context.Background())
+		Expect(err).ToNot(HaveOccurred())
+		Expect(ns).NotTo(BeNil())
 
-			Expect(err).ToNot(HaveOccurred())
-			err = relationship.Delete()
-			Expect(err.Error()).Should(Equal("remove " + dirname + "/" + relationshipName +
-				".yaml: no such file or directory"))
+		ns = &corev1.Namespace{}
+		Expect(k8sClient.Get(context.Background(), types.NamespacedName{Name: mc.Namespace}, ns)).To(Succeed())
 
-		})
+		PVC, err := mc.ensureDestPVC(context.Background())
+		Expect(err).NotTo(HaveOccurred())
+		Expect(PVC).NotTo(BeNil())
 
-		It("verify delete destination relationship without RelationshipDestination", func() {
-			err = mc.mr.Save()
-			Expect(err).ToNot(HaveOccurred())
+		mrd, err := mc.newMigrationRelationshipDestination()
+		Expect(err).ToNot(HaveOccurred())
+		Expect(mrd).ToNot(BeNil())
+		mc.mr.data.Destination = mrd
 
-			DeleteErr := mc.deleteReplicationDestination(context.Background())
-			err = relationship.Delete()
-			Expect(DeleteErr.Error()).To(Equal("migration destination not found"))
-			Expect(err).To(BeNil())
+		// Create replicationdestination
+		rd, err := mc.ensureReplicationDestination(context.Background())
+		Expect(err).ToNot(HaveOccurred())
+		Expect(rd).ToNot(BeNil())
 
-		})
+		err = mc.mr.Save()
+		Expect(err).ToNot(HaveOccurred())
 	})
+
+	AfterEach(func() {
+		if ns != nil {
+			Expect(k8sClient.Delete(context.Background(), ns)).To(Succeed())
+		}
+
+		os.RemoveAll(dirname)
+	})
+
+	It("verify migration delete methods with all probabilities", func() {
+		mr, err := loadMigrationRelationship(cmd)
+		Expect(err).NotTo(HaveOccurred())
+
+		md := newMigrationDelete()
+		md.mr = mr
+		md.client = k8sClient
+
+		err = md.deleteReplicationDestination(context.Background())
+		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
+
+		err = md.mr.Delete()
+		Expect(err).ToNot(HaveOccurred())
+
+		// Verify delete replicationdestination that does not exist
+		err = md.deleteReplicationDestination(context.Background())
+		Expect(err).To(HaveOccurred())
+
+		// Verify deletion of relatioship file that does not exist
+		err = md.mr.Delete()
+		Expect(err).To(HaveOccurred())
+	})
+
 })
