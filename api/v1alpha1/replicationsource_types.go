@@ -182,7 +182,7 @@ type ReplicationSourceResticStatus struct {
 
 // define the Syncthing field
 type ReplicationSourceSyncthingSpec struct {
-	NodeList []*SyncthingNode `json:"nodeList,omitempty"`
+	DeviceList []*SyncthingDevice `json:"deviceList,omitempty"`
 }
 
 // ReplicationSourceSpec defines the desired state of ReplicationSource
@@ -233,7 +233,7 @@ type ReplicationSourceRsyncStatus struct {
 
 type ReplicationSourceSyncthingStatus struct {
 	// NodeList is a list of the Syncthing nodes we are currently connected to.
-	NodeList []*SyncthingNode `json:"nodeList,omitempty"`
+	NodeList []*SyncthingDevice `json:"nodeList,omitempty"`
 	// Device ID of the current syncthing device
 	DeviceID string `json:"deviceID,omitempty"`
 }

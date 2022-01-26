@@ -69,11 +69,11 @@ const (
 	SynchronizingReasonCleanup string = "CleaningUp"
 )
 
-type SyncthingNode struct {
-	Address  string `json:"address"`
-	DeviceID string `json:"deviceID"`
+type SyncthingDevice struct {
+	Address string `json:"address"`
+	ID      string `json:"ID"`
 	// Name of the syncthing device being described
 	// Default to an empty string
 	//+kubebuilder:default:=""
-	DeviceName string `json:"deviceName"`
+	Name string `json:"name"`
 }
