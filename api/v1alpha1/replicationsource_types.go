@@ -186,11 +186,6 @@ type ReplicationSourceSyncthingSpec struct {
 	PeerList []SyncthingPeer `json:"peerList,omitempty"`
 	// Type of service to be used when exposing the Syncthing peer
 	ServiceType *corev1.ServiceType `json:"serviceType,omitempty"`
-	// Controls whether or not Syncthing introduces other peers with each other
-	// without them having to be explicitly added.
-	//+optional
-	//+kubebuilder:default:=false
-	Introducer bool `json:"introducer,omitempty"`
 }
 
 // ReplicationSourceSpec defines the desired state of ReplicationSource

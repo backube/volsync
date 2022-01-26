@@ -74,6 +74,9 @@ type SyncthingPeer struct {
 	Address string `json:"address"`
 	// Syncthing ID of the peer
 	ID string `json:"ID"`
+	// Introducer flag determines whether this peer should
+	// introduce us to other peers sharing this volume
+	Introducer bool `json:"introducer"`
 }
 
 type SyncthingPeerStatus struct {
