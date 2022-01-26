@@ -75,3 +75,12 @@ type SyncthingPeer struct {
 	// Syncthing ID of the peer
 	ID string `json:"ID"`
 }
+
+type SyncthingPeerStatus struct {
+	// TCP address of the Syncthing peer
+	Address string `json:"address"`
+	// Syncthing ID of the peer
+	ID string `json:"ID"`
+	// Whether the peer is currently connected
+	Connected bool `json:"connected"`
+}

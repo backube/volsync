@@ -183,9 +183,14 @@ type ReplicationSourceResticStatus struct {
 // define the Syncthing field
 type ReplicationSourceSyncthingSpec struct {
 	// List of Syncthing peers to be connected for syncing
-	DeviceList []SyncthingPeer `json:"deviceList,omitempty"`
+	PeerList []SyncthingPeer `json:"peerList,omitempty"`
 	// Type of service to be used when exposing the Syncthing peer
 	ServiceType *corev1.ServiceType `json:"serviceType,omitempty"`
+	// Controls whether or not Syncthing introduces other peers with each other
+	// without them having to be explicitly added.
+	//+optional
+	//+kubebuilder:default:=false
+	Introducer bool `json:"introducer,omitempty"`
 }
 
 // ReplicationSourceSpec defines the desired state of ReplicationSource
@@ -236,9 +241,11 @@ type ReplicationSourceRsyncStatus struct {
 
 type ReplicationSourceSyncthingStatus struct {
 	// NodeList is a list of the Syncthing nodes we are currently connected to.
-	NodeList []SyncthingPeer `json:"nodeList,omitempty"`
+	PeerList []SyncthingPeerStatus `json:"peerList,omitempty"`
 	// Device ID of the current syncthing device
 	DeviceID string `json:"deviceID,omitempty"`
+	// Service address where Syncthing is exposed to the rest of the world
+	Address string `json:"address,omitempty"`
 }
 
 // ReplicationSourceStatus defines the observed state of ReplicationSource
