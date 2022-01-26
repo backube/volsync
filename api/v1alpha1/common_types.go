@@ -69,11 +69,9 @@ const (
 	SynchronizingReasonCleanup string = "CleaningUp"
 )
 
-type SyncthingDevice struct {
+type SyncthingPeer struct {
+	// TCP address of the Syncthing peer
 	Address string `json:"address"`
-	ID      string `json:"ID"`
-	// Name of the syncthing device being described
-	// Default to an empty string
-	//+kubebuilder:default:=""
-	Name string `json:"name"`
+	// Syncthing ID of the peer
+	ID string `json:"ID"`
 }

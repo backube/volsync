@@ -290,24 +290,25 @@ spec:
                 description: syncthing defines the configuration when using Syncthing-based
                   replication.
                 properties:
-                  nodeList:
+                  deviceList:
+                    description: List of Syncthing peers to be connected for syncing
                     items:
                       properties:
+                        ID:
+                          description: Syncthing ID of the peer
+                          type: string
                         address:
-                          type: string
-                        deviceID:
-                          type: string
-                        deviceName:
-                          default: ""
-                          description: Name of the syncthing device being described
-                            Default to an empty string
+                          description: TCP address of the Syncthing peer
                           type: string
                       required:
+                      - ID
                       - address
-                      - deviceID
-                      - deviceName
                       type: object
                     type: array
+                  serviceType:
+                    description: Type of service to be used when exposing the Syncthing
+                      peer
+                    type: string
                 type: object
               trigger:
                 description: trigger determines when the latest state of the volume
@@ -475,19 +476,15 @@ spec:
                       currently connected to.
                     items:
                       properties:
+                        ID:
+                          description: Syncthing ID of the peer
+                          type: string
                         address:
-                          type: string
-                        deviceID:
-                          type: string
-                        deviceName:
-                          default: ""
-                          description: Name of the syncthing device being described
-                            Default to an empty string
+                          description: TCP address of the Syncthing peer
                           type: string
                       required:
+                      - ID
                       - address
-                      - deviceID
-                      - deviceName
                       type: object
                     type: array
                 type: object
