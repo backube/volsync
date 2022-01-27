@@ -808,7 +808,7 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 					rs.Spec.Rclone.ReplicationSourceVolumeOptions.CopyMethod = volsyncv1alpha1.CopyMethodSnapshot
 
 					// Set a schedule
-					var schedule = "*/4 * * * *"
+					var schedule = "0 0 1 1 *"
 					rs.Spec.Trigger = &volsyncv1alpha1.ReplicationSourceTriggerSpec{
 						Schedule: &schedule,
 					}
@@ -920,6 +920,9 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 					}, maxWait, interval).Should(BeTrue())
 
 					// Now confirm lastSyncStartTime was un-set
+					// Note that LSST will become set again as soon as a new
+					// iteration begins. This test's cronspec has been
+					// configured to make it very unlikely for that to happen.
 					Expect(rs.Status.LastSyncStartTime).Should(BeNil())
 				})
 			})
