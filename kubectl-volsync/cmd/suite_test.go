@@ -24,7 +24,7 @@ var testEnv *envtest.Environment
 
 func TestCmd(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecsWithDefaultAndCustomReporters(t, "kubectl-volsync Suite", []Reporter{printer.NewlineReporter{}})
+	RunSpecsWithDefaultAndCustomReporters(t, "kubectl-volsync", []Reporter{printer.NewlineReporter{}})
 }
 
 var _ = BeforeSuite(func() {
