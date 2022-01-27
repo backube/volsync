@@ -36,7 +36,7 @@ var _ = Describe("Destination trigger", func() {
 	})
 
 	Context("When a schedule is specified", func() {
-		var schedule = "0 */2 * * *"
+		var schedule = "0 0 1 1 *"
 		metrics := newVolSyncMetrics(prometheus.Labels{"obj_name": "a", "obj_namespace": "b", "role": "c", "method": "d"})
 		BeforeEach(func() {
 			rd.Spec.Trigger = &volsyncv1alpha1.ReplicationDestinationTriggerSpec{
@@ -51,7 +51,7 @@ var _ = Describe("Destination trigger", func() {
 			Expect(rd.Status.NextSyncTime).To(Not(BeNil()))
 		})
 		It("if synced long ago, sync now", func() {
-			when := metav1.Time{Time: time.Now().Add(-5 * time.Hour)}
+			when := metav1.Time{Time: time.Now().Add(-50000 * time.Hour)}
 			rd.Status.LastSyncTime = &when
 			b, e := awaitNextSyncDestination(rd, metrics, logger)
 			Expect(b).To(BeTrue())
