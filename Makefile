@@ -130,7 +130,7 @@ run: manifests generate lint  ## Run a controller from your host.
 
 .PHONY: docker-build
 docker-build: test ## Build docker image with the manager.
-	docker build --build-arg "VERSION=$(VERSION)" -t ${IMG} .
+	docker build --build-arg "version_arg=$(VERSION)" -t ${IMG} .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
