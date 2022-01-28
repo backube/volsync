@@ -2,8 +2,8 @@
 apiVersion: kuttl.dev/v1beta1
 kind: TestStep
 delete:
-  - apiVersion: batch/v1
-    kind: Job
+  - apiVersion: v1
+    kind: Pod
     name: verify
   - apiVersion: volsync.backube/v1alpha1
     kind: ReplicationDestination
