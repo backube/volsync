@@ -4,6 +4,7 @@ metadata:
   annotations:
     alm-examples: '[]'
     capabilities: Basic Install
+    operatorframework.io/suggested-namespace: volsync-system
   name: volsync.v0.0.0
   namespace: placeholder
 spec:
