@@ -68,3 +68,22 @@ const (
 	SynchronizingReasonManual  string = "WaitingForManual"
 	SynchronizingReasonCleanup string = "CleaningUp"
 )
+
+type SyncthingPeer struct {
+	// TCP address of the Syncthing peer
+	Address string `json:"address"`
+	// Syncthing ID of the peer
+	ID string `json:"ID"`
+	// Introducer flag determines whether this peer should
+	// introduce us to other peers sharing this volume
+	Introducer bool `json:"introducer"`
+}
+
+type SyncthingPeerStatus struct {
+	// TCP address of the Syncthing peer
+	Address string `json:"address"`
+	// Syncthing ID of the peer
+	ID string `json:"ID"`
+	// Whether the peer is currently connected
+	Connected bool `json:"connected"`
+}

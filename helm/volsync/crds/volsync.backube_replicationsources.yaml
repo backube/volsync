@@ -286,6 +286,35 @@ spec:
                 description: sourcePVC is the name of the PersistentVolumeClaim (PVC)
                   to replicate.
                 type: string
+              syncthing:
+                description: syncthing defines the configuration when using Syncthing-based
+                  replication.
+                properties:
+                  peers:
+                    description: List of Syncthing peers to be connected for syncing
+                    items:
+                      properties:
+                        ID:
+                          description: Syncthing ID of the peer
+                          type: string
+                        address:
+                          description: TCP address of the Syncthing peer
+                          type: string
+                        introducer:
+                          description: Introducer flag determines whether this peer
+                            should introduce us to other peers sharing this volume
+                          type: boolean
+                      required:
+                      - ID
+                      - address
+                      - introducer
+                      type: object
+                    type: array
+                  serviceType:
+                    description: Type of service to be used when exposing the Syncthing
+                      peer
+                    type: string
+                type: object
               trigger:
                 description: trigger determines when the latest state of the volume
                   will be captured (and potentially replicated to the destination).
@@ -439,6 +468,38 @@ spec:
                       SSH keys will be generated and the appropriate keys for the
                       remote side will be placed here.
                     type: string
+                type: object
+              syncthing:
+                description: syncthing contains status information for Syncthing-based
+                  replication.
+                properties:
+                  address:
+                    description: Service address where Syncthing is exposed to the
+                      rest of the world
+                    type: string
+                  deviceID:
+                    description: Device ID of the current syncthing device
+                    type: string
+                  peers:
+                    description: NodeList is a list of the Syncthing nodes we are
+                      currently connected to.
+                    items:
+                      properties:
+                        ID:
+                          description: Syncthing ID of the peer
+                          type: string
+                        address:
+                          description: TCP address of the Syncthing peer
+                          type: string
+                        connected:
+                          description: Whether the peer is currently connected
+                          type: boolean
+                      required:
+                      - ID
+                      - address
+                      - connected
+                      type: object
+                    type: array
                 type: object
             type: object
         type: object

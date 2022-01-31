@@ -111,7 +111,7 @@ type ReplicationDestinationRsyncSpec struct {
 	SSHUser *string `json:"sshUser,omitempty"`
 }
 
-// ReplicationDestinationRcloneSpec defines the field for rclone in replicationSource.
+// ReplicationDestinationRcloneSpec defines the field for rclone in replicationDestination.
 type ReplicationDestinationRcloneSpec struct {
 	ReplicationDestinationVolumeOptions `json:",inline"`
 	//RcloneConfigSection is the section in rclone_config file to use for the current job.
