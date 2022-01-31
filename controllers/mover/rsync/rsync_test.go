@@ -355,8 +355,10 @@ var _ = Describe("Rsync as a source", func() {
 
 					// Check exported secret from status - For replication source this should be a dest secret
 					secret1 := &corev1.Secret{}
-					Expect(k8sClient.Get(ctx, types.NamespacedName{Name: *rs.Status.Rsync.SSHKeys,
-						Namespace: rs.Namespace}, secret1)).To(Succeed())
+					Eventually(func() error {
+						return k8sClient.Get(ctx, types.NamespacedName{Name: *rs.Status.Rsync.SSHKeys,
+							Namespace: rs.Namespace}, secret1)
+					}).Should(Succeed())
 					Expect(secret1.Data).To(HaveKey("destination"))
 					Expect(secret1.Data).To(HaveKey("source.pub"))
 					Expect(secret1.Data).To(HaveKey("destination.pub"))
@@ -963,8 +965,10 @@ var _ = Describe("Rsync as a destination", func() {
 
 					// Check secret that will be mounted by the job
 					secret2 := &corev1.Secret{}
-					Expect(k8sClient.Get(ctx, types.NamespacedName{Name: *keyName,
-						Namespace: rd.Namespace}, secret2)).To(Succeed())
+					Eventually(func() error {
+						return k8sClient.Get(ctx, types.NamespacedName{Name: *keyName,
+							Namespace: rd.Namespace}, secret2)
+					}).Should(Succeed())
 					Expect(secret2.Data).To(HaveKey("destination"))
 					Expect(secret2.Data).To(HaveKey("source.pub"))
 					Expect(secret2.Data).To(HaveKey("destination.pub"))

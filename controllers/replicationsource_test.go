@@ -35,7 +35,7 @@ var _ = Describe("Source trigger", func() {
 	})
 
 	Context("When a schedule is specified", func() {
-		var schedule = "0 */2 * * *"
+		var schedule = "0 0 1 1 *"
 		metrics := newVolSyncMetrics(prometheus.Labels{"obj_name": "a", "obj_namespace": "b", "role": "c", "method": "d"})
 		BeforeEach(func() {
 			rs.Spec.Trigger = &volsyncv1alpha1.ReplicationSourceTriggerSpec{
@@ -50,7 +50,7 @@ var _ = Describe("Source trigger", func() {
 			Expect(rs.Status.NextSyncTime).To(Not(BeNil()))
 		})
 		It("if synced long ago, sync now", func() {
-			when := metav1.Time{Time: time.Now().Add(-5 * time.Hour)}
+			when := metav1.Time{Time: time.Now().Add(-50000 * time.Hour)}
 			rs.Status.LastSyncTime = &when
 			b, e := awaitNextSyncSource(rs, metrics, logger)
 			Expect(b).To(BeTrue())

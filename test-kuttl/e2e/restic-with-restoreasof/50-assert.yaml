@@ -6,9 +6,9 @@ collectors:
     command: kubectl -n "$NAMESPACE" describe all,pvc,volumesnapshot,replicationsource,replicationdestination
 
 ---
-apiVersion: batch/v1
-kind: Job
+apiVersion: v1
+kind: Pod
 metadata:
   name: verify
 status:
-  failed: 1
+  phase: Failed
