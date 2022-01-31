@@ -183,7 +183,7 @@ type ReplicationSourceResticStatus struct {
 // define the Syncthing field
 type ReplicationSourceSyncthingSpec struct {
 	// List of Syncthing peers to be connected for syncing
-	PeerList []SyncthingPeer `json:"peerList,omitempty"`
+	Peers []SyncthingPeer `json:"peers,omitempty"`
 	// Type of service to be used when exposing the Syncthing peer
 	ServiceType *corev1.ServiceType `json:"serviceType,omitempty"`
 }
@@ -236,7 +236,7 @@ type ReplicationSourceRsyncStatus struct {
 
 type ReplicationSourceSyncthingStatus struct {
 	// NodeList is a list of the Syncthing nodes we are currently connected to.
-	PeerList []SyncthingPeerStatus `json:"peerList,omitempty"`
+	Peers []SyncthingPeerStatus `json:"peers,omitempty"`
 	// Device ID of the current syncthing device
 	DeviceID string `json:"deviceID,omitempty"`
 	// Service address where Syncthing is exposed to the rest of the world

@@ -290,12 +290,7 @@ spec:
                 description: syncthing defines the configuration when using Syncthing-based
                   replication.
                 properties:
-                  introducer:
-                    default: false
-                    description: Controls whether or not Syncthing introduces other
-                      peers with each other without them having to be explicitly added.
-                    type: boolean
-                  peerList:
+                  peers:
                     description: List of Syncthing peers to be connected for syncing
                     items:
                       properties:
@@ -305,9 +300,14 @@ spec:
                         address:
                           description: TCP address of the Syncthing peer
                           type: string
+                        introducer:
+                          description: Introducer flag determines whether this peer
+                            should introduce us to other peers sharing this volume
+                          type: boolean
                       required:
                       - ID
                       - address
+                      - introducer
                       type: object
                     type: array
                   serviceType:
@@ -480,7 +480,7 @@ spec:
                   deviceID:
                     description: Device ID of the current syncthing device
                     type: string
-                  peerList:
+                  peers:
                     description: NodeList is a list of the Syncthing nodes we are
                       currently connected to.
                     items:
