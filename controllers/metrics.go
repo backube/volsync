@@ -18,6 +18,12 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package controllers
 
 import (
+	"bytes"
+	"crypto/tls"
+	"encoding/json"
+	"io"
+	"io/ioutil"
+	"net/http"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"

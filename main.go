@@ -43,6 +43,7 @@ import (
 	"github.com/backube/volsync/controllers/mover/rclone"
 	"github.com/backube/volsync/controllers/mover/restic"
 	"github.com/backube/volsync/controllers/mover/rsync"
+	"github.com/backube/volsync/controllers/mover/syncthing"
 	"github.com/backube/volsync/controllers/utils"
 	//+kubebuilder:scaffold:imports
 )
@@ -73,6 +74,10 @@ func main() {
 	}
 	if err := restic.Register(); err != nil {
 		setupLog.Error(err, "Error registering restic data mover")
+		os.Exit(1)
+	}
+	if err := syncthing.Register(); err != nil {
+		setupLog.Error(err, "Error registering syncthing data mover")
 		os.Exit(1)
 	}
 
