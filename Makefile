@@ -105,6 +105,7 @@ helm-lint: helm ## Lint Helm chart
 TEST_ARGS ?= -progress -randomizeAllSpecs -randomizeSuites -slowSpecThreshold 30 -p -cover -coverprofile cover.out -outputdir .
 TEST_PACKAGES ?= ./...
 test: manifests generate lint envtest helm-lint ginkgo ## Run tests.
+	-rm -f cover.out
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" $(GINKGO) $(TEST_ARGS) $(TEST_PACKAGES)
 
 .PHONY: test-e2e
