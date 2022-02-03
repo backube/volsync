@@ -103,9 +103,9 @@ var _ = BeforeSuite(func() {
 	*/
 
 	// Register the data movers
-	rsync.Register()
-	rclone.Register()
-	restic.Register()
+	Expect(rsync.Register()).To(Succeed())
+	Expect(rclone.Register()).To(Succeed())
+	Expect(restic.Register()).To(Succeed())
 
 	k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:             scheme.Scheme,

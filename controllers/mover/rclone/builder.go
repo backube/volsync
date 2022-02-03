@@ -22,6 +22,7 @@ import (
 	"fmt"
 
 	"github.com/go-logr/logr"
+	"github.com/spf13/viper"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
@@ -33,21 +34,38 @@ import (
 // data mover
 const defaultRcloneContainerImage = "quay.io/backube/volsync-mover-rclone:latest"
 
-// rcloneContainerImage is the container image name of the rclone data mover
-var rcloneContainerImage string
+// Command line flag will be checked first
+// If command line flag not set, the RELATED_IMAGE_ env var will be used
+const rcloneContainerImageFlag = "rclone-container-image"
+const rcloneContainerImageEnvVar = "RELATED_IMAGE_RCLONE_CONTAINER"
 
 type Builder struct{}
 
 var _ mover.Builder = &Builder{}
 
-func Register() {
-	flag.StringVar(&rcloneContainerImage, "rclone-container-image",
-		defaultRcloneContainerImage, "The container image for the rclone data mover")
+func init() {
+	// Set default rclone container image - will be used if both command line flag and env var are not set
+	viper.SetDefault(rcloneContainerImageFlag, defaultRcloneContainerImage)
+}
+
+// rcloneContainerImage is the container image name of the rclone data mover
+func getRcloneContainerImage() string {
+	return viper.GetString(rcloneContainerImageFlag)
+}
+
+func Register() error {
+	// Viper will check for command line flag first, then fallback to the env var
+	flag.String(rcloneContainerImageFlag, defaultRcloneContainerImage, "The container image for the rclone data mover")
+	if err := viper.BindEnv(rcloneContainerImageFlag, rcloneContainerImageEnvVar); err != nil {
+		return err
+	}
+
 	mover.Register(&Builder{})
+	return nil
 }
 
 func (rb *Builder) VersionInfo() string {
-	return fmt.Sprintf("Rclone container: %s", rcloneContainerImage)
+	return fmt.Sprintf("Rclone container: %s", getRcloneContainerImage())
 }
 
 func (rb *Builder) FromSource(client client.Client, logger logr.Logger,

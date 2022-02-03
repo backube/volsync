@@ -236,7 +236,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 				{Name: "RCLONE_CONFIG_SECTION", Value: *m.rcloneConfigSection},
 			},
 			Command: []string{"/bin/bash", "-c", "./active.sh"},
-			Image:   rcloneContainerImage,
+			Image:   getRcloneContainerImage(),
 			SecurityContext: &corev1.SecurityContext{
 				RunAsUser: &runAsUser,
 			},

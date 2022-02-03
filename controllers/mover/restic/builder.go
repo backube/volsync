@@ -22,6 +22,7 @@ import (
 	"fmt"
 
 	"github.com/go-logr/logr"
+	"github.com/spf13/viper"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
@@ -33,21 +34,38 @@ import (
 // data mover
 const defaultResticContainerImage = "quay.io/backube/volsync-mover-restic:latest"
 
-// resticContainerImage is the container image name of the restic data mover
-var resticContainerImage string
+// Command line flag will be checked first
+// If command line flag not set, the RELATED_IMAGE_ env var will be used
+const resticContainerImageFlag = "restic-container-image"
+const resticContainerImageEnvVar = "RELATED_IMAGE_RESTIC_CONTAINER"
 
 type Builder struct{}
 
 var _ mover.Builder = &Builder{}
 
-func Register() {
-	flag.StringVar(&resticContainerImage, "restic-container-image",
-		defaultResticContainerImage, "The container image for the restic data mover")
+func init() {
+	// Set default restic container image - will be used if both command line flag and env var are not set
+	viper.SetDefault(resticContainerImageFlag, defaultResticContainerImage)
+}
+
+// resticContainerImage is the container image name of the restic data mover
+func getResticContainerImage() string {
+	return viper.GetString(resticContainerImageFlag)
+}
+
+func Register() error {
+	// Viper will check for command line flag first, then fallback to the env var
+	flag.String(resticContainerImageFlag, defaultResticContainerImage, "The container image for the restic data mover")
+	if err := viper.BindEnv(resticContainerImageFlag, resticContainerImageEnvVar); err != nil {
+		return err
+	}
+
 	mover.Register(&Builder{})
+	return nil
 }
 
 func (rb *Builder) VersionInfo() string {
-	return fmt.Sprintf("Restic container: %s", resticContainerImage)
+	return fmt.Sprintf("Restic container: %s", getResticContainerImage())
 }
 
 func (rb *Builder) FromSource(client client.Client, logger logr.Logger,

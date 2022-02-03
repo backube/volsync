@@ -368,7 +368,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 			Name:    "rsync",
 			Env:     containerEnv,
 			Command: containerCmd,
-			Image:   rsyncContainerImage,
+			Image:   getRsyncContainerImage(),
 			SecurityContext: &corev1.SecurityContext{
 				Capabilities: &corev1.Capabilities{
 					Add: []corev1.Capability{

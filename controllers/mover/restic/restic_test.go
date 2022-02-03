@@ -19,10 +19,14 @@ package restic
 
 import (
 	"context"
+	"flag"
+	"os"
 	"time"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -158,8 +162,24 @@ var _ = Describe("Restic prune policy", func() {
 var _ = Describe("Restic properly registers", func() {
 	When("Restic's registration function is called", func() {
 		BeforeEach(func() {
-			Register()
+			Expect(Register()).To(Succeed())
+
+			// code here (see main.go) for viper to bind cmd line flags (including those
+			// defined in the mover Register() func) - however, not calling pflag.Parse() as
+			// re-parsing the actual cmd line args causes issues with the tests
+			pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+			//pflag.Parse()
+			Expect(viper.BindPFlags(pflag.CommandLine)).To(Succeed())
 		})
+		AfterEach(func() {
+			// Reset command line flags
+			flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+			pflag.CommandLine = pflag.NewFlagSet(os.Args[0], pflag.ExitOnError)
+
+			// Unset Restic container image Env var
+			os.Unsetenv(resticContainerImageEnvVar)
+		})
+
 		It("is added to the mover catalog", func() {
 			found := false
 			for _, v := range mover.Catalog {
@@ -168,6 +188,43 @@ var _ = Describe("Restic properly registers", func() {
 				}
 			}
 			Expect(found).To(BeTrue())
+		})
+
+		Context("When no command line flag or ENV var is specified", func() {
+			It("Should use the default restic container image", func() {
+				Expect(getResticContainerImage()).To(Equal(defaultResticContainerImage))
+			})
+		})
+
+		Context("When restic container image command line flag is specified", func() {
+			const cmdLineOverrideImageName = "test-restic-image-name:cmdlineoverride"
+			BeforeEach(func() {
+				// Manually set the value of the command line flag
+				Expect(pflag.CommandLine.Set("restic-container-image", cmdLineOverrideImageName)).To(Succeed())
+			})
+			It("Should use the restic container image set by the cmd line flag", func() {
+				Expect(getResticContainerImage()).To(Equal(cmdLineOverrideImageName))
+			})
+
+			Context("And env var is set", func() {
+				const envVarOverrideShouldBeIgnored = "test-restic-image-name:donotuseme"
+				BeforeEach(func() {
+					os.Setenv(resticContainerImageEnvVar, envVarOverrideShouldBeIgnored)
+				})
+				It("Should still use the cmd line flag instead of the env var", func() {
+					Expect(getResticContainerImage()).To(Equal(cmdLineOverrideImageName))
+				})
+			})
+		})
+
+		Context("When resticc container image cmd line flag is not set and env var is", func() {
+			const envVarOverrideImageName = "test-restic-image-name:setbyenvvar"
+			BeforeEach(func() {
+				os.Setenv(resticContainerImageEnvVar, envVarOverrideImageName)
+			})
+			It("Should use the value from the env var", func() {
+				Expect(getResticContainerImage()).To(Equal(envVarOverrideImageName))
+			})
 		})
 	})
 })
@@ -504,7 +561,6 @@ var _ = Describe("Restic as a source", func() {
 				}
 			})
 			JustBeforeEach(func() {
-				resticContainerImage = "thecontainerimage"
 				Expect(k8sClient.Create(ctx, cache)).To(Succeed())
 				Expect(k8sClient.Create(ctx, sa)).To(Succeed())
 				Expect(k8sClient.Create(ctx, repo)).To(Succeed())
@@ -536,7 +592,7 @@ var _ = Describe("Restic as a source", func() {
 					}).Should(Succeed())
 					Expect(len(job.Spec.Template.Spec.Containers)).To(BeNumerically(">", 0))
 					args := job.Spec.Template.Spec.Containers[0].Image
-					Expect(args).To(Equal(resticContainerImage))
+					Expect(args).To(Equal(getResticContainerImage()))
 				})
 				It("should use the specified service account", func() {
 					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo)
@@ -824,7 +880,6 @@ var _ = Describe("Restic as a destination", func() {
 				}
 			})
 			JustBeforeEach(func() {
-				resticContainerImage = "thecontainerimage"
 				Expect(k8sClient.Create(ctx, dPVC)).To(Succeed())
 				Expect(k8sClient.Create(ctx, cache)).To(Succeed())
 				Expect(k8sClient.Create(ctx, sa)).To(Succeed())
