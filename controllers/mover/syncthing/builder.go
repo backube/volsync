@@ -20,6 +20,7 @@ package syncthing
 import (
 	"flag"
 	"fmt"
+	"os"
 
 	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -61,6 +62,13 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		source.Status.Syncthing = &volsyncv1alpha1.ReplicationSourceSyncthingStatus{}
 	}
 
+	// temporary solution
+	// set the apiURL to localhost if running in local environment
+	var apiURL = ""
+	if os.Getenv("RUN_LOCAL") == "true" {
+		apiURL = "http://127.0.0.1:8384"
+	}
+
 	return &Mover{
 		client:      client,
 		logger:      logger.WithValues("method", "Syncthing"),
@@ -70,6 +78,8 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		paused:      source.Spec.Paused,
 		dataPVCName: &source.Spec.SourcePVC,
 		status:      source.Status.Syncthing,
+		apiKey:      "",
+		apiURL:      apiURL,
 	}, nil
 }
 

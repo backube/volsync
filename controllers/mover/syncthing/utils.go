@@ -1,6 +1,8 @@
 package syncthing
 
-import "github.com/backube/volsync/api/v1alpha1"
+import (
+	"github.com/backube/volsync/api/v1alpha1"
+)
 
 func UpdateDevices(m *Mover, config *SyncthingConfig, status *SystemStatus) []SyncthingDevice {
 	newDevices := []SyncthingDevice{}

@@ -72,6 +72,8 @@ type Mover struct {
 	peerList    []v1alpha1.SyncthingPeer
 	status      *v1alpha1.ReplicationSourceSyncthingStatus
 	apiKey      string // store the API key in here to avoid repeated calls
+	// url for the SyncThing API
+	apiURL string
 }
 
 var _ mover.Mover = &Mover{}
@@ -406,18 +408,20 @@ func (m *Mover) ensureAPIService(ctx context.Context) (*corev1.Service, error) {
 	if err == nil {
 		// service already exists
 		m.logger.Info("service already exists", "service", service.Name)
-		return service, nil
+	} else {
+		if err = ctrl.SetControllerReference(m.owner, service, m.client.Scheme()); err != nil {
+			m.logger.V(3).Error(err, "failed to set owner reference")
+			return nil, err
+		}
+		if err := m.client.Create(ctx, service); err != nil {
+			m.logger.Error(err, "error creating the service")
+			return nil, err
+		}
 	}
-
-	if err = ctrl.SetControllerReference(m.owner, service, m.client.Scheme()); err != nil {
-		m.logger.V(3).Error(err, "failed to set owner reference")
-		return nil, err
+	if m.apiURL == "" {
+		// get the service url
+		m.apiURL = fmt.Sprintf("https://%s.%s:%d", apiServiceName, m.owner.GetNamespace(), syncthingAPIPort)
 	}
-	if err := m.client.Create(ctx, service); err != nil {
-		m.logger.Error(err, "error creating the service")
-		return nil, err
-	}
-
 	return service, nil
 }
 
@@ -505,7 +509,6 @@ func (m *Mover) getSyncthingRequestHeaders(ctx context.Context) (map[string]stri
 }
 
 func (m *Mover) getSyncthingConfig(ctx context.Context) (*SyncthingConfig, error) {
-	var apiUrl string = "https://127.0.0.1:8384"
 	headers, err := m.getSyncthingRequestHeaders(ctx)
 	if err != nil {
 		return nil, err
@@ -514,7 +517,7 @@ func (m *Mover) getSyncthingConfig(ctx context.Context) (*SyncthingConfig, error
 		Devices: []SyncthingDevice{},
 		Folders: []SyncthingFolder{},
 	}
-	data, err := controllers.JSONRequest(apiUrl+"/rest/config", "GET", headers, nil)
+	data, err := controllers.JSONRequest(m.apiURL+"/rest/config", "GET", headers, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -525,13 +528,12 @@ func (m *Mover) getSyncthingConfig(ctx context.Context) (*SyncthingConfig, error
 }
 
 func (m *Mover) getSyncthingSystemStatus(ctx context.Context) (*SystemStatus, error) {
-	var apiUrl string = "https://127.0.0.1:8384"
 	headers, err := m.getSyncthingRequestHeaders(ctx)
 	if err != nil {
 		return nil, err
 	}
 	responseBody := &SystemStatus{}
-	data, err := controllers.JSONRequest(apiUrl+"/rest/system/status", "GET", headers, nil)
+	data, err := controllers.JSONRequest(m.apiURL+"/rest/system/status", "GET", headers, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -542,7 +544,6 @@ func (m *Mover) getSyncthingSystemStatus(ctx context.Context) (*SystemStatus, er
 }
 
 func (m *Mover) updateSyncthingConfig(ctx context.Context, config *SyncthingConfig) (*SyncthingConfig, error) {
-	var apiUrl string = "https://127.0.0.1:8384"
 	headers, err := m.getSyncthingRequestHeaders(ctx)
 	if err != nil {
 		return nil, err
@@ -552,7 +553,7 @@ func (m *Mover) updateSyncthingConfig(ctx context.Context, config *SyncthingConf
 		Devices: []SyncthingDevice{},
 		Folders: []SyncthingFolder{},
 	}
-	data, err := controllers.JSONRequest(apiUrl+"/rest/config", "PUT", headers, config)
+	data, err := controllers.JSONRequest(m.apiURL+"/rest/config", "PUT", headers, config)
 	if err != nil {
 		return nil, err
 	}
@@ -592,13 +593,12 @@ func (m *Mover) ensureIsConfigured(ctx context.Context) (mover.Result, error) {
 }
 
 func (m *Mover) getConnectedStatus(ctx context.Context) (*SystemConnections, error) {
-	var apiUrl string = "https://127.0.0.1:8384"
 	headers, err := m.getSyncthingRequestHeaders(ctx)
 	if err != nil {
 		return nil, err
 	}
 	responseBody := &SystemConnections{}
-	data, err := controllers.JSONRequest(apiUrl+"/rest/system/connections", "GET", headers, nil)
+	data, err := controllers.JSONRequest(m.apiURL+"/rest/system/connections", "GET", headers, nil)
 	if err != nil {
 		return nil, err
 	}
