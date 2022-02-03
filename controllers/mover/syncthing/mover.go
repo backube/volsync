@@ -25,12 +25,17 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	ctrl "sigs.k8s.io/controller-runtime"
+
+	appsv1 "k8s.io/api/apps/v1"
+
+	// "k8s.io/kubernetes/pkg/apis/apps"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/backube/volsync/api/v1alpha1"
@@ -101,12 +106,15 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 	}
 
 	// ensure the job exists
-	if _, err = m.ensureJob(ctx); err != nil {
+	// if _, err = m.ensureJob(ctx); err != nil {
+	// 	return mover.InProgress(), err
+	// }
+
+	if _, err = m.ensureDeployment(ctx); err != nil {
 		return mover.InProgress(), err
 	}
-
 	// create the service for the syncthing REST API
-	if _, err = m.ensureService(ctx); err != nil {
+	if _, err = m.ensureAPIService(ctx); err != nil {
 		return mover.InProgress(), err
 	}
 
@@ -120,7 +128,6 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 	}
 
 	if err = m.ensureStatusIsUpdated(ctx); err != nil {
-		m.logger.V(3).Error(err, "could not update mover status")
 		return mover.InProgress(), err
 	}
 
@@ -159,6 +166,12 @@ func (m *Mover) ensureConfigPVC(ctx context.Context) (*corev1.PersistentVolumeCl
 			},
 		},
 	}
+	// set owner ref
+	if err := ctrl.SetControllerReference(m.owner, configPVC, m.client.Scheme()); err != nil {
+		m.logger.V(3).Error(err, "could not set owner ref")
+		return nil, err
+	}
+
 	if err := m.client.Create(ctx, configPVC); err != nil {
 		return nil, err
 	}
@@ -225,6 +238,10 @@ func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) 
 				"apikey": []byte("password123"),
 			},
 		}
+		if err = ctrl.SetControllerReference(m.owner, secret, m.client.Scheme()); err != nil {
+			m.logger.Error(err, "Error setting controller reference")
+			return nil, err
+		}
 		if err := m.client.Create(ctx, secret); err != nil {
 			// error creating secret
 			m.logger.Error(err, "Error creating secret")
@@ -236,33 +253,12 @@ func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) 
 }
 
 //nolint:funlen
-func (m *Mover) ensureJob(ctx context.Context) (*batchv1.Job, error) {
-	// return successfully if the job exists, try to create it otherwise
-	job := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      syncthingJobName,
-			Namespace: m.owner.GetNamespace(),
-			Labels: map[string]string{
-				"app": appLabelName,
-			},
-		},
-	}
-	err := m.client.Get(ctx, client.ObjectKeyFromObject(job), job)
-	if err == nil {
-		// job already exists
-		return job, nil
-	}
-	if !errors.IsNotFound(err) {
-		// something about the job is broken
-		m.logger.Error(err, "Error getting job")
-		return nil, err
-	}
-
-	var ttlSecondsAfterFinished int32 = 100
+func (m *Mover) ensureDeployment(ctx context.Context) (*appsv1.Deployment, error) {
+	// same thing as ensureJob, except this creates a deployment instead of a job
 	var configVolumeName, dataVolumeName string = "syncthing-config", "syncthing-data"
+	var numReplicas int32 = 1
 
-	// job doesn't exist, create it
-	job = &batchv1.Job{
+	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      syncthingJobName,
 			Namespace: m.owner.GetNamespace(),
@@ -270,11 +266,21 @@ func (m *Mover) ensureJob(ctx context.Context) (*batchv1.Job, error) {
 				"app": appLabelName,
 			},
 		},
-		Spec: batchv1.JobSpec{
-			TTLSecondsAfterFinished: &ttlSecondsAfterFinished,
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &numReplicas,
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app": appLabelName,
+				},
+			},
 			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app": appLabelName,
+					},
+				},
 				Spec: corev1.PodSpec{
-					RestartPolicy: corev1.RestartPolicyNever,
+					RestartPolicy: corev1.RestartPolicyAlways,
 					Containers: []corev1.Container{
 						{
 							Name:  syncthingContainerName,
@@ -309,9 +315,11 @@ func (m *Mover) ensureJob(ctx context.Context) (*batchv1.Job, error) {
 							ImagePullPolicy: corev1.PullAlways,
 							Ports: []corev1.ContainerPort{
 								{
+									Name:          "api",
 									ContainerPort: syncthingAPIPort,
 								},
 								{
+									Name:          "data",
 									ContainerPort: syncthingDataPort,
 								},
 							},
@@ -355,13 +363,24 @@ func (m *Mover) ensureJob(ctx context.Context) (*batchv1.Job, error) {
 			},
 		},
 	}
-
-	// pass the object onto the k8s api
-	err = m.client.Create(ctx, job)
-	return job, err
+	// check if deployment already exists, if so, don't create it again
+	err := m.client.Get(ctx, types.NamespacedName{Name: syncthingJobName, Namespace: m.owner.GetNamespace()}, deployment)
+	if err != nil && errors.IsNotFound(err) {
+		// set owner ref
+		if err = ctrl.SetControllerReference(m.owner, deployment, m.client.Scheme()); err != nil {
+			m.logger.V(3).Error(err, "failed to set owner reference")
+			return nil, err
+		}
+		err = m.client.Create(ctx, deployment)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return deployment, nil
 }
 
-func (m *Mover) ensureService(ctx context.Context) (*corev1.Service, error) {
+func (m *Mover) ensureAPIService(ctx context.Context) (*corev1.Service, error) {
+	targetPort := "api"
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      apiServiceName,
@@ -377,7 +396,7 @@ func (m *Mover) ensureService(ctx context.Context) (*corev1.Service, error) {
 			Ports: []corev1.ServicePort{
 				{
 					Port:       syncthingAPIPort,
-					TargetPort: intstr.FromInt(syncthingAPIPort),
+					TargetPort: intstr.FromString(targetPort),
 					Protocol:   "TCP",
 				},
 			},
@@ -390,10 +409,15 @@ func (m *Mover) ensureService(ctx context.Context) (*corev1.Service, error) {
 		return service, nil
 	}
 
+	if err = ctrl.SetControllerReference(m.owner, service, m.client.Scheme()); err != nil {
+		m.logger.V(3).Error(err, "failed to set owner reference")
+		return nil, err
+	}
 	if err := m.client.Create(ctx, service); err != nil {
 		m.logger.Error(err, "error creating the service")
 		return nil, err
 	}
+
 	return service, nil
 }
 
@@ -429,6 +453,10 @@ func (m *Mover) ensureDataService(ctx context.Context) (*corev1.Service, error) 
 		return service, nil
 	}
 
+	if err := ctrl.SetControllerReference(m.owner, service, m.client.Scheme()); err != nil {
+		m.logger.V(3).Error(err, "failed to set owner reference")
+		return nil, err
+	}
 	if err := m.client.Create(ctx, service); err != nil {
 		m.logger.Error(err, "error creating the service")
 		return nil, err
@@ -436,6 +464,7 @@ func (m *Mover) ensureDataService(ctx context.Context) (*corev1.Service, error) 
 	if service.Status.LoadBalancer.Ingress != nil && len(service.Status.LoadBalancer.Ingress) > 0 {
 		m.status.Address = "tcp://" + service.Status.LoadBalancer.Ingress[0].IP + ":" + strconv.Itoa(syncthingDataPort)
 	}
+
 	return service, nil
 }
 
@@ -476,6 +505,7 @@ func (m *Mover) getSyncthingRequestHeaders(ctx context.Context) (map[string]stri
 }
 
 func (m *Mover) getSyncthingConfig(ctx context.Context) (*SyncthingConfig, error) {
+	var apiUrl string = "https://127.0.0.1:8384"
 	headers, err := m.getSyncthingRequestHeaders(ctx)
 	if err != nil {
 		return nil, err
@@ -484,7 +514,7 @@ func (m *Mover) getSyncthingConfig(ctx context.Context) (*SyncthingConfig, error
 		Devices: []SyncthingDevice{},
 		Folders: []SyncthingFolder{},
 	}
-	data, err := controllers.JSONRequest("https://127.0.0.1:8384/rest/config", "GET", headers, nil)
+	data, err := controllers.JSONRequest(apiUrl+"/rest/config", "GET", headers, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -495,12 +525,13 @@ func (m *Mover) getSyncthingConfig(ctx context.Context) (*SyncthingConfig, error
 }
 
 func (m *Mover) getSyncthingSystemStatus(ctx context.Context) (*SystemStatus, error) {
+	var apiUrl string = "https://127.0.0.1:8384"
 	headers, err := m.getSyncthingRequestHeaders(ctx)
 	if err != nil {
 		return nil, err
 	}
 	responseBody := &SystemStatus{}
-	data, err := controllers.JSONRequest("https://127.0.0.1:8384/rest/system/status", "GET", headers, nil)
+	data, err := controllers.JSONRequest(apiUrl+"/rest/system/status", "GET", headers, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -511,6 +542,7 @@ func (m *Mover) getSyncthingSystemStatus(ctx context.Context) (*SystemStatus, er
 }
 
 func (m *Mover) updateSyncthingConfig(ctx context.Context, config *SyncthingConfig) (*SyncthingConfig, error) {
+	var apiUrl string = "https://127.0.0.1:8384"
 	headers, err := m.getSyncthingRequestHeaders(ctx)
 	if err != nil {
 		return nil, err
@@ -520,7 +552,7 @@ func (m *Mover) updateSyncthingConfig(ctx context.Context, config *SyncthingConf
 		Devices: []SyncthingDevice{},
 		Folders: []SyncthingFolder{},
 	}
-	data, err := controllers.JSONRequest("https://127.0.0.1:8384/rest/config", "PUT", headers, config)
+	data, err := controllers.JSONRequest(apiUrl+"/rest/config", "PUT", headers, config)
 	if err != nil {
 		return nil, err
 	}
@@ -560,12 +592,13 @@ func (m *Mover) ensureIsConfigured(ctx context.Context) (mover.Result, error) {
 }
 
 func (m *Mover) getConnectedStatus(ctx context.Context) (*SystemConnections, error) {
+	var apiUrl string = "https://127.0.0.1:8384"
 	headers, err := m.getSyncthingRequestHeaders(ctx)
 	if err != nil {
 		return nil, err
 	}
 	responseBody := &SystemConnections{}
-	data, err := controllers.JSONRequest("https://127.0.0.1:8384/rest/system/connections", "GET", headers, nil)
+	data, err := controllers.JSONRequest(apiUrl+"/rest/system/connections", "GET", headers, nil)
 	if err != nil {
 		return nil, err
 	}
