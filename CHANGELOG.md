@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Helm: Add ability to specify container images by SHA hash
+- Started work on new CLI (kubectl plugin)
+- Support FIPS mode on OpenShift
+- Added additional field `LastSyncStartTime` to CRD status
+
+### Changed
+
+- Rename CopyMethod `None` to `Direct` to make it more descriptive.
+- Upgrade OperatorSDK to 1.15
+- Move Rclone and Rsync movers to the Mover interface
+
+### Fixed
+
+- Resources weren't always removed after each sync iteration
+
 ## [0.3.0] - 2021-08-05
 
 ### Added
