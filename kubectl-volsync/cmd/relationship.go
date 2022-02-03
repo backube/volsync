@@ -29,6 +29,14 @@ import (
 	"gopkg.in/yaml.v2"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+const (
+	// RelationshipLabelKey is a label applied to objects that are created as a
+	// part of a given relationship. The value of the key is the UUID of the
+	// relationship.
+	RelationshipLabelKey = "volsync.backube/relationship"
 )
 
 // Each relationship type (e.g., replication, migration, backup, etc.) should
@@ -179,4 +187,13 @@ func (r *Relationship) GetData(data interface{}) error {
 		}
 		return resource.ParseQuantity(data.(string))
 	}))
+}
+
+func (r *Relationship) AddIDLabel(object client.Object) {
+	labels := object.GetLabels()
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	labels[RelationshipLabelKey] = r.ID().String()
+	object.SetLabels(labels)
 }
