@@ -29,40 +29,11 @@ cluster](https://kind.sigs.k8s.io/):
   `$ helm repo add backube https://backube.github.io/helm-charts/`  
   `$ helm install --create-namespace -n volsync-system volsync backube/volsync`
 * See the [usage
-  instructions](https://volsync.readthedocs.io/en/latest/usage/index.html) for
+  instructions](https://volsync.readthedocs.io/en/stable/usage/index.html) for
   information on setting up replication relationships.
 
 More detailed information on installation and usage can be found in the
 [official documentation](https://volsync.readthedocs.io/).
-
-## VolSync kubectl plugin
-
-We're also working on a command line interface to VolSync via a kubectl plugin.
-To try that out:
-
-```console
-make cli
-cp bin/kubectl-volsync /usr/local/bin/
-```
-
-**NOTE:** `volsync` plugin is being actively developed. Options, flags, and
-names are likely to be updated frequently. PRs and new issues are welcome!
-
-Available commands:
-
-```console
-kubectl volsync start-replication
-kubectl volsync set-replication
-kubectl volsync continue-replication
-kubectl volsync remove-replication
-```
-
-Try the current examples:
-
-* [single cluster cross namespace
-  example](https://volsync.readthedocs.io/en/latest/usage/rsync/db_example_cli.html)
-* [multiple cluster
-  example](https://volsync.readthedocs.io/en/latest/usage/rsync/db_example_cli.html)
 
 ## Helpful links
 
