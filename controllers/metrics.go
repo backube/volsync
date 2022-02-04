@@ -89,3 +89,87 @@ func init() {
 	// Register custom metrics with the global prometheus registry
 	metrics.Registry.MustRegister(missedIntervals, outOfSync, syncDurations)
 }
+
+//nolint:funlen
+func (r *ReplicationSourceReconciler) countReplicationMethods(instance *volsyncv1alpha1.ReplicationSource,
+	logger logr.Logger) int {
+	var numOfReplication int
+	logger.Info("Counting number of Reconciliation methods", "instance", instance)
+	if instance.Spec.Rsync != nil {
+		numOfReplication++
+	}
+	if instance.Spec.Rclone != nil {
+		numOfReplication++
+	}
+	if instance.Spec.Restic != nil {
+		numOfReplication++
+	}
+	if instance.Spec.Syncthing != nil {
+		numOfReplication++
+	}
+	if instance.Spec.External != nil {
+		numOfReplication++
+	}
+	logger.Info("Counting over ", "Number of Replication Methods: ", numOfReplication)
+	return numOfReplication
+}
+
+//nolint:funlen
+func (r *ReplicationDestinationReconciler) countReplicationMethods(instance *volsyncv1alpha1.ReplicationDestination,
+	logger logr.Logger) int {
+	var numOfReplication int
+	logger.Info("Counting number of Reconciliation methods", "instance", instance)
+	if instance.Spec.Rsync != nil {
+		numOfReplication++
+	}
+	if instance.Spec.Rclone != nil {
+		numOfReplication++
+	}
+	if instance.Spec.Restic != nil {
+		numOfReplication++
+	}
+	if instance.Spec.External != nil {
+		numOfReplication++
+	}
+	logger.Info("Counting over ", "Number of Replication Methods: ", numOfReplication)
+	return numOfReplication
+}
+
+//nolint:deadcode,funlen,lll,unparam,unused
+func JSONRequest(url string, method string, headers map[string]string, requestBody interface{}) ([]byte, error) {
+	// marshal above json body into a string
+	jsonBody, err := json.Marshal(requestBody)
+	if err != nil {
+		return nil, err
+	}
+	// tostring the json body
+	body := io.Reader(bytes.NewReader(jsonBody))
+
+	tr := &http.Transport{
+		//nolint:gosec
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	req, err := http.NewRequest(method, url, body)
+	client := &http.Client{
+		Transport: tr,
+		Timeout:   time.Second * 5,
+	}
+	// req, err := http.NewRequest(method, url, body)
+
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+
+	// make an HTTPS POST request
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	// read body into response
+	return ioutil.ReadAll(resp.Body)
+}

@@ -185,6 +185,7 @@ type ReplicationSourceSyncthingSpec struct {
 	// List of Syncthing peers to be connected for syncing
 	Peers []SyncthingPeer `json:"peers,omitempty"`
 	// Type of service to be used when exposing the Syncthing peer
+	//+optional
 	ServiceType *corev1.ServiceType `json:"serviceType,omitempty"`
 }
 

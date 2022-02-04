@@ -72,8 +72,8 @@ type Mover struct {
 	peerList    []v1alpha1.SyncthingPeer
 	status      *v1alpha1.ReplicationSourceSyncthingStatus
 	apiKey      string // store the API key in here to avoid repeated calls
-	// url for the SyncThing API
-	apiURL string
+	apiURL      string // url for the SyncThing API
+	serviceType corev1.ServiceType
 }
 
 var _ mover.Mover = &Mover{}
@@ -445,7 +445,7 @@ func (m *Mover) ensureDataService(ctx context.Context) (*corev1.Service, error) 
 					Protocol:   "TCP",
 				},
 			},
-			Type: corev1.ServiceTypeLoadBalancer,
+			Type: m.serviceType,
 		},
 	}
 	err := m.client.Get(ctx, client.ObjectKeyFromObject(service), service)

@@ -23,6 +23,7 @@ import (
 	"os"
 
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
@@ -69,6 +70,13 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		apiURL = "http://127.0.0.1:8384"
 	}
 
+	var serviceType corev1.ServiceType
+	if source.Spec.Syncthing.ServiceType != nil {
+		serviceType = *source.Spec.Syncthing.ServiceType
+	} else {
+		serviceType = corev1.ServiceTypeLoadBalancer
+	}
+
 	return &Mover{
 		client:      client,
 		logger:      logger.WithValues("method", "Syncthing"),
@@ -80,6 +88,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		status:      source.Status.Syncthing,
 		apiKey:      "",
 		apiURL:      apiURL,
+		serviceType: serviceType,
 	}, nil
 }
 
