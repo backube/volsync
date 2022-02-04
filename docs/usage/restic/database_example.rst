@@ -108,16 +108,17 @@ Start by configuring the source; a minimal example is shown below
       sourcePVC: mysql-pv-claim
       trigger:
          schedule: "*/30 * * * *"
-   restic:
-      pruneIntervalDays: 15
-      repository: restic-config
-      retain:
-         hourly: 1
-         daily: 1
-         weekly: 1
-         monthly: 1
-         yearly: 1
-      copyMethod: Clone
+      restic:
+        pruneIntervalDays: 15
+        repository: restic-config
+        retain:
+          hourly: 1
+          daily: 1
+          weekly: 1
+          monthly: 1
+          yearly: 1
+        copyMethod: Clone
+      
 
 In the above ``ReplicationSource`` object,
 
