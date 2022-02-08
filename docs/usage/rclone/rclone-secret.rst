@@ -2,14 +2,11 @@
 Understanding ``rclone-secret``
 ===============================
 
-What is ``rclone-secret``?
-==========================
-
-This file provides the configuration details to locate and access the intermediary
-storage system. It is mounted as a secret on the Rclone data mover pod.
+The Rclone Secret provides the configuration details to locate and access the intermediary
+storage system. It is mounted as a secret on the Rclone data mover pod and provided to the Rclone executable.
 
 
-.. code:: bash
+.. code:: none
 
     [aws-s3-bucket]
     type = s3
@@ -32,39 +29,22 @@ In the above example AWS S3 is used as the backend for the intermediary storage 
     - ``region``: Region to connect to
     - ``location_constraint``: Must be set to match the ``region``
 
-For detailed instructions follow `Rclone <https://rclone.org/docs/>`_
+For detailed instructions follow the `Rclone documentation <https://rclone.org/docs/>`_ on how to create an ``rclone.conf`` configuration file.
 
 
 Deploy ``rclone-secret``
 ========================
 
-Source side
-------------------------------
+Assuming the above example is placed in a local file, ``rclone.conf``, the
+Secret can be created via:
 
-.. code:: bash
+.. code:: console
 
-    $ kubectl create secret generic rclone-secret --from-file=rclone.conf=./examples/rclone/rclone.conf -n source
-    $ kubectl get secrets -n source
+    # Create the secret (remember to pass the correct namespace name)
+    $ kubectl create -n source secret generic rclone-secret --from-file=rclone.conf=rclone.conf
+    $ kubectl get -n source secrets
     NAME                  TYPE                                  DATA   AGE
     default-token-g9vdx   kubernetes.io/service-account-token   3      20s
     rclone-secret         Opaque                                1      17s
 
-
-
-Destination side
------------------------------
-
-.. code:: bash
-
-    $ kubectl create secret generic rclone-secret --from-file=rclone.conf=./examples/rclone/rclone.conf -n dest
-    $ kubectl get secrets -n dest
-    NAME                  TYPE                                  DATA   AGE
-    default-token-5ngtg   kubernetes.io/service-account-token   3      17s
-    rclone-secret         Opaque                                1      6s
-
-
-
-
-
-
-
+This Secret should be created on both the source and the destination locations.

@@ -2,20 +2,18 @@
 Rclone Database Example
 =======================
 
-The following example will use the Rclone replication method and take a Snapshot
-at the source. A MySQL database will be used as the example application.
+The following example will use the Rclone replication method to replicate a sample MySQL database.
 
-First, create the source. Next deploy the source MySQL database.  
+First, create the source namespace and deploy the source MySQL database.
 
-
-.. code:: bash
+.. code:: console
 
    $ kubectl create ns source
    $ kubectl create -f examples/source-database/ -n source
 
 Verify the database is running.
 
-.. code:: bash
+.. code:: console
 
    $ kubectl get pods -n source
    NAME                    READY   STATUS    RESTARTS   AGE
@@ -23,7 +21,7 @@ Verify the database is running.
 
 Add a new database.
 
-.. code:: bash
+.. code:: console
 
    $ kubectl exec --stdin --tty -n source `kubectl get pods -n source | grep mysql | awk '{print $1}'` -- /bin/bash
    $ mysql -u root -p$MYSQL_ROOT_PASSWORD
@@ -42,25 +40,24 @@ Add a new database.
    > create database synced;
    > exit
    $ exit
-   
 
 Now, deploy the ``rclone-secret`` followed by ``ReplicationSource`` configuration.
 
-.. code:: bash
+.. code:: console
 
    $ kubectl create secret generic rclone-secret --from-file=rclone.conf=./examples/rclone/rclone.conf -n source
    $ kubectl create -f examples/rclone/volsync_v1alpha1_replicationsource.yaml -n source
 
 To verify the replication has completed describe the Replication source.
 
-.. code:: bash
+.. code:: console
 
    $ kubectl describe ReplicationSource -n source database-source
 
 From the output, the success of the replication can be seen by the following
 lines:
 
-.. code:: bash
+.. code:: console
 
  Status:
   Conditions:
@@ -78,7 +75,7 @@ At ``Next Sync Time`` VolSync will create the next Rclone data mover job.
 To complete the replication, create a destination, deploy ``rclone-secret`` and ``ReplicationDestination``
 on the destination.
 
-.. code:: bash
+.. code:: console
 
    $ kubectl create ns dest
    $ kubectl create secret generic rclone-secret --from-file=rclone.conf=./examples/rclone/rclone.conf -n dest
@@ -87,34 +84,39 @@ on the destination.
 
 
 Once the ``ReplicationDestination`` is deployed, VolSync will create a Rclone data mover job on the
-destination side. At the end of the each successful reconcilation iteration, the ``ReplicationDestination`` is 
-updated with the lastest snapshot image.
+destination side. At the end of the each successful iteration, the ``ReplicationDestination`` is
+updated with the latest snapshot image.
 
-Now deploy the MySQL database to the ``dest`` namespace which will use the data that has been replicated. 
-First we need to identify the latest snapshot from the ``ReplicationDestination`` object. Record the values of 
+Now deploy the MySQL database to the ``dest`` namespace which will use the data that has been replicated.
+First we need to identify the latest snapshot from the ``ReplicationDestination`` object. Record the values of
 the latest snapshot as it will be used to create a pvc. Then create the Deployment, Service, PVC,
-and Secret. 
+and Secret.
 
-Ensure the Snapshots Age is not greater than 3 minutes as it will be replaced by VolSync before it can be used.
+Ensure that the next synchronization cycle does not start while the following
+steps are being completed or VolSync may replace the existing snapshot with a
+new one before the database starts.
 
-.. code:: bash
+.. code:: console
 
+   # Get the latest snapshot name
    $ kubectl get replicationdestination database-destination -n dest --template={{.status.latestImage.name}}
+   # Substitute that name into the database PVC template
    $ sed -i 's/snapshotToReplace/volsync-dest-database-destination-20201203174504/g' examples/destination-database/mysql-pvc.yaml
+   # Start the database
    $ kubectl create -n dest -f examples/destination-database/
 
 Validate that the mysql pod is running within the environment.
 
-.. code:: bash
+.. code:: console
 
    $ kubectl get pods -n dest
    NAME                                           READY   STATUS    RESTARTS   AGE
    mysql-8b9c5c8d8-v6tg6                          1/1     Running   0          38m
 
-Connect to the mysql pod and list the databases to verify the synced database
+Connect to the mysql pod and list the databases to verify the ``synced`` database
 exists.
 
-.. code:: bash
+.. code:: console
 
    $ kubectl exec --stdin --tty -n dest `kubectl get pods -n dest | grep mysql | awk '{print $1}'` -- /bin/bash
    $ mysql -u root -p$MYSQL_ROOT_PASSWORD
