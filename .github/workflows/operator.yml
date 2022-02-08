@@ -175,7 +175,8 @@ jobs:
           - "1.19.11"  # OCP 4.6
           - "1.20.7"   # OCP 4.7
           - "1.21.2"   # OCP 4.8
-          - "1.22.2"   # OCP 4.9
+          - "1.22.4"   # OCP 4.9
+          - "1.23.3"
     env:
       KUBECONFIG: /tmp/kubeconfig
       KUBERNETES_VERSION: ${{ matrix.KUBERNETES_VERSIONS }}

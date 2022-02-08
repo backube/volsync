@@ -44,7 +44,16 @@
 * [Helm](https://github.com/helm/helm/releases)
   * Change the version number in [Makefile](Makefile)
 * [Kind](https://github.com/kubernetes-sigs/kind/releases)
-  * Change the version number in [operator.yml](.github/workflows/operator.yml)
+  * Kind version: Change the version number in
+    [operator.yml](.github/workflows/operator.yml)
+  * Kubernetes version used by kind:
+    * [Available kubernetes
+      versions](https://hub.docker.com/r/kindest/node/tags?page=1&ordering=last_updated)
+    * Update the default kube version in the
+      [setup-kind-cluster.sh](./hack/setup-kind-cluster.sh) script to be the
+      latest image
+    * Update the matrix list for CI in
+      [operator.yml](.github/workflows/operator.yml)
 * [Kuttl](https://github.com/kudobuilder/kuttl/releases)
   * Change the version number in [Makefile](Makefile)
 * [operator-sdk](https://github.com/operator-framework/operator-sdk/releases)
