@@ -86,10 +86,9 @@ started.
 Configuring Prometheus
 ----------------------
 
-.. content-tabs::
+.. tabs::
 
-   .. tab-container:: kube
-      :title: Kubernetes
+   .. tab:: Kubernetes
 
       The following steps start a simple Prometheus instance to scrape metrics
       from VolSync. Some platforms may already have a running Prometheus operator
@@ -160,8 +159,7 @@ Configuring Prometheus
               requests:
                 memory: 400Mi
 
-   .. tab-container:: ocp
-      :title: OpenShift
+   .. tab:: OpenShift
 
       If necessary, `create a monitoring configuration
       <https://docs.openshift.com/container-platform/4.7/monitoring/configuring-the-monitoring-stack.html#creating-user-defined-workload-monitoring-configmap_configuring-the-monitoring-stack>`_

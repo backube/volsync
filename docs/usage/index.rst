@@ -11,12 +11,12 @@ Usage
    restic/index
    rsync/index
 
-There are two different replication methods built into VolSync. Choose the method that best fits your use-case:
+There are three different replication methods built into VolSync. Choose the method that best fits your use-case:
 
 :doc:`Rclone replication <rclone/index>`
    Use Rclone-based replication for multi-way (1:many) scenarios such as
    distributing data to edge clusters from a central site.
-:doc:`Restic backup<restic/index>`
+:doc:`Restic backup <restic/index>`
    Create a Restic-based backup of the data in a PersistentVolume.
 :doc:`Rsync replication <rsync/index>`
    Use Rsync-based replication for 1:1 replication of volumes in scenarios such

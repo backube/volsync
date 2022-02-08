@@ -33,8 +33,8 @@ extensions = [
         # https://plantweb.readthedocs.io/examples.html
         'plantweb.directive',
         'sphinx_rtd_theme',
-        # https://sphinxcontrib-contentui.readthedocs.io/en/latest/index.html
-        'sphinxcontrib.contentui',
+        # https://sphinx-tabs.readthedocs.io/en/latest/
+        'sphinx_tabs.tabs'
 ]
 
 # Add any paths that contain templates here, relative to this directory.
