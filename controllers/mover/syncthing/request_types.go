@@ -294,3 +294,15 @@ type SystemConnections struct {
 	Total       TotalStats                 `json:"total"`
 	Connections map[string]ConnectionStats `json:"connections"`
 }
+
+type APIConfig struct {
+	APIURL string `json:"apiURL"`
+	APIKey string `json:"apiKey"`
+}
+
+type Syncthing struct {
+	SystemConnections *SystemConnections `json:"systemConnections"`
+	SystemStatus      *SystemStatus      `json:"systemStatus"`
+	Config            *SyncthingConfig   `json:"config"`
+	APIConfig         *APIConfig         `json:"apiConfig"`
+}

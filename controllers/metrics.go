@@ -154,7 +154,6 @@ func JSONRequest(url string, method string, headers map[string]string, requestBo
 		Transport: tr,
 		Timeout:   time.Second * 5,
 	}
-	// req, err := http.NewRequest(method, url, body)
 
 	for key, value := range headers {
 		req.Header.Set(key, value)

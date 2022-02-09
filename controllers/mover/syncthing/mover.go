@@ -19,7 +19,6 @@ package syncthing
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -39,7 +38,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/backube/volsync/api/v1alpha1"
-	"github.com/backube/volsync/controllers"
 	"github.com/backube/volsync/controllers/mover"
 	"github.com/backube/volsync/controllers/utils"
 )
@@ -71,9 +69,8 @@ type Mover struct {
 	dataPVCName *string
 	peerList    []v1alpha1.SyncthingPeer
 	status      *v1alpha1.ReplicationSourceSyncthingStatus
-	apiKey      string // store the API key in here to avoid repeated calls
-	apiURL      string // url for the SyncThing API
 	serviceType corev1.ServiceType
+	syncthing   Syncthing
 }
 
 var _ mover.Mover = &Mover{}
@@ -107,11 +104,6 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 		return mover.InProgress(), err
 	}
 
-	// ensure the job exists
-	// if _, err = m.ensureJob(ctx); err != nil {
-	// 	return mover.InProgress(), err
-	// }
-
 	if _, err = m.ensureDeployment(ctx); err != nil {
 		return mover.InProgress(), err
 	}
@@ -129,7 +121,7 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 		return mover.InProgress(), err
 	}
 
-	if err = m.ensureStatusIsUpdated(ctx); err != nil {
+	if err = m.ensureStatusIsUpdated(); err != nil {
 		return mover.InProgress(), err
 	}
 
@@ -201,17 +193,6 @@ func (m *Mover) ensureDataPVC(ctx context.Context) (*corev1.PersistentVolumeClai
 }
 
 func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) {
-	/*
-		The secret is in the following format:
-		apiVersion: v1
-		kind: Secret
-		metadata:
-			name: st-apikey
-		type: Opaque
-		data:
-			apiKey: 'cGFzc3dvcmQxMjM='
-
-	*/
 	// check if the secret exists, error if it doesn't
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -418,9 +399,11 @@ func (m *Mover) ensureAPIService(ctx context.Context) (*corev1.Service, error) {
 			return nil, err
 		}
 	}
-	if m.apiURL == "" {
+	if m.syncthing.APIConfig.APIURL == "" {
 		// get the service url
-		m.apiURL = fmt.Sprintf("https://%s.%s:%d", apiServiceName, m.owner.GetNamespace(), syncthingAPIPort)
+		m.syncthing.APIConfig.APIURL = fmt.Sprintf(
+			"https://%s.%s:%d", apiServiceName, m.owner.GetNamespace(), syncthingAPIPort,
+		)
 	}
 	return service, nil
 }
@@ -483,154 +466,73 @@ func (m *Mover) Cleanup(ctx context.Context) (mover.Result, error) {
 // get the API key
 func (m *Mover) getAPIKey(ctx context.Context) (string, error) {
 	// get the syncthing-apikey secret
-	if m.apiKey == "" {
+	if m.syncthing.APIConfig.APIKey == "" {
 		secret := &corev1.Secret{}
 		err := m.client.Get(ctx, client.ObjectKey{Name: apiKeySecretName, Namespace: m.owner.GetNamespace()}, secret)
 		if err != nil {
 			return "", err
 		}
-		m.apiKey = string(secret.Data["apikey"])
+		m.syncthing.APIConfig.APIKey = string(secret.Data["apikey"])
 	}
-	return m.apiKey, nil
-}
-
-func (m *Mover) getSyncthingRequestHeaders(ctx context.Context) (map[string]string, error) {
-	// get the API key from the syncthing-apikey secret
-	var apiKey string
-	var err error
-	if apiKey, err = m.getAPIKey(ctx); err != nil {
-		return nil, err
-	}
-	headers := map[string]string{
-		"X-API-Key":    apiKey,
-		"Content-Type": "application/json",
-	}
-	return headers, nil
-}
-
-func (m *Mover) getSyncthingConfig(ctx context.Context) (*SyncthingConfig, error) {
-	headers, err := m.getSyncthingRequestHeaders(ctx)
-	if err != nil {
-		return nil, err
-	}
-	responseBody := &SyncthingConfig{
-		Devices: []SyncthingDevice{},
-		Folders: []SyncthingFolder{},
-	}
-	data, err := controllers.JSONRequest(m.apiURL+"/rest/config", "GET", headers, nil)
-	if err != nil {
-		return nil, err
-	}
-	err = json.Unmarshal(data, responseBody)
-	// print out what we got back from golang
-	// m.logger.Info("Response from syncthing REST API", "response", responseBody)
-	return responseBody, err
-}
-
-func (m *Mover) getSyncthingSystemStatus(ctx context.Context) (*SystemStatus, error) {
-	headers, err := m.getSyncthingRequestHeaders(ctx)
-	if err != nil {
-		return nil, err
-	}
-	responseBody := &SystemStatus{}
-	data, err := controllers.JSONRequest(m.apiURL+"/rest/system/status", "GET", headers, nil)
-	if err != nil {
-		return nil, err
-	}
-	// unmarshal the data into the responseBody
-	err = json.Unmarshal(data, responseBody)
-	// m.logger.Info("Response from syncthing REST API", "response", responseBody)
-	return responseBody, err
-}
-
-func (m *Mover) updateSyncthingConfig(ctx context.Context, config *SyncthingConfig) (*SyncthingConfig, error) {
-	headers, err := m.getSyncthingRequestHeaders(ctx)
-	if err != nil {
-		return nil, err
-	}
-	// we only want to update the folders and devices
-	responseBody := &SyncthingConfig{
-		Devices: []SyncthingDevice{},
-		Folders: []SyncthingFolder{},
-	}
-	data, err := controllers.JSONRequest(m.apiURL+"/rest/config", "PUT", headers, config)
-	if err != nil {
-		return nil, err
-	}
-	err = json.Unmarshal(data, responseBody)
-	return responseBody, err
+	return m.syncthing.APIConfig.APIKey, nil
 }
 
 func (m *Mover) ensureIsConfigured(ctx context.Context) (mover.Result, error) {
-	config, err := m.getSyncthingConfig(ctx)
+	var err error
+	// get the api key
+	if _, err = m.getAPIKey(ctx); err != nil {
+		return mover.InProgress(), err
+	}
+
+	// reconciles the Syncthing object
+	err = m.syncthing.PopulateSyncthing()
 	if err != nil {
 		return mover.InProgress(), err
 	}
-	m.logger.V(4).Info("Syncthing config", "config", config)
-	status, err := m.getSyncthingSystemStatus(ctx)
-	if err != nil {
-		m.logger.Error(err, "error getting syncthing system status")
-		return mover.InProgress(), err
-	}
+
+	m.logger.V(4).Info("Syncthing config", "config", m.syncthing.Config)
 
 	// check if the syncthing is configured
-	if NeedsReconfigure(config.Devices, m.peerList, status.MyID) {
+	if m.syncthing.NeedsReconfigure(m.peerList) {
 		m.logger.Info("Syncthing needs reconfiguration")
 
-		// update settings
-		config.Devices = UpdateDevices(m, config, status)
-		config.Folders = UpdateFolders(config)
-
-		m.logger.V(4).Info("Updated Syncthing config for update", "config", config)
-		if config, err = m.updateSyncthingConfig(ctx, config); err != nil {
+		err = m.syncthing.UpdateDevices(m.peerList)
+		if err != nil {
 			m.logger.Error(err, "error updating syncthing config")
 			return mover.InProgress(), err
 		}
-		m.logger.V(4).Info("Syncthing config after configuration", "config", config)
+		m.logger.V(4).Info("Syncthing config after configuration", "config", m.syncthing.Config)
 	}
 
 	return mover.Complete(), nil
 }
 
-func (m *Mover) getConnectedStatus(ctx context.Context) (*SystemConnections, error) {
-	headers, err := m.getSyncthingRequestHeaders(ctx)
-	if err != nil {
-		return nil, err
-	}
-	responseBody := &SystemConnections{}
-	data, err := controllers.JSONRequest(m.apiURL+"/rest/system/connections", "GET", headers, nil)
-	if err != nil {
-		return nil, err
-	}
-	err = json.Unmarshal(data, responseBody)
-	return responseBody, err
-}
-
-func (m *Mover) ensureStatusIsUpdated(ctx context.Context) error {
+func (m *Mover) ensureStatusIsUpdated() error {
 	// get the current status
-	status, err := m.getSyncthingSystemStatus(ctx)
-	if err != nil {
+	if err := m.syncthing.FetchSyncthingSystemStatus(); err != nil {
 		return err
 	}
 
-	connected, err := m.getConnectedStatus(ctx)
+	if err := m.syncthing.FetchConnectedStatus(); err != nil {
+		return err
+	}
 
-	m.status.DeviceID = status.MyID
+	m.status.DeviceID = m.syncthing.SystemStatus.MyID
 	m.status.Peers = []v1alpha1.SyncthingPeerStatus{}
 
 	// add the connected devices to the status
 	for _, device := range m.peerList {
-		if (device.ID == status.MyID) || (device.ID == "") {
+		if (device.ID == m.syncthing.SystemStatus.MyID) || (device.ID == "") {
 			continue
 		}
 
 		// check connection status
-		devStats, ok := connected.Connections[device.ID]
+		devStats, ok := m.syncthing.SystemConnections.Connections[device.ID]
 		m.status.Peers = append(m.status.Peers, v1alpha1.SyncthingPeerStatus{
 			ID:        device.ID,
 			Address:   device.Address,
 			Connected: ok && devStats.Connected,
 		})
 	}
-	return err
+	return nil
 }

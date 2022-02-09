@@ -64,10 +64,10 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 	}
 
 	// temporary solution
-	// set the apiURL to localhost if running in local environment
-	var apiURL = ""
+	// set the APIURL to localhost if running in local environment
+	var APIURL = ""
 	if os.Getenv("RUN_LOCAL") == "true" {
-		apiURL = "http://127.0.0.1:8384"
+		APIURL = "http://127.0.0.1:8384"
 	}
 
 	var serviceType corev1.ServiceType
@@ -86,9 +86,12 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		paused:      source.Spec.Paused,
 		dataPVCName: &source.Spec.SourcePVC,
 		status:      source.Status.Syncthing,
-		apiKey:      "",
-		apiURL:      apiURL,
 		serviceType: serviceType,
+		syncthing: Syncthing{
+			APIConfig: &APIConfig{
+				APIURL: APIURL,
+			},
+		},
 	}, nil
 }
 
