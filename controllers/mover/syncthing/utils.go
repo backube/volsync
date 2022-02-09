@@ -89,31 +89,20 @@ func (st *Syncthing) NeedsReconfigure(nodeList []v1alpha1.SyncthingPeer) bool {
 	return false
 }
 
-func (st *Syncthing) PopulateSyncthing() error {
-	if err := st.FetchSyncthingConfig(); err != nil {
+func (st *Syncthing) FetchLatestInfo() error {
+	if err := st.fetchSyncthingConfig(); err != nil {
 		return err
 	}
-	if err := st.FetchSyncthingSystemStatus(); err != nil {
+	if err := st.fetchSyncthingSystemStatus(); err != nil {
 		return err
 	}
-	if err := st.FetchConnectedStatus(); err != nil {
+	if err := st.fetchConnectedStatus(); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (st *Syncthing) FetchLatestInfo() error {
-	// fetch the config
-	err := st.FetchSyncthingConfig()
-	if err != nil {
-		return err
-	}
-	// fetch the system status
-	err = st.FetchLatestInfo()
-	return err
-}
-
-func (st *Syncthing) FetchSyncthingConfig() error {
+func (st *Syncthing) fetchSyncthingConfig() error {
 	responseBody := &SyncthingConfig{
 		Devices: []SyncthingDevice{},
 		Folders: []SyncthingFolder{},
@@ -127,7 +116,7 @@ func (st *Syncthing) FetchSyncthingConfig() error {
 	return err
 }
 
-func (st *Syncthing) FetchSyncthingSystemStatus() error {
+func (st *Syncthing) fetchSyncthingSystemStatus() error {
 	responseBody := &SystemStatus{}
 	data, err := controllers.JSONRequest(st.APIConfig.APIURL+"/rest/system/status", "GET", st.APIConfig.Headers(), nil)
 	if err != nil {
@@ -142,26 +131,32 @@ func (st *Syncthing) FetchSyncthingSystemStatus() error {
 func (st *Syncthing) UpdateSyncthingConfig() error {
 	// update the config
 	responseBody := &SyncthingConfig{}
-	data, err := controllers.JSONRequest(st.APIConfig.APIURL+"/rest/config", "POST", st.APIConfig.Headers(), st.Config)
+	data, err := controllers.JSONRequest(st.APIConfig.APIURL+"/rest/config", "PUT", st.APIConfig.Headers(), st.Config)
 	if err != nil {
 		return err
 	}
 	// unmarshal the data into the responseBody
-	err = json.Unmarshal(data, responseBody)
-	st.Config = responseBody
+	if err = json.Unmarshal(data, responseBody); err == nil {
+		// fetch the latest config
+		st.fetchSyncthingConfig()
+	}
 	return err
 }
 
-func (st *Syncthing) FetchConnectedStatus() error {
+func (st *Syncthing) fetchConnectedStatus() error {
 	// updates the connected status if successful, else returns an error
-	responseBody := &SystemConnections{}
+	responseBody := &SystemConnections{
+		Connections: map[string]ConnectionStats{},
+	}
 	data, err := controllers.JSONRequest(
 		st.APIConfig.APIURL+"/rest/system/connections", "GET", st.APIConfig.Headers(), nil,
 	)
 	if err != nil {
 		return err
 	}
-	err = json.Unmarshal(data, responseBody)
+	if err = json.Unmarshal(data, responseBody); err != nil {
+		st.SystemConnections = responseBody
+	}
 	return err
 }
 

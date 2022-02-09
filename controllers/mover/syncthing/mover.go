@@ -485,7 +485,7 @@ func (m *Mover) ensureIsConfigured(ctx context.Context) (mover.Result, error) {
 	}
 
 	// reconciles the Syncthing object
-	err = m.syncthing.PopulateSyncthing()
+	err = m.syncthing.FetchLatestInfo()
 	if err != nil {
 		return mover.InProgress(), err
 	}
@@ -509,11 +509,7 @@ func (m *Mover) ensureIsConfigured(ctx context.Context) (mover.Result, error) {
 
 func (m *Mover) ensureStatusIsUpdated() error {
 	// get the current status
-	if err := m.syncthing.FetchSyncthingSystemStatus(); err != nil {
-		return err
-	}
-
-	if err := m.syncthing.FetchConnectedStatus(); err != nil {
+	if err := m.syncthing.FetchLatestInfo(); err != nil {
 		return err
 	}
 
