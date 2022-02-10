@@ -53,7 +53,7 @@ var _ = Describe("migration", func() {
 		err = mc.parseCLI(cmd)
 		Expect(err).NotTo(HaveOccurred())
 
-		mc.clientObject = k8sClient
+		mc.client = k8sClient
 		mc.Namespace = "foo-" + krand.String(5)
 		// create namespace
 		ns, err = mc.ensureNamespace(context.Background())
@@ -166,7 +166,7 @@ var _ = Describe("migration", func() {
 			}}
 		Expect(k8sClient.Status().Update(context.Background(), rd)).To(Succeed())
 		// Wait for mock address and sshKey to pop up
-		err = mc.waitForRDStatus(context.Background())
+		_, err = mc.mr.data.Destination.waitForRDStatus(context.Background(), mc.client)
 		Expect(err).ToNot(HaveOccurred())
 		// Retry creation of replicationdestination and it should fail as destination already exists
 		rd, err = mc.ensureReplicationDestination(context.Background())
@@ -176,7 +176,7 @@ var _ = Describe("migration", func() {
 		Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: mc.Namespace,
 			Name: mc.RDName}, rd)).To(Succeed())
 		// Should return existing address and sshkey
-		err = mc.waitForRDStatus(context.Background())
+		_, err = mc.mr.data.Destination.waitForRDStatus(context.Background(), mc.client)
 		Expect(err).ToNot(HaveOccurred())
 	})
 })

@@ -19,7 +19,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
@@ -27,7 +26,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
@@ -63,7 +61,7 @@ type migrationCreate struct {
 	// SSH connections.
 	ServiceType *corev1.ServiceType
 	// client object to communicate with a cluster
-	clientObject client.Client
+	client client.Client
 	// PVC object associated with pvcName used to create destination object
 	PVC *corev1.PersistentVolumeClaim
 }
@@ -216,7 +214,7 @@ func (mc *migrationCreate) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	mc.clientObject = k8sClient
+	mc.client = k8sClient
 
 	// Get the pvc from cluster
 	mc.PVC, err = mc.getDestinationPVC(ctx)
@@ -247,7 +245,7 @@ func (mc *migrationCreate) Run(ctx context.Context) error {
 	}
 
 	// Wait for ReplicationDestination to post address, sshkeys
-	err = mc.waitForRDStatus(ctx)
+	_, err = mc.mr.data.Destination.waitForRDStatus(ctx, mc.client)
 	if err != nil {
 		return err
 	}
@@ -264,7 +262,7 @@ func (mc *migrationCreate) ensureNamespace(ctx context.Context) (*corev1.Namespa
 			Name: mc.Namespace,
 		},
 	}
-	if err := mc.clientObject.Create(ctx, ns); err != nil {
+	if err := mc.client.Create(ctx, ns); err != nil {
 		if kerrs.IsAlreadyExists(err) {
 			klog.Infof("Namespace: \"%s\" is found, proceeding with the same",
 				mc.Namespace)
@@ -309,7 +307,7 @@ func (mc *migrationCreate) createDestinationPVC(ctx context.Context) (*corev1.Pe
 		},
 	}
 
-	if err := mc.clientObject.Create(ctx, destPVC); err != nil {
+	if err := mc.client.Create(ctx, destPVC); err != nil {
 		return nil, err
 	}
 
@@ -325,7 +323,7 @@ func (mc *migrationCreate) getDestinationPVC(ctx context.Context) (*corev1.Persi
 		Namespace: mc.Namespace,
 		Name:      mc.DestinationPVC,
 	}
-	err := mc.clientObject.Get(ctx, pvcInfo, destPVC)
+	err := mc.client.Get(ctx, pvcInfo, destPVC)
 	if err != nil {
 		if client.IgnoreNotFound(err) == nil {
 			klog.Infof("pvc: \"%s\" not found, creating the same", mc.DestinationPVC)
@@ -353,47 +351,11 @@ func (mc *migrationCreate) ensureReplicationDestination(ctx context.Context) (
 			},
 		},
 	}
-	if err := mc.clientObject.Create(ctx, rd); err != nil {
+	if err := mc.client.Create(ctx, rd); err != nil {
 		return nil, err
 	}
 	klog.Infof("Created ReplicationDestination: \"%s\" in Namespace: \"%s\" and Cluster: \"%s\"",
 		rd.Name, rd.Namespace, rd.ClusterName)
 
 	return rd, nil
-}
-
-func (mc *migrationCreate) waitForRDStatus(ctx context.Context) error {
-	mrd := mc.mr.data.Destination
-	// wait for migrationdestination to become ready
-	nsName := types.NamespacedName{
-		Namespace: mrd.Namespace,
-		Name:      mrd.RDName,
-	}
-	rd := &volsyncv1alpha1.ReplicationDestination{}
-	err := wait.PollImmediate(5*time.Second, 2*time.Minute, func() (bool, error) {
-		err := mc.clientObject.Get(ctx, nsName, rd)
-		if err != nil {
-			return false, err
-		}
-		if rd.Status == nil || rd.Status.Rsync == nil {
-			return false, nil
-		}
-		if rd.Status.Rsync.Address == nil {
-			klog.V(2).Infof("Waiting for MigrationDestination %s RSync address to populate", rd.Name)
-			return false, nil
-		}
-
-		if rd.Status.Rsync.SSHKeys == nil {
-			klog.V(2).Infof("Waiting for MigrationDestination %s RSync sshkeys to populate", rd.Name)
-			return false, nil
-		}
-
-		klog.V(2).Infof("Found MigrationDestination RSync Address: %s", *rd.Status.Rsync.Address)
-		return true, nil
-	})
-	if err != nil {
-		return fmt.Errorf("failed to fetch rd status: %w,", err)
-	}
-
-	return nil
 }
