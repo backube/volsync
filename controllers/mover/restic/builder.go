@@ -41,15 +41,16 @@ const (
 )
 
 type Builder struct {
-	viper *viper.Viper  // For unit tests to be able to override (global viper will be used if this is nil)
-	flags *flag.FlagSet // For unit tests to be able to override (global flags will be used if this is nil)
+	viper *viper.Viper  // For unit tests to be able to override - global viper will be used by default in Register()
+	flags *flag.FlagSet // For unit tests to be able to override - global flags will be used by default in Register()
 }
 
 var _ mover.Builder = &Builder{}
 
 func Register() error {
-	b := &Builder{}
-	if err := b.initFlags(); err != nil {
+	// Use global viper & command line flags
+	b, err := newBuilder(viper.GetViper(), flag.CommandLine)
+	if err != nil {
 		return err
 	}
 
@@ -57,37 +58,31 @@ func Register() error {
 	return nil
 }
 
-func (rb *Builder) initFlags() error {
-	// Set default restic container image - will be used if both command line flag and env var are not set
-	rb.getViper().SetDefault(resticContainerImageFlag, defaultResticContainerImage)
+func newBuilder(viper *viper.Viper, flags *flag.FlagSet) (*Builder, error) {
+	b := &Builder{
+		viper: viper,
+		flags: flags,
+	}
 
-	// Viper will check for command line flag first, then fallback to the env var
-	rb.getFlagSet().String(resticContainerImageFlag, defaultResticContainerImage,
+	// Set default restic container image - will be used if both command line flag and env var are not set
+	b.viper.SetDefault(resticContainerImageFlag, defaultResticContainerImage)
+
+	// Setup command line flag for the restic container image
+	b.flags.String(resticContainerImageFlag, defaultResticContainerImage,
 		"The container image for the restic data mover")
-	return rb.getViper().BindEnv(resticContainerImageFlag, resticContainerImageEnvVar)
+	// Viper will check for command line flag first, then fallback to the env var
+	err := b.viper.BindEnv(resticContainerImageFlag, resticContainerImageEnvVar)
+
+	return b, err
 }
 
 func (rb *Builder) VersionInfo() string {
 	return fmt.Sprintf("Restic container: %s", rb.getResticContainerImage())
 }
 
-func (rb *Builder) getViper() *viper.Viper {
-	if rb.viper == nil {
-		rb.viper = viper.GetViper() // Use Global viper
-	}
-	return rb.viper
-}
-
-func (rb *Builder) getFlagSet() *flag.FlagSet {
-	if rb.flags == nil {
-		rb.flags = flag.CommandLine // Use global command line flags
-	}
-	return rb.flags
-}
-
 // resticContainerImage is the container image name of the restic data mover
 func (rb *Builder) getResticContainerImage() string {
-	return rb.getViper().GetString(resticContainerImageFlag)
+	return rb.viper.GetString(resticContainerImageFlag)
 }
 
 func (rb *Builder) FromSource(client client.Client, logger logr.Logger,

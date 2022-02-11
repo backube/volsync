@@ -131,12 +131,9 @@ var _ = BeforeSuite(func(done Done) {
 	Expect(k8sClient).ToNot(BeNil())
 
 	// Instantiate common restic builder to use for tests in this test suite
-	commonBuilderForTestSuite = &Builder{
-		viper: viper.New(),
-		flags: flag.NewFlagSet("testfsetrestic", flag.ExitOnError),
-	}
-	// Init flags (sets restic image to default value for example)
-	Expect(commonBuilderForTestSuite.initFlags()).To(Succeed())
+	commonBuilderForTestSuite, err = newBuilder(viper.New(), flag.NewFlagSet("testfsetrestic", flag.ExitOnError))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(commonBuilderForTestSuite).NotTo(BeNil())
 
 	close(done)
 }, 60)

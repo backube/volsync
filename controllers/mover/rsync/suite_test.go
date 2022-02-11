@@ -105,12 +105,9 @@ var _ = BeforeSuite(func() {
 	}, "60s", "1s").Should(Not(BeNil()))
 
 	// Instantiate common rsync builder to use for tests in this test suite
-	commonBuilderForTestSuite = &Builder{
-		viper: viper.New(),
-		flags: flag.NewFlagSet("testfsetrsynctests", flag.ExitOnError),
-	}
-	// Init flags (sets rsync image to default value for example)
-	Expect(commonBuilderForTestSuite.initFlags()).To(Succeed())
+	commonBuilderForTestSuite, err = newBuilder(viper.New(), flag.NewFlagSet("testfsetrsynctests", flag.ExitOnError))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(commonBuilderForTestSuite).NotTo(BeNil())
 })
 
 var _ = AfterSuite(func() {

@@ -79,12 +79,10 @@ var _ = Describe("Rsync init flags and env vars", func() {
 
 			// New Builder for this test - use testViper and testFlagSet so we can modify
 			// flags for these tests without modifying global flags and potentially affecting other tests
-			builderForInitTests = &Builder{
-				viper: testViper,
-				flags: testFlagSet,
-			}
-
-			Expect(builderForInitTests.initFlags()).To(Succeed())
+			var err error
+			builderForInitTests, err = newBuilder(testViper, testFlagSet)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(builderForInitTests).NotTo(BeNil())
 
 			// code here (see main.go) for viper to bind cmd line flags (including those
 			// defined in the mover Register() func)
