@@ -30,42 +30,64 @@ import (
 	"github.com/backube/volsync/controllers/volumehandler"
 )
 
-// defaultRsyncContainerImage is the default container image for the rsync
-// data mover
-const defaultRsyncContainerImage = "quay.io/backube/volsync-mover-rsync:latest"
+const (
+	// defaultRsyncContainerImage is the default container image for the rsync
+	// data mover
+	defaultRsyncContainerImage = "quay.io/backube/volsync-mover-rsync:latest"
+	// Command line flag will be checked first
+	// If command line flag not set, the RELATED_IMAGE_ env var will be used
+	rsyncContainerImageFlag   = "rsync-container-image"
+	rsyncContainerImageEnvVar = "RELATED_IMAGE_RSYNC_CONTAINER"
+)
 
-// Command line flag will be checked first
-// If command line flag not set, the RELATED_IMAGE_ env var will be used
-const rsyncContainerImageFlag = "rsync-container-image"
-const rsyncContainerImageEnvVar = "RELATED_IMAGE_RSYNC_CONTAINER"
-
-type Builder struct{}
+type Builder struct {
+	viper *viper.Viper  // For unit tests to be able to override (global viper will be used if this is nil)
+	flags *flag.FlagSet // For unit tests to be able to override (global flags will be used if this is nil)
+}
 
 var _ mover.Builder = &Builder{}
 
-func init() {
-	// Set default rsync container image - will be used if both command line flag and env var are not set
-	viper.SetDefault(rsyncContainerImageFlag, defaultRsyncContainerImage)
-}
-
-// rsyncContainerImage is the container image name of the rsync data mover
-func getRsyncContainerImage() string {
-	return viper.GetString(rsyncContainerImageFlag)
-}
-
 func Register() error {
-	// Viper will check for command line flag first, then fallback to the env var
-	flag.String(rsyncContainerImageFlag, defaultRsyncContainerImage, "The container image for the rsync data mover")
-	if err := viper.BindEnv(rsyncContainerImageFlag, rsyncContainerImageEnvVar); err != nil {
+	b := &Builder{}
+	if err := b.initFlags(); err != nil {
 		return err
 	}
 
-	mover.Register(&Builder{})
+	mover.Register(b)
 	return nil
 }
 
+func (rb *Builder) initFlags() error {
+	// Set default rsync container image - will be used if both command line flag and env var are not set
+	rb.getViper().SetDefault(rsyncContainerImageFlag, defaultRsyncContainerImage)
+
+	// Viper will check for command line flag first, then fallback to the env var
+	rb.getFlagSet().String(rsyncContainerImageFlag, defaultRsyncContainerImage,
+		"The container image for the rsync data mover")
+	return rb.getViper().BindEnv(rsyncContainerImageFlag, rsyncContainerImageEnvVar)
+}
+
 func (rb *Builder) VersionInfo() string {
-	return fmt.Sprintf("Rsync container: %s", getRsyncContainerImage())
+	return fmt.Sprintf("Rsync container: %s", rb.getRsyncContainerImage())
+}
+
+func (rb *Builder) getViper() *viper.Viper {
+	if rb.viper == nil {
+		rb.viper = viper.GetViper() // Use Global viper
+	}
+	return rb.viper
+}
+
+func (rb *Builder) getFlagSet() *flag.FlagSet {
+	if rb.flags == nil {
+		rb.flags = flag.CommandLine // Use global command line flags
+	}
+	return rb.flags
+}
+
+// rsyncContainerImage is the container image name of the rsync data mover
+func (rb *Builder) getRsyncContainerImage() string {
+	return rb.getViper().GetString(rsyncContainerImageFlag)
 }
 
 func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
@@ -90,18 +112,19 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 	}
 
 	return &Mover{
-		client:       client,
-		logger:       logger.WithValues("method", "Rsync"),
-		owner:        source,
-		vh:           vh,
-		sshKeys:      source.Spec.Rsync.SSHKeys,
-		serviceType:  source.Spec.Rsync.ServiceType,
-		address:      source.Spec.Rsync.Address,
-		port:         source.Spec.Rsync.Port,
-		isSource:     true,
-		paused:       source.Spec.Paused,
-		mainPVCName:  &source.Spec.SourcePVC,
-		sourceStatus: source.Status.Rsync,
+		client:         client,
+		logger:         logger.WithValues("method", "Rsync"),
+		owner:          source,
+		vh:             vh,
+		containerImage: rb.getRsyncContainerImage(),
+		sshKeys:        source.Spec.Rsync.SSHKeys,
+		serviceType:    source.Spec.Rsync.ServiceType,
+		address:        source.Spec.Rsync.Address,
+		port:           source.Spec.Rsync.Port,
+		isSource:       true,
+		paused:         source.Spec.Paused,
+		mainPVCName:    &source.Spec.SourcePVC,
+		sourceStatus:   source.Status.Rsync,
 	}, nil
 }
 
@@ -127,17 +150,18 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 	}
 
 	return &Mover{
-		client:      client,
-		logger:      logger.WithValues("method", "Rsync"),
-		owner:       destination,
-		vh:          vh,
-		sshKeys:     destination.Spec.Rsync.SSHKeys,
-		serviceType: destination.Spec.Rsync.ServiceType,
-		address:     destination.Spec.Rsync.Address,
-		port:        destination.Spec.Rsync.Port,
-		isSource:    false,
-		paused:      destination.Spec.Paused,
-		mainPVCName: destination.Spec.Rsync.DestinationPVC,
-		destStatus:  destination.Status.Rsync,
+		client:         client,
+		logger:         logger.WithValues("method", "Rsync"),
+		owner:          destination,
+		vh:             vh,
+		containerImage: rb.getRsyncContainerImage(),
+		sshKeys:        destination.Spec.Rsync.SSHKeys,
+		serviceType:    destination.Spec.Rsync.ServiceType,
+		address:        destination.Spec.Rsync.Address,
+		port:           destination.Spec.Rsync.Port,
+		isSource:       false,
+		paused:         destination.Spec.Paused,
+		mainPVCName:    destination.Spec.Rsync.DestinationPVC,
+		destStatus:     destination.Status.Rsync,
 	}, nil
 }

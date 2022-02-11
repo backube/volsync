@@ -30,42 +30,64 @@ import (
 	"github.com/backube/volsync/controllers/volumehandler"
 )
 
-// defaultRcloneContainerImage is the default container image for the rclone
-// data mover
-const defaultRcloneContainerImage = "quay.io/backube/volsync-mover-rclone:latest"
+const (
+	// defaultRcloneContainerImage is the default container image for the rclone
+	// data mover
+	defaultRcloneContainerImage = "quay.io/backube/volsync-mover-rclone:latest"
+	// Command line flag will be checked first
+	// If command line flag not set, the RELATED_IMAGE_ env var will be used
+	rcloneContainerImageFlag   = "rclone-container-image"
+	rcloneContainerImageEnvVar = "RELATED_IMAGE_RCLONE_CONTAINER"
+)
 
-// Command line flag will be checked first
-// If command line flag not set, the RELATED_IMAGE_ env var will be used
-const rcloneContainerImageFlag = "rclone-container-image"
-const rcloneContainerImageEnvVar = "RELATED_IMAGE_RCLONE_CONTAINER"
-
-type Builder struct{}
+type Builder struct {
+	viper *viper.Viper  // For unit tests to be able to override (global viper will be used if this is nil)
+	flags *flag.FlagSet // For unit tests to be able to override (global flags will be used if this is nil)
+}
 
 var _ mover.Builder = &Builder{}
 
-func init() {
-	// Set default rclone container image - will be used if both command line flag and env var are not set
-	viper.SetDefault(rcloneContainerImageFlag, defaultRcloneContainerImage)
-}
-
-// rcloneContainerImage is the container image name of the rclone data mover
-func getRcloneContainerImage() string {
-	return viper.GetString(rcloneContainerImageFlag)
-}
-
 func Register() error {
-	// Viper will check for command line flag first, then fallback to the env var
-	flag.String(rcloneContainerImageFlag, defaultRcloneContainerImage, "The container image for the rclone data mover")
-	if err := viper.BindEnv(rcloneContainerImageFlag, rcloneContainerImageEnvVar); err != nil {
+	b := &Builder{}
+	if err := b.initFlags(); err != nil {
 		return err
 	}
 
-	mover.Register(&Builder{})
+	mover.Register(b)
 	return nil
 }
 
+func (rb *Builder) initFlags() error {
+	// Set default rclone container image - will be used if both command line flag and env var are not set
+	rb.getViper().SetDefault(rcloneContainerImageFlag, defaultRcloneContainerImage)
+
+	// Viper will check for command line flag first, then fallback to the env var
+	rb.getFlagSet().String(rcloneContainerImageFlag, defaultRcloneContainerImage,
+		"The container image for the rclone data mover")
+	return rb.getViper().BindEnv(rcloneContainerImageFlag, rcloneContainerImageEnvVar)
+}
+
 func (rb *Builder) VersionInfo() string {
-	return fmt.Sprintf("Rclone container: %s", getRcloneContainerImage())
+	return fmt.Sprintf("Rclone container: %s", rb.getRcloneContainerImage())
+}
+
+func (rb *Builder) getViper() *viper.Viper {
+	if rb.viper == nil {
+		rb.viper = viper.GetViper() // Use Global viper
+	}
+	return rb.viper
+}
+
+func (rb *Builder) getFlagSet() *flag.FlagSet {
+	if rb.flags == nil {
+		rb.flags = flag.CommandLine // Use global command line flags
+	}
+	return rb.flags
+}
+
+// rcloneContainerImage is the container image name of the rclone data mover
+func (rb *Builder) getRcloneContainerImage() string {
+	return rb.getViper().GetString(rcloneContainerImageFlag)
 }
 
 func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
@@ -89,6 +111,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		logger:              logger.WithValues("method", "Rclone"),
 		owner:               source,
 		vh:                  vh,
+		containerImage:      rb.getRcloneContainerImage(),
 		rcloneConfigSection: source.Spec.Rclone.RcloneConfigSection,
 		rcloneDestPath:      source.Spec.Rclone.RcloneDestPath,
 		rcloneConfig:        source.Spec.Rclone.RcloneConfig,
@@ -119,6 +142,7 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		logger:              logger.WithValues("method", "Rclone"),
 		owner:               destination,
 		vh:                  vh,
+		containerImage:      rb.getRcloneContainerImage(),
 		rcloneConfigSection: destination.Spec.Rclone.RcloneConfigSection,
 		rcloneDestPath:      destination.Spec.Rclone.RcloneDestPath,
 		rcloneConfig:        destination.Spec.Rclone.RcloneConfig,

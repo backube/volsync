@@ -55,21 +55,6 @@ var _ = Describe("Rclone properly registers", func() {
 	When("Rclone's registration function is called", func() {
 		BeforeEach(func() {
 			Expect(Register()).To(Succeed())
-
-			// code here (see main.go) for viper to bind cmd line flags (including those
-			// defined in the mover Register() func) - however, not calling pflag.Parse() as
-			// re-parsing the actual cmd line args causes issues with the tests
-			pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
-			//pflag.Parse()
-			Expect(viper.BindPFlags(pflag.CommandLine)).To(Succeed())
-		})
-		AfterEach(func() {
-			// Reset command line flags
-			flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
-			pflag.CommandLine = pflag.NewFlagSet(os.Args[0], pflag.ExitOnError)
-
-			// Unset Rclone container image Env var
-			os.Unsetenv(rcloneContainerImageEnvVar)
 		})
 
 		It("is added to the mover catalog", func() {
@@ -81,10 +66,84 @@ var _ = Describe("Rclone properly registers", func() {
 			}
 			Expect(found).To(BeTrue())
 		})
+	})
+})
+
+var _ = Describe("Rclone init flags and env vars", func() {
+	logger := zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
+	When("Rclone builder inits flags", func() {
+		var builderForInitTests *Builder
+		var testPflagSet *pflag.FlagSet
+		BeforeEach(func() {
+			os.Unsetenv(rcloneContainerImageEnvVar)
+
+			// Instantiate new viper instance and flagset instance just for this test
+			testViper := viper.New()
+			testFlagSet := flag.NewFlagSet("testflagsetrclone", flag.ExitOnError)
+
+			// New Builder for this test - use testViper and testFlagSet so we can modify
+			// flags for these tests without modifying global flags and potentially affecting other tests
+			builderForInitTests = &Builder{
+				viper: testViper,
+				flags: testFlagSet,
+			}
+
+			Expect(builderForInitTests.initFlags()).To(Succeed())
+
+			// code here (see main.go) for viper to bind cmd line flags (including those
+			// defined in the mover Register() func)
+			// Bind viper to a new set of flags so each of these tests can get their own
+			testPflagSet = pflag.NewFlagSet("testpflagsetrclone", pflag.ExitOnError)
+			testPflagSet.AddGoFlagSet(testFlagSet)
+			Expect(testViper.BindPFlags(testPflagSet)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			os.Unsetenv(rcloneContainerImageEnvVar)
+		})
+
+		JustBeforeEach(func() {
+			// Common checks - make sure if we instantiate a source/dest mover, it uses the container image that
+			// was picked up by flags/command line etc from the builder
+			var err error
+
+			rs := &volsyncv1alpha1.ReplicationSource{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "testrscr",
+					Namespace: "testing",
+				},
+				Spec: volsyncv1alpha1.ReplicationSourceSpec{
+					Rclone: &volsyncv1alpha1.ReplicationSourceRcloneSpec{},
+				},
+				Status: &volsyncv1alpha1.ReplicationSourceStatus{}, // Controller sets status to non-nil
+			}
+			sourceMover, err := builderForInitTests.FromSource(k8sClient, logger, rs)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(sourceMover).NotTo(BeNil())
+			sourceRcloneMover, _ := sourceMover.(*Mover)
+			Expect(sourceRcloneMover.containerImage).To(Equal(builderForInitTests.getRcloneContainerImage()))
+
+			rd := &volsyncv1alpha1.ReplicationDestination{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "rd",
+					Namespace: "testing",
+				},
+				Spec: volsyncv1alpha1.ReplicationDestinationSpec{
+					Trigger: &volsyncv1alpha1.ReplicationDestinationTriggerSpec{},
+					Rclone:  &volsyncv1alpha1.ReplicationDestinationRcloneSpec{},
+				},
+				Status: &volsyncv1alpha1.ReplicationDestinationStatus{}, // Controller sets status to non-nil
+			}
+			destMover, err := builderForInitTests.FromDestination(k8sClient, logger, rd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(destMover).NotTo(BeNil())
+			destRcloneMover, _ := destMover.(*Mover)
+			Expect(destRcloneMover.containerImage).To(Equal(builderForInitTests.getRcloneContainerImage()))
+		})
 
 		Context("When no command line flag or ENV var is specified", func() {
 			It("Should use the default rclone container image", func() {
-				Expect(getRcloneContainerImage()).To(Equal(defaultRcloneContainerImage))
+				Expect(builderForInitTests.getRcloneContainerImage()).To(Equal(defaultRcloneContainerImage))
 			})
 		})
 
@@ -92,10 +151,10 @@ var _ = Describe("Rclone properly registers", func() {
 			const cmdLineOverrideImageName = "test-rclone-image-name:cmdlineoverride"
 			BeforeEach(func() {
 				// Manually set the value of the command line flag
-				Expect(pflag.CommandLine.Set("rclone-container-image", cmdLineOverrideImageName)).To(Succeed())
+				Expect(testPflagSet.Set("rclone-container-image", cmdLineOverrideImageName)).To(Succeed())
 			})
 			It("Should use the rclone container image set by the cmd line flag", func() {
-				Expect(getRcloneContainerImage()).To(Equal(cmdLineOverrideImageName))
+				Expect(builderForInitTests.getRcloneContainerImage()).To(Equal(cmdLineOverrideImageName))
 			})
 
 			Context("And env var is set", func() {
@@ -104,7 +163,7 @@ var _ = Describe("Rclone properly registers", func() {
 					os.Setenv(rcloneContainerImageEnvVar, envVarOverrideShouldBeIgnored)
 				})
 				It("Should still use the cmd line flag instead of the env var", func() {
-					Expect(getRcloneContainerImage()).To(Equal(cmdLineOverrideImageName))
+					Expect(builderForInitTests.getRcloneContainerImage()).To(Equal(cmdLineOverrideImageName))
 				})
 			})
 		})
@@ -115,7 +174,7 @@ var _ = Describe("Rclone properly registers", func() {
 				os.Setenv(rcloneContainerImageEnvVar, envVarOverrideImageName)
 			})
 			It("Should use the value from the env var", func() {
-				Expect(getRcloneContainerImage()).To(Equal(envVarOverrideImageName))
+				Expect(builderForInitTests.getRcloneContainerImage()).To(Equal(envVarOverrideImageName))
 			})
 		})
 	})
@@ -134,8 +193,7 @@ var _ = Describe("Rclone ignores other movers", func() {
 					Rclone: nil,
 				},
 			}
-			builder := Builder{}
-			m, e := builder.FromSource(k8sClient, logger, rs)
+			m, e := commonBuilderForTestSuite.FromSource(k8sClient, logger, rs)
 			Expect(m).To(BeNil())
 			Expect(e).NotTo(HaveOccurred())
 		})
@@ -151,8 +209,7 @@ var _ = Describe("Rclone ignores other movers", func() {
 					Rclone: nil,
 				},
 			}
-			builder := Builder{}
-			m, e := builder.FromDestination(k8sClient, logger, rd)
+			m, e := commonBuilderForTestSuite.FromDestination(k8sClient, logger, rd)
 			Expect(m).To(BeNil())
 			Expect(e).NotTo(HaveOccurred())
 		})
@@ -226,9 +283,7 @@ var _ = Describe("Rclone as a source", func() {
 			// Controller sets status to non-nil
 			rs.Status = &volsyncv1alpha1.ReplicationSourceStatus{}
 			// Instantiate a rclone mover for the tests
-			b := Builder{}
-			var err error
-			m, err := b.FromSource(k8sClient, logger, rs)
+			m, err := commonBuilderForTestSuite.FromSource(k8sClient, logger, rs)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(m).NotTo(BeNil())
 			mover, _ = m.(*Mover)
@@ -488,7 +543,7 @@ var _ = Describe("Rclone as a source", func() {
 						return err
 					}).Should(Succeed())
 					Expect(len(job.Spec.Template.Spec.Containers)).To(BeNumerically(">", 0))
-					Expect(job.Spec.Template.Spec.Containers[0].Image).To(Equal(getRcloneContainerImage()))
+					Expect(job.Spec.Template.Spec.Containers[0].Image).To(Equal(defaultRcloneContainerImage))
 				})
 
 				It("should use the specified service account", func() {
@@ -697,9 +752,7 @@ var _ = Describe("Rclone as a destination", func() {
 			// Controller sets status to non-nil
 			rd.Status = &volsyncv1alpha1.ReplicationDestinationStatus{}
 			// Instantiate a restic mover for the tests
-			b := Builder{}
-			var err error
-			m, err := b.FromDestination(k8sClient, logger, rd)
+			m, err := commonBuilderForTestSuite.FromDestination(k8sClient, logger, rd)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(m).NotTo(BeNil())
 			mover, _ = m.(*Mover)

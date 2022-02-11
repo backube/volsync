@@ -19,12 +19,14 @@ package rclone
 
 import (
 	"context"
+	"flag"
 	"path/filepath"
 	"testing"
 
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1beta1"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/spf13/viper"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -44,6 +46,7 @@ import (
 var cfg *rest.Config
 var k8sClient client.Client
 var testEnv *envtest.Environment
+var commonBuilderForTestSuite *Builder
 var cancel context.CancelFunc
 var ctx context.Context
 
@@ -114,6 +117,15 @@ var _ = BeforeSuite(func() {
 		k8sClient = k8sManager.GetClient()
 		return k8sClient
 	}, "60s", "1s").Should(Not(BeNil()))
+
+	// Instantiate common rsync builder to use for tests in this test suite
+	commonBuilderForTestSuite = &Builder{
+		viper: viper.New(),
+		flags: flag.NewFlagSet("testfsetrclonetests", flag.ExitOnError),
+	}
+	// Init flags (sets rclone image to default value for example)
+	Expect(commonBuilderForTestSuite.initFlags()).To(Succeed())
+
 })
 
 var _ = AfterSuite(func() {

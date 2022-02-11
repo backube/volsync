@@ -47,6 +47,7 @@ type Mover struct {
 	logger              logr.Logger
 	owner               metav1.Object
 	vh                  *volumehandler.VolumeHandler
+	containerImage      string
 	rcloneConfigSection *string
 	rcloneDestPath      *string
 	rcloneConfig        *string
@@ -236,7 +237,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 				{Name: "RCLONE_CONFIG_SECTION", Value: *m.rcloneConfigSection},
 			},
 			Command: []string{"/bin/bash", "-c", "./active.sh"},
-			Image:   getRcloneContainerImage(),
+			Image:   m.containerImage,
 			SecurityContext: &corev1.SecurityContext{
 				RunAsUser: &runAsUser,
 			},

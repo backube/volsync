@@ -30,42 +30,64 @@ import (
 	"github.com/backube/volsync/controllers/volumehandler"
 )
 
-// defaultResticContainerImage is the default container image for the restic
-// data mover
-const defaultResticContainerImage = "quay.io/backube/volsync-mover-restic:latest"
+const (
+	// defaultResticContainerImage is the default container image for the restic
+	// data mover
+	defaultResticContainerImage = "quay.io/backube/volsync-mover-restic:latest"
+	// Command line flag will be checked first
+	// If command line flag not set, the RELATED_IMAGE_ env var will be used
+	resticContainerImageFlag   = "restic-container-image"
+	resticContainerImageEnvVar = "RELATED_IMAGE_RESTIC_CONTAINER"
+)
 
-// Command line flag will be checked first
-// If command line flag not set, the RELATED_IMAGE_ env var will be used
-const resticContainerImageFlag = "restic-container-image"
-const resticContainerImageEnvVar = "RELATED_IMAGE_RESTIC_CONTAINER"
-
-type Builder struct{}
+type Builder struct {
+	viper *viper.Viper  // For unit tests to be able to override (global viper will be used if this is nil)
+	flags *flag.FlagSet // For unit tests to be able to override (global flags will be used if this is nil)
+}
 
 var _ mover.Builder = &Builder{}
 
-func init() {
-	// Set default restic container image - will be used if both command line flag and env var are not set
-	viper.SetDefault(resticContainerImageFlag, defaultResticContainerImage)
-}
-
-// resticContainerImage is the container image name of the restic data mover
-func getResticContainerImage() string {
-	return viper.GetString(resticContainerImageFlag)
-}
-
 func Register() error {
-	// Viper will check for command line flag first, then fallback to the env var
-	flag.String(resticContainerImageFlag, defaultResticContainerImage, "The container image for the restic data mover")
-	if err := viper.BindEnv(resticContainerImageFlag, resticContainerImageEnvVar); err != nil {
+	b := &Builder{}
+	if err := b.initFlags(); err != nil {
 		return err
 	}
 
-	mover.Register(&Builder{})
+	mover.Register(b)
 	return nil
 }
 
+func (rb *Builder) initFlags() error {
+	// Set default restic container image - will be used if both command line flag and env var are not set
+	rb.getViper().SetDefault(resticContainerImageFlag, defaultResticContainerImage)
+
+	// Viper will check for command line flag first, then fallback to the env var
+	rb.getFlagSet().String(resticContainerImageFlag, defaultResticContainerImage,
+		"The container image for the restic data mover")
+	return rb.getViper().BindEnv(resticContainerImageFlag, resticContainerImageEnvVar)
+}
+
 func (rb *Builder) VersionInfo() string {
-	return fmt.Sprintf("Restic container: %s", getResticContainerImage())
+	return fmt.Sprintf("Restic container: %s", rb.getResticContainerImage())
+}
+
+func (rb *Builder) getViper() *viper.Viper {
+	if rb.viper == nil {
+		rb.viper = viper.GetViper() // Use Global viper
+	}
+	return rb.viper
+}
+
+func (rb *Builder) getFlagSet() *flag.FlagSet {
+	if rb.flags == nil {
+		rb.flags = flag.CommandLine // Use global command line flags
+	}
+	return rb.flags
+}
+
+// resticContainerImage is the container image name of the restic data mover
+func (rb *Builder) getResticContainerImage() string {
+	return rb.getViper().GetString(resticContainerImageFlag)
 }
 
 func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
@@ -94,6 +116,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		logger:                logger.WithValues("method", "Restic"),
 		owner:                 source,
 		vh:                    vh,
+		containerImage:        rb.getResticContainerImage(),
 		cacheAccessModes:      source.Spec.Restic.CacheAccessModes,
 		cacheCapacity:         source.Spec.Restic.CacheCapacity,
 		cacheStorageClassName: source.Spec.Restic.CacheStorageClassName,
@@ -128,6 +151,7 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		logger:                logger.WithValues("method", "Restic"),
 		owner:                 destination,
 		vh:                    vh,
+		containerImage:        rb.getResticContainerImage(),
 		cacheAccessModes:      destination.Spec.Restic.CacheAccessModes,
 		cacheCapacity:         destination.Spec.Restic.CacheCapacity,
 		cacheStorageClassName: destination.Spec.Restic.CacheStorageClassName,
