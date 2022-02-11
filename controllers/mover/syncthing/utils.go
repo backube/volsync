@@ -7,7 +7,9 @@ import (
 	"github.com/backube/volsync/controllers"
 )
 
-func (st *Syncthing) UpdateDevices(peerList []v1alpha1.SyncthingPeer) error {
+/**************************** EXPORTED FUNCTIONS *******************************/
+
+func (st *Syncthing) UpdateDevices(peerList []v1alpha1.SyncthingPeer) {
 	// update syncthing config based on the provided peerlist
 	newDevices := []SyncthingDevice{}
 	// add myself to the device list
@@ -32,9 +34,6 @@ func (st *Syncthing) UpdateDevices(peerList []v1alpha1.SyncthingPeer) error {
 	st.Config.Devices = newDevices
 	// update the folders
 	st.UpdateFolders()
-	// update the config
-	err := st.UpdateSyncthingConfig()
-	return err
 }
 
 func (st *Syncthing) UpdateFolders() {
@@ -102,6 +101,17 @@ func (st *Syncthing) FetchLatestInfo() error {
 	return nil
 }
 
+func (st *Syncthing) UpdateSyncthingConfig() error {
+	// update the config
+	_, err := controllers.JSONRequest(st.APIConfig.APIURL+"/rest/config", "PUT", st.APIConfig.Headers(), st.Config)
+	if err != nil {
+		return err
+	}
+	return err
+}
+
+/**************************** INTERNAL FUNCTIONS *******************************/
+
 func (st *Syncthing) fetchSyncthingConfig() error {
 	responseBody := &SyncthingConfig{
 		Devices: []SyncthingDevice{},
@@ -128,21 +138,6 @@ func (st *Syncthing) fetchSyncthingSystemStatus() error {
 	return err
 }
 
-func (st *Syncthing) UpdateSyncthingConfig() error {
-	// update the config
-	responseBody := &SyncthingConfig{}
-	data, err := controllers.JSONRequest(st.APIConfig.APIURL+"/rest/config", "PUT", st.APIConfig.Headers(), st.Config)
-	if err != nil {
-		return err
-	}
-	// unmarshal the data into the responseBody
-	if err = json.Unmarshal(data, responseBody); err == nil {
-		// fetch the latest config
-		st.fetchSyncthingConfig()
-	}
-	return err
-}
-
 func (st *Syncthing) fetchConnectedStatus() error {
 	// updates the connected status if successful, else returns an error
 	responseBody := &SystemConnections{
@@ -154,7 +149,7 @@ func (st *Syncthing) fetchConnectedStatus() error {
 	if err != nil {
 		return err
 	}
-	if err = json.Unmarshal(data, responseBody); err != nil {
+	if err = json.Unmarshal(data, responseBody); err == nil {
 		st.SystemConnections = responseBody
 	}
 	return err

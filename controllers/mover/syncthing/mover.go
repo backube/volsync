@@ -218,7 +218,9 @@ func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) 
 			Type: corev1.SecretTypeOpaque,
 			Data: map[string][]byte{
 				// base64 encode an empty string
-				"apikey": []byte("password123"),
+				"apikey":   []byte("password123"),
+				"username": []byte("bob"),
+				"password": []byte("bob"),
 			},
 		}
 		if err = ctrl.SetControllerReference(m.owner, secret, m.client.Scheme()); err != nil {
@@ -226,7 +228,6 @@ func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) 
 			return nil, err
 		}
 		if err := m.client.Create(ctx, secret); err != nil {
-			// error creating secret
 			m.logger.Error(err, "Error creating secret")
 			return nil, err
 		}
@@ -473,6 +474,8 @@ func (m *Mover) getAPIKey(ctx context.Context) (string, error) {
 			return "", err
 		}
 		m.syncthing.APIConfig.APIKey = string(secret.Data["apikey"])
+		m.syncthing.APIConfig.GUIUser = string(secret.Data["username"])
+		m.syncthing.APIConfig.GUIPassword = string(secret.Data["password"])
 	}
 	return m.syncthing.APIConfig.APIKey, nil
 }
@@ -483,33 +486,48 @@ func (m *Mover) ensureIsConfigured(ctx context.Context) (mover.Result, error) {
 	if _, err = m.getAPIKey(ctx); err != nil {
 		return mover.InProgress(), err
 	}
-
 	// reconciles the Syncthing object
 	err = m.syncthing.FetchLatestInfo()
 	if err != nil {
 		return mover.InProgress(), err
 	}
-
 	m.logger.V(4).Info("Syncthing config", "config", m.syncthing.Config)
+
+	hasChanged := false
 
 	// check if the syncthing is configured
 	if m.syncthing.NeedsReconfigure(m.peerList) {
-		m.logger.Info("Syncthing needs reconfiguration")
+		m.logger.V(3).Info("Syncthing needs reconfiguration")
 
-		err = m.syncthing.UpdateDevices(m.peerList)
+		m.syncthing.UpdateDevices(m.peerList)
+		m.logger.V(4).Info("Syncthing config after configuration", "config", m.syncthing.Config)
+		hasChanged = true
+	}
+
+	// set the user and password if not already set
+	if m.syncthing.Config.GUI.User != m.syncthing.APIConfig.GUIUser &&
+		m.syncthing.Config.GUI.Password != m.syncthing.APIConfig.GUIPassword {
+		m.logger.V(3).Info("Syncthing needs user and password")
+		m.syncthing.Config.GUI.User = m.syncthing.APIConfig.GUIUser
+		m.syncthing.Config.GUI.Password = m.syncthing.APIConfig.GUIPassword
+		hasChanged = true
+	}
+
+	if hasChanged {
+		// update the config
+		err := m.syncthing.UpdateSyncthingConfig()
 		if err != nil {
 			m.logger.Error(err, "error updating syncthing config")
 			return mover.InProgress(), err
 		}
-		m.logger.V(4).Info("Syncthing config after configuration", "config", m.syncthing.Config)
 	}
-
 	return mover.Complete(), nil
 }
 
 func (m *Mover) ensureStatusIsUpdated() error {
 	// get the current status
-	if err := m.syncthing.FetchLatestInfo(); err != nil {
+	err := m.syncthing.FetchLatestInfo()
+	if err != nil {
 		return err
 	}
 
@@ -525,9 +543,11 @@ func (m *Mover) ensureStatusIsUpdated() error {
 		// check connection status
 		devStats, ok := m.syncthing.SystemConnections.Connections[device.ID]
 		m.status.Peers = append(m.status.Peers, v1alpha1.SyncthingPeerStatus{
-			ID:        device.ID,
-			Address:   device.Address,
-			Connected: ok && devStats.Connected,
+			ID:            device.ID,
+			Address:       device.Address,
+			Connected:     ok && devStats.Connected,
+			InBytesTotal:  int32(devStats.InBytesTotal),
+			OutBytesTotal: int32(devStats.OutBytesTotal),
 		})
 	}
 	return nil

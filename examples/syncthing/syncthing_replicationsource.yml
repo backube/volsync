@@ -20,8 +20,9 @@ spec:
   # trigger:
   #   manual: my-trigger
   syncthing:
-    peerList:
+    serviceType: ClusterIP
+    peers:
       - address: tcp://address
         ID: DA3Q6BT-IOETIDC-SUS2BY4-VSSQP7B-MTD2VUM-XMX6ZKG-4GXGVNP-EPMW5QH
-
+        introducer: true
 
