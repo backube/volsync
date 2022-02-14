@@ -6,7 +6,6 @@ Rsync-based replication
    :hidden:
 
    database_example
-   database_example_cross_cluster
    external_rsync
    ssh_keys
 
@@ -45,7 +44,7 @@ one on the destination side of the replication relationship.
 Destination configuration
 =========================
 
-Start by configuring the destination; a minimal example is shown below:
+Start by configuring the destination; an example is shown below:
 
 .. code:: yaml
 
@@ -60,14 +59,19 @@ Start by configuring the destination; a minimal example is shown below:
        copyMethod: Snapshot
        capacity: 10Gi
        accessModes: ["ReadWriteOnce"]
+       storageClassName: my-sc
+       volumeSnapshotClassName: my-vsc
 
-In the above example, a 10 GiB RWO volume will be provisioned using the default
-StorageClass to serve as the destination for replicated data. This volume is
-used by the rsync data mover to receive the incoming data transfers.
+In the above example, a 10 GiB RWO volume will be provisioned using the
+StorageClass ``my-sc`` to serve as the destination for replicated data. This
+volume is used by the rsync data mover to receive the incoming data transfers.
 
 Since the ``copyMethod`` specified above is ``Snapshot``, a VolumeSnapshot will
-be created at the end of each synchronization interval. It is this snapshot that
-would be used to gain access to the replicated data. The name of the current VolumeSnapshot holding the latest synced data will be placed in ``.status.latestImage``.
+be created, using the VolumeSnapshotClass named ``my-vsc``, at the end of each
+synchronization interval. It is this snapshot that would be used to gain access
+to the replicated data. The name of the current VolumeSnapshot holding the
+latest synced data will be placed in the ReplicationDestination's
+``.status.latestImage``.
 
 Destination status
 ------------------
@@ -110,13 +114,14 @@ In the above example,
   ``.status.rsync.address``. This should be used when configuring the
   corresponding ReplicationSource.
 - The ssh keys for the source to use are available in the Secret
-  ``.status.rsync.sshKeys``.
+  ``.status.rsync.sshKeys``. This Secret will need to be copied to the source so
+  that it can authenticate.
 
 After at least one synchronization has taken place, the following will also be
 available:
 
-- lastSyncTime contains the time of the last successful data synchronization.
-- latestImage references the object with the most recent copy of the data. If
+- ``lastSyncTime`` contains the time of the last successful data synchronization.
+- ``latestImage`` references the object with the most recent copy of the data. If
   the copyMethod is Snapshot, this will be a VolumeSnapshot object. If the
   copyMethod is Direct, this will be the PVC that is used as the destination by
   VolSync.
@@ -147,7 +152,7 @@ port
 Source configuration
 ====================
 
-A minimal source configuration is shown here:
+An example source configuration is shown here:
 
 .. code:: yaml
 
@@ -177,6 +182,20 @@ The synchronization schedule, ``.spec.trigger.schedule``, is defined by a
 `cronspec <https://en.wikipedia.org/wiki/Cron#Overview>`_, making the schedule
 very flexible. Both intervals (shown above) as well as specific times and/or
 days can be specified.
+
+When configuring the source, the user must manually create the Secret referenced
+in ``.spec.rsync.sshKeys`` by copying the contents from the Secret generated
+previously on the destination (and made available in the destination's
+``.status.rsync.sshKeys``).
+
+Additionally, this ReplicationSource specifies a ``copyMethod`` of ``Clone``
+which will directly generate a point-in-time copy of the source volume. However,
+not all CSI drivers support volume cloning (most notably the ebs-csi driver). In
+such cases, the ``copyMethod: Snapshot`` can be used to indirectly create a copy
+of the volume by first taking a snapshot, then restoring it. In this case, the
+user should also provide the ``volumeSnapshotClassName: <vsc-name>`` option to
+indicate which VolumeSnapshotClass VolSync should use when creating the
+temporary snapshot.
 
 Source status
 -------------

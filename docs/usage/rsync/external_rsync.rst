@@ -1,32 +1,27 @@
-==============
-External Rsync
-==============
-A situation may occur where data needs to be imported into a Kubernetes environment.
-In the VolSync repository, the script `bin/external-rsync-source` can be executed
-which will serve as the `replicationsource` allowing data to be replicated to a
-Kubernetes cluster.
+====================================
+Moving data into Kubernetes w/ Rsync
+====================================
+While VolSync is typically used to replicate data between Kubernetes clusters,
+it is sometimes necessary to replicate data into a cluster from outside. For
+example, when containerizing a previously standalone workload, that
+application's data needs to be moved into the cluster and onto a PVC.
+This section will walk through the process of pairing a VolSync
+ReplicationDestination and an external script to send data into a cluster.
+
+In this configuration, VolSync manages the destination (via a
+ReplicationDestination object), but instead of having a VolSync
+ReplicationSource as the sender, it will be an external script that plays that
+role. It will transmit the data to the destination by initiating the Rsync over
+SSH connection directly.
 
 Usage
 =====
-This binary works by using Rsync and SSH to copy a directory into an endpoint
-within a Kubernetes cluster created by the `replicationdestination` object. Connectivity
-must exist from the data source to the Kubernetes cluster. Because
-of the simplicity the underlying storage does not matter. This means the directory
-could exist on a NFS share, within GlusterFS, or on the servers filesystem.
+The helper script, ``./bin/external-rsync-source``, requires the following
+parameters:
 
-The binary requires specific flags to be provided.
-
-- -d Destination address to rsync the data
-- -i Path to the SSH Key
-- -s Source Directory
-
-An example usage of the script would be to copy the `/var/www/html` directory to the
-LoadBalancer service created by the `replicationdestination`.
-
-.. code:: bash
-
-   $ external-rsync-source -s /var/www/html -d a48a38bf6f69c4070831391e8b22e8d5-08027986c9de8c10.elb.us-east-2.amazonaws.com -i /home/user/source-key
-
+- ``-d`` Destination address to rsync the data
+- ``-i`` Path to the SSH Key
+- ``-s`` Source Directory
 
 Migration Example
 =================
@@ -34,49 +29,75 @@ Migration Example
 In this example, a database is running on a RHEL 8 server. It has been decided
 that this database should move from a server into a Kubernetes environment.
 
-Starting at the Kubernetes cluster create the `Namespace`,
-`replicationdestination`, and the `PVC` using the examples below.
+Starting at the Kubernetes cluster, we create the Namespace,
+ReplicationDestination, and the PVC:
 
-.. code:: bash
+.. code:: console
 
    $ kubectl create ns database
    $ kubectl create -f examples/external-database/replicationdestination.yaml
    $ kubectl create -f examples/external-database/mysql-pvc.yaml
 
+The ReplicationDestination is as follows:
 
-This will geneate a LoadBalancer service which will be used by our binary as our
-destination address.
+.. code:: yaml
 
-.. code:: bash
+   ---
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: database-destination
+     namespace: database
+   spec:
+     rsync:
+       serviceType: LoadBalancer
+       destinationPVC: mysql-pvc
+       copyMethod: Direct
 
+Since the have specified a ``serviceType: LoadBalancer``, VolSync will allocate
+a LoadBalancer Service to expose the SSH endpoint. We have also specified the
+destination PVC directly, via ``destinationPVC``. This tells VolSync not to
+allocate a volume, but instead, to use one that has been pre-created. Finally,
+we have also specified ``copyMethod: Direct`` which tells VolSync not to
+Snapshot the volume at the conclusion of each transfer. We have chosen this
+since we are directly syncing the data into its final PVC.
+
+Once the PVC and ReplicationDestination have been created, VolSync will provide
+the SSH keys and address of the LoadBalancer in the ``.status.rsync`` fields.
+
+.. code:: console
+
+   # Retrieve the connection address
    $ kubectl get replicationdestination database-destination -n database --template={{.status.rsync.address}}
+   a48a38bf6f69c4070831391e8b22e8d5-08027986c9de8c10.elb.us-east-2.amazonaws.com
 
-The `replicationdestination` created an SSH key to be used on the server.
+   # Get the SSH key Secret name
+   $ kubectl get replicationdestination database-destination -n database --template={{.status.rsync.sshKeys}}
+   volsync-rsync-dest-src-database-destination
 
-Acquire the private key by running the following.
-
-.. code:: bash
-
+   # Retrieve the source private key from the Secret
    $ kubectl get secret -n database volsync-rsync-dest-src-database-destination --template {{.data.source}} | base64 -d > ~/replication-key
    $ chmod 0600 ~/replication-key
 
-From the server, run the `external-rsync-source` binary specifying the Loadbalancer, SSH private key, and MySQL directory.
+Now that we have the address and the key, we can sync data into the cluster by
+specifying the directory to sync:
 
-.. code:: bash
+.. code:: console
 
-   $ ./external-rsync-source -i ~/replication-key -s /var/lib/mysql/ -d a48a38bf6f69c4070831391e8b22e8d5-08027986c9de8c10.elb.us-east-2.amazonaws.com
+   $ ./bin/external-rsync-source -i ~/replication-key -s /var/lib/mysql/ -d a48a38bf6f69c4070831391e8b22e8d5-08027986c9de8c10.elb.us-east-2.amazonaws.com
 
-At the Kubernetes cluster we can now create our database deployment.
+When this completes, all the data underneath the ``/var/lib/mysql`` directory
+will be present in the PVC. On the Kubernetes cluster we can now create our
+database deployment.
 
-.. code:: bash
+.. code:: console
 
    $ kubectl create -f examples/external-database/mysql-deployment.yaml
-
 
 Now that the MySQL deployment is running, verify the expected databases exist within the Kubernetes cluster. When logging
 into the database the password and authentication values were copied over from the database running on the RHEL server.
 
-.. code:: bash
+.. code:: console
 
    $ kubectl exec --stdin --tty -n database `kubectl get pods -n database | grep mysql | awk '{print $1}'` -- /bin/bash
    $ root@mysql-87c47498d-7rc9m:/# mysql -u root -p
