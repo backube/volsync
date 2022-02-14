@@ -2,6 +2,14 @@
 
 set -e -o pipefail
 
+# check if helm exists 
+for cmd in helm docker kind; do
+	if ! command -v $cmd >/dev/null 2>&1; then
+		echo "Error: $cmd is not installed"
+		exit 1
+	fi
+done
+
 # cd to top dir
 scriptdir="$(dirname "$(realpath "$0")")"
 cd "$scriptdir/.."
