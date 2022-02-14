@@ -17,10 +17,18 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 package cmd
 
 import (
+	"context"
+	"fmt"
+	"time"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/klog/v2"
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
@@ -103,4 +111,63 @@ func init() {
 	migrationCmd.PersistentFlags().StringP("relationship", "r", "", "relationship name")
 	cobra.CheckErr(migrationCmd.MarkPersistentFlagRequired("relationship"))
 	cobra.CheckErr(viper.BindPFlag("relationship", migrationCmd.PersistentFlags().Lookup("relationship")))
+}
+
+func loadMigrationRelationship(cmd *cobra.Command) (*migrationRelationship, error) {
+	r, err := LoadRelationshipFromCommand(cmd, MigrationRelationshipType)
+	if err != nil {
+		return nil, err
+	}
+
+	mr := &migrationRelationship{
+		Relationship: *r,
+	}
+
+	// Decode according to the file version
+	version := mr.GetInt("data.version")
+	switch version {
+	case 1:
+		if err := mr.GetData(&mr.data); err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("unsupported config file version %d", version)
+	}
+	return mr, nil
+}
+
+func (mrd *migrationRelationshipDestination) waitForRDStatus(ctx context.Context, clientObject client.Client) (
+	*volsyncv1alpha1.ReplicationDestination, error) {
+	// wait for migrationdestination to become ready
+	nsName := types.NamespacedName{
+		Namespace: mrd.Namespace,
+		Name:      mrd.RDName,
+	}
+	rd := &volsyncv1alpha1.ReplicationDestination{}
+	err := wait.PollImmediate(5*time.Second, 2*time.Minute, func() (bool, error) {
+		err := clientObject.Get(ctx, nsName, rd)
+		if err != nil {
+			return false, err
+		}
+		if rd.Status == nil || rd.Status.Rsync == nil {
+			return false, nil
+		}
+		if rd.Status.Rsync.Address == nil {
+			klog.V(2).Infof("Waiting for MigrationDestination %s RSync address to populate", rd.Name)
+			return false, nil
+		}
+
+		if rd.Status.Rsync.SSHKeys == nil {
+			klog.V(2).Infof("Waiting for MigrationDestination %s RSync sshkeys to populate", rd.Name)
+			return false, nil
+		}
+
+		klog.V(2).Infof("Found MigrationDestination RSync Address: %s", *rd.Status.Rsync.Address)
+		return true, nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch rd status: %w,", err)
+	}
+
+	return rd, nil
 }
