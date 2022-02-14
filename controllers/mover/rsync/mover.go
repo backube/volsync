@@ -44,19 +44,20 @@ const (
 
 // Mover is the reconciliation logic for the Restic-based data mover.
 type Mover struct {
-	client       client.Client
-	logger       logr.Logger
-	owner        metav1.Object
-	vh           *volumehandler.VolumeHandler
-	sshKeys      *string
-	serviceType  *corev1.ServiceType
-	address      *string
-	port         *int32
-	isSource     bool
-	paused       bool
-	mainPVCName  *string
-	sourceStatus *volsyncv1alpha1.ReplicationSourceRsyncStatus
-	destStatus   *volsyncv1alpha1.ReplicationDestinationRsyncStatus
+	client         client.Client
+	logger         logr.Logger
+	owner          metav1.Object
+	vh             *volumehandler.VolumeHandler
+	containerImage string
+	sshKeys        *string
+	serviceType    *corev1.ServiceType
+	address        *string
+	port           *int32
+	isSource       bool
+	paused         bool
+	mainPVCName    *string
+	sourceStatus   *volsyncv1alpha1.ReplicationSourceRsyncStatus
+	destStatus     *volsyncv1alpha1.ReplicationDestinationRsyncStatus
 }
 
 var _ mover.Mover = &Mover{}
@@ -368,7 +369,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 			Name:    "rsync",
 			Env:     containerEnv,
 			Command: containerCmd,
-			Image:   rsyncContainerImage,
+			Image:   m.containerImage,
 			SecurityContext: &corev1.SecurityContext{
 				Capabilities: &corev1.Capabilities{
 					Add: []corev1.Capability{

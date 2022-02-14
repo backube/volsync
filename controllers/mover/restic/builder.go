@@ -22,6 +22,7 @@ import (
 	"fmt"
 
 	"github.com/go-logr/logr"
+	"github.com/spf13/viper"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
@@ -29,25 +30,59 @@ import (
 	"github.com/backube/volsync/controllers/volumehandler"
 )
 
-// defaultResticContainerImage is the default container image for the restic
-// data mover
-const defaultResticContainerImage = "quay.io/backube/volsync-mover-restic:latest"
+const (
+	// defaultResticContainerImage is the default container image for the restic
+	// data mover
+	defaultResticContainerImage = "quay.io/backube/volsync-mover-restic:latest"
+	// Command line flag will be checked first
+	// If command line flag not set, the RELATED_IMAGE_ env var will be used
+	resticContainerImageFlag   = "restic-container-image"
+	resticContainerImageEnvVar = "RELATED_IMAGE_RESTIC_CONTAINER"
+)
 
-// resticContainerImage is the container image name of the restic data mover
-var resticContainerImage string
-
-type Builder struct{}
+type Builder struct {
+	viper *viper.Viper  // For unit tests to be able to override - global viper will be used by default in Register()
+	flags *flag.FlagSet // For unit tests to be able to override - global flags will be used by default in Register()
+}
 
 var _ mover.Builder = &Builder{}
 
-func Register() {
-	flag.StringVar(&resticContainerImage, "restic-container-image",
-		defaultResticContainerImage, "The container image for the restic data mover")
-	mover.Register(&Builder{})
+func Register() error {
+	// Use global viper & command line flags
+	b, err := newBuilder(viper.GetViper(), flag.CommandLine)
+	if err != nil {
+		return err
+	}
+
+	mover.Register(b)
+	return nil
+}
+
+func newBuilder(viper *viper.Viper, flags *flag.FlagSet) (*Builder, error) {
+	b := &Builder{
+		viper: viper,
+		flags: flags,
+	}
+
+	// Set default restic container image - will be used if both command line flag and env var are not set
+	b.viper.SetDefault(resticContainerImageFlag, defaultResticContainerImage)
+
+	// Setup command line flag for the restic container image
+	b.flags.String(resticContainerImageFlag, defaultResticContainerImage,
+		"The container image for the restic data mover")
+	// Viper will check for command line flag first, then fallback to the env var
+	err := b.viper.BindEnv(resticContainerImageFlag, resticContainerImageEnvVar)
+
+	return b, err
 }
 
 func (rb *Builder) VersionInfo() string {
-	return fmt.Sprintf("Restic container: %s", resticContainerImage)
+	return fmt.Sprintf("Restic container: %s", rb.getResticContainerImage())
+}
+
+// resticContainerImage is the container image name of the restic data mover
+func (rb *Builder) getResticContainerImage() string {
+	return rb.viper.GetString(resticContainerImageFlag)
 }
 
 func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
@@ -76,6 +111,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		logger:                logger.WithValues("method", "Restic"),
 		owner:                 source,
 		vh:                    vh,
+		containerImage:        rb.getResticContainerImage(),
 		cacheAccessModes:      source.Spec.Restic.CacheAccessModes,
 		cacheCapacity:         source.Spec.Restic.CacheCapacity,
 		cacheStorageClassName: source.Spec.Restic.CacheStorageClassName,
@@ -110,6 +146,7 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		logger:                logger.WithValues("method", "Restic"),
 		owner:                 destination,
 		vh:                    vh,
+		containerImage:        rb.getResticContainerImage(),
 		cacheAccessModes:      destination.Spec.Restic.CacheAccessModes,
 		cacheCapacity:         destination.Spec.Restic.CacheCapacity,
 		cacheStorageClassName: destination.Spec.Restic.CacheStorageClassName,

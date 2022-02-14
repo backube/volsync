@@ -28,6 +28,8 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1beta1"
+	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
 	kruntime "k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -61,9 +63,18 @@ func init() {
 //nolint:funlen
 func main() {
 	// Register the data movers
-	rsync.Register()
-	rclone.Register()
-	restic.Register()
+	if err := rsync.Register(); err != nil {
+		setupLog.Error(err, "Error registering rsync data mover")
+		os.Exit(1)
+	}
+	if err := rclone.Register(); err != nil {
+		setupLog.Error(err, "Error registering rclone data mover")
+		os.Exit(1)
+	}
+	if err := restic.Register(); err != nil {
+		setupLog.Error(err, "Error registering restic data mover")
+		os.Exit(1)
+	}
 
 	var metricsAddr string
 	var enableLeaderElection bool
@@ -79,7 +90,14 @@ func main() {
 		Development: true,
 	}
 	opts.BindFlags(flag.CommandLine)
-	flag.Parse()
+
+	// Import flags into pflag so they can be bound by viper
+	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+	pflag.Parse()
+	if err := viper.BindPFlags(pflag.CommandLine); err != nil {
+		setupLog.Error(err, "Unable to bind command line flags")
+		os.Exit(1)
+	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 

@@ -19,10 +19,14 @@ package restic
 
 import (
 	"context"
+	"flag"
+	"os"
 	"time"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -158,8 +162,9 @@ var _ = Describe("Restic prune policy", func() {
 var _ = Describe("Restic properly registers", func() {
 	When("Restic's registration function is called", func() {
 		BeforeEach(func() {
-			Register()
+			Expect(Register()).To(Succeed())
 		})
+
 		It("is added to the mover catalog", func() {
 			found := false
 			for _, v := range mover.Catalog {
@@ -168,6 +173,115 @@ var _ = Describe("Restic properly registers", func() {
 				}
 			}
 			Expect(found).To(BeTrue())
+		})
+	})
+})
+
+var _ = Describe("Restic inits flags and env vars", func() {
+	logger := zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
+	When("Restic builder inits flags", func() {
+		var builderForInitTests *Builder
+		var testPflagSet *pflag.FlagSet
+		BeforeEach(func() {
+			os.Unsetenv(resticContainerImageEnvVar)
+
+			// Instantiate new viper instance and flagSet just for this test
+			testViper := viper.New()
+			testFlagSet := flag.NewFlagSet("testflagsetrestic", flag.ExitOnError)
+
+			// New Builder for this test - use testViper and testFlagSet so we can modify
+			// flags for these tests without modifying global flags and potentially affecting other tests
+			var err error
+			builderForInitTests, err = newBuilder(testViper, testFlagSet)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(builderForInitTests).NotTo(BeNil())
+
+			// code here (see main.go) for viper to bind cmd line flags (including those
+			// defined in the mover Register() func)
+			// Bind viper to a new set of flags so each of these tests can get their own
+			testPflagSet = pflag.NewFlagSet("testpflagsetrestic", pflag.ExitOnError)
+			testPflagSet.AddGoFlagSet(testFlagSet)
+			Expect(testViper.BindPFlags(testPflagSet)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			os.Unsetenv(resticContainerImageEnvVar)
+		})
+
+		JustBeforeEach(func() {
+			// Common checks - make sure if we instantiate a source/dest mover, it uses the container image that
+			// was picked up by flags/command line etc from the builder
+			var err error
+
+			rs := &volsyncv1alpha1.ReplicationSource{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "testrscr",
+					Namespace: "testing",
+				},
+				Spec: volsyncv1alpha1.ReplicationSourceSpec{
+					Restic: &volsyncv1alpha1.ReplicationSourceResticSpec{},
+				},
+				Status: &volsyncv1alpha1.ReplicationSourceStatus{}, // Controller sets status to non-nil
+			}
+			sourceMover, err := builderForInitTests.FromSource(k8sClient, logger, rs)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(sourceMover).NotTo(BeNil())
+			sourceResticMover, _ := sourceMover.(*Mover)
+			Expect(sourceResticMover.containerImage).To(Equal(builderForInitTests.getResticContainerImage()))
+
+			rd := &volsyncv1alpha1.ReplicationDestination{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "rd",
+					Namespace: "testing",
+				},
+				Spec: volsyncv1alpha1.ReplicationDestinationSpec{
+					Trigger: &volsyncv1alpha1.ReplicationDestinationTriggerSpec{},
+					Restic:  &volsyncv1alpha1.ReplicationDestinationResticSpec{},
+				},
+				Status: &volsyncv1alpha1.ReplicationDestinationStatus{}, // Controller sets status to non-nil
+			}
+			destMover, err := builderForInitTests.FromDestination(k8sClient, logger, rd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(destMover).NotTo(BeNil())
+			destResticMover, _ := destMover.(*Mover)
+			Expect(destResticMover.containerImage).To(Equal(builderForInitTests.getResticContainerImage()))
+		})
+
+		Context("When no command line flag or ENV var is specified", func() {
+			It("Should use the default restic container image", func() {
+				Expect(builderForInitTests.getResticContainerImage()).To(Equal(defaultResticContainerImage))
+			})
+		})
+
+		Context("When restic container image command line flag is specified", func() {
+			const cmdLineOverrideImageName = "test-restic-image-name:cmdlineoverride"
+			BeforeEach(func() {
+				// Manually set the value of the command line flag
+				Expect(testPflagSet.Set("restic-container-image", cmdLineOverrideImageName)).To(Succeed())
+			})
+			It("Should use the restic container image set by the cmd line flag", func() {
+				Expect(builderForInitTests.getResticContainerImage()).To(Equal(cmdLineOverrideImageName))
+			})
+
+			Context("And env var is set", func() {
+				const envVarOverrideShouldBeIgnored = "test-restic-image-name:donotuseme"
+				BeforeEach(func() {
+					os.Setenv(resticContainerImageEnvVar, envVarOverrideShouldBeIgnored)
+				})
+				It("Should still use the cmd line flag instead of the env var", func() {
+					Expect(builderForInitTests.getResticContainerImage()).To(Equal(cmdLineOverrideImageName))
+				})
+			})
+		})
+
+		Context("When resticc container image cmd line flag is not set and env var is", func() {
+			const envVarOverrideImageName = "test-restic-image-name:setbyenvvar"
+			BeforeEach(func() {
+				os.Setenv(resticContainerImageEnvVar, envVarOverrideImageName)
+			})
+			It("Should use the value from the env var", func() {
+				Expect(builderForInitTests.getResticContainerImage()).To(Equal(envVarOverrideImageName))
+			})
 		})
 	})
 })
@@ -185,8 +299,7 @@ var _ = Describe("Restic ignores other movers", func() {
 					Restic: nil,
 				},
 			}
-			builder := Builder{}
-			m, e := builder.FromSource(k8sClient, logger, rs)
+			m, e := commonBuilderForTestSuite.FromSource(k8sClient, logger, rs)
 			Expect(m).To(BeNil())
 			Expect(e).NotTo(HaveOccurred())
 		})
@@ -202,8 +315,7 @@ var _ = Describe("Restic ignores other movers", func() {
 					Restic: nil,
 				},
 			}
-			builder := Builder{}
-			m, e := builder.FromDestination(k8sClient, logger, rd)
+			m, e := commonBuilderForTestSuite.FromDestination(k8sClient, logger, rd)
 			Expect(m).To(BeNil())
 			Expect(e).NotTo(HaveOccurred())
 		})
@@ -278,9 +390,7 @@ var _ = Describe("Restic as a source", func() {
 			// Controller sets status to non-nil
 			rs.Status = &volsyncv1alpha1.ReplicationSourceStatus{}
 			// Instantiate a restic mover for the tests
-			b := Builder{}
-			var err error
-			m, err := b.FromSource(k8sClient, logger, rs)
+			m, err := commonBuilderForTestSuite.FromSource(k8sClient, logger, rs)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(m).NotTo(BeNil())
 			mover, _ = m.(*Mover)
@@ -504,7 +614,6 @@ var _ = Describe("Restic as a source", func() {
 				}
 			})
 			JustBeforeEach(func() {
-				resticContainerImage = "thecontainerimage"
 				Expect(k8sClient.Create(ctx, cache)).To(Succeed())
 				Expect(k8sClient.Create(ctx, sa)).To(Succeed())
 				Expect(k8sClient.Create(ctx, repo)).To(Succeed())
@@ -536,7 +645,7 @@ var _ = Describe("Restic as a source", func() {
 					}).Should(Succeed())
 					Expect(len(job.Spec.Template.Spec.Containers)).To(BeNumerically(">", 0))
 					args := job.Spec.Template.Spec.Containers[0].Image
-					Expect(args).To(Equal(resticContainerImage))
+					Expect(args).To(Equal(defaultResticContainerImage))
 				})
 				It("should use the specified service account", func() {
 					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo)
@@ -689,9 +798,7 @@ var _ = Describe("Restic as a destination", func() {
 			// Controller sets status to non-nil
 			rd.Status = &volsyncv1alpha1.ReplicationDestinationStatus{}
 			// Instantiate a restic mover for the tests
-			b := Builder{}
-			var err error
-			m, err := b.FromDestination(k8sClient, logger, rd)
+			m, err := commonBuilderForTestSuite.FromDestination(k8sClient, logger, rd)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(m).NotTo(BeNil())
 			mover, _ = m.(*Mover)
@@ -824,7 +931,6 @@ var _ = Describe("Restic as a destination", func() {
 				}
 			})
 			JustBeforeEach(func() {
-				resticContainerImage = "thecontainerimage"
 				Expect(k8sClient.Create(ctx, dPVC)).To(Succeed())
 				Expect(k8sClient.Create(ctx, cache)).To(Succeed())
 				Expect(k8sClient.Create(ctx, sa)).To(Succeed())

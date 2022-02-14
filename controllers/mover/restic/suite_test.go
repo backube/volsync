@@ -19,12 +19,14 @@ package restic
 
 import (
 	"context"
+	"flag"
 	"path/filepath"
 	"testing"
 
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1beta1"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/spf13/viper"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -51,6 +53,7 @@ const (
 var cfg *rest.Config
 var k8sClient client.Client
 var testEnv *envtest.Environment
+var commonBuilderForTestSuite *Builder
 var cancel context.CancelFunc
 
 func TestAPIs(t *testing.T) {
@@ -126,6 +129,11 @@ var _ = BeforeSuite(func(done Done) {
 
 	k8sClient = k8sManager.GetClient()
 	Expect(k8sClient).ToNot(BeNil())
+
+	// Instantiate common restic builder to use for tests in this test suite
+	commonBuilderForTestSuite, err = newBuilder(viper.New(), flag.NewFlagSet("testfsetrestic", flag.ExitOnError))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(commonBuilderForTestSuite).NotTo(BeNil())
 
 	close(done)
 }, 60)

@@ -52,6 +52,7 @@ type Mover struct {
 	logger                logr.Logger
 	owner                 metav1.Object
 	vh                    *volumehandler.VolumeHandler
+	containerImage        string
 	cacheAccessModes      []corev1.PersistentVolumeAccessMode
 	cacheCapacity         *resource.Quantity
 	cacheStorageClassName *string
@@ -359,7 +360,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 			},
 			Command: []string{"/entry.sh"},
 			Args:    actions,
-			Image:   resticContainerImage,
+			Image:   m.containerImage,
 			SecurityContext: &corev1.SecurityContext{
 				RunAsUser: &runAsUser,
 			},
