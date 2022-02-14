@@ -185,7 +185,9 @@ func (r *Relationship) GetData(data interface{}) error {
 		if to != reflect.TypeOf(resource.Quantity{}) {
 			return data, nil
 		}
-		return resource.ParseQuantity(data.(string))
+		// We know this is going to succeed due to from.Kind() check
+		sQuantity, _ := data.(string)
+		return resource.ParseQuantity(sQuantity)
 	}))
 }
 
