@@ -9,7 +9,7 @@ The following directions will walk through the process of deploying VolSync.
    functionality. It is recommended that you use a CSI driver and StorageClass
    capable of snapshotting and cloning volumes.
 
-There are three options for installing VolSync. Choose the option that relates to
+There are several methods for installing VolSync. Choose the option that relates to
 your situation.
 
 .. warning::
@@ -20,9 +20,8 @@ your situation.
 Kubernetes & OpenShift
 ======================
 
-While the operator can be deployed via the ``make deploy`` or ``make
-deploy-openshift`` targets, the recommended method for deploying VolSync is via
-the Helm chart.
+The recommended method for deploying VolSync is via its `Helm
+chart <https://artifacthub.io/packages/helm/backube-helm-charts/volsync>`_.
 
 .. code-block:: console
 
@@ -305,13 +304,6 @@ directory that will get a cluster running and properly configured.
 Once you have a cluster running, you can either build and deploy the operator in
 the cluster, or you can run the operator locally against the cluster.
 
-If you will be working with the Rclone or Restic movers, you may want to deploy
-Minio in the kind cluster to act as an object repository. It can be started via:
-
-.. code-block:: console
-
-   $ ./hack/run-minio.sh
-
 .. tabs::
 
    .. tab:: Build & deploy
@@ -339,3 +331,10 @@ Minio in the kind cluster to act as an object repository. It can be started via:
 
          # Run the operator locally
          $ make run
+
+If you will be working with the Rclone or Restic movers, you may want to deploy
+Minio in the kind cluster to act as an object repository. It can be started via:
+
+.. code-block:: console
+
+   $ ./hack/run-minio.sh
