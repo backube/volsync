@@ -36,7 +36,7 @@ import (
 type migrationSync struct {
 	mr *migrationRelationship
 	// Address is the remote address to connect to for replication.
-	Address string
+	DestAddr string
 	// Source volume to be migrated
 	Source string
 	// client object to communicate with a cluster
@@ -53,17 +53,15 @@ var migrationSyncCmd = &cobra.Command{
 	migration create which establishes the relationship.
 	`)),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ms := &migrationSync{}
+		ms, err := newMigrationSync(cmd)
+		if err != nil {
+			return err
+		}
 		mr, err := loadMigrationRelationship(cmd)
 		if err != nil {
 			return err
 		}
 		ms.mr = mr
-
-		err = ms.newMigrationSync(cmd)
-		if err != nil {
-			return err
-		}
 
 		return ms.Run(cmd.Context())
 	},
@@ -81,8 +79,7 @@ func initmigrationSyncCmd(migrationCreateCmd *cobra.Command) {
 }
 
 func (ms *migrationSync) Run(ctx context.Context) error {
-	mrd := ms.mr.data.Destination
-	k8sClient, err := newClient(mrd.Cluster)
+	k8sClient, err := newClient(ms.mr.data.Destination.Cluster)
 	if err != nil {
 		return err
 	}
@@ -119,37 +116,15 @@ func (ms *migrationSync) Run(ctx context.Context) error {
 	return nil
 }
 
-func loadMigrationRelationship(cmd *cobra.Command) (*migrationRelationship, error) {
-	r, err := LoadRelationshipFromCommand(cmd, MigrationRelationshipType)
-	if err != nil {
-		return nil, err
-	}
-
-	mr := &migrationRelationship{
-		Relationship: *r,
-	}
-
-	// Decode according to the file version
-	version := mr.GetInt("data.version")
-	switch version {
-	case 1:
-		if err := mr.GetData(&mr.data); err != nil {
-			return nil, err
-		}
-	default:
-		return nil, fmt.Errorf("unsupported config file version %d", version)
-	}
-	return mr, nil
-}
-
-func (ms *migrationSync) newMigrationSync(cmd *cobra.Command) error {
+func newMigrationSync(cmd *cobra.Command) (*migrationSync, error) {
+	ms := &migrationSync{}
 	source, err := cmd.Flags().GetString("source")
 	if err != nil || source == "" {
-		return fmt.Errorf("failed to fetch the source arg, err = %w", err)
+		return nil, fmt.Errorf("failed to fetch the source arg, err = %w", err)
 	}
 	ms.Source = source
 
-	return nil
+	return ms, nil
 }
 
 //nolint:funlen
@@ -160,7 +135,7 @@ func (ms *migrationSync) retrieveSecrets(ctx context.Context) (*string, error) {
 	if err != nil {
 		return nil, err
 	}
-	ms.Address = *rd.Status.Rsync.Address
+	ms.DestAddr = *rd.Status.Rsync.Address
 	sshKeysSecret := rd.Status.Rsync.SSHKeys
 	sshSecret := &corev1.Secret{}
 	nsName := types.NamespacedName{
@@ -190,7 +165,9 @@ func (ms *migrationSync) retrieveSecrets(ctx context.Context) (*string, error) {
 	}
 
 	filename = filepath.Join(sshKeydir, "destination.pub")
-	err = ioutil.WriteFile(filename, sshSecret.Data["destination.pub"], 0600)
+	destinationPub := fmt.Sprintf("%s %s", ms.DestAddr,
+		sshSecret.Data["destination.pub"])
+	err = ioutil.WriteFile(filename, []byte(destinationPub), 0600)
 	if err != nil {
 		return &sshKeydir, fmt.Errorf("unable to write to the file, %w", err)
 	}
@@ -198,18 +175,20 @@ func (ms *migrationSync) retrieveSecrets(ctx context.Context) (*string, error) {
 	return &sshKeydir, nil
 }
 
-func (ms *migrationSync) runRsync(ctx context.Context, keydir string) error {
-	bin := "rsync"
-	sshKey := keydir + "/source"
-	ssh := "ssh -i " + sshKey
-	dest := "root@" + ms.Address + ":."
+func (ms *migrationSync) runRsync(ctx context.Context, sshKeydir string) error {
+	sshKey := filepath.Join(sshKeydir, "source")
+	knownHostfile := filepath.Join(sshKeydir, "destination.pub")
+	ssh := fmt.Sprintf("ssh -i %s -o UserKnownHostsFile=%s -o StrictHostKeyChecking=yes",
+		sshKey, knownHostfile)
+	dest := fmt.Sprintf("root@%s:.", ms.DestAddr)
 
-	cmd := exec.CommandContext(ctx, bin, "-aAhHSxze", ssh, "--delete",
+	cmd := exec.CommandContext(ctx, "rsync", "-aAhHSxze", ssh, "--delete",
 		"--itemize-changes", "--info=stats2,misc2", ms.Source, dest)
 
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
-	klog.Infof("Executing \"%v\"", cmd)
+	klog.Infof("Migrating Data from \"%s\" to \"%s\\%s\\%s\"", ms.Source, ms.mr.data.Destination.Cluster,
+		ms.mr.data.Destination.Namespace, ms.mr.data.Destination.PVCName)
 	err := cmd.Start()
 	if err != nil {
 		return fmt.Errorf("failed to run =%w", err)

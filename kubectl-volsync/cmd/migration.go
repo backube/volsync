@@ -113,6 +113,29 @@ func init() {
 	cobra.CheckErr(viper.BindPFlag("relationship", migrationCmd.PersistentFlags().Lookup("relationship")))
 }
 
+func loadMigrationRelationship(cmd *cobra.Command) (*migrationRelationship, error) {
+	r, err := LoadRelationshipFromCommand(cmd, MigrationRelationshipType)
+	if err != nil {
+		return nil, err
+	}
+
+	mr := &migrationRelationship{
+		Relationship: *r,
+	}
+
+	// Decode according to the file version
+	version := mr.GetInt("data.version")
+	switch version {
+	case 1:
+		if err := mr.GetData(&mr.data); err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("unsupported config file version %d", version)
+	}
+	return mr, nil
+}
+
 func (mrd *migrationRelationshipDestination) waitForRDStatus(ctx context.Context, clientObject client.Client) (
 	*volsyncv1alpha1.ReplicationDestination, error) {
 	// wait for migrationdestination to become ready
