@@ -1,0 +1,24 @@
+---
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+commands:
+  - script: |
+      set -e -o pipefail
+
+      ST_ADDRESS=$(kubectl get replicationsource syncthing-2 -n "${NAMESPACE}" -o jsonpath="{.status.syncthing.address}")
+      ST_DEVICE_ID=$(kubectl get replicationsource syncthing-2 -n "${NAMESPACE}" -o jsonpath="{.status.syncthing.deviceID}")
+      kubectl apply -n "$NAMESPACE" -f - <<EOF
+      ---
+      apiVersion: volsync.backube/v1alpha1
+      kind: ReplicationSource
+      metadata:
+        name: syncthing-1
+      spec:
+        sourcePVC: test-data-1
+        syncthing:
+          serviceType: ClusterIP
+          peers:
+          - address: ${ST_ADDRESS}
+            ID: ${ST_DEVICE_ID}
+            introducer: true
+      EOF

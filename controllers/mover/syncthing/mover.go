@@ -44,19 +44,13 @@ import (
 
 // constants used in the syncthing configuration
 const (
-	dataDirEnv             = "SYNCTHING_DATA_DIR"
-	dataDirMountPath       = "/data"
-	configDirEnv           = "SYNCTHING_CONFIG_DIR"
-	configDirMountPath     = "/config"
-	configPVCName          = "syncthing-config"
-	syncthingJobName       = "syncthing"
-	syncthingContainerName = "syncthing"
-	syncthingAPIPort       = 8384
-	syncthingDataPort      = 22000
-	appLabelName           = "syncthing"
-	apiKeySecretName       = "syncthing-apikey"
-	apiServiceName         = "syncthing-api"
-	dataServiceName        = "syncthing-data"
+	dataDirEnv         = "SYNCTHING_DATA_DIR"
+	dataDirMountPath   = "/data"
+	configDirEnv       = "SYNCTHING_CONFIG_DIR"
+	configDirMountPath = "/config"
+	syncthingAPIPort   = 8384
+	syncthingDataPort  = 22000
+	appLabelName       = "syncthing"
 )
 
 // Mover is the reconciliation logic for the Restic-based data mover.
@@ -132,7 +126,7 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 func (m *Mover) ensureConfigPVC(ctx context.Context) (*corev1.PersistentVolumeClaim, error) {
 	configPVC := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      configPVCName,
+			Name:      "volsync-" + m.owner.GetName() + "-config",
 			Namespace: m.owner.GetNamespace(),
 		},
 	}
@@ -145,7 +139,7 @@ func (m *Mover) ensureConfigPVC(ctx context.Context) (*corev1.PersistentVolumeCl
 	// otherwise, create the PVC
 	configPVC = &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      configPVCName,
+			Name:      "volsync-" + m.owner.GetName() + "-config",
 			Namespace: m.owner.GetNamespace(),
 			Labels: map[string]string{
 				"app": appLabelName,
@@ -196,7 +190,7 @@ func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) 
 	// check if the secret exists, error if it doesn't
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      apiKeySecretName,
+			Name:      "volsync-" + m.owner.GetName(),
 			Namespace: m.owner.GetNamespace(),
 			Labels: map[string]string{
 				"app": appLabelName,
@@ -209,7 +203,7 @@ func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) 
 		// need to create the secret
 		secret = &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      apiKeySecretName,
+				Name:      "volsync-" + m.owner.GetName(),
 				Namespace: m.owner.GetNamespace(),
 				Labels: map[string]string{
 					"app": appLabelName,
@@ -242,9 +236,11 @@ func (m *Mover) ensureDeployment(ctx context.Context) (*appsv1.Deployment, error
 	var configVolumeName, dataVolumeName string = "syncthing-config", "syncthing-data"
 	var numReplicas int32 = 1
 
+	deploymentName := "volsync-" + m.owner.GetName()
+
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      syncthingJobName,
+			Name:      deploymentName,
 			Namespace: m.owner.GetNamespace(),
 			Labels: map[string]string{
 				"app": appLabelName,
@@ -267,7 +263,7 @@ func (m *Mover) ensureDeployment(ctx context.Context) (*appsv1.Deployment, error
 					RestartPolicy: corev1.RestartPolicyAlways,
 					Containers: []corev1.Container{
 						{
-							Name:  syncthingContainerName,
+							Name:  "syncthing",
 							Image: syncthingContainerImage,
 							Command: []string{
 								"/entry.sh",
@@ -289,7 +285,7 @@ func (m *Mover) ensureDeployment(ctx context.Context) (*appsv1.Deployment, error
 									ValueFrom: &corev1.EnvVarSource{
 										SecretKeyRef: &corev1.SecretKeySelector{
 											LocalObjectReference: corev1.LocalObjectReference{
-												Name: apiKeySecretName,
+												Name: "volsync-" + m.owner.GetName(),
 											},
 											Key: "apikey",
 										},
@@ -330,7 +326,7 @@ func (m *Mover) ensureDeployment(ctx context.Context) (*appsv1.Deployment, error
 							Name: configVolumeName,
 							VolumeSource: corev1.VolumeSource{
 								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-									ClaimName: configPVCName,
+									ClaimName: "volsync-" + m.owner.GetName() + "-config",
 								},
 							},
 						},
@@ -348,7 +344,7 @@ func (m *Mover) ensureDeployment(ctx context.Context) (*appsv1.Deployment, error
 		},
 	}
 	// check if deployment already exists, if so, don't create it again
-	err := m.client.Get(ctx, types.NamespacedName{Name: syncthingJobName, Namespace: m.owner.GetNamespace()}, deployment)
+	err := m.client.Get(ctx, types.NamespacedName{Name: deploymentName, Namespace: m.owner.GetNamespace()}, deployment)
 	if err != nil && errors.IsNotFound(err) {
 		// set owner ref
 		if err = ctrl.SetControllerReference(m.owner, deployment, m.client.Scheme()); err != nil {
@@ -365,9 +361,10 @@ func (m *Mover) ensureDeployment(ctx context.Context) (*appsv1.Deployment, error
 
 func (m *Mover) ensureAPIService(ctx context.Context) (*corev1.Service, error) {
 	targetPort := "api"
+	serviceName := "volsync-" + m.owner.GetName() + "-api"
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      apiServiceName,
+			Name:      serviceName,
 			Namespace: m.owner.GetNamespace(),
 			Labels: map[string]string{
 				"app": appLabelName,
@@ -403,7 +400,7 @@ func (m *Mover) ensureAPIService(ctx context.Context) (*corev1.Service, error) {
 	if m.syncthing.APIConfig.APIURL == "" {
 		// get the service url
 		m.syncthing.APIConfig.APIURL = fmt.Sprintf(
-			"https://%s.%s:%d", apiServiceName, m.owner.GetNamespace(), syncthingAPIPort,
+			"https://%s.%s:%d", serviceName, m.owner.GetNamespace(), syncthingAPIPort,
 		)
 	}
 	return service, nil
@@ -412,7 +409,7 @@ func (m *Mover) ensureAPIService(ctx context.Context) (*corev1.Service, error) {
 func (m *Mover) ensureDataService(ctx context.Context) (*corev1.Service, error) {
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      dataServiceName,
+			Name:      "volsync-" + m.owner.GetName() + "-data",
 			Namespace: m.owner.GetNamespace(),
 			Labels: map[string]string{
 				"app": appLabelName,
@@ -435,9 +432,7 @@ func (m *Mover) ensureDataService(ctx context.Context) (*corev1.Service, error) 
 	err := m.client.Get(ctx, client.ObjectKeyFromObject(service), service)
 	if err == nil {
 		m.logger.Info("service already exists", "service", service.Name)
-		if service.Status.LoadBalancer.Ingress != nil && len(service.Status.LoadBalancer.Ingress) > 0 {
-			m.status.Address = "tcp://" + service.Status.LoadBalancer.Ingress[0].IP + ":" + strconv.Itoa(syncthingDataPort)
-		}
+		m.status.Address = m.GetDataServiceAddress(service)
 		return service, nil
 	}
 
@@ -449,11 +444,22 @@ func (m *Mover) ensureDataService(ctx context.Context) (*corev1.Service, error) 
 		m.logger.Error(err, "error creating the service")
 		return nil, err
 	}
-	if service.Status.LoadBalancer.Ingress != nil && len(service.Status.LoadBalancer.Ingress) > 0 {
-		m.status.Address = "tcp://" + service.Status.LoadBalancer.Ingress[0].IP + ":" + strconv.Itoa(syncthingDataPort)
-	}
-
+	m.status.Address = m.GetDataServiceAddress(service)
 	return service, nil
+}
+
+func (m *Mover) GetDataServiceAddress(service *corev1.Service) string {
+	address := ""
+	if m.serviceType == corev1.ServiceTypeLoadBalancer {
+		if service.Status.LoadBalancer.Ingress != nil && len(service.Status.LoadBalancer.Ingress) > 0 {
+			address = "tcp://" + service.Status.LoadBalancer.Ingress[0].IP + ":" + strconv.Itoa(syncthingDataPort)
+		}
+	} else if m.serviceType == corev1.ServiceTypeClusterIP {
+		if service.Spec.ClusterIP != "" {
+			address = "tcp://" + service.Spec.ClusterIP + ":" + strconv.Itoa(syncthingDataPort)
+		}
+	}
+	return address
 }
 
 func (m *Mover) Cleanup(ctx context.Context) (mover.Result, error) {
@@ -469,7 +475,11 @@ func (m *Mover) getAPIKey(ctx context.Context) (string, error) {
 	// get the syncthing-apikey secret
 	if m.syncthing.APIConfig.APIKey == "" {
 		secret := &corev1.Secret{}
-		err := m.client.Get(ctx, client.ObjectKey{Name: apiKeySecretName, Namespace: m.owner.GetNamespace()}, secret)
+		err := m.client.Get(ctx, client.ObjectKey{
+			Name:      "volsync-" + m.owner.GetName(),
+			Namespace: m.owner.GetNamespace(),
+		},
+			secret)
 		if err != nil {
 			return "", err
 		}
@@ -505,8 +515,8 @@ func (m *Mover) ensureIsConfigured(ctx context.Context) (mover.Result, error) {
 	}
 
 	// set the user and password if not already set
-	if m.syncthing.Config.GUI.User != m.syncthing.APIConfig.GUIUser &&
-		m.syncthing.Config.GUI.Password != m.syncthing.APIConfig.GUIPassword {
+	if m.syncthing.Config.GUI.User != m.syncthing.APIConfig.GUIUser ||
+		m.syncthing.Config.GUI.Password == "" {
 		m.logger.V(3).Info("Syncthing needs user and password")
 		m.syncthing.Config.GUI.User = m.syncthing.APIConfig.GUIUser
 		m.syncthing.Config.GUI.Password = m.syncthing.APIConfig.GUIPassword
@@ -543,11 +553,9 @@ func (m *Mover) ensureStatusIsUpdated() error {
 		// check connection status
 		devStats, ok := m.syncthing.SystemConnections.Connections[device.ID]
 		m.status.Peers = append(m.status.Peers, v1alpha1.SyncthingPeerStatus{
-			ID:            device.ID,
-			Address:       device.Address,
-			Connected:     ok && devStats.Connected,
-			InBytesTotal:  int32(devStats.InBytesTotal),
-			OutBytesTotal: int32(devStats.OutBytesTotal),
+			ID:        device.ID,
+			Address:   device.Address,
+			Connected: ok && devStats.Connected,
 		})
 	}
 	return nil

@@ -2,7 +2,7 @@
 
 set -e -o pipefail
 
-# check if helm exists 
+# check if commands exist
 for cmd in helm docker kind; do
 	if ! command -v $cmd >/dev/null 2>&1; then
 		echo "Error: $cmd is not installed"
