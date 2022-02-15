@@ -233,4 +233,102 @@ var _ = Describe("Replication relationships", func() {
 			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rd2), &newRd)).To(Succeed())
 		})
 	})
+	Context("ensureDestinationPVC makes sure there is a destination PVC", func() {
+		var destNS *corev1.Namespace
+		var srcPVC *corev1.PersistentVolumeClaim
+		BeforeEach(func() {
+			destNS = &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{GenerateName: "test-"},
+			}
+			Expect(k8sClient.Create(ctx, destNS)).To(Succeed())
+			srcCap := resource.MustParse("7Gi")
+			srcPVC = &corev1.PersistentVolumeClaim{
+				Spec: corev1.PersistentVolumeClaimSpec{
+					AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+					Resources: corev1.ResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceStorage: srcCap,
+						},
+					},
+				},
+			}
+		})
+		When("destination size and accessMode aren't specified", func() {
+			BeforeEach(func() {
+				repRel.data.Destination = &replicationRelationshipDestination{
+					Cluster:     "",
+					Namespace:   destNS.Name,
+					RDName:      "test",
+					Destination: volsyncv1alpha1.ReplicationDestinationRsyncSpec{},
+				}
+			})
+			It("uses the values from the Source PVC", func() {
+				dstPVC, err := repRel.ensureDestinationPVC(ctx, k8sClient, srcPVC)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(dstPVC).NotTo(BeNil())
+				Expect(dstPVC.Spec.AccessModes).To(ConsistOf(srcPVC.Spec.AccessModes))
+				Expect(*dstPVC.Spec.Resources.Requests.Storage()).To(Equal(*srcPVC.Spec.Resources.Requests.Storage()))
+			})
+		})
+		When("destination size and accessMode are provided", func() {
+			var newCap resource.Quantity
+			BeforeEach(func() {
+				newCap = resource.MustParse("99Gi")
+				repRel.data.Destination = &replicationRelationshipDestination{
+					Cluster:   "",
+					Namespace: destNS.Name,
+					RDName:    "test",
+					Destination: volsyncv1alpha1.ReplicationDestinationRsyncSpec{
+						ReplicationDestinationVolumeOptions: volsyncv1alpha1.ReplicationDestinationVolumeOptions{
+							AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany},
+							Capacity:    &newCap,
+						},
+					},
+				}
+			})
+			It("uses the provided values", func() {
+				dstPVC, err := repRel.ensureDestinationPVC(ctx, k8sClient, srcPVC)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(dstPVC).NotTo(BeNil())
+				Expect(dstPVC.Spec.AccessModes).To(ConsistOf([]corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany}))
+				Expect(*dstPVC.Spec.Resources.Requests.Storage()).To(Equal(resource.MustParse("99Gi")))
+			})
+		})
+		When("the destination PVC exists", func() {
+			var existingPVC *corev1.PersistentVolumeClaim
+			BeforeEach(func() {
+				existingPVC = &corev1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test",
+						Namespace: destNS.Name,
+					},
+					Spec: corev1.PersistentVolumeClaimSpec{
+						AccessModes: []corev1.PersistentVolumeAccessMode{
+							corev1.ReadWriteOnce,
+						},
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceStorage: resource.MustParse("45Gi"),
+							},
+						},
+						StorageClassName: pointer.String("thesc"),
+					},
+				}
+				Expect(k8sClient.Create(ctx, existingPVC)).To(Succeed())
+				repRel.data.Destination = &replicationRelationshipDestination{
+					Cluster:     "",
+					Namespace:   destNS.Name,
+					RDName:      "test",
+					Destination: volsyncv1alpha1.ReplicationDestinationRsyncSpec{},
+				}
+			})
+			It("will not be modified", func() {
+				dstPVC, err := repRel.ensureDestinationPVC(ctx, k8sClient, srcPVC)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(dstPVC).NotTo(BeNil())
+				Expect(dstPVC.Spec.AccessModes).To(ConsistOf(existingPVC.Spec.AccessModes))
+				Expect(*dstPVC.Spec.Resources.Requests.Storage()).To(Equal(*existingPVC.Spec.Resources.Requests.Storage()))
+			})
+		})
+	})
 })
