@@ -83,7 +83,7 @@ func (rs *replicationSync) Run(ctx context.Context) error {
 		return fmt.Errorf("unable to save relationship configuration: %w", err)
 	}
 
-	return rs.waitForSync(ctx, dstClient)
+	return rs.waitForSync(ctx, srcClient)
 }
 
 func (rs *replicationSync) waitForSync(ctx context.Context, srcClient client.Client) error {
