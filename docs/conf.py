@@ -19,7 +19,7 @@ import sphinx_rtd_theme
 # -- Project information -----------------------------------------------------
 
 project = 'VolSync'
-copyright = '2020, The VolSync authors'
+copyright = '2020 - 2022, The VolSync authors'
 author = 'The VolSync authors'
 
 
