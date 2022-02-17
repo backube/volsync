@@ -1,6 +1,6 @@
-========
-SSH keys
-========
+=========================
+Manual SSH key generation
+=========================
 
 Normally, VolSync generates SSH keys upon the deployment of a ReplicationDestination object
 but SSH keys can also be provided to VolSync rather than generating new ones. The

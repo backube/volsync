@@ -11,6 +11,7 @@ Rclone-based replication
 .. sidebar:: Contents
 
    .. contents:: Rclone-based replication
+      :local:
 
 Rclone-based replication supports 1:many asynchronous replication of volumes for use
 cases such as:

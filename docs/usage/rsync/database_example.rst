@@ -33,7 +33,8 @@ The ReplicationDestination has the following configuration:
 
 A LoadBalancer Service is created by VolSync which will be used by the
 ReplicationSource to connect to the destination. Record the service IP address
-as it will be used in the ReplicationSource configuration.
+as it will be used in the ReplicationSource configuration. :ref:`(More
+information on LoadBalancer vs ClusterIP) <RsyncServiceExplanation>`
 
 .. code:: console
 
@@ -56,7 +57,7 @@ Verify the database is running.
    mysql-8b9c5c8d8-24w6g   1/1     Running   0          17s
 
 Now create the ReplicationSource items. First, we need the ssh
-secret from the destination namespace.
+secret from the destination namespace. :ref:`(SSH Secret copying details) <RsyncKeyCopy>`
 
 .. code:: console
 

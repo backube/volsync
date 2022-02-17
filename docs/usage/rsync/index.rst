@@ -12,6 +12,7 @@ Rsync-based replication
 .. sidebar:: Contents
 
    .. contents:: Rsync-based replication
+      :local:
 
 Rsync-based replication supports 1:1 asynchronous replication of volumes for use
 cases such as:
@@ -34,7 +35,7 @@ relationship to trigger each replication iteration.
 
 During each iteration, (optionally) a point-in-time (PiT) copy of the source
 volume is created and used as the source data. The VolSync Rsync data mover then
-connects to the destination using ssh (exposed via a Service or load balancer)
+connects to the destination using ssh :ref:`(exposed via a Service) <RsyncServiceExplanation>`
 and sends any updates. At the conclusion of the transfer, the destination
 (optionally) creates a VolumeSnapshot to preserve the updated data.
 
@@ -114,7 +115,7 @@ In the above example,
   ``.status.rsync.address``. This should be used when configuring the
   corresponding ReplicationSource.
 - The ssh keys for the source to use are available in the Secret
-  ``.status.rsync.sshKeys``. This Secret will need to be copied to the source so
+  ``.status.rsync.sshKeys``. This Secret will need to be :ref:`copied to the source <RsyncKeyCopy>` so
   that it can authenticate.
 
 After at least one synchronization has taken place, the following will also be
@@ -143,7 +144,7 @@ sshKeys
    ``.status.rsync.sshKeys``.
 serviceType
    VolSync creates a Service to allow the source to connect to the destination.
-   This field determines the type of that Service. Allowed values are ClusterIP
+   This field determines the :ref:`type of that Service <RsyncServiceExplanation>`. Allowed values are ClusterIP
    or LoadBalancer. The default is ClusterIP.
 port
    This determines the TCP port number that is used to connect via ssh. The
@@ -184,7 +185,7 @@ very flexible. Both intervals (shown above) as well as specific times and/or
 days can be specified.
 
 When configuring the source, the user must manually create the Secret referenced
-in ``.spec.rsync.sshKeys`` by copying the contents from the Secret generated
+in ``.spec.rsync.sshKeys`` by :ref:`copying the contents <RsyncKeyCopy>` from the Secret generated
 previously on the destination (and made available in the destination's
 ``.status.rsync.sshKeys``).
 
@@ -276,3 +277,203 @@ sshUser
    value is "root".
 
 For a concrete example, see the :doc:`database synchronization example <database_example>`.
+
+Rsync-specific considerations
+=============================
+
+This section explains some additional considerations when setting up rsync-based
+replication.
+
+.. _RsyncKeyCopy:
+
+Copying the SSH key secret
+--------------------------
+
+When setting up the replication, it is necessary for the ReplicationSource to
+have a copy of the SSH keys so that it can connect to the network endpoint
+created by the ReplicationDestination. While these keys can be :doc:`generated
+manually <ssh_keys>`, the recommended method is to allow VolSync to generate the
+keys when setting up the ReplicationDestination. The resulting Secret should
+then be copied to the source cluster.
+
+Below is an example of a ReplicationDestination object. The VolSync operator has
+generated the SSH keys that should be used in the source, and it has provided
+the name of the Secret containing them in the ``.status.rsync.sshKeys`` field:
+
+.. code-block:: yaml
+    :caption: ReplicationDestination with SSH key Secret highlighted
+    :emphasize-lines: 27
+
+    apiVersion: volsync.backube/v1alpha1
+    kind: ReplicationDestination
+    metadata:
+      creationTimestamp: "2022-02-17T13:56:16Z"
+      generation: 1
+      name: database-destination
+      namespace: dest
+      resourceVersion: "2307"
+      uid: 71f0512b-8a6b-438c-9b9a-0dd2c0f4e7b8
+    spec:
+      rsync:
+        accessModes:
+        - ReadWriteOnce
+        capacity: 2Gi
+        copyMethod: Snapshot
+        serviceType: ClusterIP
+    status:
+      conditions:
+      - lastTransitionTime: "2022-02-17T13:56:30Z"
+        message: Reconcile complete
+        reason: ReconcileComplete
+        status: "True"
+        type: Reconciled
+      lastSyncStartTime: "2022-02-17T13:56:16Z"
+      rsync:
+        address: 10.96.150.107
+        sshKeys: volsync-rsync-dst-src-database-destination
+
+
+This Secret exists in the same Namespace as the associated
+Replicationdestination. It has the following contents:
+
+.. code-block:: yaml
+    :caption: Secret as created by VolSync
+
+    apiVersion: v1
+    data:
+      destination.pub: c3NoL...
+      source: LS0tL...
+      source.pub: c3NoLX...
+    kind: Secret
+    metadata:
+      creationTimestamp: "2022-02-17T13:56:30Z"
+      name: volsync-rsync-dst-src-database-destination
+      namespace: dest
+      ownerReferences:
+      - apiVersion: volsync.backube/v1alpha1
+        blockOwnerDeletion: true
+        controller: true
+        kind: ReplicationDestination
+        name: database-destination
+        uid: 71f0512b-8a6b-438c-9b9a-0dd2c0f4e7b8
+      resourceVersion: "2296"
+      uid: 61ab5402-318f-46df-b36f-cd209f3d1455
+    type: Opaque
+
+The above Secret contains 3 fields: the source's public, the source's private,
+and the destination's public keys.
+
+This Secret must be copied to the source cluster, into the same Namespace where
+the source PVC and ReplicationSource will reside. That can be accomplished as
+follows:
+
+.. code-block:: console
+
+    $ kubectl -n dest get secret volsync-rsync-dst-src-database-destination -oyaml > secret.yaml
+
+Once saved to the local file, prepare it for the new cluster/namespace by
+removing the following fields from the ``metadata`` area:
+
+- ``creationTimestamp``
+- ``namespace``
+- ``ownerReferences``
+- ``resourceVersion``
+- ``uid``
+
+After removing the above fields, the Secret is as follows:
+
+.. code-block:: yaml
+    :caption: Prepared ``secret.yaml``
+
+    apiVersion: v1
+    data:
+      destination.pub: c3NoL...
+      source: LS0tL...
+      source.pub: c3NoLX...
+    kind: Secret
+    metadata:
+      name: volsync-rsync-dst-src-database-destination
+    type: Opaque
+
+Assuming the source objects will be in Namespace ``source``, this Secret can be
+added to the source cluster via:
+
+.. code-block:: console
+
+    $ kubectl -n source create -f secret.yaml
+    secret/volsync-rsync-dst-src-database-destination created
+
+This Secret should then be referenced when creating the corresponding
+ReplicationSource. For example:
+
+.. code-block:: yaml
+    :caption: ReplicationSource showing reference to SSH key Secret
+    :emphasize-lines: 11
+
+    apiVersion: volsync.backube/v1alpha1
+    kind: ReplicationSource
+    metadata:
+      name: database-source
+      namespace: source
+    spec:
+      sourcePVC: mysql-pv-claim
+      trigger:
+        schedule: "*/10 * * * *"
+      rsync:
+        sshKeys: volsync-rsync-dest-src-database-destination
+        address: my.host.com
+        copyMethod: Clone
+
+.. _RsyncServiceExplanation:
+
+Choosing between Service types (ClusterIP vs LoadBalancer)
+----------------------------------------------------------
+
+When using Rsync-based replication, the ReplicationSource needs to be able to
+make a network connection to the ReplicationDestination. This requires network
+connectivity from the source to the destination cluster.
+
+When a ReplicationDestination object is created, VolSync creates a corresponding
+Service object to serve as the network endpoint. The type of Service
+(LoadBalancer or ClusterIP) should be specified in the ReplicationDestination's
+``.spec.rsync.serviceType`` field.
+
+.. code-block:: yaml
+    :caption: ReplicationDestination with service type highlighted
+    :emphasize-lines: 12
+
+    apiVersion: volsync.backube/v1alpha1
+    kind: ReplicationDestination
+    metadata:
+      name: database-destination
+      namespace: dest
+    spec:
+      rsync:
+        accessModes:
+        - ReadWriteOnce
+        capacity: 2Gi
+        copyMethod: Snapshot
+        serviceType: ClusterIP
+
+The clusters' networking configuration between the two clusters affects the
+proper choice of Service type.
+
+If ``ClusterIP`` is specified, the Service will receive an IP address allocated
+from the "cluster network" address pool. By default, this collection of
+addresses are not accessible from outside the cluster, making it a poor choice
+for cross-cluster replication. However, various networking addons such as
+`Submariner <https://submariner.io/>`_ bridge the cluster networks, making this
+a good option.
+
+If ``LoadBalancer`` is specified, an externally accessible IP address will be
+allocated. This requires cluster support for load balancers such as those
+provided by the various cloud providers or `MetalLB
+<https://metallb.universe.tf/>`_ in the case of physical clusters. While this is
+the easiest method for allocating an accessible address in cloud environments,
+load balancers tend to incur additional costs and be limited in number.
+
+To summarize the above trade-offs, when running on one of the public clouds,
+using a LoadBalancer is a quick way to get started and will work for replicating
+small numbers of volumes. If replicating a large number of volumes, an overlay
+network solution such as Submariner in combination with ClusterIP addresses will
+likely be more scalable.

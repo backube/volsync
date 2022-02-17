@@ -10,8 +10,7 @@ Restic-based backup
 .. sidebar:: Contents
 
    .. contents:: Backing up using Restic
-
-
+      :local:
 
 VolSync supports taking backups of PersistentVolume data using the Restic-based
 data mover. A ReplicationSource defines the backup policy (target, frequency,
