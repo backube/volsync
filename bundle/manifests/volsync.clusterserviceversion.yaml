@@ -288,6 +288,13 @@ spec:
                 - --scc-name=privileged
                 command:
                 - /manager
+                env:
+                - name: RELATED_IMAGE_RSYNC_CONTAINER
+                  value: quay.io/backube/volsync-mover-rsync:latest
+                - name: RELATED_IMAGE_RCLONE_CONTAINER
+                  value: quay.io/backube/volsync-mover-rclone:latest
+                - name: RELATED_IMAGE_RESTIC_CONTAINER
+                  value: quay.io/backube/volsync-mover-restic:latest
                 image: quay.io/backube/volsync:latest
                 livenessProbe:
                   httpGet:
