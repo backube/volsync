@@ -11,6 +11,7 @@ Rclone-based replication
 .. sidebar:: Contents
 
    .. contents:: Rclone-based replication
+      :local:
 
 Rclone-based replication supports 1:many asynchronous replication of volumes for use
 cases such as:
@@ -18,28 +19,32 @@ cases such as:
 - High fan-out data replication from a central site to many (edge) sites
 
 With this method, VolSync synchronizes data from a ReplicationSource to a ReplicationDestination
-using `Rclone <https://rclone.org/>`_ using an intermediary storage system like AWS S3. 
+using `Rclone <https://rclone.org/>`_ via an intermediary object storage location like AWS S3.
 
 ----------------------------------
 
-The Rclone method uses a "push" and "pull" model for the data replication. A schedule or other 
-trigger is used on the source side of the relationship to trigger each replication iteration.
+The Rclone method uses a "push" and "pull" model for the data replication. This requires a schedule or other
+trigger on both the source and destination sides to trigger the replication iterations.
 
-Following are the sequences of events happening in each iterations.
+During each synchronization iteration:
 
-- A point-in-time (PiT) copy of the source volume is created using CSI drivers. It will be used as the source data.
-- A temporary PVC is created out of the PiT copy and mounted on Rclone data mover job pod.
-- The VolSync Rclone data mover then connects to the intermediary storage system (e.g. AWS S3) using configurations
-  based on ``rclone-secret``. It uses ``rclone sync`` to copy source data to S3.
-- At the conclusion of the transfer, the destination creates a PiT copy to preserve the incoming source data.
+- A point-in-time (PiT) copy of the source volume is created using CSI drivers. This copy will be used as the source data.
+- The copy is attached to an Rclone data mover job pod which uses the contents of the ``rclone-secret`` to connect to the intermediary object storage target (e.g., AWS S3).
+- The source pod uses ``rclone sync`` to copy the data to S3.
+- On the destination side, a corresponding Rclone mover pod syncs the data from the intermediate object storage into a volume on the destination.
+- At the conclusion of the transfer, the destination creates a snapshot copy to preserve a point-in-time copy of the incoming source data.
 
 VolSync is configured via two CustomResources (CRs), one on the source side and
-one on the destination side of the replication relationship.
+one on the destination side of the replication relationship. While there should
+only be one ReplicationSource pushing data to the intermediate storage, there
+may be an arbitrary number of ReplicationDestination instances syncing data from
+the intermediate storage to destination clusters. This enables the model of high
+fan-out data distribution.
 
 Source configuration
 =========================
 
-Start by configuring the source; a minimal example is shown below:
+An example source configuration is shown below:
 
 .. code:: yaml
 
@@ -50,25 +55,35 @@ Start by configuring the source; a minimal example is shown below:
     name: database-source
     namespace: source
   spec:
+    # The PVC to sync
     sourcePVC: mysql-pv-claim
     trigger:
+      # Synchronize every 6 minutes
       schedule: "*/6 * * * *"
     rclone:
+      # The configuration section of the rclone config file to use
       rcloneConfigSection: "aws-s3-bucket"
+      # The path to the object bucket
       rcloneDestPath: "volsync-test-bucket"
+      # Secret holding the rclone configuration
       rcloneConfig: "rclone-secret"
+      # Method used to generate the PiT copy
       copyMethod: Snapshot
+      # The StorageClass to use when creating the PiT copy (same as source PVC if omitted)
+      storageClassName: my-sc-name
+      # The VSC to use if the copy method is Snapshot (default if omitted)
+      volumeSnapshotClassName: my-vsc-name
 
 Since the ``copyMethod`` specified above is ``Snapshot``, the Rclone data mover creates a ``VolumeSnapshot`` 
-of the source pvc ``mysql-pv-claim`` using the cluster's default ``VolumeSnapshotClass``.
+of the source pvc ``mysql-pv-claim``. Then it converts this snapshot back into a PVC.
+If ``copyMethod: Clone`` were used, the temporary, point-in-time copy would be
+created by cloning the source PVC to a new PVC directly. This is more efficient,
+but it is not supported by all CSI drivers.
 
 The synchronization schedule, ``.spec.trigger.schedule``, is defined by a
 `cronspec <https://en.wikipedia.org/wiki/Cron#Overview>`_, making the schedule
 very flexible. Both intervals (shown above) as well as specific times and/or
 days can be specified.
-
-It then creates a temproray pvc ``volsync-src-database-source`` out of the VolumeSnapshot to transfer source
-data to the intermediary storage system like AWS S3 using the configurations provided in ``rclone-secret``
 
 Source status
 -----------------
@@ -82,10 +97,12 @@ Once the ``ReplicationSource`` is deployed, VolSync updates the ``nextSyncTime``
   #  ... omitted ...
   spec:
     rclone:
-      copyMethod:           Snapshot
-      rcloneConfig:         rclone-secret
-      rcloneConfigSection:  aws-s3-bucket
-      rcloneDestPath:       volsync-test-bucket
+      copyMethod:               Snapshot
+      rcloneConfig:             rclone-secret
+      rcloneConfigSection:      aws-s3-bucket
+      rcloneDestPath:           volsync-test-bucket
+      storageClassName:         my-sc-name
+      volumeSnapshotClassName:  my-vsc-name
     sourcePVC:              mysql-pv-claim
     trigger:
       schedule:  "*/6 * * * *"
@@ -99,29 +116,17 @@ Once the ``ReplicationSource`` is deployed, VolSync updates the ``nextSyncTime``
       nextSyncTime:          2021-01-18T22:00:00Z
 
 
-In the above ``ReplicationSource`` object,
-
-- The Rclone configuations are provided via ``rclone-secret``
-- The PiT copy of the source data ``mysql-pv-claim`` will be created using cluster's default ``VolumeSnapshot``.
-- ``rcloneDestPath`` indicates the location on the intermediary storage system where the source data
-  will be copied
-- The synchronization schedule, ``.spec.trigger.schedule``, is defined by a 
-  `cronspec <https://en.wikipedia.org/wiki/Cron#Overview>`_, making the schedule very flexible. 
-  Both intervals (shown above) as well as specific times and/or days can be specified.
-- No errors were detected (the Reconciled condition is True)
-- ``nextSyncTime`` indicates the time of the upcoming Rclone data mover job
-
 Additional source options
 -------------------------
 
 There are a number of more advanced configuration parameters that are supported
 for configuring the source. All of the following options would be placed within
-the .spec.rclone portion of the ReplicationSource CustomResource.
+the ``.spec.rclone`` portion of the ReplicationSource CustomResource.
 
 .. include:: ../inc_src_opts.rst
 
 rcloneConfigSection
-   This is used to idenitfy the object storage configuration within
+   This is used to identify the configuration section within
    ``rclone.conf`` to use.
 
 rcloneDestPath
@@ -129,15 +134,16 @@ rcloneDestPath
    be uploaded.
 
 rcloneConfig
-   This specifies the secret to be used. The secret contains credentials
-   for the remote storage location.
+   This specifies the name of a secret to be used to retrieve the Rclone
+   configuration. The :doc:`content of the Secret<./rclone-secret>` is an
+   ``rclone.conf`` file.
 
 ----------------------------------
 
 Destination configuration
 =========================
 
-A minimal destination configuration is shown here:
+An example destination configuration is shown here:
 
 .. code:: yaml
 
@@ -149,7 +155,8 @@ A minimal destination configuration is shown here:
     namespace: dest
   spec:
     trigger:
-      schedule: "*/6 * * * *"
+      # Every 6 minutes, offset by 3 minutes
+      schedule: "3,9,15,21,27,33,39,45,51,57 * * * *"
     rclone:
       rcloneConfigSection: "aws-s3-bucket"
       rcloneDestPath: "volsync-test-bucket"
@@ -157,15 +164,18 @@ A minimal destination configuration is shown here:
       copyMethod: Snapshot
       accessModes: [ReadWriteOnce]
       capacity: 10Gi
+      storageClassName: my-sc
+      volumeSnapshotClassName: my-vsc
 
+Similar to the replication source, a synchronization schedule is defined
+``.spec.trigger.schedule``. This indicates when persistent data should be pulled
+from the remote storage location. It is important that the schedule for the
+destinations are offset from that of the source to allow the source to finish
+pushing updates for an iteration prior to the the destination attempting to pull
+them.
 
-In the above example, a 10 GiB RWO volume will be provisioned using the default
-``StorageClass`` to serve as the destination for replicated data. This volume is
+In the above example, a 10 GiB RWO volume will be provisioned using the ``my-sc`` StorageClass to serve as the destination for replicated data. This volume is
 used by the Rclone data mover to receive the incoming data transfers.
-
-Similar to the replication source, a synchronization schedule is defined ``.spec.trigger.schedule``.
-This indicates when persistent data should be pulled from the remote storage location.
-
 
 Since the ``copyMethod`` specified above is ``Snapshot``, a ``VolumeSnapshot`` of the incoming data
 will be created at the end of each synchronization interval. It is this snapshot that
@@ -188,11 +198,13 @@ VolSync provides status information on the state of the replication via the
     Rclone:
       Access Modes:
         ReadWriteOnce
-      Capacity:               10Gi
-      Copy Method:            Snapshot
-      Rclone Config:          rclone-secret
-      Rclone Config Section:  aws-s3-bucket
-      Rclone Dest Path:       volsync-test-bucket
+      Capacity:                    10Gi
+      Copy Method:                 Snapshot
+      Rclone Config:               rclone-secret
+      Rclone Config Section:       aws-s3-bucket
+      Rclone Dest Path:            volsync-test-bucket
+      Storage Class Name:          my-sc
+      Volume Snapshot Class Name:  my-vsc
     Status:
       Conditions:
         Last Transition Time:  2021-01-19T22:16:02Z
@@ -211,16 +223,16 @@ VolSync provides status information on the state of the replication via the
 In the above example,
 
 - ``Rclone Dest Path`` indicates the intermediary storage system from where data will be
-  transfered to the destination site. In the above example, the intermediary storage system is S3 bucket
-- No errors were detected (the Reconciled condition is True)
+  transferred to the destination site. In the above example, the intermediary storage system is an S3 bucket.
+- No errors were detected (the Reconciled condition is True).
 
 After at least one synchronization has taken place, the following will also be
 available:
 
 - ``Last Sync Time`` contains the time of the last successful data synchronization.
 - ``Latest Image`` references the object with the most recent copy of the data. If
-  the copyMethod is Snapshot, this will be a VolumeSnapshot object. If the
-  copyMethod is Direct, this will be the PVC that is used as the destination by
+  the copyMethod is ``Snapshot``, this will be a VolumeSnapshot object. If the
+  copyMethod is ``Direct``, this will be the PVC that is used as the destination by
   VolSync.
 
 Additional destination options
@@ -233,7 +245,7 @@ within the ``.spec.rclone`` portion of the ReplicationDestination CustomResource
 .. include:: ../inc_dst_opts.rst
 
 rcloneConfigSection
-   This is used to idenitfy the object storage configuration within
+   This is used to identify the configuration section within
    ``rclone.conf`` to use.
 
 rcloneDestPath
@@ -241,7 +253,7 @@ rcloneDestPath
    be downloaded.
 
 rcloneConfig
-   This specifies the secret to be used. The secret contains credentials
-   for the remote storage location.
+   This specifies the secret to be used. The secret contains an ``rclone.conf``
+   file with the configuration and credentials for the object target.
 
 For a concrete example, see the :doc:`database synchronization example <database_example>`.

@@ -15,14 +15,14 @@ Creating source PVC to be backed up
 
 Create a namespace called ``source``, and deploy the source MySQL database.
 
-.. code-block:: none
+.. code-block:: console
 
    $ kubectl create ns source
    $ kubectl -n source create -f examples/source-database/
 
 Verify the database is running:
 
-.. code-block:: none
+.. code-block:: console
 
    $ kubectl -n source get pods,pvc,volumesnapshots
 
@@ -35,7 +35,7 @@ Verify the database is running:
 
 Add a new database:
 
-.. code-block:: none
+.. code-block:: console
 
    $ kubectl exec --stdin --tty -n source `kubectl get pods -n source | grep mysql | awk '{print $1}'` -- /bin/bash
 
@@ -66,7 +66,7 @@ for the backup.
 
 Start ``minio``:
 
-.. code-block:: none
+.. code-block:: console
 
    $ hack/run-minio.sh
 
@@ -118,7 +118,6 @@ Start by configuring the source; a minimal example is shown below
           monthly: 1
           yearly: 1
         copyMethod: Clone
-      
 
 In the above ``ReplicationSource`` object,
 
@@ -137,7 +136,7 @@ In the above ``ReplicationSource`` object,
 Now, deploy the ``restic-config`` followed by ``ReplicationSource`` configuration.
 
 
-.. code-block:: none
+.. code-block:: console
 
    $ kubectl create -f examples/restic/source-restic/source-restic.yaml -n source
    $ kubectl create -f examples/restic/volsync_v1alpha1_replicationsource.yaml -n source
@@ -145,7 +144,7 @@ Now, deploy the ``restic-config`` followed by ``ReplicationSource`` configuratio
 To verify the replication has completed, view the the ReplicationSource
 ``.status`` field.
 
-.. code-block:: none
+.. code-block:: console
 
    $ kubectl -n source get ReplicationSource/database-source -oyaml
 
@@ -176,7 +175,7 @@ completed.
 The backup created by VolSync can be seen by directly accessing the Restic
 repository:
 
-.. code-block:: none
+.. code-block:: console
 
    # In one window, create a port forward to access the minio server
    $ kubectl port-forward --namespace minio svc/minio 9000:9000
@@ -200,14 +199,14 @@ Restoring the backup
 To restore from the backup, create a destination, deploy ``restic-config`` and
 ``ReplicationDestination`` on the destination.
 
-.. code-block:: none
+.. code-block:: console
 
    $ kubectl create ns dest
    $ kubectl -n dest create -f examples/restic/source-restic/
 
 To start the restore, create a empty PVC for the data:
 
-.. code-block:: none
+.. code-block:: console
 
    $ kubectl -n dest create -f examples/source-database/mysql-pvc.yaml
    persistentvolumeclaim/mysql-pv-claim created
@@ -230,7 +229,7 @@ Create the ReplicationDestination in the ``dest`` namespace to restore the data:
        copyMethod: Direct
 
 
-.. code-block:: none
+.. code-block:: console
 
    $ kubectl -n dest create -f examples/restic/volsync_v1alpha1_replicationdestination.yaml
 
@@ -240,14 +239,13 @@ Once the restore is complete, the ``.status.lastManualSync`` field will match
 To verify restore, deploy the MySQL database to the ``dest`` namespace which will use the data that has
 been restored from sourcePVC backup.
 
-.. code-block:: none
+.. code-block:: console
 
    $ kubectl create -n dest -f examples/destination-database/
 
-
 Validate that the mysql pod is running within the environment.
 
-.. code-block:: none
+.. code-block:: console
 
    $ kubectl get pods -n dest
    NAME                                           READY   STATUS    RESTARTS   AGE
@@ -256,7 +254,7 @@ Validate that the mysql pod is running within the environment.
 Connect to the mysql pod and list the databases to verify the synced database
 exists.
 
-.. code-block:: none
+.. code-block:: console
 
    $ kubectl exec --stdin --tty -n dest `kubectl get pods -n dest | grep mysql | awk '{print $1}'` -- /bin/bash
    $ mysql -u root -p$MYSQL_ROOT_PASSWORD

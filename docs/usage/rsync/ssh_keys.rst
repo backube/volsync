@@ -1,8 +1,8 @@
-========
-SSH keys
-========
+=========================
+Manual SSH key generation
+=========================
 
-VolSync generates SSH keys upon the deployment of a ReplicationDestination object
+Normally, VolSync generates SSH keys upon the deployment of a ReplicationDestination object
 but SSH keys can also be provided to VolSync rather than generating new ones. The
 steps below will describe the process to provide VolSync SSH keys.
 
@@ -12,7 +12,7 @@ Generating keys
 ``ssh-keygen`` can be used to generate SSH keys. The keys that are created will
 be used to create secrets which will be used by VolSync.
 
-Two keys need to be generated. The first SSH key will called ``destination``.
+Two key pairs need to be generated. The first SSH key will called ``destination``.
 
 .. code::
 
@@ -21,7 +21,7 @@ Two keys need to be generated. The first SSH key will called ``destination``.
    Your identification has been saved in destination
    Your public key has been saved in destination.pub
    The key fingerprint is:
-   SHA256:5gRLpIdeu+3CbkScH7qIsEw6tMNPRdVFUe82ihWw5BU 
+   SHA256:5gRLpIdeu+3CbkScH7qIsEw6tMNPRdVFUe82ihWw5BU
    The key's randomart image is:
    +---[RSA 4096]----+
    |      ... o*oE.  |
@@ -84,8 +84,9 @@ Replication destination configuration
 =====================================
 
 The last step to use these keys is to provide the value of ``sshKeys`` to the
-ReplicationDestination object as a field. As an example we will modify
-``examples/rsync/volsync_v1alpha1_replicationdestination.yaml``.
+ReplicationDestination object as a field. Since the name of a key Secret is
+being provided in ``.spec.rsync.sshKeys``, the operator will use this Secret
+instead of generating its own and placing it in the ``.status``.
 
 .. code:: yaml
 
@@ -97,10 +98,7 @@ ReplicationDestination object as a field. As an example we will modify
      namespace: dest
    spec:
      rsync:
-       serviceType: ClusterIP
-       copyMethod: Snapshot
-       capacity: 2Gi
-       accessModes: [ReadWriteOnce]
+       # ... other fields omitted ...
        # This is the name of the Secret we created, above
        sshKeys: volsync-rsync-dest-dest-database-destination
 
@@ -110,5 +108,5 @@ The ReplicationDestination object can now be created:
 
    $ kubectl create -f examples/rsync/volsync_v1alpha1_replicationdestination.yaml
 
-The above steps should be repeated to modify set the ``sshKeys`` field in the
+The above steps should be repeated to set the ``sshKeys`` field in the
 ReplicationSource.

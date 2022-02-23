@@ -10,8 +10,7 @@ Restic-based backup
 .. sidebar:: Contents
 
    .. contents:: Backing up using Restic
-
-
+      :local:
 
 VolSync supports taking backups of PersistentVolume data using the Restic-based
 data mover. A ReplicationSource defines the backup policy (target, frequency,
@@ -19,7 +18,7 @@ and retention), while a ReplicationDestination is used for restores.
 
 The Restic mover is different than most of VolSync's other movers because it is
 not meant for synchronizing data between clusters. This mover is specifically
-meant for data backup.
+designed for data backup.
 
 Specifying a repository
 =======================
@@ -48,7 +47,8 @@ Below is an example showing how to use a repository stored on Minio.
      AWS_SECRET_ACCESS_KEY: password
 
 This Secret will be referenced for both backup (ReplicationSource) and for
-restore (ReplicationDestination).
+restore (ReplicationDestination). The key names in this configuration Secret
+directly correspond to the environment variable names supported by Restic.
 
 .. note::
    If necessary, the repository will be automatically initialized (i.e.,
@@ -57,7 +57,7 @@ restore (ReplicationDestination).
 Configuring backup
 ==================
 
-A backup policy is defined by a ReplicationSource object that uses the restic
+A backup policy is defined by a ReplicationSource object that uses the Restic
 replication method.
 
 .. code-block:: yaml
@@ -88,6 +88,10 @@ replication method.
      # Clone the source volume prior to taking a backup to ensure a
      # point-in-time image.
      copyMethod: Clone
+     # The StorageClass to use when creating the PiT copy (same as source PVC if omitted)
+     #storageClassName: my-sc-name
+     # The VSC to use if the copy method is Snapshot (default if omitted)
+     #volumeSnapshotClassName: my-vsc-name
 
 Backup options
 --------------
@@ -118,7 +122,8 @@ pruneIntervalDays
 repository
    This is the name of the Secret (in the same Namespace) that holds the
    connection information for the backup repository. The repository path should
-   be unique for each PV.
+   be unique for each PV. Shared backup repositories are not currently
+   supported.
 retain
    This has sub-fields for ``hourly``, ``daily``, ``weekly``, ``monthly``, and
    ``yearly`` that allow setting the number of each type of backup to retain.
@@ -170,6 +175,7 @@ Restore the data into ``datavol``:
        manual: restore-once
      restic:
        repository: restic-repo
+       # Use an existing PVC, don't provision a new one
        destinationPVC: datavol
        copyMethod: Direct
 
@@ -177,13 +183,13 @@ In the above example, the data will be written directly into the new PVC since
 it is specified via ``destinationPVC``, and no snapshot will be created since a
 ``copyMethod`` of ``Direct`` is used.
 
-The restore operation only needs to be performed once, so instead of using a cronspec-based schedule, a manual trigger is used. After the restore completes, the ReplicationDestination object can be deleted.
+The restore operation only needs to be performed once, so instead of using a
+cronspec-based schedule, a :doc:`manual trigger<../triggers>` is used. After the
+restore completes, the ReplicationDestination object can be deleted.
 
-.. note::
-   Currently, VolSync only supports restoring the latest backup. However, older
-   backups may be present in the repository (according to the retain
-   parameters). Those can be accessed directly using the Restic utility plus the
-   connection information and credentials from the repository Secret.
+The example, shown above, will restore the data from the most recent backup. To
+restore an older version of the data, the ``previous`` and ``restoreAsOf``
+fields can be used. See below for more information on their meaning.
 
 Restore options
 ---------------
@@ -206,17 +212,18 @@ cacheAccessModes
    It defaults to ``.spec.accessModes``, then to the access modes used by the
    source PVC.
 previous
-   Non-negative integer which specifies an offset for how many snapshots ago we want to restore 
-   from. When ``restoreAsOf`` is provided, the behavior is the same, however 
-   the starting snapshot considered will be the first one taken before ``restoreAsOf``.
+   Non-negative integer which specifies an offset for how many snapshots ago we
+   want to restore from. When ``restoreAsOf`` is provided, the behavior is the
+   same, however the starting snapshot considered will be the first one taken
+   before ``restoreAsOf``.
 repository
    This is the name of the Secret (in the same Namespace) that holds the
    connection information for the backup repository. The repository path should
    be unique for each PV.
 restoreAsOf
-   An RFC-3339 timestamp which specifies an upper-limit on the snapshots that 
-   we should be looking through when preparing to restore. Snapshots made 
-   after this timestamp will not be considered. 
-   Note: though this is an RFC-3339 timestamp, Kubernetes will only accept ones
-   with the day and hour fields separated by a ``T``. E.g, ``2022-08-10T20:01:03-04:00``
-   will work but ``2022-08-10 20:01:03-04:00`` will fail.  
+   An RFC-3339 timestamp which specifies an upper-limit on the snapshots that we
+   should be looking through when preparing to restore. Snapshots made after
+   this timestamp will not be considered. Note: though this is an RFC-3339
+   timestamp, Kubernetes will only accept ones with the day and hour fields
+   separated by a ``T``. E.g, ``2022-08-10T20:01:03-04:00`` will work but
+   ``2022-08-10 20:01:03-04:00`` will fail.

@@ -23,4 +23,5 @@ storageClassName
    used.
 volumeSnapshotClassName
    When using a copyMethod of Snapshot, this value specifies the name of the
-   VolumeSnapshotClass to use when creating a snapshot.
+   VolumeSnapshotClass to use when creating a snapshot. If omitted, the system
+   default VolumeSnapshotClass will be used.
