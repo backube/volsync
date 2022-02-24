@@ -39,6 +39,28 @@ Source cluster
 Destination cluster
   OpenShift running on GCP with their CSI driver
 
+Kubectl configuration
+---------------------
+
+The following steps assume that you have a kubeconfig defined that will allow
+access to both clusters (source and destination) by switching between contexts.
+
+.. code-block:: console
+
+    $ kubectl config get-contexts
+    CURRENT   NAME        CLUSTER                  AUTHINFO     NAMESPACE
+    *         gcp         ci-ln-nm63l9k-72292      admin
+              kind        kind-kind                kind-kind
+
+A configuration like the above will allow directing requests to the different
+clusters via ``kubectl --context <name>``. Likewise, some of the VolSync CLI
+commands will refer to this context name (e.g.,
+``<context>/<namespace>/<resource>``).
+
+Please see `the Kubernetes documentation
+<https://kubernetes.io/docs/tasks/access-application-cluster/configure-access-multiple-clusters/>`_
+for details on how to set up your kubeconfig to access multiple clusters.
+
 Deploy the application
 ----------------------
 
