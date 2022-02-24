@@ -95,6 +95,7 @@ rules:
 - apiGroups:
   - security.openshift.io
   resourceNames:
+  - privileged
   - volsync-mover
   resources:
   - securitycontextconstraints

@@ -3,6 +3,7 @@
 
 extends: default
 ignore: |
+  bundle/**
   config/**
   hack/crds/*
   helm/volsync/**

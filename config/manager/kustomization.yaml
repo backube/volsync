@@ -5,6 +5,37 @@ generatorOptions:
   disableNameSuffixHash: true
 
 configMapGenerator:
-- name: manager-config
-  files:
+- files:
   - controller_manager_config.yaml
+  name: manager-config
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+images:
+- name: controller
+  newName: quay.io/backube/volsync
+  newTag: latest
+patches:
+- patch: |-
+    - op: add
+      path: /spec/template/spec/containers/0/env/-
+      value:
+        name: RELATED_IMAGE_RSYNC_CONTAINER
+        value: quay.io/backube/volsync-mover-rsync:latest
+  target:
+    kind: Deployment
+- patch: |-
+    - op: add
+      path: /spec/template/spec/containers/0/env/-
+      value:
+        name: RELATED_IMAGE_RCLONE_CONTAINER
+        value: quay.io/backube/volsync-mover-rclone:latest
+  target:
+    kind: Deployment
+- patch: |-
+    - op: add
+      path: /spec/template/spec/containers/0/env/-
+      value:
+        name: RELATED_IMAGE_RESTIC_CONTAINER
+        value: quay.io/backube/volsync-mover-restic:latest
+  target:
+    kind: Deployment

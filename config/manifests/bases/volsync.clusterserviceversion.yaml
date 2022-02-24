@@ -1,0 +1,63 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: '[]'
+    capabilities: Basic Install
+    operatorframework.io/suggested-namespace: volsync-system
+  name: volsync.v0.0.0
+  namespace: placeholder
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - description: ReplicationDestination defines the destination for a replicated
+        volume
+      displayName: Replication Destination
+      kind: ReplicationDestination
+      name: replicationdestinations.volsync.backube
+      version: v1alpha1
+    - description: ReplicationSource defines the source for a replicated volume
+      displayName: Replication Source
+      kind: ReplicationSource
+      name: replicationsources.volsync.backube
+      version: v1alpha1
+  description: Asynchronous volume replication for Kubernetes CSI storage
+  displayName: VolSync
+  icon:
+  - base64data: ""
+    mediatype: ""
+  install:
+    spec:
+      deployments: null
+    strategy: ""
+  installModes:
+  - supported: false
+    type: OwnNamespace
+  - supported: false
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
+  keywords:
+  - backup
+  - csi
+  - data
+  - disaster recovery
+  - replication
+  - storage
+  links:
+  - name: Documentation
+    url: https://volsync.readthedocs.io/
+  - name: Source
+    url: https://github.com/backube/volsync
+  maintainers:
+  - email: jstrunk@redhat.com
+    name: John Strunk
+  - email: tflower@redhat.com
+    name: Tesshu Flower
+  maturity: alpha
+  provider:
+    name: Red Hat
+  version: 0.0.0
