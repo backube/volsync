@@ -44,7 +44,7 @@ metadata:
     operatorframework.io/suggested-namespace: volsync-system
     operators.operatorframework.io/builder: operator-sdk-v1.14.0+git
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
-  name: volsync.v0.0.1
+  name: volsync.v0.0.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -374,8 +374,10 @@ spec:
   - replication
   - storage
   links:
-  - name: Volsync
-    url: https://volsync.domain
+  - name: Documentation
+    url: https://volsync.readthedocs.io/
+  - name: Source
+    url: https://github.com/backube/volsync
   maintainers:
   - email: jstrunk@redhat.com
     name: John Strunk
@@ -384,4 +386,4 @@ spec:
   maturity: alpha
   provider:
     name: Red Hat
-  version: 0.0.1
+  version: 0.0.0

@@ -48,8 +48,10 @@ spec:
   - replication
   - storage
   links:
-  - name: Volsync
-    url: https://volsync.domain
+  - name: Documentation
+    url: https://volsync.readthedocs.io/
+  - name: Source
+    url: https://github.com/backube/volsync
   maintainers:
   - email: jstrunk@redhat.com
     name: John Strunk
