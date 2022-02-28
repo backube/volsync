@@ -1,4 +1,4 @@
-{{- if .Capabilities.APIVersions.Has "security.openshift.io/v1/SecurityContextConstraints" }}
+{{- if or (.Capabilities.APIVersions.Has "security.openshift.io/v1/SecurityContextConstraints") (.Values.openshift.forceSCC) }}
 apiVersion: security.openshift.io/v1
 kind: SecurityContextConstraints
 metadata:
