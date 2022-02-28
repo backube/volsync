@@ -41,7 +41,8 @@ serviceAccount:
   # If not set and create is true, a name is generated using the fullname template
   name: ""
 
-podAnnotations: {}
+podAnnotations:
+  kubectl.kubernetes.io/default-container: manager
 
 podSecurityContext:
   # fsGroup: 2000
@@ -58,7 +59,7 @@ securityContext:
 
 resources:
   limits:
-    cpu: 100m
+    cpu: 500m
     memory: 300Mi
   requests:
     cpu: 100m

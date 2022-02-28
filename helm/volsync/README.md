@@ -127,11 +127,11 @@ on the command line or via a custom `values.yaml` file.
   - Override the name of the operator's ServiceAccount
 - `podSecurityContext`: none
   - Allows setting the security context for the operator pod
-- `podAnnotations`: none
+- `podAnnotations`: `kubectl.kubernetes.io/default-container: manager`
   - Annotations to add to the operator's pod
 - `securityContext`: none
   - Allows setting the operator container's security context
-- `resources`: requests 100m CPU and 20Mi memory; limits 100m CPU and 300Mi
+- `resources`: requests 100m CPU and 20Mi memory; limits 500m CPU and 300Mi
   memory
   - Allows overriding the resource requests/limits for the operator pod
 - `nodeSelector`: none

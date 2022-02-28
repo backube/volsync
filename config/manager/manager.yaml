@@ -19,6 +19,8 @@ spec:
   replicas: 1
   template:
     metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
       labels:
         control-plane: controller-manager
     spec:
@@ -48,7 +50,7 @@ spec:
           periodSeconds: 10
         resources:
           limits:
-            cpu: 200m
+            cpu: 500m
             memory: 300Mi
           requests:
             cpu: 100m
