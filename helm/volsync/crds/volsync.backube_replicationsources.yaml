@@ -471,12 +471,12 @@ spec:
                 description: syncthing contains status information for Syncthing-based
                   replication.
                 properties:
+                  ID:
+                    description: Device ID of the current syncthing device
+                    type: string
                   address:
                     description: Service address where Syncthing is exposed to the
                       rest of the world
-                    type: string
-                  deviceID:
-                    description: Device ID of the current syncthing device
                     type: string
                   peers:
                     description: NodeList is a list of the Syncthing nodes we are

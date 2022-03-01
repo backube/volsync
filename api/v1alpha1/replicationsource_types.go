@@ -239,7 +239,7 @@ type ReplicationSourceSyncthingStatus struct {
 	// NodeList is a list of the Syncthing nodes we are currently connected to.
 	Peers []SyncthingPeerStatus `json:"peers,omitempty"`
 	// Device ID of the current syncthing device
-	DeviceID string `json:"deviceID,omitempty"`
+	ID string `json:"ID,omitempty"`
 	// Service address where Syncthing is exposed to the rest of the world
 	Address string `json:"address,omitempty"`
 }

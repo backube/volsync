@@ -50,21 +50,20 @@ const (
 	configDirMountPath = "/config"
 	syncthingAPIPort   = 8384
 	syncthingDataPort  = 22000
-	appLabelName       = "syncthing"
 )
 
 // Mover is the reconciliation logic for the Restic-based data mover.
 type Mover struct {
-	client      client.Client
-	logger      logr.Logger
-	owner       metav1.Object
-	isSource    bool
-	paused      bool
-	dataPVCName *string
-	peerList    []v1alpha1.SyncthingPeer
-	status      *v1alpha1.ReplicationSourceSyncthingStatus
-	serviceType corev1.ServiceType
-	syncthing   Syncthing
+	client         client.Client
+	logger         logr.Logger
+	owner          metav1.Object
+	containerImage string
+	paused         bool
+	dataPVCName    *string
+	peerList       []v1alpha1.SyncthingPeer
+	status         *v1alpha1.ReplicationSourceSyncthingStatus
+	serviceType    corev1.ServiceType
+	syncthing      Syncthing
 }
 
 var _ mover.Mover = &Mover{}
@@ -81,41 +80,67 @@ func (m *Mover) Name() string { return "syncthing" }
 // - Secret for the syncthing-apikey
 // - Job/Pod running the syncthing mover image
 // - Service exposing the syncthing REST API for us to make requests to
+//nolint:funlen
 func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 	var err error
 	// ensure the data pvc exists
+	m.logger.Info("ensuring data pvc exists")
 	if _, err = m.ensureDataPVC(ctx); err != nil {
+		m.logger.Info("Failed to ensure data pvc", "error", err)
 		return mover.InProgress(), err
 	}
 
 	// create PVC for config data
+	m.logger.Info("ensuring config pvc exists")
 	if _, err = m.ensureConfigPVC(ctx); err != nil {
+		m.logger.Error(err, "Failed to ensure config pvc")
 		return mover.InProgress(), err
 	}
 
 	// ensure the secret exists
+	m.logger.Info("ensuring secret api key exists")
 	if _, err = m.ensureSecretAPIKey(ctx); err != nil {
+		m.logger.Error(err, "Failed to ensure secret")
 		return mover.InProgress(), err
 	}
 
-	if _, err = m.ensureDeployment(ctx); err != nil {
+	// ensure SA to interact with deployment objects
+	m.logger.Info("ensuring SA")
+	sa, err := m.ensureSA(ctx)
+	if sa == nil || err != nil {
 		return mover.InProgress(), err
 	}
+	m.logger.Info("received sa with name", "serviceaccount", sa.Name)
+
+	m.logger.Info("Ensuring syncthing deployment exists")
+	if _, err = m.ensureDeployment(ctx, sa); err != nil {
+		m.logger.Error(err, "Failed to ensure deployment")
+		return mover.InProgress(), err
+	}
+
 	// create the service for the syncthing REST API
+	m.logger.Info("ensuring API service exists")
 	if _, err = m.ensureAPIService(ctx); err != nil {
+		m.logger.Error(err, "Failed to ensure service")
 		return mover.InProgress(), err
 	}
 
 	// ensure the external service exists
+	m.logger.Info("ensuring data service exists")
 	if _, err = m.ensureDataService(ctx); err != nil {
+		m.logger.Error(err, "Failed to ensure service")
 		return mover.InProgress(), err
 	}
 
+	m.logger.Info("ensuring syncthing is configured")
 	if _, err = m.ensureIsConfigured(ctx); err != nil {
+		m.logger.Error(err, "Failed to ensure service")
 		return mover.InProgress(), err
 	}
 
+	m.logger.Info("ensuring status is updated")
 	if err = m.ensureStatusIsUpdated(); err != nil {
+		m.logger.Error(err, "Failed to ensure status is updated")
 		return mover.InProgress(), err
 	}
 
@@ -142,7 +167,7 @@ func (m *Mover) ensureConfigPVC(ctx context.Context) (*corev1.PersistentVolumeCl
 			Name:      "volsync-" + m.owner.GetName() + "-config",
 			Namespace: m.owner.GetNamespace(),
 			Labels: map[string]string{
-				"app": appLabelName,
+				"app": m.owner.GetName(),
 			},
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
@@ -169,13 +194,12 @@ func (m *Mover) ensureConfigPVC(ctx context.Context) (*corev1.PersistentVolumeCl
 
 func (m *Mover) ensureDataPVC(ctx context.Context) (*corev1.PersistentVolumeClaim, error) {
 	// check if the data PVC exists, error if it doesn't
-	fmt.Printf("Checking for PVC %s\n", *m.dataPVCName)
 	dataPVC := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      *m.dataPVCName,
 			Namespace: m.owner.GetNamespace(),
 			Labels: map[string]string{
-				"app": appLabelName,
+				"app": m.owner.GetName(),
 			},
 		},
 	}
@@ -193,7 +217,7 @@ func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) 
 			Name:      "volsync-" + m.owner.GetName(),
 			Namespace: m.owner.GetNamespace(),
 			Labels: map[string]string{
-				"app": appLabelName,
+				"app": m.owner.GetName(),
 			},
 		},
 	}
@@ -206,7 +230,7 @@ func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) 
 				Name:      "volsync-" + m.owner.GetName(),
 				Namespace: m.owner.GetNamespace(),
 				Labels: map[string]string{
-					"app": appLabelName,
+					"app": m.owner.GetName(),
 				},
 			},
 			Type: corev1.SecretTypeOpaque,
@@ -230,8 +254,23 @@ func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) 
 	return secret, nil
 }
 
+func (m *Mover) ensureSA(ctx context.Context) (*corev1.ServiceAccount, error) {
+	sa := &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "volsync-src-" + m.owner.GetName(),
+			Namespace: m.owner.GetNamespace(),
+		},
+	}
+	saDesc := utils.NewSAHandler(ctx, m.client, m.owner, sa)
+	cont, err := saDesc.Reconcile(m.logger)
+	if cont {
+		return sa, err
+	}
+	return nil, err
+}
+
 //nolint:funlen
-func (m *Mover) ensureDeployment(ctx context.Context) (*appsv1.Deployment, error) {
+func (m *Mover) ensureDeployment(ctx context.Context, sa *corev1.ServiceAccount) (*appsv1.Deployment, error) {
 	// same thing as ensureJob, except this creates a deployment instead of a job
 	var configVolumeName, dataVolumeName string = "syncthing-config", "syncthing-data"
 	var numReplicas int32 = 1
@@ -243,28 +282,29 @@ func (m *Mover) ensureDeployment(ctx context.Context) (*appsv1.Deployment, error
 			Name:      deploymentName,
 			Namespace: m.owner.GetNamespace(),
 			Labels: map[string]string{
-				"app": appLabelName,
+				"app": m.owner.GetName(),
 			},
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &numReplicas,
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					"app": appLabelName,
+					"app": m.owner.GetName(),
 				},
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
-						"app": appLabelName,
+						"app": m.owner.GetName(),
 					},
 				},
 				Spec: corev1.PodSpec{
-					RestartPolicy: corev1.RestartPolicyAlways,
+					ServiceAccountName: sa.Name,
+					RestartPolicy:      corev1.RestartPolicyAlways,
 					Containers: []corev1.Container{
 						{
 							Name:  "syncthing",
-							Image: syncthingContainerImage,
+							Image: m.containerImage,
 							Command: []string{
 								"/entry.sh",
 							},
@@ -367,12 +407,12 @@ func (m *Mover) ensureAPIService(ctx context.Context) (*corev1.Service, error) {
 			Name:      serviceName,
 			Namespace: m.owner.GetNamespace(),
 			Labels: map[string]string{
-				"app": appLabelName,
+				"app": m.owner.GetName(),
 			},
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: map[string]string{
-				"app": appLabelName,
+				"app": m.owner.GetName(),
 			},
 			Ports: []corev1.ServicePort{
 				{
@@ -412,12 +452,12 @@ func (m *Mover) ensureDataService(ctx context.Context) (*corev1.Service, error) 
 			Name:      "volsync-" + m.owner.GetName() + "-data",
 			Namespace: m.owner.GetNamespace(),
 			Labels: map[string]string{
-				"app": appLabelName,
+				"app": m.owner.GetName(),
 			},
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: map[string]string{
-				"app": appLabelName,
+				"app": m.owner.GetName(),
 			},
 			Ports: []corev1.ServicePort{
 				{
@@ -474,6 +514,7 @@ func (m *Mover) Cleanup(ctx context.Context) (mover.Result, error) {
 func (m *Mover) getAPIKey(ctx context.Context) (string, error) {
 	// get the syncthing-apikey secret
 	if m.syncthing.APIConfig.APIKey == "" {
+		m.logger.Info("grabbing apikey")
 		secret := &corev1.Secret{}
 		err := m.client.Get(ctx, client.ObjectKey{
 			Name:      "volsync-" + m.owner.GetName(),
@@ -535,13 +576,15 @@ func (m *Mover) ensureIsConfigured(ctx context.Context) (mover.Result, error) {
 }
 
 func (m *Mover) ensureStatusIsUpdated() error {
+	m.logger.V(4).Info("updating status")
 	// get the current status
 	err := m.syncthing.FetchLatestInfo()
 	if err != nil {
+		m.logger.Error(err, "error fetching syncthing status")
 		return err
 	}
 
-	m.status.DeviceID = m.syncthing.SystemStatus.MyID
+	m.status.ID = m.syncthing.SystemStatus.MyID
 	m.status.Peers = []v1alpha1.SyncthingPeerStatus{}
 
 	// add the connected devices to the status

@@ -23,6 +23,7 @@ import (
 	"os"
 
 	"github.com/go-logr/logr"
+	"github.com/spf13/viper"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -30,25 +31,55 @@ import (
 	"github.com/backube/volsync/controllers/mover"
 )
 
-// defaultSyncthingContainerImage is the default container image for the syncthing
-// data mover
-const defaultSyncthingContainerImage = "quay.io/backube/volsync-mover-syncthing:latest"
-
 // syncthingContainerImage is the container image name of the syncthing data mover
-var syncthingContainerImage string
 
-type Builder struct{}
+type Builder struct {
+	viper *viper.Viper
+	flags *flag.FlagSet
+}
 
 var _ mover.Builder = &Builder{}
 
-func Register() {
-	flag.StringVar(&syncthingContainerImage, "syncthing-container-image",
-		defaultSyncthingContainerImage, "The container image for the syncthing data mover")
-	mover.Register(&Builder{})
+const (
+	defaultSyncthingContainerImage = "quay.io/backube/volsync-mover-syncthing:latest"
+	syncthingContainerImageFlag    = "syncthing-container-image"
+	syncthingContainerImageEnvVar  = "RELATED_IMAGE_SYNCTHING_CONTAINER"
+)
+
+func Register() error {
+	// use global viper & command line flag
+	b, err := newBuilder(viper.GetViper(), flag.CommandLine)
+	if err != nil {
+		return err
+	}
+	mover.Register(b)
+	return nil
+}
+
+func newBuilder(viper *viper.Viper, flags *flag.FlagSet) (*Builder, error) {
+	b := &Builder{
+		viper: viper,
+		flags: flags,
+	}
+
+	// Set default syncthing container image - will be used if both command line flag and env var are not set
+	b.viper.SetDefault(syncthingContainerImageFlag, defaultSyncthingContainerImage)
+
+	// Setup command line flag for the syncthing container image
+	b.flags.String(syncthingContainerImageFlag, defaultSyncthingContainerImage,
+		"The container image for the syncthing data mover")
+	// Viper will check for command line flag first, then fallback to the env var
+	err := b.viper.BindEnv(syncthingContainerImageFlag, syncthingContainerImageEnvVar)
+
+	return b, err
 }
 
 func (rb *Builder) VersionInfo() string {
-	return fmt.Sprintf("Syncthing container: %s", syncthingContainerImage)
+	return fmt.Sprintf("Syncthing container: %s", rb.getSyncthingContainerImage())
+}
+
+func (rb *Builder) getSyncthingContainerImage() string {
+	return rb.viper.GetString(syncthingContainerImageFlag)
 }
 
 func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
@@ -78,15 +109,15 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 	}
 
 	return &Mover{
-		client:      client,
-		logger:      logger.WithValues("method", "Syncthing"),
-		owner:       source,
-		peerList:    source.Spec.Syncthing.Peers,
-		isSource:    true,
-		paused:      source.Spec.Paused,
-		dataPVCName: &source.Spec.SourcePVC,
-		status:      source.Status.Syncthing,
-		serviceType: serviceType,
+		client:         client,
+		logger:         logger.WithValues("method", "Syncthing"),
+		owner:          source,
+		containerImage: rb.getSyncthingContainerImage(),
+		peerList:       source.Spec.Syncthing.Peers,
+		paused:         source.Spec.Paused,
+		dataPVCName:    &source.Spec.SourcePVC,
+		status:         source.Status.Syncthing,
+		serviceType:    serviceType,
 		syncthing: Syncthing{
 			APIConfig: &APIConfig{
 				APIURL: APIURL,
