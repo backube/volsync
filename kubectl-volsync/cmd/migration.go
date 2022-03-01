@@ -143,7 +143,7 @@ func (mrd *migrationRelationshipDestination) waitForRDStatus(ctx context.Context
 		rd  *volsyncv1alpha1.ReplicationDestination
 		err error
 	)
-	err = wait.PollImmediate(5*time.Second, 2*time.Minute, func() (bool, error) {
+	err = wait.PollImmediate(5*time.Second, 5*time.Minute, func() (bool, error) {
 		rd, err = mrd.getDestination(ctx, client)
 		if err != nil {
 			return false, err

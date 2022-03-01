@@ -380,7 +380,7 @@ func (rr *replicationRelationship) awaitDestAddrKeys(ctx context.Context, c clie
 	rdName types.NamespacedName) (*volsyncv1alpha1.ReplicationDestination, error) {
 	klog.Infof("waiting for keys & address of destination to be available")
 	rd := volsyncv1alpha1.ReplicationDestination{}
-	err := wait.PollImmediate(5*time.Second, 2*time.Minute, func() (bool, error) {
+	err := wait.PollImmediate(5*time.Second, 5*time.Minute, func() (bool, error) {
 		if err := c.Get(ctx, rdName, &rd); err != nil {
 			return false, err
 		}
