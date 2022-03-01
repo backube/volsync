@@ -17,36 +17,81 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 package cmd
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"k8s.io/klog/v2"
+	"k8s.io/kubectl/pkg/util/i18n"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+type migrationDelete struct {
+	// migration relationship object to be persisted to a config file
+	mr *migrationRelationship
+	// client object to communicate with a cluster
+	client client.Client
+}
 
 // migrationDeleteCmd represents the delete command
 var migrationDeleteCmd = &cobra.Command{
 	Use:   "delete",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("delete called")
+	Short: i18n.T("Delete a new migration destination"),
+	Long: `This command deletes the Replication destination
+	and the relationship file`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		md := newMigrationDelete()
+		mr, err := loadMigrationRelationship(cmd)
+		if err != nil {
+			return err
+		}
+		md.mr = mr
+		return md.Run(cmd.Context())
 	},
 }
 
 func init() {
 	migrationCmd.AddCommand(migrationDeleteCmd)
+}
 
-	// Here you will define your flags and configuration settings.
+func (md *migrationDelete) Run(ctx context.Context) error {
+	client, err := newClient(md.mr.data.Destination.Cluster)
+	if err != nil {
+		return err
+	}
+	md.client = client
 
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// deleteCmd.PersistentFlags().String("foo", "", "A help for foo")
+	// Delete the ReplicationDestination
+	err = md.deleteReplicationDestination(ctx)
+	if err != nil {
+		return err
+	}
 
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// deleteCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	// Delete the relationship file
+	err = md.mr.Delete()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func newMigrationDelete() *migrationDelete {
+	return &migrationDelete{}
+}
+
+func (md *migrationDelete) deleteReplicationDestination(ctx context.Context) error {
+	mrd := md.mr.data.Destination
+	rd, err := mrd.getDestination(ctx, md.client)
+	if err != nil {
+		return fmt.Errorf("get ReplicationDestination returned:%w", err)
+	}
+
+	err = md.client.Delete(ctx, rd)
+	if err != nil {
+		return err
+	}
+
+	klog.Infof("Deleted ReplicationDestination: \"%s\"", mrd.RDName)
+	return nil
 }

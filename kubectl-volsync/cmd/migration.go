@@ -136,16 +136,15 @@ func loadMigrationRelationship(cmd *cobra.Command) (*migrationRelationship, erro
 	return mr, nil
 }
 
-func (mrd *migrationRelationshipDestination) waitForRDStatus(ctx context.Context, clientObject client.Client) (
+func (mrd *migrationRelationshipDestination) waitForRDStatus(ctx context.Context, client client.Client) (
 	*volsyncv1alpha1.ReplicationDestination, error) {
 	// wait for migrationdestination to become ready
-	nsName := types.NamespacedName{
-		Namespace: mrd.Namespace,
-		Name:      mrd.RDName,
-	}
-	rd := &volsyncv1alpha1.ReplicationDestination{}
-	err := wait.PollImmediate(5*time.Second, 2*time.Minute, func() (bool, error) {
-		err := clientObject.Get(ctx, nsName, rd)
+	var (
+		rd  *volsyncv1alpha1.ReplicationDestination
+		err error
+	)
+	err = wait.PollImmediate(5*time.Second, 2*time.Minute, func() (bool, error) {
+		rd, err = mrd.getDestination(ctx, client)
 		if err != nil {
 			return false, err
 		}
@@ -167,6 +166,21 @@ func (mrd *migrationRelationshipDestination) waitForRDStatus(ctx context.Context
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch rd status: %w,", err)
+	}
+
+	return rd, nil
+}
+
+func (mrd *migrationRelationshipDestination) getDestination(ctx context.Context, client client.Client) (
+	*volsyncv1alpha1.ReplicationDestination, error) {
+	nsName := types.NamespacedName{
+		Namespace: mrd.Namespace,
+		Name:      mrd.RDName,
+	}
+	rd := &volsyncv1alpha1.ReplicationDestination{}
+	err := client.Get(ctx, nsName, rd)
+	if err != nil {
+		return nil, err
 	}
 
 	return rd, nil
