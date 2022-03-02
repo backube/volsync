@@ -33,7 +33,7 @@ vendor/
 examples/rclone.conf
 
 # Config with CLI flag values
-config.yaml
+/config.yaml
 
 # test dir
 test-kuttl/kubeconfig
