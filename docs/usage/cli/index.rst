@@ -5,6 +5,7 @@ VolSync CLI / kubectl plugin
 .. toctree::
    :hidden:
 
+   migration
    replication
 
 VolSync provides a CLI interface to assist in performing common operations using
@@ -15,7 +16,7 @@ directly manipulating VolSync's ReplicationSource and ReplicationDestination
 objects. It is meant as a simple shortcut for common operations:
 
 - :doc:`Setting up asynchronous data replication<replication>`
-- Migrating data into Kubernetes
+- :doc:`Migrating data into Kubernetes<migration>`
 
 Installation
 ============
