@@ -32,9 +32,6 @@ vendor/
 # Secret files to prevent accidental commit of keys
 examples/rclone.conf
 
-# Config with CLI flag values
-config.yaml
-
 # test dir
 test-kuttl/kubeconfig
 /test-kuttl/e2e/restic-with-restoreasof/22-timestamp.txt
