@@ -143,7 +143,8 @@ func (mrd *migrationRelationshipDestination) waitForRDStatus(ctx context.Context
 		rd  *volsyncv1alpha1.ReplicationDestination
 		err error
 	)
-	err = wait.PollImmediate(5*time.Second, 5*time.Minute, func() (bool, error) {
+	klog.Infof("waiting for keys & address of destination to be available")
+	err = wait.PollImmediate(5*time.Second, defaultRsyncKeyTimeout, func() (bool, error) {
 		rd, err = mrd.getDestination(ctx, client)
 		if err != nil {
 			return false, err

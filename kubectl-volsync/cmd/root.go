@@ -21,6 +21,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -30,6 +31,11 @@ import (
 	"k8s.io/component-base/logs"
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
+)
+
+const (
+	defaultRsyncKeyTimeout   = 10 * time.Minute
+	defaultVolumeSyncTimeout = 30 * time.Minute
 )
 
 // volsyncVersion value is set at build time via ldflags

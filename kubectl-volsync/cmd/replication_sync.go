@@ -93,7 +93,7 @@ func (rs *replicationSync) waitForSync(ctx context.Context, srcClient client.Cli
 		Name:      rs.rel.data.Source.RSName,
 		Namespace: rs.rel.data.Source.Namespace,
 	}
-	err := wait.PollImmediate(5*time.Second, 10*time.Minute, func() (bool, error) {
+	err := wait.PollImmediate(5*time.Second, defaultVolumeSyncTimeout, func() (bool, error) {
 		if err := srcClient.Get(ctx, rsName, &rsrc); err != nil {
 			return false, err
 		}
