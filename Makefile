@@ -113,6 +113,12 @@ test-e2e: kuttl ## Run e2e tests. Requires cluster w/ VolSync already installed
 	cd test-kuttl && $(KUTTL) test
 	rm -f test-kuttl/kubeconfig
 
+.PHONY: test-krew
+test-krew: krew-plugin-manifest
+	kubectl krew install -v=4 --manifest=kubectl-volsync/volsync.yaml --archive=bin/kubectl-volsync.tar.gz
+	kubectl volsync --version
+	kubectl krew uninstall volsync
+
 ##@ Build
 
 .PHONY: build
@@ -136,6 +142,14 @@ docker-build: test ## Build docker image with the manager.
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
 	docker push ${IMG}
+
+.PHONY: krew-plugin-manifest
+krew-plugin-manifest: yq bin/kubectl-volsync ## Build & package the kubectl plugin & update the krew manifest
+	rm -f bin/kubectl-volsync.tar.gz
+	tar czf bin/kubectl-volsync.tar.gz LICENSE -C bin kubectl-volsync
+	HASH="`sha256sum bin/kubectl-volsync.tar.gz | cut -f 1 -d ' '`" \
+	VERSION="$(VERSION)" \
+	$(YQ) --inplace '.spec.version=strenv(VERSION) | with(.spec.platforms[]; .sha256=strenv(HASH) | .uri|=sub("v[[:digit:]]+\.[^/]+", strenv(VERSION)))' ./kubectl-volsync/volsync.yaml
 
 ##@ Deployment
 
@@ -180,6 +194,12 @@ kustomize: ## Download kustomize locally if necessary.
 ENVTEST = $(shell pwd)/bin/setup-envtest
 envtest: ## Download envtest-setup locally if necessary.
 	$(call go-get-tool,$(ENVTEST),sigs.k8s.io/controller-runtime/tools/setup-envtest@latest)
+
+.PHONY: yq
+YQ = $(shell pwd)/bin/yq
+yq: ## Download yq locally if necessary.
+	$(call go-get-tool,$(YQ),github.com/mikefarah/yq/v4@latest)
+
 
 # go-get-tool will 'go get' any package $2 and install it to $1.
 PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
