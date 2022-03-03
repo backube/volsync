@@ -2,7 +2,7 @@
 kind: PersistentVolumeClaim
 apiVersion: v1
 metadata:
-  name: data-source
+  name: data-dest
 spec:
   accessModes:
     - ReadWriteOnce
@@ -14,15 +14,23 @@ spec:
 kind: Pod
 apiVersion: v1
 metadata:
-  name: source
-  labels:
-    affinity: source
+  name: affinity
 spec:
+  affinity:
+    podAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+              - key: affinity
+                operator: In
+                values:
+                  - source
+          topologyKey: topology.kubernetes.io/zone
   containers:
     - name: busybox
       image: busybox
       command: ["/bin/sh", "-c"]
-      args: ["echo 'data' > /mnt/datafile; sync; sleep 99999"]
+      args: ["sync"]
       volumeMounts:
         - name: data
           mountPath: "/mnt"
@@ -30,4 +38,4 @@ spec:
   volumes:
     - name: data
       persistentVolumeClaim:
-        claimName: data-source
+        claimName: data-dest
