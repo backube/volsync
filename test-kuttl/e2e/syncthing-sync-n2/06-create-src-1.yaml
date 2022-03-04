@@ -1,0 +1,8 @@
+kind: ReplicationSource
+apiVersion: volsync.backube/v1alpha1
+metadata:
+  name: syncthing-1
+spec:
+  sourcePVC: test-data-1
+  syncthing:
+    serviceType: ClusterIP
