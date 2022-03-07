@@ -72,15 +72,6 @@ jobs:
           name: volsync-operator
           path: /tmp/image.tar
 
-      - name: Build cli
-        run: make cli
-
-      - name: Save cli as artifact
-        uses: actions/upload-artifact@v1
-        with:
-          name: kubectl-volsync
-          path: bin/kubectl-volsync
-
   build-rclone:
     name: Build-mover-rclone
     runs-on: ubuntu-20.04
@@ -161,9 +152,57 @@ jobs:
           name: volsync-mover-syncthing-container
           path: /tmp/image.tar
 
+  kubectl-plugin:
+    name: kubectl-plugin
+    runs-on: ubuntu-20.04
+    env:
+      KUBECONFIG: /tmp/kubeconfig
+      KUBERNETES_VERSION: "1.23.3"
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v2
+        with:
+          # Fetch whole history so we can properly determine the version string
+          # (required by krew validation)
+          fetch-depth: 0
+
+      - name: Install Go
+        uses: actions/setup-go@v1
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install kubectl
+        run: |
+          curl -LO "https://storage.googleapis.com/kubernetes-release/release/v${KUBERNETES_VERSION}/bin/linux/amd64/kubectl"
+          sudo install ./kubectl /usr/local/bin/
+          kubectl version --short --client
+          kubectl version --short --client | grep -q ${KUBERNETES_VERSION}
+
+      - name: Install krew
+        # https://krew.sigs.k8s.io/docs/user-guide/setup/install/
+        run: |
+          set -x; cd "$(mktemp -d)" && \
+          OS="$(uname | tr '[:upper:]' '[:lower:]')" && \
+          ARCH="$(uname -m | sed -e 's/x86_64/amd64/' -e 's/\(arm\)\(64\)\?.*/\1\2/' -e 's/aarch64$/arm64/')" && \
+          KREW="krew-${OS}_${ARCH}" && \
+          curl -fsSLO "https://github.com/kubernetes-sigs/krew/releases/latest/download/${KREW}.tar.gz" && \
+          tar zxvf "${KREW}.tar.gz" && \
+          ./"${KREW}" install krew
+          echo "${KREW_ROOT:-$HOME/.krew}/bin" >> $GITHUB_PATH
+
+      - name: Test build/install of plugin via krew
+        run: make test-krew
+
+      - name: Save cli as artifact
+        uses: actions/upload-artifact@v1
+        with:
+          name: kubectl-volsync
+          path: bin/kubectl-volsync
+
   e2e:
     name: End-to-end
-    needs: [build-operator, build-rclone, build-restic, build-rsync]
+    needs: [build-operator, build-rclone, build-restic, build-rsync, kubectl-plugin]
     runs-on: ubuntu-20.04
     strategy:
       fail-fast: false

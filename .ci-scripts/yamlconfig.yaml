@@ -13,4 +13,5 @@ rules:
   line-length:
     allow-non-breakable-inline-mappings: true
     ignore: |
+      kubectl-volsync/volsync.yaml
       test-kuttl/**

@@ -20,6 +20,7 @@ import (
 	goflag "flag"
 	"os"
 	"path"
+	"strings"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -36,7 +37,7 @@ var volsyncVersion = "0.0.0"
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "kubectl-volsync",
+	Use:   "volsync",
 	Short: i18n.T("A kubectl plugin to interact with the VolSync operator"),
 	Long: templates.LongDesc(i18n.T(`
 	This plugin can be used to configure replication relationships using the
@@ -57,6 +58,13 @@ var rootCmd = &cobra.Command{
 // appropriately. This is called by main.main(). It only needs to happen once to
 // the rootCmd.
 func Execute() {
+	// Cobra doesn't have a way to specify a two word command (ie. "kubectl krew"), so set a custom usage template
+	// with kubectl in it. Cobra will use this template for the root and all child commands.
+	// Taken from
+	// https://github.com/kubernetes-sigs/krew/blob/fd53697d5e5ee18138df50088037c9715cc50214/cmd/krew/cmd/root.go#L104-L108
+	rootCmd.SetUsageTemplate(strings.NewReplacer(
+		"{{.UseLine}}", "kubectl {{.UseLine}}",
+		"{{.CommandPath}}", "kubectl {{.CommandPath}}").Replace(rootCmd.UsageTemplate()))
 	logs.InitLogs()
 	defer logs.FlushLogs()
 	cobra.CheckErr(rootCmd.Execute())
