@@ -1,0 +1,38 @@
+# verify that the /data/testdata.txt file from test-data-1 exists on test-data-2 and test-data-3 
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: read-data
+spec:
+  ttlSecondsAfterFinished: 100
+  template:
+    spec:
+      containers:
+      - name: reader
+        image: alpine
+        # validate that the testdata file contains "hello from syncthing-1"
+        command: ["/bin/sh", "-c"]
+        args: ["cat /data-2/testdata.txt | grep 'hello from syncthing-1' && cat /data-3/testdata.txt | grep 'hello from syncthing-1' && cat /data-4/testdata.txt | grep 'hello from syncthing-1' && cat /data-5/testdata.txt | grep 'hello from syncthing-1'"]
+        volumeMounts:
+        - name: test-data-2
+          mountPath: /data-2
+        - name: test-data-3
+          mountPath: /data-3
+        - name: test-data-4
+          mountPath: /data-4
+        - name: test-data-5
+          mountPath: /data-5
+      restartPolicy: OnFailure
+      volumes:
+      - name: test-data-2
+        persistentVolumeClaim:
+          claimName: test-data-2
+      - name: test-data-3
+        persistentVolumeClaim:
+          claimName: test-data-3
+      - name: test-data-4
+        persistentVolumeClaim:
+          claimName: test-data-4
+      - name: test-data-5
+        persistentVolumeClaim:
+          claimName: test-data-5

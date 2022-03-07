@@ -1,0 +1,133 @@
+---
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+timeout: 600
+commands:
+  - script: |
+      #################################
+      # Wait until all of the given list of
+      # ReplicationSource objects have
+      # non-null fields for .status.syncthing.address
+      # and .status.syncthing.ID
+      # Globals:
+      #   (string) NAMESPACE
+      # Arguments:
+      #   (string) replicationsource: name of a replicationsource object
+      # Returns:
+      #   None
+      #################################
+      function wait_for_syncthing_ready() {
+        local replication_source=$1
+
+        echo "waiting for syncthing address and ID for ${replication_source}..."
+        kubectl wait --for=condition=Reconciled replicationsource "${replication_source}" -n "${NAMESPACE}" --timeout=600s
+        # sleep until replicationsource has syncthing address and ID
+        
+        local st_address=""
+        local st_device_id=""
+        while [[ -z "${st_address}" || -z "${st_device_id}" ]]; do
+          st_address=$(kubectl get replicationsource "${replication_source}" -n "${NAMESPACE}" -o jsonpath='{.status.syncthing.address}')
+          st_device_id=$(kubectl get replicationsource "${replication_source}" -n "${NAMESPACE}" -o jsonpath='{.status.syncthing.ID}')
+          if [[ -z "${st_address}" || -z "${st_device_id}" ]]; then
+            sleep 5
+          fi
+        done
+      }
+
+      #################################
+      # Add the target RS's Syncthing data 
+      # to the source RS' Syncthing peers
+      # Globals:
+      #   (string) NAMESPACE
+      # Arguments:
+      #   (string) source_rs_name: name of the ReplicationSource
+      #   (string) target_rs_name: name of the ReplicationSource
+      # Returns:
+      #   (int) 0 on success, 1 on failure
+      #################################
+      function connect_to_target() {
+        local source_rs_name="$1"
+        local target_rs_name="$2"
+
+        # grab the target RS's address and device ID
+        local target_st_address=$(kubectl get replicationsource "${target_rs_name}" -n "${NAMESPACE}" -o jsonpath='{.status.syncthing.address}')
+        local target_st_device_id=$(kubectl get replicationsource "${target_rs_name}" -n "${NAMESPACE}" -o jsonpath='{.status.syncthing.ID}')
+
+
+        # grab the current source RS's peer list as a json list and append the target RS's address and device ID
+        local current_spec=$(kubectl get replicationsource "${source_rs_name}" -n "${NAMESPACE}" -o jsonpath='{.spec}' | jq -c '{spec: .}')
+
+        echo "current spec:"
+        echo "${current_spec}" | jq 
+
+        # insert new_peers into .spec.syncthing.peers in skeleton_spec
+        local new_spec=$(echo "${current_spec}" | jq -c \
+          --arg deviceID "${target_st_device_id}" \
+          --arg address "${target_st_address}" \
+          '.spec.syncthing.peers |= . + [{"ID": $deviceID, "address": $address, "introducer": true}]'
+        )
+
+        echo "new_spec:"
+        echo "${new_spec}" | jq 
+
+        # patch the replicationsource with the new spec
+        kubectl patch replicationsource "${source_rs_name}" -n "${NAMESPACE}" --type=merge --patch "${new_spec}"
+
+        # check that the patch was successful
+        if [[ $? -ne 0 ]]; then
+          return 1
+        fi
+        return 0
+      }
+
+
+      #################################
+      # Connects two Syncthing-based ReplicationSources
+      # Globals:
+      #   (string) NAMESPACE
+      # Arguments:
+      #   (string) source_rs: name of the source ReplicationSource
+      #   (string) target_rs: name of the target ReplicationSource
+      # Returns:
+      #   None 
+      #################################
+      function connect_syncthing() {
+        local source_rs="$1"
+        local target_rs="$2"
+
+        connect_to_target "${source_rs}" "${target_rs}"
+        if [[ $? -ne 0 ]]; then
+          echo "failed to connect ${source_rs} to ${target_rs}"
+          return 1
+        fi
+        connect_to_target "${target_rs}" "${source_rs}"    
+        if [[ $? -ne 0 ]]; then
+          echo "failed to connect ${target_rs} to ${source_rs}"
+          return 1
+        fi
+      }
+
+      # get number of syncthings in cluster
+      syncthing_count=$(kubectl get replicationsource -n "${NAMESPACE}" -o jsonpath='{.items[*].metadata.name}' | wc -w)
+      echo "number of syncthings: ${syncthing_count}"
+
+      i=1
+      while [[ "${i}" -le "${syncthing_count}" ]]; do
+        echo "waiting for syncthing-${i} to be ready..."
+        wait_for_syncthing_ready "syncthing-${i}"
+        i=$((i+1))
+      done
+      
+      # loop from 1 to syncthing_count
+      i=1
+      while [[ "${i}" -lt "${syncthing_count}" ]]; do
+        j=$((i+1))
+        while [[ "$j" -le "${syncthing_count}" ]]; do
+          echo "connecting syncthing-${i} to syncthing-${j}"
+          connect_syncthing "syncthing-${i}" "syncthing-${j}"
+          j=$((j+1))
+        done
+        i=$((i+1))
+      done
+
+      echo "syncthing instances are now connected"
