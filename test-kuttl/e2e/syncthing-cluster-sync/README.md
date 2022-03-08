@@ -1,9 +1,8 @@
 # Syncthing Sync For N=5
 
-This test verifies the functionality of VolSync when deploying Syncthing-based ReplicationSources.
-We create five different PVCs, and attach each one to a corresponding ReplicationSource using Syncthing as our data mover.
-Once the ReplicationSources are successfully deployed, we configure each one to connect to the others within the namespace.
-After the movers are configured, we populate a single PVC with a test file and verify that the data is replicated to all the other PVCs.
+The purpose of these tests are to establish the following:
+1. Syncthing propogates the contents of one PVC to all of the others
+2. Syncthing can properly connect with all of the other nodes in the cluster
 
 - 00 - Create `N` PVCs
 - 05 - Create `N` ReplicationSources, configure each to sync the corresponding `n-th` PVC
