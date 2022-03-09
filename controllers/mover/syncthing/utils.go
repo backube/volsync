@@ -1,15 +1,17 @@
 package syncthing
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 
 	"github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers"
 )
 
-/**************************** EXPORTED FUNCTIONS *******************************/
-
 func (st *Syncthing) UpdateDevices(peerList []v1alpha1.SyncthingPeer) {
+	st.logger.V(4).Info("Updating devices", "peerlist", peerList)
+
 	// update syncthing config based on the provided peerlist
 	newDevices := []SyncthingDevice{}
 	// add myself to the device list
@@ -21,17 +23,23 @@ func (st *Syncthing) UpdateDevices(peerList []v1alpha1.SyncthingPeer) {
 	}
 
 	for _, device := range peerList {
+		// skip self
 		if device.ID == st.SystemStatus.MyID {
 			continue
 		}
-		newDevices = append(newDevices, SyncthingDevice{
+		stDeviceToAdd := SyncthingDevice{
 			DeviceID:   device.ID,
 			Addresses:  []string{device.Address},
 			Name:       "Syncthing Device " + string(rune(len(newDevices))),
 			Introducer: device.Introducer,
-		})
+		}
+		st.logger.V(4).Info("Adding device: %+v\n", stDeviceToAdd)
+		newDevices = append(newDevices, stDeviceToAdd)
 	}
+
 	st.Config.Devices = newDevices
+	st.logger.V(4).Info("Updated devices", "devices", st.Config.Devices)
+
 	// update the folders
 	st.UpdateFolders()
 }
@@ -89,13 +97,13 @@ func (st *Syncthing) NeedsReconfigure(nodeList []v1alpha1.SyncthingPeer) bool {
 }
 
 func (st *Syncthing) FetchLatestInfo() error {
-	if err := st.fetchSyncthingConfig(); err != nil {
+	if err := st.FetchSyncthingConfig(); err != nil {
 		return err
 	}
-	if err := st.fetchSyncthingSystemStatus(); err != nil {
+	if err := st.FetchSyncthingSystemStatus(); err != nil {
 		return err
 	}
-	if err := st.fetchConnectedStatus(); err != nil {
+	if err := st.FetchConnectedStatus(); err != nil {
 		return err
 	}
 	return nil
@@ -103,20 +111,21 @@ func (st *Syncthing) FetchLatestInfo() error {
 
 func (st *Syncthing) UpdateSyncthingConfig() error {
 	// update the config
+	st.logger.V(4).Info("Updating Syncthing config")
 	_, err := controllers.JSONRequest(st.APIConfig.APIURL+"/rest/config", "PUT", st.APIConfig.Headers(), st.Config)
 	if err != nil {
+		st.logger.V(4).Error(err, "Failed to update Syncthing config")
 		return err
 	}
 	return err
 }
 
-/**************************** INTERNAL FUNCTIONS *******************************/
-
-func (st *Syncthing) fetchSyncthingConfig() error {
+func (st *Syncthing) FetchSyncthingConfig() error {
 	responseBody := &SyncthingConfig{
 		Devices: []SyncthingDevice{},
 		Folders: []SyncthingFolder{},
 	}
+	st.logger.V(4).Info("Fetching Syncthing config")
 	data, err := controllers.JSONRequest(st.APIConfig.APIURL+"/rest/config", "GET", st.APIConfig.Headers(), nil)
 	if err != nil {
 		return err
@@ -126,8 +135,9 @@ func (st *Syncthing) fetchSyncthingConfig() error {
 	return err
 }
 
-func (st *Syncthing) fetchSyncthingSystemStatus() error {
+func (st *Syncthing) FetchSyncthingSystemStatus() error {
 	responseBody := &SystemStatus{}
+	st.logger.V(4).Info("Fetching Syncthing system status")
 	data, err := controllers.JSONRequest(st.APIConfig.APIURL+"/rest/system/status", "GET", st.APIConfig.Headers(), nil)
 	if err != nil {
 		return err
@@ -138,11 +148,12 @@ func (st *Syncthing) fetchSyncthingSystemStatus() error {
 	return err
 }
 
-func (st *Syncthing) fetchConnectedStatus() error {
+func (st *Syncthing) FetchConnectedStatus() error {
 	// updates the connected status if successful, else returns an error
 	responseBody := &SystemConnections{
 		Connections: map[string]ConnectionStats{},
 	}
+	st.logger.V(4).Info("Fetching Syncthing connected status")
 	data, err := controllers.JSONRequest(
 		st.APIConfig.APIURL+"/rest/system/connections", "GET", st.APIConfig.Headers(), nil,
 	)
@@ -160,4 +171,20 @@ func (api *APIConfig) Headers() map[string]string {
 		"X-API-Key":    api.APIKey,
 		"Content-Type": "application/json",
 	}
+}
+
+func GenerateRandomBytes(length int) ([]byte, error) {
+	// generates random bytes of given length
+	b := make([]byte, length)
+	_, err := rand.Read(b)
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
+func GenerateRandomString(length int) (string, error) {
+	// generate a random string
+	b, err := GenerateRandomBytes(length)
+	return base64.URLEncoding.EncodeToString(b), err
 }

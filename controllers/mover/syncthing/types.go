@@ -18,6 +18,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 package syncthing
 
+import "github.com/go-logr/logr"
+
 // syncthing config type
 // nolint:revive
 type SyncthingDevice struct {
@@ -252,4 +254,5 @@ type Syncthing struct {
 	SystemStatus      *SystemStatus      `json:"systemStatus"`
 	Config            *SyncthingConfig   `json:"config"`
 	APIConfig         *APIConfig         `json:"apiConfig"`
+	logger            logr.Logger
 }

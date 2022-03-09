@@ -20,7 +20,6 @@ package syncthing
 import (
 	"flag"
 	"fmt"
-	"os"
 
 	"github.com/go-logr/logr"
 	"github.com/spf13/viper"
@@ -94,13 +93,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		source.Status.Syncthing = &volsyncv1alpha1.ReplicationSourceSyncthingStatus{}
 	}
 
-	// temporary solution
-	// set the APIURL to localhost if running in local environment
-	var APIURL = ""
-	if os.Getenv("RUN_LOCAL") == "true" {
-		APIURL = "http://127.0.0.1:8384"
-	}
-
+	// servicetype or default
 	var serviceType corev1.ServiceType
 	if source.Spec.Syncthing.ServiceType != nil {
 		serviceType = *source.Spec.Syncthing.ServiceType
@@ -108,9 +101,11 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		serviceType = corev1.ServiceTypeLoadBalancer
 	}
 
+	syncthingLogger := logger.WithValues("method", "Syncthing")
+
 	return &Mover{
 		client:         client,
-		logger:         logger.WithValues("method", "Syncthing"),
+		logger:         syncthingLogger,
 		owner:          source,
 		containerImage: rb.getSyncthingContainerImage(),
 		peerList:       source.Spec.Syncthing.Peers,
@@ -120,13 +115,15 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		serviceType:    serviceType,
 		syncthing: Syncthing{
 			APIConfig: &APIConfig{
-				APIURL: APIURL,
+				APIURL: "",
 			},
+			// all logs from Syncthing's logger should be V(4)
+			logger: syncthingLogger.WithValues("struct", "Syncthing"),
 		},
 	}, nil
 }
 
-// not implemented for syncthing
+// syncthing is destination-only
 func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 	destination *volsyncv1alpha1.ReplicationDestination) (mover.Mover, error) {
 	return nil, fmt.Errorf("syncthing mover not implemented for destination")
