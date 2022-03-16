@@ -4,4 +4,4 @@ pylint
 rstcheck
 sphinx_rtd_theme
 sphinx-tabs
-sphinx-toolbox
+sphinx-toolbox==2.17.0
