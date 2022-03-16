@@ -41,7 +41,6 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    operatorframework.io/suggested-namespace: volsync-system
     operators.operatorframework.io/builder: operator-sdk-v1.14.0+git
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
   name: volsync.v0.0.0
