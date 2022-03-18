@@ -152,7 +152,7 @@ krew-plugin-manifest: yq bin/kubectl-volsync ## Build & package the kubectl plug
 	rm -f bin/kubectl-volsync.tar.gz
 	tar czf bin/kubectl-volsync.tar.gz LICENSE -C bin kubectl-volsync
 	HASH="`sha256sum bin/kubectl-volsync.tar.gz | cut -f 1 -d ' '`" \
-	VERSION="$(BUILD_VERSION)" \
+	BUILD_VERSION="$(BUILD_VERSION)" \
 	$(YQ) --inplace '.spec.version=strenv(BUILD_VERSION) | with(.spec.platforms[]; .sha256=strenv(HASH) | .uri|=sub("v[[:digit:]]+\.[^/]+", strenv(BUILD_VERSION)))' ./kubectl-volsync/volsync.yaml
 
 ##@ Deployment
