@@ -202,7 +202,7 @@ jobs:
 
   e2e:
     name: End-to-end
-    needs: [build-operator, build-rclone, build-restic, build-rsync, kubectl-plugin]
+    needs: [build-operator, build-rclone, build-restic, build-rsync, build-syncthing, kubectl-plugin]
     runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
