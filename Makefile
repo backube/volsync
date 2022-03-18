@@ -8,8 +8,6 @@
 # Include common version information from the version.mk file
 include ./version.mk
 
-BUILDDATE := $(shell date -u '+%Y-%m-%dT%H:%M:%S.%NZ')
-
 # Helper software versions
 GOLANGCI_VERSION := v1.43.0
 HELM_VERSION := v3.7.1
@@ -152,8 +150,8 @@ krew-plugin-manifest: yq bin/kubectl-volsync ## Build & package the kubectl plug
 	rm -f bin/kubectl-volsync.tar.gz
 	tar czf bin/kubectl-volsync.tar.gz LICENSE -C bin kubectl-volsync
 	HASH="`sha256sum bin/kubectl-volsync.tar.gz | cut -f 1 -d ' '`" \
-	BUILD_VERSION="$(BUILD_VERSION)" \
-	$(YQ) --inplace '.spec.version=strenv(BUILD_VERSION) | with(.spec.platforms[]; .sha256=strenv(HASH) | .uri|=sub("v[[:digit:]]+\.[^/]+", strenv(BUILD_VERSION)))' ./kubectl-volsync/volsync.yaml
+	VERSION="v$(VERSION)" \
+	$(YQ) --inplace '.spec.version=strenv(VERSION) | with(.spec.platforms[]; .sha256=strenv(HASH) | .uri|=sub("v[[:digit:]]+\.[^/]+", strenv(VERSION)))' ./kubectl-volsync/volsync.yaml
 
 ##@ Deployment
 
