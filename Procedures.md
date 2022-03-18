@@ -42,8 +42,8 @@
 
 ## Making a new bundle version
 
-If developing a new version, update the Makefile and set the proper values
-for:
+If developing a new version, update the [version.mk](version.mk) file and set
+the proper values for:
 
 * `VERSION`  
 * `CHANNELS` - This should be the set of channels this version should be

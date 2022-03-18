@@ -1,7 +1,7 @@
-IMAGE := quay.io/backube/volsync-mover-syncthing
+# Common version info
+include ../version.mk
 
-BUILDDATE := $(shell date -u '+%Y-%m-%dT%H:%M:%S.%NZ')
-VERSION := $(shell git describe --match 'v[0-9]*' --tags --dirty 2> /dev/null || git describe --always --dirty)
+IMAGE := quay.io/backube/volsync-mover-syncthing
 
 .PHONY: all
 all: image
@@ -10,6 +10,6 @@ all: image
 image:
 	docker build \
 		--build-arg "builddate_arg=$(BUILDDATE)" \
-		--build-arg "version_arg=$(VERSION)" \
+		--build-arg "version_arg=$(BUILD_VERSION)" \
 		-t $(IMAGE) \
 		-f Dockerfile .
