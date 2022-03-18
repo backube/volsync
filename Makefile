@@ -3,8 +3,10 @@
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
-VERSION ?= $(shell git describe --tags --dirty --match 'v*' 2> /dev/null || git describe --always --dirty)
-BUILDDATE := $(shell date -u '+%Y-%m-%dT%H:%M:%S.%NZ')
+#VERSION ?= $(shell git describe --tags --dirty --match 'v*' 2> /dev/null || git describe --always --dirty)
+
+# Include common version information from the version.mk file
+include ./version.mk
 
 # Helper software versions
 GOLANGCI_VERSION := v1.43.0
@@ -123,21 +125,21 @@ test-krew: krew-plugin-manifest
 
 .PHONY: build
 build: generate lint ## Build manager binary.
-	go build -o bin/manager -ldflags -X=main.volsyncVersion=$(VERSION) main.go
+	go build -o bin/manager -ldflags -X=main.volsyncVersion=$(BUILD_VERSION) main.go
 
 .PHONY: cli
 cli: bin/kubectl-volsync ## Build VolSync kubectl plugin
 
 bin/kubectl-volsync: lint
-	go build -o $@ -ldflags -X=github.com/backube/volsync/kubectl-volsync/cmd.volsyncVersion=$(VERSION) ./kubectl-volsync/main.go
+	go build -o $@ -ldflags -X=github.com/backube/volsync/kubectl-volsync/cmd.volsyncVersion=$(BUILD_VERSION) ./kubectl-volsync/main.go
 
 .PHONY: run
 run: manifests generate lint  ## Run a controller from your host.
-	go run -ldflags -X=main.volsyncVersion=$(VERSION) ./main.go
+	go run -ldflags -X=main.volsyncVersion=$(BUILD_VERSION) ./main.go
 
 .PHONY: docker-build
 docker-build: test ## Build docker image with the manager.
-	docker build --build-arg "version_arg=$(VERSION)" -t ${IMG} .
+	docker build --build-arg "version_arg=$(BUILD_VERSION)" -t ${IMG} .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
@@ -148,7 +150,7 @@ krew-plugin-manifest: yq bin/kubectl-volsync ## Build & package the kubectl plug
 	rm -f bin/kubectl-volsync.tar.gz
 	tar czf bin/kubectl-volsync.tar.gz LICENSE -C bin kubectl-volsync
 	HASH="`sha256sum bin/kubectl-volsync.tar.gz | cut -f 1 -d ' '`" \
-	VERSION="$(VERSION)" \
+	VERSION="v$(VERSION)" \
 	$(YQ) --inplace '.spec.version=strenv(VERSION) | with(.spec.platforms[]; .sha256=strenv(HASH) | .uri|=sub("v[[:digit:]]+\.[^/]+", strenv(VERSION)))' ./kubectl-volsync/volsync.yaml
 
 ##@ Deployment
