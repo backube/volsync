@@ -369,8 +369,12 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 
 						// sync should be waiting for job to complete - before forcing job to succeed,
 						// check that lastSyncStartTime is set
-						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)).To(Succeed())
-						Expect(rd.Status.LastSyncStartTime).Should(Not(BeNil()))
+						Eventually(func() *metav1.Time {
+							if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd); err != nil {
+								return nil
+							}
+							return rd.Status.LastSyncStartTime
+						}, maxWait, interval).ShouldNot(BeNil())
 
 						job.Status.Succeeded = 1
 						Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
