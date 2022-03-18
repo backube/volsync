@@ -45,9 +45,9 @@
 If developing a new version, update the Makefile and set the proper values
 for:
 
-* `VERSION`
+* `VERSION`  
 * `CHANNELS` - This should be the set of channels this version should be
-published to
+  published to  
 * `DEFAULT_CHANNEL`
 
 Then run `$ make bundle` again to generate the metadata for the new version
@@ -58,16 +58,16 @@ Generally OLM will handle semver updates when updating .Y (for example
 from 0.4.0 to 0.4.1 will update automatically within a channel).
 
 However, if the version is to go into a new channel (say, a new channel
-`acm-2.6`) then we will need to add replaces or skipRange to the CSV.  As an 
+`acm-2.6`) then we will need to add replaces or skipRange to the CSV.  As an
 example, say we have the following scenario:
 
-* Channel `acm-2.5` with versions `0.4.0` and `0.4.1`
+* Channel `acm-2.5` with versions `0.4.0` and `0.4.1`  
 * User is subscribed to `acm-2.5` and automatically at the head of this channel
-with version `0.4.1` installed
-* Then we make a version `0.4.2` and put this into new channel `acm-2.6`
+  with version `0.4.1` installed  
+* Then we make a version `0.4.2` and put this into new channel `acm-2.6`  
 * If a user updates their subscription (or ACM does this for them) to channel
-`acm-2.6` then the operator will not automatically update from `0.4.1` to
-`0.4.2`.
+  `acm-2.6` then the operator will not automatically update from `0.4.1` to
+  `0.4.2`
 
 To get this upgrade to work the easiest solution atm may be to add a skipRange
 to the CSV.
@@ -79,12 +79,13 @@ olm.skipRange: '>=0.4.0 <0.4.2'
 ```
 
 This will allow upgrades (even between channels) to `0.4.2` from any version
-starting from `0.4.0`.  It will also upgrade directly to `0.4.2` without 
+starting from `0.4.0`.  It will also upgrade directly to `0.4.2` without
 installing any versions in-between.
 
 See references:
 
 * [operator-framework: how to update operators](https://github.com/operator-framework/operator-lifecycle-manager/blob/master/doc/design/how-to-update-operators.md)
+
 * [olm architecture: creating an update graph](https://olm.operatorframework.io/docs/concepts/olm-architecture/operator-catalog/creating-an-update-graph/)
 
 ### Steps to generate a bundle, bundle image, etc for testing
