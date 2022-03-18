@@ -5,14 +5,8 @@
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
 #VERSION ?= $(shell git describe --tags --dirty --match 'v*' 2> /dev/null || git describe --always --dirty)
 
-# Bundle Version being built right now and channels to use
-VERSION := 0.4.0
-CHANNELS := stable,acm-2.5
-DEFAULT_CHANNEL := stable
-
-HEAD_COMMIT ?= $(shell git rev-parse --short HEAD)
-DIRTY ?= $(shell git diff --quiet || echo '-dirty')
-BUILD_VERSION := v$(VERSION)+$(HEAD_COMMIT)$(DIRTY)
+# Include common version information from the version.mk file
+include ./version.mk
 
 BUILDDATE := $(shell date -u '+%Y-%m-%dT%H:%M:%S.%NZ')
 
