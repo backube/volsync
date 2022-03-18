@@ -2,5 +2,6 @@
 apiVersion: kuttl.dev/v1beta1
 kind: TestSuite
 testDirs:
-  - ./e2e
+  - ./cli  # CLI-specific tests
+  - ./e2e  # Operator end-to-end tests
 timeout: 300  # default 5m to allow time for PVC provisioning/mounting

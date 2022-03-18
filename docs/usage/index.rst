@@ -10,6 +10,7 @@ Usage
    rclone/index
    restic/index
    rsync/index
+   cli/index
 
 There are three different replication methods built into VolSync. Choose the method that best fits your use-case:
 

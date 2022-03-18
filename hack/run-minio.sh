@@ -2,18 +2,33 @@
 
 set -e -o pipefail
 
+MINIO_NAMESPACE="minio"
+
+# Delete minio if it's already there
+kubectl delete ns "${MINIO_NAMESPACE}" || true
+
 helm repo add bitnami https://charts.bitnami.com/bitnami
 helm repo update
 
 # Makes minio available at minio.minio.svc.cluster.local:9000
 # The chart version needs to be in sync with the version used here:
 # https://github.com/openshift/release/blob/master/ci-operator/config/backube/volsync/backube-volsync-main.yaml
-helm install --create-namespace -n minio \
+
+# Detect OpenShift
+declare -a SECURITY_ARGS
+if kubectl api-resources --api-group security.openshift.io | grep -qi SecurityContextConstraints; then
+    echo "===> Detected OpenShift <==="
+    SECURITY_ARGS=(--set "containerSecurityContext.enabled=false" --set "podSecurityContext.enabled=false")
+else
+    echo "===> Not running on OpenShift <==="
+    SECURITY_ARGS=(--set "securityContext.enabled=false" --set "volumePermissions.enabled=true")
+fi
+
+helm install --create-namespace -n "${MINIO_NAMESPACE}" \
     --set accessKey.password=access \
     --set secretKey.password=password \
-    --set securityContext.enabled=false \
     --set defaultBuckets=mybucket \
-    --set volumePermissions.enabled=true \
+    "${SECURITY_ARGS[@]}" \
     --version 9.0.5 \
     --wait --timeout=300s \
     minio bitnami/minio

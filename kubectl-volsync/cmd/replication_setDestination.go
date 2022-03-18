@@ -36,6 +36,7 @@ type replicationSetDestination struct {
 	capacity                *resource.Quantity
 	copyMethod              volsyncv1alpha1.CopyMethodType
 	destName                XClusterName
+	serviceType             corev1.ServiceType
 	storageClassName        *string
 	volumeSnapshotClassName *string
 }
@@ -70,6 +71,8 @@ func init() {
 	replicationSetDestinationCmd.Flags().String("copymethod", "Snapshot", "method used to create a point-in-time copy")
 	replicationSetDestinationCmd.Flags().String("destination", "", "name of the destination: [context/]namespace/name")
 	cobra.CheckErr(replicationSetDestinationCmd.MarkFlagRequired("destination"))
+	replicationSetDestinationCmd.Flags().String("servicetype", "ClusterIP",
+		"type of Service to create for incoming connections (ClusterIP | LoadBalancer)")
 	replicationSetDestinationCmd.Flags().String("storageclass", "",
 		"name of the StorageClass to use for the destination volume")
 	replicationSetDestinationCmd.Flags().String("volumesnapshotclass", "",
@@ -104,6 +107,15 @@ func newReplicationSetDestination(cmd *cobra.Command) (*replicationSetDestinatio
 		return nil, err
 	}
 	rsd.destName = *xcr
+
+	svc, err := cmd.Flags().GetString("servicetype")
+	if err != nil {
+		return nil, err
+	}
+	if svc != string(corev1.ServiceTypeLoadBalancer) && svc != string(corev1.ServiceTypeClusterIP) {
+		return nil, fmt.Errorf("servicetype must be LoadBalancer or ClusterIP")
+	}
+	rsd.serviceType = corev1.ServiceType(svc)
 
 	scName, err := cmd.Flags().GetString("storageclass")
 	if err != nil {
@@ -144,6 +156,7 @@ func (rsd *replicationSetDestination) Run(ctx context.Context) error {
 				StorageClassName:        rsd.storageClassName,
 				VolumeSnapshotClassName: rsd.volumeSnapshotClassName,
 			},
+			ServiceType: &rsd.serviceType,
 		},
 	}
 

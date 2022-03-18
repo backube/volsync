@@ -19,15 +19,20 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	errorsutil "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
@@ -64,6 +69,8 @@ type replicationRelationshipSource struct {
 	RSName string
 	// Parameters for the ReplicationSource
 	Source volsyncv1alpha1.ReplicationSourceRsyncSpec
+	// Scheduling parameters
+	Trigger volsyncv1alpha1.ReplicationSourceTriggerSpec
 }
 
 type replicationRelationshipDestination struct {
@@ -219,4 +226,226 @@ func (rr *replicationRelationship) DeleteDestination(ctx context.Context,
 		klog.Errorf("unable to remove previous Destination objects: %w", err)
 	}
 	return err
+}
+
+func (rr *replicationRelationship) Apply(ctx context.Context, srcClient client.Client,
+	dstClient client.Client) error {
+	if rr.data.Source == nil {
+		return fmt.Errorf("please define a replication source with \"set-source\"")
+	}
+	if rr.data.Destination == nil {
+		return fmt.Errorf("please define a replication destination with \"set-destination\"")
+	}
+
+	// Get Source PVC info
+	srcPVC := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      rr.data.Source.PVCName,
+			Namespace: rr.data.Source.Namespace,
+		},
+	}
+	if err := srcClient.Get(ctx, client.ObjectKeyFromObject(srcPVC), srcPVC); err != nil {
+		return fmt.Errorf("unable to retrieve source PVC: %w", err)
+	}
+
+	var dstPVC *corev1.PersistentVolumeClaim
+	if rr.data.Destination.Destination.CopyMethod == volsyncv1alpha1.CopyMethodSnapshot {
+		// We need to ensure the RD has defaults based on the source volume
+		if rr.data.Destination.Destination.Capacity == nil {
+			capacity := srcPVC.Spec.Resources.Requests[corev1.ResourceStorage]
+			rr.data.Destination.Destination.Capacity = &capacity
+		}
+		if len(rr.data.Destination.Destination.AccessModes) == 0 {
+			rr.data.Destination.Destination.AccessModes = srcPVC.Spec.AccessModes
+		}
+	} else {
+		// Since we're not snapshotting on the dest, we need to ensure there's a
+		// PVC with the final name present on the cluster
+		var err error
+		dstPVC, err = rr.ensureDestinationPVC(ctx, dstClient, srcPVC)
+		if err != nil {
+			return fmt.Errorf("unable to create PVC on destination: %w", err)
+		}
+	}
+
+	address, keys, err := rr.applyDestination(ctx, dstClient, dstPVC)
+	if err != nil {
+		return err
+	}
+
+	return rr.applySource(ctx, srcClient, address, keys)
+}
+
+// Gets or creates the destination PVC
+func (rr *replicationRelationship) ensureDestinationPVC(ctx context.Context, c client.Client,
+	srcPVC *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error) {
+	// By default, we can guess AccessModes and Capacity from the source PVC,
+	// then allow that to be overridden.
+	var accessModes []corev1.PersistentVolumeAccessMode
+	var capacity resource.Quantity
+	if srcPVC != nil { // By default, we duplicate what's on the source
+		accessModes = srcPVC.Spec.AccessModes
+		capacity = srcPVC.Spec.Resources.Requests[corev1.ResourceStorage]
+	}
+	if len(rr.data.Destination.Destination.AccessModes) > 0 {
+		accessModes = rr.data.Destination.Destination.AccessModes
+	}
+	if rr.data.Destination.Destination.Capacity != nil {
+		capacity = *rr.data.Destination.Destination.Capacity
+	}
+
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      rr.data.Destination.RDName,
+			Namespace: rr.data.Destination.Namespace,
+		},
+	}
+
+	// We use CoU so that we will (1) gracefully fail the create if it already
+	// exists, (2) create it if it doesn't, (3) have a copy of the object either
+	// way
+	_, err := ctrlutil.CreateOrUpdate(ctx, c, pvc, func() error {
+		// Only modify the PVC if we're creating it
+		if !pvc.CreationTimestamp.IsZero() {
+			return nil
+		}
+
+		klog.Infof("creating destination PVC: %v/%v", pvc.Namespace, pvc.Name)
+		pvc.Spec = corev1.PersistentVolumeClaimSpec{
+			AccessModes: accessModes,
+			Resources: corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceStorage: capacity,
+				},
+			},
+			StorageClassName: rr.data.Destination.Destination.StorageClassName,
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return pvc, nil
+}
+
+func (rr *replicationRelationship) applyDestination(ctx context.Context,
+	c client.Client, dstPVC *corev1.PersistentVolumeClaim) (*string, *corev1.Secret, error) {
+	params := rr.data.Destination
+
+	// Create destination
+	rd := &volsyncv1alpha1.ReplicationDestination{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      params.RDName,
+			Namespace: params.Namespace,
+		},
+	}
+	_, err := ctrlutil.CreateOrUpdate(ctx, c, rd, func() error {
+		rr.AddIDLabel(rd)
+		rd.Spec = volsyncv1alpha1.ReplicationDestinationSpec{
+			Rsync: &params.Destination,
+		}
+		if dstPVC != nil {
+			rd.Spec.Rsync.DestinationPVC = &dstPVC.Name
+		}
+		return nil
+	})
+	if err != nil {
+		klog.Errorf("unable to create ReplicationDestination: %w", err)
+		return nil, nil, err
+	}
+
+	rd, err = rr.awaitDestAddrKeys(ctx, c, client.ObjectKeyFromObject(rd))
+	if err != nil {
+		klog.Errorf("error while waiting for destination keys and address: %w", err)
+		return nil, nil, err
+	}
+
+	// Fetch the keys
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      *rd.Status.Rsync.SSHKeys,
+			Namespace: params.Namespace,
+		},
+	}
+	if err = c.Get(ctx, client.ObjectKeyFromObject(secret), secret); err != nil {
+		klog.Errorf("unable to retrieve ssh keys: %w", err)
+		return nil, nil, err
+	}
+
+	return rd.Status.Rsync.Address, secret, nil
+}
+
+func (rr *replicationRelationship) awaitDestAddrKeys(ctx context.Context, c client.Client,
+	rdName types.NamespacedName) (*volsyncv1alpha1.ReplicationDestination, error) {
+	klog.Infof("waiting for keys & address of destination to be available")
+	rd := volsyncv1alpha1.ReplicationDestination{}
+	err := wait.PollImmediate(5*time.Second, defaultRsyncKeyTimeout, func() (bool, error) {
+		if err := c.Get(ctx, rdName, &rd); err != nil {
+			return false, err
+		}
+		if rd.Status == nil || rd.Status.Rsync == nil {
+			return false, nil
+		}
+		if rd.Status.Rsync.Address == nil {
+			return false, nil
+		}
+		if rd.Status.Rsync.SSHKeys == nil {
+			return false, nil
+		}
+		return true, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &rd, nil
+}
+
+func (rr *replicationRelationship) applySource(ctx context.Context, c client.Client,
+	address *string, dstKeys *corev1.Secret) error {
+	klog.Infof("creating resources on Source")
+	srcKeys, err := rr.applySourceKeys(ctx, c, dstKeys)
+	if err != nil {
+		klog.Errorf("unable to create source ssh keys: %w", err)
+		return err
+	}
+
+	rs := &volsyncv1alpha1.ReplicationSource{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      rr.data.Source.RSName,
+			Namespace: rr.data.Source.Namespace,
+		},
+	}
+	_, err = ctrlutil.CreateOrUpdate(ctx, c, rs, func() error {
+		rr.AddIDLabel(rs)
+		rs.Spec = volsyncv1alpha1.ReplicationSourceSpec{
+			SourcePVC: rr.data.Source.PVCName,
+			Trigger:   &rr.data.Source.Trigger,
+			Rsync:     &rr.data.Source.Source,
+		}
+		rs.Spec.Rsync.Address = address
+		rs.Spec.Rsync.SSHKeys = &srcKeys.Name
+		return nil
+	})
+	return err
+}
+
+// Copies the ssh keys into the source cluster
+func (rr *replicationRelationship) applySourceKeys(ctx context.Context,
+	c client.Client, dstKeys *corev1.Secret) (*corev1.Secret, error) {
+	srcKeys := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      rr.data.Source.RSName,
+			Namespace: rr.data.Source.Namespace,
+		},
+	}
+	_, err := ctrlutil.CreateOrUpdate(ctx, c, srcKeys, func() error {
+		rr.AddIDLabel(srcKeys)
+		srcKeys.Data = dstKeys.Data
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return srcKeys, nil
 }

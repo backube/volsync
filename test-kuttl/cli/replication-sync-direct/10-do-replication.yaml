@@ -1,0 +1,18 @@
+---
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+commands:
+  - timeout: 600  # To wait for PVC -> Snap -> PVC on source
+    script: |
+      set -e -o pipefail
+
+      CONFIGDIR="$(mktemp -d)"
+      KV="../../../bin/kubectl-volsync"
+
+      "$KV" --config-dir "${CONFIGDIR}" replication -r replication create
+      "$KV" --config-dir "${CONFIGDIR}" replication -r replication set-source --pvcname "${NAMESPACE}/data-source" --copymethod Snapshot
+      "$KV" --config-dir "${CONFIGDIR}" replication -r replication set-destination --destination "${NAMESPACE}/data-dest" --copymethod Direct
+      "$KV" --config-dir "${CONFIGDIR}" replication -r replication sync
+      "$KV" --config-dir "${CONFIGDIR}" replication -r replication delete
+
+      rm -rf "$CONFIGDIR"
