@@ -503,8 +503,12 @@ var _ = Describe("ReplicationSource", func() {
 				}, maxWait, interval).Should(Succeed())
 				// Job was found, so synchronization should be in-progress
 
-				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rs), rs)).To(Succeed())
-				Expect(rs.Status.LastSyncStartTime).Should(Not(BeNil())) // Make sure start time was set
+				Eventually(func() *metav1.Time {
+					if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rs), rs); err != nil {
+						return nil
+					}
+					return rs.Status.LastSyncStartTime
+				}, maxWait, interval).ShouldNot(BeNil())
 
 				// set the job to succeed so sync can finish
 				job.Status.Succeeded = 1
