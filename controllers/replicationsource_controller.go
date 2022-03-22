@@ -36,6 +36,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers/mover"
@@ -196,6 +197,9 @@ func reconcileSrcUsingCatalog(
 func (r *ReplicationSourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&volsyncv1alpha1.ReplicationSource{}).
+		WithOptions(controller.Options{
+			MaxConcurrentReconciles: 100,
+		}).
 		Owns(&batchv1.Job{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
 		Owns(&corev1.Secret{}).
