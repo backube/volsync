@@ -5,7 +5,7 @@ go 1.17
 require (
 	github.com/go-logr/logr v0.4.0
 	github.com/google/uuid v1.1.2
-	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.1.0
+	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0
 	github.com/onsi/ginkgo v1.16.4
 	github.com/onsi/gomega v1.15.0
 	github.com/prometheus/client_golang v1.11.0
