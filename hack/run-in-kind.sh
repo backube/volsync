@@ -7,7 +7,7 @@ scriptdir="$(dirname "$(realpath "$0")")"
 cd "$scriptdir/.."
 
 # Build the container images
-make docker-build
+make docker-build cli
 make -C mover-rclone image
 make -C mover-restic image
 make -C mover-rsync image
@@ -26,6 +26,10 @@ for i in "${IMAGES[@]}"; do
     docker tag "${i}:latest" "${i}:${KIND_TAG}"
     kind load docker-image "${i}:${KIND_TAG}"
 done
+
+# Pre-cache the busybox image
+docker pull busybox
+kind load docker-image busybox
 
 helm upgrade --install --create-namespace -n volsync-system \
     --set image.tag="${KIND_TAG}" \
