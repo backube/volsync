@@ -57,6 +57,7 @@ spec:
   - email: tflower@redhat.com
     name: Tesshu Flower
   maturity: alpha
+  minKubeVersion: MIN_KUBE_VERSION
   provider:
     name: Red Hat
   version: 0.0.0
