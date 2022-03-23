@@ -33,6 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
@@ -944,6 +945,11 @@ var _ = Describe("Rclone as a destination", func() {
 						Namespace: ns.Name,
 						Labels:    map[string]string{"volsync.backube/ownedby": string(uid)},
 					},
+					Spec: snapv1.VolumeSnapshotSpec{
+						Source: snapv1.VolumeSnapshotSource{
+							PersistentVolumeClaimName: pointer.String("dummy"),
+						},
+					},
 				}
 				Expect(k8sClient.Create(ctx, snap1)).To(Succeed())
 				snap2 := &snapv1.VolumeSnapshot{
@@ -951,6 +957,11 @@ var _ = Describe("Rclone as a destination", func() {
 						Name:      "mytestsnap2",
 						Namespace: ns.Name,
 						Labels:    map[string]string{"volsync.backube/ownedby": string(uid)},
+					},
+					Spec: snapv1.VolumeSnapshotSpec{
+						Source: snapv1.VolumeSnapshotSource{
+							PersistentVolumeClaimName: pointer.String("dummy2"),
+						},
 					},
 				}
 				Expect(k8sClient.Create(ctx, snap2)).To(Succeed())
