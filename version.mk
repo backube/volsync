@@ -10,7 +10,7 @@
 VERSION := 0.4.0
 CHANNELS := stable,acm-2.5
 DEFAULT_CHANNEL := stable
-MIN_KUBE_VERSION := 1.19.0
+MIN_KUBE_VERSION := 1.20.0
 
 HEAD_COMMIT ?= $(shell git rev-parse --short HEAD)
 DIRTY ?= $(shell git diff --quiet || echo '-dirty')
