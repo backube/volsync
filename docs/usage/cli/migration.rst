@@ -30,7 +30,7 @@ PersistentVolumeClaim.
 
 External storage
   A locally mounted directory tree (could be local disk or network-attached
-  storage such as NFS)
+  storage such as NFS or GlusterFS)
 Destination cluster
   OpenShift running on GCP with their CSI driver.
   Note: The VolSync operator must be installed in the destination cluster.
