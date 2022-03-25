@@ -48,7 +48,8 @@ the proper values for:
 * `VERSION`  
 * `CHANNELS` - This should be the set of channels this version should be
   published to  
-* `DEFAULT_CHANNEL`
+* `DEFAULT_CHANNEL`  
+* `MIN_KUBE_VERSION`
 
 Then run `$ make bundle` again to generate the metadata for the new version
 
