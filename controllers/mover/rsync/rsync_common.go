@@ -91,22 +91,6 @@ func (d *rsyncSvcDescription) Reconcile(l logr.Logger) error {
 	return nil
 }
 
-func getServiceAddress(svc *corev1.Service) string {
-	address := svc.Spec.ClusterIP
-	if svc.Spec.Type == corev1.ServiceTypeLoadBalancer {
-		if len(svc.Status.LoadBalancer.Ingress) > 0 {
-			if svc.Status.LoadBalancer.Ingress[0].Hostname != "" {
-				address = svc.Status.LoadBalancer.Ingress[0].Hostname
-			} else if svc.Status.LoadBalancer.Ingress[0].IP != "" {
-				address = svc.Status.LoadBalancer.Ingress[0].IP
-			}
-		} else {
-			address = ""
-		}
-	}
-	return address
-}
-
 type rsyncSSHKeys struct {
 	Context      context.Context
 	Client       client.Client

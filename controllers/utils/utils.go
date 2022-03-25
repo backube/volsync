@@ -76,3 +76,20 @@ func KindAndName(scheme *runtime.Scheme, obj client.Object) string {
 	}
 	return ref.Kind + "/" + ref.Name
 }
+
+// GetServiceAddress Returns the address of the given service as a string.
+func GetServiceAddress(svc *corev1.Service) string {
+	address := svc.Spec.ClusterIP
+	if svc.Spec.Type == corev1.ServiceTypeLoadBalancer {
+		if len(svc.Status.LoadBalancer.Ingress) > 0 {
+			if svc.Status.LoadBalancer.Ingress[0].Hostname != "" {
+				address = svc.Status.LoadBalancer.Ingress[0].Hostname
+			} else if svc.Status.LoadBalancer.Ingress[0].IP != "" {
+				address = svc.Status.LoadBalancer.Ingress[0].IP
+			}
+		} else {
+			address = ""
+		}
+	}
+	return address
+}

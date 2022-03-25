@@ -156,7 +156,7 @@ func (m *Mover) ensureServiceAndPublishAddress(ctx context.Context) (bool, error
 }
 
 func (m *Mover) publishSvcAddress(service *corev1.Service) (bool, error) {
-	address := getServiceAddress(service)
+	address := utils.GetServiceAddress(service)
 	if address == "" {
 		// We don't have an address yet, try again later
 		m.updateStatusAddress(nil)
