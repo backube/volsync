@@ -146,7 +146,7 @@ them
     [operator.yml](.github/workflows/operator.yml)
   * Kubernetes version used by kind:
     * [Available kubernetes
-      versions](https://hub.docker.com/r/kindest/node/tags?page=1&ordering=last_updated)
+      versions](https://hub.docker.com/r/kindest/node/tags?page=1&ordering=name)
     * Update the default kube version in the
       [setup-kind-cluster.sh](./hack/setup-kind-cluster.sh) script to be the
       latest image
