@@ -310,7 +310,7 @@ spec:
                   periodSeconds: 10
                 resources:
                   limits:
-                    cpu: 1000m
+                    cpu: "1"
                     memory: 300Mi
                   requests:
                     cpu: 100m
@@ -383,7 +383,7 @@ spec:
   - email: tflower@redhat.com
     name: Tesshu Flower
   maturity: alpha
-  minKubeVersion: 1.19.0
+  minKubeVersion: 1.20.0
   provider:
     name: Red Hat
   version: 0.4.0

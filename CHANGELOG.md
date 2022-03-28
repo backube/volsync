@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rename CopyMethod `None` to `Direct` to make it more descriptive.
 - Upgrade OperatorSDK to 1.15
 - Move Rclone and Rsync movers to the Mover interface
+- Switch snapshot API version from `snapshot.storage.k8s.io/v1beta1` to
+  `snapshot.storage.k8s.io/v1` so that VolSync remains compatible w/ Kubernetes
+  1.24+
+- Minimum Kubernetes version is now 1.20 due to the switch to
+  `snapshot.storage.k8s.io/v1`
 
 ### Fixed
 
