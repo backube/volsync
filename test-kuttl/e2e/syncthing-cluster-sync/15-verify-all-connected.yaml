@@ -10,8 +10,6 @@ commands:
       #   2. Each of the Syncthing IDs in .spec.syncthing.peers appears in .status.syncthing.peers and is connected
 
       replication_sources=$(kubectl get replicationsource -n "${NAMESPACE}" -o json | jq '.items')
-      echo "using replication_sources for input:"
-      echo "${replication_sources}" | jq
 
       ###########################
       # Ensures all ReplicationSources

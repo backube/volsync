@@ -54,9 +54,10 @@ const (
 
 // Mover is the reconciliation logic for the Restic-based data mover.
 type Mover struct {
-	client         client.Client
-	logger         logr.Logger
-	owner          metav1.Object
+	client client.Client
+	logger logr.Logger
+	owner  metav1.Object
+	// vh             *volumehandler.VolumeHandler
 	containerImage string
 	paused         bool
 	dataPVCName    *string
@@ -158,6 +159,7 @@ func (m *Mover) ensureConfigPVC(ctx context.Context) (*corev1.PersistentVolumeCl
 			},
 		},
 	}
+
 	// ensure PVC can be deleted once ReplicationSource is deleted
 	if err := ctrl.SetControllerReference(m.owner, configPVC, m.client.Scheme()); err != nil {
 		m.logger.V(3).Error(err, "could not set owner ref")
@@ -480,21 +482,15 @@ func (m *Mover) ensureDataService(ctx context.Context) (*corev1.Service, error) 
 	return service, nil
 }
 
-func (m *Mover) GetDataServiceAddress(service *corev1.Service) string {
+func (m *Mover) GetDataServiceAddress(service *corev1.Service) (string, error) {
 	// format the address based on the type of service we're using
 	// supported service types: ClusterIP, LoadBalancer
-	// TODO: find a more robust solution or create a failsafe to prevent other service types from being used
-	address := ""
-	if m.serviceType == corev1.ServiceTypeLoadBalancer {
-		if service.Status.LoadBalancer.Ingress != nil && len(service.Status.LoadBalancer.Ingress) > 0 {
-			address = "tcp://" + service.Status.LoadBalancer.Ingress[0].IP + ":" + strconv.Itoa(syncthingDataPort)
-		}
-	} else if m.serviceType == corev1.ServiceTypeClusterIP {
-		if service.Spec.ClusterIP != "" {
-			address = "tcp://" + service.Spec.ClusterIP + ":" + strconv.Itoa(syncthingDataPort)
-		}
+	address := utils.GetServiceAddress(service)
+	if address == "" {
+		return "", fmt.Errorf("could not get an address for the service")
 	}
-	return address
+	address = "tcp://" + address + ":" + strconv.Itoa(syncthingDataPort)
+	return address, nil
 }
 
 func (m *Mover) Cleanup(ctx context.Context) (mover.Result, error) {
@@ -556,8 +552,14 @@ func (m *Mover) ensureStatusIsUpdated(dataSVC *corev1.Service) error {
 		return err
 	}
 
+	// fail until we can set the address
+	addr, err := m.GetDataServiceAddress(dataSVC)
+	if err != nil {
+		return err
+	}
+
 	// set syncthing-related info
-	m.status.Address = m.GetDataServiceAddress(dataSVC)
+	m.status.Address = addr
 	m.status.ID = m.syncthing.SystemStatus.MyID
 	m.status.Peers = []v1alpha1.SyncthingPeerStatus{}
 
