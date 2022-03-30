@@ -24,6 +24,7 @@ import (
 	"github.com/backube/volsync/controllers/mover"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -82,6 +83,7 @@ var _ = Describe("Syncthing doesn't implement RD", func() {
 
 	When("An RD Specifies Syncthing", func() {
 		BeforeEach(func() {
+
 			// create a namespace for test
 			ns = &corev1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{
@@ -315,7 +317,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 			// })
 		})
 
-		Context("When the data PVC is provided", func() {
+		Context("dataPVC is provided", func() {
 
 			It("mover ensures PVC is available or fails", func() {
 				// when a real PVC is provided
@@ -380,7 +382,302 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					Eventually(func() error {
 						return k8sClient.Get(ctx, types.NamespacedName{Name: configPVC.Name, Namespace: configPVC.Namespace}, configPVC)
 					}, timeout, interval).Should(Succeed())
+				})
+			})
+		})
 
+		Context("validate apikey secret", func() {
+			var apiKeys *corev1.Secret
+
+			When("secret already exists", func() {
+				JustBeforeEach(func() {
+					// create the secret
+					apiKeys = &corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "volsync-" + mover.owner.GetName(),
+							Namespace: ns.Name,
+						},
+						Data: map[string][]byte{
+							"apikey":   []byte("my-secret-apikey-do-not-steal"),
+							"username": []byte("gcostanza"),
+							"password": []byte("bosco"),
+						},
+					}
+					Expect(k8sClient.Create(ctx, apiKeys)).To(Succeed())
+					Eventually(func() error {
+						return k8sClient.Get(ctx, types.NamespacedName{Name: apiKeys.Name, Namespace: ns.Name}, apiKeys)
+					}, timeout, interval).Should(Succeed())
+				})
+
+				It("VolSync retrieves secret", func() {
+					// retrieve the secret
+					returnedSecret, err := mover.ensureSecretAPIKey(ctx)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(returnedSecret).NotTo(BeNil())
+					Expect(returnedSecret.Name).To(Equal(apiKeys.Name))
+
+					// ensure the data keys exist
+					Expect(returnedSecret.Data["apikey"]).NotTo(BeNil())
+					Expect(returnedSecret.Data["username"]).NotTo(BeNil())
+					Expect(returnedSecret.Data["password"]).NotTo(BeNil())
+				})
+			})
+
+			When("VolSync creates the secret", func() {
+				It("VolSync creates the secret", func() {
+					// create the secret
+					returnedSecret, err := mover.ensureSecretAPIKey(ctx)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(returnedSecret).NotTo(BeNil())
+
+					// ensure the secret is created
+					Eventually(func() error {
+						return k8sClient.Get(ctx, types.NamespacedName{Name: returnedSecret.Name, Namespace: returnedSecret.Namespace}, returnedSecret)
+					}, timeout, interval).Should(Succeed())
+
+					// ensure the data keys exist
+					Expect(returnedSecret.Data["apikey"]).NotTo(BeNil())
+					Expect(returnedSecret.Data["apikey"]).NotTo(BeEmpty())
+					Expect(returnedSecret.Data["username"]).NotTo(BeNil())
+					Expect(returnedSecret.Data["username"]).NotTo(BeEmpty())
+					Expect(returnedSecret.Data["password"]).NotTo(BeNil())
+					Expect(returnedSecret.Data["password"]).NotTo(BeEmpty())
+
+				})
+			})
+		})
+
+		Context("Syncthing API is being used properly", func() {
+			// todo
+		})
+
+		Context("service account is created", func() {
+			It("creates a new one", func() {
+				// create the SA
+				sa, err := mover.ensureSA(ctx)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(sa).NotTo(BeNil())
+
+				// make sure that the SA exists in-cluster
+				Eventually(func() error {
+					return k8sClient.Get(ctx, types.NamespacedName{Name: sa.Name, Namespace: ns.Name}, sa)
+				}, timeout, interval).Should(Succeed())
+			})
+		})
+
+		Context("Syncthing is being properly used", func() {
+			var configPVC *corev1.PersistentVolumeClaim
+			var apiSecret *corev1.Secret
+			var sa *corev1.ServiceAccount
+			var deployment *appsv1.Deployment
+			var apiService *corev1.Service
+
+			JustBeforeEach(func() {
+				var err error
+
+				// create necessary elements
+				configPVC = &corev1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "volsync-" + mover.owner.GetName(),
+						Namespace: ns.Name,
+					},
+					Spec: corev1.PersistentVolumeClaimSpec{
+						AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceStorage: resource.MustParse("1Gi"),
+							},
+						},
+					},
+				}
+
+				// expect the PVC to be created
+				Expect(k8sClient.Create(ctx, configPVC)).To(Succeed())
+
+				// create the apiSecret
+				apiSecret = &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "volsync-" + mover.owner.GetName(),
+						Namespace: ns.Name,
+					},
+					Data: map[string][]byte{
+						"apikey":   []byte("my-secret-apikey-do-not-steal"),
+						"username": []byte("gcostanza"),
+						"password": []byte("bosco"),
+					},
+				}
+				Expect(k8sClient.Create(ctx, apiSecret)).To(Succeed())
+
+				// expect the resources to have been created by now
+				Eventually(func() error {
+					err := k8sClient.Get(ctx, types.NamespacedName{Name: configPVC.Name, Namespace: ns.Name}, configPVC)
+					if err != nil {
+						return err
+					}
+
+					err = k8sClient.Get(ctx, types.NamespacedName{Name: apiSecret.Name, Namespace: ns.Name}, apiSecret)
+					if err != nil {
+						return err
+					}
+					return nil
+				}, timeout, interval).Should(Succeed())
+
+				// ensure the SA exists
+				sa, err = mover.ensureSA(ctx)
+				Expect(sa).NotTo(BeNil())
+				Expect(err).NotTo(HaveOccurred())
+
+				// ensure the SA exists in-cluster
+				Eventually(func() error {
+					return k8sClient.Get(ctx, types.NamespacedName{Name: sa.Name, Namespace: ns.Name}, sa)
+				}, timeout, interval).Should(Succeed())
+			})
+
+			When("VolSync ensures a deployment", func() {
+				It("creates a new one", func() {
+					// create a deployment
+					deployment, err := mover.ensureDeployment(ctx, srcPVC, configPVC, sa, apiSecret)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(deployment).NotTo(BeNil())
+
+					// expect deployment to have syncthing container
+					Expect(deployment.Spec.Template.Spec.Containers).To(HaveLen(1))
+					stContainer := deployment.Spec.Template.Spec.Containers[0]
+					Expect(stContainer.Name).To(Equal("syncthing"))
+
+					// make sure the mover's containerImage was specified for stContainer
+					Expect(stContainer.Image).To(Equal(mover.containerImage))
+
+					// expect STGUIAPIKEY to be set as one of the envs & referencing the secret
+					Expect(stContainer.Env).To(HaveLen(3))
+					for _, env := range stContainer.Env {
+						if env.Name == "STGUIAPIKEY" {
+							Expect(env.ValueFrom.SecretKeyRef.Name).To(Equal(apiSecret.Name))
+							Expect(env.ValueFrom.SecretKeyRef.Key).To(Equal("apikey"))
+						}
+					}
+
+					// validate that the deployment exposes API & data ports
+					var portNames []string = []string{"api", "data"}
+
+					// make sure the above ports exist in container's ports
+					for _, port := range stContainer.Ports {
+						found := false
+						for _, name := range portNames {
+							if port.Name == name {
+								found = true
+								break
+							}
+						}
+						// portname should be found in the list
+						Expect(found).To(BeTrue())
+					}
+
+					// make sure that configPVC and srcPVC are referenced in the deployment
+					Expect(deployment.Spec.Template.Spec.Volumes).To(HaveLen(2))
+					for _, volume := range deployment.Spec.Template.Spec.Volumes {
+						if volume.Name == "syncthing-config" {
+							Expect(volume.PersistentVolumeClaim.ClaimName).To(Equal(configPVC.Name))
+						} else if volume.Name == "syncthing-data" {
+							Expect(volume.PersistentVolumeClaim.ClaimName).To(Equal(srcPVC.Name))
+						}
+					}
+
+					// make sure that both deployment's specified volumes are being mounted by the container
+					Expect(stContainer.VolumeMounts).To(HaveLen(2))
+					for _, mount := range stContainer.VolumeMounts {
+						if mount.Name == "syncthing-config" {
+							Expect(mount.MountPath).To(Equal("/config"))
+						} else if mount.Name == "syncthing-data" {
+							Expect(mount.MountPath).To(Equal("/data"))
+						}
+					}
+				})
+
+				When("Deployment already exists", func() {
+					JustBeforeEach(func() {
+						// need to declare this err so scoped deployment can be used in test
+						var err error
+
+						// create a deployment
+						deployment, err = mover.ensureDeployment(ctx, srcPVC, configPVC, sa, apiSecret)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(deployment).NotTo(BeNil())
+
+						// await the avalability of the deployment
+						Eventually(func() error {
+							return k8sClient.Get(ctx, types.NamespacedName{Name: deployment.Name, Namespace: ns.Name}, deployment)
+						}, timeout, interval).Should(Succeed())
+					})
+
+					It("reuses the running deployment", func() {
+						// retrieve the deployment
+						newDeployment, err := mover.ensureDeployment(ctx, srcPVC, configPVC, sa, apiSecret)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(newDeployment).NotTo(BeNil())
+
+						// ensure the deployment is the same
+						Expect(newDeployment.Name).To(Equal(deployment.Name))
+					})
+
+					When("Service exposes the deployment's API", func() {
+						JustBeforeEach(func() {
+							// get the deployment
+							deployment, err := mover.ensureDeployment(ctx, srcPVC, configPVC, sa, apiSecret)
+							Expect(err).NotTo(HaveOccurred())
+							Expect(deployment).NotTo(BeNil())
+
+							// ensure the API service
+							apiService, err = mover.ensureAPIService(ctx, deployment)
+							Expect(err).NotTo(HaveOccurred())
+							Expect(apiService).NotTo(BeNil())
+
+							// get the service from the cluster
+							Eventually(func() error {
+								return k8sClient.Get(ctx, types.NamespacedName{Name: apiService.Name, Namespace: ns.Name}, apiService)
+							}, timeout, interval).Should(Succeed())
+						})
+
+						It("is properly configured", func() {
+							// get the deployment
+							deployment, err := mover.ensureDeployment(ctx, srcPVC, configPVC, sa, apiSecret)
+							Expect(err).NotTo(HaveOccurred())
+							Expect(deployment).NotTo(BeNil())
+
+							// ensure the API service
+							apiService, err = mover.ensureAPIService(ctx, deployment)
+							Expect(err).NotTo(HaveOccurred())
+							Expect(apiService).NotTo(BeNil())
+
+							// get the service from the cluster
+							Eventually(func() error {
+								return k8sClient.Get(ctx, types.NamespacedName{Name: apiService.Name, Namespace: ns.Name}, apiService)
+							}, timeout, interval).Should(Succeed())
+
+							// ensure that the service's ports match the deployments
+							Expect(deployment.Spec.Template.Spec.Containers).To(HaveLen(1))
+							syncthingContainer := deployment.Spec.Template.Spec.Containers[0]
+
+							// ensure that the deployment's API port matches the service's
+							Expect(apiService.Spec.Ports).To(HaveLen(1))
+
+							// find the API port
+							var apiPort *corev1.ContainerPort
+							for _, port := range syncthingContainer.Ports {
+								if port.Name == "api" {
+									apiPort = &port
+									break
+								}
+							}
+							Expect(apiService.Spec.Ports[0].Port).To(Equal(apiPort.ContainerPort))
+
+							// API Service gets reused
+							newApiService, err := mover.ensureAPIService(ctx, deployment)
+							Expect(err).NotTo(HaveOccurred())
+							Expect(newApiService).NotTo(BeNil())
+							Expect(newApiService.ObjectMeta.Name).To(Equal(apiService.ObjectMeta.Name))
+						})
+					})
 				})
 			})
 		})

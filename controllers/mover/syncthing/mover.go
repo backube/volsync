@@ -106,7 +106,7 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 		return mover.InProgress(), err
 	}
 
-	APIService, err := m.ensureAPIService(ctx)
+	APIService, err := m.ensureAPIService(ctx, deployment)
 	if APIService == nil || err != nil {
 		return mover.InProgress(), err
 	}
@@ -197,6 +197,7 @@ func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) 
 
 	// need to create the secret
 	if err != nil {
+		// these will fail only when there is an issue with the OS's RNG
 		randomAPIKey, err := GenerateRandomString(32)
 		if err != nil {
 			m.logger.Error(err, "could not generate random number")
@@ -208,6 +209,7 @@ func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) 
 			return nil, err
 		}
 
+		// create a new secret with the generated values
 		secret = &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "volsync-" + m.owner.GetName(),
@@ -223,10 +225,13 @@ func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) 
 				"password": []byte(randomPassword),
 			},
 		}
+
+		// ensure secret can be deleted once ReplicationSource is deleted
 		if err = ctrl.SetControllerReference(m.owner, secret, m.client.Scheme()); err != nil {
 			m.logger.Error(err, "could not set owner ref")
 			return nil, err
 		}
+
 		if err := m.client.Create(ctx, secret); err != nil {
 			return nil, err
 		}
@@ -381,7 +386,8 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 	return deployment, nil
 }
 
-func (m *Mover) ensureAPIService(ctx context.Context) (*corev1.Service, error) {
+func (m *Mover) ensureAPIService(ctx context.Context, deployment *appsv1.Deployment) (*corev1.Service, error) {
+	// setup vars
 	targetPort := "api"
 	serviceName := "volsync-" + m.owner.GetName() + "-api"
 	service := &corev1.Service{
@@ -390,49 +396,57 @@ func (m *Mover) ensureAPIService(ctx context.Context) (*corev1.Service, error) {
 			Namespace: m.owner.GetNamespace(),
 		},
 	}
-	err := m.client.Get(ctx, types.NamespacedName{Name: serviceName, Namespace: m.owner.GetNamespace()}, service)
-	if err != nil {
-		// something else went wrong
-		if !errors.IsNotFound(err) {
-			return nil, err
-		}
 
-		service = &corev1.Service{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      serviceName,
-				Namespace: m.owner.GetNamespace(),
-				Labels: map[string]string{
-					"app": m.owner.GetName(),
-				},
-			},
-			Spec: corev1.ServiceSpec{
-				Selector: map[string]string{
-					"app": m.owner.GetName(),
-				},
-				Ports: []corev1.ServicePort{
-					{
-						Port:       syncthingAPIPort,
-						TargetPort: intstr.FromString(targetPort),
-						Protocol:   "TCP",
-					},
-				},
-			},
-		}
-		if err = ctrl.SetControllerReference(m.owner, service, m.client.Scheme()); err != nil {
-			m.logger.V(3).Error(err, "failed to set owner reference")
-			return nil, err
-		}
-		if err := m.client.Create(ctx, service); err != nil {
-			m.logger.Error(err, "error creating the service")
-			return nil, err
-		}
-	}
+	// set API url
 	if m.syncthing.APIConfig.APIURL == "" {
 		// get the service url
 		m.syncthing.APIConfig.APIURL = fmt.Sprintf(
 			"https://%s.%s:%d", serviceName, m.owner.GetNamespace(), syncthingAPIPort,
 		)
 	}
+
+	// see if we already have a service
+	err := m.client.Get(ctx, types.NamespacedName{Name: serviceName, Namespace: m.owner.GetNamespace()}, service)
+
+	// return if already exists
+	if err == nil {
+		return service, nil
+	}
+	// something else went wrong
+	if !errors.IsNotFound(err) {
+		return nil, err
+	}
+
+	// create new service
+	service = &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      serviceName,
+			Namespace: m.owner.GetNamespace(),
+			Labels: map[string]string{
+				"app": m.owner.GetName(),
+			},
+		},
+		Spec: corev1.ServiceSpec{
+			// set the labels from the Deployment
+			Selector: deployment.Spec.Template.Labels,
+			Ports: []corev1.ServicePort{
+				{
+					Port:       syncthingAPIPort,
+					TargetPort: intstr.FromString(targetPort),
+					Protocol:   "TCP",
+				},
+			},
+		},
+	}
+	if err = ctrl.SetControllerReference(m.owner, service, m.client.Scheme()); err != nil {
+		m.logger.V(3).Error(err, "failed to set owner reference")
+		return nil, err
+	}
+	if err := m.client.Create(ctx, service); err != nil {
+		m.logger.Error(err, "error creating the service")
+		return nil, err
+	}
+
 	return service, nil
 }
 
