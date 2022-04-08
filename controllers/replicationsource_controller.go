@@ -143,7 +143,9 @@ func reconcileSrcUsingCatalog(
 	// Search the Mover catalog for a suitable data mover
 	var dataMover mover.Mover
 	for _, builder := range mover.Catalog {
-		if candidate, err := builder.FromSource(sr.Client, logger, instance); err == nil && candidate != nil {
+		candidate, err := builder.FromSource(sr.Client, logger,
+			record.NewEventRecorderAdapter(sr.EventRecorder), instance)
+		if err == nil && candidate != nil {
 			if dataMover != nil {
 				// Found 2 movers claiming this CR...
 				return ctrl.Result{}, fmt.Errorf("only a single replication method can be provided")

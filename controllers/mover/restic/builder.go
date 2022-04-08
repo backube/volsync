@@ -23,6 +23,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/spf13/viper"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
@@ -86,6 +87,7 @@ func (rb *Builder) getResticContainerImage() string {
 }
 
 func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
+	eventRecorder events.EventRecorder,
 	source *volsyncv1alpha1.ReplicationSource) (mover.Mover, error) {
 	// Only build if the CR belongs to us
 	if source.Spec.Restic == nil {
@@ -109,6 +111,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 	return &Mover{
 		client:                client,
 		logger:                logger.WithValues("method", "Restic"),
+		eventRecorder:         eventRecorder,
 		owner:                 source,
 		vh:                    vh,
 		containerImage:        rb.getResticContainerImage(),
@@ -126,6 +129,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 }
 
 func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
+	eventRecorder events.EventRecorder,
 	destination *volsyncv1alpha1.ReplicationDestination) (mover.Mover, error) {
 	// Only build if the CR belongs to us
 	if destination.Spec.Restic == nil {
@@ -144,6 +148,7 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 	return &Mover{
 		client:                client,
 		logger:                logger.WithValues("method", "Restic"),
+		eventRecorder:         eventRecorder,
 		owner:                 destination,
 		vh:                    vh,
 		containerImage:        rb.getResticContainerImage(),
