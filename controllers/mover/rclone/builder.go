@@ -96,6 +96,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 
 	vh, err := volumehandler.NewVolumeHandler(
 		volumehandler.WithClient(client),
+		volumehandler.WithRecorder(eventRecorder),
 		volumehandler.WithOwner(source),
 		volumehandler.FromSource(&source.Spec.Rclone.ReplicationSourceVolumeOptions),
 	)
@@ -129,6 +130,7 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 
 	vh, err := volumehandler.NewVolumeHandler(
 		volumehandler.WithClient(client),
+		volumehandler.WithRecorder(eventRecorder),
 		volumehandler.WithOwner(destination),
 		volumehandler.FromDestination(&destination.Spec.Rclone.ReplicationDestinationVolumeOptions),
 	)

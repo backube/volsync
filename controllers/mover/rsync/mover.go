@@ -20,6 +20,7 @@ package rsync
 import (
 	"context"
 	"strconv"
+	"time"
 
 	"github.com/go-logr/logr"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1"
@@ -43,12 +44,12 @@ const (
 	dataVolumeName = "data"
 )
 
-// Mover is the reconciliation logic for the Restic-based data mover.
+// Mover is the reconciliation logic for the Rsync-based data mover.
 type Mover struct {
 	client         client.Client
 	logger         logr.Logger
 	eventRecorder  events.EventRecorder
-	owner          metav1.Object
+	owner          client.Object
 	vh             *volumehandler.VolumeHandler
 	containerImage string
 	sshKeys        *string
@@ -159,6 +160,12 @@ func (m *Mover) publishSvcAddress(service *corev1.Service) (bool, error) {
 	if address == "" {
 		// We don't have an address yet, try again later
 		m.updateStatusAddress(nil)
+		if service.CreationTimestamp.Add(mover.ServiceAddressTimeout).Before(time.Now()) {
+			m.eventRecorder.Eventf(m.owner, service, corev1.EventTypeWarning,
+				mover.EvRSvcNoAddress, mover.EvANone,
+				"waiting for an address to be assigned to %s; ensure the proper serviceType was specified",
+				utils.KindAndName(m.client.Scheme(), service))
+		}
 		return false, nil
 	}
 	m.updateStatusAddress(&address)
@@ -168,10 +175,24 @@ func (m *Mover) publishSvcAddress(service *corev1.Service) (bool, error) {
 }
 
 func (m *Mover) updateStatusAddress(address *string) {
+	publishEvent := false
 	if m.isSource {
+		if m.sourceStatus.Address == nil ||
+			address != nil && *m.sourceStatus.Address != *address {
+			publishEvent = true
+		}
 		m.sourceStatus.Address = address
 	} else {
+		if m.destStatus.Address == nil ||
+			address != nil && *m.destStatus.Address != *address {
+			publishEvent = true
+		}
 		m.destStatus.Address = address
+	}
+	if publishEvent && address != nil {
+		m.eventRecorder.Eventf(m.owner, nil, corev1.EventTypeNormal,
+			mover.EvRSvcAddress, mover.EvANone,
+			"listening on address %s for incoming connections", *address)
 	}
 }
 
@@ -409,6 +430,8 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 	// If Job had failed, delete it so it can be recreated
 	if job.Status.Failed >= *job.Spec.BackoffLimit {
 		logger.Info("deleting job -- backoff limit reached")
+		m.eventRecorder.Eventf(m.owner, job, corev1.EventTypeWarning,
+			mover.EvRTransferFailed, mover.EvADeleteMover, "mover Job backoff limit reached")
 		err = m.client.Delete(ctx, job, client.PropagationPolicy(metav1.DeletePropagationBackground))
 		return nil, err
 	}
@@ -416,6 +439,15 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 		logger.Error(err, "reconcile failed")
 	} else {
 		logger.V(1).Info("Job reconciled", "operation", op)
+		if op == ctrlutil.OperationResultCreated {
+			dir := "receive"
+			if m.isSource {
+				dir = "transmit"
+			}
+			m.eventRecorder.Eventf(m.owner, job, corev1.EventTypeNormal,
+				mover.EvRTransferStarted, mover.EvACreateMover, "starting %s to %s data",
+				utils.KindAndName(m.client.Scheme(), job), dir)
+		}
 	}
 	// Stop here if the job hasn't completed yet
 	if job.Status.Succeeded == 0 {
@@ -423,6 +455,6 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 	}
 
 	logger.Info("job completed")
-	// We only continue reconciling if the rclone job has completed
+	// We only continue reconciling if the rsync job has completed
 	return job, nil
 }
