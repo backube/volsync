@@ -50,7 +50,7 @@ Start by configuring the destination; an example is shown below:
 .. code:: yaml
 
    ---
-   apiVersion: volsync/v1alpha1
+   apiVersion: volsync.backube/v1alpha1
    kind: ReplicationDestination
    metadata:
      name: myDest
@@ -83,7 +83,7 @@ VolSync provides status information on the state of the replication via the
 .. code:: yaml
 
    ---
-   apiVersion: volsync/v1alpha1
+   apiVersion: volsync.backube/v1alpha1
    kind: ReplicationDestination
    metadata:
      name: myDest
