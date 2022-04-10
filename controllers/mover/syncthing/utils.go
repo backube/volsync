@@ -3,11 +3,11 @@ package syncthing
 import (
 	"bytes"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -38,7 +38,7 @@ func (st *Syncthing) UpdateDevices(peerList []v1alpha1.SyncthingPeer) {
 		stDeviceToAdd := SyncthingDevice{
 			DeviceID:   device.ID,
 			Addresses:  []string{device.Address},
-			Name:       "Syncthing Device Configured by Volsync: " + string(sha256.New().Sum([]byte(device.ID))),
+			Name:       fmt.Sprintf("Syncthing Device Configured by Volsync: %v", device.ID),
 			Introducer: device.Introducer,
 		}
 		st.logger.V(4).Info("Adding device: %+v\n", stDeviceToAdd)
