@@ -25,19 +25,13 @@ log_msg "STARTING CONTAINER"
 log_msg "VolSync Syncthing container version: ${version:-unknown}"
 log_msg "${@}"
 
-# # Defined variables 
-# global_vars=(
-#   SYNCTHING_DATA_DIR
-#   SYNCTHING_DATA_TRANSFERMODE
-#   STGUIAPIKEY
-#   SYNCTHING_CONFIG_DIR
-# )
-
 # variables we can't proceed without 
 required_vars=(
   SYNCTHING_DATA_DIR
   SYNCTHING_CONFIG_DIR
   STGUIAPIKEY
+	SYNCTHING_SERVER_TLS_CERT_PEM
+	SYNCTHING_SERVER_TLS_CERT_PK_PEM
 )
 
 ###########################################
@@ -68,7 +62,7 @@ check_var_defined() {
 #   None
 #####################################################
 preconfigure_folder() {
-  # todo: make the config.xml template more configurable 
+  # TODO: make the config.xml template more configurable 
   #       in case these variables change 
 
   local filepath="${1}"
@@ -90,6 +84,13 @@ preconfigure_folder() {
 ###################################
 preflight_check() {
   log_msg "Running preflight check"
+
+  # variable definitions
+  log_msg "ensuring necessary variables are defined"
+  for var in "${required_vars[@]}"; do
+    check_var_defined "${var}"
+  done
+
   # populate config directory with config, if none exists
   if ! [[ -f "${SYNCTHING_CONFIG_DIR}/config.xml" ]]; then
     log_msg "populating ${SYNCTHING_CONFIG_DIR} with /config.xml"
@@ -97,17 +98,13 @@ preflight_check() {
     preconfigure_folder "${SYNCTHING_CONFIG_DIR}/config.xml"
   else
     log_msg "${SYNCTHING_CONFIG_DIR}/config.xml already exists"
-  fi
+  fi 
 
-  # variable definitions
-  log_msg "ensuring necessary variables are defined"
-  for var in "${required_vars[@]}"; do
-    check_var_defined "${var}"
-  done
+	# write the cert and key to https-cert.pem and https-key.pem
+	log_msg "writing cert and key to https-cert.pem and https-key.pem"
+	echo "${SYNCTHING_SERVER_TLS_CERT_PEM}" > "${SYNCTHING_CONFIG_DIR}/https-cert.pem"
+	echo "${SYNCTHING_SERVER_TLS_CERT_PK_PEM}" > "${SYNCTHING_CONFIG_DIR}/https-key.pem"
 }
-
-#todo: ensure that the necessary variables have been defined
-
 
 for op in "$@"; do
   case $op in
