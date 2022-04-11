@@ -22,6 +22,7 @@ import (
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers/mover"
+	cMover "github.com/backube/volsync/controllers/mover"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
@@ -119,6 +120,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 	var srcPVC *corev1.PersistentVolumeClaim
 	var mover *Mover
 
+	// 1
 	BeforeEach(func() {
 		// create a namespace for each test
 		ns = &corev1.Namespace{
@@ -166,6 +168,8 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 			},
 		}
 	})
+
+	// 3
 	JustBeforeEach(func() {
 		// launch the replicationsource once edits are complete
 		Expect(k8sClient.Create(ctx, rs)).To(Succeed())
@@ -195,6 +199,12 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 
 		It("owner exists on mover", func() {
 			Expect(mover.owner).To(Equal(rs))
+		})
+
+		It("returns a name", func() {
+			name := mover.Name()
+			Expect(name).NotTo(BeEmpty())
+			Expect(name).To(Equal("syncthing"))
 		})
 
 		// test that the mover works with ClusterIP and LoadBalancer
@@ -448,7 +458,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 		})
 
 		Context("Syncthing API is being used properly", func() {
-			// todo
+			// TODO: test syncthing API
 		})
 
 		Context("service account is created", func() {
@@ -533,6 +543,38 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 				}, timeout, interval).Should(Succeed())
 			})
 
+			When("synchronize is called", func() {
+				It("without api, it errors", func() {
+					// mover synchronize all of the resources
+					result, err := mover.Synchronize(ctx)
+
+					// ensure the result is not nil
+					Expect(result).NotTo(BeNil())
+					Expect(result).To(Equal(cMover.InProgress()))
+
+					// ensure the error is not nil
+					Expect(err).NotTo(BeNil())
+				})
+
+				When("datapvcname is invalid", func() {
+
+					It("errors out", func() {
+						// mess up the datapvcname
+						var newDataPVCName = "invalid-name"
+						mover.dataPVCName = &newDataPVCName
+
+						// try to synchronize
+						res, err := mover.Synchronize(ctx)
+
+						// result should be in progress
+						Expect(res).NotTo(BeNil())
+						Expect(res).To(Equal(cMover.InProgress()))
+
+						// error should be not nil
+						Expect(err).NotTo(BeNil())
+					})
+				})
+			})
 			When("VolSync ensures a deployment", func() {
 				It("creates a new one", func() {
 					// create a deployment

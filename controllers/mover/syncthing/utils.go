@@ -1,12 +1,22 @@
 package syncthing
 
 import (
+	"bytes"
 	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
+	"errors"
+	"io"
+	"io/ioutil"
+	"math/big"
+	"net/http"
+	"time"
 
 	"github.com/backube/volsync/api/v1alpha1"
-	"github.com/backube/volsync/controllers"
 )
 
 func (st *Syncthing) UpdateDevices(peerList []v1alpha1.SyncthingPeer) {
@@ -112,7 +122,7 @@ func (st *Syncthing) FetchLatestInfo() error {
 func (st *Syncthing) UpdateSyncthingConfig() error {
 	// update the config
 	st.logger.V(4).Info("Updating Syncthing config")
-	_, err := controllers.JSONRequest(st.APIConfig.APIURL+"/rest/config", "PUT", st.APIConfig.Headers(), st.Config)
+	_, err := st.jsonRequest(st.APIConfig.APIURL+"/rest/config", "PUT", st.Config)
 	if err != nil {
 		st.logger.V(4).Error(err, "Failed to update Syncthing config")
 		return err
@@ -126,7 +136,7 @@ func (st *Syncthing) FetchSyncthingConfig() error {
 		Folders: []SyncthingFolder{},
 	}
 	st.logger.V(4).Info("Fetching Syncthing config")
-	data, err := controllers.JSONRequest(st.APIConfig.APIURL+"/rest/config", "GET", st.APIConfig.Headers(), nil)
+	data, err := st.jsonRequest("/rest/config", "GET", nil)
 	if err != nil {
 		return err
 	}
@@ -138,7 +148,7 @@ func (st *Syncthing) FetchSyncthingConfig() error {
 func (st *Syncthing) FetchSyncthingSystemStatus() error {
 	responseBody := &SystemStatus{}
 	st.logger.V(4).Info("Fetching Syncthing system status")
-	data, err := controllers.JSONRequest(st.APIConfig.APIURL+"/rest/system/status", "GET", st.APIConfig.Headers(), nil)
+	data, err := st.jsonRequest("/rest/system/status", "GET", nil)
 	if err != nil {
 		return err
 	}
@@ -154,9 +164,7 @@ func (st *Syncthing) FetchConnectedStatus() error {
 		Connections: map[string]ConnectionStats{},
 	}
 	st.logger.V(4).Info("Fetching Syncthing connected status")
-	data, err := controllers.JSONRequest(
-		st.APIConfig.APIURL+"/rest/system/connections", "GET", st.APIConfig.Headers(), nil,
-	)
+	data, err := st.jsonRequest("/rest/system/connections", "GET", nil)
 	if err != nil {
 		return err
 	}
@@ -164,6 +172,49 @@ func (st *Syncthing) FetchConnectedStatus() error {
 		st.SystemConnections = responseBody
 	}
 	return err
+}
+
+// jsonRequest performs a request to the Syncthing API and returns the response body.
+//nolint:funlen,lll,unparam,unused
+func (st *Syncthing) jsonRequest(endpoint string, method string, requestBody interface{}) ([]byte, error) {
+	// marshal above json body into a string
+	jsonBody, err := json.Marshal(requestBody)
+	if err != nil {
+		return nil, err
+	}
+	// tostring the json body
+	body := io.Reader(bytes.NewReader(jsonBody))
+
+	// load the TLS config with certificates
+	tr := &http.Transport{
+		TLSClientConfig: st.APIConfig.TLSConfig,
+	}
+	req, err := http.NewRequest(method, st.APIConfig.APIURL+endpoint, body)
+	client := &http.Client{
+		Transport: tr,
+		Timeout:   time.Second * 5,
+	}
+
+	for key, value := range st.APIConfig.Headers() {
+		req.Header.Set(key, value)
+	}
+
+	// make an HTTPS POST request
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != 200 {
+		return nil, errors.New("HTTP status code is not 200")
+	}
+
+	// read body into response
+	return ioutil.ReadAll(resp.Body)
 }
 
 func (api *APIConfig) Headers() map[string]string {
@@ -187,4 +238,103 @@ func GenerateRandomString(length int) (string, error) {
 	// generate a random string
 	b, err := GenerateRandomBytes(length)
 	return base64.URLEncoding.EncodeToString(b), err
+}
+
+// GetRedHatTLSName returns information for the TLS certificate we will generate for Syncthing.
+func GetRedHatTLSName() pkix.Name {
+	return pkix.Name{
+		Organization:  []string{"Red Hat, INC."},
+		Country:       []string{"US"},
+		Province:      []string{"Massachusetts"},
+		Locality:      []string{"Boston"},
+		StreetAddress: []string{"300 A Street"},
+		PostalCode:    []string{"02210"},
+	}
+}
+
+// GenerateTLSCertificatesForSyncthing generates a self-signed PEM-encoded certificate and key for Syncthing
+// which the VolSync client and Syncthing API Server will use to communicate with each other.
+func GenerateTLSCertificatesForSyncthing(
+	APIServiceAddress string,
+) (*bytes.Buffer, *bytes.Buffer, error) {
+	// TODO: Change from RSA to ECDSA
+	// we will need to perform checks if the apiServiceDNS has changed
+	// and re-generate in case the TLS Certificates have changed
+
+	// serial number should be the current time in unix epoch time
+	serialNumber := time.Now().Unix()
+	TLSName := GetRedHatTLSName()
+
+	// set up our CA certificate
+	ca := &x509.Certificate{
+		SerialNumber:          big.NewInt(serialNumber),
+		Subject:               TLSName,
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().AddDate(10, 0, 0),
+		IsCA:                  true,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		BasicConstraintsValid: true,
+	}
+
+	// create our private and public key
+	caPrivKey, err := rsa.GenerateKey(rand.Reader, 4096)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// create the CA
+	caBytes, err := x509.CreateCertificate(rand.Reader, ca, ca, &caPrivKey.PublicKey, caPrivKey)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// pem encode
+	caPEM := new(bytes.Buffer)
+	pem.Encode(caPEM, &pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: caBytes,
+	})
+
+	caPrivKeyPEM := new(bytes.Buffer)
+	pem.Encode(caPrivKeyPEM, &pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(caPrivKey),
+	})
+
+	// set up our server certificate
+	cert := &x509.Certificate{
+		SerialNumber: big.NewInt(serialNumber),
+		Subject:      TLSName,
+		DNSNames:     []string{APIServiceAddress},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().AddDate(10, 0, 0),
+		SubjectKeyId: []byte{1, 2, 3, 4, 6},
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+	}
+
+	certPrivKey, err := rsa.GenerateKey(rand.Reader, 4096)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	certBytes, err := x509.CreateCertificate(rand.Reader, cert, ca, &certPrivKey.PublicKey, caPrivKey)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	certPEM := new(bytes.Buffer)
+	pem.Encode(certPEM, &pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: certBytes,
+	})
+
+	certPrivKeyPEM := new(bytes.Buffer)
+	pem.Encode(certPrivKeyPEM, &pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(certPrivKey),
+	})
+
+	return certPEM, certPrivKeyPEM, nil
 }

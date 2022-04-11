@@ -18,7 +18,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 package syncthing
 
-import "github.com/go-logr/logr"
+import (
+	"crypto/tls"
+
+	"github.com/go-logr/logr"
+)
 
 // syncthing config type
 // nolint:revive
@@ -247,6 +251,8 @@ type APIConfig struct {
 	APIKey      string `json:"apiKey"`
 	GUIUser     string `json:"user"`
 	GUIPassword string `json:"password"`
+	// don't marshal this field
+	TLSConfig *tls.Config
 }
 
 type Syncthing struct {

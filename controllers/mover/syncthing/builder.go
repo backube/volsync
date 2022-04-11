@@ -93,6 +93,21 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		source.Status.Syncthing = &volsyncv1alpha1.ReplicationSourceSyncthingStatus{}
 	}
 
+	// // Set the VolumeHandler
+	// vh, err := volumehandler.NewVolumeHandler(
+	// 	volumehandler.WithClient(client),
+	// 	volumehandler.WithOwner(source),
+	// )
+
+	// We need to extract the following data from the source PVC:
+	/* ReplicationSourceVolumeOptions: {
+		CopyMethod: Capacity:<nil>
+		StorageClassName:0xc000720c10
+		AccessModes:[]
+		VolumeSnapshotClassName:<nil>
+	}
+	*/
+
 	// servicetype or default
 	var serviceType corev1.ServiceType
 	if source.Spec.Syncthing.ServiceType != nil {

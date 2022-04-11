@@ -19,6 +19,8 @@ package syncthing
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"strconv"
 	"time"
@@ -209,6 +211,14 @@ func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) 
 			return nil, err
 		}
 
+		// Generate TLS Certificates for communicating between VolSync and the Syncthing API
+		apiServiceDNS := m.getAPIServiceDNS()
+		certPEM, certPrivKeyPEM, err := GenerateTLSCertificatesForSyncthing(apiServiceDNS)
+		if err != nil {
+			m.logger.Error(err, "could not generate TLS certificate")
+			return nil, err
+		}
+
 		// create a new secret with the generated values
 		secret = &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
@@ -220,9 +230,11 @@ func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) 
 			},
 			Type: corev1.SecretTypeOpaque,
 			Data: map[string][]byte{
-				"apikey":   []byte(randomAPIKey),
-				"username": []byte("syncthing"),
-				"password": []byte(randomPassword),
+				"apikey":                           []byte(randomAPIKey),
+				"username":                         []byte("syncthing"),
+				"password":                         []byte(randomPassword),
+				"SYNCTHING_SERVER_TLS_CERT_PEM":    certPEM.Bytes(),
+				"SYNCTHING_SERVER_TLS_CERT_PK_PEM": certPrivKeyPEM.Bytes(),
 			},
 		}
 
@@ -319,6 +331,28 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 										},
 									},
 								},
+								{
+									Name: "SYNCTHING_SERVER_TLS_CERT_PEM",
+									ValueFrom: &corev1.EnvVarSource{
+										SecretKeyRef: &corev1.SecretKeySelector{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: apiSecret.Name,
+											},
+											Key: "SYNCTHING_SERVER_TLS_CERT_PEM",
+										},
+									},
+								},
+								{
+									Name: "SYNCTHING_SERVER_TLS_CERT_PK_PEM",
+									ValueFrom: &corev1.EnvVarSource{
+										SecretKeyRef: &corev1.SecretKeySelector{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: apiSecret.Name,
+											},
+											Key: "SYNCTHING_SERVER_TLS_CERT_PK_PEM",
+										},
+									},
+								},
 							},
 							ImagePullPolicy: corev1.PullAlways,
 							Ports: []corev1.ContainerPort{
@@ -389,7 +423,7 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 func (m *Mover) ensureAPIService(ctx context.Context, deployment *appsv1.Deployment) (*corev1.Service, error) {
 	// setup vars
 	targetPort := "api"
-	serviceName := "volsync-" + m.owner.GetName() + "-api"
+	serviceName := m.getAPIServiceName()
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      serviceName,
@@ -398,12 +432,7 @@ func (m *Mover) ensureAPIService(ctx context.Context, deployment *appsv1.Deploym
 	}
 
 	// set API url
-	if m.syncthing.APIConfig.APIURL == "" {
-		// get the service url
-		m.syncthing.APIConfig.APIURL = fmt.Sprintf(
-			"https://%s.%s:%d", serviceName, m.owner.GetNamespace(), syncthingAPIPort,
-		)
-	}
+	m.syncthing.APIConfig.APIURL = m.getAPIServiceAddress()
 
 	// see if we already have a service
 	err := m.client.Get(ctx, types.NamespacedName{Name: serviceName, Namespace: m.owner.GetNamespace()}, service)
@@ -521,6 +550,13 @@ func (m *Mover) ensureIsConfigured(apiSecret *corev1.Secret) error {
 	// set the api key
 	m.syncthing.APIConfig.APIKey = string(apiSecret.Data["apikey"])
 
+	// load the TLS certificate
+	clientConfig, err := m.loadTLSConfigFromSecret(apiSecret)
+	if err != nil {
+		return err
+	}
+	m.syncthing.APIConfig.TLSConfig = clientConfig
+
 	// reconciles the Syncthing object
 	err = m.syncthing.FetchLatestInfo()
 	if err != nil {
@@ -592,4 +628,41 @@ func (m *Mover) ensureStatusIsUpdated(dataSVC *corev1.Service) error {
 		})
 	}
 	return nil
+}
+
+// getAPIServiceName Returns the name of the API service exposing the Syncthing API.
+func (m *Mover) getAPIServiceName() string {
+	serviceName := "volsync-" + m.owner.GetName() + "-api"
+	return serviceName
+}
+
+// getAPIServiceDNS Returns the DNS of the service exposing the Syncthing API, formatted as ClusterDNS.
+func (m *Mover) getAPIServiceDNS() string {
+	serviceName := m.getAPIServiceName()
+	return fmt.Sprintf("%s.%s", serviceName, m.owner.GetNamespace())
+}
+
+// getAPIServiceAddress Returns the ClusterDNS address of the service exposing the Syncthing API.
+func (m *Mover) getAPIServiceAddress() string {
+	serviceDNS := m.getAPIServiceDNS()
+	return fmt.Sprintf("https://%s:%d", serviceDNS, syncthingAPIPort)
+}
+
+// loadTLSConfigFromSecret loads the TLS config from the given secret.
+func (m *Mover) loadTLSConfigFromSecret(apiSecret *corev1.Secret) (*tls.Config, error) {
+	// grab the server cert from the secret
+	serverCert, ok := apiSecret.Data["SYNCTHING_SERVER_TLS_CERT_PEM"]
+	if !ok {
+		return nil, fmt.Errorf("could not find the server cert in the secret")
+	}
+
+	// create the CA CertPool
+	caCertPool := x509.NewCertPool()
+	caCertPool.AppendCertsFromPEM(serverCert)
+
+	// create the TLS config
+	conf := &tls.Config{
+		RootCAs: caCertPool,
+	}
+	return conf, nil
 }
