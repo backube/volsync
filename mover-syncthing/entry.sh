@@ -71,6 +71,16 @@ preconfigure_folder() {
   sed -i "s/SYNCTHING_DATA_TRANSFERMODE/${SYNCTHING_DATA_TRANSFERMODE}/g" "${filepath}"
 }
 
+############################################
+#
+############################################
+write_tls_certificates() {
+		# write the cert and key to https-cert.pem and https-key.pem
+	log_msg "writing cert and key to https-cert.pem and https-key.pem"
+	echo "${SYNCTHING_SERVER_TLS_CERT_PEM}" > "${SYNCTHING_CONFIG_DIR}/https-cert.pem"
+	echo "${SYNCTHING_SERVER_TLS_CERT_PK_PEM}" > "${SYNCTHING_CONFIG_DIR}/https-key.pem"
+}
+
 
 ###################################
 # Performs the necessary steps for 
@@ -100,10 +110,9 @@ preflight_check() {
     log_msg "${SYNCTHING_CONFIG_DIR}/config.xml already exists"
   fi 
 
-	# write the cert and key to https-cert.pem and https-key.pem
-	log_msg "writing cert and key to https-cert.pem and https-key.pem"
-	echo "${SYNCTHING_SERVER_TLS_CERT_PEM}" > "${SYNCTHING_CONFIG_DIR}/https-cert.pem"
-	echo "${SYNCTHING_SERVER_TLS_CERT_PK_PEM}" > "${SYNCTHING_CONFIG_DIR}/https-key.pem"
+	# write the TLS certifcates
+	write_tls_certificates
+
 }
 
 for op in "$@"; do
@@ -111,6 +120,8 @@ for op in "$@"; do
     "run")
       # ensure our environment is configured before syncthing runs
       preflight_check
+			
+			# daemon syncthing to overwrite the TLS certs after startup
       syncthing -home "${SYNCTHING_CONFIG_DIR}"
       ;;
     *)
