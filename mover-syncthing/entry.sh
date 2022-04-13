@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Configure and run Syncthing
-# Author(s): Oleg Silkin
+# Author(s): The VolSync Authors
 # License: AGPL v3
 
 set -e -o pipefail
@@ -30,8 +30,14 @@ required_vars=(
   SYNCTHING_DATA_DIR
   SYNCTHING_CONFIG_DIR
   STGUIAPIKEY
-	SYNCTHING_SERVER_TLS_CERT_PEM
-	SYNCTHING_SERVER_TLS_CERT_PK_PEM
+)
+
+# all global vars
+global_vars=(
+  SYNCTHING_DATA_DIR
+  SYNCTHING_CONFIG_DIR
+  SYNCTHING_CERT_DIR
+	STGUIAPIKEY
 )
 
 ###########################################
@@ -72,13 +78,28 @@ preconfigure_folder() {
 }
 
 ############################################
-#
+# Copies the HTTPS certificates from the 
+# predefined certificate directory 
+# to the config directory. 
+# Arguments:
+# 	None
+# Globals:
+# 	SYNCTHING_CERT_DIR
+# 	SYNCTHING_CONFIG_DIR
+# Returns:
+# 	None
 ############################################
-write_tls_certificates() {
-		# write the cert and key to https-cert.pem and https-key.pem
-	log_msg "writing cert and key to https-cert.pem and https-key.pem"
-	echo "${SYNCTHING_SERVER_TLS_CERT_PEM}" > "${SYNCTHING_CONFIG_DIR}/https-cert.pem"
-	echo "${SYNCTHING_SERVER_TLS_CERT_PK_PEM}" > "${SYNCTHING_CONFIG_DIR}/https-key.pem"
+ensure_https_certificates() {
+	# check if SYNCTHING_CERT_DIR is defined and mounted
+	if [[ -z ${SYNCTHING_CERT_DIR} ]]; then
+		log_msg "SYNCTHING_CERT_DIR is not defined, default HTTPS Syncthing certificates will be used"
+		return 0
+	fi
+
+	# copy the https-key.pem and https-cert.pem over to the config directory
+	cp "${SYNCTHING_CERT_DIR}/https-key.pem" "${SYNCTHING_CONFIG_DIR}/https-key.pem"
+	cp "${SYNCTHING_CERT_DIR}/https-cert.pem" "${SYNCTHING_CONFIG_DIR}/https-cert.pem"
+	return 0
 }
 
 
@@ -110,9 +131,8 @@ preflight_check() {
     log_msg "${SYNCTHING_CONFIG_DIR}/config.xml already exists"
   fi 
 
-	# write the TLS certifcates
-	write_tls_certificates
-
+	# ensure the HTTPS certificates
+	ensure_https_certificates
 }
 
 for op in "$@"; do
@@ -120,8 +140,8 @@ for op in "$@"; do
     "run")
       # ensure our environment is configured before syncthing runs
       preflight_check
-			
-			# daemon syncthing to overwrite the TLS certs after startup
+
+			# launch syncthing			
       syncthing -home "${SYNCTHING_CONFIG_DIR}"
       ;;
     *)
