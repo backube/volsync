@@ -26,6 +26,9 @@ spec:
           value: "/config"
         - name: SYNCTHING_DATA_DIR
           value: "/data"
+        # define this so entry.sh knows where to find the HTTPS cert
+        - name: SYNCTHING_CERT_DIR
+          value: "/certs"
         - name: STGUIAPIKEY
           valueFrom:
             secretKeyRef:
@@ -40,6 +43,9 @@ spec:
           mountPath: /config
         - name: synced-volume  # hook this up with whatever PVC you want to sync
           mountPath: /data
+        # where the HTTPS certs are mounted
+        - name: https-certs
+          mountPath: /certs
         resources:
           limits:
             cpu: 100m
@@ -48,6 +54,14 @@ spec:
       - name: syncthing-config
         persistentVolumeClaim:
           claimName: syncthing-config
+      - name: https-certs
+        secret:
+          secretName: st-apikey
+          items:
+          - key: httpsCertPEM
+            path: https-cert.pem
+          - key: httpsKeyPEM
+            path: https-key.pem
       # the volume we want to sync
       - name: synced-volume
         persistentVolumeClaim:
@@ -61,6 +75,29 @@ metadata:
 type: Opaque
 data:
   apiKey: 'cGFzc3dvcmQxMjM='
+  # generated HTTPS cert, expires 2033
+  httpsCertPEM: |
+    LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUNPVENDQWQrZ0F3SUJBZ0lDQitNd0NnWUlL
+    b1pJemowRUF3SXdkVEVMTUFrR0ExVUVCaE1DVlZNeENUQUgKQmdOVkJBZ1RBREVXTUJRR0ExVUVC
+    eE1OVTJGdUlFWnlZVzVqYVhOamJ6RWJNQmtHQTFVRUNSTVNSMjlzWkdWdQpJRWRoZEdVZ1FuSnBa
+    R2RsTVE0d0RBWURWUVFSRXdVNU5EQXhOakVXTUJRR0ExVUVDaE1OUTI5dGNHRnVlU3dnClNVNURM
+    akFlRncweU1qQTBNVEl4TnpFM05UZGFGdzB6TXpBeU1qSXhPREUzTlRkYU1IVXhDekFKQmdOVkJB
+    WVQKQWxWVE1Ra3dCd1lEVlFRSUV3QXhGakFVQmdOVkJBY1REVk5oYmlCR2NtRnVZMmx6WTI4eEd6
+    QVpCZ05WQkFrVApFa2R2YkdSbGJpQkhZWFJsSUVKeWFXUm5aVEVPTUF3R0ExVUVFUk1GT1RRd01U
+    WXhGakFVQmdOVkJBb1REVU52CmJYQmhibmtzSUVsT1F5NHdXVEFUQmdjcWhrak9QUUlCQmdncWhr
+    ak9QUU1CQndOQ0FBUnBGV0xiNHFKZGZidGsKTjZZSFZybzZmWmR0YzQxTXd2VGhIWVQ0RHVHZlFu
+    bXNZSGZYekZVZVdsQWU3WU1Nc0g4eVltSS9nSFd6allUKwpYQ3BVVWxwQm8xOHdYVEFPQmdOVkhR
+    OEJBZjhFQkFNQ0JhQXdIUVlEVlIwbEJCWXdGQVlJS3dZQkJRVUhBd0lHCkNDc0dBUVVGQndNQk1D
+    d0dBMVVkRVFRbE1DT0NDV3h2WTJGc2FHOXpkSWNFZndBQUFZY1FBQUFBQUFBQUFBQUEKQUFBQUFB
+    QUFBVEFLQmdncWhrak9QUVFEQWdOSUFEQkZBaUJjbGlyMExDdFdzUU83NURaN0JzUnBDTXRiWmp1
+    VgpoR2o5UHRBSGgwbHA5Z0loQU85NEI1RmRDcnlTTmVOUHMvdTRWUklnQU4rMzFRc0Urc2ZUSjFw
+    MXU0Q3UKLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=
+  # generated HTTPS key
+  httpsKeyPEM: |
+    LS0tLS1CRUdJTiBFQyBQUklWQVRFIEtFWS0tLS0tCk1IY0NBUUVFSUtOamJqd1UvSkxUVnUxNmVu
+    U0FEWXhTMjlOb24zM2VPUEpqSnhuMzl2R1dvQW9HQ0NxR1NNNDkKQXdFSG9VUURRZ0FFYVJWaTIr
+    S2lYWDI3WkRlbUIxYTZPbjJYYlhPTlRNTDA0UjJFK0E3aG4wSjVyR0IzMTh4VgpIbHBRSHUyRERM
+    Qi9NbUppUDRCMXM0MkUvbHdxVkZKYVFRPT0KLS0tLS1FTkQgRUMgUFJJVkFURSBLRVktLS0tLQo=
 ---
 # create the PVC syncthing-config with a small footprint
 apiVersion: v1

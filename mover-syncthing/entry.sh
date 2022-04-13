@@ -1,13 +1,13 @@
 #!/bin/bash
 #
 # Configure and run Syncthing
-# Author(s): Oleg Silkin
+# Author(s): The VolSync Authors
 # License: AGPL v3
 
 set -e -o pipefail
 
 
-###########################
+#####################################################
 # Logs the given input
 # Globals:
 #   None 
@@ -15,7 +15,7 @@ set -e -o pipefail
 #   String(s) to be logged
 # Returns:
 #   Formatted log message
-##########################
+#####################################################
 log_msg() {
   local msg="$*"
   echo "===== ${msg} ====="
@@ -25,14 +25,6 @@ log_msg "STARTING CONTAINER"
 log_msg "VolSync Syncthing container version: ${version:-unknown}"
 log_msg "${@}"
 
-# # Defined variables 
-# global_vars=(
-#   SYNCTHING_DATA_DIR
-#   SYNCTHING_DATA_TRANSFERMODE
-#   STGUIAPIKEY
-#   SYNCTHING_CONFIG_DIR
-# )
-
 # variables we can't proceed without 
 required_vars=(
   SYNCTHING_DATA_DIR
@@ -40,7 +32,7 @@ required_vars=(
   STGUIAPIKEY
 )
 
-###########################################
+#####################################################
 # Error and exit if a variable isn't defined
 # check_var_defined "MY_VAR"
 # Globals:
@@ -49,10 +41,10 @@ required_vars=(
 #   String - variable to check
 # Returns:
 #   None
-###########################################
+#####################################################
 check_var_defined() {
     if [[ -z ${!1} ]]; then
-        error 1 "$1 must be defined"
+        error 1 "${1} must be defined"
     fi
 }
 
@@ -68,7 +60,7 @@ check_var_defined() {
 #   None
 #####################################################
 preconfigure_folder() {
-  # todo: make the config.xml template more configurable 
+  # TODO: make the config.xml template more configurable 
   #       in case these variables change 
 
   local filepath="${1}"
@@ -77,8 +69,33 @@ preconfigure_folder() {
   sed -i "s/SYNCTHING_DATA_TRANSFERMODE/${SYNCTHING_DATA_TRANSFERMODE}/g" "${filepath}"
 }
 
+#####################################################
+# Copies the HTTPS certificates from the 
+# predefined certificate directory 
+# to the config directory. 
+# Arguments:
+# 	None
+# Globals:
+# 	SYNCTHING_CERT_DIR
+# 	SYNCTHING_CONFIG_DIR
+# Returns:
+# 	None
+#####################################################
+ensure_https_certificates() {
+  # check if SYNCTHING_CERT_DIR is defined and mounted
+  if [[ -z "${SYNCTHING_CERT_DIR}" ]]; then
+    log_msg "SYNCTHING_CERT_DIR is not defined, default HTTPS Syncthing certificates will be used"
+    return 0
+  fi
 
-###################################
+  # copy the https-key.pem and https-cert.pem over to the config directory
+  cp "${SYNCTHING_CERT_DIR}/https-key.pem" "${SYNCTHING_CONFIG_DIR}/https-key.pem"
+  cp "${SYNCTHING_CERT_DIR}/https-cert.pem" "${SYNCTHING_CONFIG_DIR}/https-cert.pem"
+  return 0
+}
+
+
+#####################################################
 # Performs the necessary steps for 
 # Syncthing to run as an image
 # Globals:
@@ -87,9 +104,16 @@ preconfigure_folder() {
 #   None
 # Returns:
 #   None
-###################################
+#####################################################
 preflight_check() {
   log_msg "Running preflight check"
+
+  # variable definitions
+  log_msg "ensuring necessary variables are defined"
+  for var in "${required_vars[@]}"; do
+    check_var_defined "${var}"
+  done
+
   # populate config directory with config, if none exists
   if ! [[ -f "${SYNCTHING_CONFIG_DIR}/config.xml" ]]; then
     log_msg "populating ${SYNCTHING_CONFIG_DIR} with /config.xml"
@@ -97,23 +121,19 @@ preflight_check() {
     preconfigure_folder "${SYNCTHING_CONFIG_DIR}/config.xml"
   else
     log_msg "${SYNCTHING_CONFIG_DIR}/config.xml already exists"
-  fi
+  fi 
 
-  # variable definitions
-  log_msg "ensuring necessary variables are defined"
-  for var in "${required_vars[@]}"; do
-    check_var_defined "${var}"
-  done
+  # ensure the HTTPS certificates
+  ensure_https_certificates
 }
-
-#todo: ensure that the necessary variables have been defined
-
 
 for op in "$@"; do
   case $op in
     "run")
       # ensure our environment is configured before syncthing runs
       preflight_check
+
+      # launch syncthing			
       syncthing -home "${SYNCTHING_CONFIG_DIR}"
       ;;
     *)
