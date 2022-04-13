@@ -7,7 +7,7 @@
 set -e -o pipefail
 
 
-###########################
+#####################################################
 # Logs the given input
 # Globals:
 #   None 
@@ -15,7 +15,7 @@ set -e -o pipefail
 #   String(s) to be logged
 # Returns:
 #   Formatted log message
-##########################
+#####################################################
 log_msg() {
   local msg="$*"
   echo "===== ${msg} ====="
@@ -32,15 +32,7 @@ required_vars=(
   STGUIAPIKEY
 )
 
-# all global vars
-global_vars=(
-  SYNCTHING_DATA_DIR
-  SYNCTHING_CONFIG_DIR
-  SYNCTHING_CERT_DIR
-	STGUIAPIKEY
-)
-
-###########################################
+#####################################################
 # Error and exit if a variable isn't defined
 # check_var_defined "MY_VAR"
 # Globals:
@@ -49,10 +41,10 @@ global_vars=(
 #   String - variable to check
 # Returns:
 #   None
-###########################################
+#####################################################
 check_var_defined() {
     if [[ -z ${!1} ]]; then
-        error 1 "$1 must be defined"
+        error 1 "${1} must be defined"
     fi
 }
 
@@ -77,7 +69,7 @@ preconfigure_folder() {
   sed -i "s/SYNCTHING_DATA_TRANSFERMODE/${SYNCTHING_DATA_TRANSFERMODE}/g" "${filepath}"
 }
 
-############################################
+#####################################################
 # Copies the HTTPS certificates from the 
 # predefined certificate directory 
 # to the config directory. 
@@ -88,22 +80,22 @@ preconfigure_folder() {
 # 	SYNCTHING_CONFIG_DIR
 # Returns:
 # 	None
-############################################
+#####################################################
 ensure_https_certificates() {
-	# check if SYNCTHING_CERT_DIR is defined and mounted
-	if [[ -z ${SYNCTHING_CERT_DIR} ]]; then
-		log_msg "SYNCTHING_CERT_DIR is not defined, default HTTPS Syncthing certificates will be used"
-		return 0
-	fi
+  # check if SYNCTHING_CERT_DIR is defined and mounted
+  if [[ -z "${SYNCTHING_CERT_DIR}" ]]; then
+    log_msg "SYNCTHING_CERT_DIR is not defined, default HTTPS Syncthing certificates will be used"
+    return 0
+  fi
 
-	# copy the https-key.pem and https-cert.pem over to the config directory
-	cp "${SYNCTHING_CERT_DIR}/https-key.pem" "${SYNCTHING_CONFIG_DIR}/https-key.pem"
-	cp "${SYNCTHING_CERT_DIR}/https-cert.pem" "${SYNCTHING_CONFIG_DIR}/https-cert.pem"
-	return 0
+  # copy the https-key.pem and https-cert.pem over to the config directory
+  cp "${SYNCTHING_CERT_DIR}/https-key.pem" "${SYNCTHING_CONFIG_DIR}/https-key.pem"
+  cp "${SYNCTHING_CERT_DIR}/https-cert.pem" "${SYNCTHING_CONFIG_DIR}/https-cert.pem"
+  return 0
 }
 
 
-###################################
+#####################################################
 # Performs the necessary steps for 
 # Syncthing to run as an image
 # Globals:
@@ -112,7 +104,7 @@ ensure_https_certificates() {
 #   None
 # Returns:
 #   None
-###################################
+#####################################################
 preflight_check() {
   log_msg "Running preflight check"
 
@@ -131,8 +123,8 @@ preflight_check() {
     log_msg "${SYNCTHING_CONFIG_DIR}/config.xml already exists"
   fi 
 
-	# ensure the HTTPS certificates
-	ensure_https_certificates
+  # ensure the HTTPS certificates
+  ensure_https_certificates
 }
 
 for op in "$@"; do
@@ -141,7 +133,7 @@ for op in "$@"; do
       # ensure our environment is configured before syncthing runs
       preflight_check
 
-			# launch syncthing			
+      # launch syncthing			
       syncthing -home "${SYNCTHING_CONFIG_DIR}"
       ;;
     *)
