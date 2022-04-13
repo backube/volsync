@@ -234,6 +234,7 @@ func GenerateRandomBytes(length int) ([]byte, error) {
 	return b, nil
 }
 
+// TODO: add docs
 func GenerateRandomString(length int) (string, error) {
 	// generate a random string
 	b, err := GenerateRandomBytes(length)
@@ -259,19 +260,32 @@ func GenerateTLSCertificatesForSyncthing(
 	APIServiceAddress string,
 ) (*bytes.Buffer, *bytes.Buffer, error) {
 	// TODO: Change from RSA to ECDSA
+	// TODO: split this up into several files
 	// we will need to perform checks if the apiServiceDNS has changed
 	// and re-generate in case the TLS Certificates have changed
 
 	// serial number should be the current time in unix epoch time
-	serialNumber := time.Now().Unix()
 	TLSName := GetRedHatTLSName()
+
+	// setup expiry dates
+	notBefore := time.Now()
+	// expire in 10 years
+	notAfter := notBefore.AddDate(10, 0, 0)
+
+	// generate a bunch of random bytes
+	serialNumber, err := GenerateRandomBytes(2048)
+	if err != nil {
+		return nil, nil, err
+	}
+	// convert the serial number to a bigint
+	serialNumberBigInt := new(big.Int).SetBytes(serialNumber)
 
 	// set up our CA certificate
 	ca := &x509.Certificate{
-		SerialNumber:          big.NewInt(serialNumber),
+		SerialNumber:          serialNumberBigInt,
 		Subject:               TLSName,
-		NotBefore:             time.Now(),
-		NotAfter:              time.Now().AddDate(10, 0, 0),
+		NotBefore:             notBefore,
+		NotAfter:              notAfter,
 		IsCA:                  true,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
@@ -309,14 +323,21 @@ func GenerateTLSCertificatesForSyncthing(
 		return nil, nil, err
 	}
 
+	// generate another random serial number
+	serialNumber, err = GenerateRandomBytes(2048)
+	if err != nil {
+		return nil, nil, err
+	}
+	// convert the serial number to a bigint
+	serialNumberBigInt = new(big.Int).SetBytes(serialNumber)
+
 	// set up our server certificate
 	cert := &x509.Certificate{
-		SerialNumber: big.NewInt(serialNumber),
+		SerialNumber: serialNumberBigInt,
 		Subject:      TLSName,
 		DNSNames:     []string{APIServiceAddress},
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().AddDate(10, 0, 0),
-		SubjectKeyId: []byte{1, 2, 3, 4, 6},
+		NotBefore:    notBefore,
+		NotAfter:     notAfter,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 	}
