@@ -34,6 +34,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
+// TODO: add tests for the HTTPS certificates
+
 var _ = Describe("Syncthing properly registers", func() {
 	When("Syncthing's registration function is called", func() {
 		BeforeEach(func() {
@@ -442,7 +444,10 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 
 					// ensure the secret is created
 					Eventually(func() error {
-						return k8sClient.Get(ctx, types.NamespacedName{Name: returnedSecret.Name, Namespace: returnedSecret.Namespace}, returnedSecret)
+						return k8sClient.Get(ctx, types.NamespacedName{
+							Name:      returnedSecret.Name,
+							Namespace: returnedSecret.Namespace,
+						}, returnedSecret)
 					}, timeout, interval).Should(Succeed())
 
 					// ensure the data keys exist
@@ -577,6 +582,8 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 			})
 			When("VolSync ensures a deployment", func() {
 				It("creates a new one", func() {
+					// TODO: ensure HTTPS keys are here
+
 					// create a deployment
 					deployment, err := mover.ensureDeployment(ctx, srcPVC, configPVC, sa, apiSecret)
 					Expect(err).NotTo(HaveOccurred())
@@ -591,7 +598,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					Expect(stContainer.Image).To(Equal(mover.containerImage))
 
 					// expect STGUIAPIKEY to be set as one of the envs & referencing the secret
-					Expect(stContainer.Env).To(HaveLen(3))
+					Expect(stContainer.Env).To(HaveLen(4))
 					for _, env := range stContainer.Env {
 						if env.Name == "STGUIAPIKEY" {
 							Expect(env.ValueFrom.SecretKeyRef.Name).To(Equal(apiSecret.Name))
@@ -616,7 +623,6 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					}
 
 					// make sure that configPVC and srcPVC are referenced in the deployment
-					Expect(deployment.Spec.Template.Spec.Volumes).To(HaveLen(2))
 					for _, volume := range deployment.Spec.Template.Spec.Volumes {
 						if volume.Name == "syncthing-config" {
 							Expect(volume.PersistentVolumeClaim.ClaimName).To(Equal(configPVC.Name))
@@ -626,12 +632,13 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					}
 
 					// make sure that both deployment's specified volumes are being mounted by the container
-					Expect(stContainer.VolumeMounts).To(HaveLen(2))
 					for _, mount := range stContainer.VolumeMounts {
 						if mount.Name == "syncthing-config" {
 							Expect(mount.MountPath).To(Equal("/config"))
 						} else if mount.Name == "syncthing-data" {
 							Expect(mount.MountPath).To(Equal("/data"))
+						} else if mount.Name == "syncthing-certs" {
+							Expect(mount.MountPath).To(Equal("/certs"))
 						}
 					}
 				})
@@ -704,20 +711,20 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 							Expect(apiService.Spec.Ports).To(HaveLen(1))
 
 							// find the API port
-							var apiPort *corev1.ContainerPort
+							var apiPort corev1.ContainerPort
 							for _, port := range syncthingContainer.Ports {
 								if port.Name == "api" {
-									apiPort = &port
+									apiPort = port
 									break
 								}
 							}
 							Expect(apiService.Spec.Ports[0].Port).To(Equal(apiPort.ContainerPort))
 
 							// API Service gets reused
-							newApiService, err := mover.ensureAPIService(ctx, deployment)
+							newAPIService, err := mover.ensureAPIService(ctx, deployment)
 							Expect(err).NotTo(HaveOccurred())
-							Expect(newApiService).NotTo(BeNil())
-							Expect(newApiService.ObjectMeta.Name).To(Equal(apiService.ObjectMeta.Name))
+							Expect(newAPIService).NotTo(BeNil())
+							Expect(newAPIService.ObjectMeta.Name).To(Equal(apiService.ObjectMeta.Name))
 						})
 					})
 				})

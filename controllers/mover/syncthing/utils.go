@@ -122,7 +122,7 @@ func (st *Syncthing) FetchLatestInfo() error {
 func (st *Syncthing) UpdateSyncthingConfig() error {
 	// update the config
 	st.logger.V(4).Info("Updating Syncthing config")
-	_, err := st.jsonRequest(st.APIConfig.APIURL+"/rest/config", "PUT", st.Config)
+	_, err := st.jsonRequest("/rest/config", "PUT", st.Config)
 	if err != nil {
 		st.logger.V(4).Error(err, "Failed to update Syncthing config")
 		return err
@@ -254,6 +254,7 @@ func GetRedHatTLSName() pkix.Name {
 
 // GenerateTLSCertificatesForSyncthing generates a self-signed PEM-encoded certificate and key for Syncthing
 // which the VolSync client and Syncthing API Server will use to communicate with each other.
+//nolint:funlen
 func GenerateTLSCertificatesForSyncthing(
 	APIServiceAddress string,
 ) (*bytes.Buffer, *bytes.Buffer, error) {
@@ -291,16 +292,22 @@ func GenerateTLSCertificatesForSyncthing(
 
 	// pem encode
 	caPEM := new(bytes.Buffer)
-	pem.Encode(caPEM, &pem.Block{
+	err = pem.Encode(caPEM, &pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: caBytes,
 	})
+	if err != nil {
+		return nil, nil, err
+	}
 
 	caPrivKeyPEM := new(bytes.Buffer)
-	pem.Encode(caPrivKeyPEM, &pem.Block{
+	err = pem.Encode(caPrivKeyPEM, &pem.Block{
 		Type:  "RSA PRIVATE KEY",
 		Bytes: x509.MarshalPKCS1PrivateKey(caPrivKey),
 	})
+	if err != nil {
+		return nil, nil, err
+	}
 
 	// set up our server certificate
 	cert := &x509.Certificate{
@@ -325,16 +332,22 @@ func GenerateTLSCertificatesForSyncthing(
 	}
 
 	certPEM := new(bytes.Buffer)
-	pem.Encode(certPEM, &pem.Block{
+	err = pem.Encode(certPEM, &pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: certBytes,
 	})
+	if err != nil {
+		return nil, nil, err
+	}
 
 	certPrivKeyPEM := new(bytes.Buffer)
-	pem.Encode(certPrivKeyPEM, &pem.Block{
+	err = pem.Encode(certPrivKeyPEM, &pem.Block{
 		Type:  "RSA PRIVATE KEY",
 		Bytes: x509.MarshalPKCS1PrivateKey(certPrivKey),
 	})
+	if err != nil {
+		return nil, nil, err
+	}
 
 	return certPEM, certPrivKeyPEM, nil
 }

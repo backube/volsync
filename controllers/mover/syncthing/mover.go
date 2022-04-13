@@ -188,6 +188,7 @@ func (m *Mover) ensureDataPVC(ctx context.Context) (*corev1.PersistentVolumeClai
 	return dataPVC, nil
 }
 
+//nolint:funlen
 func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -230,11 +231,11 @@ func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) 
 			},
 			Type: corev1.SecretTypeOpaque,
 			Data: map[string][]byte{
-				"apikey":                           []byte(randomAPIKey),
-				"username":                         []byte("syncthing"),
-				"password":                         []byte(randomPassword),
-				"SYNCTHING_SERVER_TLS_CERT_PEM":    certPEM.Bytes(),
-				"SYNCTHING_SERVER_TLS_CERT_PK_PEM": certPrivKeyPEM.Bytes(),
+				"apikey":       []byte(randomAPIKey),
+				"username":     []byte("syncthing"),
+				"password":     []byte(randomPassword),
+				"httpsCertPEM": certPEM.Bytes(),
+				"httpsKeyPEM":  certPrivKeyPEM.Bytes(),
 			},
 		}
 
@@ -320,6 +321,11 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 									Name:  dataDirEnv,
 									Value: dataDirMountPath,
 								},
+								// tell the mover image where to find the HTTPS certs
+								{
+									Name:  "SYNCTHING_CERT_DIR",
+									Value: "/certs",
+								},
 								{
 									Name: "STGUIAPIKEY",
 									ValueFrom: &corev1.EnvVarSource{
@@ -328,28 +334,6 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 												Name: apiSecret.Name,
 											},
 											Key: "apikey",
-										},
-									},
-								},
-								{
-									Name: "SYNCTHING_SERVER_TLS_CERT_PEM",
-									ValueFrom: &corev1.EnvVarSource{
-										SecretKeyRef: &corev1.SecretKeySelector{
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: apiSecret.Name,
-											},
-											Key: "SYNCTHING_SERVER_TLS_CERT_PEM",
-										},
-									},
-								},
-								{
-									Name: "SYNCTHING_SERVER_TLS_CERT_PK_PEM",
-									ValueFrom: &corev1.EnvVarSource{
-										SecretKeyRef: &corev1.SecretKeySelector{
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: apiSecret.Name,
-											},
-											Key: "SYNCTHING_SERVER_TLS_CERT_PK_PEM",
 										},
 									},
 								},
@@ -374,6 +358,10 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 									Name:      dataVolumeName,
 									MountPath: dataDirMountPath,
 								},
+								{
+									Name:      "https-certs",
+									MountPath: "/certs",
+								},
 							},
 							Resources: corev1.ResourceRequirements{
 								Limits: corev1.ResourceList{
@@ -397,6 +385,25 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 							VolumeSource: corev1.VolumeSource{
 								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 									ClaimName: dataPVC.Name,
+								},
+							},
+						},
+						// load the HTTPS certs as a volume
+						{
+							Name: "https-certs",
+							VolumeSource: corev1.VolumeSource{
+								Secret: &corev1.SecretVolumeSource{
+									SecretName: apiSecret.Name,
+									Items: []corev1.KeyToPath{
+										{
+											Key:  "httpsKeyPEM",
+											Path: "https-key.pem",
+										},
+										{
+											Key:  "httpsCertPEM",
+											Path: "https-cert.pem",
+										},
+									},
 								},
 							},
 						},
@@ -433,6 +440,7 @@ func (m *Mover) ensureAPIService(ctx context.Context, deployment *appsv1.Deploym
 
 	// set API url
 	m.syncthing.APIConfig.APIURL = m.getAPIServiceAddress()
+	m.logger.Info("setting API URL", "url", m.syncthing.APIConfig.APIURL)
 
 	// see if we already have a service
 	err := m.client.Get(ctx, types.NamespacedName{Name: serviceName, Namespace: m.owner.GetNamespace()}, service)
@@ -651,7 +659,7 @@ func (m *Mover) getAPIServiceAddress() string {
 // loadTLSConfigFromSecret loads the TLS config from the given secret.
 func (m *Mover) loadTLSConfigFromSecret(apiSecret *corev1.Secret) (*tls.Config, error) {
 	// grab the server cert from the secret
-	serverCert, ok := apiSecret.Data["SYNCTHING_SERVER_TLS_CERT_PEM"]
+	serverCert, ok := apiSecret.Data["httpsCertPEM"]
 	if !ok {
 		return nil, fmt.Errorf("could not find the server cert in the secret")
 	}
@@ -662,7 +670,9 @@ func (m *Mover) loadTLSConfigFromSecret(apiSecret *corev1.Secret) (*tls.Config, 
 
 	// create the TLS config
 	conf := &tls.Config{
-		RootCAs: caCertPool,
+		// require at least TLS1.2
+		MinVersion: tls.VersionTLS12,
+		RootCAs:    caCertPool,
 	}
 	return conf, nil
 }
