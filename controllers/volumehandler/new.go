@@ -23,7 +23,7 @@ import (
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -42,6 +42,10 @@ func NewVolumeHandler(options ...VHOption) (*VolumeHandler, error) {
 	if vh.client == nil {
 		return nil, errors.New("a Client must be provided")
 	}
+	if vh.eventRecorder == nil {
+		// FakeRecorder just discards Events
+		vh.eventRecorder = &events.FakeRecorder{}
+	}
 	return vh, nil
 }
 
@@ -54,7 +58,7 @@ func WithClient(c client.Client) VHOption {
 
 // WithOwner specifies the Object should be the owner of Objects created by the
 // VolumeHandler
-func WithOwner(o metav1.Object) VHOption {
+func WithOwner(o client.Object) VHOption {
 	return func(vh *VolumeHandler) {
 		vh.owner = o
 	}
@@ -118,5 +122,11 @@ func StorageClassName(sc *string) VHOption {
 func VolumeSnapshotClassName(vsc *string) VHOption {
 	return func(vh *VolumeHandler) {
 		vh.volumeSnapshotClassName = vsc
+	}
+}
+
+func WithRecorder(r events.EventRecorder) VHOption {
+	return func(vh *VolumeHandler) {
+		vh.eventRecorder = r
 	}
 }
