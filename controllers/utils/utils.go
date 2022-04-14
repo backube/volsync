@@ -23,6 +23,8 @@ import (
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/reference"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -65,4 +67,12 @@ func EnvFromSecret(secretName string, field string, optional bool) corev1.EnvVar
 			},
 		},
 	}
+}
+
+func KindAndName(scheme *runtime.Scheme, obj client.Object) string {
+	ref, err := reference.GetReference(scheme, obj)
+	if err != nil {
+		return obj.GetName()
+	}
+	return ref.Kind + "/" + ref.Name
 }
