@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
@@ -191,9 +192,6 @@ func (st *Syncthing) jsonRequest(endpoint string, method string, requestBody int
 	body := io.Reader(bytes.NewReader(jsonBody))
 
 	// build new client if none exists
-	if st.APIConfig.Client == nil {
-		st.APIConfig.Client = st.APIConfig.BuildTLSClient()
-	}
 	req, err := http.NewRequest(method, st.APIConfig.APIURL+endpoint, body)
 
 	// set headers
@@ -227,10 +225,23 @@ func (api *APIConfig) Headers() map[string]string {
 }
 
 // BuildTLSClient Returns a new TLS client for Syncthing API requests.
+func (api *APIConfig) BuildOrUseExistingTLSClient() *http.Client {
+	if api.Client != nil {
+		return api.Client
+	}
+	return api.BuildTLSClient()
+}
+
+// BuildTLSClient Returns a new TLS client for Syncthing API requests.
 func (api *APIConfig) BuildTLSClient() *http.Client {
+	tlsConfig := api.TLSConfig
+	if tlsConfig == nil {
+		tlsConfig = &tls.Config{}
+	}
+
 	// load the TLS config with certificates
 	tr := &http.Transport{
-		TLSClientConfig: api.TLSConfig,
+		TLSClientConfig: tlsConfig,
 	}
 	client := &http.Client{
 		Transport: tr,

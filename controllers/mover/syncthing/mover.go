@@ -118,6 +118,10 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 		return mover.InProgress(), err
 	}
 
+	if err = m.configureSyncthingAPIClient(secretAPIKey); err != nil {
+		return mover.InProgress(), err
+	}
+
 	// configure syncthing before grabbing info & updating status
 	if err = m.ensureIsConfigured(secretAPIKey); err != nil {
 		return mover.InProgress(), err
@@ -552,9 +556,8 @@ func (m *Mover) Cleanup(ctx context.Context) (mover.Result, error) {
 	return mover.Complete(), nil
 }
 
-func (m *Mover) ensureIsConfigured(apiSecret *corev1.Secret) error {
-	var err error
-
+// configureSyncthingAPIClient Configures the Syncthing API client if it has not been configured yet.
+func (m *Mover) configureSyncthingAPIClient(apiSecret *corev1.Secret) error {
 	// set the api key
 	m.syncthing.APIConfig.APIKey = string(apiSecret.Data["apikey"])
 
@@ -565,8 +568,16 @@ func (m *Mover) ensureIsConfigured(apiSecret *corev1.Secret) error {
 	}
 	m.syncthing.APIConfig.TLSConfig = clientConfig
 
+	// create a new client or use the existing one
+	m.syncthing.APIConfig.Client = m.syncthing.APIConfig.BuildOrUseExistingTLSClient()
+
+	return nil
+}
+
+// ensureIsConfigured Makes sure that the Syncthing config is up-to-date.
+func (m *Mover) ensureIsConfigured(apiSecret *corev1.Secret) error {
 	// reconciles the Syncthing object
-	err = m.syncthing.FetchLatestInfo()
+	err := m.syncthing.FetchLatestInfo()
 	if err != nil {
 		return err
 	}
