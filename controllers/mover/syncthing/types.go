@@ -20,6 +20,7 @@ package syncthing
 
 import (
 	"crypto/tls"
+	"net/http"
 
 	"github.com/go-logr/logr"
 )
@@ -253,6 +254,7 @@ type APIConfig struct {
 	GUIPassword string `json:"password"`
 	// don't marshal this field
 	TLSConfig *tls.Config
+	Client    *http.Client
 }
 
 type Syncthing struct {

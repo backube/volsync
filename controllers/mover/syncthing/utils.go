@@ -13,6 +13,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math/big"
+	"net"
 	"net/http"
 	"time"
 
@@ -119,6 +120,7 @@ func (st *Syncthing) FetchLatestInfo() error {
 	return nil
 }
 
+// UpdateSyncthingConfig
 func (st *Syncthing) UpdateSyncthingConfig() error {
 	// update the config
 	st.logger.V(4).Info("Updating Syncthing config")
@@ -130,6 +132,7 @@ func (st *Syncthing) UpdateSyncthingConfig() error {
 	return err
 }
 
+// FetchSyncthingConfig fetches the Syncthing config and updates the config.
 func (st *Syncthing) FetchSyncthingConfig() error {
 	responseBody := &SyncthingConfig{
 		Devices: []SyncthingDevice{},
@@ -145,6 +148,7 @@ func (st *Syncthing) FetchSyncthingConfig() error {
 	return err
 }
 
+// FetchSyncthingSystemStatus fetches the Syncthing system status.
 func (st *Syncthing) FetchSyncthingSystemStatus() error {
 	responseBody := &SystemStatus{}
 	st.logger.V(4).Info("Fetching Syncthing system status")
@@ -158,6 +162,7 @@ func (st *Syncthing) FetchSyncthingSystemStatus() error {
 	return err
 }
 
+// FetchConnectedStatus Fetches the connection status of the syncthing instance.
 func (st *Syncthing) FetchConnectedStatus() error {
 	// updates the connected status if successful, else returns an error
 	responseBody := &SystemConnections{
@@ -185,16 +190,13 @@ func (st *Syncthing) jsonRequest(endpoint string, method string, requestBody int
 	// tostring the json body
 	body := io.Reader(bytes.NewReader(jsonBody))
 
-	// load the TLS config with certificates
-	tr := &http.Transport{
-		TLSClientConfig: st.APIConfig.TLSConfig,
+	// build new client if none exists
+	if st.APIConfig.Client == nil {
+		st.APIConfig.Client = st.APIConfig.BuildTLSClient()
 	}
 	req, err := http.NewRequest(method, st.APIConfig.APIURL+endpoint, body)
-	client := &http.Client{
-		Transport: tr,
-		Timeout:   time.Second * 5,
-	}
 
+	// set headers
 	for key, value := range st.APIConfig.Headers() {
 		req.Header.Set(key, value)
 	}
@@ -203,8 +205,7 @@ func (st *Syncthing) jsonRequest(endpoint string, method string, requestBody int
 	if err != nil {
 		return nil, err
 	}
-
-	resp, err := client.Do(req)
+	resp, err := st.APIConfig.Client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -217,6 +218,7 @@ func (st *Syncthing) jsonRequest(endpoint string, method string, requestBody int
 	return ioutil.ReadAll(resp.Body)
 }
 
+// Headers Returns a map containing the necessary headers for Syncthing API requests.
 func (api *APIConfig) Headers() map[string]string {
 	return map[string]string{
 		"X-API-Key":    api.APIKey,
@@ -224,6 +226,20 @@ func (api *APIConfig) Headers() map[string]string {
 	}
 }
 
+// BuildTLSClient Returns a new TLS client for Syncthing API requests.
+func (api *APIConfig) BuildTLSClient() *http.Client {
+	// load the TLS config with certificates
+	tr := &http.Transport{
+		TLSClientConfig: api.TLSConfig,
+	}
+	client := &http.Client{
+		Transport: tr,
+		Timeout:   time.Second * 5,
+	}
+	return client
+}
+
+// GenerateRandomBytes Generates random bytes of the given length using the OS's RNG.
 func GenerateRandomBytes(length int) ([]byte, error) {
 	// generates random bytes of given length
 	b := make([]byte, length)
@@ -234,7 +250,7 @@ func GenerateRandomBytes(length int) ([]byte, error) {
 	return b, nil
 }
 
-// TODO: add docs
+// GenerateRandomString Generates a random string of the given length using the OS's RNG.
 func GenerateRandomString(length int) (string, error) {
 	// generate a random string
 	b, err := GenerateRandomBytes(length)
@@ -336,6 +352,7 @@ func GenerateTLSCertificatesForSyncthing(
 		SerialNumber: serialNumberBigInt,
 		Subject:      TLSName,
 		DNSNames:     []string{APIServiceAddress},
+		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
 		NotBefore:    notBefore,
 		NotAfter:     notAfter,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
