@@ -203,17 +203,13 @@ yq: ## Download yq locally if necessary.
 	$(call go-get-tool,$(YQ),github.com/mikefarah/yq/v4@latest)
 
 
-# go-get-tool will 'go get' any package $2 and install it to $1.
+# go-get-tool will 'go install' any package $2 and install it to $1.
 PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
 define go-get-tool
 @[ -f $(1) ] || { \
 set -e ;\
-TMP_DIR=$$(mktemp -d) ;\
-cd $$TMP_DIR ;\
-go mod init tmp ;\
 echo "Downloading $(2)" ;\
-GOBIN=$(PROJECT_DIR)/bin go get $(2) ;\
-rm -rf $$TMP_DIR ;\
+GOBIN=$(PROJECT_DIR)/bin go install $(2) ;\
 }
 endef
 
@@ -293,7 +289,7 @@ endef
 .PHONY: ginkgo
 GINKGO := $(PROJECT_DIR)/bin/ginkgo
 ginkgo: ## Download ginkgo
-	$(call go-get-tool,$(GINKGO),github.com/onsi/ginkgo/ginkgo)
+	$(call go-get-tool,$(GINKGO),github.com/onsi/ginkgo/ginkgo@latest)
 
 .PHONY: golangci-lint
 GOLANGCILINT := $(PROJECT_DIR)/bin/golangci-lint
