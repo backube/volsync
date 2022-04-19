@@ -169,7 +169,7 @@ var _ = Describe("Restic properly registers", func() {
 		It("is added to the mover catalog", func() {
 			found := false
 			for _, v := range mover.Catalog {
-				if v != nil {
+				if _, ok := v.(*Builder); ok {
 					found = true
 				}
 			}
