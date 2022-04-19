@@ -34,6 +34,7 @@ import (
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -45,8 +46,9 @@ import (
 // ReplicationSourceReconciler reconciles a ReplicationSource object
 type ReplicationSourceReconciler struct {
 	client.Client
-	Log    logr.Logger
-	Scheme *runtime.Scheme
+	Log           logr.Logger
+	Scheme        *runtime.Scheme
+	EventRecorder record.EventRecorder
 }
 
 //nolint:lll
@@ -55,10 +57,12 @@ type ReplicationSourceReconciler struct {
 //+kubebuilder:rbac:groups=volsync.backube,resources=replicationsources/finalizers,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=volsync.backube,resources=replicationsources/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete;deletecollection
+//+kubebuilder:rbac:groups=core,resources=events,verbs=create;update;patch
 //+kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete;deletecollection
 //+kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;update;patch
 //+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=roles,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=security.openshift.io,resources=securitycontextconstraints,resourceNames=volsync-mover;privileged,verbs=use
@@ -139,7 +143,9 @@ func reconcileSrcUsingCatalog(
 	// Search the Mover catalog for a suitable data mover
 	var dataMover mover.Mover
 	for _, builder := range mover.Catalog {
-		if candidate, err := builder.FromSource(sr.Client, logger, instance); err == nil && candidate != nil {
+		candidate, err := builder.FromSource(sr.Client, logger,
+			record.NewEventRecorderAdapter(sr.EventRecorder), instance)
+		if err == nil && candidate != nil {
 			if dataMover != nil {
 				// Found 2 movers claiming this CR...
 				return ctrl.Result{}, fmt.Errorf("only a single replication method can be provided")

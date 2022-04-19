@@ -19,6 +19,7 @@ package mover
 
 import (
 	"github.com/go-logr/logr"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
@@ -41,12 +42,14 @@ type Builder interface {
 	// ReplicationSource. If the RS does not reference the Builder's mover type,
 	// this function should return (nil, nil).
 	FromSource(client client.Client, logger logr.Logger,
+		eventRecorder events.EventRecorder,
 		source *volsyncv1alpha1.ReplicationSource) (Mover, error)
 
 	// FromDestination attempts to construct a Mover from the provided
 	// ReplicationDestination. If the RS does not reference the Builder's mover
 	// type, this function should return (nil, nil).
 	FromDestination(client client.Client, logger logr.Logger,
+		eventRecorder events.EventRecorder,
 		destination *volsyncv1alpha1.ReplicationDestination) (Mover, error)
 
 	// VersionInfo returns a string describing the version of this mover. In

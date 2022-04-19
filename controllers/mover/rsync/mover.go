@@ -26,6 +26,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -46,6 +47,7 @@ const (
 type Mover struct {
 	client         client.Client
 	logger         logr.Logger
+	eventRecorder  events.EventRecorder
 	owner          metav1.Object
 	vh             *volumehandler.VolumeHandler
 	containerImage string

@@ -33,6 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -57,7 +58,7 @@ var _ = Describe("Rsync properly registers", func() {
 		It("is added to the mover catalog", func() {
 			found := false
 			for _, v := range mover.Catalog {
-				if v.(*Builder) != nil {
+				if v != nil {
 					found = true
 				}
 			}
@@ -112,7 +113,7 @@ var _ = Describe("Rsync init flags and env vars", func() {
 				},
 				Status: &volsyncv1alpha1.ReplicationSourceStatus{}, // Controller sets status to non-nil
 			}
-			sourceMover, err := builderForInitTests.FromSource(k8sClient, logger, rs)
+			sourceMover, err := builderForInitTests.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(sourceMover).NotTo(BeNil())
 			sourceRsyncMover, _ := sourceMover.(*Mover)
@@ -129,7 +130,7 @@ var _ = Describe("Rsync init flags and env vars", func() {
 				},
 				Status: &volsyncv1alpha1.ReplicationDestinationStatus{}, // Controller sets status to non-nil
 			}
-			destMover, err := builderForInitTests.FromDestination(k8sClient, logger, rd)
+			destMover, err := builderForInitTests.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(destMover).NotTo(BeNil())
 			destRsyncMover, _ := destMover.(*Mover)
@@ -188,7 +189,7 @@ var _ = Describe("Rsync ignores other movers", func() {
 					Rsync: nil,
 				},
 			}
-			m, e := commonBuilderForTestSuite.FromSource(k8sClient, logger, rs)
+			m, e := commonBuilderForTestSuite.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs)
 			Expect(m).To(BeNil())
 			Expect(e).NotTo(HaveOccurred())
 		})
@@ -204,7 +205,7 @@ var _ = Describe("Rsync ignores other movers", func() {
 					Rsync: nil,
 				},
 			}
-			m, e := commonBuilderForTestSuite.FromDestination(k8sClient, logger, rd)
+			m, e := commonBuilderForTestSuite.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd)
 			Expect(m).To(BeNil())
 			Expect(e).NotTo(HaveOccurred())
 		})
@@ -278,7 +279,7 @@ var _ = Describe("Rsync as a source", func() {
 			// Controller sets status to non-nil
 			rs.Status = &volsyncv1alpha1.ReplicationSourceStatus{}
 
-			m, err := commonBuilderForTestSuite.FromSource(k8sClient, logger, rs)
+			m, err := commonBuilderForTestSuite.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(m).NotTo(BeNil())
 			mover, _ = m.(*Mover)
@@ -901,7 +902,7 @@ var _ = Describe("Rsync as a destination", func() {
 			// Controller sets status to non-nil
 			rd.Status = &volsyncv1alpha1.ReplicationDestinationStatus{}
 
-			m, err := commonBuilderForTestSuite.FromDestination(k8sClient, logger, rd)
+			m, err := commonBuilderForTestSuite.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(m).NotTo(BeNil())
 			mover, _ = m.(*Mover)

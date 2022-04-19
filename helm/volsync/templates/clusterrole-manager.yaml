@@ -21,6 +21,14 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - events
+  verbs:
+  - create
+  - patch
+  - update
+- apiGroups:
+  - ""
+  resources:
   - persistentvolumeclaims
   verbs:
   - create
@@ -68,6 +76,14 @@ rules:
   - update
   - watch
 - apiGroups:
+  - events.k8s.io
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+  - update
+- apiGroups:
   - rbac.authorization.k8s.io
   resources:
   - rolebindings
@@ -86,6 +102,27 @@ rules:
   verbs:
   - create
   - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - security.openshift.io
+  resourceNames:
+  - {{ include "volsync.fullname" . }}-mover
+  resources:
+  - securitycontextconstraints
+  verbs:
+  - use
+- apiGroups:
+  - snapshot.storage.k8s.io
+  resources:
+  - volumesnapshots
+  verbs:
+  - create
+  - delete
+  - deletecollection
   - get
   - list
   - patch
@@ -155,24 +192,3 @@ rules:
   - get
   - patch
   - update
-- apiGroups:
-  - security.openshift.io
-  resourceNames:
-  - {{ include "volsync.fullname" . }}-mover
-  resources:
-  - securitycontextconstraints
-  verbs:
-  - use
-- apiGroups:
-  - snapshot.storage.k8s.io
-  resources:
-  - volumesnapshots
-  verbs:
-  - create
-  - delete
-  - deletecollection
-  - get
-  - list
-  - patch
-  - update
-  - watch

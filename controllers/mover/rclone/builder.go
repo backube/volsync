@@ -23,6 +23,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/spf13/viper"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
@@ -86,6 +87,7 @@ func (rb *Builder) getRcloneContainerImage() string {
 }
 
 func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
+	eventRecorder events.EventRecorder,
 	source *volsyncv1alpha1.ReplicationSource) (mover.Mover, error) {
 	// Only build if the CR belongs to us
 	if source.Spec.Rclone == nil {
@@ -104,6 +106,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 	return &Mover{
 		client:              client,
 		logger:              logger.WithValues("method", "Rclone"),
+		eventRecorder:       eventRecorder,
 		owner:               source,
 		vh:                  vh,
 		containerImage:      rb.getRcloneContainerImage(),
@@ -117,6 +120,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 }
 
 func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
+	eventRecorder events.EventRecorder,
 	destination *volsyncv1alpha1.ReplicationDestination) (mover.Mover, error) {
 	// Only build if the CR belongs to us
 	if destination.Spec.Rclone == nil {
@@ -135,6 +139,7 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 	return &Mover{
 		client:              client,
 		logger:              logger.WithValues("method", "Rclone"),
+		eventRecorder:       eventRecorder,
 		owner:               destination,
 		vh:                  vh,
 		containerImage:      rb.getRcloneContainerImage(),
