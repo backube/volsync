@@ -21,6 +21,7 @@ import (
 	"github.com/backube/volsync/api/v1alpha1"
 )
 
+// UpdateDevices Updates the Syncthing's connected devices with the provided peerList.
 func (st *Syncthing) UpdateDevices(peerList []v1alpha1.SyncthingPeer) {
 	st.logger.V(4).Info("Updating devices", "peerlist", peerList)
 
@@ -56,6 +57,7 @@ func (st *Syncthing) UpdateDevices(peerList []v1alpha1.SyncthingPeer) {
 	st.UpdateFolders()
 }
 
+// UpdateFolders Updates the Syncthing folders to be shared with its set of devices.
 func (st *Syncthing) UpdateFolders() {
 	// share the current folder(s) with the new devices
 	var newFolders = []SyncthingFolder{}
@@ -73,6 +75,7 @@ func (st *Syncthing) UpdateFolders() {
 	st.Config.Folders = newFolders
 }
 
+// NeedsReconfigure Determines whether the given nodeList differs from Syncthing's internal devices.
 func (st *Syncthing) NeedsReconfigure(nodeList []v1alpha1.SyncthingPeer) bool {
 	// check if the syncthing nodelist diverges from the current syncthing devices
 	var newDevices map[string]v1alpha1.SyncthingPeer = map[string]v1alpha1.SyncthingPeer{
@@ -108,6 +111,7 @@ func (st *Syncthing) NeedsReconfigure(nodeList []v1alpha1.SyncthingPeer) bool {
 	return false
 }
 
+// FetchLatestInfo Updates the Syncthing object with the latest data fetched from the Syncthing API.
 func (st *Syncthing) FetchLatestInfo() error {
 	if err := st.FetchSyncthingConfig(); err != nil {
 		return err
@@ -121,7 +125,7 @@ func (st *Syncthing) FetchLatestInfo() error {
 	return nil
 }
 
-// UpdateSyncthingConfig
+// UpdateSyncthingConfig Updates the Syncthing config with the locally-stored config.
 func (st *Syncthing) UpdateSyncthingConfig() error {
 	// update the config
 	st.logger.V(4).Info("Updating Syncthing config")

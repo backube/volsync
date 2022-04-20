@@ -71,6 +71,7 @@ type Mover struct {
 
 var _ mover.Mover = &Mover{}
 
+// Name Returns the name of the mover.
 func (m *Mover) Name() string { return "syncthing" }
 
 // We need the following resources available to us in the cluster:
@@ -135,6 +136,7 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 	return mover.RetryAfter(retryAfter), nil
 }
 
+// ensureConfigPVC Ensures that there is a PVC persisting Syncthing's config data.
 func (m *Mover) ensureConfigPVC(ctx context.Context) (*corev1.PersistentVolumeClaim, error) {
 	configPVC := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
@@ -178,6 +180,7 @@ func (m *Mover) ensureConfigPVC(ctx context.Context) (*corev1.PersistentVolumeCl
 	return configPVC, nil
 }
 
+// ensureDataPVC Ensures that the PVC holding the data meant to be synced is available.
 func (m *Mover) ensureDataPVC(ctx context.Context) (*corev1.PersistentVolumeClaim, error) {
 	// check if the data PVC exists, error if it doesn't
 	dataPVC := &corev1.PersistentVolumeClaim{
@@ -192,6 +195,7 @@ func (m *Mover) ensureDataPVC(ctx context.Context) (*corev1.PersistentVolumeClai
 	return dataPVC, nil
 }
 
+// ensureSecretAPIKey Ensures ensures that the PVC for API secrets either exists or it will create it.
 //nolint:funlen
 func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) {
 	secret := &corev1.Secret{
@@ -257,6 +261,7 @@ func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) 
 	return secret, nil
 }
 
+// ensureSA Ensures a VolSync ServiceAccount to be used by the operator.
 func (m *Mover) ensureSA(ctx context.Context) (*corev1.ServiceAccount, error) {
 	sa := &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
@@ -272,6 +277,7 @@ func (m *Mover) ensureSA(ctx context.Context) (*corev1.ServiceAccount, error) {
 	return nil, err
 }
 
+// ensureDeployment Will ensure that a Deployment for the Syncthing mover exists, or it will be created.
 //nolint:funlen
 func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.PersistentVolumeClaim,
 	configPVC *corev1.PersistentVolumeClaim, sa *corev1.ServiceAccount,
@@ -431,6 +437,7 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 	return deployment, nil
 }
 
+// ensureAPIService Ensures that a service exposing the Syncthing API is present, else it will be created.
 func (m *Mover) ensureAPIService(ctx context.Context, deployment *appsv1.Deployment) (*corev1.Service, error) {
 	// setup vars
 	targetPort := "api"
@@ -491,6 +498,8 @@ func (m *Mover) ensureAPIService(ctx context.Context, deployment *appsv1.Deploym
 	return service, nil
 }
 
+// ensureDataService Ensures that a service exposing the Syncthing data is present, else it will be created.
+// This service allows Syncthing to share data with the rest of the world.
 func (m *Mover) ensureDataService(ctx context.Context) (*corev1.Service, error) {
 	serviceName := "volsync-" + m.owner.GetName() + "-data"
 	service := &corev1.Service{
@@ -537,6 +546,7 @@ func (m *Mover) ensureDataService(ctx context.Context) (*corev1.Service, error) 
 	return service, nil
 }
 
+// GetDataServiceAddress Will return a string representing the address of the data service, prefixed with TCP.
 func (m *Mover) GetDataServiceAddress(service *corev1.Service) (string, error) {
 	// format the address based on the type of service we're using
 	// supported service types: ClusterIP, LoadBalancer
@@ -548,6 +558,8 @@ func (m *Mover) GetDataServiceAddress(service *corev1.Service) (string, error) {
 	return address, nil
 }
 
+// Cleanup will remove any resources that were created by the mover.
+// This is currently a no-op since Syncthing is always-on.
 func (m *Mover) Cleanup(ctx context.Context) (mover.Result, error) {
 	err := utils.CleanupObjects(ctx, m.client, m.logger, m.owner, []client.Object{})
 	if err != nil {
@@ -613,6 +625,7 @@ func (m *Mover) ensureIsConfigured(apiSecret *corev1.Secret) error {
 	return nil
 }
 
+// ensureStatusIsUpdated Updates the mover's status to be reported by the ReplicationSource object.
 func (m *Mover) ensureStatusIsUpdated(dataSVC *corev1.Service) error {
 	// get the current status
 	err := m.syncthing.FetchLatestInfo()
