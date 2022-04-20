@@ -28,7 +28,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const cleanupLabelKey = "volsync.backube/cleanup"
+const (
+	volsyncLabelPrefix    = "volsync.backube"
+	cleanupLabelKey       = volsyncLabelPrefix + "/cleanup"
+	DoNotDeleteLabelKey   = volsyncLabelPrefix + "/do-not-delete"
+	DoNotDeleteLabelValue = "true"
+
+	destKind = "ReplicationDestination"
+)
 
 // MarkForCleanup marks the provided "obj" to be deleted at the end of the
 // synchronization iteration.
@@ -57,13 +64,167 @@ func CleanupObjects(ctx context.Context, c client.Client,
 	}
 	l.Info("deleting temporary objects")
 	for _, obj := range types {
-		err := c.DeleteAllOf(ctx, obj, options...)
-		if client.IgnoreNotFound(err) != nil {
-			l.Error(err, "unable to delete object(s)")
-			return err
+		_, ok := obj.(*snapv1.VolumeSnapshot)
+		if ok {
+			// Handle volumesnapshots differently - do not delete if they have a specific label
+			err := cleanupSnapshots(ctx, c, logger, owner)
+			if err != nil {
+				l.Error(err, "unable to delete volume snapshot(s)")
+				return err
+			}
+		} else {
+			err := c.DeleteAllOf(ctx, obj, options...)
+			if client.IgnoreNotFound(err) != nil {
+				l.Error(err, "unable to delete object(s)")
+				return err
+			}
 		}
 	}
 	return nil
+}
+
+// Could be generalized to other types if we want to use unstructuredList - would need to pass in group, version, kind
+func cleanupSnapshots(ctx context.Context, c client.Client,
+	logger logr.Logger, owner metav1.Object) error {
+	// Load current list of snapshots with the cleanup label
+	listOptions := []client.ListOption{
+		client.MatchingLabels{cleanupLabelKey: string(owner.GetUID())},
+		client.InNamespace(owner.GetNamespace()),
+	}
+	snapList := &snapv1.VolumeSnapshotList{}
+	err := c.List(ctx, snapList, listOptions...)
+	if err != nil {
+		return err
+	}
+
+	return CleanupSnapshotsWithLabelCheck(ctx, c, logger, owner, snapList)
+}
+
+func CleanupSnapshotsWithLabelCheck(ctx context.Context, c client.Client,
+	logger logr.Logger, owner metav1.Object, snapList *snapv1.VolumeSnapshotList) error {
+	// If marked as do-not-delete, remove the cleanup label and ownership
+	snapsForCleanup, err := relinquishSnapshotsWithDoNotDeleteLabel(ctx, c, logger, owner.GetName(), snapList)
+	if err != nil {
+		return err
+	}
+
+	// Remaining snapshots should be cleaned up
+	for i := range snapsForCleanup {
+		snapForCleanup := &snapList.Items[i]
+
+		// Use a delete precondition to avoid timing issues.
+		// If the object was modified (for example by someone adding a new label) in-between us loading it and
+		// performing the delete, the should throw an error as the resourceVersion will not match
+		snapResourceVersion := snapForCleanup.ResourceVersion
+
+		deleteOptions := &client.DeleteOptions{
+			Preconditions: &metav1.Preconditions{
+				ResourceVersion: &snapResourceVersion,
+			},
+		}
+
+		err := c.Delete(ctx, snapForCleanup, deleteOptions)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func RelinquishOwnedSnapshotsWithDoNotDeleteLabel(ctx context.Context, c client.Client,
+	logger logr.Logger, replicationDestinationOwnerName string, namespace string) error {
+	// Find all snapshots in the namespace with the do not delete label
+	listOptions := []client.ListOption{
+		client.MatchingLabels{DoNotDeleteLabelKey: DoNotDeleteLabelValue},
+		client.InNamespace(namespace),
+	}
+	snapList := &snapv1.VolumeSnapshotList{}
+	err := c.List(ctx, snapList, listOptions...)
+	if err != nil {
+		return err
+	}
+
+	_, err = relinquishSnapshotsWithDoNotDeleteLabel(ctx, c, logger, replicationDestinationOwnerName, snapList)
+
+	return err
+}
+
+// Returns a list of remaining VolumeSnapshots that were not relinquished
+func relinquishSnapshotsWithDoNotDeleteLabel(ctx context.Context, c client.Client,
+	logger logr.Logger, replicationDestinationOwnerName string,
+	snapList *snapv1.VolumeSnapshotList) ([]snapv1.VolumeSnapshot, error) {
+	remainingSnapshots := []snapv1.VolumeSnapshot{}
+	for i := range snapList.Items {
+		snapshot := snapList.Items[i]
+
+		ownershipRemoved, err := RemoveSnapshotOwnershipIfRequestedAndUpdate(ctx, c, logger,
+			replicationDestinationOwnerName, &snapshot)
+		if err != nil {
+			return remainingSnapshots, err
+		}
+		if !ownershipRemoved {
+			remainingSnapshots = append(remainingSnapshots, snapshot)
+		}
+	}
+
+	return remainingSnapshots, nil
+}
+
+func RemoveSnapshotOwnershipIfRequestedAndUpdate(ctx context.Context, c client.Client, logger logr.Logger,
+	replicationDestinationOwnerName string, snapshot *snapv1.VolumeSnapshot) (bool, error) {
+	ownershipRemoved := false
+
+	if val, ok := snapshot.Labels[DoNotDeleteLabelKey]; ok && val == DoNotDeleteLabelValue {
+		logger.Info("Not deleting volumesnapshot protected with label - will remove ownership and cleanup label",
+			"name", snapshot.GetName(), "label", DoNotDeleteLabelKey)
+		ownershipRemoved = true
+
+		updated := unMarkForCleanupAndRemoveOwnership(snapshot, replicationDestinationOwnerName)
+		if updated {
+			err := c.Update(ctx, snapshot)
+			if err != nil {
+				logger.Error(err, "error removing cleanup label or ownerRef from snapshot",
+					"name", snapshot.GetName(), "namespace", snapshot.GetNamespace())
+				return ownershipRemoved, err
+			}
+		}
+	}
+
+	return ownershipRemoved, nil
+}
+
+func unMarkForCleanupAndRemoveOwnership(obj metav1.Object, ownerName string) bool {
+	updated := false
+
+	// Remove volsync cleanup label if present
+	updatedLabels := obj.GetLabels()
+	if _, ok := updatedLabels[cleanupLabelKey]; ok {
+		delete(updatedLabels, cleanupLabelKey)
+		updated = true
+	}
+
+	// Only doing this for ReplicationDestinations
+	ownerKind := destKind
+
+	// Remove ReplicationDestination owner reference if present
+	updatedOwnerRefs := []metav1.OwnerReference{}
+	for _, ownerRef := range obj.GetOwnerReferences() {
+		if ownerRef.Name == ownerName && ownerRef.Kind == ownerKind {
+			// Do not add to updatedOwnerRefs
+			updated = true
+		} else {
+			updatedOwnerRefs = append(updatedOwnerRefs, ownerRef)
+		}
+	}
+
+	if updated {
+		obj.SetLabels(updatedLabels)
+		obj.SetOwnerReferences(updatedOwnerRefs)
+
+		return true
+	}
+	return false
 }
 
 func MarkOldSnapshotForCleanup(ctx context.Context, c client.Client, logger logr.Logger,
