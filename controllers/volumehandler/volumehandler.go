@@ -29,11 +29,13 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
+	"github.com/backube/volsync/controllers/mover"
 	"github.com/backube/volsync/controllers/utils"
 )
 
@@ -46,7 +48,8 @@ const (
 
 type VolumeHandler struct {
 	client                  client.Client
-	owner                   metav1.Object
+	eventRecorder           events.EventRecorder
+	owner                   client.Object
 	copyMethod              volsyncv1alpha1.CopyMethodType
 	capacity                *resource.Quantity
 	storageClassName        *string
@@ -123,6 +126,7 @@ func (vh *VolumeHandler) getPVCByName(ctx context.Context, pvcName string) (*cor
 	return pvc, err
 }
 
+//nolint: funlen
 func (vh *VolumeHandler) EnsureNewPVC(ctx context.Context, log logr.Logger,
 	name string) (*corev1.PersistentVolumeClaim, error) {
 	logger := log.WithValues("PVC", name)
@@ -170,6 +174,21 @@ func (vh *VolumeHandler) EnsureNewPVC(ctx context.Context, log logr.Logger,
 		return nil, err
 	}
 	logger.V(1).Info("PVC reconciled", "operation", op)
+	if op == ctrlutil.OperationResultCreated {
+		vh.eventRecorder.Eventf(vh.owner, pvc, corev1.EventTypeNormal,
+			mover.EvRPVCCreated, mover.EvACreatePVC,
+			"created %s to receive incoming data",
+			utils.KindAndName(vh.client.Scheme(), pvc))
+	}
+	if pvc.Status.Phase != corev1.ClaimBound &&
+		!pvc.CreationTimestamp.IsZero() &&
+		pvc.CreationTimestamp.Add(mover.PVCBindTimeout).Before(time.Now()) {
+		vh.eventRecorder.Eventf(vh.owner, pvc, corev1.EventTypeWarning,
+			mover.EvRPVCNotBound, "",
+			"waiting for %s to bind; check StorageClass name and CSI driver capabilities",
+			utils.KindAndName(vh.client.Scheme(), pvc))
+	}
+
 	return pvc, nil
 }
 
@@ -181,6 +200,7 @@ func (vh *VolumeHandler) GetAccessModes() []corev1.PersistentVolumeAccessMode {
 	return vh.accessModes
 }
 
+//nolint: funlen
 func (vh *VolumeHandler) ensureImageSnapshot(ctx context.Context, log logr.Logger,
 	src *corev1.PersistentVolumeClaim) (*snapv1.VolumeSnapshot, error) {
 	// create & record name (if necessary)
@@ -226,9 +246,23 @@ func (vh *VolumeHandler) ensureImageSnapshot(ctx context.Context, log logr.Logge
 		return nil, err
 	}
 	logger.V(1).Info("Snapshot reconciled", "operation", op)
+	if op == ctrlutil.OperationResultCreated {
+		vh.eventRecorder.Eventf(vh.owner, snap, corev1.EventTypeNormal,
+			mover.EvRSnapCreated, mover.EvACreateSnap, "created %s from %s",
+			utils.KindAndName(vh.client.Scheme(), snap), utils.KindAndName(vh.client.Scheme(), src))
+	}
 
 	// We only continue reconciling if the snapshot has been bound & not deleted
-	if snap.Status == nil || snap.Status.BoundVolumeSnapshotContentName == nil || !snap.DeletionTimestamp.IsZero() {
+	if !snap.DeletionTimestamp.IsZero() {
+		return nil, nil
+	}
+	if snap.Status == nil || snap.Status.BoundVolumeSnapshotContentName == nil {
+		if snap.CreationTimestamp.Add(mover.SnapshotBindTimeout).Before(time.Now()) {
+			vh.eventRecorder.Eventf(vh.owner, snap, corev1.EventTypeWarning,
+				mover.EvRSnapNotBound, mover.EvANone,
+				"waiting for %s to bind; check VolumeSnapshotClass name and ensure CSI driver supports volume snapshots",
+				utils.KindAndName(vh.client.Scheme(), snap))
+		}
 		return nil, nil
 	}
 
@@ -252,6 +286,7 @@ func (vh *VolumeHandler) RemoveSnapshotAnnotationFromPVC(ctx context.Context, lo
 	return nil
 }
 
+//nolint: funlen
 func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,
 	src *corev1.PersistentVolumeClaim, name string, isTemporary bool) (*corev1.PersistentVolumeClaim, error) {
 	clone := &corev1.PersistentVolumeClaim{
@@ -307,6 +342,20 @@ func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,
 		return nil, nil
 	}
 	logger.V(1).Info("clone reconciled", "operation", op)
+	if op == ctrlutil.OperationResultCreated {
+		vh.eventRecorder.Eventf(vh.owner, clone, corev1.EventTypeNormal,
+			mover.EvRPVCCreated, mover.EvACreatePVC,
+			"created %s as a clone of %s",
+			utils.KindAndName(vh.client.Scheme(), clone), utils.KindAndName(vh.client.Scheme(), src))
+	}
+	if !clone.CreationTimestamp.IsZero() &&
+		clone.CreationTimestamp.Add(mover.PVCBindTimeout).Before(time.Now()) &&
+		clone.Status.Phase != corev1.ClaimBound {
+		vh.eventRecorder.Eventf(vh.owner, clone, corev1.EventTypeWarning,
+			mover.EvRPVCNotBound, "",
+			"waiting for %s to bind; check StorageClass name and ensure CSI driver supports volume cloning",
+			utils.KindAndName(vh.client.Scheme(), clone))
+	}
 	return clone, err
 }
 
@@ -342,14 +391,27 @@ func (vh *VolumeHandler) ensureSnapshot(ctx context.Context, log logr.Logger,
 		logger.V(1).Info("snap is being deleted-- need to wait")
 		return nil, nil
 	}
+	if op == ctrlutil.OperationResultCreated {
+		vh.eventRecorder.Eventf(vh.owner, snap, corev1.EventTypeNormal,
+			mover.EvRSnapCreated, mover.EvACreateSnap,
+			"created %s from %s",
+			utils.KindAndName(vh.client.Scheme(), snap), utils.KindAndName(vh.client.Scheme(), src))
+	}
 	if snap.Status == nil || snap.Status.BoundVolumeSnapshotContentName == nil {
 		logger.V(1).Info("waiting for snapshot to be bound")
+		if snap.CreationTimestamp.Add(mover.SnapshotBindTimeout).Before(time.Now()) {
+			vh.eventRecorder.Eventf(vh.owner, snap, corev1.EventTypeWarning,
+				mover.EvRSnapNotBound, mover.EvANone,
+				"waiting for %s to bind; check VolumeSnapshotClass name and ensure CSI driver supports volume snapshots",
+				utils.KindAndName(vh.client.Scheme(), snap))
+		}
 		return nil, nil
 	}
 	logger.V(1).Info("temporary snapshot reconciled", "operation", op)
 	return snap, nil
 }
 
+//nolint: funlen
 func (vh *VolumeHandler) pvcFromSnapshot(ctx context.Context, log logr.Logger,
 	snap *snapv1.VolumeSnapshot, original *corev1.PersistentVolumeClaim,
 	name string, isTemporary bool) (*corev1.PersistentVolumeClaim, error) {
@@ -405,6 +467,20 @@ func (vh *VolumeHandler) pvcFromSnapshot(ctx context.Context, log logr.Logger,
 		logger.Error(err, "reconcile failed")
 		return nil, err
 	}
+	if op == ctrlutil.OperationResultCreated {
+		vh.eventRecorder.Eventf(vh.owner, pvc, corev1.EventTypeNormal,
+			mover.EvRPVCCreated, mover.EvACreatePVC, "created %s from %s",
+			utils.KindAndName(vh.client.Scheme(), pvc), utils.KindAndName(vh.client.Scheme(), snap))
+	}
+	if pvc.Status.Phase != corev1.ClaimBound &&
+		!pvc.CreationTimestamp.IsZero() &&
+		pvc.CreationTimestamp.Add(mover.PVCBindTimeout).Before(time.Now()) {
+		vh.eventRecorder.Eventf(vh.owner, pvc, corev1.EventTypeWarning,
+			mover.EvRPVCNotBound, "",
+			"waiting for %s to bind; check StorageClass name and CSI driver capabilities",
+			utils.KindAndName(vh.client.Scheme(), pvc))
+	}
+
 	logger.V(1).Info("pvc from snap reconciled", "operation", op)
 	return pvc, nil
 }

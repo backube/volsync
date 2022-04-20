@@ -72,7 +72,14 @@ func (mr Result) ReconcileResult() ctrl.Result {
 
 // InProgress result indicates that the requested operation is still ongoing,
 // but it does not request an explicit requeueing.
-func InProgress() Result { return Result{} }
+func InProgress() Result {
+	// When we have an operation in-progress, we should still reconcile
+	// periodically so that we can detect if we aren't progressing.
+	retryTime := 1 * time.Minute
+	return Result{
+		RetryAfter: &retryTime,
+	}
+}
 
 // RetryAfter indicates the operation is ongoing and requests explicit
 // requeueing after the provided duration.
