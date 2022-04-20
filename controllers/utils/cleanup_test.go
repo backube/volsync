@@ -297,8 +297,7 @@ var _ = Describe("Cleanup", func() {
 			})
 
 			It("Should remove the cleanup label and replication destination ownership of the labelled snap", func() {
-				Expect(utils.RelinquishOwnedSnapshotsWithDoNotDeleteLabel(ctx, k8sClient, logger,
-					rdA.GetName(), rdA.GetNamespace())).To(Succeed())
+				Expect(utils.RelinquishOwnedSnapshotsWithDoNotDeleteLabel(ctx, k8sClient, logger, rdA)).To(Succeed())
 
 				// SnapA1 should have cleanup label removed and ownership removed
 				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(snapA1), snapA1)).To(Succeed())
@@ -309,8 +308,7 @@ var _ = Describe("Cleanup", func() {
 				validateCleanupLabelAndOwnerRef(snapA2, rdA)
 
 				// Run again and there should be no change
-				Expect(utils.RelinquishOwnedSnapshotsWithDoNotDeleteLabel(ctx, k8sClient, logger,
-					rdA.GetName(), rdA.GetNamespace())).To(Succeed())
+				Expect(utils.RelinquishOwnedSnapshotsWithDoNotDeleteLabel(ctx, k8sClient, logger, rdA)).To(Succeed())
 
 				// Snap should not have been updated since cleanup label and ownership already removed
 				snapA1reload := &snapv1.VolumeSnapshot{}
