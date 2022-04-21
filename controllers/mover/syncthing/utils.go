@@ -240,7 +240,9 @@ func (api *APIConfig) BuildOrUseExistingTLSClient() *http.Client {
 func (api *APIConfig) BuildTLSClient() *http.Client {
 	tlsConfig := api.TLSConfig
 	if tlsConfig == nil {
-		tlsConfig = &tls.Config{}
+		tlsConfig = &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		}
 	}
 
 	// load the TLS config with certificates

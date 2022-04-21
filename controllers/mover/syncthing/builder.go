@@ -135,6 +135,8 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 			// all logs from Syncthing's logger should be V(4)
 			logger: syncthingLogger.WithValues("struct", "Syncthing"),
 		},
+		// defer setting the VolumeHandler
+		vh: nil,
 	}, nil
 }
 

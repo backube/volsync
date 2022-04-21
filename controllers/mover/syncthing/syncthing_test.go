@@ -349,6 +349,12 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 		Context("VolSync ensures a config PVC", func() {
 			var configPVC *corev1.PersistentVolumeClaim
 
+			JustBeforeEach(func() {
+				// ensure the data PVC before testing the config PVC so the volumehandler is set
+				_, err := mover.ensureDataPVC(ctx)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
 			When("configPVC already exists", func() {
 				JustBeforeEach(func() {
 					// create a config PVC
@@ -376,7 +382,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 
 				It("VolSync uses existing configPVC", func() {
 					// volsync reuses existing PVC
-					returnedPVC, err := mover.ensureConfigPVC(ctx)
+					returnedPVC, err := mover.ensureConfigPVC(ctx, srcPVC)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(returnedPVC).NotTo(BeNil())
 					Expect(returnedPVC.Name).To(Equal(configPVC.Name))
@@ -386,7 +392,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 			When("configPVC doesn't exist", func() {
 				It("VolSync creates a new configPVC", func() {
 					// volsync creates & returns a config PVC
-					configPVC, err := mover.ensureConfigPVC(ctx)
+					configPVC, err := mover.ensureConfigPVC(ctx, srcPVC)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(configPVC).NotTo(BeNil())
 

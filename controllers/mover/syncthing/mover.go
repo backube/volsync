@@ -42,6 +42,7 @@ import (
 	"github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers/mover"
 	"github.com/backube/volsync/controllers/utils"
+	"github.com/backube/volsync/controllers/volumehandler"
 )
 
 // constants used in the syncthing configuration
@@ -56,10 +57,10 @@ const (
 
 // Mover is the reconciliation logic for the Restic-based data mover.
 type Mover struct {
-	client client.Client
-	logger logr.Logger
-	owner  metav1.Object
-	// vh             *volumehandler.VolumeHandler
+	client         client.Client
+	logger         logr.Logger
+	owner          metav1.Object
+	vh             *volumehandler.VolumeHandler
 	containerImage string
 	paused         bool
 	dataPVCName    *string
@@ -89,7 +90,7 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 		return mover.InProgress(), err
 	}
 
-	configPVC, err := m.ensureConfigPVC(ctx)
+	configPVC, err := m.ensureConfigPVC(ctx, dataPVC)
 	if configPVC == nil || err != nil {
 		return mover.InProgress(), err
 	}
@@ -136,51 +137,62 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 	return mover.RetryAfter(retryAfter), nil
 }
 
+// setVHFromSourcePVC Will use the provided dataPVC to create a VolumeHandler and set it on the mover.
+func (m *Mover) setVHFromSourcePVC(dataPVC *corev1.PersistentVolumeClaim) error {
+	// create a volume options object
+	volumeOptions := v1alpha1.ReplicationSourceVolumeOptions{
+		CopyMethod:              v1alpha1.CopyMethodNone,
+		StorageClassName:        dataPVC.Spec.StorageClassName,
+		AccessModes:             dataPVC.Spec.AccessModes,
+		VolumeSnapshotClassName: nil,
+	}
+
+	// create a volume handler
+	vh, err := volumehandler.NewVolumeHandler(
+		volumehandler.WithClient(m.client),
+		volumehandler.WithOwner(m.owner),
+		volumehandler.FromSource(&volumeOptions),
+	)
+	// we need VolumeHandler to proceed
+	if err != nil {
+		return err
+	}
+	m.vh = vh
+	return nil
+}
+
 // ensureConfigPVC Ensures that there is a PVC persisting Syncthing's config data.
-func (m *Mover) ensureConfigPVC(ctx context.Context) (*corev1.PersistentVolumeClaim, error) {
-	configPVC := &corev1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "volsync-" + m.owner.GetName() + "-config",
-			Namespace: m.owner.GetNamespace(),
-		},
-	}
-	if err := m.client.Get(ctx, client.ObjectKeyFromObject(configPVC), configPVC); err == nil {
-		return configPVC, nil
+func (m *Mover) ensureConfigPVC(
+	ctx context.Context,
+	dataPVC *corev1.PersistentVolumeClaim,
+) (*corev1.PersistentVolumeClaim, error) {
+	// // cannot proceed unless we have a data PVC or volumehandler is defined
+	// if dataPVC == nil && m.vh == nil {
+	// 	return nil, fmt.Errorf("dataPVC and volumehandler are both nil")
+	// }
+
+	configConfig := []volumehandler.VHOption{
+		// build on top of the main volume handler's config
+		volumehandler.From(m.vh),
 	}
 
-	// create new PVC
-	configPVC = &corev1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "volsync-" + m.owner.GetName() + "-config",
-			Namespace: m.owner.GetNamespace(),
-			Labels: map[string]string{
-				"app": m.owner.GetName(),
-			},
-		},
-		Spec: corev1.PersistentVolumeClaimSpec{
-			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-			Resources: corev1.ResourceRequirements{
-				Requests: corev1.ResourceList{
-					// 1Gi should be plenty for config data
-					corev1.ResourceStorage: resource.MustParse("1Gi"),
-				},
-			},
-		},
+	// create a VH for the config PVC
+	configCapacity := resource.MustParse("1Gi")
+	configConfig = append(configConfig, volumehandler.Capacity(&configCapacity))
+	configConfig = append(configConfig, volumehandler.AccessModes(dataPVC.Spec.AccessModes))
+	configVh, err := volumehandler.NewVolumeHandler(configConfig...)
+	if err != nil {
+		return nil, err
 	}
 
-	// ensure PVC can be deleted once ReplicationSource is deleted
-	if err := ctrl.SetControllerReference(m.owner, configPVC, m.client.Scheme()); err != nil {
-		m.logger.V(3).Error(err, "could not set owner ref")
-		return nil, err
-	}
-	if err := m.client.Create(ctx, configPVC); err != nil {
-		return nil, err
-	}
-	m.logger.Info("Created PVC", configPVC.Name, configPVC)
-	return configPVC, nil
+	// Allocate the config volume
+	configName := "volsync-" + m.owner.GetName() + "-config"
+	m.logger.Info("allocating config volume", "PVC", configName)
+	return configVh.EnsureNewPVC(ctx, m.logger, configName)
 }
 
 // ensureDataPVC Ensures that the PVC holding the data meant to be synced is available.
+// A VolumeHandler will be created based on the provided source PVC.
 func (m *Mover) ensureDataPVC(ctx context.Context) (*corev1.PersistentVolumeClaim, error) {
 	// check if the data PVC exists, error if it doesn't
 	dataPVC := &corev1.PersistentVolumeClaim{
@@ -192,6 +204,14 @@ func (m *Mover) ensureDataPVC(ctx context.Context) (*corev1.PersistentVolumeClai
 	if err := m.client.Get(ctx, client.ObjectKeyFromObject(dataPVC), dataPVC); err != nil {
 		return nil, err
 	}
+
+	// create a VolumeHandler based on the data PVC
+	if m.vh == nil {
+		if err := m.setVHFromSourcePVC(dataPVC); err != nil {
+			return nil, err
+		}
+	}
+
 	return dataPVC, nil
 }
 
