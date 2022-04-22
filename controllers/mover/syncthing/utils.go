@@ -79,18 +79,36 @@ func (st *Syncthing) UpdateFolders() {
 func (st *Syncthing) NeedsReconfigure(nodeList []v1alpha1.SyncthingPeer) bool {
 	// check if the syncthing nodelist diverges from the current syncthing devices
 	var newDevices map[string]v1alpha1.SyncthingPeer = map[string]v1alpha1.SyncthingPeer{
+		// initialize the map with the self node
 		st.SystemStatus.MyID: {
 			ID:      st.SystemStatus.MyID,
 			Address: "",
 		},
 	}
+
+	// add all other devices
 	for _, device := range nodeList {
+		// avoid self
+		if device.ID == st.SystemStatus.MyID {
+			continue
+		}
 		newDevices[device.ID] = device
 	}
 
 	// create a map for current devices
-	var currentDevs map[string]v1alpha1.SyncthingPeer = map[string]v1alpha1.SyncthingPeer{}
+	var currentDevs map[string]v1alpha1.SyncthingPeer = map[string]v1alpha1.SyncthingPeer{
+		// initialize the map with the self node
+		st.SystemStatus.MyID: {
+			ID:      st.SystemStatus.MyID,
+			Address: "",
+		},
+	}
+	// add the rest of devices to the map
 	for _, device := range st.Config.Devices {
+		// avoid adding self
+		if device.DeviceID == st.SystemStatus.MyID {
+			continue
+		}
 		currentDevs[device.DeviceID] = v1alpha1.SyncthingPeer{
 			ID:      device.DeviceID,
 			Address: device.Addresses[0],
@@ -197,9 +215,16 @@ func (st *Syncthing) jsonRequest(endpoint string, method string, requestBody int
 
 	// build new client if none exists
 	req, err := http.NewRequest(method, st.APIConfig.APIURL+endpoint, body)
+	if err != nil {
+		return nil, err
+	}
 
 	// set headers
-	for key, value := range st.APIConfig.Headers() {
+	headers, err := st.APIConfig.Headers()
+	if err != nil {
+		return nil, err
+	}
+	for key, value := range headers {
 		req.Header.Set(key, value)
 	}
 
@@ -221,11 +246,16 @@ func (st *Syncthing) jsonRequest(endpoint string, method string, requestBody int
 }
 
 // Headers Returns a map containing the necessary headers for Syncthing API requests.
-func (api *APIConfig) Headers() map[string]string {
+// When no API Key is provided, an error is returned.
+func (api *APIConfig) Headers() (map[string]string, error) {
+	if api.APIKey == "" {
+		return nil, errors.New("API Key is not set")
+	}
+
 	return map[string]string{
 		"X-API-Key":    api.APIKey,
 		"Content-Type": "application/json",
-	}
+	}, nil
 }
 
 // BuildTLSClient Returns a new TLS client for Syncthing API requests.
