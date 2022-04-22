@@ -1,0 +1,136 @@
+---
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+timeout: 600
+commands:
+  - script: |
+      #!/usr/bin/bash
+      # for this test, we need to perform two checks:
+      # 	1. All of the replicationsources have each other's Syncthing config in their peer list
+      #   2. Each of the Syncthing IDs in .spec.syncthing.peers appears in .status.syncthing.peers and is connected
+
+      replication_sources=$(kubectl get replicationsource -n "${NAMESPACE}" -o json | jq '.items')
+
+      ###########################
+      # Ensures all ReplicationSources
+      # have each other in their peer list
+      # Arguments:
+      #   None
+      # Returns:
+      #  0 if all ReplicationSources have each other in their peer list, 1 otherwise
+      ###########################
+      function verify_rs_are_connected() {
+        # get all of the IDs for every replicationsource
+        local st_ids=$(echo "${replicationsources}" | jq -r '.[] | .status.syncthing.ID')
+        for st_id in ${st_ids}; do
+          # get the replicationsource with the current ID
+          local rs=$(echo "${replicationsources}" | jq -r --arg currentID "${st_id}" \
+            '.[] | select(.status.syncthing.ID == $currentID)'
+          )
+
+          # get the peer list for the current replicationsource
+          local peers=$(echo "${rs}" | jq -r '.spec.syncthing.peers')
+          local peer_ids=$(echo "${peers}" | jq -r '.[] | .ID')			
+          
+          # all syncthing IDs in cluster
+          local full_peer_ids=$(echo "${replicationsources}" | jq -r \
+            --arg currentID "${st_id}" \
+            '.[] | select(.status.syncthing.ID != $currentID) | .status.syncthing.ID'
+          )
+
+          # ensure that each element of full_peer_ids is in peer_ids
+          for peer_id in ${full_peer_ids}; do
+            if [[ ! "${peer_ids}" =~ "${peer_id}" ]]; then
+              echo "ReplicationSource ${st_id} does not have ${peer_id} in its peer list"
+              return 1
+            fi
+          done
+        done
+        echo "All ReplicationSources have each other in their peer list"
+        return 0	
+      }
+
+
+      ######################################
+      # Ensures that all ReplicationSources
+      # are connected to the Syncthing 
+      # devices listed in their spec
+      # Globals:
+      #   (json) replication_sources
+      # Arguments:
+      #   (string) replicationsource name
+      # Returns:
+      #  0 if all ReplicationSources are connected to their Syncthing devices, 1 otherwise
+      ######################################
+      function all_peers_are_connected() {
+        local rs_name="$1"
+
+        # get the record for the given replicationsource
+        local rs=$(echo "${replication_sources}" | jq --arg rsName "${rs_name}" '.[] | select(.metadata.name == $rsName)')
+        local peer_ids=$(echo "${rs}" | jq -r '.spec.syncthing.peers[].ID')
+
+        # check if .status.syncthing.peers is null or empty
+        if [[ $(echo "${rs}" | jq '.status.syncthing | has("peers")') == "true" ]]; then
+          local connected_peers=$(echo "${rs}" | jq -r '.status.syncthing.peers')
+          local connected_peer_ids=$(echo "${connected_peers}" | jq -r '.[] | .ID')
+          IFS=$'\n' read -rd '' -a connected_peer_ids <<< "${connected_peer_ids}"
+          unset IFS
+
+          # make sure that each peer_id exists in .status.syncthing.peers
+          for peer_id in ${peer_ids[@]}; do
+            if [[ ! "${connected_peer_ids[@]}" =~ "${peer_id}" ]]; then
+              echo "ReplicationSource ${rs_name} does not have ${peer_id} in its peer list"
+              return 1
+            fi
+            
+            # grab the peer_id and check if connected: true
+            local peer=$(echo "${connected_peers}" | jq -r --arg peerID "${peer_id}" \
+              '.[] | select(.ID == $peerID)')
+            if [[ $(echo "${peer}" | jq '.connected') != "true" ]]; then
+              echo "${peer_id} is not connected in ${rs_name}"
+              return 1
+            fi
+          done
+        else
+          echo "ReplicationSource ${rs_name} does not have any peers"
+          return 1
+        fi
+
+        return 0
+      }
+
+      ######################################
+      # Update the replication_sources
+      # Globals:
+      #  (string) NAMESPACE
+      # Returns:
+      #  (json) replication_sources
+      ######################################
+      function update_replication_sources() {
+        local sources=$(kubectl get replicationsource -n "${NAMESPACE}" -o json | jq '.items')
+        echo "${sources}"
+      }
+
+      # try to verify rs are connected
+      verify_rs_are_connected
+      while [[ $? -ne 0 ]]; do
+        echo "Waiting for all ReplicationSources to have each other in their peer list"
+        sleep 5
+        replication_sources=$(update_replication_sources)
+        verify_rs_are_connected
+      done
+      echo "all ReplicationSources have each other in their peer list"
+
+
+      rs_names=$(echo "${replication_sources}" | jq -c -r '.[].metadata.name')
+      IFS=$'\n' read -rd '' -a rs_names_array <<< "${rs_names}"
+
+      for rs_name in "${rs_names_array[@]}"; do
+        all_peers_are_connected "${rs_name}"
+        while [[ $? -ne 0 ]]; do
+          echo "Waiting for all Syncthing IDs in ${rs_name}'s peer list to be connected"
+          sleep 5
+            replication_sources=$(update_replication_sources)
+          all_peers_are_connected "${rs_name}"
+        done
+      done

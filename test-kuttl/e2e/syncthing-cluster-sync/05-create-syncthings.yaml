@@ -24,21 +24,4 @@ spec:
   sourcePVC: test-data-3
   syncthing:
     serviceType: ClusterIP
----
-kind: ReplicationSource
-apiVersion: volsync.backube/v1alpha1
-metadata:
-  name: syncthing-4
-spec:
-  sourcePVC: test-data-4
-  syncthing:
-    serviceType: ClusterIP
----
-kind: ReplicationSource
-apiVersion: volsync.backube/v1alpha1
-metadata:
-  name: syncthing-5
-spec:
-  sourcePVC: test-data-5
-  syncthing:
-    serviceType: ClusterIP
+
