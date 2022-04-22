@@ -25,7 +25,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -109,20 +108,12 @@ func CleanupSnapshotsWithLabelCheck(ctx context.Context, c client.Client,
 
 	// Remaining snapshots should be cleaned up
 	for i := range snapsForCleanup {
-		snapForCleanup := &snapList.Items[i]
+		snapForCleanup := &snapsForCleanup[i]
 
 		// Use a delete precondition to avoid timing issues.
 		// If the object was modified (for example by someone adding a new label) in-between us loading it and
 		// performing the delete, the should throw an error as the resourceVersion will not match
-		snapResourceVersion := snapForCleanup.ResourceVersion
-
-		deleteOptions := &client.DeleteOptions{
-			Preconditions: &metav1.Preconditions{
-				ResourceVersion: &snapResourceVersion,
-			},
-		}
-
-		err := c.Delete(ctx, snapForCleanup, deleteOptions)
+		err := c.Delete(ctx, snapForCleanup, client.Preconditions{ResourceVersion: &snapForCleanup.ResourceVersion})
 		if err != nil {
 			return err
 		}
@@ -154,20 +145,24 @@ func relinquishSnapshotsWithDoNotDeleteLabel(ctx context.Context, c client.Clien
 	logger logr.Logger, owner client.Object,
 	snapList *snapv1.VolumeSnapshotList) ([]snapv1.VolumeSnapshot, error) {
 	remainingSnapshots := []snapv1.VolumeSnapshot{}
+
+	var snapRelinquishErr error
+
 	for i := range snapList.Items {
 		snapshot := snapList.Items[i]
 
 		ownershipRemoved, err := RemoveSnapshotOwnershipIfRequestedAndUpdate(ctx, c, logger,
 			owner, &snapshot)
 		if err != nil {
-			return remainingSnapshots, err
+			snapRelinquishErr = err // Will return the latest error at the end but keep processing the snaps
+			continue
 		}
 		if !ownershipRemoved {
 			remainingSnapshots = append(remainingSnapshots, snapshot)
 		}
 	}
 
-	return remainingSnapshots, nil
+	return remainingSnapshots, snapRelinquishErr
 }
 
 func RemoveSnapshotOwnershipIfRequestedAndUpdate(ctx context.Context, c client.Client, logger logr.Logger,
@@ -179,13 +174,13 @@ func RemoveSnapshotOwnershipIfRequestedAndUpdate(ctx context.Context, c client.C
 			"name", snapshot.GetName(), "label", DoNotDeleteLabelKey)
 		ownershipRemoved = true
 
-		updated := unMarkForCleanupAndRemoveOwnership(c.Scheme(), snapshot, owner)
+		updated := unMarkForCleanupAndRemoveOwnership(snapshot, owner)
 		if updated {
 			err := c.Update(ctx, snapshot)
 			if err != nil {
 				logger.Error(err, "error removing cleanup label or ownerRef from snapshot",
 					"name", snapshot.GetName(), "namespace", snapshot.GetNamespace())
-				return ownershipRemoved, err
+				return false, err
 			}
 		}
 	}
@@ -193,7 +188,7 @@ func RemoveSnapshotOwnershipIfRequestedAndUpdate(ctx context.Context, c client.C
 	return ownershipRemoved, nil
 }
 
-func unMarkForCleanupAndRemoveOwnership(scheme *runtime.Scheme, obj metav1.Object, owner client.Object) bool {
+func unMarkForCleanupAndRemoveOwnership(obj metav1.Object, owner client.Object) bool {
 	updated := false
 
 	// Remove volsync cleanup label if present
@@ -203,12 +198,10 @@ func unMarkForCleanupAndRemoveOwnership(scheme *runtime.Scheme, obj metav1.Objec
 		updated = true
 	}
 
-	ownerKindAndName := KindAndName(scheme, owner)
-
 	// Remove ReplicationDestination owner reference if present
 	updatedOwnerRefs := []metav1.OwnerReference{}
 	for _, ownerRef := range obj.GetOwnerReferences() {
-		if ownerRef.Kind+"/"+ownerRef.Name == ownerKindAndName {
+		if ownerRef.UID == owner.GetUID() {
 			// Do not add to updatedOwnerRefs
 			updated = true
 		} else {
