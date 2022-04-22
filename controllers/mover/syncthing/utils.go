@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -43,7 +44,7 @@ func (st *Syncthing) UpdateDevices(peerList []v1alpha1.SyncthingPeer) {
 		stDeviceToAdd := SyncthingDevice{
 			DeviceID:   device.ID,
 			Addresses:  []string{device.Address},
-			Name:       "Syncthing Device " + string(rune(len(newDevices))),
+			Name:       "Syncthing Device Configured by Volsync: " + string(sha256.New().Sum([]byte(device.ID))),
 			Introducer: device.Introducer,
 		}
 		st.logger.V(4).Info("Adding device: %+v\n", stDeviceToAdd)

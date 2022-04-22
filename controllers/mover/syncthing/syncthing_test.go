@@ -918,31 +918,78 @@ var _ = Describe("Syncthing utils", func() {
 
 			When("other devices are configured", func() {
 				BeforeEach(func() {
-					syncthing.Config.Devices = []SyncthingDevice{
+					syncthingPeers := []v1alpha1.SyncthingPeer{
 						{
-							DeviceID: "george-costanzas-parents-house",
-							Addresses: []string{
-								"/ip4/localhost/tcp/22000/quic",
-								"/ip6/::1/tcp/22000/quic",
-								"/ip6/::1/tcp/22001/quic",
-							},
+							ID:      "george-costanzas-parents-house",
+							Address: "/ip6/::1/tcp/22000/quic",
 						},
 						{
-							DeviceID: "elaine-benes",
-							// don't use real addresses on purpose so we don't accidentally make requests during testing
-							Addresses: []string{
-								"/ip4/256.256.256.256/tcp/22000/quic",
-								"/ip6/::1/tcp/22000/quic",
-							},
+							ID:      "elaine-benes",
+							Address: "/ip6/::1/tcp/22000/quic",
 						},
 						{
-							DeviceID: "frank-costanza",
-							Addresses: []string{
-								"/ip4/256.256.256.256/tcp/22000/quic",
-								"/ip6/::1/tcp/22000/quic",
-							},
+							ID:      "frank-costanza",
+							Address: "/ip6/::1/tcp/22000/quic",
 						},
 					}
+					syncthing.UpdateDevices(syncthingPeers)
+				})
+
+				It("doesn't reconfigure when no new devices are passed in", func() {
+					// create a peerlist with the same devices as the current config
+					peerList := []v1alpha1.SyncthingPeer{
+						{
+							ID:      "george-costanzas-parents-house",
+							Address: "/ip6/::1/tcp/22000/quic",
+						},
+						{
+							ID:      "elaine-benes",
+							Address: "/ip6/::1/tcp/22000/quic",
+						},
+						{
+							ID:      "frank-costanza",
+							Address: "/ip6/::1/tcp/22000/quic",
+						},
+					}
+
+					// Syncthing should not reconfigure when the peerlist is the same
+					needsReconfigure := syncthing.NeedsReconfigure(peerList)
+					Expect(needsReconfigure).To(BeFalse())
+
+					// make sure that nothing new is updated
+					previousDevices := syncthing.Config.Devices
+					previousFolders := syncthing.Config.Folders
+					syncthing.UpdateDevices(peerList)
+
+					// make sure that all of the previous devices are the same as the current devices
+					found := 0
+					for _, device := range syncthing.Config.Devices {
+						foundOne := false
+						for _, previousDevice := range previousDevices {
+							if device.DeviceID == previousDevice.DeviceID {
+								found++
+								foundOne = true
+								break
+							}
+						}
+						Expect(foundOne).To(BeTrue())
+					}
+					Expect(found).To(Equal(len(syncthing.Config.Devices)))
+
+					// expect to find all of the current devices in the folder in the previous folder's list
+					found = 0
+					for _, device := range syncthing.Config.Folders[0].Devices {
+						foundOne := false
+						for _, previousDevice := range previousFolders[0].Devices {
+							if device.DeviceID == previousDevice.DeviceID {
+								found++
+								foundOne = true
+								break
+							}
+						}
+						Expect(foundOne).To(BeTrue())
+					}
+					Expect(found).To(Equal(len(syncthing.Config.Folders[0].Devices)))
 				})
 
 				It("only needs reconfigure when the list differs but ignores the self syncthing device", func() {
@@ -959,7 +1006,9 @@ var _ = Describe("Syncthing utils", func() {
 						},
 					}
 					Expect(syncthing.NeedsReconfigure(peerList)).To(BeTrue())
+				})
 
+				It("can reconfigure to a larger list", func() {
 					// create a peerlist based on the configured devices in the Syncthing object
 					replicaPeerList := []v1alpha1.SyncthingPeer{}
 					for _, device := range syncthing.Config.Devices {
@@ -990,34 +1039,89 @@ var _ = Describe("Syncthing utils", func() {
 					}
 					Expect(found).To(BeTrue())
 
-					// only specify a subset of the peers
-					peerListSubset := []v1alpha1.SyncthingPeer{replicaPeerList[0], replicaPeerList[1]}
-					Expect(syncthing.NeedsReconfigure(peerListSubset)).To(BeTrue())
-					syncthing.UpdateDevices(peerListSubset)
-
-					// expect the devices to only be the subset
-					Expect(syncthing.Config.Devices).To(HaveLen(2))
-					confirmedAsDevice := 0
-					confirmedSharedWith := 0
-					for _, peer := range peerListSubset {
-						// peer must exist in the devices
-						for _, device := range syncthing.Config.Devices {
-							if device.DeviceID == peer.ID {
-								confirmedAsDevice++
-							}
-						}
-						// we must find the peer's ID in the devices the folder is shared with
-						for _, device := range syncthing.Config.Folders[0].Devices {
-							if device.DeviceID == peer.ID {
-								confirmedSharedWith++
-							}
+					// expect to find the new peer in the folder
+					found = false
+					for _, device := range syncthing.Config.Folders[0].Devices {
+						found = device.DeviceID == "kramers-apartment"
+						if found {
+							break
 						}
 					}
-					Expect(confirmedAsDevice).To(Equal(2))
-					Expect(confirmedSharedWith).To(Equal(2))
+					Expect(found).To(BeTrue())
+				})
 
-					// expect the previous devices to have been unshared from the folder
-					Expect(syncthing.Config.Folders[0].Devices).To(HaveLen(2))
+				It("reconfigures to a smaller list", func() {
+					// create a smaller peerlist with a subset of the devices in the current config
+					peerList := []v1alpha1.SyncthingPeer{
+						{
+							ID:      "george-costanzas-parents-house",
+							Address: "/ip6/::1/tcp/22000/quic",
+						},
+						{
+							ID:      "elaine-benes",
+							Address: "/ip6/::1/tcp/22000/quic",
+						},
+						{
+							ID:      "frank-costanza",
+							Address: "/ip6/::1/tcp/22000/quic",
+						},
+					}
+					peerToRemove := peerList[1]
+
+					// only specify a subset of the peers
+					peerListSubset := []v1alpha1.SyncthingPeer{}
+					for _, peer := range peerList {
+						if peer.ID != peerToRemove.ID {
+							peerListSubset = append(peerListSubset, peer)
+						}
+					}
+
+					// syncthing must reconfigure to exclude the missing peer
+					Expect(syncthing.NeedsReconfigure(peerListSubset)).To(BeTrue())
+
+					// save the previous devices and folders and update
+					previousDevices := syncthing.Config.Devices
+					previousFolders := syncthing.Config.Folders
+					syncthing.UpdateDevices(peerListSubset)
+
+					// expect the new devices to have shrunk overall
+					Expect(len(syncthing.Config.Devices)).To(BeNumerically("<", len(previousDevices)))
+					Expect(len(syncthing.Config.Folders[0].Devices)).To(BeNumerically("<", len(previousFolders[0].Devices)))
+
+					// new device lengths should equal what we passed in
+					Expect(len(syncthing.Config.Devices)).To(Equal(len(peerListSubset)))
+					Expect(len(syncthing.Config.Folders[0].Devices)).To(Equal(len(peerListSubset)))
+
+					// ensure that the devices in the Syncthing config are only those specified in the subset
+					found := 0
+					for _, device := range syncthing.Config.Devices {
+						foundOne := false
+						// peer must exist in the devices
+						for _, peer := range peerListSubset {
+							if device.DeviceID == peer.ID {
+								found++
+								foundOne = true
+								break
+							}
+						}
+						Expect(foundOne).To(BeTrue())
+					}
+					Expect(found).To(Equal(len(syncthing.Config.Devices)))
+
+					// expect the new devices to be shared with the folder
+					found = 0
+					for _, device := range syncthing.Config.Folders[0].Devices {
+						foundOne := false
+						for _, peer := range peerListSubset {
+							if device.DeviceID == peer.ID {
+								found++
+								foundOne = true
+								break
+							}
+						}
+						Expect(foundOne).To(BeTrue())
+					}
+					Expect(found).To(Equal(len(syncthing.Config.Folders[0].Devices)))
 				})
 			})
 		})
@@ -1085,7 +1189,6 @@ var _ = Describe("Syncthing utils", func() {
 			Expect(cert.Leaf).To(BeNil())
 			Expect(cert.Certificate[0]).ToNot(BeNil())
 			Expect(cert.PrivateKey).ToNot(BeNil())
-
 		})
 	})
 })
