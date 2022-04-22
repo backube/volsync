@@ -18,8 +18,10 @@ package syncthing
 
 import (
 	"context"
+	"crypto/sha256"
 	"strconv"
 
+	"github.com/backube/volsync/api/v1alpha1"
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers/mover"
 	cMover "github.com/backube/volsync/controllers/mover"
@@ -318,15 +320,17 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 		})
 
 		Context("Cleanup is handled properly", func() {
-			// resources created by Syncthing
-			// var apiSvc *corev1.Service
-			// var dataSvc *corev1.Service
-			// var apiSecret *corev1.Secret
-			// var configPVC *corev1.PersistentVolumeClaim
-
-			// BeforeEach(func() {
-
-			// })
+			When("cleanup is called", func() {
+				It("always succeeds", func() {
+					Consistently(func() error {
+						res, err := mover.Cleanup(ctx)
+						if err != nil || res == cMover.InProgress() {
+							return err
+						}
+						return nil
+					}).Should(Succeed())
+				})
+			})
 		})
 
 		Context("dataPVC is provided", func() {
@@ -456,14 +460,12 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 						}, returnedSecret)
 					}, timeout, interval).Should(Succeed())
 
-					// ensure the data keys exist
-					Expect(returnedSecret.Data["apikey"]).NotTo(BeNil())
-					Expect(returnedSecret.Data["apikey"]).NotTo(BeEmpty())
-					Expect(returnedSecret.Data["username"]).NotTo(BeNil())
-					Expect(returnedSecret.Data["username"]).NotTo(BeEmpty())
-					Expect(returnedSecret.Data["password"]).NotTo(BeNil())
-					Expect(returnedSecret.Data["password"]).NotTo(BeEmpty())
-
+					// ensure that all of the required keys exist
+					requiredKeys := []string{"apikey", "username", "password", "httpsCertPEM", "httpsKeyPEM"}
+					for _, key := range requiredKeys {
+						Expect(returnedSecret.Data[key]).NotTo(BeNil())
+						Expect(returnedSecret.Data[key]).NotTo(BeEmpty())
+					}
 				})
 			})
 		})
@@ -746,5 +748,120 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 		m, err := commonBuilderForTestSuite.FromSource(k8sClient, logger, rs)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(m).ToNot(BeNil())
+	})
+})
+
+// This tests the Syncthing structs and its defined methods.
+var _ = Describe("Syncthing utils", func() {
+	var syncthing Syncthing
+	logger := zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
+
+	// Configure each Syncthing object beforehand
+	BeforeEach(func() {
+		// initialize these pointer fields
+		syncthing = Syncthing{
+			Config:            &SyncthingConfig{},
+			SystemConnections: &SystemConnections{},
+			SystemStatus: &SystemStatus{
+				MyID: string(sha256.New().Sum([]byte("my-secure-private-key"))),
+			},
+			APIConfig: &APIConfig{},
+			logger:    logger,
+		}
+	})
+
+	When("devices are called to update", func() {
+		BeforeEach(func() {
+			// create a folder
+			syncthing.Config.Folders = append(syncthing.Config.Folders, SyncthingFolder{
+				ID: "test-folder",
+			})
+		})
+
+		It("updates them based on the provided peerList", func() {
+			// create a peer list
+			peerList := []v1alpha1.SyncthingPeer{
+				{
+					ID:      "george-costanza",
+					Address: "/ip4/127.0.0.1/tcp/22000/quic",
+				},
+				{
+					ID:      "jerry-seinfeld",
+					Address: "/ip4/192.168.1.1/tcp/22000/quic",
+				},
+			}
+
+			// update the devices
+			syncthing.UpdateDevices(peerList)
+
+			// ensure that the devices are updated
+			Expect(syncthing.Config.Devices).To(HaveLen(2))
+
+			// ensure that we can discover all of the devices on the local object
+			discovered := 0
+			for _, device := range syncthing.Config.Devices {
+				if device.DeviceID == "george-costanza" {
+					discovered++
+				}
+				if device.DeviceID == "jerry-seinfeld" {
+					discovered++
+				}
+			}
+
+			// we should have found all of the devices
+			Expect(discovered).To(Equal(len(syncthing.Config.Devices)))
+
+			// folders should have been shared with the new peers
+			for _, folder := range syncthing.Config.Folders {
+				Expect(len(folder.Devices)).To(Equal(len(peerList)))
+			}
+
+			// pass an empty peer list to ensure that the devices are removed
+			syncthing.UpdateDevices([]v1alpha1.SyncthingPeer{})
+
+			// ensure that the devices are removed
+			Expect(syncthing.Config.Devices).To(HaveLen(0))
+			for _, folder := range syncthing.Config.Folders {
+				Expect(folder.Devices).To(HaveLen(0))
+			}
+		})
+
+		When("syncthing lists itself within the devices entries", func() {
+			BeforeEach(func() {
+				// make sure that the syncthing is listed in the connections
+				syncthing.Config.Devices = append(syncthing.Config.Devices, SyncthingDevice{
+					DeviceID:  syncthing.SystemStatus.MyID,
+					Name:      "current Syncthing node",
+					Addresses: []string{"/ip4/0.0.0.0/tcp/22000/quic"},
+				})
+			})
+
+			It("retains the entry when updated against an empty peerlist", func() {
+				// pass an empty peer list and make sure that we can still find the self device
+				syncthing.UpdateDevices([]v1alpha1.SyncthingPeer{})
+				Expect(syncthing.Config.Devices).To(HaveLen(1))
+				Expect(syncthing.Config.Devices[0].DeviceID).To(Equal(syncthing.SystemStatus.MyID))
+
+			})
+
+		})
+
+		When("syncthing updates the device entries with its own information", func() {
+			BeforeEach(func() {
+				// clear Syncthing's device list and make sure that we can still find the self device
+				syncthing.Config.Devices = []SyncthingDevice{}
+			})
+
+			It("has no effect", func() {
+				// pass in a peerList containing an entry with our own ID
+				syncthing.UpdateDevices([]v1alpha1.SyncthingPeer{
+					{
+						ID:      syncthing.SystemStatus.MyID,
+						Address: "/ip6/::1/tcp/22000/quic",
+					},
+				})
+				Expect(syncthing.Config.Devices).To(HaveLen(0))
+			})
+		})
 	})
 })
