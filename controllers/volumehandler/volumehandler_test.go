@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
+	"github.com/backube/volsync/controllers/utils"
 	//sc "github.com/backube/volsync/controllers"
 )
 
@@ -222,11 +223,32 @@ var _ = Describe("Volumehandler", func() {
 				Eventually(func() error {
 					return k8sClient.Get(ctx, types.NamespacedName{Name: snapname, Namespace: ns.Name}, snap)
 				}, maxWait, interval).Should(Succeed())
+
+				// At this point the snapshot should have ownership set
+				Expect(len(snap.GetOwnerReferences())).To(Equal(1))
+				ownerRef := snap.GetOwnerReferences()[0]
+				Expect(ownerRef.UID).To(Equal(rd.GetUID()))
+
 				boundTo := "foo"
 				snap.Status = &snapv1.VolumeSnapshotStatus{
 					BoundVolumeSnapshotContentName: &boundTo,
 				}
 				Expect(k8sClient.Status().Update(ctx, snap)).To(Succeed())
+
+				// Also add the do-not-delete label to the snapshot to test that rd should disown
+				snap.Labels = map[string]string{
+					utils.DoNotDeleteLabelKey: "0", // value of label should not matter
+				}
+				Expect(k8sClient.Update(ctx, snap)).Should(Succeed())
+				// Make sure the label update has propagated to the cache before proceeding
+				Eventually(func() bool {
+					err := k8sClient.Get(ctx, types.NamespacedName{Name: snapname, Namespace: ns.Name}, snap)
+					if err != nil {
+						return false
+					}
+					_, ok := snap.Labels[utils.DoNotDeleteLabelKey]
+					return ok
+				}, maxWait, interval).Should(BeTrue())
 
 				// Retry expecting success
 				Eventually(func() *corev1.TypedLocalObjectReference {
@@ -239,6 +261,16 @@ var _ = Describe("Volumehandler", func() {
 				Expect(tlor.Kind).To(Equal("VolumeSnapshot"))
 				Expect(tlor.Name).To(Equal(snapname))
 				Expect(*tlor.APIGroup).To(Equal(snapv1.SchemeGroupVersion.Group))
+
+				// Because do-not-delete label was on the snapshot, ownership should be removed
+				snapReloaded := &snapv1.VolumeSnapshot{}
+				Eventually(func() int {
+					err := k8sClient.Get(ctx, types.NamespacedName{Name: snapname, Namespace: ns.Name}, snapReloaded)
+					if err != nil {
+						return 1
+					}
+					return len(snapReloaded.GetOwnerReferences())
+				}, maxWait, interval).Should(Equal(0)) // Owner ref should be removed
 			})
 		})
 	})

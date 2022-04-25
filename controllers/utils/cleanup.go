@@ -25,14 +25,14 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
-	volsyncLabelPrefix    = "volsync.backube"
-	cleanupLabelKey       = volsyncLabelPrefix + "/cleanup"
-	DoNotDeleteLabelKey   = volsyncLabelPrefix + "/do-not-delete"
-	DoNotDeleteLabelValue = "true"
+	volsyncLabelPrefix  = "volsync.backube"
+	cleanupLabelKey     = volsyncLabelPrefix + "/cleanup"
+	DoNotDeleteLabelKey = volsyncLabelPrefix + "/do-not-delete"
 )
 
 // MarkForCleanup marks the provided "obj" to be deleted at the end of the
@@ -125,12 +125,19 @@ func CleanupSnapshotsWithLabelCheck(ctx context.Context, c client.Client,
 func RelinquishOwnedSnapshotsWithDoNotDeleteLabel(ctx context.Context, c client.Client,
 	logger logr.Logger, owner client.Object) error {
 	// Find all snapshots in the namespace with the do not delete label
+	ls, err := labels.Parse(DoNotDeleteLabelKey)
+	if err != nil {
+		return err
+	}
+
 	listOptions := []client.ListOption{
-		client.MatchingLabels{DoNotDeleteLabelKey: DoNotDeleteLabelValue},
+		client.MatchingLabelsSelector{
+			Selector: ls,
+		},
 		client.InNamespace(owner.GetNamespace()),
 	}
 	snapList := &snapv1.VolumeSnapshotList{}
-	err := c.List(ctx, snapList, listOptions...)
+	err = c.List(ctx, snapList, listOptions...)
 	if err != nil {
 		return err
 	}
@@ -169,12 +176,12 @@ func RemoveSnapshotOwnershipIfRequestedAndUpdate(ctx context.Context, c client.C
 	owner client.Object, snapshot *snapv1.VolumeSnapshot) (bool, error) {
 	ownershipRemoved := false
 
-	if val, ok := snapshot.Labels[DoNotDeleteLabelKey]; ok && val == DoNotDeleteLabelValue {
+	if IsMarkedDoNotDelete(snapshot) {
 		logger.Info("Not deleting volumesnapshot protected with label - will remove ownership and cleanup label",
 			"name", snapshot.GetName(), "label", DoNotDeleteLabelKey)
 		ownershipRemoved = true
 
-		updated := unMarkForCleanupAndRemoveOwnership(snapshot, owner)
+		updated := UnMarkForCleanupAndRemoveOwnership(snapshot, owner)
 		if updated {
 			err := c.Update(ctx, snapshot)
 			if err != nil {
@@ -188,7 +195,12 @@ func RemoveSnapshotOwnershipIfRequestedAndUpdate(ctx context.Context, c client.C
 	return ownershipRemoved, nil
 }
 
-func unMarkForCleanupAndRemoveOwnership(obj metav1.Object, owner client.Object) bool {
+func IsMarkedDoNotDelete(snapshot *snapv1.VolumeSnapshot) bool {
+	_, ok := snapshot.Labels[DoNotDeleteLabelKey]
+	return ok
+}
+
+func UnMarkForCleanupAndRemoveOwnership(obj metav1.Object, owner client.Object) bool {
 	updated := false
 
 	// Remove volsync cleanup label if present
@@ -251,6 +263,11 @@ func MarkOldSnapshotForCleanup(ctx context.Context, c client.Client, logger logr
 	if err != nil {
 		logger.Error(err, "unable to get snapshot", "name", oldSnap.GetName(), "namespace", oldSnap.GetNamespace())
 		return err
+	}
+
+	if IsMarkedDoNotDelete(oldSnap) {
+		logger.Info("Snapshot is marked do-not-delete, will not mark for cleanup")
+		return nil
 	}
 
 	// Update the old snapshot with the cleanup label

@@ -158,6 +158,61 @@ var _ = Describe("Cleanup", func() {
 		Expect(k8sClient.Create(ctx, pvcA2)).To(Succeed())
 	})
 
+	Describe("RelinquishSnapshots", func() {
+		var allSnapsBefore *snapv1.VolumeSnapshotList
+
+		JustBeforeEach(func() {
+			// Load all the snapshots in the namespace
+			allSnapsBefore = &snapv1.VolumeSnapshotList{}
+			Expect(k8sClient.List(ctx, allSnapsBefore, client.InNamespace(testNamespace.GetName()))).To(Succeed())
+
+			Expect(utils.RelinquishOwnedSnapshotsWithDoNotDeleteLabel(ctx, k8sClient, logger, rdA)).To(Succeed())
+		})
+
+		Context("When no snapshots have the do-not-delete label", func() {
+			It("Should not modify any snapshots", func() {
+				allSnapsAfter := &snapv1.VolumeSnapshotList{}
+				Expect(k8sClient.List(ctx, allSnapsAfter, client.InNamespace(testNamespace.GetName()))).To(Succeed())
+
+				for _, snapAfter := range allSnapsAfter.Items {
+					for _, snapBefore := range allSnapsBefore.Items {
+						if snapAfter.GetName() == snapBefore.GetName() {
+							// Should not have been modified
+							Expect(snapAfter.GetResourceVersion()).To(Equal(snapBefore.GetResourceVersion()))
+						}
+					}
+				}
+			})
+		})
+
+		Context("When some snapshots have the do-not-delete label with different values", func() {
+			BeforeEach(func() {
+				snapA1.Labels = map[string]string{
+					utils.DoNotDeleteLabelKey: "false", // any value should be ok
+				}
+				Expect(k8sClient.Update(ctx, snapA1)).To(Succeed())
+
+				snapA2.Labels = map[string]string{
+					utils.DoNotDeleteLabelKey: "donotdeleteme", // any value should be ok
+				}
+				Expect(k8sClient.Update(ctx, snapA2)).To(Succeed())
+			})
+
+			It("Should modify snapshots with the do-not-delete label and remove ownership", func() {
+				// Re-load A1 and A2
+				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(snapA1), snapA1)).To(Succeed())
+				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(snapA2), snapA2)).To(Succeed())
+
+				for i := range allSnapsBefore.Items {
+					snapBefore := allSnapsBefore.Items[i]
+					if snapBefore.GetName() == snapA1.GetName() && snapBefore.GetName() == snapA2.GetName() {
+						validateCleanupLabelAndOwnerRef(&snapBefore, rdA)
+					}
+				}
+			})
+		})
+	})
+
 	Describe("Cleanup Objects", func() {
 		Context("When some objects have the cleanup label", func() {
 			cleanupTypes := []client.Object{
@@ -207,7 +262,7 @@ var _ = Describe("Cleanup", func() {
 			Context("When a snapshot has the do-not-delete label and cleanup label", func() {
 				BeforeEach(func() {
 					// Mark B1 with do-not-delete
-					snapB1.Labels[utils.DoNotDeleteLabelKey] = utils.DoNotDeleteLabelValue
+					snapB1.Labels[utils.DoNotDeleteLabelKey] = "true" // value should not matter
 					Expect(k8sClient.Update(ctx, snapB1)).To(Succeed())
 				})
 
@@ -288,7 +343,7 @@ var _ = Describe("Cleanup", func() {
 			BeforeEach(func() {
 				// Mark snapA1 for cleanup and also add do-not-delete label
 				utils.MarkForCleanup(rdA, snapA1)
-				snapA1.Labels[utils.DoNotDeleteLabelKey] = utils.DoNotDeleteLabelValue
+				snapA1.Labels[utils.DoNotDeleteLabelKey] = "somevalue" // value should not matter
 				Expect(k8sClient.Update(ctx, snapA1)).To(Succeed())
 
 				// Mark snapA2 for cleanup only - should not get "relinquished/released"
