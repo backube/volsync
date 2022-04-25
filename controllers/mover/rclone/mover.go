@@ -47,7 +47,7 @@ type Mover struct {
 	client              client.Client
 	logger              logr.Logger
 	eventRecorder       events.EventRecorder
-	owner               metav1.Object
+	owner               client.Object
 	vh                  *volumehandler.VolumeHandler
 	containerImage      string
 	rcloneConfigSection *string

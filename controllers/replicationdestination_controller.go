@@ -86,6 +86,13 @@ func (r *ReplicationDestinationReconciler) Reconcile(ctx context.Context, req ct
 
 	var result ctrl.Result
 	var err error
+
+	// Check if any volume snapshots are marked with do-not-delete label and remove ownership if so
+	err = utils.RelinquishOwnedSnapshotsWithDoNotDeleteLabel(ctx, r.Client, logger, inst)
+	if err != nil {
+		return result, err
+	}
+
 	if r.countReplicationMethods(inst, logger) > 1 {
 		err = fmt.Errorf("only a single replication method can be provided")
 		return result, err

@@ -227,9 +227,14 @@ func (vh *VolumeHandler) ensureImageSnapshot(ctx context.Context, log logr.Logge
 		},
 	}
 	op, err := ctrlutil.CreateOrUpdate(ctx, vh.client, snap, func() error {
-		if err := ctrl.SetControllerReference(vh.owner, snap, vh.client.Scheme()); err != nil {
-			logger.Error(err, "unable to set controller reference")
-			return err
+		if utils.IsMarkedDoNotDelete(snap) {
+			// Remove adding ownership and potentially marking for cleanup if do-not-delete label is present
+			utils.UnMarkForCleanupAndRemoveOwnership(snap, vh.owner)
+		} else {
+			if err := ctrl.SetControllerReference(vh.owner, snap, vh.client.Scheme()); err != nil {
+				logger.Error(err, "unable to set controller reference")
+				return err
+			}
 		}
 		if snap.CreationTimestamp.IsZero() {
 			snap.Spec = snapv1.VolumeSnapshotSpec{
