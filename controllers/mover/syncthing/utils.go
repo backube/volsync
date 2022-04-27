@@ -22,9 +22,14 @@ import (
 	"github.com/backube/volsync/api/v1alpha1"
 )
 
+const (
+	OrganizationName = "Backube"
+	OrganizationUnit = "VolSync"
+)
+
 // UpdateDevices Updates the Syncthing's connected devices with the provided peerList.
 func (st *Syncthing) UpdateDevices(peerList []v1alpha1.SyncthingPeer) {
-	st.logger.V(4).Info("Updating devices", "peerlist", peerList)
+	st.logger.V(4).Info("Updating devices", "pseerlist", peerList)
 
 	// update syncthing config based on the provided peerlist
 	newDevices := []SyncthingDevice{}
@@ -305,55 +310,45 @@ func GenerateRandomString(length int) (string, error) {
 	return base64.URLEncoding.EncodeToString(b), err
 }
 
-// GetRedHatTLSName returns information for the TLS certificate we will generate for Syncthing.
-func GetRedHatTLSName() pkix.Name {
-	return pkix.Name{
-		Organization:  []string{"Red Hat, INC."},
-		Country:       []string{"US"},
-		Province:      []string{"Massachusetts"},
-		Locality:      []string{"Boston"},
-		StreetAddress: []string{"300 A Street"},
-		PostalCode:    []string{"02210"},
+// GetCACertificate Creates a Root X.509 Certificate to be consumed by Syncthing.
+func GetCACertificate() (*x509.Certificate, error) {
+	// generate a bunch of random bytes
+	serialNumber, err := GenerateRandomBytes(2048)
+	if err != nil {
+		return nil, err
 	}
-}
-
-// GenerateTLSCertificatesForSyncthing generates a self-signed PEM-encoded certificate and key for Syncthing
-// which the VolSync client and Syncthing API Server will use to communicate with each other.
-//nolint:funlen
-func GenerateTLSCertificatesForSyncthing(
-	APIServiceAddress string,
-) (*bytes.Buffer, *bytes.Buffer, error) {
-	// TODO: Change from RSA to ECDSA
-	// TODO: split this up into several files
-	// we will need to perform checks if the apiServiceDNS has changed
-	// and re-generate in case the TLS Certificates have changed
-
-	// serial number should be the current time in unix epoch time
-	TLSName := GetRedHatTLSName()
 
 	// setup expiry dates
 	notBefore := time.Now()
 	// expire in 10 years
 	notAfter := notBefore.AddDate(10, 0, 0)
 
-	// generate a bunch of random bytes
-	serialNumber, err := GenerateRandomBytes(2048)
-	if err != nil {
-		return nil, nil, err
-	}
 	// convert the serial number to a bigint
 	serialNumberBigInt := new(big.Int).SetBytes(serialNumber)
 
 	// set up our CA certificate
 	ca := &x509.Certificate{
-		SerialNumber:          serialNumberBigInt,
-		Subject:               TLSName,
+		SerialNumber: serialNumberBigInt,
+		Subject: pkix.Name{
+			Organization:       []string{OrganizationName},
+			OrganizationalUnit: []string{OrganizationUnit},
+		},
 		NotBefore:             notBefore,
 		NotAfter:              notAfter,
 		IsCA:                  true,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		BasicConstraintsValid: true,
+	}
+	return ca, nil
+}
+
+// GenerateSyncthingRootCA Generates a CA Certificate and a Private/Public Key pair to sign the PEM.
+func GenerateSyncthingRootCA() (*x509.Certificate, *rsa.PrivateKey, error) {
+	// serial number should be the current time in unix epoch time
+	ca, err := GetCACertificate()
+	if err != nil {
+		return nil, nil, err
 	}
 
 	// create our private and public key
@@ -383,31 +378,70 @@ func GenerateTLSCertificatesForSyncthing(
 		Type:  "RSA PRIVATE KEY",
 		Bytes: x509.MarshalPKCS1PrivateKey(caPrivKey),
 	})
+
 	if err != nil {
 		return nil, nil, err
 	}
 
+	return ca, caPrivKey, nil
+}
+
+// GenerateSyncthingCertificate Generates a Certificate and a Private/Public Key pair to sign the PEM.
+func GenerateSyncthingTLSCertificate(DNSNames []string, IPAddresses []net.IP) (*x509.Certificate, error) {
 	// generate another random serial number
-	serialNumber, err = GenerateRandomBytes(2048)
+	serialNumber, err := GenerateRandomBytes(2048)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
+
+	// setup expiry dates
+	notBefore := time.Now()
+	// expire in 10 years
+	notAfter := notBefore.AddDate(10, 0, 0)
+
 	// convert the serial number to a bigint
-	serialNumberBigInt = new(big.Int).SetBytes(serialNumber)
+	serialNumberBigInt := new(big.Int).SetBytes(serialNumber)
 
 	// set up our server certificate
 	cert := &x509.Certificate{
 		SerialNumber: serialNumberBigInt,
-		Subject:      TLSName,
-		DNSNames:     []string{APIServiceAddress},
-		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
-		NotBefore:    notBefore,
-		NotAfter:     notAfter,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
-		KeyUsage:     x509.KeyUsageDigitalSignature,
+		Subject: pkix.Name{
+			Organization:       []string{OrganizationName},
+			OrganizationalUnit: []string{OrganizationUnit},
+		},
+		DNSNames:    DNSNames,
+		IPAddresses: []net.IP{net.ParseIP("127.0.0.1")},
+		NotBefore:   notBefore,
+		NotAfter:    notAfter,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+		KeyUsage:    x509.KeyUsageDigitalSignature,
 	}
 
+	return cert, nil
+}
+
+// GenerateTLSCertificatesForSyncthing generates a self-signed PEM-encoded certificate and key for Syncthing
+// which the VolSync client and Syncthing API Server will use to communicate with each other.
+func GenerateTLSCertificatesForSyncthing(
+	APIServiceAddress string,
+) (*bytes.Buffer, *bytes.Buffer, error) {
+	// we will need to perform checks if the apiServiceDNS has changed
+	// and re-generate in case the TLS Certificates have changed
+
+	// generate the Syncthing TLS certificate
+	cert, err := GenerateSyncthingTLSCertificate([]string{APIServiceAddress}, []net.IP{net.ParseIP("127.0.0.1")})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// generate a private key for the certificate
 	certPrivKey, err := rsa.GenerateKey(rand.Reader, 4096)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// create a Root CA for our certificate
+	ca, caPrivKey, err := GenerateSyncthingRootCA()
 	if err != nil {
 		return nil, nil, err
 	}
