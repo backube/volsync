@@ -22,6 +22,7 @@ import (
 	"os"
 	"path"
 	"reflect"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
@@ -168,7 +169,23 @@ func (r *Relationship) SetData(data interface{}) error {
 	if err = yaml.Unmarshal(bytes, &ms); err != nil {
 		return err
 	}
-	r.Set("data", ms)
+
+	// While we'd like to just be able to r.Set("data", ms) to update the
+	// relationship data, Viper doesn't support deleting keys. This means that
+	// if our data struct has a (newly) nil value in it, the old value will get
+	// preserved. To work around this, we create a new Viper and swap it out
+	// with the old.
+	newViper := viper.New()
+	newViper.SetConfigFile(r.ConfigFileUsed())
+	for _, key := range r.AllKeys() {
+		// Copy across all k/v except for the data keys that we are trying to
+		// replace.
+		if !strings.HasPrefix(key, "data") {
+			newViper.Set(key, r.Get(key))
+		}
+	}
+	newViper.Set("data", ms)
+	r.Viper = *newViper
 	return nil
 }
 
