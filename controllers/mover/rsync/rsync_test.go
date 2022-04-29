@@ -1064,8 +1064,10 @@ var _ = Describe("Rsync as a destination", func() {
 					Expect(*rd.Status.Rsync.SSHKeys).To(Equal("volsync-rsync-dst-src-" + rd.GetName()))
 
 					secret := &corev1.Secret{}
-					Expect(k8sClient.Get(ctx, types.NamespacedName{Name: *rd.Status.Rsync.SSHKeys,
-						Namespace: rd.Namespace}, secret)).To(Succeed())
+					Eventually(func() error {
+						return k8sClient.Get(ctx, types.NamespacedName{Name: *rd.Status.Rsync.SSHKeys,
+							Namespace: rd.Namespace}, secret)
+					}, maxWait, interval).Should(Succeed())
 					Expect(secret.Data).To(HaveKey("source"))
 					Expect(secret.Data).To(HaveKey("source.pub"))
 					Expect(secret.Data).To(HaveKey("destination.pub"))
@@ -1077,7 +1079,7 @@ var _ = Describe("Rsync as a destination", func() {
 					Eventually(func() error {
 						return k8sClient.Get(ctx, types.NamespacedName{Name: *keyName,
 							Namespace: rd.Namespace}, secret2)
-					}).Should(Succeed())
+					}, maxWait, interval).Should(Succeed())
 					Expect(secret2.Data).To(HaveKey("destination"))
 					Expect(secret2.Data).To(HaveKey("source.pub"))
 					Expect(secret2.Data).To(HaveKey("destination.pub"))
@@ -1086,8 +1088,10 @@ var _ = Describe("Rsync as a destination", func() {
 
 					// Check that the main secret that contains both source&dest was created
 					secret3 := &corev1.Secret{}
-					Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-dst-main-" + rd.GetName(),
-						Namespace: rd.Namespace}, secret3)).To(Succeed())
+					Eventually(func() error {
+						return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-dst-main-" + rd.GetName(),
+							Namespace: rd.Namespace}, secret3)
+					}, maxWait, interval).Should(Succeed())
 					Expect(secret3.Data).To(HaveKey("source"))
 					Expect(secret3.Data).To(HaveKey("destination"))
 					Expect(secret3.Data).To(HaveKey("source.pub"))
