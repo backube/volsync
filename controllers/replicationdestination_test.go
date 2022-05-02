@@ -185,9 +185,9 @@ var _ = Describe("ReplicationDestination", func() {
 			}, duration, interval).ShouldNot(BeNil())
 			Expect(len(rd.Status.Conditions)).To(Equal(1))
 			errCond := rd.Status.Conditions[0]
-			Expect(errCond.Type).To(Equal(volsyncv1alpha1.ConditionReconciled))
+			Expect(errCond.Type).To(Equal(volsyncv1alpha1.ConditionSynchronizing))
 			Expect(errCond.Status).To(Equal(metav1.ConditionFalse))
-			Expect(errCond.Reason).To(Equal(volsyncv1alpha1.ReconciledReasonError))
+			Expect(errCond.Reason).To(Equal(volsyncv1alpha1.SynchronizingReasonError))
 			Expect(errCond.Message).To(ContainSubstring("a replication method must be specified"))
 		})
 	})
@@ -248,12 +248,15 @@ var _ = Describe("ReplicationDestination", func() {
 			var cond *metav1.Condition
 			Eventually(func() *metav1.Condition {
 				_ = k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)
-				cond = apimeta.FindStatusCondition(rd.Status.Conditions, volsyncv1alpha1.ConditionReconciled)
-
+				cond = apimeta.FindStatusCondition(rd.Status.Conditions, volsyncv1alpha1.ConditionSynchronizing)
+				if cond == nil {
+					return nil
+				}
+				if cond.Status != metav1.ConditionFalse || cond.Reason != volsyncv1alpha1.SynchronizingReasonError {
+					return nil
+				}
 				return cond
 			}, maxWait, interval).Should(Not(BeNil()))
-			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
-			Expect(cond.Reason).To(Equal(volsyncv1alpha1.ReconciledReasonError))
 		})
 	})
 
@@ -690,11 +693,14 @@ var _ = Describe("ReplicationDestination", func() {
 				// and then check status conditions
 				Eventually(func() *metav1.Condition {
 					_ = k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)
-					reconcileCondition := apimeta.FindStatusCondition(rd.Status.Conditions, volsyncv1alpha1.ConditionReconciled)
+					reconcileCondition := apimeta.FindStatusCondition(rd.Status.Conditions, volsyncv1alpha1.ConditionSynchronizing)
 					if reconcileCondition == nil {
 						return nil
 					}
-					if reconcileCondition.Status != metav1.ConditionTrue {
+					if reconcileCondition.Status != metav1.ConditionFalse {
+						return nil
+					}
+					if reconcileCondition.Reason != volsyncv1alpha1.SynchronizingReasonManual {
 						return nil
 					}
 					return reconcileCondition

@@ -207,9 +207,9 @@ var _ = Describe("ReplicationSource", func() {
 			}, duration, interval).ShouldNot(BeNil())
 			Expect(len(rs.Status.Conditions)).To(Equal(1))
 			errCond := rs.Status.Conditions[0]
-			Expect(errCond.Type).To(Equal(volsyncv1alpha1.ConditionReconciled))
+			Expect(errCond.Type).To(Equal(volsyncv1alpha1.ConditionSynchronizing))
 			Expect(errCond.Status).To(Equal(metav1.ConditionFalse))
-			Expect(errCond.Reason).To(Equal(volsyncv1alpha1.ReconciledReasonError))
+			Expect(errCond.Reason).To(Equal(volsyncv1alpha1.SynchronizingReasonError))
 			Expect(errCond.Message).To(ContainSubstring("a replication method must be specified"))
 		})
 	})

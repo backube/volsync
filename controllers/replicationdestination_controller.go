@@ -94,8 +94,7 @@ func (r *ReplicationDestinationReconciler) Reconcile(ctx context.Context, req ct
 	}
 
 	if r.countReplicationMethods(inst, logger) > 1 {
-		err = fmt.Errorf("only a single replication method can be provided")
-		return result, err
+		return result, errMultipleMoversFound
 	}
 	result, err = reconcileDestUsingCatalog(ctx, inst, r, logger)
 	if errors.Is(err, errNoMoverFound) { // do the old stuff
@@ -106,19 +105,12 @@ func (r *ReplicationDestinationReconciler) Reconcile(ctx context.Context, req ct
 		err = fmt.Errorf("a replication method must be specified")
 	}
 
-	// Set reconcile status condition
-	if err == nil {
+	// Expose error in Synchronizing condition
+	if err != nil {
 		apimeta.SetStatusCondition(&inst.Status.Conditions, metav1.Condition{
-			Type:    volsyncv1alpha1.ConditionReconciled,
-			Status:  metav1.ConditionTrue,
-			Reason:  volsyncv1alpha1.ReconciledReasonComplete,
-			Message: "Reconcile complete",
-		})
-	} else {
-		apimeta.SetStatusCondition(&inst.Status.Conditions, metav1.Condition{
-			Type:    volsyncv1alpha1.ConditionReconciled,
+			Type:    volsyncv1alpha1.ConditionSynchronizing,
 			Status:  metav1.ConditionFalse,
-			Reason:  volsyncv1alpha1.ReconciledReasonError,
+			Reason:  volsyncv1alpha1.SynchronizingReasonError,
 			Message: err.Error(),
 		})
 	}
@@ -154,7 +146,7 @@ func reconcileDestUsingCatalog(
 		if err == nil && candidate != nil {
 			if dataMover != nil {
 				// Found 2 movers claiming this CR...
-				return ctrl.Result{}, fmt.Errorf("only a single replication method can be provided")
+				return ctrl.Result{}, errMultipleMoversFound
 			}
 			dataMover = candidate
 		}
@@ -306,6 +298,7 @@ func awaitNextSyncDestination(
 	// If there's no schedule, (and no manual trigger), we should sync
 	if rd.Status.NextSyncTime.IsZero() {
 		// Condition update omitted intentionally to work with Mover inteface.
+		// WHY?????
 		return true, nil
 	}
 
