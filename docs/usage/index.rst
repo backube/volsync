@@ -10,6 +10,7 @@ Usage
    rclone/index
    restic/index
    rsync/index
+   syncthing/index
    cli/index
 
 There are three different replication methods built into VolSync. Choose the method that best fits your use-case:
@@ -23,6 +24,10 @@ There are three different replication methods built into VolSync. Choose the met
    Use Rsync-based replication for 1:1 replication of volumes in scenarios such
    as disaster recovery, mirroring to a test environment, or sending data to a
    remote site for processing.
+:doc:`Syncthing replication <syncthing/index>`
+	 Use Syncthing-based replication for multi-way (1:many), real-time data replication
+	 in scenarios where the data is spread-out and updated in real-time, such as a wiki application,
+	 or a private distributed file-store, safe from peering eyes.
 
 Triggers
 ========
