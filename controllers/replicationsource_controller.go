@@ -20,13 +20,11 @@ package controllers
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/go-logr/logr"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1"
 	"github.com/prometheus/client_golang/prometheus"
-	cron "github.com/robfig/cron/v3"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -34,6 +32,7 @@ import (
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -41,11 +40,7 @@ import (
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers/mover"
-)
-
-var (
-	errNoMoverFound        = fmt.Errorf("no matching data mover was found")
-	errMultipleMoversFound = fmt.Errorf("only one replication method can be supplied")
+	sm "github.com/backube/volsync/controllers/statemachine"
 )
 
 // ReplicationSourceReconciler reconciles a ReplicationSource object
@@ -55,6 +50,16 @@ type ReplicationSourceReconciler struct {
 	Scheme        *runtime.Scheme
 	EventRecorder record.EventRecorder
 }
+
+type rsMachine struct {
+	volsyncv1alpha1.ReplicationSource
+	client  client.Client
+	logger  logr.Logger
+	metrics volsyncMetrics
+	mover   mover.Mover
+}
+
+var _ sm.ReplicationMachine = &rsMachine{}
 
 //nolint:lll
 //nolint:funlen
@@ -90,26 +95,39 @@ func (r *ReplicationSourceReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	var result ctrl.Result
 	var err error
-	if r.countReplicationMethods(inst, logger) > 1 {
-		return result, errMultipleMoversFound
-	}
-	result, err = reconcileSrcUsingCatalog(ctx, inst, r, logger)
-	if errors.Is(err, errNoMoverFound) {
-		if inst.Spec.External != nil {
-			// Not an internal method... we're done.
-			return ctrl.Result{}, nil
-		}
-		err = fmt.Errorf("a replication method must be specified")
-	}
 
-	// Expose error in Synchronizing condition
-	if err != nil {
+	rsm, err := newRSMachine(inst, r.Client, logger, record.NewEventRecorderAdapter(r.EventRecorder))
+
+	// Using only external method
+	if errors.Is(err, mover.ErrNoMoverFound) && inst.Spec.External != nil {
+		return ctrl.Result{}, nil
+	}
+	// Both internal and external methods defined
+	if rsm != nil && inst.Spec.External != nil {
+		err = mover.ErrMultipleMoversFound
 		apimeta.SetStatusCondition(&inst.Status.Conditions, metav1.Condition{
 			Type:    volsyncv1alpha1.ConditionSynchronizing,
 			Status:  metav1.ConditionFalse,
 			Reason:  volsyncv1alpha1.SynchronizingReasonError,
 			Message: err.Error(),
 		})
+	}
+	// No method found
+	if rsm == nil && inst.Spec.External == nil {
+		err = mover.ErrNoMoverFound
+		apimeta.SetStatusCondition(&inst.Status.Conditions, metav1.Condition{
+			Type:    volsyncv1alpha1.ConditionSynchronizing,
+			Status:  metav1.ConditionFalse,
+			Reason:  volsyncv1alpha1.SynchronizingReasonError,
+			Message: err.Error(),
+		})
+	}
+
+	// All good, so run the state machine
+	if err == nil {
+		result, err = sm.Run(ctx, rsm, logger)
+		// Retrieve any Status info modified by the state machine
+		inst.Status = rsm.ReplicationSource.Status
 	}
 
 	// Update instance status
@@ -126,73 +144,6 @@ func (r *ReplicationSourceReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		}
 	}
 	return result, err
-}
-
-//nolint:funlen
-func reconcileSrcUsingCatalog(
-	ctx context.Context,
-	instance *volsyncv1alpha1.ReplicationSource,
-	sr *ReplicationSourceReconciler,
-	logger logr.Logger,
-) (ctrl.Result, error) {
-	// Search the Mover catalog for a suitable data mover
-	var dataMover mover.Mover
-	for _, builder := range mover.Catalog {
-		candidate, err := builder.FromSource(sr.Client, logger,
-			record.NewEventRecorderAdapter(sr.EventRecorder), instance)
-		if err == nil && candidate != nil {
-			if dataMover != nil {
-				// Found 2 movers claiming this CR...
-				return ctrl.Result{}, errMultipleMoversFound
-			}
-			dataMover = candidate
-		}
-	}
-	if dataMover == nil { // No mover matched
-		return ctrl.Result{}, errNoMoverFound
-	}
-
-	metrics := newVolSyncMetrics(prometheus.Labels{
-		"obj_name":      instance.Name,
-		"obj_namespace": instance.Namespace,
-		"role":          "source",
-		"method":        dataMover.Name(),
-	})
-	shouldSync, err := awaitNextSyncSource(instance, metrics, logger)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	var mResult mover.Result
-	if shouldSync && !apimeta.IsStatusConditionFalse(instance.Status.Conditions, volsyncv1alpha1.ConditionSynchronizing) {
-		updateLastSyncStartTimeSource(instance) // Make sure lastSyncStartTime is set
-
-		mResult, err = dataMover.Synchronize(ctx)
-		if mResult.Completed {
-			apimeta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{
-				Type:    volsyncv1alpha1.ConditionSynchronizing,
-				Status:  metav1.ConditionFalse,
-				Reason:  volsyncv1alpha1.SynchronizingReasonCleanup,
-				Message: "Cleaning up",
-			})
-			if ok, err := updateLastSyncSource(instance, metrics, logger); !ok {
-				return mover.InProgress().ReconcileResult(), err
-			}
-		}
-	} else {
-		mResult, err = dataMover.Cleanup(ctx)
-		if mResult.Completed {
-			apimeta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{
-				Type:    volsyncv1alpha1.ConditionSynchronizing,
-				Status:  metav1.ConditionTrue,
-				Reason:  volsyncv1alpha1.SynchronizingReasonSync,
-				Message: "Synchronization in-progress",
-			})
-			// To update conditions
-			_, _ = awaitNextSyncSource(instance, metrics, logger)
-		}
-	}
-	return mResult.ReconcileResult(), err
 }
 
 func (r *ReplicationSourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -212,162 +163,153 @@ func (r *ReplicationSourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-// pastScheduleDeadline returns true if a scheduled sync hasn't been completed
-// within the synchronization period.
-func pastScheduleDeadline(schedule cron.Schedule, lastCompleted time.Time, now time.Time) bool {
-	// Each synchronization should complete before the next scheduled start
-	// time. This means that, starting from the last completed, the next sync
-	// would start at last->next, and must finish before last->next->next.
-	return schedule.Next(schedule.Next(lastCompleted)).Before(now)
-}
-
-//nolint:dupl
-func updateNextSyncSource(
-	rs *volsyncv1alpha1.ReplicationSource,
-	metrics volsyncMetrics,
-	logger logr.Logger,
-) (bool, error) {
-	// if there's a schedule, and no manual trigger is set
-	if rs.Spec.Trigger != nil &&
-		rs.Spec.Trigger.Schedule != nil &&
-		rs.Spec.Trigger.Manual == "" {
-		parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
-		schedule, err := parser.Parse(*rs.Spec.Trigger.Schedule)
-		if err != nil {
-			logger.Error(err, "error parsing schedule", "cronspec", rs.Spec.Trigger.Schedule)
-			return false, err
-		}
-
-		// If we've previously completed a sync
-		if !rs.Status.LastSyncTime.IsZero() {
-			if pastScheduleDeadline(schedule, rs.Status.LastSyncTime.Time, time.Now()) {
-				metrics.OutOfSync.Set(1)
-			}
-			next := schedule.Next(rs.Status.LastSyncTime.Time)
-			rs.Status.NextSyncTime = &metav1.Time{Time: next}
-		} else { // Never synced before, so we should ASAP
-			rs.Status.NextSyncTime = &metav1.Time{Time: time.Now()}
-		}
-	} else { // No schedule, so there's no "next"
-		rs.Status.NextSyncTime = nil
+func newRSMachine(rs *volsyncv1alpha1.ReplicationSource, c client.Client,
+	l logr.Logger, er events.EventRecorder) (*rsMachine, error) {
+	dataMover, err := mover.GetSourceMoverFromCatalog(c, l, er, rs)
+	if err != nil {
+		return nil, err
 	}
 
-	if rs.Status.LastSyncTime.IsZero() {
-		// Never synced before, so we're out of sync
-		metrics.OutOfSync.Set(1)
-	}
-
-	return true, nil
-}
-
-//nolint:funlen
-func awaitNextSyncSource(
-	rs *volsyncv1alpha1.ReplicationSource,
-	metrics volsyncMetrics,
-	logger logr.Logger,
-) (bool, error) {
-	// Ensure nextSyncTime is correct
-	if cont, err := updateNextSyncSource(rs, metrics, logger); !cont || err != nil {
-		return cont, err
-	}
-
-	// When manual trigger is set, but the lastManualSync value already matches
-	// then we don't want to sync further.
-	if rs.Spec.Trigger != nil && rs.Spec.Trigger.Manual != "" {
-		if rs.Spec.Trigger.Manual == rs.Status.LastManualSync {
-			apimeta.SetStatusCondition(&rs.Status.Conditions, metav1.Condition{
-				Type:    volsyncv1alpha1.ConditionSynchronizing,
-				Status:  metav1.ConditionFalse,
-				Reason:  volsyncv1alpha1.SynchronizingReasonManual,
-				Message: "Waiting for manual trigger",
-			})
-			return false, nil
-		}
-		apimeta.SetStatusCondition(&rs.Status.Conditions, metav1.Condition{
-			Type:    volsyncv1alpha1.ConditionSynchronizing,
-			Status:  metav1.ConditionTrue,
-			Reason:  volsyncv1alpha1.SynchronizingReasonSync,
-			Message: "Synchronization in-progress",
-		})
-		return true, nil
-	}
-
-	// If there's no schedule, (and no manual trigger), we should sync
-	if rs.Status.NextSyncTime.IsZero() {
-		// Condition update omitted intentionally to work with Mover inteface.
-		return true, nil
-	}
-
-	// if it's past the nextSyncTime, we should sync
-	if rs.Status.NextSyncTime.Time.Before(time.Now()) {
-		apimeta.SetStatusCondition(&rs.Status.Conditions, metav1.Condition{
-			Type:    volsyncv1alpha1.ConditionSynchronizing,
-			Status:  metav1.ConditionTrue,
-			Reason:  volsyncv1alpha1.SynchronizingReasonSync,
-			Message: "Synchronization in-progress",
-		})
-		return true, nil
-	}
-	apimeta.SetStatusCondition(&rs.Status.Conditions, metav1.Condition{
-		Type:    volsyncv1alpha1.ConditionSynchronizing,
-		Status:  metav1.ConditionFalse,
-		Reason:  volsyncv1alpha1.SynchronizingReasonSched,
-		Message: "Waiting for next scheduled synchronization",
+	metrics := newVolSyncMetrics(prometheus.Labels{
+		"obj_name":      rs.Name,
+		"obj_namespace": rs.Namespace,
+		"role":          "source",
+		"method":        dataMover.Name(),
 	})
-	return false, nil
+
+	return &rsMachine{
+		ReplicationSource: *rs,
+		client:            c,
+		logger:            l,
+		metrics:           metrics,
+		mover:             dataMover,
+	}, nil
 }
 
-// Should be called only if synchronizing - will assume if lastSyncStartTime is not
-// set that it should be set to now
-func updateLastSyncStartTimeSource(rs *volsyncv1alpha1.ReplicationSource) {
-	if rs.Status.LastSyncStartTime == nil {
-		rs.Status.LastSyncStartTime = &metav1.Time{Time: time.Now()}
+func (m *rsMachine) GetTrigger() sm.TriggerType {
+	if m.Spec.Trigger == nil {
+		return sm.NoTrigger
+	}
+	if m.Spec.Trigger.Manual != "" {
+		return sm.ManualTrigger
+	}
+	if m.Spec.Trigger.Schedule != nil {
+		return sm.ScheduleTrigger
+	}
+	return sm.NoTrigger
+}
+
+func (m *rsMachine) Cronspec() string {
+	if m.Spec.Trigger != nil && m.Spec.Trigger.Schedule != nil {
+		return *m.Spec.Trigger.Schedule
+	}
+	return ""
+}
+
+func (m *rsMachine) ManualTag() string {
+	if m.Spec.Trigger != nil {
+		return m.Spec.Trigger.Manual
+	}
+	return ""
+}
+
+func (m *rsMachine) LastManualTag() string {
+	if m.Status != nil {
+		return m.Status.LastManualSync
+	}
+	return ""
+}
+
+func (m *rsMachine) SetLastManualTag(tag string) {
+	if m.Status == nil {
+		m.Status = &volsyncv1alpha1.ReplicationSourceStatus{}
+	}
+	m.Status.LastManualSync = tag
+}
+
+func (m *rsMachine) NextSyncTime() *metav1.Time {
+	if m.Status != nil {
+		return m.Status.NextSyncTime
+	}
+	return nil
+}
+
+func (m *rsMachine) SetNextSyncTime(next *metav1.Time) {
+	if m.Status == nil {
+		m.Status = &volsyncv1alpha1.ReplicationSourceStatus{}
+	}
+	m.Status.NextSyncTime = next
+}
+
+func (m *rsMachine) LastSyncStartTime() *metav1.Time {
+	if m.Status != nil {
+		return m.Status.LastSyncStartTime
+	}
+	return nil
+}
+
+func (m *rsMachine) SetLastSyncStartTime(last *metav1.Time) {
+	if m.Status == nil {
+		m.Status = &volsyncv1alpha1.ReplicationSourceStatus{}
+	}
+	m.Status.LastSyncStartTime = last
+}
+
+func (m *rsMachine) LastSyncTime() *metav1.Time {
+	if m.Status != nil {
+		return m.Status.LastSyncTime
+	}
+	return nil
+}
+
+func (m *rsMachine) SetLastSyncTime(last *metav1.Time) {
+	if m.Status == nil {
+		m.Status = &volsyncv1alpha1.ReplicationSourceStatus{}
+	}
+	m.Status.LastSyncTime = last
+}
+
+func (m *rsMachine) LastSyncDuration() *metav1.Duration {
+	if m.Status != nil {
+		return m.Status.LastSyncDuration
+	}
+	return nil
+}
+
+func (m *rsMachine) SetLastSyncDuration(duration *metav1.Duration) {
+	if m.Status == nil {
+		m.Status = &volsyncv1alpha1.ReplicationSourceStatus{}
+	}
+	m.Status.LastSyncDuration = duration
+}
+
+func (m *rsMachine) Conditions() *[]metav1.Condition {
+	if m.Status == nil {
+		m.Status = &volsyncv1alpha1.ReplicationSourceStatus{}
+	}
+	return &m.Status.Conditions
+}
+
+func (m *rsMachine) SetOutOfSync(isOutOfSync bool) {
+	if isOutOfSync {
+		m.metrics.OutOfSync.Set(1)
+	} else {
+		m.metrics.OutOfSync.Set(0)
 	}
 }
 
-//nolint:dupl
-func updateLastSyncSource(
-	rs *volsyncv1alpha1.ReplicationSource,
-	metrics volsyncMetrics,
-	logger logr.Logger,
-) (bool, error) {
-	// if there's a schedule see if we've made the deadline
-	if rs.Spec.Trigger != nil && rs.Spec.Trigger.Schedule != nil && rs.Status.LastSyncTime != nil {
-		parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
-		schedule, err := parser.Parse(*rs.Spec.Trigger.Schedule)
-		if err != nil {
-			logger.Error(err, "error parsing schedule", "cronspec", rs.Spec.Trigger.Schedule)
-			return false, err
-		}
-		if pastScheduleDeadline(schedule, rs.Status.LastSyncTime.Time, time.Now()) {
-			metrics.MissedIntervals.Inc()
-		} else {
-			metrics.OutOfSync.Set(0)
-		}
-	} else {
-		// There's no schedule or we just completed our first sync, so mark as
-		// in-sync
-		metrics.OutOfSync.Set(0)
-	}
+func (m *rsMachine) IncMissedIntervals() {
+	m.metrics.MissedIntervals.Inc()
+}
 
-	rs.Status.LastSyncTime = &metav1.Time{Time: time.Now()}
+func (m *rsMachine) ObserveSyncDuration(duration time.Duration) {
+	m.metrics.SyncDurations.Observe(duration.Seconds())
+}
 
-	if rs.Status.LastSyncStartTime != nil {
-		// Calculate sync duration
-		d := rs.Status.LastSyncTime.Sub(rs.Status.LastSyncStartTime.Time)
-		rs.Status.LastSyncDuration = &metav1.Duration{Duration: d}
-		metrics.SyncDurations.Observe(d.Seconds())
+func (m *rsMachine) Synchronize(ctx context.Context) (mover.Result, error) {
+	return m.mover.Synchronize(ctx)
+}
 
-		// Clear out lastSyncStartTime so next sync can set it again
-		rs.Status.LastSyncStartTime = nil
-	}
-
-	// When a sync is completed we set lastManualSync
-	if rs.Spec.Trigger != nil {
-		rs.Status.LastManualSync = rs.Spec.Trigger.Manual
-	} else {
-		rs.Status.LastManualSync = ""
-	}
-
-	return updateNextSyncSource(rs, metrics, logger)
+func (m *rsMachine) Cleanup(ctx context.Context) (mover.Result, error) {
+	return m.mover.Cleanup(ctx)
 }

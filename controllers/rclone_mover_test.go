@@ -167,7 +167,14 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 							Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), inst)).To(Succeed())
 							Expect(inst.Status).NotTo(BeNil())
 							Expect(inst.Status.Conditions).NotTo(BeNil())
-							Expect(inst.Status.NextSyncTime).NotTo(BeNil())
+							Eventually(func() bool {
+								inst := &volsyncv1alpha1.ReplicationDestination{}
+								if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), inst); err != nil {
+									return false
+								}
+								return inst.Status != nil && inst.Status.NextSyncTime != nil
+							}, maxWait, interval).Should(BeTrue())
+							//Expect(inst.Status.NextSyncTime).NotTo(BeNil())
 						})
 
 						It("Ensure LastSyncTime & LatestImage is set properly after reconciliation", func() {

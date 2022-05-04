@@ -18,11 +18,18 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package mover
 
 import (
+	"fmt"
+
 	"github.com/go-logr/logr"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
+)
+
+var (
+	ErrNoMoverFound        = fmt.Errorf("a replication method must be specified")
+	ErrMultipleMoversFound = fmt.Errorf("only one replication method can be supplied")
 )
 
 // Catalog is the list of the available Builders for the controller to use when
@@ -55,4 +62,44 @@ type Builder interface {
 	// VersionInfo returns a string describing the version of this mover. In
 	// most cases, this is the container image/tag that will be used.
 	VersionInfo() string
+}
+
+func GetDestinationMoverFromCatalog(client client.Client, logger logr.Logger,
+	eventRecorder events.EventRecorder,
+	destination *volsyncv1alpha1.ReplicationDestination) (Mover, error) {
+	var dataMover Mover
+	for _, builder := range Catalog {
+		candidate, err := builder.FromDestination(client, logger, eventRecorder, destination)
+		if err == nil && candidate != nil {
+			if dataMover != nil {
+				// Found 2 movers claiming this CR...
+				return nil, ErrMultipleMoversFound
+			}
+			dataMover = candidate
+		}
+	}
+	if dataMover == nil { // No mover matched
+		return nil, ErrNoMoverFound
+	}
+	return dataMover, nil
+}
+
+func GetSourceMoverFromCatalog(client client.Client, logger logr.Logger,
+	eventRecorder events.EventRecorder,
+	source *volsyncv1alpha1.ReplicationSource) (Mover, error) {
+	var dataMover Mover
+	for _, builder := range Catalog {
+		candidate, err := builder.FromSource(client, logger, eventRecorder, source)
+		if err == nil && candidate != nil {
+			if dataMover != nil {
+				// Found 2 movers claiming this CR...
+				return nil, ErrMultipleMoversFound
+			}
+			dataMover = candidate
+		}
+	}
+	if dataMover == nil { // No mover matched
+		return nil, ErrNoMoverFound
+	}
+	return dataMover, nil
 }

@@ -6,13 +6,11 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"time"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/prometheus/client_golang/prometheus"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -20,110 +18,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
-
-//nolint:dupl
-var _ = Describe("Source trigger", func() {
-	var rs *volsyncv1alpha1.ReplicationSource
-	logger := zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
-
-	BeforeEach(func() {
-		rs = &volsyncv1alpha1.ReplicationSource{
-			Status: &volsyncv1alpha1.ReplicationSourceStatus{},
-		}
-	})
-
-	Context("When a schedule is specified", func() {
-		var schedule = "0 0 1 1 *"
-		metrics := newVolSyncMetrics(prometheus.Labels{"obj_name": "a", "obj_namespace": "b", "role": "c", "method": "d"})
-		BeforeEach(func() {
-			rs.Spec.Trigger = &volsyncv1alpha1.ReplicationSourceTriggerSpec{
-				Schedule: &schedule,
-			}
-		})
-		It("if never synced, sync now", func() {
-			rs.Status.LastSyncTime = nil
-			b, e := awaitNextSyncSource(rs, metrics, logger)
-			Expect(b).To(BeTrue())
-			Expect(e).To(BeNil())
-			Expect(rs.Status.NextSyncTime).To(Not(BeNil()))
-		})
-		It("if synced long ago, sync now", func() {
-			when := metav1.Time{Time: time.Now().Add(-50000 * time.Hour)}
-			rs.Status.LastSyncTime = &when
-			b, e := awaitNextSyncSource(rs, metrics, logger)
-			Expect(b).To(BeTrue())
-			Expect(e).To(BeNil())
-			Expect(rs.Status.NextSyncTime).To(Not(BeNil()))
-		})
-		It("if recently synced, wait", func() {
-			when := metav1.Time{Time: time.Now().Add(-1 * time.Minute)}
-			rs.Status.LastSyncTime = &when
-			b, e := awaitNextSyncSource(rs, metrics, logger)
-			Expect(b).To(BeFalse())
-			Expect(e).To(BeNil())
-			Expect(rs.Status.NextSyncTime).To(Not(BeNil()))
-		})
-	})
-
-	Context("When a manual trigger is specified", func() {
-		BeforeEach(func() {
-			rs.Spec.Trigger = &volsyncv1alpha1.ReplicationSourceTriggerSpec{
-				Manual: "1",
-			}
-		})
-		metrics := newVolSyncMetrics(prometheus.Labels{"obj_name": "a", "obj_namespace": "b", "role": "c", "method": "d"})
-		It("if never synced a manual trigger, sync now", func() {
-			rs.Status.LastManualSync = ""
-			b, e := awaitNextSyncSource(rs, metrics, logger)
-			Expect(b).To(BeTrue())
-			Expect(e).To(BeNil())
-			Expect(rs.Status.NextSyncTime).To(BeNil())
-		})
-		It("if already synced the current manual trigger, stay idle", func() {
-			rs.Status.LastManualSync = rs.Spec.Trigger.Manual
-			b, e := awaitNextSyncSource(rs, metrics, logger)
-			Expect(b).To(BeFalse())
-			Expect(e).To(BeNil())
-			Expect(rs.Status.NextSyncTime).To(BeNil())
-		})
-		It("if already synced a previous manual trigger, sync now", func() {
-			rs.Status.LastManualSync = "2"
-			b, e := awaitNextSyncSource(rs, metrics, logger)
-			Expect(b).To(BeTrue())
-			Expect(e).To(BeNil())
-			Expect(rs.Status.NextSyncTime).To(BeNil())
-		})
-	})
-
-	Context("When the trigger is empty", func() {
-		metrics := newVolSyncMetrics(prometheus.Labels{"obj_name": "a", "obj_namespace": "b", "role": "c", "method": "d"})
-		It("if never synced, sync now", func() {
-			rs.Status.LastSyncTime = nil
-			b, e := awaitNextSyncSource(rs, metrics, logger)
-			Expect(b).To(BeTrue())
-			Expect(e).To(BeNil())
-			Expect(rs.Status.NextSyncTime).To(BeNil())
-		})
-		It("if synced long ago, sync now", func() {
-			when := metav1.Time{Time: time.Now().Add(-5 * time.Hour)}
-			rs.Status.LastSyncTime = &when
-			b, e := awaitNextSyncSource(rs, metrics, logger)
-			Expect(b).To(BeTrue())
-			Expect(e).To(BeNil())
-			Expect(rs.Status.NextSyncTime).To(BeNil())
-		})
-		It("if recently synced, sync now", func() {
-			when := metav1.Time{Time: time.Now().Add(-1 * time.Minute)}
-			rs.Status.LastSyncTime = &when
-			b, e := awaitNextSyncSource(rs, metrics, logger)
-			Expect(b).To(BeTrue())
-			Expect(e).To(BeNil())
-			Expect(rs.Status.NextSyncTime).To(BeNil())
-		})
-	})
-})
 
 var _ = Describe("ReplicationSource", func() {
 	var ctx = context.Background()
@@ -211,48 +106,6 @@ var _ = Describe("ReplicationSource", func() {
 			Expect(errCond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(errCond.Reason).To(Equal(volsyncv1alpha1.SynchronizingReasonError))
 			Expect(errCond.Message).To(ContainSubstring("a replication method must be specified"))
-		})
-	})
-
-	Context("when a schedule is specified", func() {
-		BeforeEach(func() {
-			rs.Spec.Rsync = &volsyncv1alpha1.ReplicationSourceRsyncSpec{
-				ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
-					CopyMethod: volsyncv1alpha1.CopyMethodDirect,
-				},
-			}
-			schedule := "* * * * *"
-			rs.Spec.Trigger = &volsyncv1alpha1.ReplicationSourceTriggerSpec{
-				Schedule: &schedule,
-			}
-		})
-		It("the next sync time is set in .status.nextSyncTime", func() {
-			Eventually(func() bool {
-				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rs), rs)).To(Succeed())
-				if rs.Status == nil || rs.Status.NextSyncTime.IsZero() {
-					return false
-				}
-				return true
-			}, maxWait, interval).Should(BeTrue())
-		})
-	})
-
-	Context("when a schedule is not specified", func() {
-		BeforeEach(func() {
-			rs.Spec.Rsync = &volsyncv1alpha1.ReplicationSourceRsyncSpec{
-				ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
-					CopyMethod: volsyncv1alpha1.CopyMethodDirect,
-				},
-			}
-		})
-		It("the next sync time is nil", func() {
-			Consistently(func() bool {
-				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rs), rs)).To(Succeed())
-				if rs.Status == nil || rs.Status.NextSyncTime.IsZero() {
-					return false
-				}
-				return true
-			}, duration, interval).Should(BeFalse())
 		})
 	})
 

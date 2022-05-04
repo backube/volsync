@@ -20,8 +20,6 @@ package controllers
 import (
 	"time"
 
-	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
-	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
@@ -84,46 +82,4 @@ func newVolSyncMetrics(labels prometheus.Labels) volsyncMetrics {
 func init() {
 	// Register custom metrics with the global prometheus registry
 	metrics.Registry.MustRegister(missedIntervals, outOfSync, syncDurations)
-}
-
-//nolint:funlen
-func (r *ReplicationSourceReconciler) countReplicationMethods(instance *volsyncv1alpha1.ReplicationSource,
-	logger logr.Logger) int {
-	var numOfReplication int
-	logger.Info("Counting number of Reconciliation methods", "instance", instance)
-	if instance.Spec.Rsync != nil {
-		numOfReplication++
-	}
-	if instance.Spec.Rclone != nil {
-		numOfReplication++
-	}
-	if instance.Spec.Restic != nil {
-		numOfReplication++
-	}
-	if instance.Spec.External != nil {
-		numOfReplication++
-	}
-	logger.Info("Counting over ", "Number of Replication Methods: ", numOfReplication)
-	return numOfReplication
-}
-
-//nolint:funlen
-func (r *ReplicationDestinationReconciler) countReplicationMethods(instance *volsyncv1alpha1.ReplicationDestination,
-	logger logr.Logger) int {
-	var numOfReplication int
-	logger.Info("Counting number of Reconciliation methods", "instance", instance)
-	if instance.Spec.Rsync != nil {
-		numOfReplication++
-	}
-	if instance.Spec.Rclone != nil {
-		numOfReplication++
-	}
-	if instance.Spec.Restic != nil {
-		numOfReplication++
-	}
-	if instance.Spec.External != nil {
-		numOfReplication++
-	}
-	logger.Info("Counting over ", "Number of Replication Methods: ", numOfReplication)
-	return numOfReplication
 }
