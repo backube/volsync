@@ -57,12 +57,12 @@ type ReplicationMachine interface {
 	LastSyncDuration() *metav1.Duration
 	SetLastSyncDuration(*metav1.Duration)
 
+	Conditions() *[]metav1.Condition
+
+	SetOutOfSync(bool)
+	IncMissedIntervals()
+	ObserveSyncDuration(time.Duration)
+
 	Synchronize(ctx context.Context) (mover.Result, error)
 	Cleanup(ctx context.Context) (mover.Result, error)
-
-	SetOutOfSync(outOfSync bool)
-	IncMissedIntervals()
-	ObserveSyncDuration(syncDuration time.Duration)
-
-	Conditions() *[]metav1.Condition
 }

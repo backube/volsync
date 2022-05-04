@@ -44,6 +44,7 @@ func Run(ctx context.Context, r ReplicationMachine, l logr.Logger) (ctrl.Result,
 	} else {
 		missed, err := missedDeadline(r)
 		if err != nil {
+			setConditionError(r, l, err)
 			return ctrl.Result{}, err
 		}
 		if missed {
@@ -51,18 +52,23 @@ func Run(ctx context.Context, r ReplicationMachine, l logr.Logger) (ctrl.Result,
 		}
 	}
 
+	var result ctrl.Result
+	var err error
 	switch currentState(r) {
 	case initialState:
-		return doInitialState(ctx, r, l)
+		result, err = doInitialState(ctx, r, l)
 	case synchronizingState:
-		return doSynchronizingState(ctx, r, l)
+		result, err = doSynchronizingState(ctx, r, l)
 	case cleaningUpState:
-		return doCleanupState(ctx, r, l)
+		result, err = doCleanupState(ctx, r, l)
 	default:
 		l.Error(nil, "invalid state detected; switching to Synchronizing")
-		err := transitionToSynchronizing(r, l)
-		return ctrl.Result{}, err
+		err = transitionToSynchronizing(r, l)
 	}
+	if err != nil {
+		setConditionError(r, l, err)
+	}
+	return result, err
 }
 
 func doInitialState(_ context.Context, r ReplicationMachine, l logr.Logger) (ctrl.Result, error) {
@@ -84,7 +90,6 @@ func doSynchronizingState(ctx context.Context, r ReplicationMachine, l logr.Logg
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-		setConditionCleanup(r, l)
 	}
 	return result.ReconcileResult(), nil
 }
@@ -102,7 +107,6 @@ func doCleanupState(ctx context.Context, r ReplicationMachine, l logr.Logger) (c
 			if err != nil {
 				return ctrl.Result{}, err
 			}
-			setConditionSyncing(r, l)
 		} else { // We're idle
 			if r.GetTrigger() == ScheduleTrigger {
 				setConditionScheduled(r, l)
@@ -114,8 +118,6 @@ func doCleanupState(ctx context.Context, r ReplicationMachine, l logr.Logger) (c
 			switch {
 			case timeToNext == nil:
 				return ctrl.Result{}, nil
-			case *timeToNext <= 0:
-				return ctrl.Result{Requeue: true}, nil
 			default:
 				return ctrl.Result{RequeueAfter: *timeToNext}, nil
 			}
@@ -144,6 +146,7 @@ func transitionToSynchronizing(r ReplicationMachine, l logr.Logger) error {
 	l.V(1).Info("transitioning to synchronization state")
 	now := metav1.Now()
 	r.SetLastSyncStartTime(&now)
+	setConditionSyncing(r, l)
 	return nil
 }
 
@@ -191,6 +194,7 @@ func transitionToCleaningUp(r ReplicationMachine, l logr.Logger) error {
 	// duration calculation, it serves as the indicator of which state we're in
 	r.SetLastSyncStartTime(nil)
 
+	setConditionCleanup(r, l)
 	return nil
 }
 
