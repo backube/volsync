@@ -10,49 +10,81 @@ Syncthing-based replication
    .. contents:: Syncthing-based replication
       :local:
 
-VolSync supports synchronization of PersistentVolume data across a vast number of volumes using a Syncthing-based data mover.
-With the Syncthing-based approach, any number of PersistentVolumes can be configured to share the same 
-synchronized set of data, and any mutation on one of the nodes will be replicated to all other nodes.
+VolSync supports synchronization of ``PersistentVolume`` data across a vast number of volumes using a Syncthing-based data mover.
 
-A ReplicationSource object specifies which volume to sync, what peers to sync with, and Syncthing handles the rest.
-Syncthing is a peer-to-peer system which keeps several directories in sync across 
+``ReplicationSource`` objects are configured to connect to other Syncthing devices in order to sync data on a provided ``PersistentVolumeClaim``.
+Any changes made to the shared data will be propagated to the rest of the peers sharing the volume.
 
-VolSync uses a custom-built Syncthing mover which disables the use of relay servers and global announce, and instead relies on 
+------
+
+What Is Syncthing?
+==================
+
+
+In a nutshell, Syncthing is a distributed, peer-to-peer, file synchronization system.
+It syncs the contents of a directory with a list of specified peers selected by the user, 
+effectively replicating the data across various devices in real-time.
+
+Unlike the other data movers supported by VolSync, Syncthing is an "always-on" system, which means that 
+it is always listening for changes on the local filesystem, as well as updates from other peers. 
+
+Taken from `Syncthing's website <https://syncthing.net/>`_:
+  
+  Syncthing is a continuous file synchronization program. It synchronizes files between two or more computers in real time, safely protected from prying eyes.
+
+
+
+How Syncthing Works In VolSync
+==============================
+
+When a ``ReplicationSource`` is created and configured to sync a PVC with other peers, all of the connected peers will maintain their
+own Volume containing the synced data. To detect file changes, Syncthing employs two methods: a filesystem watcher, which notifies 
+Syncthing of any changes to the local filesystem, and a full filesystem scan which occurs routinely at a specified interval (default is an hour).
+
+In order to launch Syncthing, VolSync creates the following resources in the same namespace as the ``ReplicationSource``:
+
+- Source PVC to use as the Syncthing data source (provided by user)
+- Config PVC to persist Syncthing's identity and configuration data across restarts
+- A Service exposing Syncthing's API which VolSync will use for communication
+- A Service exposing Syncthing's data port that other devices can connect to
+- An Opaque Secret containing the Syncthing API keys and SSL certificates
+- A Deployment that launches Syncthing and connects it with the necessary components
+
+VolSync uses a custom-built Syncthing mover which disables the use of relay servers and global announce, and relying instead on 
 being provided with the addresses of other Syncthing peers directly.
 
 .. note::
-	  Syncthing is peer-to-peer technology which connects to other peers directly rather than going through intermediary servers.
-	  Because Syncthing lacks centralization, it resolves file conflicts by favoring the `most recent version <https://docs.syncthing.net/users/syncing.html#conflicting-changes>`_.
+    Syncthing is peer-to-peer technology which connects to other peers directly rather than going through intermediary servers.
+    Because Syncthing lacks centralization, file conflicts are resolved by favoring the `most recent version <https://docs.syncthing.net/users/syncing.html#conflicting-changes>`_.
 
 
+Configuring a Synced Volume
+===========================
 
-Syncing Volumes
-===============
-
-To sync a PersistentVolume, simply specify the volume's name in the ReplicationSource's ``.spec.SourcePVC`` field.
-
-Suppose we have a PVC named ``todo-database`` and wanted to configure VolSync to keep it synced. 
-We  create the following ReplicationSource and specify the PVC in ``.spec.SourcePVC``: 
+To configure a ``PersistentVolume`` for syncing, create a ``ReplicationSource``
+with the ``PersistentVolume``'s name specified in ``.spec.sourcePVC``, and provide a basic 
+Syncthing configuration by specifying ``.spec.syncthing.serviceType: ClusterIP``.
 
 .. code-block:: yaml
-	
-   ---
-   apiVersion: volsync.backube/v1alpha1
-   kind: ReplicationSource
-   metadata:
-     name: sync-todo-database
-   spec:
-     sourcePVC: todo-database
-     syncthing:
-       serviceType: ClusterIP
+  :caption: Minimal specification of a ReplicationSource using the Syncthing data mover
 
-This will cause VolSync to spin up a Syncthing instance that mounts the specified PVC and syncs it with the other specified peers.
-VolSync will also create a ``Service`` to expose Syncthing's data port. Other ReplicationSource objects must specify 
-this service's address in order to connect to our Syncthing instance.
+  ---
+  apiVersion: volsync.backube/v1alpha1
+  kind: ReplicationSource
+  metadata:
+    name: sync-todo-database
+  spec:
+    sourcePVC: todo-database
+    syncthing:
+      serviceType: ClusterIP
+
+This will launch a bare-bones Syncthing instance that uses ``ClusterIP`` to expose the data service.
+No other peers will be configured at this point, so our volume will not be shared with anyone else.
+
 
 .. note::
-   By default, the type of Service created is ``ClusterIP``, although ``LoadBalancer`` is also supported. To specify the type of Service you'd like VolSync to create,
-   specify ``.spec.syncthing.serviceType`` in your ``ReplicationSource``.
+  Syncthing unions the data in the provided ``PersistentVolume`` with the data from the other peers.
+  When two pieces of data have the same name, the most recent data will be favored.
 
 
 Obtaining Your Syncthing Information
@@ -93,9 +125,10 @@ VolSync simplifies this process: once your Syncthing instance is online and read
 Connecting To Peers
 ===================
 
-In order for two Syncthing instances to connect with one another, each must know the address and ID of the other.
-To accomplish this in VolSync, each ReplicationSource object must specify at least one other Syncthing peer in its ``.spec.syncthing.peers`` field.
-If you would like Syncthing to be automatically connected with other peers as they join the cluster, you must set ``introducer: true`` for those peers you'd like to adopt connections from.
+In order to connect two Syncthing-based ReplicationSources, each must list the other's address and ID in ``.spec.syncthing.peers``.
+
+Additionally, VolSync requires that you declare whether or not a given ReplicationSource should be automatically connected with the other's peers by setting ``introducer: true/false``.
+This allows new ReplicationSources to be automatically connected without needing to explicitly update your ReplicationSources.
 
 For instance, if we have another ReplicationSource object in a separate namespace, it would specify the address of our previous Syncthing instance in its ``.spec.syncthing.peers`` field: 
 
