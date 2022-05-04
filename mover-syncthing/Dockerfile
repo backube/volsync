@@ -6,8 +6,8 @@ USER root
 WORKDIR /workspace
 
 # latest release as of writing this
-ARG SYNCTHING_VERSION="v1.18.4"
-ARG SYNCTHING_GIT_HASH="951b0589522e13e14e8b40d33ea66de1e69c8b4e"
+ARG SYNCTHING_VERSION="v1.20.1"
+ARG SYNCTHING_GIT_HASH="2145b3701d6f4f615e55e87374e13b9a12077a74"
 
 # clone & cd
 RUN git clone \
@@ -21,13 +21,13 @@ RUN /bin/bash -c "[[ $(git rev-list -n 1 HEAD) == ${SYNCTHING_GIT_HASH} ]]"
 
 ENV CGO_ENABLED=1
 
-# Create the binary for syncthing 
+# Create the binary for syncthing
 RUN go run build.go -no-upgrade
 
 # Verify that FIPS crypto libs are accessible
 RUN nm /workspace/syncthing/bin/syncthing | grep -q goboringcrypto
 
-# Build final container 
+# Build final container
 FROM registry.access.redhat.com/ubi8-minimal
 
 # RUN useradd -ms /bin/bash stuser
@@ -50,7 +50,7 @@ ARG version_arg="(unknown)"
 ENV builddate="${builddate_arg}"
 ENV version="${version_arg}"
 
-# set labels 
+# set labels
 LABEL org.label-schema.build-date="${builddate}" \
       org.label-schema.description="Syncthing-based data mover for VolSync" \
       org.label-schema.license="AGPL v3" \
@@ -66,7 +66,7 @@ LABEL org.label-schema.build-date="${builddate}" \
 ENV SYNCTHING_CONFIG_DIR="/config"
 
 # Variables that will be used to configure the data volume on startup
-# folder path 
+# folder path
 ENV SYNCTHING_DATA_DIR="/data"
 # can be one of 'sendreceive', 'sendonly', 'receiveonly'
 ENV SYNCTHING_DATA_TRANSFERMODE="sendreceive"
@@ -74,8 +74,8 @@ ENV SYNCTHING_DATA_TRANSFERMODE="sendreceive"
 # move the config to the root directory so it can be copied before syncthing boot
 COPY config.xml /config.xml
 
-COPY entry.sh \ 
+COPY entry.sh \
   /
-RUN chmod a+rx /entry.sh  
+RUN chmod a+rx /entry.sh
 
 ENTRYPOINT [ "/bin/bash" ]
