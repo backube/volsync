@@ -666,17 +666,19 @@ func (m *Mover) ensureStatusIsUpdated(dataSVC *corev1.Service) error {
 	m.status.Peers = []v1alpha1.SyncthingPeerStatus{}
 
 	// add the connected devices to the status
-	for _, device := range m.peerList {
-		if (device.ID == m.syncthing.SystemStatus.MyID) || (device.ID == "") {
+	for deviceID, connectionInfo := range m.syncthing.SystemConnections.Connections {
+		// skip our own connection
+		if (deviceID == m.syncthing.SystemStatus.MyID) || (deviceID == "") {
 			continue
 		}
 
+		tcpAddress := AsTCPAddress(connectionInfo.Address)
+
 		// check connection status
-		devStats, ok := m.syncthing.SystemConnections.Connections[device.ID]
 		m.status.Peers = append(m.status.Peers, v1alpha1.SyncthingPeerStatus{
-			ID:        device.ID,
-			Address:   device.Address,
-			Connected: ok && devStats.Connected,
+			ID:        deviceID,
+			Address:   tcpAddress,
+			Connected: connectionInfo.Connected,
 		})
 	}
 	return nil

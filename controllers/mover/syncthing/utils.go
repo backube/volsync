@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/backube/volsync/api/v1alpha1"
@@ -297,4 +298,14 @@ func GenerateRandomString(length int) (string, error) {
 	// generate a random string
 	b, err := GenerateRandomBytes(length)
 	return base64.URLEncoding.EncodeToString(b), err
+}
+
+// AsTCPAddress Accepts a partial URL which may be a hostname or a hostname:port, and returns a TCP address.
+// The provided address should NOT have a protocol prefix.
+func AsTCPAddress(addr string) string {
+	// check if TCP is already prefixed
+	if strings.HasPrefix(addr, "tcp://") {
+		return addr
+	}
+	return "tcp://" + addr
 }
