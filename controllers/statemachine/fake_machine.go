@@ -27,7 +27,7 @@ import (
 
 // fakeMachine is a mock ReplicationMachine used for testing
 type fakeMachine struct {
-	TT                  TriggerType
+	TT                  triggerType
 	CS                  string
 	MT                  string
 	LMT                 string
@@ -49,13 +49,12 @@ var _ ReplicationMachine = &fakeMachine{}
 
 func newFakeMachine() *fakeMachine {
 	return &fakeMachine{
-		TT:            NoTrigger,
+		TT:            noTrigger,
 		SyncResult:    mover.Complete(),
 		CleanupResult: mover.Complete(),
 	}
 }
 
-func (f *fakeMachine) GetTrigger() TriggerType                { return f.TT }
 func (f *fakeMachine) Cronspec() string                       { return f.CS }
 func (f *fakeMachine) ManualTag() string                      { return f.MT }
 func (f *fakeMachine) LastManualTag() string                  { return f.LMT }

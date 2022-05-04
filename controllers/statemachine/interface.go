@@ -25,21 +25,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// TriggerType represents the different ways we can trigger data synchronization
-type TriggerType string
-
-const (
-	ScheduleTrigger TriggerType = "ScheduleTrigger"
-	ManualTrigger   TriggerType = "ManualTrigger"
-	NoTrigger       TriggerType = "NoTrigger"
-)
-
 // ReplicationMachine is a common interface to the ReplicationSource and
 // ReplicationDestination types that allow us to generically implement the
 // synchronization state machine.
 type ReplicationMachine interface {
-	GetTrigger() TriggerType
-
 	Cronspec() string
 	ManualTag() string
 	LastManualTag() string

@@ -120,14 +120,14 @@ var _ = When("in cleanup", func() {
 	})
 	It("starts syncing if no trigger", func() {
 		m.CleanupResult = mover.Complete()
-		m.TT = NoTrigger
+		m.TT = noTrigger
 		_, err := Run(ctx, m, logger)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(currentState(m)).To(Equal(synchronizingState))
 	})
 	When("the trigger is manual", func() {
 		BeforeEach(func() {
-			m.TT = ManualTrigger
+			m.TT = manualTrigger
 			m.MT = "1"
 			m.LMT = "1"
 		})
@@ -153,7 +153,7 @@ var _ = When("in cleanup", func() {
 	})
 	When("the trigger is scheduled", func() {
 		BeforeEach(func() {
-			m.TT = ScheduleTrigger
+			m.TT = scheduleTrigger
 			m.CS = "0 0 1 1 *"
 		})
 		It("waits for schedule if scheduled", func() {
@@ -175,7 +175,7 @@ var _ = Describe("missedDeadline", func() {
 	var m *fakeMachine
 	BeforeEach(func() {
 		m = newFakeMachine()
-		m.TT = ScheduleTrigger
+		m.TT = scheduleTrigger
 		m.CS = "* * * * *"
 	})
 	It("Deadline is not missed if we've never synced", func() {
@@ -220,7 +220,7 @@ var _ = Describe("missedDeadline", func() {
 var _ = When("the trigger is schedule-based", func() {
 	It("returns an error if the cronspec is invalid", func() {
 		m := newFakeMachine()
-		m.TT = ScheduleTrigger
+		m.TT = scheduleTrigger
 		m.CS = "invalid"
 		Expect(currentState(m)).To(Equal(initialState))
 		_, _ = Run(ctx, m, logger)

@@ -36,6 +36,15 @@ const (
 	cleaningUpState    replicationState = "CleaningUp"
 )
 
+// triggerType represents the different ways we can trigger data synchronization
+type triggerType string
+
+const (
+	scheduleTrigger triggerType = "ScheduleTrigger"
+	manualTrigger   triggerType = "ManualTrigger"
+	noTrigger       triggerType = "NoTrigger"
+)
+
 // Run the state machine to reconcile the ReplicationController
 func Run(ctx context.Context, r ReplicationMachine, l logr.Logger) (ctrl.Result, error) {
 	// Set out-of-sync metrics flag if necessary
@@ -69,6 +78,17 @@ func Run(ctx context.Context, r ReplicationMachine, l logr.Logger) (ctrl.Result,
 		setConditionError(r, l, err)
 	}
 	return result, err
+}
+
+func getTrigger(r ReplicationMachine) triggerType {
+	switch {
+	case len(r.ManualTag()) > 0:
+		return manualTrigger
+	case len(r.Cronspec()) > 0:
+		return scheduleTrigger
+	default:
+		return noTrigger
+	}
 }
 
 func doInitialState(_ context.Context, r ReplicationMachine, l logr.Logger) (ctrl.Result, error) {
@@ -108,7 +128,7 @@ func doCleanupState(ctx context.Context, r ReplicationMachine, l logr.Logger) (c
 				return ctrl.Result{}, err
 			}
 		} else { // We're idle
-			if r.GetTrigger() == ScheduleTrigger {
+			if getTrigger(r) == scheduleTrigger {
 				setConditionScheduled(r, l)
 			} else {
 				setConditionManual(r, l)
@@ -174,8 +194,8 @@ func transitionToCleaningUp(r ReplicationMachine, l logr.Logger) error {
 	r.ObserveSyncDuration(syncDuration)
 
 	// Determine when our next synchronization should start
-	switch r.GetTrigger() {
-	case ScheduleTrigger:
+	switch getTrigger(r) {
+	case scheduleTrigger:
 		schedule, err := getSchedule(r.Cronspec())
 		if err != nil {
 			l.Error(err, "error parsing schedule", "cronspec", r.Cronspec())
@@ -183,7 +203,7 @@ func transitionToCleaningUp(r ReplicationMachine, l logr.Logger) error {
 		}
 		next := schedule.Next(now.Time)
 		r.SetNextSyncTime(&metav1.Time{Time: next})
-	case ManualTrigger, NoTrigger:
+	case manualTrigger, noTrigger:
 		r.SetNextSyncTime(nil)
 	}
 
@@ -200,15 +220,15 @@ func transitionToCleaningUp(r ReplicationMachine, l logr.Logger) error {
 
 // Given that we've finished cleanup, should we start syncing again?
 func shouldSync(r ReplicationMachine, l logr.Logger) bool {
-	switch r.GetTrigger() {
-	case ScheduleTrigger:
+	switch getTrigger(r) {
+	case scheduleTrigger:
 		// When schedule-based, we trigger a sync once we pass the appointed
 		// time
 		return time.Now().After(r.NextSyncTime().Time)
-	case ManualTrigger:
+	case manualTrigger:
 		// We need to do a sync if the manual trigger tags don't match
 		return r.ManualTag() != r.LastManualTag()
-	case NoTrigger:
+	case noTrigger:
 		// When there's no trigger specified, we run in a tight loop,
 		// immediately synchronizing as soon as we finish cleanup
 		return true
@@ -244,7 +264,7 @@ func pastScheduleDeadline(schedule cron.Schedule, lastCompleted time.Time, now t
 
 // Returns true if we're schedule-based and have missed our deadline
 func missedDeadline(r ReplicationMachine) (bool, error) {
-	if r.GetTrigger() == ScheduleTrigger && !r.LastSyncTime().IsZero() {
+	if getTrigger(r) == scheduleTrigger && !r.LastSyncTime().IsZero() {
 		schedule, err := getSchedule(r.Cronspec())
 		if err != nil {
 			return false, err

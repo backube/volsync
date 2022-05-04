@@ -177,6 +177,10 @@ func newRSMachine(rs *volsyncv1alpha1.ReplicationSource, c client.Client,
 		"method":        dataMover.Name(),
 	})
 
+	if rs.Status == nil {
+		rs.Status = &volsyncv1alpha1.ReplicationSourceStatus{}
+	}
+
 	return &rsMachine{
 		ReplicationSource: *rs,
 		client:            c,
@@ -184,19 +188,6 @@ func newRSMachine(rs *volsyncv1alpha1.ReplicationSource, c client.Client,
 		metrics:           metrics,
 		mover:             dataMover,
 	}, nil
-}
-
-func (m *rsMachine) GetTrigger() sm.TriggerType {
-	if m.Spec.Trigger == nil {
-		return sm.NoTrigger
-	}
-	if m.Spec.Trigger.Manual != "" {
-		return sm.ManualTrigger
-	}
-	if m.Spec.Trigger.Schedule != nil {
-		return sm.ScheduleTrigger
-	}
-	return sm.NoTrigger
 }
 
 func (m *rsMachine) Cronspec() string {
@@ -214,79 +205,46 @@ func (m *rsMachine) ManualTag() string {
 }
 
 func (m *rsMachine) LastManualTag() string {
-	if m.Status != nil {
-		return m.Status.LastManualSync
-	}
-	return ""
+	return m.Status.LastManualSync
 }
 
 func (m *rsMachine) SetLastManualTag(tag string) {
-	if m.Status == nil {
-		m.Status = &volsyncv1alpha1.ReplicationSourceStatus{}
-	}
 	m.Status.LastManualSync = tag
 }
 
 func (m *rsMachine) NextSyncTime() *metav1.Time {
-	if m.Status != nil {
-		return m.Status.NextSyncTime
-	}
-	return nil
+	return m.Status.NextSyncTime
 }
 
 func (m *rsMachine) SetNextSyncTime(next *metav1.Time) {
-	if m.Status == nil {
-		m.Status = &volsyncv1alpha1.ReplicationSourceStatus{}
-	}
 	m.Status.NextSyncTime = next
 }
 
 func (m *rsMachine) LastSyncStartTime() *metav1.Time {
-	if m.Status != nil {
-		return m.Status.LastSyncStartTime
-	}
-	return nil
+	return m.Status.LastSyncStartTime
 }
 
 func (m *rsMachine) SetLastSyncStartTime(last *metav1.Time) {
-	if m.Status == nil {
-		m.Status = &volsyncv1alpha1.ReplicationSourceStatus{}
-	}
 	m.Status.LastSyncStartTime = last
 }
 
 func (m *rsMachine) LastSyncTime() *metav1.Time {
-	if m.Status != nil {
-		return m.Status.LastSyncTime
-	}
-	return nil
+	return m.Status.LastSyncTime
 }
 
 func (m *rsMachine) SetLastSyncTime(last *metav1.Time) {
-	if m.Status == nil {
-		m.Status = &volsyncv1alpha1.ReplicationSourceStatus{}
-	}
 	m.Status.LastSyncTime = last
 }
 
 func (m *rsMachine) LastSyncDuration() *metav1.Duration {
-	if m.Status != nil {
-		return m.Status.LastSyncDuration
-	}
-	return nil
+	return m.Status.LastSyncDuration
 }
 
 func (m *rsMachine) SetLastSyncDuration(duration *metav1.Duration) {
-	if m.Status == nil {
-		m.Status = &volsyncv1alpha1.ReplicationSourceStatus{}
-	}
 	m.Status.LastSyncDuration = duration
 }
 
 func (m *rsMachine) Conditions() *[]metav1.Condition {
-	if m.Status == nil {
-		m.Status = &volsyncv1alpha1.ReplicationSourceStatus{}
-	}
 	return &m.Status.Conditions
 }
 
