@@ -9,7 +9,7 @@ spec:
     schedule: "*/5 * * * *"
   rclone:
     rcloneConfigSection: "aws-s3-bucket"
-    rcloneDestPath: "volsync-test-bucket"
+    rcloneDestPath: "volsync-test-bucket/mysql-pv-claim"
     rcloneConfig: "rclone-secret"
     copyMethod: Snapshot
     accessModes: [ReadWriteOnce]
