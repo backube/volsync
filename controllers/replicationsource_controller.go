@@ -52,7 +52,7 @@ type ReplicationSourceReconciler struct {
 }
 
 type rsMachine struct {
-	volsyncv1alpha1.ReplicationSource
+	rs      *volsyncv1alpha1.ReplicationSource
 	client  client.Client
 	logger  logr.Logger
 	metrics volsyncMetrics
@@ -126,22 +126,12 @@ func (r *ReplicationSourceReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// All good, so run the state machine
 	if err == nil {
 		result, err = sm.Run(ctx, rsm, logger)
-		// Retrieve any Status info modified by the state machine
-		inst.Status = rsm.ReplicationSource.Status
 	}
 
 	// Update instance status
 	statusErr := r.Client.Status().Update(ctx, inst)
 	if err == nil { // Don't mask previous error
 		err = statusErr
-	}
-	if !inst.Status.NextSyncTime.IsZero() {
-		// ensure we get re-reconciled no later than the next scheduled sync
-		// time
-		delta := time.Until(inst.Status.NextSyncTime.Time)
-		if delta > 0 {
-			result.RequeueAfter = delta
-		}
 	}
 	return result, err
 }
@@ -177,75 +167,71 @@ func newRSMachine(rs *volsyncv1alpha1.ReplicationSource, c client.Client,
 		"method":        dataMover.Name(),
 	})
 
-	if rs.Status == nil {
-		rs.Status = &volsyncv1alpha1.ReplicationSourceStatus{}
-	}
-
 	return &rsMachine{
-		ReplicationSource: *rs,
-		client:            c,
-		logger:            l,
-		metrics:           metrics,
-		mover:             dataMover,
+		rs:      rs,
+		client:  c,
+		logger:  l,
+		metrics: metrics,
+		mover:   dataMover,
 	}, nil
 }
 
 func (m *rsMachine) Cronspec() string {
-	if m.Spec.Trigger != nil && m.Spec.Trigger.Schedule != nil {
-		return *m.Spec.Trigger.Schedule
+	if m.rs.Spec.Trigger != nil && m.rs.Spec.Trigger.Schedule != nil {
+		return *m.rs.Spec.Trigger.Schedule
 	}
 	return ""
 }
 
 func (m *rsMachine) ManualTag() string {
-	if m.Spec.Trigger != nil {
-		return m.Spec.Trigger.Manual
+	if m.rs.Spec.Trigger != nil {
+		return m.rs.Spec.Trigger.Manual
 	}
 	return ""
 }
 
 func (m *rsMachine) LastManualTag() string {
-	return m.Status.LastManualSync
+	return m.rs.Status.LastManualSync
 }
 
 func (m *rsMachine) SetLastManualTag(tag string) {
-	m.Status.LastManualSync = tag
+	m.rs.Status.LastManualSync = tag
 }
 
 func (m *rsMachine) NextSyncTime() *metav1.Time {
-	return m.Status.NextSyncTime
+	return m.rs.Status.NextSyncTime
 }
 
 func (m *rsMachine) SetNextSyncTime(next *metav1.Time) {
-	m.Status.NextSyncTime = next
+	m.rs.Status.NextSyncTime = next
 }
 
 func (m *rsMachine) LastSyncStartTime() *metav1.Time {
-	return m.Status.LastSyncStartTime
+	return m.rs.Status.LastSyncStartTime
 }
 
 func (m *rsMachine) SetLastSyncStartTime(last *metav1.Time) {
-	m.Status.LastSyncStartTime = last
+	m.rs.Status.LastSyncStartTime = last
 }
 
 func (m *rsMachine) LastSyncTime() *metav1.Time {
-	return m.Status.LastSyncTime
+	return m.rs.Status.LastSyncTime
 }
 
 func (m *rsMachine) SetLastSyncTime(last *metav1.Time) {
-	m.Status.LastSyncTime = last
+	m.rs.Status.LastSyncTime = last
 }
 
 func (m *rsMachine) LastSyncDuration() *metav1.Duration {
-	return m.Status.LastSyncDuration
+	return m.rs.Status.LastSyncDuration
 }
 
 func (m *rsMachine) SetLastSyncDuration(duration *metav1.Duration) {
-	m.Status.LastSyncDuration = duration
+	m.rs.Status.LastSyncDuration = duration
 }
 
 func (m *rsMachine) Conditions() *[]metav1.Condition {
-	return &m.Status.Conditions
+	return &m.rs.Status.Conditions
 }
 
 func (m *rsMachine) SetOutOfSync(isOutOfSync bool) {

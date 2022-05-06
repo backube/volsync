@@ -53,7 +53,7 @@ type ReplicationDestinationReconciler struct {
 }
 
 type rdMachine struct {
-	volsyncv1alpha1.ReplicationDestination
+	rd      *volsyncv1alpha1.ReplicationDestination
 	client  client.Client
 	logger  logr.Logger
 	metrics volsyncMetrics
@@ -133,22 +133,12 @@ func (r *ReplicationDestinationReconciler) Reconcile(ctx context.Context, req ct
 	// All good, so run the state machine
 	if err == nil {
 		result, err = sm.Run(ctx, rdm, logger)
-		// Retrieve any Status info modified by the state machine
-		inst.Status = rdm.ReplicationDestination.Status
 	}
 
 	// Update instance status
 	statusErr := r.Client.Status().Update(ctx, inst)
 	if err == nil { // Don't mask previous error
 		err = statusErr
-	}
-	if !inst.Status.NextSyncTime.IsZero() {
-		// ensure we get re-reconciled no later than the next scheduled sync
-		// time
-		delta := time.Until(inst.Status.NextSyncTime.Time)
-		if delta > 0 {
-			result.RequeueAfter = delta
-		}
 	}
 	return result, err
 }
@@ -184,75 +174,71 @@ func newRDMachine(rd *volsyncv1alpha1.ReplicationDestination, c client.Client,
 		"method":        dataMover.Name(),
 	})
 
-	if rd.Status == nil {
-		rd.Status = &volsyncv1alpha1.ReplicationDestinationStatus{}
-	}
-
 	return &rdMachine{
-		ReplicationDestination: *rd,
-		client:                 c,
-		logger:                 l,
-		metrics:                metrics,
-		mover:                  dataMover,
+		rd:      rd,
+		client:  c,
+		logger:  l,
+		metrics: metrics,
+		mover:   dataMover,
 	}, nil
 }
 
 func (m *rdMachine) Cronspec() string {
-	if m.Spec.Trigger != nil && m.Spec.Trigger.Schedule != nil {
-		return *m.Spec.Trigger.Schedule
+	if m.rd.Spec.Trigger != nil && m.rd.Spec.Trigger.Schedule != nil {
+		return *m.rd.Spec.Trigger.Schedule
 	}
 	return ""
 }
 
 func (m *rdMachine) ManualTag() string {
-	if m.Spec.Trigger != nil {
-		return m.Spec.Trigger.Manual
+	if m.rd.Spec.Trigger != nil {
+		return m.rd.Spec.Trigger.Manual
 	}
 	return ""
 }
 
 func (m *rdMachine) LastManualTag() string {
-	return m.Status.LastManualSync
+	return m.rd.Status.LastManualSync
 }
 
 func (m *rdMachine) SetLastManualTag(tag string) {
-	m.Status.LastManualSync = tag
+	m.rd.Status.LastManualSync = tag
 }
 
 func (m *rdMachine) NextSyncTime() *metav1.Time {
-	return m.Status.NextSyncTime
+	return m.rd.Status.NextSyncTime
 }
 
 func (m *rdMachine) SetNextSyncTime(next *metav1.Time) {
-	m.Status.NextSyncTime = next
+	m.rd.Status.NextSyncTime = next
 }
 
 func (m *rdMachine) LastSyncStartTime() *metav1.Time {
-	return m.Status.LastSyncStartTime
+	return m.rd.Status.LastSyncStartTime
 }
 
 func (m *rdMachine) SetLastSyncStartTime(last *metav1.Time) {
-	m.Status.LastSyncStartTime = last
+	m.rd.Status.LastSyncStartTime = last
 }
 
 func (m *rdMachine) LastSyncTime() *metav1.Time {
-	return m.Status.LastSyncTime
+	return m.rd.Status.LastSyncTime
 }
 
 func (m *rdMachine) SetLastSyncTime(last *metav1.Time) {
-	m.Status.LastSyncTime = last
+	m.rd.Status.LastSyncTime = last
 }
 
 func (m *rdMachine) LastSyncDuration() *metav1.Duration {
-	return m.Status.LastSyncDuration
+	return m.rd.Status.LastSyncDuration
 }
 
 func (m *rdMachine) SetLastSyncDuration(duration *metav1.Duration) {
-	m.Status.LastSyncDuration = duration
+	m.rd.Status.LastSyncDuration = duration
 }
 
 func (m *rdMachine) Conditions() *[]metav1.Condition {
-	return &m.Status.Conditions
+	return &m.rd.Status.Conditions
 }
 
 func (m *rdMachine) SetOutOfSync(isOutOfSync bool) {
@@ -276,13 +262,13 @@ func (m *rdMachine) Synchronize(ctx context.Context) (mover.Result, error) {
 
 	if result.Completed && result.Image != nil {
 		// Mark previous latestImage for cleanup if it was a snapshot
-		err = utils.MarkOldSnapshotForCleanup(ctx, m.client, m.logger, m,
-			m.Status.LatestImage, result.Image)
+		err = utils.MarkOldSnapshotForCleanup(ctx, m.client, m.logger, m.rd,
+			m.rd.Status.LatestImage, result.Image)
 		if err != nil {
 			return mover.InProgress(), err
 		}
 
-		m.Status.LatestImage = result.Image
+		m.rd.Status.LatestImage = result.Image
 	}
 
 	return result, err
