@@ -90,6 +90,9 @@ The ``restic-config`` Secret configures the Restic repository parameters:
       AWS_ACCESS_KEY_ID: access
       AWS_SECRET_ACCESS_KEY: password
 
+The above will backup to a bucket called ``restic-repo``. If the same bucket will
+be used for different PVCs or different uses, then make sure to specify a unique
+path under ``restic-repo``. See `Shared S3 Bucket Notes`_ for more detail.
 
 ReplicationSource
 ------------------
@@ -272,3 +275,107 @@ exists.
 
    > exit
    $ exit
+
+.. _Shared S3 Bucket Notes:
+
+===============================================
+Backing up multiple PVCs to the same S3 bucket
+===============================================
+
+If using the same S3 bucket for multiple backups, then be aware of the following:
+
+- Each PVC to be backed up will need its own separate ``restic-config`` secret.
+- Each ``restic-config`` secret may use the same s3 bucket name in the RESTIC_REPOSITORY, but
+  they must each have a unique path underneath.
+
+Example of backing up 2 PVCs, ``pvc-a`` and ``pvc-b``:
+=========================================================
+
+A ``restic-config`` and ``replicationsource`` needs to be created for each pvc and each replicationsource
+must refer to the correct ``restic-config``.
+
+For ``pvc-a``:
+
+.. code-block:: yaml
+
+   ---
+   # Restic-config Secret for pvc-a
+   apiVersion: v1
+   kind: Secret
+   metadata:
+      name: restic-config-a
+   type: Opaque
+   stringData:
+      # The repository url with pvc-a-backup as the subpath under the restic-repo bucket
+      RESTIC_REPOSITORY: s3:http://minio.minio.svc.cluster.local:9000/restic-repo/pvc-a-backup
+      # The repository encryption key
+      RESTIC_PASSWORD: my-secure-restic-password
+      # ENV vars specific to the back end
+      # https://restic.readthedocs.io/en/stable/030_preparing_a_new_repo.html
+      AWS_ACCESS_KEY_ID: access
+      AWS_SECRET_ACCESS_KEY: password
+
+   ---
+   # ReplicationSource for pvc-a
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+      name: replication-source-pvc-a
+      namespace: source
+   spec:
+      sourcePVC: pvc-a
+      trigger:
+         schedule: "*/30 * * * *"
+      restic:
+        pruneIntervalDays: 15
+        repository: restic-config-a
+        retain:
+          hourly: 1
+          daily: 1
+          weekly: 1
+          monthly: 1
+          yearly: 1
+        copyMethod: Clone
+
+For ``pvc-b``:
+
+.. code-block:: yaml
+
+   ---
+   # Restic-config Secret for pvc-b
+   apiVersion: v1
+   kind: Secret
+   metadata:
+      name: restic-config-b
+   type: Opaque
+   stringData:
+      # The repository url with pvc-b-backup as the subpath under the restic-repo bucket
+      RESTIC_REPOSITORY: s3:http://minio.minio.svc.cluster.local:9000/restic-repo/pvc-b-backup
+      # The repository encryption key
+      RESTIC_PASSWORD: my-secure-restic-password
+      # ENV vars specific to the back end
+      # https://restic.readthedocs.io/en/stable/030_preparing_a_new_repo.html
+      AWS_ACCESS_KEY_ID: access
+      AWS_SECRET_ACCESS_KEY: password
+
+   ---
+   # ReplicationSource for pvc-b
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+      name: replication-source-pvc-b
+      namespace: source
+   spec:
+      sourcePVC: pvc-b
+      trigger:
+         schedule: "*/30 * * * *"
+      restic:
+        pruneIntervalDays: 15
+        repository: restic-config-a
+        retain:
+          hourly: 1
+          daily: 1
+          weekly: 1
+          monthly: 1
+          yearly: 1
+        copyMethod: Clone

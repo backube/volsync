@@ -50,6 +50,30 @@ This Secret will be referenced for both backup (ReplicationSource) and for
 restore (ReplicationDestination). The key names in this configuration Secret
 directly correspond to the environment variable names supported by Restic.
 
+The path used in the ``RESTIC_REPOSITORY`` is the s3 bucket but can optionally
+contain a folder name or folder names in the bucket as well.  This can be useful
+if multiple PVCs are to be backed up to the same S3 bucket.
+
+As an example one restic-config secret could use:
+
+.. code-block:: yaml
+
+  RESTIC_REPOSITORY: s3:http://minio.minio.svc.cluster.local:9000/restic-repo/pvc-1-backup
+
+While another (saved in a separate restic-config secret) could use:
+
+.. code-block:: yaml
+
+  RESTIC_REPOSITORY: s3:http://minio.minio.svc.cluster.local:9000/restic-repo/pvc-2-backup
+
+.. note::
+   If backing up multiple PVCs to the same S3 bucket, the path underneath the bucket must
+   be unique for each PVC.  Each PVC will be backed up with a separate ReplicationSource,
+   and each should use its own separate restic-config secret
+
+   Note also by sharing the same s3 bucket this means write access to the s3 bucket will be
+   granted to different replicationsources.
+
 .. note::
    If necessary, the repository will be automatically initialized (i.e.,
    ``restic init``) during the first backup.
