@@ -205,6 +205,15 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 			mover, _ = m.(*Mover)
 			Expect(mover).NotTo(BeNil())
 			Expect(mover.owner).NotTo(BeNil())
+
+			// initialize the mover fields
+			mover.syncthing = Syncthing{
+				SystemConnections: &SystemConnections{},
+				SystemStatus:      &SystemStatus{},
+				Config:            &SyncthingConfig{},
+				APIConfig:         &APIConfig{},
+				logger:            logger.WithName("syncthing"),
+			}
 		})
 
 		It("owner exists on mover", func() {
@@ -532,14 +541,16 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 
 			When("Syncthing server exists", func() {
 				var ts *httptest.Server
-				var s SyncthingConfig
+				var serverSyncthingConfig SyncthingConfig
+				var apiKeys *corev1.Secret
+				var myID string = "test"
 
 				JustBeforeEach(func() {
-					sConfig := SyncthingConfig{
+					serverSyncthingConfig = SyncthingConfig{
 						Version: 10,
 					}
 					sStatus := SystemStatus{
-						MyID: "test",
+						MyID: myID,
 					}
 
 					sConnections := SystemConnections{
@@ -550,11 +561,10 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 						switch r.URL.Path {
 						case "/rest/config":
 							if r.Method == "GET" {
-								res := sConfig
-								resBytes, _ := json.Marshal(res)
+								resBytes, _ := json.Marshal(serverSyncthingConfig)
 								fmt.Fprintln(w, string(resBytes))
 							} else if r.Method == "PUT" {
-								err := json.NewDecoder(r.Body).Decode(&s)
+								err := json.NewDecoder(r.Body).Decode(&serverSyncthingConfig)
 								if err != nil {
 									http.Error(w, "Error decoding request body", http.StatusBadRequest)
 									return
@@ -579,6 +589,19 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					mover.syncthing.APIConfig.APIURL = ts.URL
 					mover.syncthing.APIConfig.Client = ts.Client()
 					mover.syncthing.APIConfig.APIKey = "test"
+
+					// create apikeys secret here so we can use it in the tests
+					apiKeys = &corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "volsync-" + mover.owner.GetName(),
+							Namespace: ns.Name,
+						},
+						Data: map[string][]byte{
+							"apikey":   []byte("my-secret-apikey-do-not-steal"),
+							"username": []byte("gcostanza"),
+							"password": []byte("bosco"),
+						},
+					}
 				})
 
 				JustAfterEach(func() {
@@ -599,22 +622,10 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					}
 					err := mover.syncthing.UpdateSyncthingConfig()
 					Expect(err).To(BeNil())
-					Expect(s.Version).To(Equal(9))
+					Expect(serverSyncthingConfig.Version).To(Equal(9))
 				})
 
 				It("Ensures it's configured", func() {
-					apiKeys := &corev1.Secret{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "volsync-" + mover.owner.GetName(),
-							Namespace: ns.Name,
-						},
-						Data: map[string][]byte{
-							"apikey":   []byte("my-secret-apikey-do-not-steal"),
-							"username": []byte("gcostanza"),
-							"password": []byte("bosco"),
-						},
-					}
-
 					mover.peerList = []volsyncv1alpha1.SyncthingPeer{
 						{
 							Address: "/tcp/127.0.0.1/22000",
@@ -633,10 +644,9 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 						expected := SyncthingDevice{
 							DeviceID:   peer.ID,
 							Addresses:  []string{peer.Address},
-							Name:       fmt.Sprintf("Syncthing Device Configured by Volsync: %v", peer.ID),
 							Introducer: peer.Introducer,
 						}
-						Expect(s.Devices[i]).To(Equal(expected))
+						Expect(serverSyncthingConfig.Devices[i]).To(Equal(expected))
 					}
 				})
 
@@ -685,6 +695,56 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					Expect(err).To(BeNil())
 				})
 
+				Context("VolSync is improperly configuring Syncthing", func() {
+					JustBeforeEach(func() {
+					})
+
+					When("VolSync adds its own Syncthing instance to the mover's peerList", func() {
+						It("errors", func() {
+							// set the peerlist to itself
+							mover.peerList = []volsyncv1alpha1.SyncthingPeer{
+								{
+									ID:      myID,
+									Address: "/ip4/127.0.0.1/tcp/22000",
+								},
+							}
+							err := mover.ensureIsConfigured(apiKeys)
+							Expect(err).To(HaveOccurred())
+						})
+					})
+
+					When("VolSync tries to add already-introduced peers to Syncthing", func() {
+						var introducedPeerID string
+						JustBeforeEach(func() {
+							// set Syncthing to have an introduced peer
+							introducedPeerID = "pied-piper"
+							mover.syncthing.Config.Devices = []SyncthingDevice{
+								{
+									DeviceID:     introducedPeerID,
+									Addresses:    []string{"/ip4/127.0.0.1/tcp/22000"},
+									Name:         "introduced device",
+									Introducer:   true,
+									IntroducedBy: "hooli",
+								},
+							}
+							err := mover.syncthing.UpdateSyncthingConfig()
+							Expect(err).To(BeNil())
+
+						})
+
+						It("errors", func() {
+							// set the peerlist to itself
+							mover.peerList = []volsyncv1alpha1.SyncthingPeer{
+								{
+									ID:      introducedPeerID,
+									Address: "/ip4/127.0.0.1/tcp/22000",
+								},
+							}
+							err := mover.ensureIsConfigured(apiKeys)
+							Expect(err).To(HaveOccurred())
+						})
+					})
+				})
 			})
 		})
 
@@ -1086,17 +1146,6 @@ var _ = Describe("Syncthing utils", func() {
 				BeforeEach(func() {
 					// clear Syncthing's device list and make sure that we can still find the self device
 					syncthing.Config.Devices = []SyncthingDevice{}
-				})
-
-				It("adding itself has no effect", func() {
-					// pass in a peerList containing an entry with our own ID
-					syncthing.UpdateDevices([]v1alpha1.SyncthingPeer{
-						{
-							ID:      syncthing.SystemStatus.MyID,
-							Address: "/ip6/::1/tcp/22000/quic",
-						},
-					})
-					Expect(syncthing.Config.Devices).To(HaveLen(0))
 				})
 
 				It("only reconfigures when other syncthing devices are provided", func() {

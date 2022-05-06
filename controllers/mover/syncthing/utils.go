@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -19,27 +18,23 @@ import (
 
 // UpdateDevices Updates the Syncthing's connected devices with the provided peerList.
 func (st *Syncthing) UpdateDevices(peerList []v1alpha1.SyncthingPeer) {
-	st.logger.V(4).Info("Updating devices", "pseerlist", peerList)
+	st.logger.V(4).Info("Updating devices", "peerlist", peerList)
 
 	// update syncthing config based on the provided peerlist
 	newDevices := []SyncthingDevice{}
-	// add myself to the device list
+
+	// add myself and introduced devices to the device list
 	for _, device := range st.Config.Devices {
-		if device.DeviceID == st.SystemStatus.MyID {
+		if device.DeviceID == st.SystemStatus.MyID || device.IntroducedBy != "" {
 			newDevices = append(newDevices, device)
-			break
 		}
 	}
 
+	// Add the devices from the peerList to the device list
 	for _, device := range peerList {
-		// skip self
-		if device.ID == st.SystemStatus.MyID {
-			continue
-		}
 		stDeviceToAdd := SyncthingDevice{
 			DeviceID:   device.ID,
 			Addresses:  []string{device.Address},
-			Name:       fmt.Sprintf("Syncthing Device Configured by Volsync: %v", device.ID),
 			Introducer: device.Introducer,
 		}
 		st.logger.V(4).Info("Adding device: %+v\n", stDeviceToAdd)
@@ -49,21 +44,23 @@ func (st *Syncthing) UpdateDevices(peerList []v1alpha1.SyncthingPeer) {
 	st.Config.Devices = newDevices
 	st.logger.V(4).Info("Updated devices", "devices", st.Config.Devices)
 
-	// update the folders
-	st.UpdateFolders()
+	// update folders with the new devices
+	st.updateFolders()
 }
 
-// UpdateFolders Updates the Syncthing folders to be shared with its set of devices.
-func (st *Syncthing) UpdateFolders() {
+// updateFolders Updates all of Syncthing's folders to be shared with all configured devices.
+func (st *Syncthing) updateFolders() {
 	// share the current folder(s) with the new devices
 	var newFolders = []SyncthingFolder{}
 	for _, folder := range st.Config.Folders {
 		// copy folder & reset
 		newFolder := folder
 		newFolder.Devices = []FolderDeviceConfiguration{}
+
 		for _, device := range st.Config.Devices {
 			newFolder.Devices = append(newFolder.Devices, FolderDeviceConfiguration{
-				DeviceID: device.DeviceID,
+				DeviceID:     device.DeviceID,
+				IntroducedBy: device.IntroducedBy,
 			})
 		}
 		newFolders = append(newFolders, newFolder)
@@ -82,7 +79,7 @@ func (st *Syncthing) NeedsReconfigure(nodeList []v1alpha1.SyncthingPeer) bool {
 		},
 	}
 
-	// add all other devices
+	// add all of the other devices in the provided nodeList
 	for _, device := range nodeList {
 		// avoid self
 		if device.ID == st.SystemStatus.MyID {
@@ -101,10 +98,11 @@ func (st *Syncthing) NeedsReconfigure(nodeList []v1alpha1.SyncthingPeer) bool {
 	}
 	// add the rest of devices to the map
 	for _, device := range st.Config.Devices {
-		// avoid adding self
-		if device.DeviceID == st.SystemStatus.MyID {
+		// ignore self and introduced devices
+		if device.DeviceID == st.SystemStatus.MyID || device.IntroducedBy != "" {
 			continue
 		}
+
 		currentDevs[device.DeviceID] = v1alpha1.SyncthingPeer{
 			ID:      device.DeviceID,
 			Address: device.Addresses[0],
@@ -123,6 +121,65 @@ func (st *Syncthing) NeedsReconfigure(nodeList []v1alpha1.SyncthingPeer) bool {
 		}
 	}
 	return false
+}
+
+// collectIntroduced Returns a map of DeviceID -> Device for devices which have been introduced to us by another node.
+func (st *Syncthing) collectIntroduced() map[string]SyncthingDevice {
+	introduced := map[string]SyncthingDevice{}
+	for _, device := range st.Config.Devices {
+		if device.IntroducedBy != "" {
+			introduced[device.DeviceID] = device
+		}
+	}
+	return introduced
+}
+
+// PeerListContainsIntroduced Returns 'true' if the given peerList contains a node
+// which has been introduced to us by another Syncthing instance, 'false' otherwise.
+func (st *Syncthing) PeerListContainsIntroduced(peerList []v1alpha1.SyncthingPeer) bool {
+	introducedSet := st.collectIntroduced()
+
+	// check if the peerList contains an introduced node
+	for _, peer := range peerList {
+		if _, ok := introducedSet[peer.ID]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// PeerListContainsSelf Returns 'true' if the given peerList contains the self node, 'false' otherwise.
+func (st *Syncthing) PeerListContainsSelf(peerList []v1alpha1.SyncthingPeer) bool {
+	for _, peer := range peerList {
+		if peer.ID == st.SystemStatus.MyID {
+			return true
+		}
+	}
+	return false
+}
+
+// GetIntroducedAndSelfFromFolder Returns a a list of those FolderDeviceConfiguration
+// objects which are either us or have been introduced by us.
+func (st *Syncthing) GetIntroducedAndSelfFromFolder(folder SyncthingFolder) []FolderDeviceConfiguration {
+	// filter out the devices which are not us or have been introduced by us
+	var devices []FolderDeviceConfiguration
+	for _, device := range folder.Devices {
+		if device.DeviceID == st.SystemStatus.MyID || device.IntroducedBy != "" {
+			devices = append(devices, device)
+		}
+	}
+	return devices
+}
+
+// GetDeviceFromID Returns the device with the given ID,
+// along with a boolean indicating whether the device was found.
+func (st *Syncthing) GetDeviceFromID(deviceID string) (SyncthingDevice, bool) {
+	for _, device := range st.Config.Devices {
+		if device.DeviceID == deviceID {
+			return device, true
+		}
+	}
+	return SyncthingDevice{}, false
 }
 
 // FetchLatestInfo Updates the Syncthing object with the latest data fetched from the Syncthing API.
@@ -196,6 +253,16 @@ func (st *Syncthing) FetchConnectedStatus() error {
 		st.SystemConnections = responseBody
 	}
 	return err
+}
+
+// GetDeviceName Returns the name of the device with the given ID, if one is provided.
+func (st *Syncthing) GetDeviceName(deviceID string) string {
+	for _, device := range st.Config.Devices {
+		if device.DeviceID == deviceID {
+			return device.Name
+		}
+	}
+	return ""
 }
 
 // jsonRequest performs a request to the Syncthing API and returns the response body.

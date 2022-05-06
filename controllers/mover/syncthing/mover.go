@@ -608,12 +608,27 @@ func (m *Mover) configureSyncthingAPIClient(apiSecret *corev1.Secret) error {
 
 // ensureIsConfigured Makes sure that the Syncthing config is up-to-date.
 func (m *Mover) ensureIsConfigured(apiSecret *corev1.Secret) error {
+	// FIXME: ignore configuring the introduced devices, these should be handled by the introducers
+	// This function should make sure to ignore all of devices (leave them as they are) introduced to us by other nodes.
+	// This is important because Syncthing will otherwise reconfigure them on its own, creating a cycle where
+	// VolSync removes a device, only to be re-added by Syncthing, only to be removed again by VolSync, etc.
+
 	// reconciles the Syncthing object
 	err := m.syncthing.FetchLatestInfo()
 	if err != nil {
 		return err
 	}
 	m.logger.V(4).Info("Syncthing config", "config", m.syncthing.Config)
+
+	// make sure that the spec doesn't try to add a previously introduced node
+	if m.syncthing.PeerListContainsIntroduced(m.peerList) {
+		return fmt.Errorf("the peer list contains a node that has been introduced to us by another node")
+	}
+
+	// make sure that the spec isn't adding itself as a peer
+	if m.syncthing.PeerListContainsSelf(m.peerList) {
+		return fmt.Errorf("the peer list contains the node itself")
+	}
 
 	// check if the syncthing is configured
 	hasChanged := false
@@ -672,13 +687,25 @@ func (m *Mover) ensureStatusIsUpdated(dataSVC *corev1.Service) error {
 			continue
 		}
 
+		// obtain the device
+		device, ok := m.syncthing.GetDeviceFromID(deviceID)
+		if !ok {
+			m.logger.Error(fmt.Errorf("could not find device with ID %s", deviceID), "error getting device info")
+			continue
+		}
+
+		// get the device info
 		tcpAddress := AsTCPAddress(connectionInfo.Address)
+		introducedBy := device.IntroducedBy
+		deviceName := device.Name
 
 		// check connection status
 		m.status.Peers = append(m.status.Peers, v1alpha1.SyncthingPeerStatus{
-			ID:        deviceID,
-			Address:   tcpAddress,
-			Connected: connectionInfo.Connected,
+			ID:           deviceID,
+			Address:      tcpAddress,
+			Connected:    connectionInfo.Connected,
+			DeviceName:   deviceName,
+			IntroducedBy: introducedBy,
 		})
 	}
 	return nil

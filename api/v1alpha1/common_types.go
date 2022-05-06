@@ -70,10 +70,14 @@ type SyncthingPeer struct {
 }
 
 type SyncthingPeerStatus struct {
-	// TCP address of the Syncthing peer
+	// Address Represents the TCP address of the Syncthing peer.
 	Address string `json:"address"`
-	// Syncthing ID of the peer
+	// ID Is the peer's Syncthing ID.
 	ID string `json:"ID"`
-	// Whether the peer is currently connected
+	// Connected Is a flag indicating whether peer is currently connected.
 	Connected bool `json:"connected"`
+	// IntroducedBy Is the ID of the peer that introduced this peer.
+	IntroducedBy string `json:"introducedBy,omitempty"`
+	// DeviceName Is a friendly name for the given device.
+	DeviceName string `json:"deviceName,omitempty"`
 }
