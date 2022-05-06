@@ -167,7 +167,14 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 							Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), inst)).To(Succeed())
 							Expect(inst.Status).NotTo(BeNil())
 							Expect(inst.Status.Conditions).NotTo(BeNil())
-							Expect(inst.Status.NextSyncTime).NotTo(BeNil())
+							Eventually(func() bool {
+								inst := &volsyncv1alpha1.ReplicationDestination{}
+								if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), inst); err != nil {
+									return false
+								}
+								return inst.Status != nil && inst.Status.NextSyncTime != nil
+							}, maxWait, interval).Should(BeTrue())
+							//Expect(inst.Status.NextSyncTime).NotTo(BeNil())
 						})
 
 						It("Ensure LastSyncTime & LatestImage is set properly after reconciliation", func() {
@@ -433,11 +440,13 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 						// and then check status conditions
 						Eventually(func() *metav1.Condition {
 							_ = k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)
-							reconcileCondition := apimeta.FindStatusCondition(rd.Status.Conditions, volsyncv1alpha1.ConditionReconciled)
+							reconcileCondition := apimeta.FindStatusCondition(rd.Status.Conditions, volsyncv1alpha1.ConditionSynchronizing)
 							if reconcileCondition == nil {
 								return nil
 							}
-							if reconcileCondition.Status != metav1.ConditionTrue {
+							// Should be waiting for next manual sync
+							if reconcileCondition.Status != metav1.ConditionFalse ||
+								reconcileCondition.Reason != volsyncv1alpha1.SynchronizingReasonManual {
 								return nil
 							}
 							return reconcileCondition
@@ -531,14 +540,21 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 				// make sure that the condition is set to not be reconciled
 				inst := &volsyncv1alpha1.ReplicationDestination{}
 				// wait for replicationdestination to have a status
-				Eventually(func() *volsyncv1alpha1.ReplicationDestinationStatus {
+				Eventually(func() bool {
 					_ = k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), inst)
-					return inst.Status
-				}, duration, interval).Should(Not(BeNil()))
-				Expect(inst.Status.Conditions).ToNot(BeEmpty())
-				reconcileCondition := apimeta.FindStatusCondition(inst.Status.Conditions, volsyncv1alpha1.ConditionReconciled)
-				Expect(reconcileCondition).ToNot(BeNil())
-				Expect(reconcileCondition.Status).To(Equal(metav1.ConditionFalse))
+					if inst.Status == nil {
+						return false
+					}
+					reconcileCondition := apimeta.FindStatusCondition(inst.Status.Conditions, volsyncv1alpha1.ConditionSynchronizing)
+					if reconcileCondition == nil {
+						return false
+					}
+					if reconcileCondition.Status != metav1.ConditionFalse ||
+						reconcileCondition.Reason != volsyncv1alpha1.SynchronizingReasonError {
+						return false
+					}
+					return true
+				}, duration, interval).Should(BeTrue())
 			})
 		})
 

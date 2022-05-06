@@ -111,7 +111,7 @@ test: manifests generate lint envtest helm-lint ginkgo ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" $(GINKGO) $(TEST_ARGS) $(TEST_PACKAGES)
 
 .PHONY: test-e2e
-test-e2e: kuttl ## Run e2e tests. Requires cluster w/ VolSync already installed
+test-e2e: kuttl cli ## Run e2e tests. Requires cluster w/ VolSync already installed
 	cd test-kuttl && $(KUTTL) test
 	rm -f test-kuttl/kubeconfig
 

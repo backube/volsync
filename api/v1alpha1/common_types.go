@@ -51,22 +51,12 @@ const (
 )
 
 const (
-	// ConditionReconciled is a status condition type that indicates whether the
-	// CR has been successfully reconciled
-	ConditionReconciled string = "Reconciled"
-	// ReconciledReasonComplete indicates the CR was successfully reconciled
-	ReconciledReasonComplete string = "ReconcileComplete"
-	// ReconciledReasonError indicates an error was encountered while
-	// reconciling the CR
-	ReconciledReasonError string = "ReconcileError"
-)
-
-const (
 	ConditionSynchronizing     string = "Synchronizing"
 	SynchronizingReasonSync    string = "SyncInProgress"
 	SynchronizingReasonSched   string = "WaitingForSchedule"
 	SynchronizingReasonManual  string = "WaitingForManual"
 	SynchronizingReasonCleanup string = "CleaningUp"
+	SynchronizingReasonError   string = "Error"
 )
 
 type SyncthingPeer struct {

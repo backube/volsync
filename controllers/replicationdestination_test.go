@@ -9,7 +9,6 @@ import (
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/prometheus/client_golang/prometheus"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -19,112 +18,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
-
-//nolint:dupl
-var _ = Describe("Destination trigger", func() {
-	var rd *volsyncv1alpha1.ReplicationDestination
-	logger := zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
-
-	BeforeEach(func() {
-		rd = &volsyncv1alpha1.ReplicationDestination{
-			Status: &volsyncv1alpha1.ReplicationDestinationStatus{},
-		}
-	})
-
-	Context("When a schedule is specified", func() {
-		var schedule = "0 0 1 1 *"
-		metrics := newVolSyncMetrics(prometheus.Labels{"obj_name": "a", "obj_namespace": "b", "role": "c", "method": "d"})
-		BeforeEach(func() {
-			rd.Spec.Trigger = &volsyncv1alpha1.ReplicationDestinationTriggerSpec{
-				Schedule: &schedule,
-			}
-		})
-		It("if never synced, sync now", func() {
-			rd.Status.LastSyncTime = nil
-			b, e := awaitNextSyncDestination(rd, metrics, logger)
-			Expect(b).To(BeTrue())
-			Expect(e).To(BeNil())
-			Expect(rd.Status.NextSyncTime).To(Not(BeNil()))
-		})
-		It("if synced long ago, sync now", func() {
-			when := metav1.Time{Time: time.Now().Add(-50000 * time.Hour)}
-			rd.Status.LastSyncTime = &when
-			b, e := awaitNextSyncDestination(rd, metrics, logger)
-			Expect(b).To(BeTrue())
-			Expect(e).To(BeNil())
-			Expect(rd.Status.NextSyncTime).To(Not(BeNil()))
-		})
-		It("if recently synced, wait", func() {
-			when := metav1.Time{Time: time.Now().Add(-1 * time.Minute)}
-			rd.Status.LastSyncTime = &when
-			b, e := awaitNextSyncDestination(rd, metrics, logger)
-			Expect(b).To(BeFalse())
-			Expect(e).To(BeNil())
-			Expect(rd.Status.NextSyncTime).To(Not(BeNil()))
-		})
-	})
-
-	Context("When a manual trigger is specified", func() {
-		BeforeEach(func() {
-			rd.Spec.Trigger = &volsyncv1alpha1.ReplicationDestinationTriggerSpec{
-				Manual: "1",
-			}
-		})
-		metrics := newVolSyncMetrics(prometheus.Labels{"obj_name": "a", "obj_namespace": "b", "role": "c", "method": "d"})
-		It("if never synced a manual trigger, sync now", func() {
-			rd.Status.LastManualSync = ""
-			b, e := awaitNextSyncDestination(rd, metrics, logger)
-			Expect(b).To(BeTrue())
-			Expect(e).To(BeNil())
-			Expect(rd.Status.NextSyncTime).To(BeNil())
-		})
-		It("if already synced the current manual trigger, stay idle", func() {
-			rd.Status.LastManualSync = rd.Spec.Trigger.Manual
-			b, e := awaitNextSyncDestination(rd, metrics, logger)
-			Expect(b).To(BeFalse())
-			Expect(e).To(BeNil())
-			Expect(rd.Status.NextSyncTime).To(BeNil())
-		})
-		It("if already synced a previous manual trigger, sync now", func() {
-			rd.Status.LastManualSync = "2"
-			b, e := awaitNextSyncDestination(rd, metrics, logger)
-			Expect(b).To(BeTrue())
-			Expect(e).To(BeNil())
-			Expect(rd.Status.NextSyncTime).To(BeNil())
-		})
-	})
-
-	Context("When the trigger is empty", func() {
-		metrics := newVolSyncMetrics(prometheus.Labels{"obj_name": "a", "obj_namespace": "b", "role": "c", "method": "d"})
-		It("if never synced, sync now", func() {
-			rd.Status.LastSyncTime = nil
-			b, e := awaitNextSyncDestination(rd, metrics, logger)
-			Expect(b).To(BeTrue())
-			Expect(e).To(BeNil())
-			Expect(rd.Status.NextSyncTime).To(BeNil())
-		})
-		It("if synced long ago, sync now", func() {
-			when := metav1.Time{Time: time.Now().Add(-5 * time.Hour)}
-			rd.Status.LastSyncTime = &when
-			b, e := awaitNextSyncDestination(rd, metrics, logger)
-			Expect(b).To(BeTrue())
-			Expect(e).To(BeNil())
-			Expect(rd.Status.NextSyncTime).To(BeNil())
-		})
-		It("if recently synced, sync now", func() {
-			when := metav1.Time{Time: time.Now().Add(-1 * time.Minute)}
-			rd.Status.LastSyncTime = &when
-			b, e := awaitNextSyncDestination(rd, metrics, logger)
-			Expect(b).To(BeTrue())
-			Expect(e).To(BeNil())
-			Expect(rd.Status.NextSyncTime).To(BeNil())
-		})
-	})
-})
 
 var _ = Describe("ReplicationDestination", func() {
 	var ctx = context.Background()
@@ -185,9 +81,9 @@ var _ = Describe("ReplicationDestination", func() {
 			}, duration, interval).ShouldNot(BeNil())
 			Expect(len(rd.Status.Conditions)).To(Equal(1))
 			errCond := rd.Status.Conditions[0]
-			Expect(errCond.Type).To(Equal(volsyncv1alpha1.ConditionReconciled))
+			Expect(errCond.Type).To(Equal(volsyncv1alpha1.ConditionSynchronizing))
 			Expect(errCond.Status).To(Equal(metav1.ConditionFalse))
-			Expect(errCond.Reason).To(Equal(volsyncv1alpha1.ReconciledReasonError))
+			Expect(errCond.Reason).To(Equal(volsyncv1alpha1.SynchronizingReasonError))
 			Expect(errCond.Message).To(ContainSubstring("a replication method must be specified"))
 		})
 	})
@@ -248,12 +144,15 @@ var _ = Describe("ReplicationDestination", func() {
 			var cond *metav1.Condition
 			Eventually(func() *metav1.Condition {
 				_ = k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)
-				cond = apimeta.FindStatusCondition(rd.Status.Conditions, volsyncv1alpha1.ConditionReconciled)
-
+				cond = apimeta.FindStatusCondition(rd.Status.Conditions, volsyncv1alpha1.ConditionSynchronizing)
+				if cond == nil {
+					return nil
+				}
+				if cond.Status != metav1.ConditionFalse || cond.Reason != volsyncv1alpha1.SynchronizingReasonError {
+					return nil
+				}
 				return cond
 			}, maxWait, interval).Should(Not(BeNil()))
-			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
-			Expect(cond.Reason).To(Equal(volsyncv1alpha1.ReconciledReasonError))
 		})
 	})
 
@@ -690,11 +589,14 @@ var _ = Describe("ReplicationDestination", func() {
 				// and then check status conditions
 				Eventually(func() *metav1.Condition {
 					_ = k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)
-					reconcileCondition := apimeta.FindStatusCondition(rd.Status.Conditions, volsyncv1alpha1.ConditionReconciled)
+					reconcileCondition := apimeta.FindStatusCondition(rd.Status.Conditions, volsyncv1alpha1.ConditionSynchronizing)
 					if reconcileCondition == nil {
 						return nil
 					}
-					if reconcileCondition.Status != metav1.ConditionTrue {
+					if reconcileCondition.Status != metav1.ConditionFalse {
+						return nil
+					}
+					if reconcileCondition.Reason != volsyncv1alpha1.SynchronizingReasonManual {
 						return nil
 					}
 					return reconcileCondition
