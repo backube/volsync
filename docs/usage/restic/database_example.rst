@@ -351,7 +351,7 @@ For ``pvc-b``:
    stringData:
       # The repository url with pvc-b-backup as the subpath under the restic-repo bucket
       RESTIC_REPOSITORY: s3:http://minio.minio.svc.cluster.local:9000/restic-repo/pvc-b-backup
-      # The repository encryption key - using a different key from pvc-a.  This will not prevent ovwrwrites
+      # The repository encryption key - using a different key from pvc-a.  This will not prevent overwrites
       # or deletes of the data for others who have access to the bucket, but will prevent reads/writes
       # to the restic data in the pvc-b-backup folder for those without this encryption key.
       RESTIC_PASSWORD: my-secure-restic-password-pvc-b
