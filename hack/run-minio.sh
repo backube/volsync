@@ -25,8 +25,8 @@ else
 fi
 
 helm install --create-namespace -n "${MINIO_NAMESPACE}" \
-    --set accessKey.password=access \
-    --set secretKey.password=password \
+    --set auth.rootUser=access \
+    --set auth.rootPassword=password \
     --set defaultBuckets=mybucket \
     "${SECURITY_ARGS[@]}" \
     --version 9.0.5 \

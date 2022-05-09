@@ -64,7 +64,7 @@ An example source configuration is shown below:
       # The configuration section of the rclone config file to use
       rcloneConfigSection: "aws-s3-bucket"
       # The path to the object bucket
-      rcloneDestPath: "volsync-test-bucket"
+      rcloneDestPath: "volsync-test-bucket/mysql-pv-claim"
       # Secret holding the rclone configuration
       rcloneConfig: "rclone-secret"
       # Method used to generate the PiT copy
@@ -100,7 +100,7 @@ Once the ``ReplicationSource`` is deployed, VolSync updates the ``nextSyncTime``
       copyMethod:               Snapshot
       rcloneConfig:             rclone-secret
       rcloneConfigSection:      aws-s3-bucket
-      rcloneDestPath:           volsync-test-bucket
+      rcloneDestPath:           volsync-test-bucket/mysql-pv-claim
       storageClassName:         my-sc-name
       volumeSnapshotClassName:  my-vsc-name
     sourcePVC:              mysql-pv-claim
@@ -133,6 +133,19 @@ rcloneDestPath
    This is the remote storage location in which the persistent data will
    be uploaded.
 
+   Normally the root of this path is the storage bucket name. Any sub paths
+   would be created as folders in the storage bucket.
+
+   In the example above, using ``volsync-test-bucket/mysql-pv-claim`` means that
+   the source pvc will be replicated to the folder called ``mysql-pv-claim`` in
+   the bucket called ``volsync-test-bucket``.
+
+   If a unique bucket is used for each PVC to be replicated, then a path with
+   simply the bucket name (such as ``volsync-test-bucket``) is sufficient.
+   However if the same bucket will be used for multiple different PVCs (and
+   therefore multiple ReplicationSources), a unique path should be used for each
+   PVC/ReplicationSource.
+
 rcloneConfig
    This specifies the name of a secret to be used to retrieve the Rclone
    configuration. The :doc:`content of the Secret<./rclone-secret>` is an
@@ -159,7 +172,7 @@ An example destination configuration is shown here:
       schedule: "3,9,15,21,27,33,39,45,51,57 * * * *"
     rclone:
       rcloneConfigSection: "aws-s3-bucket"
-      rcloneDestPath: "volsync-test-bucket"
+      rcloneDestPath: "volsync-test-bucket/mysql-pvc-claim"
       rcloneConfig: "rclone-secret"
       copyMethod: Snapshot
       accessModes: [ReadWriteOnce]
@@ -250,7 +263,7 @@ rcloneConfigSection
 
 rcloneDestPath
    This is the remote storage location in which the persistent data will
-   be downloaded.
+   be downloaded. This should match the rcloneDestPath used on the ReplicationSource.
 
 rcloneConfig
    This specifies the secret to be used. The secret contains an ``rclone.conf``
