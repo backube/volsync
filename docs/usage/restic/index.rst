@@ -51,7 +51,7 @@ restore (ReplicationDestination). The key names in this configuration Secret
 directly correspond to the environment variable names supported by Restic.
 
 The path used in the ``RESTIC_REPOSITORY`` is the s3 bucket but can optionally
-contain a folder name or folder names in the bucket as well.  This can be useful
+contain a folder name within the bucket as well.  This can be useful
 if multiple PVCs are to be backed up to the same S3 bucket.
 
 As an example one restic-config secret could use:
