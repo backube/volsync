@@ -130,10 +130,12 @@ them
 * Go
   * Change the version number in [operator.yml](.github/workflows/operator.yml)
   * Change the version number in [go.mod](go.mod)
+    * Run `go mod tidy -go=X.Y`
   * Change the version number for the builder images in
     * [Dockerfile](Dockerfile)
     * [mover-rclone/Dockerfile](mover-rclone/Dockerfile)
     * [mover-restic/Dockerfile](mover-restic/Dockerfile)
+    * [mover-syncthing/Dockerfile](mover-syncthing/Dockerfile)
   * Update the OpenShift CI builder images & image substitution rules
 * [golangci-lint](https://github.com/golangci/golangci-lint/releases)
   * Change the version number in [Makefile](Makefile)

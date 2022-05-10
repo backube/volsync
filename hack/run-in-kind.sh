@@ -11,6 +11,7 @@ make docker-build cli
 make -C mover-rclone image
 make -C mover-restic image
 make -C mover-rsync image
+make -C mover-syncthing image
 
 # Load the images into kind
 # We are using a special tag that should never be pushed to a repo so that it's
@@ -21,6 +22,7 @@ IMAGES=(
         "quay.io/backube/volsync-mover-rclone"
         "quay.io/backube/volsync-mover-restic"
         "quay.io/backube/volsync-mover-rsync"
+        "quay.io/backube/volsync-mover-syncthing"
 )
 for i in "${IMAGES[@]}"; do
     docker tag "${i}:latest" "${i}:${KIND_TAG}"
