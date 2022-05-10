@@ -1,5 +1,5 @@
 # Build rclone
-FROM golang:1.17 as builder
+FROM golang:1.18 as builder
 USER root
 
 WORKDIR /workspace
