@@ -1,5 +1,5 @@
 # Build the Syncthing image from Golang
-FROM registry.access.redhat.com/ubi8/go-toolset as builder
+FROM golang:1.17 as builder
 USER root
 
 # source directory
@@ -25,7 +25,8 @@ ENV CGO_ENABLED=1
 RUN go run build.go -no-upgrade
 
 # Verify that FIPS crypto libs are accessible
-RUN nm /workspace/syncthing/bin/syncthing | grep -q goboringcrypto
+# Check removed since official images don't support boring crypto
+#RUN nm /workspace/syncthing/bin/syncthing | grep -q goboringcrypto
 
 # Build final container
 FROM registry.access.redhat.com/ubi8-minimal

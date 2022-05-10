@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM registry.access.redhat.com/ubi8/go-toolset as builder
+FROM golang:1.17 as builder
 USER root
 
 WORKDIR /workspace
@@ -22,7 +22,8 @@ ARG version_arg="(unknown)"
 RUN GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o manager -ldflags "-X=main.volsyncVersion=${version_arg}" main.go
 
 # Verify that FIPS crypto libs are accessible
-RUN nm manager | grep -q goboringcrypto
+# Check removed since official images don't support boring crypto
+#RUN nm manager | grep -q goboringcrypto
 
 # Final container
 FROM registry.access.redhat.com/ubi8-minimal
