@@ -11,7 +11,7 @@ include ./version.mk
 # Helper software versions
 GOLANGCI_VERSION := v1.45.2
 HELM_VERSION := v3.7.1
-OPERATOR_SDK_VERSION := v1.17.0
+OPERATOR_SDK_VERSION := v1.18.0
 KUTTL_VERSION := 0.11.1
 
 # We don't vendor modules. Enforce that behavior
@@ -46,6 +46,17 @@ IMAGE_TAG_BASE ?= quay.io/backube/volsync
 # BUNDLE_IMG defines the image:tag used for the bundle.
 # You can use it as an arg. (E.g make bundle-build BUNDLE_IMG=<some-registry>/<project-name-bundle>:<tag>)
 BUNDLE_IMG ?= $(IMAGE_TAG_BASE)-bundle:v$(VERSION)
+
+# BUNDLE_GEN_FLAGS are the flags passed to the operator-sdk generate bundle command
+BUNDLE_GEN_FLAGS ?= -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
+
+# USE_IMAGE_DIGESTS defines if images are resolved via tags or digests
+# You can enable this value if you would like to use SHA Based Digests
+# To enable set flag to true
+USE_IMAGE_DIGESTS ?= false
+ifeq ($(USE_IMAGE_DIGESTS), true)
+	BUNDLE_GEN_FLAGS += --use-image-digests
+endif
 
 # Image URL to use all building/pushing image targets
 IMG ?= quay.io/backube/volsync:latest
@@ -222,7 +233,7 @@ endef
 bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
 	$(OPERATOR_SDK) generate kustomize manifests -q
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
-	$(KUSTOMIZE) build config/manifests | $(OPERATOR_SDK) generate bundle -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
+	$(KUSTOMIZE) build config/manifests | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS)
 	sed -i "s/MIN_KUBE_VERSION/$(MIN_KUBE_VERSION)/" bundle/manifests/volsync.clusterserviceversion.yaml
 	$(OPERATOR_SDK) bundle validate ./bundle
 
