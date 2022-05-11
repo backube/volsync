@@ -11,7 +11,7 @@ include ./version.mk
 # Helper software versions
 GOLANGCI_VERSION := v1.45.2
 HELM_VERSION := v3.7.1
-OPERATOR_SDK_VERSION := v1.19.0
+OPERATOR_SDK_VERSION := v1.20.0
 KUTTL_VERSION := 0.11.1
 
 # We don't vendor modules. Enforce that behavior
