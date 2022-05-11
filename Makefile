@@ -235,7 +235,7 @@ bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metada
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
 	$(KUSTOMIZE) build config/manifests | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS)
 	sed -i "s/MIN_KUBE_VERSION/$(MIN_KUBE_VERSION)/" bundle/manifests/volsync.clusterserviceversion.yaml
-	$(OPERATOR_SDK) bundle validate ./bundle
+	$(OPERATOR_SDK) bundle validate --select-optional suite=operatorframework --optional-values k8s-version=$(ENVTEST_K8S_VERSION) ./bundle
 
 .PHONY: bundle-build
 bundle-build: ## Build the bundle image.
