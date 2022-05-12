@@ -22,19 +22,17 @@ annotations:  # https://artifacthub.io/docs/topics/annotations/helm/
   # Kinds: added, changed, deprecated, removed, fixed, and security
   artifacthub.io/changes: |
     - kind: added
-      description: Introduced internal "Mover" interface to make adding/maintaining data movers more modular
+      description: Add ability to specify container images by SHA hash
     - kind: added
-      description: Added a Condition on the CRs to indicate whether they are synchronizing or idle
-    - kind: added
-      description: Rclone - Added unit tests
+      description: Added additional field LastSyncStartTime to CRD status
     - kind: changed
-      description: Renamed project - Scribe is now VolSync
+      description: Rename CopyMethod None to Direct to make it more descriptive
     - kind: changed
-      description: CRD group has changed from `scribe.backube` to `volsync.backube`
+      description: Switch snapshot API version from snapshot.storage.k8s.io/v1beta1 to snapshot.storage.k8s.io/v1 so that VolSync remains compatible w/ Kubernetes 1.24+
     - kind: changed
-      description: CRD status Conditions changed from operator-lib to the implementation in apimachinery
+      description: Minimum Kubernetes version is now 1.20
     - kind: fixed
-      description: Restic - Fixed error when the volume is empty
+      description: Resources weren't always removed after each sync iteration
   artifacthub.io/crds: |
     - kind: ReplicationDestination
       version: v1alpha1
@@ -58,10 +56,10 @@ kubeVersion: "^1.20.0-0"
 # This is the chart version. This version number should be incremented each time
 # you make changes to the chart and its templates, including the app version.
 # Versions are expected to follow Semantic Versioning (https://semver.org/)
-version: "0.3.0"
+version: "0.4.0"
 
 # This is the version number of the application being deployed. This version
 # number should be incremented each time you make changes to the application.
 # Versions are not expected to follow Semantic Versioning. They should reflect
 # the version the application is using. It is recommended to use it with quotes.
-appVersion: "0.3.0"
+appVersion: "0.4.0"
