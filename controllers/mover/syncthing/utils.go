@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -208,7 +209,8 @@ func (st *Syncthing) UpdateSyncthingConfig() error {
 	return err
 }
 
-// FetchSyncthingConfig fetches the Syncthing config and updates the config.
+// FetchSyncthingConfig Fetches the latest configuration data from the Syncthing API
+// and uses it to update the local Syncthing object.
 func (st *Syncthing) FetchSyncthingConfig() error {
 	responseBody := &SyncthingConfig{
 		Devices: []SyncthingDevice{},
@@ -300,8 +302,9 @@ func (st *Syncthing) jsonRequest(endpoint string, method string, requestBody int
 		return nil, err
 	}
 
-	if resp.StatusCode != 200 {
-		return nil, errors.New("HTTP status code is not 200")
+	// if there was an error, provide the information
+	if err := checkResponse(resp); err != nil {
+		return nil, err
 	}
 
 	// read body into response
@@ -375,4 +378,38 @@ func AsTCPAddress(addr string) string {
 		return addr
 	}
 	return "tcp://" + addr
+}
+
+// responseToBArray Takes a given HTTP Response object and returns the body as a byte array.
+// This function was extracted from the Syncthing repository
+// due to the overlapping functionality between our API access & the Syncthing CLI.
+// nolint:lll
+// see: https://github.com/syncthing/syncthing/blob/a162e8d9f926f3bcfb5deb7f9abbb960d40b1f5b/cmd/syncthing/cli/utils.go#L25
+func responseToBArray(response *http.Response) ([]byte, error) {
+	bytes, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
+	}
+	return bytes, response.Body.Close()
+}
+
+// checkResponse Returns an error if one exists in the response, or nil otherwise.
+// This function was extracted from the Syncthing repository
+// due to the overlapping functionality between our API access & the Syncthing CLI.
+// nolint:lll
+// see: https://github.com/syncthing/syncthing/blob/a162e8d9f926f3bcfb5deb7f9abbb960d40b1f5b/cmd/syncthing/cli/client.go#L158
+func checkResponse(response *http.Response) error {
+	if response.StatusCode == http.StatusNotFound {
+		return errors.New("invalid endpoint or API call")
+	} else if response.StatusCode == http.StatusUnauthorized {
+		return errors.New("invalid API key")
+	} else if response.StatusCode != http.StatusOK {
+		data, err := responseToBArray(response)
+		if err != nil {
+			return err
+		}
+		body := strings.TrimSpace(string(data))
+		return fmt.Errorf("unexpected HTTP status returned: %s\n%s", response.Status, body)
+	}
+	return nil
 }

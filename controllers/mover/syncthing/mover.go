@@ -608,7 +608,6 @@ func (m *Mover) configureSyncthingAPIClient(apiSecret *corev1.Secret) error {
 
 // ensureIsConfigured Makes sure that the Syncthing config is up-to-date.
 func (m *Mover) ensureIsConfigured(apiSecret *corev1.Secret) error {
-	// FIXME: ignore configuring the introduced devices, these should be handled by the introducers
 	// This function should make sure to ignore all of devices (leave them as they are) introduced to us by other nodes.
 	// This is important because Syncthing will otherwise reconfigure them on its own, creating a cycle where
 	// VolSync removes a device, only to be re-added by Syncthing, only to be removed again by VolSync, etc.

@@ -60,12 +60,12 @@ const (
 )
 
 type SyncthingPeer struct {
-	// TCP address of the Syncthing peer
+	// Address Is an address which is used to connect to the other Syncthing peer.
 	Address string `json:"address"`
-	// Syncthing ID of the peer
+	// ID Is the peer's Syncthing ID.
 	ID string `json:"ID"`
-	// Introducer flag determines whether this peer should
-	// introduce us to other peers sharing this volume
+	// Introducer is a flag which determines whether this peer should
+	// introduce us to other peers sharing this volume.
 	Introducer bool `json:"introducer"`
 }
 

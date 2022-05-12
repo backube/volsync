@@ -24,106 +24,80 @@ Any changes made to the PVC will be propagated to the rest of the peers sharing 
 How Syncthing Works In VolSync
 ==============================
 
-When a ``ReplicationSource`` is created and configured to sync a PVC with other peers, all of the connected peers will maintain their
+Syncthing connects to a cluster of other Syncthing devices that are all sharing the same synchronized volume.
+When one of the devices changes data, it will propagate the change to all the other devices.
+Syncthing also includes an introducer feature which allows one device to be connected to a cluster of other devices upon configuring a single introducer node.
+This can be used to create a hub-and-spoke model for replication, or any other kind of network.
+
+When a ReplicationSource is created and configured to sync a PVC with other peers, all of the connected peers will maintain their
 own Volume containing the synced data. To detect file changes, Syncthing employs two methods: a filesystem watcher, which notifies 
 Syncthing of any changes to the local filesystem, and a full filesystem scan which occurs routinely at a specified interval (default is an hour).
-
-In order to launch Syncthing, VolSync creates the following resources in the same namespace as the ``ReplicationSource``:
-
-- Source PVC to use as the Syncthing data source (provided by user)
-- Config PVC to persist Syncthing's identity and configuration data across restarts
-- Service exposing Syncthing's API which VolSync will use for communication
-- Service exposing Syncthing's data port that other devices can connect to
-- Opaque Secret containing the Syncthing API keys and SSL certificates
-- Deployment that launches Syncthing and connects it with the necessary components
+Syncthing itself is an "always-on" synchronization system, and so created ReplicationSources will never finish their syncs unless deleted.
 
 VolSync uses a custom-built Syncthing mover which disables the use of relay servers and global announce, and relying instead on 
 being provided with the addresses of other Syncthing peers directly.
+
 
 .. note::
     Syncthing is peer-to-peer technology which connects to other peers directly rather than going through intermediary servers.
     Because Syncthing lacks centralization, file conflicts are resolved by favoring the `most recent version <https://docs.syncthing.net/users/syncing.html#conflicting-changes>`_.
 
 
-Configuring a ReplicationSource
--------------------------------
+Communicating With Syncthing
+----------------------------
 
-A Basic Syncthing-based configuration consists of the source PVC to be synced, specified in ``.spec.sourcePVC``,
-and the type of service that you would like Syncthing to be exposed on.
+Unlike the other data movers, Syncthing never stops running. This changes our approach of controlling it to
+having Syncthing always be running, and communicating with it through it's REST API.
 
-Here's an example of a basic Syncthing-based ReplicationSource which syncs a PVC named ``todo-database`` and uses 
-a ``ClusterIP`` service to expose Syncthing's data port.
+Syncthing has a REST API which handles connections through HTTPS. In order to do this securely, 
+VolSync provisions a self-signed certificate and key for the Syncthing REST API, passing the generated
+certificate and key to Syncthing on first launch, and adding the Public Key PEM to VolSync's root CA bundle. 
+
+You can provide a custom HTTPS key/certificate pair by overriding the Secret which VolSync uses to store its
+communication credentials for Syncthing.
+
+An example of a Secret which overrides the default Syncthing credentials is shown below, all fields must be provided:
 
 .. code-block:: yaml
-  :caption: Minimal specification of a ReplicationSource using the Syncthing data mover
+  :caption: Kubernetes Secret preloading custom HTTPS certificates
 
-  ---
-  apiVersion: volsync.backube/v1alpha1
-  kind: ReplicationSource
+  kind: Secret
+  apiVersion: v1
   metadata:
-    name: sync-todo-database
-  spec:
-    # The name of the PVC to be synced.
-    sourcePVC: todo-database
-    syncthing:
-      # The type of service to use for Syncthing data connections.
-      serviceType: ClusterIP
+    # this should be in the format: volsync-<REPLICATION_SOURCE_NAME>
+    name: volsync-my-replication-source
+  type: Opaque
+  # all of these fields must be provided
+  data:
+    # loaded by Syncthing
+    httpsKeyPEM: <your base64 encoded HTTPS private key>
+    # loaded into Syncthing and used by VolSync as a root CA
+    httpsCertPEM: <your base64 encoded HTTPS certificate>
+    # The API key used by VolSync to authenticate API requests
+    apikey: <base64-encoded API Key>
+    # These fields are solely for securing the Web UI from being accessed.
+    username: <base64-encoded username>
+    password: <base64-encoded password>
 
-No other peers have been configured at this point, so our volume will not be shared with anyone else.
-
+Once you have deployed this secret in your intended namespace, you will then need to create the ReplicationSource
+using the name you specified in the above Secret. For example, a custom secret named "volsync-my-replication-source"
+would require you to name the ReplicationSource "my-replication-source".
 
 .. note::
-  Syncthing unions the data in the provided ``PersistentVolume`` with the data from other peers.
-  When two pieces of data have the same name, the most recent data will be favored.
+  This Secret must be created **before** creating the ReplicationSource.
+  Otherwise, Syncthing will generate its own set of credentials and ignore yours.  
 
 
-Obtaining Your Syncthing Information
-------------------------------------
 
-Your Syncthing ID and data address can be found under ``.status.syncthing``. 
-Other nodes must specify this information in order to connect to your ReplicationSource.
+Configuring a ReplicationSource
+===============================
 
-.. code-block:: yaml
-    :caption: ReplicationSource object with the Syncthing ID and address highlighted.
-    :emphasize-lines: 23,24
-
-    apiVersion: volsync.backube/v1alpha1
-    kind: ReplicationSource
-    metadata:
-      creationTimestamp: "2022-04-27T20:25:32Z"
-      generation: 1
-      name: sync-todo-database
-      namespace: legendary-node-app
-      resourceVersion: "443737"
-      uid: 7284700f-ecf0-4185-914e-3067cfc0efd0
-    spec:
-      sourcePVC: todo-database
-      syncthing:
-        serviceType: ClusterIP
-    status:
-      conditions:
-      - lastTransitionTime: "2022-04-27T20:26:23Z"
-        message: Reconcile complete
-        reason: ReconcileComplete
-        status: "True"
-        type: Reconciled
-      lastSyncStartTime: "2022-04-27T20:25:32Z"
-      syncthing:
-        ID: GVONGZX-6FVQPEY-4QWTVLK-TXNJUHA-5UGA625-UBC7HZQ-P5BG2XJ-EHJ4XQ3
-        address: tcp://10.96.55.168:22000
-
-
-Configuring Other Peers
------------------------
-
-In order to configure other devices to use for syncing your PVC data, they must be
-specified under ``.spec.syncthing.peers`` as an entry containing their ``ID``, ``address``, and ``introducer`` flag - indicating whether or not they should introduce you to other peers sharing the PVC.
-
-Here's an example of a ReplicationSource that specifies a single peer:
+Here's an example of Syncthing-based ReplicationSource.
 
 .. code-block:: yaml
     :caption: ReplicationSource object configuring the peers it should connect to.
 
+    ---
     apiVersion: volsync.backube/v1alpha1
     kind: ReplicationSource
     metadata:
@@ -141,10 +115,102 @@ Here's an example of a ReplicationSource that specifies a single peer:
           # Whether or not the peer should introduce this ReplicationSource to other peers.
           introducer: false
 
+The above ReplicationSource tells VolSync that it should use the Syncthing replication method in order
+to sync the ``todo-database`` volume. 
+
+This ReplicationSource tells VolSync to use a ``ClusterIP`` service to expose the Syncthing data port.
+In order for Syncthing to connect to other instances outside of the cluster, you will need to either use
+``serviceType: LoadBalancer``, or a submariner-type cross-cluster networking configuration.
+
+The above ReplicationSource specifies a single peer to sync its data with, however you can specify as many or as little peers as you'd like.
+To create a simple ReplicationSource without connecting to other peers, simply omit the ``peers`` field.
+
+In order for two Syncthing-based ReplicationSources to connect to each other, each one must specify the other one in their ``peers`` list.
 
 
-Hub and Spoke Synchronization With VolSync
-==========================================
+.. note::
+  Syncthing unions the data in the provided ``PersistentVolume`` with the data from other peers.
+  When two pieces of data have the same name, the most recent data will be favored.
+
+
+Source Status
+-------------
+
+Once the ReplicationSource has been deployed and Syncthing has properly configured itself, 
+it will populate the ``.status.syncthing`` field with information about your Syncthing node.
+
+Here's an example of a ReplicationSource with a status:
+
+.. code-block:: yaml
+    :caption: ReplicationSource object with the Syncthing ID and address highlighted.
+    :emphasize-lines: 24, 26
+
+    ---
+    apiVersion: volsync.backube/v1alpha1
+    kind: ReplicationSource
+    metadata:
+      name: sync-todo-database
+    spec:
+      sourcePVC: todo-database
+      syncthing:
+        serviceType: ClusterIP
+        peers:
+        - ID: 7NDBKMJ-XU2GWGG-4JJ5B5M-ONSDVAK-ZDXHKVM-6X7XYB7-ZG4NYDI-ZQ6FHQ4
+          address: tcp://10.96.140.222:22000
+          introducer: true
+    status:
+      conditions:
+      - lastTransitionTime: "2022-04-27T20:26:23Z"
+        message: Reconcile complete
+        reason: ReconcileComplete
+        status: "True"
+        type: Reconciled
+      lastSyncStartTime: "2022-04-27T20:25:32Z"
+      syncthing:
+        # This ReplicationSource's Syncthing ID.
+        ID: GVONGZX-6FVQPEY-4QWTVLK-TXNJUHA-5UGA625-UBC7HZQ-P5BG2XJ-EHJ4XQ3
+        # This ReplicationSource's Syncthing address.
+        address: tcp://10.96.55.168:22000
+        # The Syncthing peers this ReplicationSource is connected to.
+        peers:
+        - # The Syncthing ID of the peer we're connected to.
+          ID: JDKRGMR-HOX3QQ6-N4OLXBD-VRLS3D4-2DBFELP-6QKIFYB-4ZP3YSF-Q37KAQU
+          # The connected peer's Syncthing address.
+          address: tcp://10.96.168.12:22000
+          # Whether or not we have an active connection with this peer.
+          connected: true
+          # The connected device's local name. Here this is another Pod's name.
+          deviceName: volsync-syncthing-1-76dfbfb4d7-5fhc8
+          # The Syncthing ID of the peer that introduced us to this peer
+          introducedBy: 7NDBKMJ-XU2GWGG-4JJ5B5M-ONSDVAK-ZDXHKVM-6X7XYB7-ZG4NYDI-ZQ6FHQ4
+
+
+
+The above status displays your Syncthing ID in ``.status.syncthing.ID`` and address which other peers will need to specify in order to connect to this ReplicationSource in ``.status.syncthing.address``.
+
+Additionally, it displays a list of peers that this ReplicationSource is connected to.
+Each peer listing contains the following fields:
+
+ID
+   The Syncthing ID of the peer.
+
+address
+   The connected peer's address.
+
+connected
+   A boolean indicating whether or not this ReplicationSource
+   has an active connection to the listed peer.
+
+deviceName
+   Friendly name associated with the other device, configured once upon connection.
+
+introducedBy
+   The Syncthing ID of the peer that introduced us to this peer.
+   This field will only appear for peers that have been introduced to us.
+
+
+Hub and Spoke Synchronization
+=============================
 
 So far we have shown you have to configure each ReplicationSource with every other peer's information.
 As you can probably tell, this requires more repetitive configuration as your Syncthing cluster gets larger.
@@ -175,6 +241,7 @@ For Example, suppose we have the following two ReplicationSources:
 .. code-block:: yaml
   :caption: Two ReplicationSources configured in the hub-and-spoke pattern.
 
+  ---
   # Alice's ReplicationSource
   apiVersion: volsync.backube/v1alpha1
   kind: ReplicationSource
@@ -185,7 +252,7 @@ For Example, suppose we have the following two ReplicationSources:
     syncthing:
       serviceType: ClusterIP
       peers:
-      # bob's ReplicationSource
+      # Bob's ReplicationSource
       - ID: ZQF2PVB-UMNMXCF-HWMQ7DX-ELOWLPZ-OBNF7JM-XQSTFXE-O23GBWH-R5WPOQZ
         address: tcp://bob.address:22000
         introducer: false
@@ -200,7 +267,7 @@ For Example, suppose we have the following two ReplicationSources:
     syncthing:
       serviceType: ClusterIP
       peers:
-      # alice's ReplicationSource
+      # Alice's ReplicationSource
       - ID: 7NDBKMJ-XU2GWGG-4JJ5B5M-ONSDVAK-ZDXHKVM-6X7XYB7-ZG4NYDI-ZQ6FHQ4
         address: tcp://alice.address:22000
         introducer: true
@@ -222,7 +289,6 @@ as well as update Charlie's ``peers`` to include Alice with ``introducer: true``
 .. code-block:: yaml
   :caption: Alice's ReplicationSource configured with Bob and Charlie's information.
 
-  # Alice's ReplicationSource
   apiVersion: volsync.backube/v1alpha1
   kind: ReplicationSource
   metadata:
@@ -232,11 +298,11 @@ as well as update Charlie's ``peers`` to include Alice with ``introducer: true``
     syncthing:
       serviceType: ClusterIP
       peers:
-      # bob's ReplicationSource
+      # Bob's ReplicationSource
       - ID: ZQF2PVB-UMNMXCF-HWMQ7DX-ELOWLPZ-OBNF7JM-XQSTFXE-O23GBWH-R5WPOQZ
         address: tcp://bob.address:22000
         introducer: false
-      # charlie
+      # Charlie ReplicationSource
       - ID: LUHH7KT-KYD47H5-NJ5LFD3-EF62KHJ-KW65NUI-5NJ6CTD-FL5IE6M-5XW7CQZ
         address: tcp://charlie.address:22000
         introducer: false
@@ -248,13 +314,13 @@ as well as update Charlie's ``peers`` to include Alice with ``introducer: true``
   apiVersion: volsync.backube/v1alpha1
   kind: ReplicationSource
   metadata:
-    name: syncthing-3
+    name: charlie-rs
   spec:
-    sourcePVC: syncthing-3
+    sourcePVC: charlie-data
     syncthing:
       serviceType: ClusterIP
       peers:
-      # alice
+      # Alice's ReplicationSource
       - ID: 7NDBKMJ-XU2GWGG-4JJ5B5M-ONSDVAK-ZDXHKVM-6X7XYB7-ZG4NYDI-ZQ6FHQ4
         address: tcp://alice.address:22000
         introducer: true
@@ -306,7 +372,7 @@ will no longer be syncing his version of the PVC.
 
 
 More on Introducers
-=======================
+===================
 
 Introducers are a great feature when it comes to usability, but there are some scenarios that users should generally avoid.
 
