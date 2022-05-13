@@ -9,10 +9,10 @@
 include ./version.mk
 
 # Helper software versions
-GOLANGCI_VERSION := v1.45.2
-HELM_VERSION := v3.7.1
+GOLANGCI_VERSION := v1.46.1
+HELM_VERSION := v3.8.2
 OPERATOR_SDK_VERSION := v1.20.0
-KUTTL_VERSION := 0.11.1
+KUTTL_VERSION := 0.12.1
 
 # We don't vendor modules. Enforce that behavior
 export GOFLAGS := -mod=readonly

@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Users can manually label destination Snapshot objects with
+  `volsync.backube/do-not-delete` to prevent VolSync from deleting them. This
+  provides a way for users to avoid having a Snapshot deleted while they are
+  trying to use it. Users are then responsible for deleting the Snapshot.
+- Publish Kubernetes Events to help troubleshooting
+
+### Changed
+
+- Operator-SDK upgraded to 1.20.0
+- Rclone upgraded to 1.58.1
+- Restic upgraded to 0.13.1
+- Syncthing upgraded to 1.20.1
+
+### Fixed
+
+- CLI: Fixed bug where previously specified options couldn't be removed from
+  relationship file
+
+### Removed
+
+- "Reconciled" condition removed from ReplicationSource and
+  ReplicationDestination `.status.conditions[]` in favor of returning errors via
+  the "Synchronizing" Condition.
+
 ## [0.4.0] - 2022-05-12
 
 ### Added
