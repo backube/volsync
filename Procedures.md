@@ -173,14 +173,22 @@ them
   * Follow the [upgrade
     guide](https://sdk.operatorframework.io/docs/upgrading-sdk-version/) as
     appropriate
+  * Make an entry in [CHANGELOG.md](CHANGELOG.md)
+  * Make an entry in [Chart.yaml](helm/volsync/Chart.yaml)
 * [Rclone](https://github.com/rclone/rclone/releases)
   * Change the version number in
     [mover-rclone/Dockerfile](mover-rclone/Dockerfile) and update GIT hash to match
+  * Make an entry in [CHANGELOG.md](CHANGELOG.md)
+  * Make an entry in [Chart.yaml](helm/volsync/Chart.yaml)
 * [Restic](https://github.com/restic/restic/releases)
   * Change the version number in
     [mover-restic/Dockerfile](mover-restic/Dockerfile), and update GIT hash to
     match
+  * Make an entry in [CHANGELOG.md](CHANGELOG.md)
+  * Make an entry in [Chart.yaml](helm/volsync/Chart.yaml)
 * [Syncthing](https://github.com/syncthing/syncthing/releases)
   * Change the version number in
     [mover-syncthing/Dockerfile](mover-syncthing/Dockerfile), and update GIT
     hash to match
+  * Make an entry in [CHANGELOG.md](CHANGELOG.md)
+  * Make an entry in [Chart.yaml](helm/volsync/Chart.yaml)

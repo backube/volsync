@@ -22,17 +22,17 @@ annotations:  # https://artifacthub.io/docs/topics/annotations/helm/
   # Kinds: added, changed, deprecated, removed, fixed, and security
   artifacthub.io/changes: |
     - kind: added
-      description: Add ability to specify container images by SHA hash
+      description: Users can manually label destination Snapshot objects with volsync.backube/do-not-delete to prevent VolSync from deleting them. This provides a way for users to avoid having a Snapshot deleted while they are trying to use it. Users are then responsible for deleting the Snapshot.
     - kind: added
-      description: Added additional field LastSyncStartTime to CRD status
+      description: Publish Kubernetes Events to help troubleshooting
     - kind: changed
-      description: Rename CopyMethod None to Direct to make it more descriptive
+      description: Operator-SDK upgraded to 1.20.0
     - kind: changed
-      description: Switch snapshot API version from snapshot.storage.k8s.io/v1beta1 to snapshot.storage.k8s.io/v1 so that VolSync remains compatible w/ Kubernetes 1.24+
+      description: Rclone upgraded to 1.58.1
     - kind: changed
-      description: Minimum Kubernetes version is now 1.20
-    - kind: fixed
-      description: Resources weren't always removed after each sync iteration
+      description: Restic upgraded to 0.13.1
+    - kind: changed
+      description: Syncthing upgraded to 1.20.1
   artifacthub.io/crds: |
     - kind: ReplicationDestination
       version: v1alpha1
