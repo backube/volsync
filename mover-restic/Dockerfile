@@ -4,9 +4,9 @@ USER root
 
 WORKDIR /workspace
 
-ARG RESTIC_VERSION=v0.12.1
+ARG RESTIC_VERSION=v0.13.1
 # hash: git rev-list -n 1 ${RESTIC_VERSION}
-ARG RESTIC_GIT_HASH=dc7a8aab2426e7d78d0a41b1608e75edf56a74d0
+ARG RESTIC_GIT_HASH=594f155eb6faf57dd02508283f8d84dfa4c125a7
 
 RUN git clone --depth 1 -b ${RESTIC_VERSION} https://github.com/restic/restic.git
 
