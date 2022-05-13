@@ -4,9 +4,8 @@ kind: TestStep
 timeout: 600
 commands:
   - script: |
-      #!/usr/bin/bash
       # for this test, we need to perform two checks:
-      # 	1. All of the replicationsources have each other's Syncthing config in their peer list
+      # 	1. All of the replication_sources have each other's Syncthing config in their peer list
       #   2. Each of the Syncthing IDs in .spec.syncthing.peers appears in .status.syncthing.peers and is connected
 
       replication_sources=$(kubectl get replicationsource -n "${NAMESPACE}" -o json | jq '.items')
@@ -16,15 +15,17 @@ commands:
       # have each other in their peer list
       # Arguments:
       #   None
+      # Globals:
+      #   replication_sources
       # Returns:
       #  0 if all ReplicationSources have each other in their peer list, 1 otherwise
       ###########################
       function verify_rs_are_connected() {
         # get all of the IDs for every replicationsource
-        local st_ids=$(echo "${replicationsources}" | jq -r '.[] | .status.syncthing.ID')
+        local st_ids=$(echo "${replication_sources}" | jq -r '.[] | .status.syncthing.ID')
         for st_id in ${st_ids}; do
           # get the replicationsource with the current ID
-          local rs=$(echo "${replicationsources}" | jq -r --arg currentID "${st_id}" \
+          local rs=$(echo "${replication_sources}" | jq -r --arg currentID "${st_id}" \
             '.[] | select(.status.syncthing.ID == $currentID)'
           )
 
@@ -33,7 +34,7 @@ commands:
           local peer_ids=$(echo "${peers}" | jq -r '.[] | .ID')			
           
           # all syncthing IDs in cluster
-          local full_peer_ids=$(echo "${replicationsources}" | jq -r \
+          local full_peer_ids=$(echo "${replication_sources}" | jq -r \
             --arg currentID "${st_id}" \
             '.[] | select(.status.syncthing.ID != $currentID) | .status.syncthing.ID'
           )
@@ -41,13 +42,12 @@ commands:
           # ensure that each element of full_peer_ids is in peer_ids
           for peer_id in ${full_peer_ids}; do
             if [[ ! "${peer_ids}" =~ "${peer_id}" ]]; then
-              echo "ReplicationSource ${st_id} does not have ${peer_id} in its peer list"
+              # ReplicationSource ${st_id} does not have ${peer_id} in its peer list
               return 1
             fi
           done
         done
-        echo "All ReplicationSources have each other in their peer list"
-        return 0	
+        return 0
       }
 
 
@@ -73,13 +73,13 @@ commands:
         if [[ $(echo "${rs}" | jq '.status.syncthing | has("peers")') == "true" ]]; then
           local connected_peers=$(echo "${rs}" | jq -r '.status.syncthing.peers')
           local connected_peer_ids=$(echo "${connected_peers}" | jq -r '.[] | .ID')
-          IFS=$'\n' read -rd '' -a connected_peer_ids <<< "${connected_peer_ids}"
+          IFS=$'\n' read -rd '' -a connected_peer_ids <<< "${connected_peer_ids}" || true
           unset IFS
 
           # make sure that each peer_id exists in .status.syncthing.peers
           for peer_id in ${peer_ids[@]}; do
             if [[ ! "${connected_peer_ids[@]}" =~ "${peer_id}" ]]; then
-              echo "ReplicationSource ${rs_name} does not have ${peer_id} in its peer list"
+              # ReplicationSource ${rs_name} does not have ${peer_id} in its peer list
               return 1
             fi
             
@@ -87,12 +87,12 @@ commands:
             local peer=$(echo "${connected_peers}" | jq -r --arg peerID "${peer_id}" \
               '.[] | select(.ID == $peerID)')
             if [[ $(echo "${peer}" | jq '.connected') != "true" ]]; then
-              echo "${peer_id} is not connected in ${rs_name}"
+              # ${peer_id} is not connected in ${rs_name}
               return 1
             fi
           done
         else
-          echo "ReplicationSource ${rs_name} does not have any peers"
+          # ReplicationSource ${rs_name} does not have any peers
           return 1
         fi
 
@@ -111,26 +111,31 @@ commands:
         echo "${sources}"
       }
 
-      # try to verify rs are connected
-      verify_rs_are_connected
-      while [[ $? -ne 0 ]]; do
-        echo "Waiting for all ReplicationSources to have each other in their peer list"
+      echo "=== Verifying all ReplicationSources have each other in their peer list ==="
+      echo "Try to verify rs are connected"
+      rs_are_connected=$(verify_rs_are_connected)
+      while [[ "${rs_are_connected}" -ne 0 ]]; do
+        echo "Wait for all ReplicationSources to have each other in their peer list"
         sleep 5
         replication_sources=$(update_replication_sources)
-        verify_rs_are_connected
+        rs_are_connected=$(verify_rs_are_connected)
       done
-      echo "all ReplicationSources have each other in their peer list"
 
-
+      echo "=== Verifying all ReplicationSources are connected to their Syncthing devices ==="
       rs_names=$(echo "${replication_sources}" | jq -c -r '.[].metadata.name')
-      IFS=$'\n' read -rd '' -a rs_names_array <<< "${rs_names}"
+      echo "=== Creating an Array for the names of replicationsources ==="
+      echo "=== rs_names: ${rs_names}"
+      IFS=$'\n' read -rd '' -a rs_names_array <<< "${rs_names}" || true
 
+      echo "=== Loop through all ReplicationSources ==="
       for rs_name in "${rs_names_array[@]}"; do
-        all_peers_are_connected "${rs_name}"
-        while [[ $? -ne 0 ]]; do
-          echo "Waiting for all Syncthing IDs in ${rs_name}'s peer list to be connected"
+        echo "=== Verifying ReplicationSource ${rs_name} ==="
+        connected_status=$(all_peers_are_connected "${rs_name}")
+
+        while [[ "${connected_status}" -ne 0 ]]; do
+          echo "Wait for all Syncthing IDs in ${rs_name}'s peer list to be connected"
           sleep 5
-            replication_sources=$(update_replication_sources)
-          all_peers_are_connected "${rs_name}"
+          replication_sources=$(update_replication_sources)
+          connected_status=$(all_peers_are_connected "${rs_name}")
         done
       done

@@ -294,14 +294,16 @@ spec:
                     items:
                       properties:
                         ID:
-                          description: Syncthing ID of the peer
+                          description: ID Is the peer's Syncthing ID.
                           type: string
                         address:
-                          description: TCP address of the Syncthing peer
+                          description: Address Is an address which is used to connect
+                            to the other Syncthing peer.
                           type: string
                         introducer:
-                          description: Introducer flag determines whether this peer
-                            should introduce us to other peers sharing this volume
+                          description: Introducer is a flag which determines whether
+                            this peer should introduce us to other peers sharing this
+                            volume.
                           type: boolean
                       required:
                       - ID

@@ -4,6 +4,8 @@ kind: TestStep
 timeout: 600
 commands:
   - script: |
+      set -e -o pipefail
+
       #################################
       # Wait until all of the given list of
       # ReplicationSource objects have
@@ -33,8 +35,6 @@ commands:
           fi
         done
       }
-
-      echo "=== deleting all running Syncthing pods ==="
 
       # delete all of the Syncthing Pods belonging to ReplicationSources
       for k in $(seq 1 3); do
