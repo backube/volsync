@@ -4,8 +4,8 @@ set -e -o pipefail
 
 # Possible versions:
 # https://hub.docker.com/r/kindest/node/tags?page=1&ordering=name
-# skopeo inspect docker://kindest/node:v1.17.0 | jq .RepoTags
-KUBE_VERSION="${1:-1.23.5}"
+# skopeo list-tags docker://kindest/node
+KUBE_VERSION="${1:-1.24.0}"
 
 # Determine the Kube minor version
 [[ "${KUBE_VERSION}" =~ ^[0-9]+\.([0-9]+) ]] && KUBE_MINOR="${BASH_REMATCH[1]}" || exit 1
@@ -110,6 +110,7 @@ if [[ $KUBE_MINOR -eq 13 ]]; then
 fi
 
 # Install the hostpath CSI driver
+# https://github.com/kubernetes-csi/csi-driver-host-path/releases
 HP_BASE="$(mktemp --tmpdir -d csi-driver-host-path-XXXXXX)"
 case "$KUBE_MINOR" in
   13)
@@ -128,8 +129,16 @@ case "$KUBE_MINOR" in
     HOSTPATH_BRANCH="v1.4.0"
     DEPLOY_SCRIPT="deploy.sh"
     ;;
-  *)
+  18)
+    HOSTPATH_BRANCH="v1.7.2"
+    DEPLOY_SCRIPT="deploy.sh"
+    ;;
+  19|20)
     HOSTPATH_BRANCH="v1.7.3"
+    DEPLOY_SCRIPT="deploy.sh"
+    ;;
+  *)
+    HOSTPATH_BRANCH="v1.8.0"
     DEPLOY_SCRIPT="deploy.sh"
     ;;
 esac
