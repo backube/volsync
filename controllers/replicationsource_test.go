@@ -214,10 +214,9 @@ var _ = Describe("ReplicationSource", func() {
 					CopyMethod: volsyncv1alpha1.CopyMethodSnapshot,
 				},
 			}
-			// Set a schedule
-			var schedule = "*/4 * * * *"
+			// Set a schedule - manual trigger to avoid starting more than 1 sync
 			rs.Spec.Trigger = &volsyncv1alpha1.ReplicationSourceTriggerSpec{
-				Schedule: &schedule,
+				Manual: "testtrigger",
 			}
 		})
 		XIt("creates a snapshot of the source PVC and restores it as the sync source", func() {
