@@ -27,6 +27,18 @@
   `./build-index ../volsync/volsync-X.Y.Z.tgz`
 * Create a PR against that repo w/ the changes
 
+### Release an updated CLI plugin to krew
+
+* After tagging the release, build the cli and updated krew manifest. This will
+  create the `kubectl-volsync.tar.gz` file and update the hash in the
+  [volsync.yaml](kubectl-volsync/volsync.yaml) file.:  
+  `$ make krew-plugin-manifest`
+* Upload the tar.gz to the github release as an "asset"
+* Ensure the path in the `volsync.yaml` file is updated to point to the new
+  release asset.
+* Submit the updated yaml to the [krew-index
+  repo](https://github.com/kubernetes-sigs/krew-index/blob/master/plugins/volsync.yaml)
+
 ## Creating/Updating the operator bundle
 
 * Note: For packaging as an operator, the CSV file is normally auto-generated,

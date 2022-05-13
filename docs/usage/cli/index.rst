@@ -21,36 +21,90 @@ objects. It is meant as a simple shortcut for common operations:
 Installation
 ============
 
-The plugin can installed via:
+The VolSync CLI (kubectl plugin) can be installed in several ways:
 
-.. code-block:: console
+- Via krew (easiest)
+- Downloading the latest released binary from GitHub
+- From source (requires a working golang installation)
 
-    $ go install github.com/backube/volsync/kubectl-volsync@main
-    go: downloading github.com/backube/volsync v0.3.1-0.20220214161039-2a78c57773a4
+.. tabs::
 
-    $ which kubectl-volsync
-    ~/go/bin/kubectl-volsync
+    .. tab:: Krew
 
-Assuming that the above installation directory is in your ``PATH``, the VolSync CLI will be available as a sub-command of ``kubectl`` or ``oc``:
+        `Krew <https://krew.sigs.k8s.io/>`_ is a plugin manager for the
+        ``kubectl`` command. It automates the process of downloading,
+        installing, and updating kubectl plugins.
 
-.. code-block:: console
+        If you have Krew installed, you can install the VolSync plugin via:
 
-    $ kubectl volsync --help
-    This plugin can be used to configure replication relationships using the
-    VolSync operator.
+        .. code-block:: console
 
-    The plugin has a number of sub-commands that are organized based on common
-    data movement tasks such as:
+            # Install the VolSync plugin
+            $ kubectl krew install volsync
+            Updated the local copy of plugin index.
+            Installing plugin: volsync
+            Installed plugin: volsync
+            \
+            | Use this plugin:
+            | 	kubectl volsync
+            | Documentation:
+            | 	https://github.com/backube/volsync
+            /
+            WARNING: You installed plugin "volsync" from the krew-index plugin repository.
+              These plugins are not audited for security by the Krew maintainers.
+              Run them at your own risk.
 
-      *  Creating a cross-cluster data replication relationship
-      *  Migrating data into a Kubernetes cluster
-      *  Establishing a simple PV backup schedule
+            # Use it...
+            $ kubectl volsync --version
+            volsync version v0.4.0+b710c5f
 
-    Usage:
-      kubectl-volsync [command]
+        The plugin can be uninstalled via:
 
-    Available Commands:
-      completion  generate the autocompletion script for the specified shell
-      help        Help about any command
-      migration   Migrate data into a PersistentVolume
-      replication Replicate data between two PersistentVolumes
+        .. code-block:: console
+
+            # Uninstall the VolSync plugin
+            $ kubectl krew uninstall volsync
+            Uninstalled plugin: volsync
+
+        Future upgrades are also possible via ``kubectl krew upgrade volsync``.
+
+    .. tab:: Binary release
+
+        The plugin is available on the `VolSync Releases page
+        <https://github.com/backube/volsync/releases>`_. Download the
+        ``kubectl-volsync.tar.gz`` and place the included ``kubectl-volsync``
+        binary into your PATH. The plugin should then be available as a
+        sub-command of ``kubectl``:
+
+        .. code-block:: console
+
+            $ kubectl volsync --version
+            volsync version v0.4.0+b710c5f
+
+        To uninstall, just delete the ``kubectl-volsync`` binary.
+
+    .. tab:: Source
+
+        The plugin can be installed directly from source. This requires a
+        working golang environment, but it also allows easily choosing the
+        version to be installed (even the latest code from ``main``).
+
+        The latest **Released** version can be installed via:
+
+        .. code-block:: console
+
+            $ go install github.com/backube/volsync/kubectl-volsync@latest
+            go: downloading github.com/backube/volsync v0.4.0
+
+            $ which kubectl-volsync
+            ~/go/bin/kubectl-volsync
+
+        The **latest code from main** can be installed via:
+
+        .. code-block:: console
+
+            $ go install github.com/backube/volsync/kubectl-volsync@main
+            go: downloading github.com/backube/volsync v0.3.1-0.20220512205923-e33a7e4d88b6
+
+Once installation is complete, navigate to one of the documentation sub-pages
+for some CLI usage examples.
