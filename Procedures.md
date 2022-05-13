@@ -180,3 +180,7 @@ them
   * Change the version number in
     [mover-restic/Dockerfile](mover-restic/Dockerfile), and update GIT hash to
     match
+* [Syncthing](https://github.com/syncthing/syncthing/releases)
+  * Change the version number in
+    [mover-syncthing/Dockerfile](mover-syncthing/Dockerfile), and update GIT
+    hash to match
