@@ -9,7 +9,7 @@
 include ./version.mk
 
 # Helper software versions
-GOLANGCI_VERSION := v1.45.2
+GOLANGCI_VERSION := v1.46.1
 HELM_VERSION := v3.7.1
 OPERATOR_SDK_VERSION := v1.20.0
 KUTTL_VERSION := 0.11.1
