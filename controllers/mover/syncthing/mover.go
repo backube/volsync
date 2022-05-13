@@ -469,9 +469,8 @@ func (m *Mover) ensureAPIService(ctx context.Context, deployment *appsv1.Deploym
 		},
 	}
 
-	// set API url
-	m.syncthing.APIConfig.APIURL = m.getAPIServiceAddress()
-	m.logger.Info("setting API URL", "url", m.syncthing.APIConfig.APIURL)
+	// set API url if one is not already set
+	m.syncthing.APIConfig.SetEmptyAPIURL(m.getAPIServiceAddress())
 
 	// see if we already have a service
 	err := m.client.Get(ctx, types.NamespacedName{Name: serviceName, Namespace: m.owner.GetNamespace()}, service)
@@ -502,6 +501,7 @@ func (m *Mover) ensureAPIService(ctx context.Context, deployment *appsv1.Deploym
 					Port:       syncthingAPIPort,
 					TargetPort: intstr.FromString(targetPort),
 					Protocol:   "TCP",
+					Name:       "syncthing-api",
 				},
 			},
 		},
@@ -548,6 +548,7 @@ func (m *Mover) ensureDataService(ctx context.Context) (*corev1.Service, error) 
 						Port:       syncthingDataPort,
 						TargetPort: intstr.FromInt(syncthingDataPort),
 						Protocol:   "TCP",
+						Name:       "syncthing-data",
 					},
 				},
 				Type: m.serviceType,

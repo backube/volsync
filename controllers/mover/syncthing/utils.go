@@ -159,19 +159,6 @@ func (st *Syncthing) PeerListContainsSelf(peerList []v1alpha1.SyncthingPeer) boo
 	return false
 }
 
-// GetIntroducedAndSelfFromFolder Returns a a list of those FolderDeviceConfiguration
-// objects which are either us or have been introduced by us.
-func (st *Syncthing) GetIntroducedAndSelfFromFolder(folder SyncthingFolder) []FolderDeviceConfiguration {
-	// filter out the devices which are not us or have been introduced by us
-	var devices []FolderDeviceConfiguration
-	for _, device := range folder.Devices {
-		if device.DeviceID == st.SystemStatus.MyID || device.IntroducedBy != "" {
-			devices = append(devices, device)
-		}
-	}
-	return devices
-}
-
 // GetDeviceFromID Returns the device with the given ID,
 // along with a boolean indicating whether the device was found.
 func (st *Syncthing) GetDeviceFromID(deviceID string) (SyncthingDevice, bool) {
@@ -257,16 +244,6 @@ func (st *Syncthing) FetchConnectedStatus() error {
 	return err
 }
 
-// GetDeviceName Returns the name of the device with the given ID, if one is provided.
-func (st *Syncthing) GetDeviceName(deviceID string) string {
-	for _, device := range st.Config.Devices {
-		if device.DeviceID == deviceID {
-			return device.Name
-		}
-	}
-	return ""
-}
-
 // jsonRequest performs a request to the Syncthing API and returns the response body.
 //nolint:funlen,lll,unparam,unused
 func (st *Syncthing) jsonRequest(endpoint string, method string, requestBody interface{}) ([]byte, error) {
@@ -309,6 +286,13 @@ func (st *Syncthing) jsonRequest(endpoint string, method string, requestBody int
 
 	// read body into response
 	return ioutil.ReadAll(resp.Body)
+}
+
+// SetEmptyAPIURL Sets the API URL for the Syncthing API, if one is not already defined.
+func (api *APIConfig) SetEmptyAPIURL(url string) {
+	if api.APIURL == "" {
+		api.APIURL = url
+	}
 }
 
 // Headers Returns a map containing the necessary headers for Syncthing API requests.

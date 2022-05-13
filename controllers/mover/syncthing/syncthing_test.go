@@ -38,6 +38,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
@@ -130,7 +131,6 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 	var srcPVC *corev1.PersistentVolumeClaim
 	var mover *Mover
 
-	// 1
 	BeforeEach(func() {
 		// create a namespace for each test
 		ns = &corev1.Namespace{
@@ -179,7 +179,6 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 		}
 	})
 
-	// 3
 	JustBeforeEach(func() {
 		// launch the replicationsource once edits are complete
 		Expect(k8sClient.Create(ctx, rs)).To(Succeed())
@@ -542,20 +541,27 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 			When("Syncthing server exists", func() {
 				var ts *httptest.Server
 				var serverSyncthingConfig SyncthingConfig
+				var sStatus SystemStatus
+				var sConnections SystemConnections
 				var apiKeys *corev1.Secret
 				var myID string = "test"
 
-				JustBeforeEach(func() {
-					serverSyncthingConfig = SyncthingConfig{
-						Version: 10,
-					}
-					sStatus := SystemStatus{
-						MyID: myID,
-					}
+				BeforeEach(func() {
+					// initialize the config variables here
+					serverSyncthingConfig = SyncthingConfig{}
+					sStatus = SystemStatus{}
+					sConnections = SystemConnections{}
+				})
 
-					sConnections := SystemConnections{
-						Total: TotalStats{At: "test"},
-					}
+				JustBeforeEach(func() {
+					// set status to 10
+					serverSyncthingConfig.Version = 10
+
+					// set our ID
+					sStatus.MyID = myID
+
+					// set information about our connections
+					sConnections.Total = TotalStats{At: "test"}
 
 					ts = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						switch r.URL.Path {
@@ -695,6 +701,67 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					Expect(err).To(BeNil())
 				})
 
+				When("Syncthing has active connections", func() {
+
+					JustBeforeEach(func() {
+						// add some connections here
+						sConnections.Connections = map[string]ConnectionStats{
+							myID: {
+								Connected: false,
+								Address:   "",
+							},
+							"another-one": {
+								Connected: true,
+								Address:   "not-a-real-server",
+							},
+						}
+
+						// ensure that another-one is in the global config
+						serverSyncthingConfig.Devices = []SyncthingDevice{
+							{
+								DeviceID:     "another-one",
+								Addresses:    []string{"not-a-real-server"},
+								Name:         "not-a-real-server",
+								IntroducedBy: "george-costanza",
+							},
+							{
+								DeviceID:  myID,
+								Addresses: []string{""},
+							},
+						}
+					})
+
+					It("adds them to VolSync status", func() {
+						// create a data service that Syncthing will use in status updating
+						fakeDataSVC := corev1.Service{
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      "volsync-" + mover.owner.GetName() + "-data",
+								Namespace: ns.Namespace,
+							},
+							Spec: corev1.ServiceSpec{
+								ClusterIP: "1.2.3.4",
+								Type:      corev1.ServiceTypeClusterIP,
+							},
+						}
+
+						// expect status to be updated
+						err := mover.ensureStatusIsUpdated(&fakeDataSVC)
+						Expect(err).To(BeNil())
+
+						// check that the status contains the new connection
+						Expect(mover.status.Peers).To(HaveLen(1))
+						peer := mover.status.Peers[0]
+
+						// ensure that volsync properly set these fields
+						// ID should be the other peer's; not the local one
+						Expect(peer.ID).To(Equal("another-one"))
+						Expect(peer.Address).To(Equal("tcp://not-a-real-server"))
+						Expect(peer.Connected).To(BeTrue())
+						Expect(peer.IntroducedBy).To(Equal("george-costanza"))
+						Expect(peer.DeviceName).To(Equal("not-a-real-server"))
+					})
+				})
+
 				Context("VolSync is improperly configuring Syncthing", func() {
 					JustBeforeEach(func() {
 					})
@@ -798,9 +865,11 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 						Namespace: ns.Name,
 					},
 					Data: map[string][]byte{
-						"apikey":   []byte("my-secret-apikey-do-not-steal"),
-						"username": []byte("gcostanza"),
-						"password": []byte("bosco"),
+						"apikey":       []byte("my-secret-apikey-do-not-steal"),
+						"username":     []byte("gcostanza"),
+						"password":     []byte("bosco"),
+						"httpsKeyPEM":  []byte(`-----BEGIN RSA PRIVATE KEY-----123-----END RSA PRIVATE KEY-----`),
+						"httpsCertPEM": []byte(`-----BEGIN CERTIFICATE-----123-----END CERTIFICATE-----`),
 					},
 				}
 				Expect(k8sClient.Create(ctx, apiSecret)).To(Succeed())
@@ -828,6 +897,101 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 				Eventually(func() error {
 					return k8sClient.Get(ctx, types.NamespacedName{Name: sa.Name, Namespace: ns.Name}, sa)
 				}, timeout, interval).Should(Succeed())
+			})
+
+			When("the API exists", func() {
+				var ts *httptest.Server
+				var serverSyncthingConfig SyncthingConfig
+				var myID string = "test"
+				var dataService *corev1.Service
+
+				JustBeforeEach(func() {
+					// configure the Syncthing server config
+					serverSyncthingConfig = SyncthingConfig{
+						Version: 10,
+					}
+					// configure the Syncthing server status
+					sStatus := SystemStatus{
+						MyID: myID,
+					}
+
+					// configure the Syncthing server connections
+					sConnections := SystemConnections{
+						Total: TotalStats{At: "test"},
+					}
+
+					// configure the test TLS server
+					ts = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						switch r.URL.Path {
+						case "/rest/config":
+							if r.Method == "GET" {
+								resBytes, _ := json.Marshal(serverSyncthingConfig)
+								fmt.Fprintln(w, string(resBytes))
+							} else if r.Method == "PUT" {
+								err := json.NewDecoder(r.Body).Decode(&serverSyncthingConfig)
+								if err != nil {
+									http.Error(w, "Error decoding request body", http.StatusBadRequest)
+									return
+								}
+							}
+							return
+						case "/rest/system/status":
+							res := sStatus
+							resBytes, _ := json.Marshal(res)
+							fmt.Fprintln(w, string(resBytes))
+							return
+						case "/rest/system/connections":
+							res := sConnections
+							resBytes, _ := json.Marshal(res)
+							fmt.Fprintln(w, string(resBytes))
+							return
+						default:
+							return
+						}
+					}))
+
+					mover.syncthing.APIConfig.APIURL = ts.URL
+					mover.syncthing.APIConfig.Client = ts.Client()
+					mover.syncthing.APIConfig.APIKey = "test"
+
+					// create the data service
+					dataService = &corev1.Service{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "volsync-" + mover.owner.GetName() + "-data",
+							Namespace: ns.Name,
+						},
+						Spec: corev1.ServiceSpec{
+							Ports: []corev1.ServicePort{
+								{
+									Name:       "data",
+									Protocol:   corev1.ProtocolTCP,
+									Port:       22000,
+									TargetPort: intstr.FromInt(22000),
+								},
+							},
+							Type:      corev1.ServiceTypeClusterIP,
+							ClusterIP: "10.0.0.129",
+						},
+					}
+
+					// launch the data service in our cluster
+					Expect(k8sClient.Create(ctx, dataService)).To(Succeed())
+
+				})
+
+				// close down the server after testing
+				JustAfterEach(func() {
+					ts.Close()
+				})
+
+				It("successfully completes a Synchronize", func() {
+					result, err := mover.Synchronize(ctx)
+
+					// expect no error to have occured
+					Expect(err).NotTo(HaveOccurred())
+					// synchronization is eternal
+					Expect(result.Completed).To(BeFalse())
+				})
 			})
 
 			When("synchronize is called", func() {
