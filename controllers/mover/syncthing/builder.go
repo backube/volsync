@@ -82,6 +82,7 @@ func (rb *Builder) getSyncthingContainerImage() string {
 }
 
 func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
+	eventRecorder events.EventRecorder,
 	source *volsyncv1alpha1.ReplicationSource) (mover.Mover, error) {
 	// Only build if the CR belongs to us
 	if source.Spec.Syncthing == nil {
@@ -92,21 +93,6 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 	if source.Status.Syncthing == nil {
 		source.Status.Syncthing = &volsyncv1alpha1.ReplicationSourceSyncthingStatus{}
 	}
-
-	// // Set the VolumeHandler
-	// vh, err := volumehandler.NewVolumeHandler(
-	// 	volumehandler.WithClient(client),
-	// 	volumehandler.WithOwner(source),
-	// )
-
-	// We need to extract the following data from the source PVC:
-	/* ReplicationSourceVolumeOptions: {
-		CopyMethod: Capacity:<nil>
-		StorageClassName:0xc000720c10
-		AccessModes:[]
-		VolumeSnapshotClassName:<nil>
-	}
-	*/
 
 	// servicetype or default
 	var serviceType corev1.ServiceType
@@ -142,6 +128,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 
 // syncthing is destination-only
 func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
+	eventRecorder events.EventRecorder,
 	destination *volsyncv1alpha1.ReplicationDestination) (mover.Mover, error) {
 	return nil, fmt.Errorf("syncthing mover not implemented for destination")
 }
