@@ -1,3 +1,4 @@
+---
 kind: ReplicationSource
 apiVersion: volsync.backube/v1alpha1
 metadata:

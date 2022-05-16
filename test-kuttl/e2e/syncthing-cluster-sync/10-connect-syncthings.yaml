@@ -24,7 +24,7 @@ commands:
         echo "waiting for syncthing address and ID for ${replication_source}..."
         kubectl wait --for=condition=Reconciled replicationsource "${replication_source}" -n "${NAMESPACE}" --timeout=600s
         # sleep until replicationsource has syncthing address and ID
-        
+
         local st_address=""
         local st_device_id=""
         while [[ -z "${st_address}" || -z "${st_device_id}" ]]; do
@@ -37,15 +37,15 @@ commands:
       }
 
       ##########################################################
-      # Connects the source RS to the target RS and sets the 
-      # target RS as a Syncthing introducer, if specified. 
+      # Connects the source RS to the target RS and sets the
+      # target RS as a Syncthing introducer, if specified.
       # Globals:
       #   (string) NAMESPACE
       # Arguments:
       #   (string) source_rs_name: name of the ReplicationSource
       #   (string) target_rs_name: name of the ReplicationSource
-      #   (int)    as_introducer: 1 if the target RS should be 
-      #                           set as an introducer, 
+      #   (int)    as_introducer: 1 if the target RS should be
+      #                           set as an introducer,
       #                           0 otherwise
       # Returns:
       #   (int) 0 on success, 1 on failure
@@ -100,7 +100,7 @@ commands:
       #   (string) source_rs: name of the source ReplicationSource
       #   (string) target_rs: name of the target ReplicationSource
       # Returns:
-      #   None 
+      #   None
       #################################
       function connect_syncthing() {
         local source_rs="$1"
@@ -128,7 +128,7 @@ commands:
         wait_for_syncthing_ready "syncthing-${i}"
         i=$((i+1))
       done
-      
+
       # loop from 1 to syncthing_count
       i=1
       while [[ "${i}" -lt "${syncthing_count}" ]]; do

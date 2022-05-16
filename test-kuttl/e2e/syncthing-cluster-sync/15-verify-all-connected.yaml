@@ -31,8 +31,8 @@ commands:
 
           # get the peer list for the current replicationsource
           local peers=$(echo "${rs}" | jq -r '.spec.syncthing.peers')
-          local peer_ids=$(echo "${peers}" | jq -r '.[] | .ID')			
-          
+          local peer_ids=$(echo "${peers}" | jq -r '.[] | .ID')
+
           # all syncthing IDs in cluster
           local full_peer_ids=$(echo "${replication_sources}" | jq -r \
             --arg currentID "${st_id}" \
@@ -53,7 +53,7 @@ commands:
 
       ######################################
       # Ensures that all ReplicationSources
-      # are connected to the Syncthing 
+      # are connected to the Syncthing
       # devices listed in their spec
       # Globals:
       #   (json) replication_sources
@@ -82,7 +82,7 @@ commands:
               # ReplicationSource ${rs_name} does not have ${peer_id} in its peer list
               return 1
             fi
-            
+
             # grab the peer_id and check if connected: true
             local peer=$(echo "${connected_peers}" | jq -r --arg peerID "${peer_id}" \
               '.[] | select(.ID == $peerID)')

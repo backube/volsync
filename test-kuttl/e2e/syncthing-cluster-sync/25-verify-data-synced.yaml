@@ -1,4 +1,5 @@
-# verify that the /data/testdata.txt file from test-data-1 exists on test-data-2 and test-data-3 
+---
+# verify that the /data/testdata.txt file from test-data-1 exists on test-data-2 and test-data-3
 apiVersion: batch/v1
 kind: Job
 metadata:

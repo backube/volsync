@@ -24,7 +24,7 @@ commands:
         echo "waiting for syncthing address and ID for ${replication_source}..."
         kubectl wait --for=condition=Reconciled replicationsource "${replication_source}" -n "${NAMESPACE}" --timeout=600s
         # sleep until replicationsource has syncthing address and ID
-        
+
         local st_address=""
         local st_device_id=""
         while [[ -z "${st_address}" || -z "${st_device_id}" ]]; do
@@ -43,15 +43,15 @@ commands:
         # get the previious syncthing peer ID for replicationsource 'syncthing-1'
         prev_st_peer_id="$(kubectl get replicationsource "${target_rs}" -n "${NAMESPACE}" -o jsonpath='{.status.syncthing.ID}')"
 
-        # find the Syncthing pod belonging to the first ReplicationSource 'syncthing-1' and delete it 
+        # find the Syncthing pod belonging to the first ReplicationSource 'syncthing-1' and delete it
         syncthing_podname="$(kubectl get pods -l app="${target_rs}" -n "${NAMESPACE}" -o jsonpath='{.items[0].metadata.name}')"
         kubectl delete pod "${syncthing_podname}" -n "${NAMESPACE}"
 
-        # wait until a new pod is created 
+        # wait until a new pod is created
         syncthing_new_podname=$(kubectl get pods -l app="${target_rs}" -n "${NAMESPACE}" -o jsonpath='{.items[0].metadata.name}')
         kubectl wait --for=condition=Ready pod "${syncthing_new_podname}" -n "${NAMESPACE}" --timeout=600s
 
-        # get the new syncthing peer ID for the target replicationsource 
+        # get the new syncthing peer ID for the target replicationsource
         new_st_peer_id=$(kubectl get replicationsource "${target_rs}" -n "${NAMESPACE}" -o jsonpath='{.status.syncthing.ID}')
 
         # assert that the new syncthing peer ID is the same as the previous one

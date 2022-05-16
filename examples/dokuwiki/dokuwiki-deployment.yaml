@@ -39,4 +39,3 @@ spec:
       - name: dokuwiki-storage
         persistentVolumeClaim:
           claimName: dokuwiki-pvc
-
