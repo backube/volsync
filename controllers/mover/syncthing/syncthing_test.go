@@ -55,7 +55,7 @@ var _ = Describe("Syncthing properly registers", func() {
 			// nothing else is registered so found == syncthing registered
 			found := false
 			for _, v := range cMover.Catalog {
-				if v.(*Builder) != nil {
+				if _, ok := v.(*Builder); ok {
 					found = true
 				}
 			}
@@ -986,7 +986,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 				It("successfully completes a Synchronize", func() {
 					result, err := mover.Synchronize(ctx)
 
-					// expect no error to have occured
+					// expect no error to have occurred
 					Expect(err).NotTo(HaveOccurred())
 					// synchronization is eternal
 					Expect(result.Completed).To(BeFalse())
