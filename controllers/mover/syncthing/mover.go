@@ -59,7 +59,7 @@ const (
 type Mover struct {
 	client         client.Client
 	logger         logr.Logger
-	owner          metav1.Object
+	owner          client.Object
 	vh             *volumehandler.VolumeHandler
 	containerImage string
 	paused         bool

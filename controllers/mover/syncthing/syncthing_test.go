@@ -27,9 +27,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/backube/volsync/api/v1alpha1"
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
-	"github.com/backube/volsync/controllers/mover"
 	cMover "github.com/backube/volsync/controllers/mover"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -39,6 +37,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
@@ -55,7 +54,7 @@ var _ = Describe("Syncthing properly registers", func() {
 		It("is added to the mover catalog", func() {
 			// nothing else is registered so found == syncthing registered
 			found := false
-			for _, v := range mover.Catalog {
+			for _, v := range cMover.Catalog {
 				if v.(*Builder) != nil {
 					found = true
 				}
@@ -81,7 +80,7 @@ var _ = Describe("Syncthing ignores other movers", func() {
 		}
 
 		// ensures that nothing happens
-		mover, err := commonBuilderForTestSuite.FromSource(k8sClient, logger, rs)
+		mover, err := commonBuilderForTestSuite.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs)
 		Expect(mover).To(BeNil())
 		Expect(err).NotTo(HaveOccurred())
 	})
@@ -116,7 +115,7 @@ var _ = Describe("Syncthing doesn't implement RD", func() {
 			}
 
 			// get a builder from the xRD to ensure that this errors
-			m, e := commonBuilderForTestSuite.FromDestination(k8sClient, logger, rd)
+			m, e := commonBuilderForTestSuite.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd)
 			Expect(e).To(HaveOccurred())
 			Expect(m).To(BeNil())
 		})
@@ -196,7 +195,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 			rs.Status = &volsyncv1alpha1.ReplicationSourceStatus{}
 
 			// create a syncthing mover
-			m, err := commonBuilderForTestSuite.FromSource(k8sClient, logger, rs)
+			m, err := commonBuilderForTestSuite.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(m).NotTo(BeNil())
 
@@ -1183,7 +1182,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 		rs.Status = &volsyncv1alpha1.ReplicationSourceStatus{}
 
 		// make sure that builder is successfully retrieved
-		m, err := commonBuilderForTestSuite.FromSource(k8sClient, logger, rs)
+		m, err := commonBuilderForTestSuite.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(m).ToNot(BeNil())
 	})
@@ -1220,7 +1219,7 @@ var _ = Describe("Syncthing utils", func() {
 
 			It("updates them based on the provided peerList", func() {
 				// create a peer list
-				peerList := []v1alpha1.SyncthingPeer{
+				peerList := []volsyncv1alpha1.SyncthingPeer{
 					{
 						ID:      "george-costanza",
 						Address: "/ip4/127.0.0.1/tcp/22000/quic",
@@ -1257,7 +1256,7 @@ var _ = Describe("Syncthing utils", func() {
 				}
 
 				// pass an empty peer list to ensure that the devices are removed
-				syncthing.UpdateDevices([]v1alpha1.SyncthingPeer{})
+				syncthing.UpdateDevices([]volsyncv1alpha1.SyncthingPeer{})
 
 				// ensure that the devices are removed
 				Expect(syncthing.Config.Devices).To(HaveLen(0))
@@ -1278,7 +1277,7 @@ var _ = Describe("Syncthing utils", func() {
 
 				It("retains the entry when updated against an empty peerlist", func() {
 					// pass an empty peer list and make sure that we can still find the self device
-					syncthing.UpdateDevices([]v1alpha1.SyncthingPeer{})
+					syncthing.UpdateDevices([]volsyncv1alpha1.SyncthingPeer{})
 					Expect(syncthing.Config.Devices).To(HaveLen(1))
 					Expect(syncthing.Config.Devices[0].DeviceID).To(Equal(syncthing.SystemStatus.MyID))
 
@@ -1286,10 +1285,10 @@ var _ = Describe("Syncthing utils", func() {
 
 				It("only reconfigures when other syncthing devices are provided", func() {
 					// pass an empty peer list and make sure that Syncthing doesn't need to be reconfigured
-					Expect(syncthing.NeedsReconfigure([]v1alpha1.SyncthingPeer{})).To(BeFalse())
+					Expect(syncthing.NeedsReconfigure([]volsyncv1alpha1.SyncthingPeer{})).To(BeFalse())
 
 					// pass a peer list containing self to ensure that Syncthing doesn't need to be reconfigured
-					Expect(syncthing.NeedsReconfigure([]v1alpha1.SyncthingPeer{
+					Expect(syncthing.NeedsReconfigure([]volsyncv1alpha1.SyncthingPeer{
 						{
 							ID:      syncthing.SystemStatus.MyID,
 							Address: "/ip4/127.0.0.1/tcp/22000/quic",
@@ -1297,7 +1296,7 @@ var _ = Describe("Syncthing utils", func() {
 					})).To(BeFalse())
 
 					// specify a peer
-					Expect(syncthing.NeedsReconfigure([]v1alpha1.SyncthingPeer{
+					Expect(syncthing.NeedsReconfigure([]volsyncv1alpha1.SyncthingPeer{
 						{
 							ID:      "elaine-benes",
 							Address: "/ip6/::1/tcp/22000/quic",
@@ -1314,12 +1313,12 @@ var _ = Describe("Syncthing utils", func() {
 
 				It("only reconfigures when other syncthing devices are provided", func() {
 					// test with an empty list
-					peerList := []v1alpha1.SyncthingPeer{}
+					peerList := []volsyncv1alpha1.SyncthingPeer{}
 					needsReconfigure := syncthing.NeedsReconfigure(peerList)
 					Expect(needsReconfigure).To(BeFalse())
 
 					// specify ourself as a peer
-					peerList = []v1alpha1.SyncthingPeer{
+					peerList = []volsyncv1alpha1.SyncthingPeer{
 						{
 							ID:      syncthing.SystemStatus.MyID,
 							Address: "/ip6/::1/tcp/22000/quic",
@@ -1329,7 +1328,7 @@ var _ = Describe("Syncthing utils", func() {
 					Expect(needsReconfigure).To(BeFalse())
 
 					// specify a peer
-					peerList = []v1alpha1.SyncthingPeer{
+					peerList = []volsyncv1alpha1.SyncthingPeer{
 						{
 							ID:      "elaine-benes",
 							Address: "/ip6/::1/tcp/22000/quic",
@@ -1342,7 +1341,7 @@ var _ = Describe("Syncthing utils", func() {
 
 			When("other devices are configured", func() {
 				BeforeEach(func() {
-					syncthingPeers := []v1alpha1.SyncthingPeer{
+					syncthingPeers := []volsyncv1alpha1.SyncthingPeer{
 						{
 							ID:      "george-costanzas-parents-house",
 							Address: "/ip6/::1/tcp/22000/quic",
@@ -1361,7 +1360,7 @@ var _ = Describe("Syncthing utils", func() {
 
 				It("doesn't reconfigure when no new devices are passed in", func() {
 					// create a peerlist with the same devices as the current config
-					peerList := []v1alpha1.SyncthingPeer{
+					peerList := []volsyncv1alpha1.SyncthingPeer{
 						{
 							ID:      "george-costanzas-parents-house",
 							Address: "/ip6/::1/tcp/22000/quic",
@@ -1418,12 +1417,12 @@ var _ = Describe("Syncthing utils", func() {
 
 				It("only needs reconfigure when the list differs but ignores the self syncthing device", func() {
 					// test with an empty list
-					peerList := []v1alpha1.SyncthingPeer{}
+					peerList := []volsyncv1alpha1.SyncthingPeer{}
 					needsReconfigure := syncthing.NeedsReconfigure(peerList)
 					Expect(needsReconfigure).To(BeTrue())
 
 					// Syncthing should view this as erasing all peers
-					peerList = []v1alpha1.SyncthingPeer{
+					peerList = []volsyncv1alpha1.SyncthingPeer{
 						{
 							ID:      syncthing.SystemStatus.MyID,
 							Address: "/ip6/::1/tcp/22000/quic",
@@ -1434,16 +1433,16 @@ var _ = Describe("Syncthing utils", func() {
 
 				It("can reconfigure to a larger list", func() {
 					// create a peerlist based on the configured devices in the Syncthing object
-					replicaPeerList := []v1alpha1.SyncthingPeer{}
+					replicaPeerList := []volsyncv1alpha1.SyncthingPeer{}
 					for _, device := range syncthing.Config.Devices {
-						replicaPeerList = append(replicaPeerList, v1alpha1.SyncthingPeer{
+						replicaPeerList = append(replicaPeerList, volsyncv1alpha1.SyncthingPeer{
 							ID:      device.DeviceID,
 							Address: device.Addresses[0],
 						})
 					}
 					// specify an additional peer
 					replicaPeerList = append(replicaPeerList,
-						v1alpha1.SyncthingPeer{
+						volsyncv1alpha1.SyncthingPeer{
 							ID:      "kramers-apartment",
 							Address: "/ip4/256.256.256.256/tcp/22000/quic",
 						},
@@ -1476,7 +1475,7 @@ var _ = Describe("Syncthing utils", func() {
 
 				It("reconfigures to a smaller list", func() {
 					// create a smaller peerlist with a subset of the devices in the current config
-					peerList := []v1alpha1.SyncthingPeer{
+					peerList := []volsyncv1alpha1.SyncthingPeer{
 						{
 							ID:      "george-costanzas-parents-house",
 							Address: "/ip6/::1/tcp/22000/quic",
@@ -1493,7 +1492,7 @@ var _ = Describe("Syncthing utils", func() {
 					peerToRemove := peerList[1]
 
 					// only specify a subset of the peers
-					peerListSubset := []v1alpha1.SyncthingPeer{}
+					peerListSubset := []volsyncv1alpha1.SyncthingPeer{}
 					for _, peer := range peerList {
 						if peer.ID != peerToRemove.ID {
 							peerListSubset = append(peerListSubset, peer)
