@@ -24,11 +24,15 @@ else
     SECURITY_ARGS=(--set "securityContext.enabled=false" --set "volumePermissions.enabled=true")
 fi
 
-helm install --create-namespace -n "${MINIO_NAMESPACE}" \
+if ! helm install --create-namespace -n "${MINIO_NAMESPACE}" \
+    --debug \
     --set auth.rootUser=access \
     --set auth.rootPassword=password \
     --set defaultBuckets=mybucket \
     "${SECURITY_ARGS[@]}" \
     --version 9.0.5 \
     --wait --timeout=300s \
-    minio bitnami/minio
+    minio bitnami/minio; then
+    kubectl -n "${MINIO_NAMESPACE}" describe all,pvc,pv
+    exit 1
+fi
