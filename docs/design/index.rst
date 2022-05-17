@@ -9,3 +9,4 @@ Enhancement proposals
    custom-resources
    mover-rsync
    restic
+   rwo-affinity
