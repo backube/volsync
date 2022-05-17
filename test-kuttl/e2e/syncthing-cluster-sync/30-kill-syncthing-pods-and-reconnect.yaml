@@ -37,7 +37,7 @@ commands:
       }
 
       # delete all of the Syncthing Pods belonging to ReplicationSources
-      for k in $(seq 1 3); do
+      for k in $(seq 1 2); do
         target_rs="syncthing-${k}"
 
         # get the previious syncthing peer ID for replicationsource 'syncthing-1'
