@@ -128,7 +128,7 @@ commands:
       while [[ "${i}" -le "${syncthing_count}" ]]; do
         echo "waiting for syncthing-${i} to be ready..."
         replication_source="syncthing-${i}"
-    
+
         echo "waiting for syncthing address and ID for ${replication_source}..."
         kubectl wait --for=condition=Reconciled replicationsource "${replication_source}" -n "${NAMESPACE}" --timeout=600s
         # sleep until replicationsource has syncthing address and ID
@@ -144,7 +144,6 @@ commands:
             sleep 5
           fi
         done
-
 
         i=$((i+1))
       done
