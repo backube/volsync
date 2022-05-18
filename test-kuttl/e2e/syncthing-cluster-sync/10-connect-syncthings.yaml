@@ -19,7 +19,7 @@ commands:
       #   None
       ##################################################################
       function wait_for_syncthing_ready() {
-        local replication_source=$1
+        local replication_source="${1}"
 
         echo "waiting for syncthing address and ID for ${replication_source}..."
         # sleep until replicationsource has syncthing address and ID
@@ -127,22 +127,7 @@ commands:
       while [[ "${i}" -le "${syncthing_count}" ]]; do
         echo "waiting for syncthing-${i} to be ready..."
         replication_source="syncthing-${i}"
-
-        echo "waiting for syncthing address and ID for ${replication_source}..."
-        # sleep until replicationsource has syncthing address and ID
-
-        st_address=""
-        st_device_id=""
-        while [[ -z "${st_address}" || -z "${st_device_id}" ]]; do
-          st_address=$(kubectl get replicationsource "${replication_source}" -n "${NAMESPACE}" -o jsonpath='{.status.syncthing.address}')
-          st_device_id=$(kubectl get replicationsource "${replication_source}" -n "${NAMESPACE}" -o jsonpath='{.status.syncthing.ID}')
-          if [[ -z "${st_address}" || -z "${st_device_id}" ]]; then
-            echo "syncthing info not yet available, current status:"
-            echo $(kubectl get replicationsource "${replication_source}" -n "${NAMESPACE}" -o jsonpath='{.status}')
-            sleep 5
-          fi
-        done
-
+        wait_for_syncthing_ready "${replication_source}"
         i=$((i+1))
       done
 
