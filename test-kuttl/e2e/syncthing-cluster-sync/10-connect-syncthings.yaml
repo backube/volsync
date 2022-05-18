@@ -22,7 +22,6 @@ commands:
         local replication_source=$1
 
         echo "waiting for syncthing address and ID for ${replication_source}..."
-        kubectl wait --for=condition=Reconciled replicationsource "${replication_source}" -n "${NAMESPACE}" --timeout=600s
         # sleep until replicationsource has syncthing address and ID
 
         local st_address=""
@@ -130,11 +129,10 @@ commands:
         replication_source="syncthing-${i}"
 
         echo "waiting for syncthing address and ID for ${replication_source}..."
-        kubectl wait --for=condition=Reconciled replicationsource "${replication_source}" -n "${NAMESPACE}" --timeout=600s
         # sleep until replicationsource has syncthing address and ID
 
-        local st_address=""
-        local st_device_id=""
+        st_address=""
+        st_device_id=""
         while [[ -z "${st_address}" || -z "${st_device_id}" ]]; do
           st_address=$(kubectl get replicationsource "${replication_source}" -n "${NAMESPACE}" -o jsonpath='{.status.syncthing.address}')
           st_device_id=$(kubectl get replicationsource "${replication_source}" -n "${NAMESPACE}" -o jsonpath='{.status.syncthing.ID}')
