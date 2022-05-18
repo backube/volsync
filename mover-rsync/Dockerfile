@@ -1,14 +1,14 @@
-FROM registry.access.redhat.com/ubi8-minimal
+FROM registry.access.redhat.com/ubi9-minimal
 
 # Separate install for rsync is to install it w/ docs so that we get the rrsync
 # command
-RUN microdnf --refresh update && \
-    microdnf --nodocs install \
+RUN microdnf --refresh update -y && \
+    microdnf --nodocs --setopt=install_weak_deps=0 install -y \
       bash \
       openssh-clients \
       openssh-server \
       perl \
-    && microdnf install \
+    && microdnf --setopt=install_weak_deps=0 install -y \
       rsync \
     && microdnf clean all
 
