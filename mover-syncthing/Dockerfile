@@ -32,12 +32,12 @@ RUN go run build.go -no-upgrade
 #RUN nm /workspace/syncthing/bin/syncthing | grep -q goboringcrypto
 
 # Build final container
-FROM registry.access.redhat.com/ubi8-minimal
+FROM registry.access.redhat.com/ubi9-minimal
 
 # RUN useradd -ms /bin/bash stuser
 # USER root
 
-RUN microdnf update -y && \
+RUN microdnf --refresh update -y && \
     microdnf clean all && \
     rm -rf /var/cache/yum
 

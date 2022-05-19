@@ -26,10 +26,10 @@ RUN make rclone
 #RUN nm rclone | grep -q goboringcrypto
 
 # Build final container
-FROM registry.access.redhat.com/ubi8-minimal
+FROM registry.access.redhat.com/ubi9-minimal
 
-RUN microdnf update -y && \
-    microdnf install -y \
+RUN microdnf --refresh update -y && \
+    microdnf --nodocs --setopt=install_weak_deps=0 install -y \
       acl \
     && microdnf clean all && \
     rm -rf /var/cache/yum

@@ -26,13 +26,14 @@ RUN GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o manager -ldflags "-X=m
 #RUN nm manager | grep -q goboringcrypto
 
 # Final container
-FROM registry.access.redhat.com/ubi8-minimal
+FROM registry.access.redhat.com/ubi9-minimal
 
 # Needs openssh in order to generate ssh keys
-RUN microdnf --refresh update && \
-    microdnf --nodocs install \
+RUN microdnf --refresh update -y && \
+    microdnf --nodocs --setopt=install_weak_deps=0 install -y \
         openssh \
-    && microdnf clean all
+    && microdnf clean all && \
+    rm -rf /var/cache/yum
 
 WORKDIR /
 COPY --from=builder /workspace/manager .
