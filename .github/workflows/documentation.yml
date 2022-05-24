@@ -28,5 +28,6 @@ jobs:
       - name: Build docs
         run: |
           cd docs
-          . ./setup-env.sh
+          ./setup-env.sh
+          . ../.venv/bin/activate
           make html
