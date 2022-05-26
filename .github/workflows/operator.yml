@@ -47,6 +47,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Install Go
         uses: actions/setup-go@v3
@@ -65,14 +67,20 @@ jobs:
           fi
 
       - name: Run unit tests
-        run: make test
+        run: make test-ci
 
-      - name: Upload test coverage
-        uses: codecov/codecov-action@v3
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v1.6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          file: ./cover.out
-          fail_ci_if_error: true
+          args: >
+            -Dsonar.go.coverage.reportPaths=cover.out
+            -Dsonar.go.golangci-lint.reportPaths=golangci-lint.xml
+            -Dsonar.go.tests.reportPaths=gotest.json
+            -Dsonar.pullrequest.github.summary_comment=true
+            -Dsonar.verbose=true
 
   build-operator:
     name: Build-operator

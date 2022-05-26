@@ -122,6 +122,12 @@ test: manifests generate lint envtest helm-lint ginkgo ## Run tests.
 	-rm -f cover.out
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" $(GINKGO) $(TEST_ARGS) $(TEST_PACKAGES)
 
+.PHONY: test-ci
+test-ci: manifests generate envtest helm-lint golangci-lint
+	-rm -f cover.out
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test -json -cover -covermode=atomic -shuffle=on -coverprofile=cover.out -outputdir . $(TEST_PACKAGES) | tee gotest.json | grep -v '"Action":"output"'
+	$(GOLANGCILINT) run --out-format checkstyle ./... | tee golangci-lint.xml
+
 .PHONY: test-e2e
 test-e2e: kuttl ## Run e2e tests. Requires cluster w/ VolSync already installed
 	cd test-kuttl && $(KUTTL) test

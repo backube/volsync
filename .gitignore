@@ -25,7 +25,7 @@ bin
 *.swo
 *~
 
-# Dependency directories (remove the comment below to include it)
+# Dependency directories
 vendor/
 
 # VolSync related
@@ -40,3 +40,7 @@ test-kuttl/kubeconfig
 
 # temp bundle files
 /bundle_tmp*
+
+# test tool output
+/golangci-lint.xml
+/gotest.json
