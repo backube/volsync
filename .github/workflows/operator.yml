@@ -28,7 +28,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@v3
+        uses: actions/checkout@d0651293c4a5a52e711f25b41b05b2212f385d28
 
       - name: Install prereqs
         run: |
@@ -46,10 +46,12 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@v3
+        uses: actions/checkout@d0651293c4a5a52e711f25b41b05b2212f385d28
+        with:
+          fetch-depth: 0
 
       - name: Install Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@b22fbbc2921299758641fab08929b4ac52b32923
         with:
           go-version: ${{ env.GO_VERSION }}
 
@@ -68,7 +70,7 @@ jobs:
         run: make test
 
       - name: Upload test coverage
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@81cd2dc8148241f03f5839d295e000b8f761e378
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           file: ./cover.out
@@ -80,7 +82,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@v3
+        uses: actions/checkout@d0651293c4a5a52e711f25b41b05b2212f385d28
 
       - name: Build operator container
         run: make docker-build IMG=${OPERATOR_IMAGE}
@@ -89,7 +91,7 @@ jobs:
         run: docker save -o /tmp/image.tar ${OPERATOR_IMAGE}
 
       - name: Save container as artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@3cea5372237819ed00197afe530f5a7ea3e805c8
         with:
           name: volsync-operator
           path: /tmp/image.tar
@@ -100,7 +102,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@v3
+        uses: actions/checkout@d0651293c4a5a52e711f25b41b05b2212f385d28
 
       - name: Build operator container
         run: make -C mover-rclone image
@@ -109,7 +111,7 @@ jobs:
         run: docker save -o /tmp/image.tar ${RCLONE_IMAGE}
 
       - name: Save container as artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@3cea5372237819ed00197afe530f5a7ea3e805c8
         with:
           name: volsync-mover-rclone-container
           path: /tmp/image.tar
@@ -120,7 +122,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@v3
+        uses: actions/checkout@d0651293c4a5a52e711f25b41b05b2212f385d28
 
       - name: Build operator container
         run: make -C mover-restic image
@@ -129,7 +131,7 @@ jobs:
         run: docker save -o /tmp/image.tar ${RESTIC_IMAGE}
 
       - name: Save container as artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@3cea5372237819ed00197afe530f5a7ea3e805c8
         with:
           name: volsync-mover-restic-container
           path: /tmp/image.tar
@@ -140,7 +142,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@v3
+        uses: actions/checkout@d0651293c4a5a52e711f25b41b05b2212f385d28
 
       - name: Build operator container
         run: make -C mover-rsync image
@@ -149,7 +151,7 @@ jobs:
         run: docker save -o /tmp/image.tar ${RSYNC_IMAGE}
 
       - name: Save container as artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@3cea5372237819ed00197afe530f5a7ea3e805c8
         with:
           name: volsync-mover-rsync-container
           path: /tmp/image.tar
@@ -160,7 +162,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@v3
+        uses: actions/checkout@d0651293c4a5a52e711f25b41b05b2212f385d28
 
       - name: Build operator container
         run: make -C mover-syncthing image
@@ -169,7 +171,7 @@ jobs:
         run: docker save -o /tmp/image.tar ${SYNCTHING_IMAGE}
 
       - name: Save container as artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@3cea5372237819ed00197afe530f5a7ea3e805c8
         with:
           name: volsync-mover-syncthing-container
           path: /tmp/image.tar
@@ -183,14 +185,14 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@v3
+        uses: actions/checkout@d0651293c4a5a52e711f25b41b05b2212f385d28
         with:
           # Fetch whole history so we can properly determine the version string
           # (required by krew validation)
           fetch-depth: 0
 
       - name: Install Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@b22fbbc2921299758641fab08929b4ac52b32923
         with:
           go-version: ${{ env.GO_VERSION }}
 
@@ -217,7 +219,7 @@ jobs:
         run: make test-krew
 
       - name: Save cli as artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@3cea5372237819ed00197afe530f5a7ea3e805c8
         with:
           name: kubectl-volsync
           path: bin/kubectl-volsync
@@ -243,7 +245,7 @@ jobs:
       KUBERNETES_VERSION: ${{ matrix.KUBERNETES_VERSIONS }}
     steps:
       - name: Checkout source
-        uses: actions/checkout@v3
+        uses: actions/checkout@d0651293c4a5a52e711f25b41b05b2212f385d28
 
       # We set bash as the default shell (instead of dash) because the kuttl
       # test steps require bash, but the "script" directive executes them as "sh
@@ -279,7 +281,7 @@ jobs:
           ./hack/run-minio.sh
 
       - name: Load operator container artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@fb598a63ae348fa914e94cd0ff38f362e927b741
         with:
           name: volsync-operator
           path: /tmp
@@ -292,7 +294,7 @@ jobs:
           kind load docker-image "${OPERATOR_IMAGE}:ci-build"
 
       - name: Load rclone container artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@fb598a63ae348fa914e94cd0ff38f362e927b741
         with:
           name: volsync-mover-rclone-container
           path: /tmp
@@ -305,7 +307,7 @@ jobs:
           kind load docker-image "${RCLONE_IMAGE}:ci-build"
 
       - name: Load restic container artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@fb598a63ae348fa914e94cd0ff38f362e927b741
         with:
           name: volsync-mover-restic-container
           path: /tmp
@@ -318,7 +320,7 @@ jobs:
           kind load docker-image "${RESTIC_IMAGE}:ci-build"
 
       - name: Load rsync container artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@fb598a63ae348fa914e94cd0ff38f362e927b741
         with:
           name: volsync-mover-rsync-container
           path: /tmp
@@ -341,7 +343,7 @@ jobs:
               volsync-ghaction ./helm/volsync
 
       - name: Load cli artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@fb598a63ae348fa914e94cd0ff38f362e927b741
         with:
           name: kubectl-volsync
           path: bin
@@ -380,7 +382,7 @@ jobs:
 
     steps:
       - name: Load container artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@fb598a63ae348fa914e94cd0ff38f362e927b741
         with:
           name: volsync-operator
           path: /tmp
@@ -437,7 +439,7 @@ jobs:
 
     steps:
       - name: Load container artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@fb598a63ae348fa914e94cd0ff38f362e927b741
         with:
           name: volsync-mover-rclone-container
           path: /tmp
@@ -494,7 +496,7 @@ jobs:
 
     steps:
       - name: Load container artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@fb598a63ae348fa914e94cd0ff38f362e927b741
         with:
           name: volsync-mover-restic-container
           path: /tmp
@@ -551,7 +553,7 @@ jobs:
 
     steps:
       - name: Load container artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@fb598a63ae348fa914e94cd0ff38f362e927b741
         with:
           name: volsync-mover-rsync-container
           path: /tmp
@@ -608,7 +610,7 @@ jobs:
 
     steps:
       - name: Load container artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@fb598a63ae348fa914e94cd0ff38f362e927b741
         with:
           name: volsync-mover-syncthing-container
           path: /tmp
