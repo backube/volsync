@@ -47,6 +47,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@d0651293c4a5a52e711f25b41b05b2212f385d28
+        with:
+          fetch-depth: 0
 
       - name: Install Go
         uses: actions/setup-go@b22fbbc2921299758641fab08929b4ac52b32923
