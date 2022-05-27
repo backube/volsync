@@ -26,20 +26,18 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
-
-	appsv1 "k8s.io/api/apps/v1"
-
-	// "k8s.io/kubernetes/pkg/apis/apps"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/backube/volsync/api/v1alpha1"
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers/mover"
 	"github.com/backube/volsync/controllers/utils"
 	"github.com/backube/volsync/controllers/volumehandler"
@@ -51,23 +49,26 @@ const (
 	dataDirMountPath   = "/data"
 	configDirEnv       = "SYNCTHING_CONFIG_DIR"
 	configDirMountPath = "/config"
+	configCapacity     = "1Gi"
 	syncthingAPIPort   = 8384
 	syncthingDataPort  = 22000
 )
 
 // Mover is the reconciliation logic for the Restic-based data mover.
 type Mover struct {
-	client         client.Client
-	logger         logr.Logger
-	owner          client.Object
-	vh             *volumehandler.VolumeHandler
-	containerImage string
-	paused         bool
-	dataPVCName    *string
-	peerList       []v1alpha1.SyncthingPeer
-	status         *v1alpha1.ReplicationSourceSyncthingStatus
-	serviceType    corev1.ServiceType
-	syncthing      Syncthing
+	client             client.Client
+	logger             logr.Logger
+	owner              client.Object
+	eventRecorder      events.EventRecorder
+	configStorageClass *string
+	configAccessModes  []corev1.PersistentVolumeAccessMode
+	containerImage     string
+	paused             bool
+	dataPVCName        *string
+	peerList           []volsyncv1alpha1.SyncthingPeer
+	status             *volsyncv1alpha1.ReplicationSourceSyncthingStatus
+	serviceType        corev1.ServiceType
+	syncthing          Syncthing
 }
 
 var _ mover.Mover = &Mover{}
@@ -137,50 +138,37 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 	return mover.RetryAfter(retryAfter), nil
 }
 
-// setVHFromSourcePVC Will use the provided dataPVC to create a VolumeHandler and set it on the mover.
-func (m *Mover) setVHFromSourcePVC(dataPVC *corev1.PersistentVolumeClaim) error {
-	// create a volume options object
-	volumeOptions := v1alpha1.ReplicationSourceVolumeOptions{
-		CopyMethod:              v1alpha1.CopyMethodNone,
-		StorageClassName:        dataPVC.Spec.StorageClassName,
-		AccessModes:             dataPVC.Spec.AccessModes,
-		VolumeSnapshotClassName: nil,
-	}
-
-	// create a volume handler
-	vh, err := volumehandler.NewVolumeHandler(
-		volumehandler.WithClient(m.client),
-		volumehandler.WithOwner(m.owner),
-		volumehandler.FromSource(&volumeOptions),
-	)
-	// we need VolumeHandler to proceed
-	if err != nil {
-		return err
-	}
-	m.vh = vh
-	return nil
-}
-
 // ensureConfigPVC Ensures that there is a PVC persisting Syncthing's config data.
 func (m *Mover) ensureConfigPVC(
 	ctx context.Context,
 	dataPVC *corev1.PersistentVolumeClaim,
 ) (*corev1.PersistentVolumeClaim, error) {
-	// // cannot proceed unless we have a data PVC or volumehandler is defined
-	// if dataPVC == nil && m.vh == nil {
-	// 	return nil, fmt.Errorf("dataPVC and volumehandler are both nil")
-	// }
-
-	configConfig := []volumehandler.VHOption{
-		// build on top of the main volume handler's config
-		volumehandler.From(m.vh),
+	capacity := resource.MustParse(configCapacity)
+	options := volsyncv1alpha1.ReplicationSourceVolumeOptions{
+		CopyMethod: volsyncv1alpha1.CopyMethodDirect,
+		Capacity:   &capacity,
 	}
 
-	// create a VH for the config PVC
-	configCapacity := resource.MustParse("1Gi")
-	configConfig = append(configConfig, volumehandler.Capacity(&configCapacity))
-	configConfig = append(configConfig, volumehandler.AccessModes(dataPVC.Spec.AccessModes))
-	configVh, err := volumehandler.NewVolumeHandler(configConfig...)
+	// ensure configStorageClassName
+	if m.configStorageClass != nil {
+		options.StorageClassName = m.configStorageClass
+	} else {
+		options.StorageClassName = dataPVC.Spec.StorageClassName
+	}
+
+	// ensure AccessModes
+	if m.configAccessModes != nil {
+		options.AccessModes = m.configAccessModes
+	} else {
+		options.AccessModes = dataPVC.Spec.AccessModes
+	}
+
+	configVh, err := volumehandler.NewVolumeHandler(
+		volumehandler.WithClient(m.client),
+		volumehandler.WithOwner(m.owner),
+		volumehandler.WithRecorder(m.eventRecorder),
+		volumehandler.FromSource(&options),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -203,13 +191,6 @@ func (m *Mover) ensureDataPVC(ctx context.Context) (*corev1.PersistentVolumeClai
 	}
 	if err := m.client.Get(ctx, client.ObjectKeyFromObject(dataPVC), dataPVC); err != nil {
 		return nil, err
-	}
-
-	// create a VolumeHandler based on the data PVC
-	if m.vh == nil {
-		if err := m.setVHFromSourcePVC(dataPVC); err != nil {
-			return nil, err
-		}
 	}
 
 	return dataPVC, nil
@@ -678,7 +659,7 @@ func (m *Mover) ensureStatusIsUpdated(dataSVC *corev1.Service) error {
 	// set syncthing-related info
 	m.status.Address = addr
 	m.status.ID = m.syncthing.SystemStatus.MyID
-	m.status.Peers = []v1alpha1.SyncthingPeerStatus{}
+	m.status.Peers = []volsyncv1alpha1.SyncthingPeerStatus{}
 
 	// add the connected devices to the status
 	for deviceID, connectionInfo := range m.syncthing.SystemConnections.Connections {
@@ -700,11 +681,11 @@ func (m *Mover) ensureStatusIsUpdated(dataSVC *corev1.Service) error {
 		deviceName := device.Name
 
 		// check connection status
-		m.status.Peers = append(m.status.Peers, v1alpha1.SyncthingPeerStatus{
+		m.status.Peers = append(m.status.Peers, volsyncv1alpha1.SyncthingPeerStatus{
 			ID:           deviceID,
 			Address:      tcpAddress,
 			Connected:    connectionInfo.Connected,
-			DeviceName:   deviceName,
+			Name:         deviceName,
 			IntroducedBy: introducedBy,
 		})
 	}

@@ -104,7 +104,7 @@ var _ = Describe("Syncthing doesn't implement RD", func() {
 			Expect(k8sClient.Create(ctx, ns)).To(Succeed())
 		})
 
-		It("error occurs", func() {
+		It("is nil", func() {
 			// make sure that syncthing never works with ReplicationDestination
 			rd = &volsyncv1alpha1.ReplicationDestination{
 				ObjectMeta: metav1.ObjectMeta{
@@ -116,7 +116,7 @@ var _ = Describe("Syncthing doesn't implement RD", func() {
 
 			// get a builder from the xRD to ensure that this errors
 			m, e := commonBuilderForTestSuite.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd)
-			Expect(e).To(HaveOccurred())
+			Expect(e).To(BeNil())
 			Expect(m).To(BeNil())
 		})
 	})
@@ -757,7 +757,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 						Expect(peer.Address).To(Equal("tcp://not-a-real-server"))
 						Expect(peer.Connected).To(BeTrue())
 						Expect(peer.IntroducedBy).To(Equal("george-costanza"))
-						Expect(peer.DeviceName).To(Equal("not-a-real-server"))
+						Expect(peer.Name).To(Equal("not-a-real-server"))
 					})
 				})
 

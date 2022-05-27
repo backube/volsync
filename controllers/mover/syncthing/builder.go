@@ -106,15 +106,18 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 	syncthingLogger := logger.WithValues("method", "Syncthing")
 
 	return &Mover{
-		client:         client,
-		logger:         syncthingLogger,
-		owner:          source,
-		containerImage: rb.getSyncthingContainerImage(),
-		peerList:       source.Spec.Syncthing.Peers,
-		paused:         source.Spec.Paused,
-		dataPVCName:    &source.Spec.SourcePVC,
-		status:         source.Status.Syncthing,
-		serviceType:    serviceType,
+		client:             client,
+		logger:             syncthingLogger,
+		owner:              source,
+		eventRecorder:      eventRecorder,
+		configStorageClass: source.Spec.Syncthing.ConfigStorageClassName,
+		configAccessModes:  source.Spec.Syncthing.ConfigAccessModes,
+		containerImage:     rb.getSyncthingContainerImage(),
+		peerList:           source.Spec.Syncthing.Peers,
+		paused:             source.Spec.Paused,
+		dataPVCName:        &source.Spec.SourcePVC,
+		status:             source.Status.Syncthing,
+		serviceType:        serviceType,
 		syncthing: Syncthing{
 			APIConfig: &APIConfig{
 				APIURL: "",
@@ -123,7 +126,6 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 			logger: syncthingLogger.WithValues("struct", "Syncthing"),
 		},
 		// defer setting the VolumeHandler
-		vh: nil,
 	}, nil
 }
 
@@ -131,5 +133,5 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 	eventRecorder events.EventRecorder,
 	destination *volsyncv1alpha1.ReplicationDestination) (mover.Mover, error) {
-	return nil, fmt.Errorf("syncthing mover not implemented for destination")
+	return nil, nil
 }

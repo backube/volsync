@@ -168,7 +168,7 @@ type ReplicationSourceResticSpec struct {
 	// metadata cache volume
 	//+optional
 	CacheStorageClassName *string `json:"cacheStorageClassName,omitempty"`
-	// accessModes can be used to set the accessModes of restic metadata cache volume
+	// CacheAccessModes can be used to set the accessModes of restic metadata cache volume
 	//+optional
 	CacheAccessModes []corev1.PersistentVolumeAccessMode `json:"cacheAccessModes,omitempty"`
 }
@@ -187,6 +187,16 @@ type ReplicationSourceSyncthingSpec struct {
 	// Type of service to be used when exposing the Syncthing peer
 	//+optional
 	ServiceType *corev1.ServiceType `json:"serviceType,omitempty"`
+	// Used to set the size of the restic metadata cache volume.
+	//+optional
+	ConfigCapacity *resource.Quantity `json:"cacheCapacity,omitempty"`
+	// Used to set the StorageClass of the restic
+	// metadata cache volume.
+	//+optional
+	ConfigStorageClassName *string `json:"configStorageClassName,omitempty"`
+	// Used to set the accessModes of restic metadata cache volume.
+	//+optional
+	ConfigAccessModes []corev1.PersistentVolumeAccessMode `json:"configAccessModes,omitempty"`
 }
 
 // ReplicationSourceSpec defines the desired state of ReplicationSource
@@ -236,7 +246,7 @@ type ReplicationSourceRsyncStatus struct {
 }
 
 type ReplicationSourceSyncthingStatus struct {
-	// NodeList is a list of the Syncthing nodes we are currently connected to.
+	// List of the Syncthing nodes we are currently connected to.
 	Peers []SyncthingPeerStatus `json:"peers,omitempty"`
 	// Device ID of the current syncthing device
 	ID string `json:"ID,omitempty"`
@@ -275,7 +285,7 @@ type ReplicationSourceStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 	// restic contains status information for Restic-based replication.
 	Restic *ReplicationSourceResticStatus `json:"restic,omitempty"`
-	// syncthing contains status information for Syncthing-based replication.
+	// contains status information when Syncthing-based replication is used.
 	//+optional
 	Syncthing *ReplicationSourceSyncthingStatus `json:"syncthing,omitempty"`
 }

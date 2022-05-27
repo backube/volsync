@@ -59,25 +59,32 @@ const (
 	SynchronizingReasonError   string = "Error"
 )
 
+// SyncthingPeer Defines the necessary information needed by VolSync
+// to configure a given peer with the running Syncthing instance.
 type SyncthingPeer struct {
-	// Address Is an address which is used to connect to the other Syncthing peer.
+	// The peer's address that our Syncthing node will connect to.
 	Address string `json:"address"`
-	// ID Is the peer's Syncthing ID.
+	// The peer's Syncthing ID.
 	ID string `json:"ID"`
-	// Introducer is a flag which determines whether this peer should
+	// A flag that determines whether this peer should
 	// introduce us to other peers sharing this volume.
+	// It is HIGHLY recommended that two Syncthing peers do NOT
+	// set each other as introducers as you will have a difficult time
+	// disconnecting the two.
 	Introducer bool `json:"introducer"`
 }
 
+// SyncthingPeerStatus Is a struct that contains information pertaining to
+// the status of a given Syncthing peer.
 type SyncthingPeerStatus struct {
-	// Address Represents the TCP address of the Syncthing peer.
+	// The address of the Syncthing peer.
 	Address string `json:"address"`
 	// ID Is the peer's Syncthing ID.
 	ID string `json:"ID"`
-	// Connected Is a flag indicating whether peer is currently connected.
+	// Flag indicating whether peer is currently connected.
 	Connected bool `json:"connected"`
-	// IntroducedBy Is the ID of the peer that introduced this peer.
+	// The ID of the Syncthing peer that this one was introduced by.
 	IntroducedBy string `json:"introducedBy,omitempty"`
-	// DeviceName Is a friendly name for the given device.
-	DeviceName string `json:"deviceName,omitempty"`
+	// A friendly name to associate the given device.
+	Name string `json:"name,omitempty"`
 }
