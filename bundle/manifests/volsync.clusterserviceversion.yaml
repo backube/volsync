@@ -41,7 +41,7 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    operators.operatorframework.io/builder: operator-sdk-v1.19.0+git
+    operators.operatorframework.io/builder: operator-sdk-v1.21.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
   name: volsync.v0.4.0
   namespace: placeholder
@@ -293,7 +293,7 @@ spec:
                 - --upstream=http://127.0.0.1:8080/
                 - --logtostderr=true
                 - --v=0
-                image: gcr.io/kubebuilder/kube-rbac-proxy:v0.8.0
+                image: gcr.io/kubebuilder/kube-rbac-proxy:v0.11.0
                 name: kube-rbac-proxy
                 ports:
                 - containerPort: 8443

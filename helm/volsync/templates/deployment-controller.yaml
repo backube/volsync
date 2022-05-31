@@ -39,7 +39,7 @@ spec:
             {{- if .Values.metrics.disableAuth }}
             - --ignore-paths=/metrics
             {{- end }}
-          image: gcr.io/kubebuilder/kube-rbac-proxy:v0.8.0
+          image: gcr.io/kubebuilder/kube-rbac-proxy:v0.11.0
           ports:
             - containerPort: 8443
               name: https

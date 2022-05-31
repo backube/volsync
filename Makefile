@@ -9,10 +9,12 @@
 include ./version.mk
 
 # Helper software versions
+CONTROLLER_TOOLS_VERSION := v0.8.0
 GOLANGCI_VERSION := v1.46.1
 HELM_VERSION := v3.8.2
-OPERATOR_SDK_VERSION := v1.20.0
+KUSTOMIZE_VERSION := v4.5.4
 KUTTL_VERSION := 0.12.1
+OPERATOR_SDK_VERSION := v1.21.0
 
 # We don't vendor modules. Enforce that behavior
 export GOFLAGS := -mod=readonly
@@ -197,37 +199,32 @@ undeploy: manifests kustomize ## Undeploy controller from the K8s cluster specif
 undeploy-openshift: manifests kustomize ## Undeploy controller to the K8s cluster specified in ~/.kube/config.
 	$(KUSTOMIZE) build config/openshift | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
 
+##@ Build Dependencies
+
+## Location to install dependencies to
+LOCALBIN ?= $(shell pwd)/bin
+$(LOCALBIN):
+	mkdir -p $(LOCALBIN)
 
 .PHONY: controller-gen
-CONTROLLER_GEN = $(shell pwd)/bin/controller-gen
+CONTROLLER_GEN := $(LOCALBIN)/controller-gen
 controller-gen: ## Download controller-gen locally if necessary.
-	$(call go-get-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen@v0.8.0)
+	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
 
 .PHONY: kustomize
-KUSTOMIZE = $(shell pwd)/bin/kustomize
+KUSTOMIZE := $(LOCALBIN)/kustomize
 kustomize: ## Download kustomize locally if necessary.
-	$(call go-get-tool,$(KUSTOMIZE),sigs.k8s.io/kustomize/kustomize/v4@v4.5.4)
+	GOBIN=$(LOCALBIN) go install sigs.k8s.io/kustomize/kustomize/v4@$(KUSTOMIZE_VERSION)
 
 .PHONY: envtest
-ENVTEST = $(shell pwd)/bin/setup-envtest
+ENVTEST := $(LOCALBIN)/setup-envtest
 envtest: ## Download envtest-setup locally if necessary.
-	$(call go-get-tool,$(ENVTEST),sigs.k8s.io/controller-runtime/tools/setup-envtest@latest)
+	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
 
 .PHONY: yq
-YQ = $(shell pwd)/bin/yq
+YQ := $(LOCALBIN)/yq
 yq: ## Download yq locally if necessary.
-	$(call go-get-tool,$(YQ),github.com/mikefarah/yq/v4@latest)
-
-
-# go-get-tool will 'go install' any package $2 and install it to $1.
-PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
-define go-get-tool
-@[ -f $(1) ] || { \
-set -e ;\
-echo "Downloading $(2)" ;\
-GOBIN=$(PROJECT_DIR)/bin go install $(2) ;\
-}
-endef
+	GOBIN=$(LOCALBIN) go install github.com/mikefarah/yq/v4@latest
 
 .PHONY: bundle
 bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
@@ -303,34 +300,34 @@ chmod a+x "$(1)" ;\
 endef
 
 .PHONY: ginkgo
-GINKGO := $(PROJECT_DIR)/bin/ginkgo
+GINKGO := $(LOCALBIN)/ginkgo
 ginkgo: ## Download ginkgo
-	$(call go-get-tool,$(GINKGO),github.com/onsi/ginkgo/ginkgo@latest)
+	GOBIN=$(LOCALBIN) go install github.com/onsi/ginkgo/ginkgo@latest
 
 .PHONY: golangci-lint
-GOLANGCILINT := $(PROJECT_DIR)/bin/golangci-lint
+GOLANGCILINT := $(LOCALBIN)/golangci-lint
 GOLANGCI_URL := https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh
 golangci-lint: ## Download golangci-lint
 ifeq (,$(wildcard $(GOLANGCILINT)))
-	curl -sSfL $(GOLANGCI_URL) | sh -s -- -b $(PROJECT_DIR)/bin $(GOLANGCI_VERSION)
+	curl -sSfL $(GOLANGCI_URL) | sh -s -- -b $(LOCALBIN) $(GOLANGCI_VERSION)
 endif
 
 .PHONY: helm
-HELM := $(PROJECT_DIR)/bin/helm
+HELM := $(LOCALBIN)/helm
 HELM_URL := https://get.helm.sh/helm-$(HELM_VERSION)-$(OS)-$(ARCH).tar.gz
 helm: ## Download helm
 ifeq (,$(wildcard $(HELM)))
-	curl -sSL "$(HELM_URL)" | tar xzf - -C $(PROJECT_DIR)/bin --strip-components=1 --wildcards '*/helm'
+	curl -sSL "$(HELM_URL)" | tar xzf - -C $(LOCALBIN) --strip-components=1 --wildcards '*/helm'
 endif
 
 .PHONY: kuttl
-KUTTL := $(PROJECT_DIR)/bin/kuttl
+KUTTL := $(LOCALBIN)/kuttl
 KUTTL_URL := https://github.com/kudobuilder/kuttl/releases/download/v$(KUTTL_VERSION)/kubectl-kuttl_$(KUTTL_VERSION)_$(OS)_x86_64
 kuttl: ## Download kuttl
 	$(call download-tool,$(KUTTL),$(KUTTL_URL))
 
 .PHONY: operator-sdk
-OPERATOR_SDK := $(PROJECT_DIR)/bin/operator-sdk
+OPERATOR_SDK := $(LOCALBIN)/operator-sdk
 OPERATOR_SDK_URL := https://github.com/operator-framework/operator-sdk/releases/download/$(OPERATOR_SDK_VERSION)/operator-sdk_$(OS)_$(ARCH)
 operator-sdk: ## Download operator-sdk
 	$(call download-tool,$(OPERATOR_SDK),$(OPERATOR_SDK_URL))
