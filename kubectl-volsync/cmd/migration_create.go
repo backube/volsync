@@ -270,7 +270,7 @@ func (mc *migrationCreate) ensureNamespace(ctx context.Context) (*corev1.Namespa
 		}
 		return nil, err
 	}
-	klog.Infof("Created Destination Namespace: \"%s\" in Cluster: \"%s\"", ns.Name, ns.ClusterName)
+	klog.Infof("Created Destination Namespace: \"%s\"", ns.Name)
 
 	return ns, nil
 }
@@ -311,8 +311,8 @@ func (mc *migrationCreate) createDestinationPVC(ctx context.Context) (*corev1.Pe
 		return nil, err
 	}
 
-	klog.Infof("Created Destination PVC: \"%s\" in NameSpace: \"%s\" and Cluster: \"%s\" ",
-		destPVC.Name, destPVC.Namespace, destPVC.ClusterName)
+	klog.Infof("Created Destination PVC: \"%s\" in NameSpace: \"%s\"",
+		destPVC.Name, destPVC.Namespace)
 
 	return destPVC, nil
 }
@@ -354,8 +354,8 @@ func (mc *migrationCreate) ensureReplicationDestination(ctx context.Context) (
 	if err := mc.client.Create(ctx, rd); err != nil {
 		return nil, err
 	}
-	klog.Infof("Created ReplicationDestination: \"%s\" in Namespace: \"%s\" and Cluster: \"%s\"",
-		rd.Name, rd.Namespace, rd.ClusterName)
+	klog.Infof("Created ReplicationDestination: \"%s\" in Namespace: \"%s\"",
+		rd.Name, rd.Namespace)
 
 	return rd, nil
 }
