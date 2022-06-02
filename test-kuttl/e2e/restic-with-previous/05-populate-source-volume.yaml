@@ -21,6 +21,7 @@ spec:
   containers:
     - name: busybox
       image: busybox
+      imagePullPolicy: IfNotPresent
       command: ["/bin/sh", "-c"]
       args: ["echo 'somedata' > /mnt/datafile; sync; sleep 99999"]
       volumeMounts:
