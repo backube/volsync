@@ -849,7 +849,9 @@ var _ = Describe("Rsync as a source", func() {
 					}, timeout, interval).Should(Succeed())
 					Eventually(func() int32 {
 						j, e := mover.ensureJob(ctx, sPVC, sa, sshKeysSecret.GetName()) // Using sPVC as dataPVC (i.e. direct)
-						Expect(e).NotTo(HaveOccurred())
+						if e != nil {
+							return 98
+						}
 						Expect(j).To(BeNil())
 						e = k8sClient.Get(ctx, nsn, job)
 						if e != nil {

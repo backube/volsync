@@ -424,6 +424,15 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 				}},
 			},
 		}
+		if m.vh.IsCopyMethodDirect() {
+			affinity, err := utils.AffinityFromVolume(ctx, m.client, logger, dataPVC)
+			if err != nil {
+				logger.Error(err, "unable to determine proper affinity", "PVC", client.ObjectKeyFromObject(dataPVC))
+				return err
+			}
+			job.Spec.Template.Spec.NodeName = affinity.NodeName
+			job.Spec.Template.Spec.Tolerations = affinity.Tolerations
+		}
 		logger.V(1).Info("Job has PVC", "PVC", dataPVC, "DS", dataPVC.Spec.DataSource)
 		return nil
 	})
@@ -437,18 +446,20 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 	}
 	if err != nil {
 		logger.Error(err, "reconcile failed")
-	} else {
-		logger.V(1).Info("Job reconciled", "operation", op)
-		if op == ctrlutil.OperationResultCreated {
-			dir := "receive"
-			if m.isSource {
-				dir = "transmit"
-			}
-			m.eventRecorder.Eventf(m.owner, job, corev1.EventTypeNormal,
-				mover.EvRTransferStarted, mover.EvACreateMover, "starting %s to %s data",
-				utils.KindAndName(m.client.Scheme(), job), dir)
-		}
+		return nil, err
 	}
+
+	logger.V(1).Info("Job reconciled", "operation", op)
+	if op == ctrlutil.OperationResultCreated {
+		dir := "receive"
+		if m.isSource {
+			dir = "transmit"
+		}
+		m.eventRecorder.Eventf(m.owner, job, corev1.EventTypeNormal,
+			mover.EvRTransferStarted, mover.EvACreateMover, "starting %s to %s data",
+			utils.KindAndName(m.client.Scheme(), job), dir)
+	}
+
 	// Stop here if the job hasn't completed yet
 	if job.Status.Succeeded == 0 {
 		return nil, nil

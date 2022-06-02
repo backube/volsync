@@ -510,3 +510,8 @@ func (vh *VolumeHandler) pvcFromSnapshot(ctx context.Context, log logr.Logger,
 	logger.V(1).Info("pvc from snap reconciled", "operation", op)
 	return pvc, nil
 }
+
+func (vh *VolumeHandler) IsCopyMethodDirect() bool {
+	return vh.copyMethod == volsyncv1alpha1.CopyMethodDirect ||
+		vh.copyMethod == volsyncv1alpha1.CopyMethodNone
+}
