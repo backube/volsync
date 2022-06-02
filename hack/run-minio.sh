@@ -30,7 +30,7 @@ if ! helm install --create-namespace -n "${MINIO_NAMESPACE}" \
     --set auth.rootPassword=password \
     --set defaultBuckets=mybucket \
     "${SECURITY_ARGS[@]}" \
-    --version 9.0.5 \
+    --version 11.6.3 \
     --wait --timeout=300s \
     minio bitnami/minio; then
     kubectl -n "${MINIO_NAMESPACE}" describe all,pvc,pv
