@@ -315,7 +315,13 @@ func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,
 				clone.Spec.Resources.Requests = corev1.ResourceList{
 					corev1.ResourceStorage: *vh.capacity,
 				}
+			} else if src.Status.Capacity != nil && src.Status.Capacity.Storage() != nil {
+				// check the src PVC capacity if set
+				clone.Spec.Resources.Requests = corev1.ResourceList{
+					corev1.ResourceStorage: *src.Status.Capacity.Storage(),
+				}
 			} else {
+				// Fallback to the pvc requested size
 				clone.Spec.Resources.Requests = corev1.ResourceList{
 					corev1.ResourceStorage: *src.Spec.Resources.Requests.Storage(),
 				}

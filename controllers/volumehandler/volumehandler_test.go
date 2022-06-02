@@ -278,6 +278,13 @@ var _ = Describe("Volumehandler", func() {
 	Context("A VolumeHandler (from source)", func() {
 		var rs *volsyncv1alpha1.ReplicationSource
 		var src *corev1.PersistentVolumeClaim
+
+		// Making these 3 different values so we can test we're looking at the correct properties when
+		// setting the src pvc requested storage size
+		pvcRequestedSize := resource.MustParse("2Gi")
+		pvcCapacity := resource.MustParse("3Gi")
+		snapshotRestoreSize := resource.MustParse("4Gi")
+
 		BeforeEach(func() {
 			// Scaffold RS
 			rs = &volsyncv1alpha1.ReplicationSource{
@@ -310,7 +317,7 @@ var _ = Describe("Volumehandler", func() {
 					},
 					Resources: corev1.ResourceRequirements{
 						Requests: corev1.ResourceList{
-							"storage": resource.MustParse("2Gi"),
+							"storage": pvcRequestedSize,
 						},
 					},
 					StorageClassName: &srcSC,
@@ -337,23 +344,51 @@ var _ = Describe("Volumehandler", func() {
 			BeforeEach(func() {
 				rs.Spec.Rsync.CopyMethod = volsyncv1alpha1.CopyMethodClone
 			})
-			It("creates a temporary PVC from a source", func() {
-				vh, err := NewVolumeHandler(
-					WithClient(k8sClient),
-					WithOwner(rs),
-					FromSource(&rs.Spec.Rsync.ReplicationSourceVolumeOptions),
-				)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(vh).ToNot(BeNil())
 
-				new, err := vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc", true)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(new).ToNot(BeNil())
-				Expect(new.Name).To(Equal("newpvc"))
-				// The clone should look just like the source
-				Expect(new.Spec.StorageClassName).To(Equal(src.Spec.StorageClassName))
-				Expect(new.Spec.Resources.Requests.Storage()).To(Equal(src.Spec.Resources.Requests.Storage()))
-				Expect(new.Spec.AccessModes).To(Equal(src.Spec.AccessModes))
+			When("When no capacity is specified in the rs spec", func() {
+				var vh *VolumeHandler
+				JustBeforeEach(func() {
+					var err error
+					vh, err = NewVolumeHandler(
+						WithClient(k8sClient),
+						WithOwner(rs),
+						FromSource(&rs.Spec.Rsync.ReplicationSourceVolumeOptions),
+					)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(vh).ToNot(BeNil())
+				})
+
+				When("The src PVC does NOT have status.capacity set", func() {
+					It("creates a temporary PVC from a source falling back to using src pvc requested size", func() {
+						new, err := vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc", true)
+						Expect(err).ToNot(HaveOccurred())
+						Expect(new).ToNot(BeNil())
+						Expect(new.Name).To(Equal("newpvc"))
+						// The clone should look just like the source
+						Expect(new.Spec.StorageClassName).To(Equal(src.Spec.StorageClassName))
+						Expect(*new.Spec.Resources.Requests.Storage()).To(Equal(pvcRequestedSize))
+						Expect(new.Spec.AccessModes).To(Equal(src.Spec.AccessModes))
+					})
+				})
+
+				When("The src PVC has status.capacity", func() {
+					JustBeforeEach(func() {
+						// Update the src pvc to set a capacity in the status - this capacity should then
+						// get used to set the clone PVC requested storage size
+						setPvcCapacityInStatus(ctx, src, pvcCapacity)
+					})
+
+					It("creates a temporary PVC from a source using src pvc capacity", func() {
+						new, err := vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc", true)
+						Expect(err).ToNot(HaveOccurred())
+						Expect(new).ToNot(BeNil())
+						Expect(new.Name).To(Equal("newpvc"))
+						// The clone should look just like the source
+						Expect(new.Spec.StorageClassName).To(Equal(src.Spec.StorageClassName))
+						Expect(*new.Spec.Resources.Requests.Storage()).To(Equal(pvcCapacity))
+						Expect(new.Spec.AccessModes).To(Equal(src.Spec.AccessModes))
+					})
+				})
 			})
 			When("options are overridden", func() {
 				newSC := "thenewsc"
@@ -386,16 +421,8 @@ var _ = Describe("Volumehandler", func() {
 			})
 		})
 		When("CopyMethod is Snapshot", func() {
-			// Making these 3 different values so we can test we're looking at the correct properties when
-			// setting the src pvc requested storage size
-			pvcRequestedSize := resource.MustParse("2Gi")
-			pvcCapacity := resource.MustParse("3Gi")
-			snapshotRestoreSize := resource.MustParse("4Gi")
-
 			BeforeEach(func() {
 				rs.Spec.Rsync.CopyMethod = volsyncv1alpha1.CopyMethodSnapshot
-
-				src.Spec.Resources.Requests["storage"] = pvcRequestedSize
 			})
 
 			When("When no capacity is specified in the rs spec", func() {
@@ -464,18 +491,7 @@ var _ = Describe("Volumehandler", func() {
 					JustBeforeEach(func() {
 						// Update the src pvc to set a capacity in the status - this capacity should then
 						// get used to set the PVC from snapshot requested storage size
-						src.Status.Capacity = corev1.ResourceList{
-							"storage": pvcCapacity,
-						}
-						Expect(k8sClient.Status().Update(ctx, src)).To(Succeed())
-						Eventually(func() bool {
-							// Make sure the cache has picked up the update
-							err := k8sClient.Get(ctx, client.ObjectKeyFromObject(src), src)
-							if err != nil {
-								return false
-							}
-							return src.Status.Capacity != nil && src.Status.Capacity["storage"] == pvcCapacity
-						}, maxWait, interval).Should(BeTrue())
+						setPvcCapacityInStatus(ctx, src, pvcCapacity)
 					})
 
 					It("creates a snapshot and temporary PVC from a source using the capacity from the src pvc", func() {
@@ -600,3 +616,19 @@ var _ = Describe("Volumehandler", func() {
 		})
 	})
 })
+
+func setPvcCapacityInStatus(ctx context.Context, pvc *corev1.PersistentVolumeClaim, pvcCapacity resource.Quantity) {
+	// Update the pvc to set a capacity in the status
+	pvc.Status.Capacity = corev1.ResourceList{
+		"storage": pvcCapacity,
+	}
+	Expect(k8sClient.Status().Update(ctx, pvc)).To(Succeed())
+	Eventually(func() bool {
+		// Make sure the cache has picked up the update
+		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(pvc), pvc)
+		if err != nil {
+			return false
+		}
+		return pvc.Status.Capacity != nil && pvc.Status.Capacity["storage"] == pvcCapacity
+	}, maxWait, interval).Should(BeTrue())
+}
