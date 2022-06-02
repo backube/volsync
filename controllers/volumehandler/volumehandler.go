@@ -445,7 +445,13 @@ func (vh *VolumeHandler) pvcFromSnapshot(ctx context.Context, log logr.Logger,
 				pvc.Spec.Resources.Requests = corev1.ResourceList{
 					corev1.ResourceStorage: *snap.Status.RestoreSize,
 				}
+			} else if original.Status.Capacity != nil && original.Status.Capacity.Storage() != nil {
+				// check the original PVC capacity if set
+				pvc.Spec.Resources.Requests = corev1.ResourceList{
+					corev1.ResourceStorage: *original.Status.Capacity.Storage(),
+				}
 			} else {
+				// Fallback to the pvc requested size
 				pvc.Spec.Resources.Requests = corev1.ResourceList{
 					corev1.ResourceStorage: *original.Spec.Resources.Requests.Storage(),
 				}
