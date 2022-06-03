@@ -27,9 +27,6 @@ const (
 	// that a VolumeSnapshot object is not bound to a VolumeSnapshotContent
 	// object.
 	SnapshotBindTimeout = 30 * time.Second
-	// SnapshotReadyTimeout is the amount of time we should wait before warning
-	// that a VolumeSnapshot object is not ready.
-	SnapshotReadyTimeout = 120 * time.Second
 	// PVCBindTimeout is the time we should wait before warning that a PVC
 	// object is not bound to a PV.
 	PVCBindTimeout = 120 * time.Second
@@ -44,7 +41,6 @@ const (
 	EvRTransferFailed  = "TransferFailed" // Warning
 	EvRSnapCreated     = "VolumeSnapshotCreated"
 	EvRSnapNotBound    = "VolumeSnapshotNotBound" // Warning
-	EvRSnapNotReady    = "VolumeSnapshotNotReady" // Warning
 	EvRPVCCreated      = "PersistentVolumeClaimCreated"
 	EvRPVCNotBound     = "PersistentVolumeClaimNotBound" // Warning
 	EvRSvcAddress      = "ServiceAddressAssigned"

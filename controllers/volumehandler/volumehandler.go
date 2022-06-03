@@ -422,12 +422,6 @@ func (vh *VolumeHandler) ensureSnapshot(ctx context.Context, log logr.Logger,
 	if snap.Status.ReadyToUse != nil && !*snap.Status.ReadyToUse {
 		// readyToUse is set to false for this volume snapshot
 		logger.V(1).Info("waiting for snapshot to be ready")
-		if snap.CreationTimestamp.Add(mover.SnapshotReadyTimeout).Before(time.Now()) {
-			vh.eventRecorder.Eventf(vh.owner, snap, corev1.EventTypeWarning,
-				mover.EvRSnapNotReady, mover.EvANone,
-				"waiting for %s to be ready; check VolumeSnapshotClass name and ensure CSI driver supports volume snapshots",
-				utils.KindAndName(vh.client.Scheme(), snap))
-		}
 		return nil, nil
 	}
 	// status.readyToUse either is not set by the driver at this point (even though
