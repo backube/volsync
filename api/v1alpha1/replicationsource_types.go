@@ -187,14 +187,14 @@ type ReplicationSourceSyncthingSpec struct {
 	// Type of service to be used when exposing the Syncthing peer
 	//+optional
 	ServiceType *corev1.ServiceType `json:"serviceType,omitempty"`
-	// Used to set the size of the restic metadata cache volume.
+	// Used to set the size of the Syncthing metadata cache volume.
 	//+optional
-	ConfigCapacity *resource.Quantity `json:"cacheCapacity,omitempty"`
-	// Used to set the StorageClass of the restic
+	ConfigCapacity *resource.Quantity `json:"configCapacity,omitempty"`
+	// Used to set the StorageClass of the Syncthing
 	// metadata cache volume.
 	//+optional
 	ConfigStorageClassName *string `json:"configStorageClassName,omitempty"`
-	// Used to set the accessModes of restic metadata cache volume.
+	// Used to set the accessModes of Syncthing metadata cache volume.
 	//+optional
 	ConfigAccessModes []corev1.PersistentVolumeAccessMode `json:"configAccessModes,omitempty"`
 }

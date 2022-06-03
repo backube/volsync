@@ -1,3 +1,4 @@
+
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -131,8 +132,8 @@ spec:
                     minItems: 1
                     type: array
                   cacheAccessModes:
-                    description: accessModes can be used to set the accessModes of
-                      restic metadata cache volume
+                    description: CacheAccessModes can be used to set the accessModes
+                      of restic metadata cache volume
                     items:
                       type: string
                     type: array
@@ -289,21 +290,44 @@ spec:
                 description: syncthing defines the configuration when using Syncthing-based
                   replication.
                 properties:
+                  configAccessModes:
+                    description: Used to set the accessModes of Syncthing metadata
+                      cache volume.
+                    items:
+                      type: string
+                    type: array
+                  configCapacity:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: Used to set the size of the Syncthing metadata cache
+                      volume.
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  configStorageClassName:
+                    description: Used to set the StorageClass of the Syncthing metadata
+                      cache volume.
+                    type: string
                   peers:
                     description: List of Syncthing peers to be connected for syncing
                     items:
+                      description: SyncthingPeer Defines the necessary information
+                        needed by VolSync to configure a given peer with the running
+                        Syncthing instance.
                       properties:
                         ID:
-                          description: ID Is the peer's Syncthing ID.
+                          description: The peer's Syncthing ID.
                           type: string
                         address:
-                          description: Address Is an address which is used to connect
-                            to the other Syncthing peer.
+                          description: The peer's address that our Syncthing node
+                            will connect to.
                           type: string
                         introducer:
-                          description: Introducer is a flag which determines whether
-                            this peer should introduce us to other peers sharing this
-                            volume.
+                          description: A flag that determines whether this peer should
+                            introduce us to other peers sharing this volume. It is
+                            HIGHLY recommended that two Syncthing peers do NOT set
+                            each other as introducers as you will have a difficult
+                            time disconnecting the two.
                           type: boolean
                       required:
                       - ID
@@ -348,12 +372,13 @@ spec:
                   description: "Condition contains details for one aspect of the current
                     state of this API Resource. --- This struct is intended for direct
                     use as an array at the field path .status.conditions.  For example,
-                    type FooStatus struct{ // Represents the observations of a foo's
-                    current state. // Known .status.conditions.type are: \"Available\",
-                    \"Progressing\", and \"Degraded\" // +patchMergeKey=type // +patchStrategy=merge
-                    // +listType=map // +listMapKey=type Conditions []metav1.Condition
-                    `json:\"conditions,omitempty\" patchStrategy:\"merge\" patchMergeKey:\"type\"
-                    protobuf:\"bytes,1,rep,name=conditions\"` \n // other fields }"
+                    type FooStatus struct{     // Represents the observations of a
+                    foo's current state.     // Known .status.conditions.type are:
+                    \"Available\", \"Progressing\", and \"Degraded\"     // +patchMergeKey=type
+                    \    // +patchStrategy=merge     // +listType=map     // +listMapKey=type
+                    \    Conditions []metav1.Condition `json:\"conditions,omitempty\"
+                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`
+                    \n     // other fields }"
                   properties:
                     lastTransitionTime:
                       description: lastTransitionTime is the last time the condition
@@ -470,8 +495,8 @@ spec:
                     type: string
                 type: object
               syncthing:
-                description: syncthing contains status information for Syncthing-based
-                  replication.
+                description: contains status information when Syncthing-based replication
+                  is used.
                 properties:
                   ID:
                     description: Device ID of the current syncthing device
@@ -481,28 +506,27 @@ spec:
                       rest of the world
                     type: string
                   peers:
-                    description: NodeList is a list of the Syncthing nodes we are
-                      currently connected to.
+                    description: List of the Syncthing nodes we are currently connected
+                      to.
                     items:
+                      description: SyncthingPeerStatus Is a struct that contains information
+                        pertaining to the status of a given Syncthing peer.
                       properties:
                         ID:
                           description: ID Is the peer's Syncthing ID.
                           type: string
                         address:
-                          description: Address Represents the TCP address of the Syncthing
-                            peer.
+                          description: The address of the Syncthing peer.
                           type: string
                         connected:
-                          description: Connected Is a flag indicating whether peer
-                            is currently connected.
+                          description: Flag indicating whether peer is currently connected.
                           type: boolean
-                        deviceName:
-                          description: DeviceName Is a friendly name for the given
-                            device.
-                          type: string
                         introducedBy:
-                          description: IntroducedBy Is the ID of the peer that introduced
-                            this peer.
+                          description: The ID of the Syncthing peer that this one
+                            was introduced by.
+                          type: string
+                        name:
+                          description: A friendly name to associate the given device.
                           type: string
                       required:
                       - ID

@@ -36,6 +36,7 @@ import (
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers/mover"
@@ -199,66 +200,70 @@ func (m *Mover) ensureDataPVC(ctx context.Context) (*corev1.PersistentVolumeClai
 // ensureSecretAPIKey Ensures ensures that the PVC for API secrets either exists or it will create it.
 //nolint:funlen
 func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) {
+	secretName := "volsync-" + m.owner.GetName()
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "volsync-" + m.owner.GetName(),
+			Name:      secretName,
 			Namespace: m.owner.GetNamespace(),
 		},
 	}
 	err := m.client.Get(ctx, client.ObjectKeyFromObject(secret), secret)
 
-	// need to create the secret
-	if err != nil {
-		// these will fail only when there is an issue with the OS's RNG
-		randomAPIKey, err := GenerateRandomString(32)
-		if err != nil {
-			m.logger.Error(err, "could not generate random number")
-			return nil, err
-		}
-		randomPassword, err := GenerateRandomString(32)
-		if err != nil {
-			m.logger.Error(err, "could not generate random number")
-			return nil, err
-		}
-
-		// Generate TLS Certificates for communicating between VolSync and the Syncthing API
-		apiServiceDNS := m.getAPIServiceDNS()
-		certPEM, certPrivKeyPEM, err := GenerateTLSCertificatesForSyncthing(apiServiceDNS)
-		if err != nil {
-			m.logger.Error(err, "could not generate TLS certificate")
-			return nil, err
-		}
-
-		// create a new secret with the generated values
-		secret = &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "volsync-" + m.owner.GetName(),
-				Namespace: m.owner.GetNamespace(),
-				Labels: map[string]string{
-					"app": m.owner.GetName(),
-				},
-			},
-			Type: corev1.SecretTypeOpaque,
-			Data: map[string][]byte{
-				"apikey":       []byte(randomAPIKey),
-				"username":     []byte("syncthing"),
-				"password":     []byte(randomPassword),
-				"httpsCertPEM": certPEM.Bytes(),
-				"httpsKeyPEM":  certPrivKeyPEM.Bytes(),
-			},
-		}
-
-		// ensure secret can be deleted once ReplicationSource is deleted
-		if err = ctrl.SetControllerReference(m.owner, secret, m.client.Scheme()); err != nil {
-			m.logger.Error(err, "could not set owner ref")
-			return nil, err
-		}
-
-		if err := m.client.Create(ctx, secret); err != nil {
-			return nil, err
-		}
-		m.logger.Info("created secret", secret.Name, secret)
+	// make sure we don't need to do extra work
+	if err == nil {
+		return secret, nil
+	} else if !errors.IsNotFound(err) {
+		return nil, err
 	}
+
+	// need to create the secret
+	// these will fail only when there is an issue with the OS's RNG
+	randomAPIKey, err := GenerateRandomString(32)
+	if err != nil {
+		m.logger.Error(err, "could not generate random number")
+		return nil, err
+	}
+	randomPassword, err := GenerateRandomString(32)
+	if err != nil {
+		m.logger.Error(err, "could not generate random number")
+		return nil, err
+	}
+
+	// Generate TLS Certificates for communicating between VolSync and the Syncthing API
+	apiServiceDNS := m.getAPIServiceDNS()
+	certPEM, certPrivKeyPEM, err := GenerateTLSCertificatesForSyncthing(apiServiceDNS)
+	if err != nil {
+		m.logger.Error(err, "could not generate TLS certificate")
+		return nil, err
+	}
+
+	// create a new secret with the generated values
+	secret = &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      secretName,
+			Namespace: m.owner.GetNamespace(),
+		},
+		Type: corev1.SecretTypeOpaque,
+		Data: map[string][]byte{
+			"apikey":       []byte(randomAPIKey),
+			"username":     []byte("syncthing"),
+			"password":     []byte(randomPassword),
+			"httpsCertPEM": certPEM.Bytes(),
+			"httpsKeyPEM":  certPrivKeyPEM.Bytes(),
+		},
+	}
+
+	// ensure secret can be deleted once ReplicationSource is deleted
+	if err = ctrl.SetControllerReference(m.owner, secret, m.client.Scheme()); err != nil {
+		m.logger.Error(err, "could not set owner ref")
+		return nil, err
+	}
+
+	if err := m.client.Create(ctx, secret); err != nil {
+		return nil, err
+	}
+	m.logger.Info("created secret", secret.Name, secret)
+
 	return secret, nil
 }
 
@@ -297,144 +302,115 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 				"app": m.owner.GetName(),
 			},
 		},
-		Spec: appsv1.DeploymentSpec{
-			Replicas: &numReplicas,
-			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					"app": m.owner.GetName(),
+	}
+	logger := m.logger.WithValues("deployment", client.ObjectKeyFromObject(deployment))
+
+	// we declare the deployment object in this block line-by-line using pre-order traversal
+	_, err := ctrlutil.CreateOrUpdate(ctx, m.client, deployment, func() error {
+		if err := ctrl.SetControllerReference(m.owner, deployment, m.client.Scheme()); err != nil {
+			logger.Error(err, "unable to set controller reference")
+			return err
+		}
+
+		// first the top element
+		deployment.Spec.Replicas = &numReplicas
+
+		// next the selector
+		deployment.Spec.Selector = &metav1.LabelSelector{
+			MatchLabels: map[string]string{
+				"app": m.owner.GetName(),
+			},
+		}
+
+		// now the template
+		deployment.Spec.Template = corev1.PodTemplateSpec{}
+		deployment.Spec.Template.ObjectMeta.Labels = map[string]string{
+			"app": m.owner.GetName(),
+		}
+
+		// next the Spec
+		deployment.Spec.Template.Spec.ServiceAccountName = sa.Name
+		deployment.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyAlways
+		deployment.Spec.Template.Spec.Containers = []corev1.Container{
+			{
+				Name:    "syncthing",
+				Image:   m.containerImage,
+				Command: []string{"/entry.sh"},
+				Args:    []string{"run"},
+				Env: []corev1.EnvVar{
+					{Name: configDirEnv, Value: configDirMountPath},
+					{Name: dataDirEnv, Value: dataDirMountPath},
+					// tell the mover image where to find the HTTPS certs
+					{Name: "SYNCTHING_CERT_DIR", Value: "/certs"},
+					{
+						Name: "STGUIAPIKEY",
+						ValueFrom: &corev1.EnvVarSource{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: apiSecret.Name,
+								},
+								Key: "apikey",
+							},
+						},
+					},
+				},
+				ImagePullPolicy: corev1.PullAlways,
+				Ports: []corev1.ContainerPort{
+					{Name: "api", ContainerPort: syncthingAPIPort},
+					{Name: "data", ContainerPort: syncthingDataPort},
+				},
+				VolumeMounts: []corev1.VolumeMount{
+					{Name: configVolumeName, MountPath: configDirMountPath},
+					{Name: dataVolumeName, MountPath: dataDirMountPath},
+					{Name: "https-certs", MountPath: "/certs"},
+				},
+				Resources: corev1.ResourceRequirements{
+					Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("1Gi")},
 				},
 			},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"app": m.owner.GetName(),
+		}
+
+		// configure volumes
+		deployment.Spec.Template.Spec.Volumes = []corev1.Volume{
+			{
+				Name: configVolumeName,
+				VolumeSource: corev1.VolumeSource{
+					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+						ClaimName: configPVC.Name,
 					},
 				},
-				Spec: corev1.PodSpec{
-					ServiceAccountName: sa.Name,
-					RestartPolicy:      corev1.RestartPolicyAlways,
-					Containers: []corev1.Container{
-						{
-							Name:  "syncthing",
-							Image: m.containerImage,
-							Command: []string{
-								"/entry.sh",
-							},
-							Args: []string{
-								"run",
-							},
-							Env: []corev1.EnvVar{
-								{
-									Name:  configDirEnv,
-									Value: configDirMountPath,
-								},
-								{
-									Name:  dataDirEnv,
-									Value: dataDirMountPath,
-								},
-								// tell the mover image where to find the HTTPS certs
-								{
-									Name:  "SYNCTHING_CERT_DIR",
-									Value: "/certs",
-								},
-								{
-									Name: "STGUIAPIKEY",
-									ValueFrom: &corev1.EnvVarSource{
-										SecretKeyRef: &corev1.SecretKeySelector{
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: apiSecret.Name,
-											},
-											Key: "apikey",
-										},
-									},
-								},
-							},
-							ImagePullPolicy: corev1.PullAlways,
-							Ports: []corev1.ContainerPort{
-								{
-									Name:          "api",
-									ContainerPort: syncthingAPIPort,
-								},
-								{
-									Name:          "data",
-									ContainerPort: syncthingDataPort,
-								},
-							},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      configVolumeName,
-									MountPath: configDirMountPath,
-								},
-								{
-									Name:      dataVolumeName,
-									MountPath: dataDirMountPath,
-								},
-								{
-									Name:      "https-certs",
-									MountPath: "/certs",
-								},
-							},
-							Resources: corev1.ResourceRequirements{
-								Limits: corev1.ResourceList{
-									corev1.ResourceCPU:    resource.MustParse("100m"),
-									corev1.ResourceMemory: resource.MustParse("1Gi"),
-								},
-							},
-						},
+			},
+			{
+				Name: dataVolumeName,
+				VolumeSource: corev1.VolumeSource{
+					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+						ClaimName: dataPVC.Name,
 					},
-					Volumes: []corev1.Volume{
-						{
-							Name: configVolumeName,
-							VolumeSource: corev1.VolumeSource{
-								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-									ClaimName: configPVC.Name,
-								},
-							},
-						},
-						{
-							Name: dataVolumeName,
-							VolumeSource: corev1.VolumeSource{
-								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-									ClaimName: dataPVC.Name,
-								},
-							},
-						},
-						// load the HTTPS certs as a volume
-						{
-							Name: "https-certs",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: apiSecret.Name,
-									Items: []corev1.KeyToPath{
-										{
-											Key:  "httpsKeyPEM",
-											Path: "https-key.pem",
-										},
-										{
-											Key:  "httpsCertPEM",
-											Path: "https-cert.pem",
-										},
-									},
-								},
-							},
+				},
+			},
+			// load the HTTPS certs as a volume
+			{
+				Name: "https-certs",
+				VolumeSource: corev1.VolumeSource{
+					Secret: &corev1.SecretVolumeSource{
+						SecretName: apiSecret.Name,
+						Items: []corev1.KeyToPath{
+							{Key: "httpsKeyPEM", Path: "https-key.pem"},
+							{Key: "httpsCertPEM", Path: "https-cert.pem"},
 						},
 					},
 				},
 			},
-		},
-	}
-	err := m.client.Get(ctx, types.NamespacedName{Name: deploymentName, Namespace: m.owner.GetNamespace()}, deployment)
-	if err != nil && errors.IsNotFound(err) {
-		// ensure everything gets cleaned up after owner gets deleted
-		if err = ctrl.SetControllerReference(m.owner, deployment, m.client.Scheme()); err != nil {
-			m.logger.V(3).Error(err, "failed to set owner reference")
-			return nil, err
 		}
-		err = m.client.Create(ctx, deployment)
-		if err != nil {
-			return nil, err
-		}
+		return nil
+	})
+
+	// error from createOrUpdate against a deployment indicates an issue
+	if err != nil {
+		m.logger.Error(err, "unable to create deployment")
+		return nil, err
 	}
+
 	return deployment, nil
 }
 
@@ -449,9 +425,6 @@ func (m *Mover) ensureAPIService(ctx context.Context, deployment *appsv1.Deploym
 			Namespace: m.owner.GetNamespace(),
 		},
 	}
-
-	// set API url if one is not already set
-	m.syncthing.APIConfig.SetEmptyAPIURL(m.getAPIServiceAddress())
 
 	// see if we already have a service
 	err := m.client.Get(ctx, types.NamespacedName{Name: serviceName, Namespace: m.owner.GetNamespace()}, service)
@@ -571,7 +544,16 @@ func (m *Mover) Cleanup(ctx context.Context) (mover.Result, error) {
 }
 
 // configureSyncthingAPIClient Configures the Syncthing API client if it has not been configured yet.
-func (m *Mover) configureSyncthingAPIClient(apiSecret *corev1.Secret) error {
+func (m *Mover) configureSyncthingAPIClient(
+	apiSecret *corev1.Secret,
+) error {
+	// if the API URL has not already been overridden, we will set the
+	// API URL here
+	if m.syncthing.APIConfig.APIURL == "" {
+		// get the API URL
+		m.syncthing.APIConfig.APIURL = m.getAPIServiceAddress()
+	}
+
 	// set the api key
 	m.syncthing.APIConfig.APIKey = string(apiSecret.Data["apikey"])
 
@@ -676,7 +658,7 @@ func (m *Mover) ensureStatusIsUpdated(dataSVC *corev1.Service) error {
 		}
 
 		// get the device info
-		tcpAddress := AsTCPAddress(connectionInfo.Address)
+		tcpAddress := asTCPAddress(connectionInfo.Address)
 		introducedBy := device.IntroducedBy
 		deviceName := device.Name
 
