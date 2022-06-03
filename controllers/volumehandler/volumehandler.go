@@ -370,6 +370,7 @@ func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,
 	return clone, err
 }
 
+//nolint: funlen
 func (vh *VolumeHandler) ensureSnapshot(ctx context.Context, log logr.Logger,
 	src *corev1.PersistentVolumeClaim, name string, isTemporary bool) (*snapv1.VolumeSnapshot, error) {
 	snap := &snapv1.VolumeSnapshot{
@@ -418,6 +419,20 @@ func (vh *VolumeHandler) ensureSnapshot(ctx context.Context, log logr.Logger,
 		}
 		return nil, nil
 	}
+	if snap.Status.ReadyToUse != nil && !*snap.Status.ReadyToUse {
+		// readyToUse is set to false for this volume snapshot
+		logger.V(1).Info("waiting for snapshot to be ready")
+		if snap.CreationTimestamp.Add(mover.SnapshotReadyTimeout).Before(time.Now()) {
+			vh.eventRecorder.Eventf(vh.owner, snap, corev1.EventTypeWarning,
+				mover.EvRSnapNotReady, mover.EvANone,
+				"waiting for %s to be ready; check VolumeSnapshotClass name and ensure CSI driver supports volume snapshots",
+				utils.KindAndName(vh.client.Scheme(), snap))
+		}
+		return nil, nil
+	}
+	// status.readyToUse either is not set by the driver at this point (even though
+	// status.BoundVolumeSnapshotContentName is set), or readyToUse=true
+
 	logger.V(1).Info("temporary snapshot reconciled", "operation", op)
 	return snap, nil
 }
