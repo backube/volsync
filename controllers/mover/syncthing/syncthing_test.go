@@ -208,7 +208,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 			mover.syncthing = Syncthing{
 				SystemConnections: &SystemConnections{},
 				SystemStatus:      &SystemStatus{},
-				Config:            &SyncthingConfig{},
+				Config:            &Config{},
 				APIConfig:         &APIConfig{},
 				logger:            logger.WithName("syncthing"),
 			}
@@ -539,7 +539,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 
 			When("Syncthing server exists", func() {
 				var ts *httptest.Server
-				var serverSyncthingConfig SyncthingConfig
+				var serverSyncthingConfig Config
 				var sStatus SystemStatus
 				var sConnections SystemConnections
 				var apiKeys *corev1.Secret
@@ -547,7 +547,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 
 				BeforeEach(func() {
 					// initialize the config variables here
-					serverSyncthingConfig = SyncthingConfig{}
+					serverSyncthingConfig = Config{}
 					sStatus = SystemStatus{}
 					sConnections = SystemConnections{}
 				})
@@ -622,7 +622,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 				})
 
 				It("Updates the Syncthing Config", func() {
-					mover.syncthing.Config = &SyncthingConfig{
+					mover.syncthing.Config = &Config{
 						Version: 9,
 					}
 					err := mover.syncthing.UpdateSyncthingConfig()
@@ -646,7 +646,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					Expect(err).To(BeNil())
 
 					for i, peer := range mover.peerList {
-						expected := SyncthingDevice{
+						expected := Device{
 							DeviceID:   peer.ID,
 							Addresses:  []string{peer.Address},
 							Introducer: peer.Introducer,
@@ -716,7 +716,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 						}
 
 						// ensure that another-one is in the global config
-						serverSyncthingConfig.Devices = []SyncthingDevice{
+						serverSyncthingConfig.Devices = []Device{
 							{
 								DeviceID:     "another-one",
 								Addresses:    []string{"not-a-real-server"},
@@ -784,7 +784,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 						JustBeforeEach(func() {
 							// set Syncthing to have an introduced peer
 							introducedPeerID = "pied-piper"
-							mover.syncthing.Config.Devices = []SyncthingDevice{
+							mover.syncthing.Config.Devices = []Device{
 								{
 									DeviceID:     introducedPeerID,
 									Addresses:    []string{"/ip4/127.0.0.1/tcp/22000"},
@@ -900,13 +900,13 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 
 			When("the API exists", func() {
 				var ts *httptest.Server
-				var serverSyncthingConfig SyncthingConfig
+				var serverSyncthingConfig Config
 				var myID string = "test"
 				var dataService *corev1.Service
 
 				JustBeforeEach(func() {
 					// configure the Syncthing server config
-					serverSyncthingConfig = SyncthingConfig{
+					serverSyncthingConfig = Config{
 						Version: 10,
 					}
 					// configure the Syncthing server status
@@ -1199,7 +1199,7 @@ var _ = Describe("Syncthing utils", func() {
 		BeforeEach(func() {
 			// initialize these pointer fields
 			syncthing = Syncthing{
-				Config:            &SyncthingConfig{},
+				Config:            &Config{},
 				SystemConnections: &SystemConnections{},
 				SystemStatus: &SystemStatus{
 					MyID: string(sha256.New().Sum([]byte("my-secure-private-key"))),
@@ -1211,7 +1211,7 @@ var _ = Describe("Syncthing utils", func() {
 		When("devices are called to update", func() {
 			BeforeEach(func() {
 				// create a folder
-				syncthing.Config.Folders = append(syncthing.Config.Folders, SyncthingFolder{
+				syncthing.Config.Folders = append(syncthing.Config.Folders, Folder{
 					ID:    string(sha256.New().Sum([]byte("festivus-files-1986"))),
 					Label: "festivus-files",
 				})
@@ -1268,7 +1268,7 @@ var _ = Describe("Syncthing utils", func() {
 			When("syncthing lists itself within the devices entries", func() {
 				BeforeEach(func() {
 					// make sure that the syncthing is listed in the connections
-					syncthing.Config.Devices = append(syncthing.Config.Devices, SyncthingDevice{
+					syncthing.Config.Devices = append(syncthing.Config.Devices, Device{
 						DeviceID:  syncthing.SystemStatus.MyID,
 						Name:      "current Syncthing node",
 						Addresses: []string{"/ip4/0.0.0.0/tcp/22000/quic"},
@@ -1308,7 +1308,7 @@ var _ = Describe("Syncthing utils", func() {
 			When("syncthing has an empty device list", func() {
 				BeforeEach(func() {
 					// clear Syncthing's device list and make sure that we can still find the self device
-					syncthing.Config.Devices = []SyncthingDevice{}
+					syncthing.Config.Devices = []Device{}
 				})
 
 				It("only reconfigures when other syncthing devices are provided", func() {

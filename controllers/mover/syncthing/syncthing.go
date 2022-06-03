@@ -21,7 +21,7 @@ func (st *Syncthing) UpdateDevices(peerList []v1alpha1.SyncthingPeer) {
 	st.logger.V(4).Info("Updating devices", "peerlist", peerList)
 
 	// update syncthing config based on the provided peerlist
-	newDevices := []SyncthingDevice{}
+	newDevices := []Device{}
 
 	// add myself and introduced devices to the device list
 	for _, device := range st.Config.Devices {
@@ -32,7 +32,7 @@ func (st *Syncthing) UpdateDevices(peerList []v1alpha1.SyncthingPeer) {
 
 	// Add the devices from the peerList to the device list
 	for _, device := range peerList {
-		stDeviceToAdd := SyncthingDevice{
+		stDeviceToAdd := Device{
 			DeviceID:   device.ID,
 			Addresses:  []string{device.Address},
 			Introducer: device.Introducer,
@@ -51,7 +51,7 @@ func (st *Syncthing) UpdateDevices(peerList []v1alpha1.SyncthingPeer) {
 // updateFolders Updates all of Syncthing's folders to be shared with all configured devices.
 func (st *Syncthing) updateFolders() {
 	// share the current folder(s) with the new devices
-	var newFolders = []SyncthingFolder{}
+	var newFolders = []Folder{}
 	for _, folder := range st.Config.Folders {
 		// copy folder & reset
 		newFolder := folder
@@ -124,8 +124,8 @@ func (st *Syncthing) NeedsReconfigure(nodeList []v1alpha1.SyncthingPeer) bool {
 }
 
 // collectIntroduced Returns a map of DeviceID -> Device for devices which have been introduced to us by another node.
-func (st *Syncthing) collectIntroduced() map[string]SyncthingDevice {
-	introduced := map[string]SyncthingDevice{}
+func (st *Syncthing) collectIntroduced() map[string]Device {
+	introduced := map[string]Device{}
 	for _, device := range st.Config.Devices {
 		if device.IntroducedBy != "" {
 			introduced[device.DeviceID] = device
@@ -160,13 +160,13 @@ func (st *Syncthing) PeerListContainsSelf(peerList []v1alpha1.SyncthingPeer) boo
 
 // GetDeviceFromID Returns the device with the given ID,
 // along with a boolean indicating whether the device was found.
-func (st *Syncthing) GetDeviceFromID(deviceID string) (SyncthingDevice, bool) {
+func (st *Syncthing) GetDeviceFromID(deviceID string) (Device, bool) {
 	for _, device := range st.Config.Devices {
 		if device.DeviceID == deviceID {
 			return device, true
 		}
 	}
-	return SyncthingDevice{}, false
+	return Device{}, false
 }
 
 // FetchLatestInfo Updates the Syncthing object with the latest data fetched from the Syncthing API.
@@ -198,9 +198,9 @@ func (st *Syncthing) UpdateSyncthingConfig() error {
 // FetchSyncthingConfig Fetches the latest configuration data from the Syncthing API
 // and uses it to update the local Syncthing object.
 func (st *Syncthing) FetchSyncthingConfig() error {
-	responseBody := &SyncthingConfig{
-		Devices: []SyncthingDevice{},
-		Folders: []SyncthingFolder{},
+	responseBody := &Config{
+		Devices: []Device{},
+		Folders: []Folder{},
 	}
 	st.logger.V(4).Info("Fetching Syncthing config")
 	data, err := st.jsonRequest("/rest/config", "GET", nil)
@@ -349,10 +349,10 @@ func GenerateRandomString(length int) (string, error) {
 	// a range of acceptable characters
 	var lowerBound byte = 33
 	var upperBound byte = 126
-	var acceptableRange byte = upperBound - lowerBound + 1
+	var acceptableRange = upperBound - lowerBound + 1
 
 	// generate the string by mapping [0, 255] -> [33, 126]
-	var acceptableBytes []byte = []byte{}
+	var acceptableBytes = []byte{}
 	for i := 0; i < len(b); i++ {
 		// normalize number to be in the range [33, 126] inclusive
 		acceptableByte := (b[i] % acceptableRange) + lowerBound

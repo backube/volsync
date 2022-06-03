@@ -1,4 +1,3 @@
-//nolint:revive
 /*
 Copyright 2021 The VolSync authors.
 
@@ -26,8 +25,7 @@ import (
 )
 
 // syncthing config type
-// nolint:revive
-type SyncthingDevice struct {
+type Device struct {
 	DeviceID                 string   `json:"deviceID"`
 	Name                     string   `json:"name"`
 	Addresses                []string `json:"addresses"`
@@ -47,14 +45,12 @@ type SyncthingDevice struct {
 	RemoteGUIPort            int      `json:"remoteGUIPort"`
 }
 
-//nolint:revive
-type SyncthingSize struct {
+type Size struct {
 	Value int    `json:"value"`
 	Unit  string `json:"unit"`
 }
 
-//nolint:revive
-type SyncthingVersioning struct {
+type Versioning struct {
 	Type             string            `json:"type"`
 	Params           map[string]string `json:"params"`
 	CleanupIntervalS int               `json:"cleanupIntervalS"`
@@ -62,8 +58,7 @@ type SyncthingVersioning struct {
 	FsType           string            `json:"fsType"`
 }
 
-//nolint:revive
-type SyncthingFolder struct {
+type Folder struct {
 	ID                    string                      `json:"id"`
 	Label                 string                      `json:"label"`
 	FilesystemType        string                      `json:"filesystemType"`
@@ -75,8 +70,8 @@ type SyncthingFolder struct {
 	FsWatcherDelayS       int                         `json:"fsWatcherDelayS"`
 	IgnorePerms           bool                        `json:"ignorePerms"`
 	AutoNormalize         bool                        `json:"autoNormalize"`
-	MinDiskFree           SyncthingSize               `json:"minDiskFree"`
-	Versioning            SyncthingVersioning         `json:"versioning"`
+	MinDiskFree           Size                        `json:"minDiskFree"`
+	Versioning            Versioning                  `json:"versioning"`
 	Copiers               int                         `json:"copiers"`
 	PullerMaxPendingKiB   int                         `json:"pullerMaxPendingKiB"`
 	Hashers               int                         `json:"hashers"`
@@ -85,59 +80,58 @@ type SyncthingFolder struct {
 	ScanProgressIntervalS int                         `json:"scanProgressIntervalS"`
 }
 
-//nolint:revive
-type SyncthingOptions struct {
-	ListenAddresses                     []string      `json:"listenAddresses"`
-	GlobalAnnounceServers               []string      `json:"globalAnnounceServers"`
-	GlobalAnnounceEnabled               bool          `json:"globalAnnounceEnabled"`
-	LocalAnnounceEnabled                bool          `json:"localAnnounceEnabled"`
-	LocalAnnouncePort                   int           `json:"localAnnouncePort"`
-	LocalAnnounceMCAddr                 string        `json:"localAnnounceMCAddr"`
-	MaxSendKbps                         int           `json:"maxSendKbps"`
-	MaxRecvKbps                         int           `json:"maxRecvKbps"`
-	ReconnectionIntervalS               int           `json:"reconnectionIntervalS"`
-	RelaysEnabled                       bool          `json:"relaysEnabled"`
-	RelayReconnectIntervalM             int           `json:"relayReconnectIntervalM"`
-	StartBrowser                        bool          `json:"startBrowser"`
-	NATEnabled                          bool          `json:"natEnabled"`
-	NATLeaseMinutes                     int           `json:"natLeaseMinutes"`
-	NATRenewalMinutes                   int           `json:"natRenewalMinutes"`
-	NATTimeoutSeconds                   int           `json:"natTimeoutSeconds"`
-	URAccepted                          int           `json:"urAccepted"`
-	URSeen                              int           `json:"urSeen"`
-	URUniqueId                          string        `json:"urUniqueId"`
-	URURL                               string        `json:"urURL"`
-	URPostInsecurely                    bool          `json:"urPostInsecurely"`
-	URInitialDelayS                     int           `json:"urInitialDelayS"`
-	RestartOnWakeup                     bool          `json:"restartOnWakeup"`
-	AutoUpgradeIntervalH                int           `json:"autoUpgradeIntervalH"`
-	UpgradeToPreReleases                bool          `json:"upgradeToPreReleases"`
-	KeepTemporariesH                    int           `json:"keepTemporariesH"`
-	CacheIgnoredFiles                   bool          `json:"cacheIgnoredFiles"`
-	ProgressUpdateIntervalS             int           `json:"progressUpdateIntervalS"`
-	LimitBandwidthLan                   bool          `json:"limitBandwidthLan"`
-	MinHomeDiskFree                     SyncthingSize `json:"minHomeDiskFree"`
-	ReleasesURL                         string        `json:"releasesURL"`
-	AlwaysLocalNets                     []string      `json:"alwaysLocalNets"`
-	OverwriteRemoteDeviceNamesOnConnect bool          `json:"overwriteRemoteDeviceNamesOnConnect"`
-	TempIndexMinBlocks                  int           `json:"tempIndexMinBlocks"`
-	UnackedNotificationIDs              []string      `json:"unackedNotificationIDs"`
-	TrafficClass                        int           `json:"trafficClass"`
-	SetLowPriority                      bool          `json:"setLowPriority"`
-	MaxFolderConcurrency                int           `json:"maxFolderConcurrency"`
-	CRURL                               string        `json:"crURL"`
-	CrashReportingEnabled               bool          `json:"crashReportingEnabled"`
-	StunKeepaliveStartS                 int           `json:"stunKeepaliveStartS"`
-	StunKeepaliveMinS                   int           `json:"stunKeepaliveMinS"`
-	StunServers                         []string      `json:"stunServers"`
-	DatabaseTuning                      string        `json:"databaseTuning"`
-	MaxConcurrentIncomingRequestKiB     int           `json:"maxConcurrentIncomingRequestKiB"`
-	AnnounceLANAddresses                bool          `json:"announceLANAddresses"`
-	SendFullIndexOnUpgrade              bool          `json:"sendFullIndexOnUpgrade"`
-	FeatureFlags                        []string      `json:"featureFlags"`
-	ConnectionLimitEnough               int           `json:"connectionLimitEnough"`
-	ConnectionLimitMax                  int           `json:"connectionLimitMax"`
-	InsecureAllowOldTLSVersions         bool          `json:"insecureAllowOldTLSVersions"`
+type Options struct {
+	ListenAddresses                     []string `json:"listenAddresses"`
+	GlobalAnnounceServers               []string `json:"globalAnnounceServers"`
+	GlobalAnnounceEnabled               bool     `json:"globalAnnounceEnabled"`
+	LocalAnnounceEnabled                bool     `json:"localAnnounceEnabled"`
+	LocalAnnouncePort                   int      `json:"localAnnouncePort"`
+	LocalAnnounceMCAddr                 string   `json:"localAnnounceMCAddr"`
+	MaxSendKbps                         int      `json:"maxSendKbps"`
+	MaxRecvKbps                         int      `json:"maxRecvKbps"`
+	ReconnectionIntervalS               int      `json:"reconnectionIntervalS"`
+	RelaysEnabled                       bool     `json:"relaysEnabled"`
+	RelayReconnectIntervalM             int      `json:"relayReconnectIntervalM"`
+	StartBrowser                        bool     `json:"startBrowser"`
+	NATEnabled                          bool     `json:"natEnabled"`
+	NATLeaseMinutes                     int      `json:"natLeaseMinutes"`
+	NATRenewalMinutes                   int      `json:"natRenewalMinutes"`
+	NATTimeoutSeconds                   int      `json:"natTimeoutSeconds"`
+	URAccepted                          int      `json:"urAccepted"`
+	URSeen                              int      `json:"urSeen"`
+	URUniqueID                          string   `json:"urUniqueId"`
+	URURL                               string   `json:"urURL"`
+	URPostInsecurely                    bool     `json:"urPostInsecurely"`
+	URInitialDelayS                     int      `json:"urInitialDelayS"`
+	RestartOnWakeup                     bool     `json:"restartOnWakeup"`
+	AutoUpgradeIntervalH                int      `json:"autoUpgradeIntervalH"`
+	UpgradeToPreReleases                bool     `json:"upgradeToPreReleases"`
+	KeepTemporariesH                    int      `json:"keepTemporariesH"`
+	CacheIgnoredFiles                   bool     `json:"cacheIgnoredFiles"`
+	ProgressUpdateIntervalS             int      `json:"progressUpdateIntervalS"`
+	LimitBandwidthLan                   bool     `json:"limitBandwidthLan"`
+	MinHomeDiskFree                     Size     `json:"minHomeDiskFree"`
+	ReleasesURL                         string   `json:"releasesURL"`
+	AlwaysLocalNets                     []string `json:"alwaysLocalNets"`
+	OverwriteRemoteDeviceNamesOnConnect bool     `json:"overwriteRemoteDeviceNamesOnConnect"`
+	TempIndexMinBlocks                  int      `json:"tempIndexMinBlocks"`
+	UnackedNotificationIDs              []string `json:"unackedNotificationIDs"`
+	TrafficClass                        int      `json:"trafficClass"`
+	SetLowPriority                      bool     `json:"setLowPriority"`
+	MaxFolderConcurrency                int      `json:"maxFolderConcurrency"`
+	CRURL                               string   `json:"crURL"`
+	CrashReportingEnabled               bool     `json:"crashReportingEnabled"`
+	StunKeepaliveStartS                 int      `json:"stunKeepaliveStartS"`
+	StunKeepaliveMinS                   int      `json:"stunKeepaliveMinS"`
+	StunServers                         []string `json:"stunServers"`
+	DatabaseTuning                      string   `json:"databaseTuning"`
+	MaxConcurrentIncomingRequestKiB     int      `json:"maxConcurrentIncomingRequestKiB"`
+	AnnounceLANAddresses                bool     `json:"announceLANAddresses"`
+	SendFullIndexOnUpgrade              bool     `json:"sendFullIndexOnUpgrade"`
+	FeatureFlags                        []string `json:"featureFlags"`
+	ConnectionLimitEnough               int      `json:"connectionLimitEnough"`
+	ConnectionLimitMax                  int      `json:"connectionLimitMax"`
+	InsecureAllowOldTLSVersions         bool     `json:"insecureAllowOldTLSVersions"`
 }
 
 type FolderDeviceConfiguration struct {
@@ -147,8 +141,8 @@ type FolderDeviceConfiguration struct {
 }
 
 type Defaults struct {
-	Folder SyncthingFolder `json:"folder"`
-	Device SyncthingDevice `json:"device"`
+	Folder Folder `json:"folder"`
+	Device Device `json:"device"`
 }
 
 type Ldap struct {
@@ -176,17 +170,16 @@ type Gui struct {
 	InsecureAllowFrameLoading bool   `json:"insecureAllowFrameLoading"`
 }
 
-//nolint:revive
-type SyncthingConfig struct {
-	Version              int                      `json:"version"`
-	Folders              []SyncthingFolder        `json:"folders"`
-	Devices              []SyncthingDevice        `json:"devices"`
-	Options              SyncthingOptions         `json:"options"`
-	Device               SyncthingDevice          `json:"device"`
-	RemoteIgnoredDevices []GenericSyncthingDevice `json:"remoteIgnoredDevices"`
-	LDAP                 Ldap                     `json:"ldap"`
-	GUI                  Gui                      `json:"gui"`
-	Defaults             Defaults                 `json:"defaults"`
+type Config struct {
+	Version              int             `json:"version"`
+	Folders              []Folder        `json:"folders"`
+	Devices              []Device        `json:"devices"`
+	Options              Options         `json:"options"`
+	Device               Device          `json:"device"`
+	RemoteIgnoredDevices []GenericDevice `json:"remoteIgnoredDevices"`
+	LDAP                 Ldap            `json:"ldap"`
+	GUI                  Gui             `json:"gui"`
+	Defaults             Defaults        `json:"defaults"`
 }
 
 type ListenerStatusEntry struct {
@@ -218,7 +211,7 @@ type SystemStatus struct {
 	URVersionMax            int                            `json:"urVersionMax"`
 }
 
-type GenericSyncthingDevice struct {
+type GenericDevice struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
 	Address string `json:"address"`
@@ -260,7 +253,7 @@ type APIConfig struct {
 type Syncthing struct {
 	SystemConnections *SystemConnections `json:"systemConnections"`
 	SystemStatus      *SystemStatus      `json:"systemStatus"`
-	Config            *SyncthingConfig   `json:"config"`
+	Config            *Config            `json:"config"`
 	APIConfig         *APIConfig         `json:"apiConfig"`
 	logger            logr.Logger
 }
