@@ -9,6 +9,7 @@ spec:
       containers:
         - name: busybox
           image: busybox
+          imagePullPolicy: IfNotPresent
           command: ["/bin/sh", "-c"]
           args: ["rm -rf /mnt/lost+found; rm -rf /mnt2/lost+found; diff -rs /mnt /mnt2"]
           volumeMounts:

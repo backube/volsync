@@ -31,6 +31,7 @@ spec:
       containers:
         - name: busybox
           image: busybox
+          imagePullPolicy: IfNotPresent
           command: ["/bin/true"]
           volumeMounts:
             - name: data-dest
