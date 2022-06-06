@@ -81,6 +81,39 @@ var _ = Describe("Label helpers", func() {
 			Expect(t.M).To(HaveLen(len(baseLabels)))
 		})
 	})
+	When("adding many labels", func() {
+		var newLabels map[string]string
+		BeforeEach(func() {
+			newLabels = map[string]string{
+				"new1": "newval1",
+				"new2": "newval2",
+			}
+		})
+		It("can add labels to an empty map", func() {
+			t := newTestLabelable(nil)
+			Expect(utils.AddAllLabels(t, newLabels)).To(BeTrue())
+			Expect(t.M).To(HaveLen(len(newLabels)))
+			Expect(t.M).To(HaveKeyWithValue("new1", "newval1"))
+			Expect(t.M).To(HaveKeyWithValue("new2", "newval2"))
+		})
+		It("can add labels to an existing map", func() {
+			t := newTestLabelable(baseLabels)
+			Expect(utils.AddAllLabels(t, newLabels)).To(BeTrue())
+			Expect(t.M).To(HaveKeyWithValue("new1", "newval1"))
+			Expect(t.M).To(HaveKeyWithValue("new2", "newval2"))
+			Expect(t.M).To(HaveLen(len(baseLabels) + len(newLabels)))
+		})
+		It("can handle an empty map", func() {
+			t := newTestLabelable(baseLabels)
+			Expect(utils.AddAllLabels(t, map[string]string{})).To(BeFalse())
+			Expect(t.M).To(HaveLen(len(baseLabels)))
+		})
+		It("can handle a nil map", func() {
+			t := newTestLabelable(baseLabels)
+			Expect(utils.AddAllLabels(t, nil)).To(BeFalse())
+			Expect(t.M).To(HaveLen(len(baseLabels)))
+		})
+	})
 	When("removing labels", func() {
 		It("can remove labels from a nil map", func() {
 			t := newTestLabelable(nil)

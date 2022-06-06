@@ -64,6 +64,16 @@ func AddLabel(obj Labelable, key string, value string) bool {
 	return true
 }
 
+// Ensures that all labels in the provided map are present and returns True if
+// an update was made
+func AddAllLabels(obj Labelable, labels map[string]string) bool {
+	modified := false
+	for k, v := range labels {
+		modified = AddLabel(obj, k, v) || modified
+	}
+	return modified
+}
+
 func RemoveLabel(obj Labelable, key string) bool {
 	labels := obj.GetLabels()
 	if labels == nil {
