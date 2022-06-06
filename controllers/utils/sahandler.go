@@ -68,6 +68,7 @@ func (d *SAHandler) ensureSA(l logr.Logger) (bool, error) {
 			logger.Error(err, "unable to set controller reference")
 			return err
 		}
+		SetOwnedByVolSync(d.Owner, d.SA)
 		return nil
 	})
 	if err != nil {
@@ -92,6 +93,7 @@ func (d *SAHandler) ensureRole(l logr.Logger) (bool, error) {
 			logger.Error(err, "unable to set controller reference")
 			return err
 		}
+		SetOwnedByVolSync(d.Owner, d.role)
 		d.role.Rules = []rbacv1.PolicyRule{
 			{
 				APIGroups: []string{"security.openshift.io"},
@@ -126,6 +128,7 @@ func (d *SAHandler) ensureRoleBinding(l logr.Logger) (bool, error) {
 			logger.Error(err, "unable to set controller reference")
 			return err
 		}
+		SetOwnedByVolSync(d.Owner, d.roleBinding)
 		d.roleBinding.RoleRef = rbacv1.RoleRef{
 			APIGroup: "rbac.authorization.k8s.io",
 			Kind:     "Role",

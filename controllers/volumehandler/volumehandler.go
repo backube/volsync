@@ -156,6 +156,7 @@ func (vh *VolumeHandler) EnsureNewPVC(ctx context.Context, log logr.Logger,
 			logger.Error(err, "unable to set controller reference")
 			return err
 		}
+		utils.SetOwnedByVolSync(vh.owner, pvc)
 		if pvc.CreationTimestamp.IsZero() { // set immutable fields
 			pvc.Spec.AccessModes = vh.accessModes
 			pvc.Spec.StorageClassName = vh.storageClassName
@@ -235,6 +236,7 @@ func (vh *VolumeHandler) ensureImageSnapshot(ctx context.Context, log logr.Logge
 				logger.Error(err, "unable to set controller reference")
 				return err
 			}
+			utils.SetOwnedByVolSync(vh.owner, snap)
 		}
 		if snap.CreationTimestamp.IsZero() {
 			snap.Spec = snapv1.VolumeSnapshotSpec{
@@ -307,6 +309,7 @@ func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,
 			logger.Error(err, "unable to set controller reference")
 			return err
 		}
+		utils.SetOwnedByVolSync(vh.owner, clone)
 		if isTemporary {
 			utils.MarkForCleanup(vh.owner, clone)
 		}
@@ -386,6 +389,7 @@ func (vh *VolumeHandler) ensureSnapshot(ctx context.Context, log logr.Logger,
 			logger.Error(err, "unable to set controller reference")
 			return err
 		}
+		utils.SetOwnedByVolSync(vh.owner, snap)
 		if isTemporary {
 			utils.MarkForCleanup(vh.owner, snap)
 		}
@@ -448,6 +452,7 @@ func (vh *VolumeHandler) pvcFromSnapshot(ctx context.Context, log logr.Logger,
 			logger.Error(err, "unable to set controller reference")
 			return err
 		}
+		utils.SetOwnedByVolSync(vh.owner, pvc)
 		if isTemporary {
 			utils.MarkForCleanup(vh.owner, pvc)
 		}

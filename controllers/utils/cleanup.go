@@ -31,9 +31,14 @@ import (
 
 // MarkForCleanup marks the provided "obj" to be deleted at the end of the
 // synchronization iteration.
-func MarkForCleanup(owner metav1.Object, obj metav1.Object) {
+func MarkForCleanup(owner metav1.Object, obj metav1.Object) bool {
 	uid := owner.GetUID()
-	AddLabel(obj, cleanupLabelKey, string(uid))
+	return AddLabel(obj, cleanupLabelKey, string(uid))
+}
+
+// UnmarkForCleanup removes any previously applied cleanup label
+func UnmarkForCleanup(obj metav1.Object) bool {
+	return RemoveLabel(obj, cleanupLabelKey)
 }
 
 // CleanupObjects deletes all objects that have been marked. The objects to be
@@ -191,12 +196,9 @@ func IsMarkedDoNotDelete(snapshot *snapv1.VolumeSnapshot) bool {
 func UnMarkForCleanupAndRemoveOwnership(obj metav1.Object, owner client.Object) bool {
 	updated := false
 
-	// Remove volsync cleanup label if present
-	updatedLabels := obj.GetLabels()
-	if _, ok := updatedLabels[cleanupLabelKey]; ok {
-		delete(updatedLabels, cleanupLabelKey)
-		updated = true
-	}
+	// Remove volsync cleanup label & ownership label if present
+	updated = UnmarkForCleanup(obj) || updated
+	updated = RemoveOwnedByVolSync(obj) || updated
 
 	// Remove ReplicationDestination owner reference if present
 	updatedOwnerRefs := []metav1.OwnerReference{}
@@ -208,14 +210,11 @@ func UnMarkForCleanupAndRemoveOwnership(obj metav1.Object, owner client.Object) 
 			updatedOwnerRefs = append(updatedOwnerRefs, ownerRef)
 		}
 	}
-
 	if updated {
-		obj.SetLabels(updatedLabels)
 		obj.SetOwnerReferences(updatedOwnerRefs)
-
-		return true
 	}
-	return false
+
+	return updated
 }
 
 func MarkOldSnapshotForCleanup(ctx context.Context, c client.Client, logger logr.Logger,

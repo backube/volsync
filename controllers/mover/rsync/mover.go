@@ -354,10 +354,12 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 			logger.Error(err, "unable to set controller reference")
 			return err
 		}
+		utils.SetOwnedByVolSync(m.owner, job)
 		utils.MarkForCleanup(m.owner, job)
 
 		job.Spec.Template.ObjectMeta.Name = job.Name
 		utils.AddAllLabels(&job.Spec.Template, m.serviceSelector())
+		utils.SetOwnedByVolSync(m.owner, &job.Spec.Template) // ensure the Job's Pod gets the ownership label
 		backoffLimit := int32(2)
 		job.Spec.BackoffLimit = &backoffLimit
 
