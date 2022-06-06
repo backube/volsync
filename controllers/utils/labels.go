@@ -76,6 +76,8 @@ func AddAllLabels(obj Labelable, labels map[string]string) bool {
 	return modified
 }
 
+// Removes the given key from the object's labels and returns True if an update
+// was made
 func RemoveLabel(obj Labelable, key string) bool {
 	labels := obj.GetLabels()
 	if labels == nil {
@@ -89,10 +91,13 @@ func RemoveLabel(obj Labelable, key string) bool {
 	return true
 }
 
+// Returns True if the object contains a label indicating that it was created by
+// VolSync
 func IsOwnedByVolsync(obj Labelable) bool {
 	return HasLabel(obj, OwnedByLabelKey)
 }
 
+// Sets a label on the object to indicate it was created by VolSync
 func SetOwnedByVolSync(volsyncCR metav1.Object, obj Labelable) bool {
 	value := "unknown"
 	if volsyncCR != nil {
@@ -101,6 +106,7 @@ func SetOwnedByVolSync(volsyncCR metav1.Object, obj Labelable) bool {
 	return AddLabel(obj, OwnedByLabelKey, value)
 }
 
+// Removes the "created by Volsync" label
 func RemoveOwnedByVolSync(obj Labelable) bool {
 	return RemoveLabel(obj, OwnedByLabelKey)
 }
