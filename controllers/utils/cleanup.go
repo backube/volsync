@@ -29,22 +29,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const (
-	volsyncLabelPrefix  = "volsync.backube"
-	cleanupLabelKey     = volsyncLabelPrefix + "/cleanup"
-	DoNotDeleteLabelKey = volsyncLabelPrefix + "/do-not-delete"
-)
-
 // MarkForCleanup marks the provided "obj" to be deleted at the end of the
 // synchronization iteration.
 func MarkForCleanup(owner metav1.Object, obj metav1.Object) {
 	uid := owner.GetUID()
-	labels := obj.GetLabels()
-	if labels == nil {
-		labels = make(map[string]string)
-	}
-	labels[cleanupLabelKey] = string(uid)
-	obj.SetLabels(labels)
+	AddLabel(obj, cleanupLabelKey, string(uid))
 }
 
 // CleanupObjects deletes all objects that have been marked. The objects to be
@@ -196,8 +185,7 @@ func RemoveSnapshotOwnershipIfRequestedAndUpdate(ctx context.Context, c client.C
 }
 
 func IsMarkedDoNotDelete(snapshot *snapv1.VolumeSnapshot) bool {
-	_, ok := snapshot.Labels[DoNotDeleteLabelKey]
-	return ok
+	return HasLabel(snapshot, DoNotDeleteLabelKey)
 }
 
 func UnMarkForCleanupAndRemoveOwnership(obj metav1.Object, owner client.Object) bool {
