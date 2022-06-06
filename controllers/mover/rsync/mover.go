@@ -357,12 +357,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 		utils.MarkForCleanup(m.owner, job)
 
 		job.Spec.Template.ObjectMeta.Name = job.Name
-		if job.Spec.Template.ObjectMeta.Labels == nil {
-			job.Spec.Template.ObjectMeta.Labels = map[string]string{}
-		}
-		for k, v := range m.serviceSelector() {
-			job.Spec.Template.ObjectMeta.Labels[k] = v
-		}
+		utils.AddAllLabels(&job.Spec.Template, m.serviceSelector())
 		backoffLimit := int32(2)
 		job.Spec.BackoffLimit = &backoffLimit
 
