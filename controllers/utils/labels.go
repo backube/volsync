@@ -17,6 +17,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 package utils
 
+import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 const (
 	volsyncLabelPrefix  = "volsync.backube"
 	cleanupLabelKey     = volsyncLabelPrefix + "/cleanup"
@@ -85,4 +87,20 @@ func RemoveLabel(obj Labelable, key string) bool {
 	delete(labels, key)
 	obj.SetLabels(labels)
 	return true
+}
+
+func IsOwnedByVolsync(obj Labelable) bool {
+	return HasLabel(obj, OwnedByLabelKey)
+}
+
+func SetOwnedByVolSync(volsyncCR metav1.Object, obj Labelable) bool {
+	value := "unknown"
+	if volsyncCR != nil {
+		value = string(volsyncCR.GetUID())
+	}
+	return AddLabel(obj, OwnedByLabelKey, value)
+}
+
+func RemoveOwnedByVolSync(obj Labelable) bool {
+	return RemoveLabel(obj, OwnedByLabelKey)
 }
