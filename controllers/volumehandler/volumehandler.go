@@ -315,7 +315,13 @@ func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,
 				clone.Spec.Resources.Requests = corev1.ResourceList{
 					corev1.ResourceStorage: *vh.capacity,
 				}
+			} else if src.Status.Capacity != nil && src.Status.Capacity.Storage() != nil {
+				// check the src PVC capacity if set
+				clone.Spec.Resources.Requests = corev1.ResourceList{
+					corev1.ResourceStorage: *src.Status.Capacity.Storage(),
+				}
 			} else {
+				// Fallback to the pvc requested size
 				clone.Spec.Resources.Requests = corev1.ResourceList{
 					corev1.ResourceStorage: *src.Spec.Resources.Requests.Storage(),
 				}
@@ -364,6 +370,7 @@ func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,
 	return clone, err
 }
 
+//nolint: funlen
 func (vh *VolumeHandler) ensureSnapshot(ctx context.Context, log logr.Logger,
 	src *corev1.PersistentVolumeClaim, name string, isTemporary bool) (*snapv1.VolumeSnapshot, error) {
 	snap := &snapv1.VolumeSnapshot{
@@ -412,6 +419,14 @@ func (vh *VolumeHandler) ensureSnapshot(ctx context.Context, log logr.Logger,
 		}
 		return nil, nil
 	}
+	if snap.Status.ReadyToUse != nil && !*snap.Status.ReadyToUse {
+		// readyToUse is set to false for this volume snapshot
+		logger.V(1).Info("waiting for snapshot to be ready")
+		return nil, nil
+	}
+	// status.readyToUse either is not set by the driver at this point (even though
+	// status.BoundVolumeSnapshotContentName is set), or readyToUse=true
+
 	logger.V(1).Info("temporary snapshot reconciled", "operation", op)
 	return snap, nil
 }
@@ -445,7 +460,13 @@ func (vh *VolumeHandler) pvcFromSnapshot(ctx context.Context, log logr.Logger,
 				pvc.Spec.Resources.Requests = corev1.ResourceList{
 					corev1.ResourceStorage: *snap.Status.RestoreSize,
 				}
+			} else if original.Status.Capacity != nil && original.Status.Capacity.Storage() != nil {
+				// check the original PVC capacity if set
+				pvc.Spec.Resources.Requests = corev1.ResourceList{
+					corev1.ResourceStorage: *original.Status.Capacity.Storage(),
+				}
 			} else {
+				// Fallback to the pvc requested size
 				pvc.Spec.Resources.Requests = corev1.ResourceList{
 					corev1.ResourceStorage: *original.Spec.Resources.Requests.Storage(),
 				}
