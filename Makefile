@@ -208,22 +208,26 @@ $(LOCALBIN):
 
 .PHONY: controller-gen
 CONTROLLER_GEN := $(LOCALBIN)/controller-gen
-controller-gen: ## Download controller-gen locally if necessary.
+controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary.
+$(CONTROLLER_GEN): $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
 
 .PHONY: kustomize
 KUSTOMIZE := $(LOCALBIN)/kustomize
-kustomize: ## Download kustomize locally if necessary.
+kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
+$(KUSTOMIZE): $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install sigs.k8s.io/kustomize/kustomize/v4@$(KUSTOMIZE_VERSION)
 
 .PHONY: envtest
 ENVTEST := $(LOCALBIN)/setup-envtest
-envtest: ## Download envtest-setup locally if necessary.
+envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
+$(ENVTEST): $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
 
 .PHONY: yq
 YQ := $(LOCALBIN)/yq
-yq: ## Download yq locally if necessary.
+yq: $(YQ) ## Download yq locally if necessary.
+$(YQ): $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install github.com/mikefarah/yq/v4@latest
 
 .PHONY: bundle
@@ -243,10 +247,9 @@ bundle-push: ## Push the bundle image.
 	$(MAKE) docker-push IMG=$(BUNDLE_IMG)
 
 .PHONY: opm
-OPM = ./bin/opm
-opm: ## Download opm locally if necessary.
-ifeq (,$(wildcard $(OPM)))
-ifeq (,$(shell which opm 2>/dev/null))
+OPM := $(LOCALBIN)/opm
+opm: $(OPM) ## Download opm locally if necessary.
+$(OPM): $(LOCALBIN)
 	@{ \
 	set -e ;\
 	mkdir -p $(dir $(OPM)) ;\
@@ -254,10 +257,6 @@ ifeq (,$(shell which opm 2>/dev/null))
 	curl -sSLo $(OPM) https://github.com/operator-framework/operator-registry/releases/download/v1.19.1/$${OS}-$${ARCH}-opm ;\
 	chmod +x $(OPM) ;\
 	}
-else
-OPM = $(shell which opm)
-endif
-endif
 
 # A comma-separated list of bundle images (e.g. make catalog-build BUNDLE_IMGS=example.com/operator-bundle:v0.1.0,example.com/operator-bundle:v0.2.0).
 # These images MUST exist in a registry and be pull-able.
@@ -301,33 +300,34 @@ endef
 
 .PHONY: ginkgo
 GINKGO := $(LOCALBIN)/ginkgo
-ginkgo: ## Download ginkgo
+ginkgo: $(GINKGO) ## Download ginkgo
+$(GINKGO): $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install github.com/onsi/ginkgo/ginkgo@latest
 
 .PHONY: golangci-lint
 GOLANGCILINT := $(LOCALBIN)/golangci-lint
 GOLANGCI_URL := https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh
-golangci-lint: ## Download golangci-lint
-ifeq (,$(wildcard $(GOLANGCILINT)))
+golangci-lint: $(GOLANGCILINT) ## Download golangci-lint
+$(GOLANGCILINT): $(LOCALBIN)
 	curl -sSfL $(GOLANGCI_URL) | sh -s -- -b $(LOCALBIN) $(GOLANGCI_VERSION)
-endif
 
 .PHONY: helm
 HELM := $(LOCALBIN)/helm
 HELM_URL := https://get.helm.sh/helm-$(HELM_VERSION)-$(OS)-$(ARCH).tar.gz
-helm: ## Download helm
-ifeq (,$(wildcard $(HELM)))
+helm: $(HELM) ## Download helm
+$(HELM): $(LOCALBIN)
 	curl -sSL "$(HELM_URL)" | tar xzf - -C $(LOCALBIN) --strip-components=1 --wildcards '*/helm'
-endif
 
 .PHONY: kuttl
 KUTTL := $(LOCALBIN)/kuttl
 KUTTL_URL := https://github.com/kudobuilder/kuttl/releases/download/v$(KUTTL_VERSION)/kubectl-kuttl_$(KUTTL_VERSION)_$(OS)_x86_64
-kuttl: ## Download kuttl
+kuttl: $(KUTTL) ## Download kuttl
+$(KUTTL): $(LOCALBIN)
 	$(call download-tool,$(KUTTL),$(KUTTL_URL))
 
 .PHONY: operator-sdk
 OPERATOR_SDK := $(LOCALBIN)/operator-sdk
 OPERATOR_SDK_URL := https://github.com/operator-framework/operator-sdk/releases/download/$(OPERATOR_SDK_VERSION)/operator-sdk_$(OS)_$(ARCH)
-operator-sdk: ## Download operator-sdk
+operator-sdk: $(OPERATOR_SDK) ## Download operator-sdk
+$(OPERATOR_SDK): $(LOCALBIN)
 	$(call download-tool,$(OPERATOR_SDK),$(OPERATOR_SDK_URL))
