@@ -31,7 +31,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -40,19 +39,22 @@ import (
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers/mover"
+	"github.com/backube/volsync/controllers/mover/syncthing/api"
 	"github.com/backube/volsync/controllers/utils"
 	"github.com/backube/volsync/controllers/volumehandler"
 )
 
 // constants used in the syncthing configuration
 const (
-	dataDirEnv         = "SYNCTHING_DATA_DIR"
-	dataDirMountPath   = "/data"
-	configDirEnv       = "SYNCTHING_CONFIG_DIR"
-	configDirMountPath = "/config"
-	configCapacity     = "1Gi"
-	syncthingAPIPort   = 8384
-	syncthingDataPort  = 22000
+	dataDirEnv            = "SYNCTHING_DATA_DIR"
+	dataDirMountPath      = "/data"
+	configDirEnv          = "SYNCTHING_CONFIG_DIR"
+	configDirMountPath    = "/config"
+	configCapacity        = "1Gi"
+	syncthingAPIPort      = 8384
+	syncthingDataPort     = 22000
+	SyncthingAPIPortName  = "syncthing-api"
+	SyncthingDataPortName = "syncthing-data"
 )
 
 // Mover is the reconciliation logic for the Restic-based data mover.
@@ -69,7 +71,7 @@ type Mover struct {
 	peerList           []volsyncv1alpha1.SyncthingPeer
 	status             *volsyncv1alpha1.ReplicationSourceSyncthingStatus
 	serviceType        corev1.ServiceType
-	syncthing          Syncthing
+	syncthing          api.SyncthingAPI
 }
 
 var _ mover.Mover = &Mover{}
@@ -117,12 +119,17 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 		return mover.InProgress(), err
 	}
 
-	dataService, err := m.ensureDataService(ctx)
+	dataService, err := m.ensureDataService(ctx, deployment)
 	if dataService == nil || err != nil {
 		return mover.InProgress(), err
 	}
 
 	if err = m.configureSyncthingAPIClient(secretAPIKey); err != nil {
+		return mover.InProgress(), err
+	}
+
+	// fetch the latest data from Syncthing
+	if err = m.syncthing.Fetch(); err != nil {
 		return mover.InProgress(), err
 	}
 
@@ -198,7 +205,6 @@ func (m *Mover) ensureDataPVC(ctx context.Context) (*corev1.PersistentVolumeClai
 }
 
 // ensureSecretAPIKey Ensures ensures that the PVC for API secrets either exists or it will create it.
-//nolint:funlen
 func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) {
 	secretName := "volsync-" + m.owner.GetName()
 	secret := &corev1.Secret{
@@ -220,12 +226,10 @@ func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) 
 	// these will fail only when there is an issue with the OS's RNG
 	randomAPIKey, err := GenerateRandomString(32)
 	if err != nil {
-		m.logger.Error(err, "could not generate random number")
 		return nil, err
 	}
 	randomPassword, err := GenerateRandomString(32)
 	if err != nil {
-		m.logger.Error(err, "could not generate random number")
 		return nil, err
 	}
 
@@ -233,24 +237,17 @@ func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) 
 	apiServiceDNS := m.getAPIServiceDNS()
 	certPEM, certPrivKeyPEM, err := GenerateTLSCertificatesForSyncthing(apiServiceDNS)
 	if err != nil {
-		m.logger.Error(err, "could not generate TLS certificate")
 		return nil, err
 	}
 
 	// create a new secret with the generated values
-	secret = &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      secretName,
-			Namespace: m.owner.GetNamespace(),
-		},
-		Type: corev1.SecretTypeOpaque,
-		Data: map[string][]byte{
-			"apikey":       []byte(randomAPIKey),
-			"username":     []byte("syncthing"),
-			"password":     []byte(randomPassword),
-			"httpsCertPEM": certPEM.Bytes(),
-			"httpsKeyPEM":  certPrivKeyPEM.Bytes(),
-		},
+	secret.Type = corev1.SecretTypeOpaque
+	secret.Data = map[string][]byte{
+		"apikey":       []byte(randomAPIKey),
+		"username":     []byte("syncthing"),
+		"password":     []byte(randomPassword),
+		"httpsCertPEM": certPEM.Bytes(),
+		"httpsKeyPEM":  certPrivKeyPEM.Bytes(),
 	}
 
 	// ensure secret can be deleted once ReplicationSource is deleted
@@ -263,7 +260,6 @@ func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) 
 		return nil, err
 	}
 	m.logger.Info("created secret", secret.Name, secret)
-
 	return secret, nil
 }
 
@@ -305,7 +301,7 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 	}
 	logger := m.logger.WithValues("deployment", client.ObjectKeyFromObject(deployment))
 
-	// we declare the deployment object in this block line-by-line using pre-order traversal
+	// we declare the deployment object in this block line-by-line
 	_, err := ctrlutil.CreateOrUpdate(ctx, m.client, deployment, func() error {
 		if err := ctrl.SetControllerReference(m.owner, deployment, m.client.Scheme()); err != nil {
 			logger.Error(err, "unable to set controller reference")
@@ -425,56 +421,36 @@ func (m *Mover) ensureAPIService(ctx context.Context, deployment *appsv1.Deploym
 			Namespace: m.owner.GetNamespace(),
 		},
 	}
+	logger := m.logger.WithValues("service", client.ObjectKeyFromObject(service))
 
-	// see if we already have a service
-	err := m.client.Get(ctx, types.NamespacedName{Name: serviceName, Namespace: m.owner.GetNamespace()}, service)
-
-	// return if already exists
-	if err == nil {
-		return service, nil
-	}
-	// something else went wrong
-	if !errors.IsNotFound(err) {
-		return nil, err
-	}
-
-	// create new service
-	service = &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      serviceName,
-			Namespace: m.owner.GetNamespace(),
-			Labels: map[string]string{
-				"app": m.owner.GetName(),
+	_, err := ctrlutil.CreateOrUpdate(ctx, m.client, service, func() error {
+		if err := ctrl.SetControllerReference(m.owner, service, m.client.Scheme()); err != nil {
+			logger.Error(err, "unable to set controller reference")
+			return err
+		}
+		// service should route to the deployment's pods
+		service.Spec.Selector = deployment.Spec.Template.Labels
+		service.Spec.Ports = []corev1.ServicePort{
+			{
+				Port:       syncthingAPIPort,
+				TargetPort: intstr.FromString(targetPort),
+				Protocol:   "TCP",
+				Name:       SyncthingAPIPortName,
 			},
-		},
-		Spec: corev1.ServiceSpec{
-			// set the labels from the Deployment
-			Selector: deployment.Spec.Template.Labels,
-			Ports: []corev1.ServicePort{
-				{
-					Port:       syncthingAPIPort,
-					TargetPort: intstr.FromString(targetPort),
-					Protocol:   "TCP",
-					Name:       "syncthing-api",
-				},
-			},
-		},
-	}
-	if err = ctrl.SetControllerReference(m.owner, service, m.client.Scheme()); err != nil {
-		m.logger.V(3).Error(err, "failed to set owner reference")
-		return nil, err
-	}
-	if err := m.client.Create(ctx, service); err != nil {
-		m.logger.Error(err, "error creating the service")
-		return nil, err
-	}
+		}
+		return nil
+	})
 
+	// return service XOR error
+	if err != nil {
+		return nil, err
+	}
 	return service, nil
 }
 
 // ensureDataService Ensures that a service exposing the Syncthing data is present, else it will be created.
 // This service allows Syncthing to share data with the rest of the world.
-func (m *Mover) ensureDataService(ctx context.Context) (*corev1.Service, error) {
+func (m *Mover) ensureDataService(ctx context.Context, deployment *appsv1.Deployment) (*corev1.Service, error) {
 	serviceName := "volsync-" + m.owner.GetName() + "-data"
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -483,40 +459,29 @@ func (m *Mover) ensureDataService(ctx context.Context) (*corev1.Service, error) 
 		},
 	}
 
-	err := m.client.Get(ctx, client.ObjectKeyFromObject(service), service)
-	if err != nil {
-		service = &corev1.Service{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      serviceName,
-				Namespace: m.owner.GetNamespace(),
-				Labels: map[string]string{
-					"app": m.owner.GetName(),
-				},
-			},
-			Spec: corev1.ServiceSpec{
-				Selector: map[string]string{
-					"app": m.owner.GetName(),
-				},
-				Ports: []corev1.ServicePort{
-					{
-						Port:       syncthingDataPort,
-						TargetPort: intstr.FromInt(syncthingDataPort),
-						Protocol:   "TCP",
-						Name:       "syncthing-data",
-					},
-				},
-				Type: m.serviceType,
-			},
-		}
-
+	logger := m.logger.WithValues("service", client.ObjectKeyFromObject(service))
+	_, err := ctrl.CreateOrUpdate(ctx, m.client, service, func() error {
 		if err := ctrl.SetControllerReference(m.owner, service, m.client.Scheme()); err != nil {
-			m.logger.V(3).Error(err, "failed to set owner reference")
-			return nil, err
+			logger.Error(err, "unable to set controller reference")
+			return err
 		}
-		if err := m.client.Create(ctx, service); err != nil {
-			m.logger.Error(err, "error creating the service")
-			return nil, err
+		service.Spec.Type = m.serviceType
+		service.Spec.Selector = deployment.Spec.Template.Labels
+		service.Spec.Ports = []corev1.ServicePort{
+			{
+				Port:       syncthingDataPort,
+				TargetPort: intstr.FromInt(syncthingDataPort),
+				// This port prefers TCP but may also be UDP
+				// HACK: add an option to spec which allows users to select UDP over TCP
+				// this may benefit some envs w/ non-TCP connections
+				Protocol: "TCP",
+				Name:     SyncthingDataPortName,
+			},
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return service, nil
 }
@@ -549,23 +514,23 @@ func (m *Mover) configureSyncthingAPIClient(
 ) error {
 	// if the API URL has not already been overridden, we will set the
 	// API URL here
-	if m.syncthing.APIConfig.APIURL == "" {
+	apiConfig := m.syncthing.APIConfig()
+	if apiConfig.APIURL == "" {
 		// get the API URL
-		m.syncthing.APIConfig.APIURL = m.getAPIServiceAddress()
+		apiConfig.APIURL = m.getAPIServiceAddress()
 	}
 
-	// set the api key
-	m.syncthing.APIConfig.APIKey = string(apiSecret.Data["apikey"])
-
-	// load the TLS certificate
+	// configure authentication per request
+	apiConfig.APIKey = string(apiSecret.Data["apikey"])
 	clientConfig, err := m.loadTLSConfigFromSecret(apiSecret)
 	if err != nil {
 		return err
 	}
-	m.syncthing.APIConfig.TLSConfig = clientConfig
+	apiConfig.TLSConfig = clientConfig
 
 	// create a new client or use the existing one
-	m.syncthing.APIConfig.Client = m.syncthing.APIConfig.BuildOrUseExistingTLSClient()
+	apiConfig.Client = m.syncthing.APIConfig().BuildOrUseExistingTLSClient()
+	m.syncthing.SetAPIConfig(apiConfig)
 
 	return nil
 }
@@ -575,46 +540,45 @@ func (m *Mover) ensureIsConfigured(apiSecret *corev1.Secret) error {
 	// This function should make sure to ignore all of devices (leave them as they are) introduced to us by other nodes.
 	// This is important because Syncthing will otherwise reconfigure them on its own, creating a cycle where
 	// VolSync removes a device, only to be re-added by Syncthing, only to be removed again by VolSync, etc.
-
-	// reconciles the Syncthing object
-	err := m.syncthing.FetchLatestInfo()
-	if err != nil {
-		return err
-	}
 	m.logger.V(4).Info("Syncthing config", "config", m.syncthing.Config)
 
 	// make sure that the spec doesn't try to add a previously introduced node
-	if m.syncthing.PeerListContainsIntroduced(m.peerList) {
+	if m.peerListContainsIntroduced(m.peerList) {
 		return fmt.Errorf("the peer list contains a node that has been introduced to us by another node")
 	}
 
 	// make sure that the spec isn't adding itself as a peer
-	if m.syncthing.PeerListContainsSelf(m.peerList) {
+	if m.peerListContainsSelf(m.peerList) {
 		return fmt.Errorf("the peer list contains the node itself")
 	}
 
 	// check if the syncthing is configured
 	hasChanged := false
-	if m.syncthing.NeedsReconfigure(m.peerList) {
+	if m.syncthingNeedsReconfigure(m.peerList) {
 		m.logger.V(4).Info("devices need to be reconfigured")
-		m.syncthing.UpdateDevices(m.peerList)
+		if err := m.updateSyncthingDevices(m.peerList); err != nil {
+			return err
+		}
 		hasChanged = true
 	}
 
 	// set the user and password if not already set
-	if m.syncthing.Config.GUI.User != string(apiSecret.Data["username"]) ||
-		m.syncthing.Config.GUI.Password == "" {
+	if m.syncthing.Config().GUI.User != string(apiSecret.Data["username"]) ||
+		m.syncthing.Config().GUI.Password == "" {
 		m.logger.Info("setting user and password")
-		m.syncthing.Config.GUI.User = string(apiSecret.Data["username"])
-		m.syncthing.Config.GUI.Password = string(apiSecret.Data["password"])
+		stConfig := m.syncthing.Config()
+		stConfig.GUI.User = string(apiSecret.Data["username"])
+		stConfig.GUI.Password = string(apiSecret.Data["password"])
+		m.syncthing.SetConfig(stConfig)
 		hasChanged = true
 	}
 
 	// update the config
 	if hasChanged {
+		// get syncthing object & update the remote config w/ it
 		m.logger.Info("syncthing needs to be updated")
-		m.logger.V(4).Info("updating with config", "config", m.syncthing.Config)
-		err := m.syncthing.UpdateSyncthingConfig()
+		m.logger.V(4).Info("updating with config", "config", m.syncthing.Config())
+		err := m.syncthing.PublishConfig()
 		if err != nil {
 			m.logger.Error(err, "error updating syncthing config")
 			return err
@@ -625,13 +589,6 @@ func (m *Mover) ensureIsConfigured(apiSecret *corev1.Secret) error {
 
 // ensureStatusIsUpdated Updates the mover's status to be reported by the ReplicationSource object.
 func (m *Mover) ensureStatusIsUpdated(dataSVC *corev1.Service) error {
-	// get the current status
-	err := m.syncthing.FetchLatestInfo()
-	if err != nil {
-		m.logger.Error(err, "error fetching syncthing status")
-		return err
-	}
-
 	// fail until we can set the address
 	addr, err := m.GetDataServiceAddress(dataSVC)
 	if err != nil {
@@ -640,18 +597,25 @@ func (m *Mover) ensureStatusIsUpdated(dataSVC *corev1.Service) error {
 
 	// set syncthing-related info
 	m.status.Address = addr
-	m.status.ID = m.syncthing.SystemStatus.MyID
-	m.status.Peers = []volsyncv1alpha1.SyncthingPeerStatus{}
+	m.status.ID = m.syncthing.MyID()
+	m.status.Peers = m.getConnectedPeers()
+
+	return nil
+}
+
+// getConnectedPeers Retrieves a list of all the peers connected to our Syncthing instance.
+func (m *Mover) getConnectedPeers() []volsyncv1alpha1.SyncthingPeerStatus {
+	connectedPeers := []volsyncv1alpha1.SyncthingPeerStatus{}
 
 	// add the connected devices to the status
-	for deviceID, connectionInfo := range m.syncthing.SystemConnections.Connections {
+	for deviceID, connectionInfo := range m.syncthing.ConnectedDevices() {
 		// skip our own connection
-		if (deviceID == m.syncthing.SystemStatus.MyID) || (deviceID == "") {
+		if (deviceID == m.syncthing.MyID()) || (deviceID == "") {
 			continue
 		}
 
 		// obtain the device
-		device, ok := m.syncthing.GetDeviceFromID(deviceID)
+		device, ok := m.getDeviceFromID(deviceID)
 		if !ok {
 			m.logger.Error(fmt.Errorf("could not find device with ID %s", deviceID), "error getting device info")
 			continue
@@ -663,15 +627,15 @@ func (m *Mover) ensureStatusIsUpdated(dataSVC *corev1.Service) error {
 		deviceName := device.Name
 
 		// check connection status
-		m.status.Peers = append(m.status.Peers, volsyncv1alpha1.SyncthingPeerStatus{
+		connectedPeers = append(m.status.Peers, volsyncv1alpha1.SyncthingPeerStatus{
 			ID:           deviceID,
 			Address:      tcpAddress,
 			Connected:    connectionInfo.Connected,
 			Name:         deviceName,
-			IntroducedBy: introducedBy,
+			IntroducedBy: introducedBy.GoString(),
 		})
 	}
-	return nil
+	return connectedPeers
 }
 
 // getAPIServiceName Returns the name of the API service exposing the Syncthing API.

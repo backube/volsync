@@ -29,6 +29,7 @@ import (
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers/mover"
+	"github.com/backube/volsync/controllers/mover/syncthing/api"
 )
 
 // syncthingContainerImage is the container image name of the syncthing data mover
@@ -118,13 +119,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		dataPVCName:        &source.Spec.SourcePVC,
 		status:             source.Status.Syncthing,
 		serviceType:        serviceType,
-		syncthing: Syncthing{
-			APIConfig: &APIConfig{
-				APIURL: "",
-			},
-			// all logs from Syncthing's logger should be V(4)
-			logger: syncthingLogger.WithValues("struct", "Syncthing").V(4),
-		},
+		syncthing:          api.NewSyncthingAPI(syncthingLogger),
 		// defer setting the VolumeHandler
 	}, nil
 }

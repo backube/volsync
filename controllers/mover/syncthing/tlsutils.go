@@ -20,7 +20,7 @@ const (
 // GetCACertificate Creates a Root X.509 Certificate to be consumed by Syncthing.
 func GetCACertificate() (*x509.Certificate, error) {
 	// generate a bunch of random bytes
-	serialNumber, err := GenerateRandomBytes(2048)
+	serialNumber, err := GenerateRandomBytes(20)
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +117,6 @@ func GenerateSyncthingTLSCertificate(DNSNames []string, IPAddresses []net.IP) (*
 			OrganizationalUnit: []string{OrganizationUnit},
 		},
 		DNSNames:    DNSNames,
-		IPAddresses: []net.IP{net.ParseIP("127.0.0.1")},
 		NotBefore:   notBefore,
 		NotAfter:    notAfter,
 		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
