@@ -16,9 +16,9 @@ nodes in the cluster.
 
 The tests are ordered as follows:
 
-- 00 - Create `N` PVCs.
-- 05 - Create `N` ReplicationSources, configure each to sync
-  the corresponding `n-th` PVC.
+- 00 - Create $n$ PVCs.
+- 05 - Create $n$ ReplicationSources, configure each to sync
+  the corresponding $n^{th}$ PVC.
 - 10 - Configure all of the ReplicationSources to connect to each other.
 - 15 - Wait until the ReplicationSources are fully-connected.
 - 20 - Populate the first PVC with a test file.
