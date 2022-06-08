@@ -589,7 +589,7 @@ func (m *Mover) ensureIsConfigured(apiSecret *corev1.Secret) error {
 
 // ensureStatusIsUpdated Updates the mover's status to be reported by the ReplicationSource object.
 func (m *Mover) ensureStatusIsUpdated(dataSVC *corev1.Service) error {
-	// fail until we can set the address
+	// fail until we can get the address
 	addr, err := m.GetDataServiceAddress(dataSVC)
 	if err != nil {
 		return err
