@@ -6,35 +6,8 @@ commands:
   - script: |
       set -e -o pipefail
 
-      #################################
-      # Wait until all of the given list of
-      # ReplicationSource objects have
-      # non-null fields for .status.syncthing.address
-      # and .status.syncthing.ID
-      # Globals:
-      #   (string) NAMESPACE
-      # Arguments:
-      #   (string) replicationsource: name of a replicationsource object
-      # Returns:
-      #   None
-      #################################
-      function wait_for_syncthing_ready() {
-        local replication_source=$1
-
-        echo "waiting for syncthing address and ID for ${replication_source}..."
-        kubectl wait --for=condition=Reconciled replicationsource "${replication_source}" -n "${NAMESPACE}" --timeout=600s
-        # sleep until replicationsource has syncthing address and ID
-
-        local st_address=""
-        local st_device_id=""
-        while [[ -z "${st_address}" || -z "${st_device_id}" ]]; do
-          st_address=$(kubectl get replicationsource "${replication_source}" -n "${NAMESPACE}" -o jsonpath='{.status.syncthing.address}')
-          st_device_id=$(kubectl get replicationsource "${replication_source}" -n "${NAMESPACE}" -o jsonpath='{.status.syncthing.ID}')
-          if [[ -z "${st_address}" || -z "${st_device_id}" ]]; then
-            sleep 5
-          fi
-        done
-      }
+      # import the necessary utils for working w/ Syncthing
+      source ./utils.sh
 
       # delete all of the Syncthing Pods belonging to ReplicationSources
       for k in $(seq 1 2); do
