@@ -151,9 +151,6 @@ func (r *ReplicationSourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&rbacv1.Role{}).
 		Owns(&rbacv1.RoleBinding{}).
 		Owns(&snapv1.VolumeSnapshot{}).
-		WithOptions(controller.Options{
-			MaxConcurrentReconciles: 10,
-		}).
 		Complete(r)
 }
 
