@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"math/big"
 	"time"
 )
@@ -76,47 +77,31 @@ func generateSyncthingTLSCertificate(DNSNames []string) (*x509.Certificate, erro
 	return cert, nil
 }
 
-// generateSyncthingRootCA Generates a CA Certificate and a Private/Public Key pair to sign the PEM.
-func generateSyncthingRootCA() (*x509.Certificate, *rsa.PrivateKey, error) {
-	// serial number should be the current time in unix epoch time
-	ca, err := generateCACertificate()
-	if err != nil {
-		return nil, nil, err
+// getCertificatePEMs Accepts a certificate and RSA Private Key
+// and returns their PEM encodings respectively, or an error if there was
+// an issue with the encodings.
+func getCertificatePEMs(certBytes []byte, certPrivKey *rsa.PrivateKey) (*bytes.Buffer, *bytes.Buffer, error) {
+	if certPrivKey == nil || certBytes == nil {
+		return nil, nil, fmt.Errorf("arguments cannot be nil")
 	}
 
-	// create our private and public key
-	caPrivKey, err := rsa.GenerateKey(rand.Reader, 4096)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// create the CA
-	caBytes, err := x509.CreateCertificate(rand.Reader, ca, ca, &caPrivKey.PublicKey, caPrivKey)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// pem encode
-	caPEM := new(bytes.Buffer)
-	err = pem.Encode(caPEM, &pem.Block{
+	certPEM := new(bytes.Buffer)
+	err := pem.Encode(certPEM, &pem.Block{
 		Type:  "CERTIFICATE",
-		Bytes: caBytes,
+		Bytes: certBytes,
 	})
 	if err != nil {
 		return nil, nil, err
 	}
-
-	caPrivKeyPEM := new(bytes.Buffer)
-	err = pem.Encode(caPrivKeyPEM, &pem.Block{
+	certPrivKeyPEM := new(bytes.Buffer)
+	err = pem.Encode(certPrivKeyPEM, &pem.Block{
 		Type:  "RSA PRIVATE KEY",
-		Bytes: x509.MarshalPKCS1PrivateKey(caPrivKey),
+		Bytes: x509.MarshalPKCS1PrivateKey(certPrivKey),
 	})
-
 	if err != nil {
 		return nil, nil, err
 	}
-
-	return ca, caPrivKey, nil
+	return certPEM, certPrivKeyPEM, nil
 }
 
 // generateTLSCertificatesForSyncthing generates a self-signed PEM-encoded certificate and key for Syncthing
@@ -140,7 +125,14 @@ func generateTLSCertificatesForSyncthing(
 	}
 
 	// create a Root CA for our certificate
-	ca, caPrivKey, err := generateSyncthingRootCA()
+	// serial number should be the current time in unix epoch time
+	ca, err := generateCACertificate()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// create our private and public key
+	caPrivKey, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -150,23 +142,9 @@ func generateTLSCertificatesForSyncthing(
 		return nil, nil, err
 	}
 
-	certPEM := new(bytes.Buffer)
-	err = pem.Encode(certPEM, &pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: certBytes,
-	})
+	certPEM, certPrivKeyPEM, err := getCertificatePEMs(certBytes, certPrivKey)
 	if err != nil {
 		return nil, nil, err
 	}
-
-	certPrivKeyPEM := new(bytes.Buffer)
-	err = pem.Encode(certPrivKeyPEM, &pem.Block{
-		Type:  "RSA PRIVATE KEY",
-		Bytes: x509.MarshalPKCS1PrivateKey(certPrivKey),
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-
 	return certPEM, certPrivKeyPEM, nil
 }
