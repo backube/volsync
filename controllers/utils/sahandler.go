@@ -24,7 +24,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
@@ -64,11 +63,7 @@ func (d *SAHandler) Reconcile(l logr.Logger) (bool, error) {
 func (d *SAHandler) ensureSA(l logr.Logger) (bool, error) {
 	logger := l.WithValues("ServiceAccount", client.ObjectKeyFromObject(d.SA))
 	op, err := ctrlutil.CreateOrUpdate(d.Context, d.Client, d.SA, func() error {
-		if err := ctrl.SetControllerReference(d.Owner, d.SA, d.Client.Scheme()); err != nil {
-			logger.Error(err, "unable to set controller reference")
-			return err
-		}
-		return nil
+		return AddControllerReferenceAndVolSyncLabels(d.Owner, d.SA, d.Client.Scheme(), logger)
 	})
 	if err != nil {
 		logger.Error(err, "ServiceAccount reconcile failed")
@@ -88,8 +83,7 @@ func (d *SAHandler) ensureRole(l logr.Logger) (bool, error) {
 	}
 	logger := l.WithValues("Role", client.ObjectKeyFromObject(d.role))
 	op, err := ctrlutil.CreateOrUpdate(d.Context, d.Client, d.role, func() error {
-		if err := ctrl.SetControllerReference(d.Owner, d.role, d.Client.Scheme()); err != nil {
-			logger.Error(err, "unable to set controller reference")
+		if err := AddControllerReferenceAndVolSyncLabels(d.Owner, d.role, d.Client.Scheme(), logger); err != nil {
 			return err
 		}
 		d.role.Rules = []rbacv1.PolicyRule{
@@ -122,8 +116,7 @@ func (d *SAHandler) ensureRoleBinding(l logr.Logger) (bool, error) {
 	}
 	logger := l.WithValues("RoleBinding", client.ObjectKeyFromObject(d.roleBinding))
 	op, err := ctrlutil.CreateOrUpdate(d.Context, d.Client, d.roleBinding, func() error {
-		if err := ctrl.SetControllerReference(d.Owner, d.roleBinding, d.Client.Scheme()); err != nil {
-			logger.Error(err, "unable to set controller reference")
+		if err := AddControllerReferenceAndVolSyncLabels(d.Owner, d.roleBinding, d.Client.Scheme(), logger); err != nil {
 			return err
 		}
 		d.roleBinding.RoleRef = rbacv1.RoleRef{

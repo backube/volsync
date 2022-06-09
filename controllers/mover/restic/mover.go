@@ -30,7 +30,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/events"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -275,12 +274,15 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 	}
 	logger := m.logger.WithValues("job", client.ObjectKeyFromObject(job))
 	_, err := ctrlutil.CreateOrUpdate(ctx, m.client, job, func() error {
-		if err := ctrl.SetControllerReference(m.owner, job, m.client.Scheme()); err != nil {
-			logger.Error(err, "unable to set controller reference")
+		if err := utils.AddControllerReferenceAndVolSyncLabels(m.owner, job, m.client.Scheme(), logger); err != nil {
 			return err
 		}
 		utils.MarkForCleanup(m.owner, job)
 		job.Spec.Template.ObjectMeta.Name = job.Name
+
+		// Add common volsync labels to the pod template spec (so they are applied to the pod)
+		utils.AddVolSyncLabels(&job.Spec.Template)
+
 		backoffLimit := int32(8)
 		job.Spec.BackoffLimit = &backoffLimit
 		parallelism := int32(1)

@@ -23,10 +23,40 @@ import (
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/reference"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+const (
+	VolsyncCreatedByLabelKey   = "app.kubernetes.io/created-by"
+	VolsyncCreatedByLabelValue = "volsync"
+)
+
+// Add common label(s) to object created by VolSync
+func AddVolSyncLabels(obj metav1.Object) {
+	labels := obj.GetLabels()
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+	// Label to indicate the object is created by VolSync
+	labels[VolsyncCreatedByLabelKey] = VolsyncCreatedByLabelValue
+	obj.SetLabels(labels)
+}
+
+func AddControllerReferenceAndVolSyncLabels(owner metav1.Object, obj metav1.Object,
+	scheme *runtime.Scheme, logger logr.Logger) error {
+	if err := ctrl.SetControllerReference(owner, obj, scheme); err != nil {
+		logger.Error(err, "unable to set controller reference")
+		return err
+	}
+
+	AddVolSyncLabels(obj)
+
+	return nil
+}
 
 func GetAndValidateSecret(ctx context.Context, cl client.Client,
 	logger logr.Logger, secret *corev1.Secret, fields ...string) error {

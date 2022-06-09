@@ -30,7 +30,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/events"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -152,8 +151,7 @@ func (vh *VolumeHandler) EnsureNewPVC(ctx context.Context, log logr.Logger,
 	}
 
 	op, err := ctrlutil.CreateOrUpdate(ctx, vh.client, pvc, func() error {
-		if err := ctrl.SetControllerReference(vh.owner, pvc, vh.client.Scheme()); err != nil {
-			logger.Error(err, "unable to set controller reference")
+		if err := utils.AddControllerReferenceAndVolSyncLabels(vh.owner, pvc, vh.client.Scheme(), logger); err != nil {
 			return err
 		}
 		if pvc.CreationTimestamp.IsZero() { // set immutable fields
@@ -231,8 +229,7 @@ func (vh *VolumeHandler) ensureImageSnapshot(ctx context.Context, log logr.Logge
 			// Remove adding ownership and potentially marking for cleanup if do-not-delete label is present
 			utils.UnMarkForCleanupAndRemoveOwnership(snap, vh.owner)
 		} else {
-			if err := ctrl.SetControllerReference(vh.owner, snap, vh.client.Scheme()); err != nil {
-				logger.Error(err, "unable to set controller reference")
+			if err := utils.AddControllerReferenceAndVolSyncLabels(vh.owner, snap, vh.client.Scheme(), logger); err != nil {
 				return err
 			}
 		}
@@ -303,8 +300,7 @@ func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,
 	logger := log.WithValues("clone", client.ObjectKeyFromObject(clone))
 
 	op, err := ctrlutil.CreateOrUpdate(ctx, vh.client, clone, func() error {
-		if err := ctrl.SetControllerReference(vh.owner, clone, vh.client.Scheme()); err != nil {
-			logger.Error(err, "unable to set controller reference")
+		if err := utils.AddControllerReferenceAndVolSyncLabels(vh.owner, clone, vh.client.Scheme(), logger); err != nil {
 			return err
 		}
 		if isTemporary {
@@ -382,8 +378,7 @@ func (vh *VolumeHandler) ensureSnapshot(ctx context.Context, log logr.Logger,
 	logger := log.WithValues("snapshot", client.ObjectKeyFromObject(snap))
 
 	op, err := ctrlutil.CreateOrUpdate(ctx, vh.client, snap, func() error {
-		if err := ctrl.SetControllerReference(vh.owner, snap, vh.client.Scheme()); err != nil {
-			logger.Error(err, "unable to set controller reference")
+		if err := utils.AddControllerReferenceAndVolSyncLabels(vh.owner, snap, vh.client.Scheme(), logger); err != nil {
 			return err
 		}
 		if isTemporary {
@@ -444,8 +439,7 @@ func (vh *VolumeHandler) pvcFromSnapshot(ctx context.Context, log logr.Logger,
 	logger := log.WithValues("pvc", client.ObjectKeyFromObject(pvc))
 
 	op, err := ctrlutil.CreateOrUpdate(ctx, vh.client, pvc, func() error {
-		if err := ctrl.SetControllerReference(vh.owner, pvc, vh.client.Scheme()); err != nil {
-			logger.Error(err, "unable to set controller reference")
+		if err := utils.AddControllerReferenceAndVolSyncLabels(vh.owner, pvc, vh.client.Scheme(), logger); err != nil {
 			return err
 		}
 		if isTemporary {

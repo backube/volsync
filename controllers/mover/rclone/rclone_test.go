@@ -646,6 +646,13 @@ var _ = Describe("Rclone as a source", func() {
 
 					// It should be marked for cleaned up
 					Expect(job.Labels).To(HaveKey("volsync.backube/cleanup"))
+
+					Expect(job.Labels).To(HaveKeyWithValue(
+						utils.VolsyncCreatedByLabelKey, utils.VolsyncCreatedByLabelValue))
+
+					// Pod template spec should also have the created-by label
+					Expect(job.Spec.Template.Labels).To(HaveKeyWithValue(
+						utils.VolsyncCreatedByLabelKey, utils.VolsyncCreatedByLabelValue))
 				})
 
 				It("should support pausing", func() {

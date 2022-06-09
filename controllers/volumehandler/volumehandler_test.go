@@ -113,6 +113,9 @@ var _ = Describe("Volumehandler", func() {
 				Expect(*new.Spec.StorageClassName).To(Equal(customSC))
 				Expect(*(new.Spec.Resources.Requests.Storage())).To(Equal((capacity)))
 				Expect(new.Name).To(Equal(pvcName))
+
+				Expect(ownerMatches(new, rd, false)).To(BeTrue())
+				Expect(hasVolSyncLabels(new)).To(BeTrue())
 			})
 		})
 
@@ -228,6 +231,9 @@ var _ = Describe("Volumehandler", func() {
 				Expect(len(snap.GetOwnerReferences())).To(Equal(1))
 				ownerRef := snap.GetOwnerReferences()[0]
 				Expect(ownerRef.UID).To(Equal(rd.GetUID()))
+
+				Expect(ownerMatches(snap, rd, false)).To(BeTrue())
+				Expect(hasVolSyncLabels(snap)).To(BeTrue()) // Snap should have volsync labels
 
 				boundTo := "foo"
 				snap.Status = &snapv1.VolumeSnapshotStatus{
@@ -368,6 +374,9 @@ var _ = Describe("Volumehandler", func() {
 						Expect(new.Spec.StorageClassName).To(Equal(src.Spec.StorageClassName))
 						Expect(*new.Spec.Resources.Requests.Storage()).To(Equal(pvcRequestedSize))
 						Expect(new.Spec.AccessModes).To(Equal(src.Spec.AccessModes))
+						// Clone should have owner ref and volsync created-by label
+						Expect(ownerMatches(new, rs, true)).To(BeTrue())
+						Expect(hasVolSyncLabels(new)).To(BeTrue())
 					})
 				})
 
@@ -387,6 +396,9 @@ var _ = Describe("Volumehandler", func() {
 						Expect(new.Spec.StorageClassName).To(Equal(src.Spec.StorageClassName))
 						Expect(*new.Spec.Resources.Requests.Storage()).To(Equal(pvcCapacity))
 						Expect(new.Spec.AccessModes).To(Equal(src.Spec.AccessModes))
+						// Clone should have owner ref and volsync created-by label
+						Expect(ownerMatches(new, rs, true)).To(BeTrue())
+						Expect(hasVolSyncLabels(new)).To(BeTrue())
 					})
 				})
 			})
@@ -416,7 +428,9 @@ var _ = Describe("Volumehandler", func() {
 					Expect(*new.Spec.StorageClassName).To(Equal(newSC))
 					Expect(*new.Spec.Resources.Requests.Storage()).To(Equal(newCap))
 					Expect(new.Spec.AccessModes).To(Equal(newAccessModes))
-
+					// Clone should have owner ref and volsync created-by label
+					Expect(ownerMatches(new, rs, true)).To(BeTrue())
+					Expect(hasVolSyncLabels(new)).To(BeTrue())
 				})
 			})
 		})
@@ -465,6 +479,10 @@ var _ = Describe("Volumehandler", func() {
 						return snap.Status != nil && snap.Status.BoundVolumeSnapshotContentName != nil
 					}, maxWait, interval).Should(BeTrue())
 					Expect(snap.Spec.VolumeSnapshotClassName).To(BeNil())
+
+					// created snapshot should have ownerref and volsync created-by label
+					Expect(ownerMatches(snap, rs, true)).To(BeTrue())
+					Expect(hasVolSyncLabels(snap)).To(BeTrue())
 				})
 
 				When("The snapshot is bound but readyToUse is not set", func() {
@@ -473,6 +491,9 @@ var _ = Describe("Volumehandler", func() {
 						new, err := vh.EnsurePVCFromSrc(ctx, logger, src, newPvcName, true)
 						Expect(new).NotTo(BeNil())
 						Expect(err).NotTo(HaveOccurred())
+						// created pvc should have ownerref and volsync created-by label
+						Expect(ownerMatches(new, rs, true)).To(BeTrue())
+						Expect(hasVolSyncLabels(new)).To(BeTrue())
 					})
 				})
 
@@ -534,6 +555,9 @@ var _ = Describe("Volumehandler", func() {
 							Expect(new.Spec.StorageClassName).To(Equal(src.Spec.StorageClassName))
 							Expect(*new.Spec.Resources.Requests.Storage()).To(Equal(pvcRequestedSize))
 							Expect(new.Spec.AccessModes).To(Equal(src.Spec.AccessModes))
+							// created pvc should have ownerref and volsync created-by label
+							Expect(ownerMatches(new, rs, true)).To(BeTrue())
+							Expect(hasVolSyncLabels(new)).To(BeTrue())
 						})
 					})
 
@@ -639,6 +663,11 @@ var _ = Describe("Volumehandler", func() {
 					Eventually(func() error {
 						return k8sClient.Get(ctx, types.NamespacedName{Name: "newpvc", Namespace: ns.Name}, snap)
 					}, maxWait, interval).Should(Succeed())
+
+					// created snap should have ownerref and volsync created-by label
+					Expect(ownerMatches(snap, rs, true)).To(BeTrue())
+					Expect(hasVolSyncLabels(snap)).To(BeTrue())
+
 					boundTo := "foo2"
 					snap.Status = &snapv1.VolumeSnapshotStatus{
 						BoundVolumeSnapshotContentName: &boundTo,
@@ -661,6 +690,9 @@ var _ = Describe("Volumehandler", func() {
 					Expect(*new.Spec.StorageClassName).To(Equal(newSC))
 					Expect(*new.Spec.Resources.Requests.Storage()).To(Equal(newCap))
 					Expect(new.Spec.AccessModes).To(Equal(newAccessModes))
+					// created pvc should have ownerref and volsync created-by label
+					Expect(ownerMatches(new, rs, true)).To(BeTrue())
+					Expect(hasVolSyncLabels(new)).To(BeTrue())
 				})
 			})
 		})
@@ -681,4 +713,25 @@ func setPvcCapacityInStatus(ctx context.Context, pvc *corev1.PersistentVolumeCla
 		}
 		return pvc.Status.Capacity != nil && pvc.Status.Capacity["storage"] == pvcCapacity
 	}, maxWait, interval).Should(BeTrue())
+}
+
+func ownerMatches(obj, owner metav1.Object, isSource bool) bool {
+	kind := "ReplicationDestination"
+	if isSource {
+		kind = "ReplicationSource"
+	}
+	foundOwner := false
+	for _, ownerRef := range obj.GetOwnerReferences() {
+		if ownerRef.Name == owner.GetName() && ownerRef.Kind == kind && ownerRef.UID == owner.GetUID() &&
+			ownerRef.Controller != nil && *ownerRef.Controller {
+			foundOwner = true
+		}
+	}
+	return foundOwner
+}
+
+func hasVolSyncLabels(obj metav1.Object) bool {
+	labelVal, ok := obj.GetLabels()[utils.VolsyncCreatedByLabelKey]
+
+	return ok && labelVal == utils.VolsyncCreatedByLabelValue
 }

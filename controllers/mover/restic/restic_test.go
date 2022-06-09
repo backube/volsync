@@ -38,6 +38,7 @@ import (
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers/mover"
+	"github.com/backube/volsync/controllers/utils"
 )
 
 const (
@@ -691,7 +692,27 @@ var _ = Describe("Restic as a source", func() {
 						Expect(err).ToNot(HaveOccurred())
 						return *job.Spec.Parallelism
 					}).Should(Equal(int32(1)))
+				})
+				It("Should have correct labels", func() {
+					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil()) // hasn't completed
+					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+					job = &batchv1.Job{}
+					Eventually(func() error {
+						err := k8sClient.Get(ctx, nsn, job)
+						return err
+					}).Should(Succeed())
 
+					// It should be marked for cleaned up
+					Expect(job.Labels).To(HaveKey("volsync.backube/cleanup"))
+
+					Expect(job.Labels).To(HaveKeyWithValue(
+						utils.VolsyncCreatedByLabelKey, utils.VolsyncCreatedByLabelValue))
+
+					// Pod template spec should also have the created-by label
+					Expect(job.Spec.Template.Labels).To(HaveKeyWithValue(
+						utils.VolsyncCreatedByLabelKey, utils.VolsyncCreatedByLabelValue))
 				})
 			})
 			When("it's time to prune", func() {
