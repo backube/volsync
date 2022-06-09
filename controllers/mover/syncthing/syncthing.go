@@ -2,21 +2,26 @@ package syncthing
 
 import (
 	"crypto/rand"
+	"fmt"
 	"strings"
 
 	"github.com/backube/volsync/api/v1alpha1"
+	"github.com/backube/volsync/controllers/mover/syncthing/api"
 	"github.com/syncthing/syncthing/lib/config"
 	"github.com/syncthing/syncthing/lib/protocol"
 )
 
 // updateSyncthingDevices Updates the Syncthing's connected devices with the provided peerList.
 // An error may be encountered when reading the DeviceID from a string.
-func (m *Mover) updateSyncthingDevices(peerList []v1alpha1.SyncthingPeer) error {
-	stConfig := m.syncthing.Config()
+func updateSyncthingDevices(peerList []v1alpha1.SyncthingPeer,
+	syncthing *api.Syncthing) error {
+	if syncthing == nil {
+		return fmt.Errorf("syncthing cannot be nil")
+	}
 	newDevices := []config.DeviceConfiguration{}
 	// add myself and introduced devices to the device list
-	for _, device := range stConfig.Devices {
-		if device.DeviceID.GoString() == m.syncthing.MyID() || device.IntroducedBy.GoString() != "" {
+	for _, device := range syncthing.Configuration.Devices {
+		if device.DeviceID.GoString() == syncthing.MyID() || device.IntroducedBy.GoString() != "" {
 			newDevices = append(newDevices, device)
 		}
 	}
@@ -33,45 +38,22 @@ func (m *Mover) updateSyncthingDevices(peerList []v1alpha1.SyncthingPeer) error 
 		}
 		newDevices = append(newDevices, stDeviceToAdd)
 	}
-	// update the config w/ the new devices
-	stConfig.Devices = newDevices
-	m.syncthing.SetConfig(stConfig)
-	// update folders with the new devices
-	m.updateFolders()
+	syncthing.Configuration.Devices = newDevices
+	syncthing.ShareFoldersWithDevices(newDevices)
 	return nil
-}
-
-// updateFolders Updates all of Syncthing's folders to be shared with all configured devices.
-func (m *Mover) updateFolders() {
-	// share the current folder(s) with the new devices
-	var newFolders = []config.FolderConfiguration{}
-	var stConfig = m.syncthing.Config()
-	for _, folder := range stConfig.Folders {
-		// copy folder & reset
-		newFolder := folder
-		newFolder.Devices = []config.FolderDeviceConfiguration{}
-
-		for _, device := range stConfig.Devices {
-			newFolder.Devices = append(newFolder.Devices, config.FolderDeviceConfiguration{
-				DeviceID:     device.DeviceID,
-				IntroducedBy: device.IntroducedBy,
-			})
-		}
-		newFolders = append(newFolders, newFolder)
-	}
-	stConfig.Folders = newFolders
-	m.syncthing.SetConfig(stConfig)
 }
 
 // syncthingNeedsReconfigure Determines whether the given nodeList differs from Syncthing's internal devices,
 // and returns 'true' if the Syncthing API must be reconfigured, 'false' otherwise.
-func (m *Mover) syncthingNeedsReconfigure(nodeList []v1alpha1.SyncthingPeer) bool {
-	var stConfig = m.syncthing.Config()
+func syncthingNeedsReconfigure(
+	nodeList []v1alpha1.SyncthingPeer,
+	syncthing *api.Syncthing,
+) bool {
 	// check if the syncthing nodelist diverges from the current syncthing devices
 	var newDevices map[string]v1alpha1.SyncthingPeer = map[string]v1alpha1.SyncthingPeer{
 		// initialize the map with the self node
-		m.syncthing.MyID(): {
-			ID:      m.syncthing.MyID(),
+		syncthing.MyID(): {
+			ID:      syncthing.MyID(),
 			Address: "",
 		},
 	}
@@ -79,7 +61,7 @@ func (m *Mover) syncthingNeedsReconfigure(nodeList []v1alpha1.SyncthingPeer) boo
 	// add all of the other devices in the provided nodeList
 	for _, device := range nodeList {
 		// avoid self
-		if device.ID == m.syncthing.MyID() {
+		if device.ID == syncthing.MyID() {
 			continue
 		}
 		newDevices[device.ID] = device
@@ -88,15 +70,15 @@ func (m *Mover) syncthingNeedsReconfigure(nodeList []v1alpha1.SyncthingPeer) boo
 	// create a map for current devices
 	var currentDevs map[string]v1alpha1.SyncthingPeer = map[string]v1alpha1.SyncthingPeer{
 		// initialize the map with the self node
-		m.syncthing.MyID(): {
-			ID:      m.syncthing.MyID(),
+		syncthing.MyID(): {
+			ID:      syncthing.MyID(),
 			Address: "",
 		},
 	}
 	// add the rest of devices to the map
-	for _, device := range stConfig.Devices {
+	for _, device := range syncthing.Configuration.Devices {
 		// ignore self and introduced devices
-		if device.DeviceID.GoString() == m.syncthing.MyID() || device.IntroducedBy.GoString() != "" {
+		if device.DeviceID.GoString() == syncthing.MyID() || device.IntroducedBy.GoString() != "" {
 			continue
 		}
 
@@ -118,41 +100,6 @@ func (m *Mover) syncthingNeedsReconfigure(nodeList []v1alpha1.SyncthingPeer) boo
 		}
 	}
 	return false
-}
-
-// peerListContainsIntroduced Returns 'true' if the given peerList contains a node
-// which has been introduced to us by another Syncthing instance, 'false' otherwise.
-func (m *Mover) peerListContainsIntroduced(peerList []v1alpha1.SyncthingPeer) bool {
-	introducedSet := m.syncthing.IntroducedDevices()
-
-	// check if the peerList contains an introduced node
-	for _, peer := range peerList {
-		if _, ok := introducedSet[peer.ID]; ok {
-			return true
-		}
-	}
-	return false
-}
-
-// peerListContainsSelf Returns 'true' if the given peerList contains the self node, 'false' otherwise.
-func (m *Mover) peerListContainsSelf(peerList []v1alpha1.SyncthingPeer) bool {
-	for _, peer := range peerList {
-		if peer.ID == m.syncthing.MyID() {
-			return true
-		}
-	}
-	return false
-}
-
-// getDeviceFromID Returns the device with the given ID,
-// along with a boolean indicating whether the device was found.
-func (m *Mover) getDeviceFromID(deviceID string) (config.DeviceConfiguration, bool) {
-	for _, device := range m.syncthing.Config().Devices {
-		if device.DeviceID.GoString() == deviceID {
-			return device, true
-		}
-	}
-	return config.DeviceConfiguration{}, false
 }
 
 // GenerateRandomBytes Generates random bytes of the given length using the OS's RNG.

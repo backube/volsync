@@ -47,6 +47,8 @@ const (
 	syncthingContainerImageEnvVar  = "RELATED_IMAGE_SYNCTHING_CONTAINER"
 )
 
+// Register Creates a builder for the Syncthing mover package and registers it as
+// an available mover for VolSync to use.
 func Register() error {
 	// use global viper & command line flag
 	b, err := newBuilder(viper.GetViper(), flag.CommandLine)
@@ -57,6 +59,7 @@ func Register() error {
 	return nil
 }
 
+// newBuilder Returns a new Builder object which implements a Syncthing data mover.
 func newBuilder(viper *viper.Viper, flags *flag.FlagSet) (*Builder, error) {
 	b := &Builder{
 		viper: viper,
@@ -75,14 +78,17 @@ func newBuilder(viper *viper.Viper, flags *flag.FlagSet) (*Builder, error) {
 	return b, err
 }
 
+// VersionInfo Returns the Syncthing container image version being used by this Builder.
 func (rb *Builder) VersionInfo() string {
 	return fmt.Sprintf("Syncthing container: %s", rb.getSyncthingContainerImage())
 }
 
+// getSyncthingContainerImage Returns the container image being used by this Syncthing mover.
 func (rb *Builder) getSyncthingContainerImage() string {
 	return rb.viper.GetString(syncthingContainerImageFlag)
 }
 
+// FromSource Builds a Syncthing mover object from a given ReplicationSource object.
 func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 	eventRecorder events.EventRecorder,
 	source *volsyncv1alpha1.ReplicationSource) (mover.Mover, error) {
@@ -101,30 +107,31 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 	if source.Spec.Syncthing.ServiceType != nil {
 		serviceType = *source.Spec.Syncthing.ServiceType
 	} else {
-		serviceType = corev1.ServiceTypeLoadBalancer
+		serviceType = corev1.ServiceTypeClusterIP
 	}
 
 	syncthingLogger := logger.WithValues("method", "Syncthing")
 
 	return &Mover{
-		client:             client,
-		logger:             syncthingLogger,
-		owner:              source,
-		eventRecorder:      eventRecorder,
-		configStorageClass: source.Spec.Syncthing.ConfigStorageClassName,
-		configAccessModes:  source.Spec.Syncthing.ConfigAccessModes,
-		containerImage:     rb.getSyncthingContainerImage(),
-		peerList:           source.Spec.Syncthing.Peers,
-		paused:             source.Spec.Paused,
-		dataPVCName:        &source.Spec.SourcePVC,
-		status:             source.Status.Syncthing,
-		serviceType:        serviceType,
-		syncthing:          api.NewSyncthingAPI(syncthingLogger),
+		client:              client,
+		logger:              syncthingLogger,
+		owner:               source,
+		eventRecorder:       eventRecorder,
+		configStorageClass:  source.Spec.Syncthing.ConfigStorageClassName,
+		configAccessModes:   source.Spec.Syncthing.ConfigAccessModes,
+		containerImage:      rb.getSyncthingContainerImage(),
+		peerList:            source.Spec.Syncthing.Peers,
+		paused:              source.Spec.Paused,
+		dataPVCName:         &source.Spec.SourcePVC,
+		status:              source.Status.Syncthing,
+		serviceType:         serviceType,
+		syncthingConnection: nil,
+		apiConfig:           api.APIConfig{},
 		// defer setting the VolumeHandler
 	}, nil
 }
 
-// syncthing is destination-only
+// FromDestination Doesn't implement Syncthing, so nil is returned in both cases.
 func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 	eventRecorder events.EventRecorder,
 	destination *volsyncv1alpha1.ReplicationDestination) (mover.Mover, error) {

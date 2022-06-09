@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"net/http"
 
-	"github.com/go-logr/logr"
 	"github.com/syncthing/syncthing/lib/config"
 	"github.com/syncthing/syncthing/lib/connections"
 )
@@ -28,12 +27,6 @@ type SystemStatus struct {
 	GUIAddressUsed          string                                     `json:"guiAddressUsed"`
 	LastDialStatus          map[string]DialStatus                      `json:"lastDialStatus"`
 	MyID                    string                                     `json:"myID"`
-	PathSeparator           string                                     `json:"pathSeparator"`
-	StartTime               string                                     `json:"startTime"`
-	Sys                     int                                        `json:"sys"`
-	Tilde                   string                                     `json:"tilde"`
-	Uptime                  int                                        `json:"uptime"`
-	URVersionMax            int                                        `json:"urVersionMax"`
 }
 
 // TotalStats Describes the total traffic to/from a given Syncthing node.
@@ -69,55 +62,24 @@ type SystemConnections struct {
 // meaning a different thing.
 // nolint:revive
 type APIConfig struct {
-	APIURL      string `json:"apiURL"`
-	APIKey      string `json:"apiKey"`
-	GUIUser     string `json:"user"`
-	GUIPassword string `json:"password"`
+	APIURL string `json:"apiURL"`
+	APIKey string `json:"apiKey"`
 	// don't marshal this field
 	TLSConfig *tls.Config
 	Client    *http.Client
+}
+
+type SyncthingConnection interface {
+	// API Functions, these are meant to define communication with the Syncthing API.
+	Fetch() (*Syncthing, error)
+	PublishConfig(config.Configuration) error
 }
 
 // Syncthing Defines a Syncthing API object which contains a subset of the information
 // exposed through Syncthing's API. Namely, this struct exposes the configuration,
 // system status, and connections contained by the given object.
 type Syncthing struct {
-	configuration     config.Configuration
-	systemConnections SystemConnections
-	systemStatus      SystemStatus
-	apiConfig         APIConfig
-	logger            logr.Logger
-}
-
-// Syncthing Exposes an interface for structs to implement the Syncthing API
-// and provide important data while abstracting the specifics of the Syncthing API.
-type SyncthingAPI interface {
-	// Data Functions, meant for storage and retrieval of local object data
-	Config() config.Configuration
-	SetConfig(config.Configuration)
-
-	// Immutable accessors
-	SystemStatus() SystemStatus
-	SystemConnections() SystemConnections
-
-	// Specific accessor methods for convenience
-	ConnectedDevices() map[string]ConnectionStats
-	MyID() string
-
-	// Derivative accessor
-	IntroducedDevices() map[string]config.DeviceConfiguration
-
-	// Getters & Setters for API Config
-	APIConfig() APIConfig
-	SetAPIConfig(APIConfig)
-
-	// API Functions, these are meant to define communication with the Syncthing API.
-	Fetch() error
-	PublishConfig() error
-
-	// private methods
-	fetchConfig() (*config.Configuration, error)
-	fetchSystemConnections() (*SystemConnections, error)
-	fetchSystemStatus() (*SystemStatus, error)
-	jsonRequest(endpoint string, method string, requestBody interface{}) ([]byte, error)
+	Configuration     config.Configuration
+	SystemConnections SystemConnections
+	SystemStatus      SystemStatus
 }

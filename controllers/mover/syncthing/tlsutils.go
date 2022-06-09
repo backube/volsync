@@ -5,10 +5,8 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/pem"
 	"math/big"
-	"net"
 	"time"
 )
 
@@ -17,43 +15,71 @@ const (
 	OrganizationUnit = "VolSync"
 )
 
-// GetCACertificate Creates a Root X.509 Certificate to be consumed by Syncthing.
-func GetCACertificate() (*x509.Certificate, error) {
+// createOrganizationCertificate Returns an x.509 certificate with an expiry period of
+// 10 years. The certificate will use the OrganizationName and OrganizationUnit constants
+// as defined in this package. This function also sets the extended key usage to allow
+// client authentication and server authentication.
+//
+// An error is returned in the event that we cannot
+// generate the serial number.
+func createOrganizationCertificate() (*x509.Certificate, error) {
 	// generate a bunch of random bytes
 	serialNumber, err := GenerateRandomBytes(20)
 	if err != nil {
 		return nil, err
 	}
 
-	// setup expiry dates
-	notBefore := time.Now()
 	// expire in 10 years
+	notBefore := time.Now()
 	notAfter := notBefore.AddDate(10, 0, 0)
 
 	// convert the serial number to a bigint
 	serialNumberBigInt := new(big.Int).SetBytes(serialNumber)
 
-	// set up our CA certificate
-	ca := &x509.Certificate{
-		SerialNumber: serialNumberBigInt,
-		Subject: pkix.Name{
-			Organization:       []string{OrganizationName},
-			OrganizationalUnit: []string{OrganizationUnit},
-		},
-		NotBefore:             notBefore,
-		NotAfter:              notAfter,
-		IsCA:                  true,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-		BasicConstraintsValid: true,
+	// set up our certificate
+	cert := &x509.Certificate{}
+	cert.SerialNumber = serialNumberBigInt
+	cert.NotBefore = notBefore
+	cert.NotAfter = notAfter
+	cert.Subject.Organization = []string{OrganizationName}
+	cert.Subject.OrganizationalUnit = []string{OrganizationUnit}
+	cert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}
+
+	return cert, nil
+}
+
+// generateCACertificate Creates a Root X.509 Certificate to be consumed by Syncthing.
+func generateCACertificate() (*x509.Certificate, error) {
+	ca, err := createOrganizationCertificate()
+	if err != nil {
+		return nil, err
 	}
+
+	// set up our CA certificate
+	ca.IsCA = true
+	ca.KeyUsage = x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign
+	ca.BasicConstraintsValid = true
 	return ca, nil
 }
 
-// GenerateSyncthingRootCA Generates a CA Certificate and a Private/Public Key pair to sign the PEM.
-func GenerateSyncthingRootCA() (*x509.Certificate, *rsa.PrivateKey, error) {
+// generateSyncthingCertificate Generates a Certificate and a Private/Public Key pair to sign the PEM.
+func generateSyncthingTLSCertificate(DNSNames []string) (*x509.Certificate, error) {
+	cert, err := createOrganizationCertificate()
+	if err != nil {
+		return nil, err
+	}
+
+	// set up our server certificate
+	cert.DNSNames = DNSNames
+	cert.KeyUsage = x509.KeyUsageDigitalSignature
+
+	return cert, nil
+}
+
+// generateSyncthingRootCA Generates a CA Certificate and a Private/Public Key pair to sign the PEM.
+func generateSyncthingRootCA() (*x509.Certificate, *rsa.PrivateKey, error) {
 	// serial number should be the current time in unix epoch time
-	ca, err := GetCACertificate()
+	ca, err := generateCACertificate()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -93,49 +119,16 @@ func GenerateSyncthingRootCA() (*x509.Certificate, *rsa.PrivateKey, error) {
 	return ca, caPrivKey, nil
 }
 
-// GenerateSyncthingCertificate Generates a Certificate and a Private/Public Key pair to sign the PEM.
-func GenerateSyncthingTLSCertificate(DNSNames []string, IPAddresses []net.IP) (*x509.Certificate, error) {
-	// generate another random serial number
-	serialNumber, err := GenerateRandomBytes(2048)
-	if err != nil {
-		return nil, err
-	}
-
-	// setup expiry dates
-	notBefore := time.Now()
-	// expire in 10 years
-	notAfter := notBefore.AddDate(10, 0, 0)
-
-	// convert the serial number to a bigint
-	serialNumberBigInt := new(big.Int).SetBytes(serialNumber)
-
-	// set up our server certificate
-	cert := &x509.Certificate{
-		SerialNumber: serialNumberBigInt,
-		Subject: pkix.Name{
-			Organization:       []string{OrganizationName},
-			OrganizationalUnit: []string{OrganizationUnit},
-		},
-		DNSNames:    DNSNames,
-		NotBefore:   notBefore,
-		NotAfter:    notAfter,
-		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
-		KeyUsage:    x509.KeyUsageDigitalSignature,
-	}
-
-	return cert, nil
-}
-
-// GenerateTLSCertificatesForSyncthing generates a self-signed PEM-encoded certificate and key for Syncthing
+// generateTLSCertificatesForSyncthing generates a self-signed PEM-encoded certificate and key for Syncthing
 // which the VolSync client and Syncthing API Server will use to communicate with each other.
-func GenerateTLSCertificatesForSyncthing(
+func generateTLSCertificatesForSyncthing(
 	APIServiceAddress string,
 ) (*bytes.Buffer, *bytes.Buffer, error) {
 	// we will need to perform checks if the apiServiceDNS has changed
 	// and re-generate in case the TLS Certificates have changed
 
 	// generate the Syncthing TLS certificate
-	cert, err := GenerateSyncthingTLSCertificate([]string{APIServiceAddress}, []net.IP{net.ParseIP("127.0.0.1")})
+	cert, err := generateSyncthingTLSCertificate([]string{APIServiceAddress})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -147,7 +140,7 @@ func GenerateTLSCertificatesForSyncthing(
 	}
 
 	// create a Root CA for our certificate
-	ca, caPrivKey, err := GenerateSyncthingRootCA()
+	ca, caPrivKey, err := generateSyncthingRootCA()
 	if err != nil {
 		return nil, nil, err
 	}

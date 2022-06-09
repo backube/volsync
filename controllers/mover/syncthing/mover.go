@@ -59,19 +59,20 @@ const (
 
 // Mover is the reconciliation logic for the Restic-based data mover.
 type Mover struct {
-	client             client.Client
-	logger             logr.Logger
-	owner              client.Object
-	eventRecorder      events.EventRecorder
-	configStorageClass *string
-	configAccessModes  []corev1.PersistentVolumeAccessMode
-	containerImage     string
-	paused             bool
-	dataPVCName        *string
-	peerList           []volsyncv1alpha1.SyncthingPeer
-	status             *volsyncv1alpha1.ReplicationSourceSyncthingStatus
-	serviceType        corev1.ServiceType
-	syncthing          api.SyncthingAPI
+	client              client.Client
+	logger              logr.Logger
+	owner               client.Object
+	eventRecorder       events.EventRecorder
+	configStorageClass  *string
+	configAccessModes   []corev1.PersistentVolumeAccessMode
+	containerImage      string
+	paused              bool
+	dataPVCName         *string
+	peerList            []volsyncv1alpha1.SyncthingPeer
+	status              *volsyncv1alpha1.ReplicationSourceSyncthingStatus
+	serviceType         corev1.ServiceType
+	syncthingConnection api.SyncthingConnection
+	apiConfig           api.APIConfig
 }
 
 var _ mover.Mover = &Mover{}
@@ -129,16 +130,17 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 	}
 
 	// fetch the latest data from Syncthing
-	if err = m.syncthing.Fetch(); err != nil {
+	syncthingState, err := m.syncthingConnection.Fetch()
+	if err != nil {
 		return mover.InProgress(), err
 	}
 
 	// configure syncthing before grabbing info & updating status
-	if err = m.ensureIsConfigured(secretAPIKey); err != nil {
+	if err = m.ensureIsConfigured(secretAPIKey, syncthingState); err != nil {
 		return mover.InProgress(), err
 	}
 
-	if err = m.ensureStatusIsUpdated(dataService); err != nil {
+	if err = m.ensureStatusIsUpdated(dataService, syncthingState); err != nil {
 		return mover.InProgress(), err
 	}
 
@@ -235,7 +237,7 @@ func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) 
 
 	// Generate TLS Certificates for communicating between VolSync and the Syncthing API
 	apiServiceDNS := m.getAPIServiceDNS()
-	certPEM, certPrivKeyPEM, err := GenerateTLSCertificatesForSyncthing(apiServiceDNS)
+	certPEM, certPrivKeyPEM, err := generateTLSCertificatesForSyncthing(apiServiceDNS)
 	if err != nil {
 		return nil, err
 	}
@@ -514,62 +516,63 @@ func (m *Mover) configureSyncthingAPIClient(
 ) error {
 	// if the API URL has not already been overridden, we will set the
 	// API URL here
-	apiConfig := m.syncthing.APIConfig()
-	if apiConfig.APIURL == "" {
+	if m.apiConfig.APIURL == "" {
 		// get the API URL
-		apiConfig.APIURL = m.getAPIServiceAddress()
+		m.apiConfig.APIURL = m.getAPIServiceAddress()
 	}
 
 	// configure authentication per request
-	apiConfig.APIKey = string(apiSecret.Data["apikey"])
+	m.apiConfig.APIKey = string(apiSecret.Data["apikey"])
 	clientConfig, err := m.loadTLSConfigFromSecret(apiSecret)
 	if err != nil {
 		return err
 	}
-	apiConfig.TLSConfig = clientConfig
+	m.apiConfig.TLSConfig = clientConfig
 
 	// create a new client or use the existing one
-	apiConfig.Client = m.syncthing.APIConfig().BuildOrUseExistingTLSClient()
-	m.syncthing.SetAPIConfig(apiConfig)
+	m.apiConfig.Client = m.apiConfig.TLSClient()
+	m.syncthingConnection = api.NewConnection(
+		m.apiConfig,
+		m.logger.WithName("syncthingConnection").V(4),
+	)
 
-	return nil
+	return err
 }
 
-// ensureIsConfigured Makes sure that the Syncthing config is up-to-date.
-func (m *Mover) ensureIsConfigured(apiSecret *corev1.Secret) error {
+// ensureIsConfigured Takes the given syncthing state and updates it with the necessary information
+// from the peerList as well as the given apiSecret. An error is returned when we are unsuccessful in
+// updating the configuration.
+//
+// If there is no User/Password set on the object, or a user is set but doesn't match the value in the secret,
+// then ensureIsConfigured will update the Syncthing state to match the values in the secret.
+func (m *Mover) ensureIsConfigured(apiSecret *corev1.Secret, syncthing *api.Syncthing) error {
 	// This function should make sure to ignore all of devices (leave them as they are) introduced to us by other nodes.
 	// This is important because Syncthing will otherwise reconfigure them on its own, creating a cycle where
 	// VolSync removes a device, only to be re-added by Syncthing, only to be removed again by VolSync, etc.
-	m.logger.V(4).Info("Syncthing config", "config", m.syncthing.Config)
-
-	// make sure that the spec doesn't try to add a previously introduced node
-	if m.peerListContainsIntroduced(m.peerList) {
-		return fmt.Errorf("the peer list contains a node that has been introduced to us by another node")
-	}
+	m.logger.V(4).Info("Syncthing config", "config", syncthing.Configuration)
 
 	// make sure that the spec isn't adding itself as a peer
-	if m.peerListContainsSelf(m.peerList) {
+	if _, ok := syncthing.GetDeviceFromID(syncthing.MyID()); ok {
 		return fmt.Errorf("the peer list contains the node itself")
 	}
 
 	// check if the syncthing is configured
 	hasChanged := false
-	if m.syncthingNeedsReconfigure(m.peerList) {
+	if syncthingNeedsReconfigure(m.peerList, syncthing) {
 		m.logger.V(4).Info("devices need to be reconfigured")
-		if err := m.updateSyncthingDevices(m.peerList); err != nil {
+		// configure the syncthing state with the new devices
+		if err := updateSyncthingDevices(m.peerList, syncthing); err != nil {
 			return err
 		}
 		hasChanged = true
 	}
 
 	// set the user and password if not already set
-	if m.syncthing.Config().GUI.User != string(apiSecret.Data["username"]) ||
-		m.syncthing.Config().GUI.Password == "" {
+	if syncthing.Configuration.GUI.User != string(apiSecret.Data["username"]) ||
+		syncthing.Configuration.GUI.Password == "" {
 		m.logger.Info("setting user and password")
-		stConfig := m.syncthing.Config()
-		stConfig.GUI.User = string(apiSecret.Data["username"])
-		stConfig.GUI.Password = string(apiSecret.Data["password"])
-		m.syncthing.SetConfig(stConfig)
+		syncthing.Configuration.GUI.User = string(apiSecret.Data["username"])
+		syncthing.Configuration.GUI.Password = string(apiSecret.Data["password"])
 		hasChanged = true
 	}
 
@@ -577,8 +580,8 @@ func (m *Mover) ensureIsConfigured(apiSecret *corev1.Secret) error {
 	if hasChanged {
 		// get syncthing object & update the remote config w/ it
 		m.logger.Info("syncthing needs to be updated")
-		m.logger.V(4).Info("updating with config", "config", m.syncthing.Config())
-		err := m.syncthing.PublishConfig()
+		m.logger.V(4).Info("updating with config", "config", syncthing.Configuration)
+		err := m.syncthingConnection.PublishConfig(syncthing.Configuration)
 		if err != nil {
 			m.logger.Error(err, "error updating syncthing config")
 			return err
@@ -588,7 +591,8 @@ func (m *Mover) ensureIsConfigured(apiSecret *corev1.Secret) error {
 }
 
 // ensureStatusIsUpdated Updates the mover's status to be reported by the ReplicationSource object.
-func (m *Mover) ensureStatusIsUpdated(dataSVC *corev1.Service) error {
+func (m *Mover) ensureStatusIsUpdated(dataSVC *corev1.Service,
+	syncthing *api.Syncthing) error {
 	// fail until we can get the address
 	addr, err := m.GetDataServiceAddress(dataSVC)
 	if err != nil {
@@ -597,25 +601,25 @@ func (m *Mover) ensureStatusIsUpdated(dataSVC *corev1.Service) error {
 
 	// set syncthing-related info
 	m.status.Address = addr
-	m.status.ID = m.syncthing.MyID()
-	m.status.Peers = m.getConnectedPeers()
+	m.status.ID = syncthing.MyID()
+	m.status.Peers = m.getConnectedPeers(syncthing)
 
 	return nil
 }
 
 // getConnectedPeers Retrieves a list of all the peers connected to our Syncthing instance.
-func (m *Mover) getConnectedPeers() []volsyncv1alpha1.SyncthingPeerStatus {
+func (m *Mover) getConnectedPeers(syncthing *api.Syncthing) []volsyncv1alpha1.SyncthingPeerStatus {
 	connectedPeers := []volsyncv1alpha1.SyncthingPeerStatus{}
 
 	// add the connected devices to the status
-	for deviceID, connectionInfo := range m.syncthing.ConnectedDevices() {
+	for deviceID, connectionInfo := range syncthing.SystemConnections.Connections {
 		// skip our own connection
-		if (deviceID == m.syncthing.MyID()) || (deviceID == "") {
+		if (deviceID == syncthing.MyID()) || (deviceID == "") {
 			continue
 		}
 
 		// obtain the device
-		device, ok := m.getDeviceFromID(deviceID)
+		device, ok := syncthing.GetDeviceFromID(deviceID)
 		if !ok {
 			m.logger.Error(fmt.Errorf("could not find device with ID %s", deviceID), "error getting device info")
 			continue

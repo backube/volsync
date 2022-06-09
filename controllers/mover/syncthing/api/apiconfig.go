@@ -2,35 +2,23 @@ package api
 
 import (
 	"crypto/tls"
-	"errors"
 	"net/http"
 	"time"
 )
 
-// Headers Returns a map containing the necessary headers for Syncthing API requests.
-// When no API Key is provided, an error is returned.
-func (api *APIConfig) Headers() (map[string]string, error) {
-	if api.APIKey == "" {
-		return nil, errors.New("API Key is not set")
-	}
-
-	return map[string]string{
-		"X-API-Key":    api.APIKey,
-		"Content-Type": "application/json",
-	}, nil
-}
-
-// BuildTLSClient Returns a new TLS client for Syncthing API requests.
-func (api APIConfig) BuildOrUseExistingTLSClient() *http.Client {
+// TLSClient Returns a TLS Client used by the API Config.
+// If the client field is nil, then a new TLS Client is built using
+// either the custom TLS Config set or a default tlsConfig with version 1.2
+func (api APIConfig) TLSClient() *http.Client {
 	if api.Client != nil {
 		return api.Client
 	}
-	return BuildTLSClient(api.TLSConfig)
+	return buildTLSClient(api.TLSConfig)
 }
 
-// BuildTLSClient Creates a new TLS client for Syncthing API requests using the given tlsConfig,
+// buildTLSClient Creates a new TLS client for Syncthing API requests using the given tlsConfig,
 // or its own if one isn't provided.
-func BuildTLSClient(tlsConfig *tls.Config) *http.Client {
+func buildTLSClient(tlsConfig *tls.Config) *http.Client {
 	if tlsConfig == nil {
 		tlsConfig = &tls.Config{
 			MinVersion: tls.VersionTLS12,
