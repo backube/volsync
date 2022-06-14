@@ -1,8 +1,25 @@
+/*
+Copyright 2022 The VolSync authors.
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published
+by the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
 package syncthing
 
 import (
 	"crypto/rand"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/backube/volsync/api/v1alpha1"
@@ -139,12 +156,23 @@ func GenerateRandomString(length int) (string, error) {
 	return string(acceptableBytes), nil
 }
 
-// asTCPAddress Accepts a partial URL which may be a hostname or a hostname:port, and returns a TCP address.
-// If the provided address already contains a prefix, then it is
-func asTCPAddress(addr string) string {
-	// check if TCP is already prefixed
-	if strings.HasPrefix(addr, "tcp://") {
-		return addr
+// asTCPAddress Accepts an address of some form and returns it with a TCP prefix if none exist yet.
+// The applied prefix is either 'tcp4' or 'tcp6' depending on whether the address is ipv4 or ipv6 respectively.
+//
+// If the address already contains a prefix, then it is simply returned.
+func asTCPAddress(address string) string {
+	// FIXME: check if address is ipv4 or ipv6, add the prefix accordingly
+	// check if the address already has a prefix with REGEX
+	uriPattern := regexp.MustCompile(`(\w+:\/?\/?)[^\s]+`)
+	// check if addr matches the uriPattern
+	if uriPattern.MatchString(address) {
+		return address
 	}
-	return "tcp://" + addr
+
+	// return a URI with either tcp4 or tcp6 prefix
+	if strings.Count(address, ":") < 2 {
+		return "tcp4://" + address
+	} else {
+		return "tcp6://" + address
+	}
 }

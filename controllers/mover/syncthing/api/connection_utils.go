@@ -1,3 +1,19 @@
+/*
+Copyright 2022 The VolSync authors.
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published
+by the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
 package api
 
 import (
@@ -21,13 +37,16 @@ type syncthingAPIConnection struct {
 	logger    logr.Logger
 }
 
+// Defines endpoints for the Syncthing API
+const (
+	systemStatusEndpoint      = "/rest/system/status"
+	systemConnectionsEndpoint = "/rest/system/connections"
+	configEndpoint            = "/rest/config"
+)
+
 // headers Returns a map containing the necessary headers for Syncthing API requests.
 // When no API Key is provided, an error is returned.
 func (api *syncthingAPIConnection) headers() (map[string]string, error) {
-	if api.apiConfig.APIKey == "" {
-		return nil, errors.New("API Key is not set")
-	}
-
 	return map[string]string{
 		"X-API-Key":    api.apiConfig.APIKey,
 		"Content-Type": "application/json",
@@ -35,8 +54,11 @@ func (api *syncthingAPIConnection) headers() (map[string]string, error) {
 }
 
 // jsonRequest Makes an HTTPS request to the API at the .
-//nolint:funlen,lll,unparam,unused
-func (api *syncthingAPIConnection) jsonRequest(endpoint string, method string, requestBody interface{}) ([]byte, error) {
+func (api *syncthingAPIConnection) jsonRequest(
+	endpoint string,
+	method string,
+	requestBody interface{},
+) ([]byte, error) {
 	// marshal above json body into a string
 	jsonBody, err := json.Marshal(requestBody)
 	if err != nil {
@@ -79,7 +101,7 @@ func (api *syncthingAPIConnection) jsonRequest(endpoint string, method string, r
 func (api *syncthingAPIConnection) fetchConfig() (*config.Configuration, error) {
 	responseBody := &config.Configuration{}
 	api.logger.Info("Fetching Syncthing config")
-	data, err := api.jsonRequest("/rest/config", "GET", nil)
+	data, err := api.jsonRequest(configEndpoint, "GET", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +116,7 @@ func (api *syncthingAPIConnection) fetchConfig() (*config.Configuration, error) 
 func (api *syncthingAPIConnection) fetchSystemStatus() (*SystemStatus, error) {
 	responseBody := &SystemStatus{}
 	api.logger.Info("Fetching Syncthing system status")
-	data, err := api.jsonRequest("/rest/system/status", "GET", nil)
+	data, err := api.jsonRequest(systemStatusEndpoint, "GET", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +136,7 @@ func (api *syncthingAPIConnection) fetchSystemConnections() (*SystemConnections,
 		Connections: map[string]ConnectionStats{},
 	}
 	api.logger.Info("Fetching Syncthing connected status")
-	data, err := api.jsonRequest("/rest/system/connections", "GET", nil)
+	data, err := api.jsonRequest(systemConnectionsEndpoint, "GET", nil)
 	if err != nil {
 		return nil, err
 	}

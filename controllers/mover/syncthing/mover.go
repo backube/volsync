@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The VolSync authors.
+Copyright 2022 The VolSync authors.
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published
@@ -496,6 +496,7 @@ func (m *Mover) GetDataServiceAddress(service *corev1.Service) (string, error) {
 	if address == "" {
 		return "", fmt.Errorf("could not get an address for the service")
 	}
+	// FIXME: how will the port insert be handled with IPv6?
 	address = "tcp://" + address + ":" + strconv.Itoa(syncthingDataPort)
 	return address, nil
 }
@@ -546,14 +547,18 @@ func (m *Mover) configureSyncthingAPIClient(
 // If there is no User/Password set on the object, or a user is set but doesn't match the value in the secret,
 // then ensureIsConfigured will update the Syncthing state to match the values in the secret.
 func (m *Mover) ensureIsConfigured(apiSecret *corev1.Secret, syncthing *api.Syncthing) error {
-	// This function should make sure to ignore all of devices (leave them as they are) introduced to us by other nodes.
-	// This is important because Syncthing will otherwise reconfigure them on its own, creating a cycle where
-	// VolSync removes a device, only to be re-added by Syncthing, only to be removed again by VolSync, etc.
+	// nil check
+	if apiSecret == nil || syncthing == nil {
+		return fmt.Errorf("arguments cannot be nil")
+	}
+
 	m.logger.V(4).Info("Syncthing config", "config", syncthing.Configuration)
 
 	// make sure that the spec isn't adding itself as a peer
-	if _, ok := syncthing.GetDeviceFromID(syncthing.MyID()); ok {
-		return fmt.Errorf("the peer list contains the node itself")
+	for _, peer := range m.peerList {
+		if peer.ID == syncthing.MyID() {
+			return fmt.Errorf("the peer list contains the node itself")
+		}
 	}
 
 	// check if the syncthing is configured
@@ -600,7 +605,7 @@ func (m *Mover) ensureStatusIsUpdated(dataSVC *corev1.Service,
 	}
 
 	// set syncthing-related info
-	m.status.Address = addr
+	m.status.Address = asTCPAddress(addr)
 	m.status.ID = syncthing.MyID()
 	m.status.Peers = m.getConnectedPeers(syncthing)
 
@@ -626,7 +631,8 @@ func (m *Mover) getConnectedPeers(syncthing *api.Syncthing) []volsyncv1alpha1.Sy
 		}
 
 		// get the device info
-		tcpAddress := asTCPAddress(connectionInfo.Address)
+		// FIXME: does this address need to be prefixed as TCP, or can it simply work without that?
+		tcpAddress := connectionInfo.Address
 		introducedBy := device.IntroducedBy
 		deviceName := device.Name
 

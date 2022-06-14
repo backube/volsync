@@ -1,3 +1,19 @@
+/*
+Copyright 2022 The VolSync authors.
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published
+by the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
 package api
 
 import (
@@ -38,7 +54,7 @@ func (s *syncthingAPIConnection) Fetch() (*Syncthing, error) {
 func (s *syncthingAPIConnection) PublishConfig(conf config.Configuration) error {
 	// update the config
 	s.logger.Info("Updating Syncthing config")
-	_, err := s.jsonRequest("/rest/config", "PUT", conf)
+	_, err := s.jsonRequest(configEndpoint, "PUT", conf)
 	if err != nil {
 		s.logger.Error(err, "Failed to update Syncthing config")
 	}
