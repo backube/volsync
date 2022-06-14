@@ -160,6 +160,8 @@ func GenerateRandomString(length int) (string, error) {
 // The applied prefix is either 'tcp4' or 'tcp6' depending on whether the address is ipv4 or ipv6 respectively.
 //
 // If the address already contains a prefix, then it is simply returned.
+//
+// See: https://forum.syncthing.net/t/specifying-protocols-without-global-announce-or-relay/18565
 func asTCPAddress(address string) string {
 	// FIXME: check if address is ipv4 or ipv6, add the prefix accordingly
 	// check if the address already has a prefix with REGEX

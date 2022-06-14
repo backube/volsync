@@ -799,18 +799,6 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					}
 				})
 
-				// TODO: move this to the api package
-				// It("jsonRequests without errors", func() {
-				// 	_, err := mover.syncthing.jsonRequest("/rest/config", "GET", nil)
-				// 	Expect(err).To(BeNil())
-
-				// 	_, err = mover.syncthing.jsonRequest("/rest/system/status", "GET", nil)
-				// 	Expect(err).To(BeNil())
-
-				// 	_, err = mover.syncthing.jsonRequest("/rest/system/connections", "GET", nil)
-				// 	Expect(err).To(BeNil())
-				// })
-
 				When("Syncthing has active connections", func() {
 					var device3Config = config.DeviceConfiguration{
 						DeviceID:     device3,
@@ -1653,53 +1641,6 @@ var _ = Describe("Syncthing utils", func() {
 			})
 		})
 
-		// When("APIConfig is used", func() {
-		// 	var apiConfig *api.APIConfig
-		// 	BeforeEach(func() {
-		// 		apiConfig = &api.APIConfig{
-		// 			APIURL: "https://not.a.real.url",
-		// 		}
-		// 	})
-
-		// 	It("cannot create headers without an APIKey", func() {
-		// 		_, err := apiConfig.Headers()
-		// 		Expect(err).To(HaveOccurred())
-		// 	})
-
-		// 	When("an APIKey is provided", func() {
-		// 		BeforeEach(func() {
-		// 			apiConfig.APIKey = "BOSCO"
-		// 		})
-		// 		It("creates headers", func() {
-		// 			headers, err := apiConfig.Headers()
-		// 			Expect(err).ToNot(HaveOccurred())
-		// 			Expect(headers).To(HaveKeyWithValue("X-API-Key", "BOSCO"))
-		// 		})
-		// 	})
-
-		// 	When("no TLSClient exists", func() {
-		// 		BeforeEach(func() {
-		// 			apiConfig.Client = nil
-		// 		})
-		// 		It("creates a new client", func() {
-		// 			tlsclient := apiConfig.TLSClient()
-		// 			Expect(tlsclient).ToNot(BeNil())
-		// 		})
-		// 	})
-
-		// 	When("TLSClient exists", func() {
-		// 		BeforeEach(func() {
-		// 			apiConfig.Client = &http.Client{
-		// 				Timeout: time.Hour * 273,
-		// 			}
-		// 		})
-		// 		It("uses the existing client", func() {
-		// 			httpClient := apiConfig.TLSClient()
-		// 			Expect(httpClient).ToNot(BeNil())
-		// 			Expect(httpClient.Timeout).To(Equal(time.Hour * 273))
-		// 		})
-		// 	})
-		// })
 	})
 	Context("TLS Certificates are generated", func() {
 		It("generates them without fault", func() {

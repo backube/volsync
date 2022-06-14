@@ -630,9 +630,18 @@ func (m *Mover) getConnectedPeers(syncthing *api.Syncthing) []volsyncv1alpha1.Sy
 			continue
 		}
 
-		// get the device info
-		// FIXME: does this address need to be prefixed as TCP, or can it simply work without that?
-		tcpAddress := connectionInfo.Address
+		// Set the device information.
+		// Syncthing has support for UDP, however the only available connection types are:
+		// - TCP (client)
+		// - TCP (server)
+		// - Relay (client)
+		// - Relay (server)
+		// We are not using relays in VolSync (yet), so the only possible connections are TCP.
+		// Therefore we must format the connection information as a TCP address.
+		// See:
+		//  - https://docs.syncthing.net/rest/system-connections-get.html
+		//  - https://forum.syncthing.net/t/specifying-protocols-without-global-announce-or-relay/18565
+		tcpAddress := asTCPAddress(connectionInfo.Address)
 		introducedBy := device.IntroducedBy
 		deviceName := device.Name
 
