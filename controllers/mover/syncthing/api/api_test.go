@@ -54,7 +54,7 @@ var _ = Describe("Syncthing connection", func() {
 						return
 					}
 					switch r.URL.Path {
-					case configEndpoint:
+					case ConfigEndpoint:
 						if r.Method == "GET" {
 							resBytes, _ := json.Marshal(serverSyncthingConfig)
 							fmt.Fprintln(w, string(resBytes))
@@ -66,12 +66,12 @@ var _ = Describe("Syncthing connection", func() {
 							}
 						}
 						return
-					case systemStatusEndpoint:
+					case SystemStatusEndpoint:
 						res := sStatus
 						resBytes, _ := json.Marshal(res)
 						fmt.Fprintln(w, string(resBytes))
 						return
-					case systemConnectionsEndpoint:
+					case SystemConnectionsEndpoint:
 						res := sConnections
 						resBytes, _ := json.Marshal(res)
 						fmt.Fprintln(w, string(resBytes))
@@ -146,13 +146,13 @@ var _ = Describe("Syncthing connection", func() {
 				// nolint:dupl
 				It("jsonRequests without errors", func() {
 					// all of these request methods should succeed
-					_, err := apiConnection.jsonRequest(configEndpoint, "GET", nil)
+					_, err := apiConnection.jsonRequest(ConfigEndpoint, "GET", nil)
 					Expect(err).To(BeNil())
 
-					_, err = apiConnection.jsonRequest(systemStatusEndpoint, "GET", nil)
+					_, err = apiConnection.jsonRequest(SystemStatusEndpoint, "GET", nil)
 					Expect(err).To(BeNil())
 
-					_, err = apiConnection.jsonRequest(systemConnectionsEndpoint, "GET", nil)
+					_, err = apiConnection.jsonRequest(SystemConnectionsEndpoint, "GET", nil)
 					Expect(err).To(BeNil())
 
 					stConfig, err := apiConnection.fetchConfig()
@@ -186,13 +186,13 @@ var _ = Describe("Syncthing connection", func() {
 					// nolint:dupl
 					It("errors", func() {
 						// ensure all of the api methods & helpers error here
-						_, err := apiConnection.jsonRequest(configEndpoint, "GET", nil)
+						_, err := apiConnection.jsonRequest(ConfigEndpoint, "GET", nil)
 						Expect(err).To(HaveOccurred())
 
-						_, err = apiConnection.jsonRequest(systemStatusEndpoint, "GET", nil)
+						_, err = apiConnection.jsonRequest(SystemStatusEndpoint, "GET", nil)
 						Expect(err).To(HaveOccurred())
 
-						_, err = apiConnection.jsonRequest(systemConnectionsEndpoint, "GET", nil)
+						_, err = apiConnection.jsonRequest(SystemConnectionsEndpoint, "GET", nil)
 						Expect(err).To(HaveOccurred())
 
 						stConfig, err := apiConnection.fetchConfig()
@@ -318,7 +318,7 @@ var _ = Describe("Syncthing struct methods", func() {
 
 				deviceMap := syncthing.Configuration.DeviceMap()
 				sharedWith := syncthing.Configuration.Folders[0].Devices
-				for deviceID, _ := range deviceMap {
+				for deviceID := range deviceMap {
 					found := false
 					for _, sharedDevice := range sharedWith {
 						if sharedDevice.DeviceID == deviceID {

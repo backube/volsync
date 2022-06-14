@@ -44,8 +44,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
-// TODO: add tests for the HTTPS certificates
-
 var _ = Describe("Syncthing properly registers", func() {
 	When("Syncthing's registration function is called", func() {
 		BeforeEach(func() {
@@ -261,11 +259,11 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 						Namespace: ns.Name,
 					},
 					Data: map[string][]byte{
-						"apikey":       []byte("my-secret-apikey-do-not-steal"),
-						"username":     []byte("gcostanza"),
-						"password":     []byte("bosco"),
-						"httpsKeyPEM":  []byte(`-----BEGIN RSA PRIVATE KEY-----123-----END RSA PRIVATE KEY-----`),
-						"httpsCertPEM": []byte(`-----BEGIN CERTIFICATE-----123-----END CERTIFICATE-----`),
+						apiKeyDataKey:    []byte("my-secret-apikey-do-not-steal"),
+						usernameDataKey:  []byte("gcostanza"),
+						passwordDataKey:  []byte("bosco"),
+						httpsKeyDataKey:  []byte(`-----BEGIN RSA PRIVATE KEY-----123-----END RSA PRIVATE KEY-----`),
+						httpsCertDataKey: []byte(`-----BEGIN CERTIFICATE-----123-----END CERTIFICATE-----`),
 					},
 				}
 				Expect(k8sClient.Create(ctx, apiSecret)).To(Succeed())
@@ -338,7 +336,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					// clusterIP with address must work
 					svc.Spec.ClusterIP = staticIP
 					addr, e = mover.GetDataServiceAddress(svc)
-					Expect(addr).To(Equal("tcp://" + staticIP + ":" + strconv.Itoa(syncthingDataPort)))
+					Expect(addr).To(Equal("tcp://" + staticIP + ":" + strconv.Itoa(dataPort)))
 					Expect(e).NotTo(HaveOccurred())
 				})
 			})
@@ -398,13 +396,13 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					// extract the address from the service
 					address, e = mover.GetDataServiceAddress(svc)
 					Expect(e).NotTo(HaveOccurred())
-					Expect(address).To(Equal("tcp://" + staticIP + ":" + strconv.Itoa(syncthingDataPort)))
+					Expect(address).To(Equal("tcp://" + staticIP + ":" + strconv.Itoa(dataPort)))
 
 					// ensure address works when hostname is provided
 					svc.Status.LoadBalancer.Ingress[0].Hostname = staticHostName
 					address, e = mover.GetDataServiceAddress(svc)
 					Expect(e).NotTo(HaveOccurred())
-					Expect(address).To(Equal("tcp://" + staticHostName + ":" + strconv.Itoa(syncthingDataPort)))
+					Expect(address).To(Equal("tcp://" + staticHostName + ":" + strconv.Itoa(dataPort)))
 				})
 			})
 		})
@@ -530,9 +528,9 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 							Namespace: ns.Name,
 						},
 						Data: map[string][]byte{
-							"apikey":   []byte("my-secret-apikey-do-not-steal"),
-							"username": []byte("gcostanza"),
-							"password": []byte("bosco"),
+							apiKeyDataKey:   []byte("my-secret-apikey-do-not-steal"),
+							usernameDataKey: []byte("gcostanza"),
+							passwordDataKey: []byte("bosco"),
 						},
 					}
 					Expect(k8sClient.Create(ctx, apiKeys)).To(Succeed())
@@ -549,9 +547,9 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					Expect(returnedSecret.Name).To(Equal(apiKeys.Name))
 
 					// ensure the data keys exist
-					Expect(returnedSecret.Data["apikey"]).NotTo(BeNil())
-					Expect(returnedSecret.Data["username"]).NotTo(BeNil())
-					Expect(returnedSecret.Data["password"]).NotTo(BeNil())
+					Expect(returnedSecret.Data[apiKeyDataKey]).NotTo(BeNil())
+					Expect(returnedSecret.Data[usernameDataKey]).NotTo(BeNil())
+					Expect(returnedSecret.Data[passwordDataKey]).NotTo(BeNil())
 				})
 			})
 
@@ -571,7 +569,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					}, timeout, interval).Should(Succeed())
 
 					// ensure that all of the required keys exist
-					requiredKeys := []string{"apikey", "username", "password", "httpsCertPEM", "httpsKeyPEM"}
+					requiredKeys := []string{apiKeyDataKey, usernameDataKey, passwordDataKey, httpsCertDataKey, httpsKeyDataKey}
 					for _, key := range requiredKeys {
 						Expect(returnedSecret.Data[key]).NotTo(BeNil())
 						Expect(returnedSecret.Data[key]).NotTo(BeEmpty())
@@ -586,7 +584,6 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 				device1, _ = protocol.DeviceIDFromString("AIR6LPZ-7K4PTTV-UXQSMUU-CPQ5YWH-OEDFIIQ-JUG777G-2YQXXR5-YD6AWQR")
 				device2, _ = protocol.DeviceIDFromString("GYRZZQB-IRNPV4Z-T7TC52W-EQYJ3TT-FDQW6MW-DFLMU42-SSSU6EM-FBK2VAY")
 				device3, _ = protocol.DeviceIDFromString("VNPQDOJ-3V7DEWN-QBCTXF2-LSVNMHL-XTGL4GX-NCGQEXQ-THHBVWR-HVVMEQR")
-				// device4, _ = protocol.DeviceIDFromString("E3TWU3G-UGFHTJE-SJLCDYH-KGQR3R6-7QMOM43-FOC3UFT-H4H54DC-GMK5RAO")
 			)
 
 			When("Syncthing server does not exist", func() {
@@ -614,9 +611,9 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 							Namespace: ns.Name,
 						},
 						Data: map[string][]byte{
-							"apikey":   []byte("my-secret-apikey-do-not-steal"),
-							"username": []byte("gcostanza"),
-							"password": []byte("bosco"),
+							apiKeyDataKey:   []byte("my-secret-apikey-do-not-steal"),
+							usernameDataKey: []byte("gcostanza"),
+							passwordDataKey: []byte("bosco"),
 						},
 					}
 
@@ -655,7 +652,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 
 					ts = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						switch r.URL.Path {
-						case "/rest/config":
+						case api.ConfigEndpoint:
 							if r.Method == "GET" {
 								resBytes, _ := json.Marshal(syncthingState.Configuration)
 								fmt.Fprintln(w, string(resBytes))
@@ -667,12 +664,12 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 								}
 							}
 							return
-						case "/rest/system/status":
+						case api.SystemStatusEndpoint:
 							res := syncthingState.SystemStatus
 							resBytes, _ := json.Marshal(res)
 							fmt.Fprintln(w, string(resBytes))
 							return
-						case "/rest/system/connections":
+						case api.SystemConnectionsEndpoint:
 							res := syncthingState.SystemConnections
 							resBytes, _ := json.Marshal(res)
 							fmt.Fprintln(w, string(resBytes))
@@ -695,9 +692,9 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 							Namespace: ns.Name,
 						},
 						Data: map[string][]byte{
-							"apikey":   []byte(mover.apiConfig.APIKey),
-							"username": []byte("gcostanza"),
-							"password": []byte("bosco"),
+							apiKeyDataKey:   []byte(mover.apiConfig.APIKey),
+							usernameDataKey: []byte("gcostanza"),
+							passwordDataKey: []byte("bosco"),
 						},
 					}
 				})
@@ -729,11 +726,11 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					// setup test variables
 					mover.peerList = []volsyncv1alpha1.SyncthingPeer{
 						{
-							Address: "/tcp/127.0.0.1/22000",
+							Address: "tcp://127.0.0.1:22000",
 							ID:      device1.GoString(),
 						},
 						{
-							Address: "/tcp/127.0.0.2/22000",
+							Address: "tcp://127.0.0.2:22000",
 							ID:      device2.GoString(),
 						},
 					}
@@ -772,11 +769,11 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					// setup some dummy peers
 					mover.peerList = []volsyncv1alpha1.SyncthingPeer{
 						{
-							Address: "/tcp/127.0.0.1/22000",
+							Address: "tcp://127.0.0.1:22000",
 							ID:      device1.GoString(),
 						},
 						{
-							Address: "/tcp/127.0.0.2/22000",
+							Address: "tcp://127.0.0.2:22000",
 							ID:      device2.GoString(),
 						},
 					}
@@ -802,7 +799,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 				When("Syncthing has active connections", func() {
 					var device3Config = config.DeviceConfiguration{
 						DeviceID:     device3,
-						Addresses:    []string{"/dns4/foo.com/tcp/80"},
+						Addresses:    []string{"tcp://127.0.0.1:22000"},
 						Name:         "bitcoin-chain-snapshot",
 						IntroducedBy: device2,
 					}
@@ -816,23 +813,19 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 							},
 							device3.GoString(): {
 								Connected: true,
-								Address:   "/dns4/foo.com/tcp/80",
+								Address:   device3Config.Addresses[0],
 							},
 						}
 
 						// ensure that another-one is in the global config
-						syncthingState.Configuration.Devices = []config.DeviceConfiguration{
-							{
-								DeviceID:     device3,
-								Addresses:    []string{"/dns4/foo.com/tcp/80"},
-								Name:         "bitcoin-chain-snapshot",
-								IntroducedBy: device2,
-							},
+						syncthingState.Configuration.SetDevices([]config.DeviceConfiguration{
+							device3Config,
 							{
 								DeviceID:  myID,
 								Addresses: []string{""},
 							},
-						}
+						},
+						)
 					})
 
 					It("adds them to VolSync status", func() {
@@ -879,7 +872,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 							mover.peerList = []volsyncv1alpha1.SyncthingPeer{
 								{
 									ID:      myID.GoString(),
-									Address: "/ip4/127.0.0.1/tcp/22000",
+									Address: "tcp://127.0.0.1:22000",
 								},
 							}
 							syncthing, err := mover.syncthingConnection.Fetch()
@@ -944,11 +937,11 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 						Namespace: ns.Name,
 					},
 					Data: map[string][]byte{
-						"apikey":       []byte("my-secret-apikey-do-not-steal"),
-						"username":     []byte("gcostanza"),
-						"password":     []byte("bosco"),
-						"httpsKeyPEM":  []byte(`-----BEGIN RSA PRIVATE KEY-----123-----END RSA PRIVATE KEY-----`),
-						"httpsCertPEM": []byte(`-----BEGIN CERTIFICATE-----123-----END CERTIFICATE-----`),
+						apiKeyDataKey:    []byte("my-secret-apikey-do-not-steal"),
+						usernameDataKey:  []byte("gcostanza"),
+						passwordDataKey:  []byte("bosco"),
+						httpsKeyDataKey:  []byte(`-----BEGIN RSA PRIVATE KEY-----123-----END RSA PRIVATE KEY-----`),
+						httpsCertDataKey: []byte(`-----BEGIN CERTIFICATE-----123-----END CERTIFICATE-----`),
 					},
 				}
 				Expect(k8sClient.Create(ctx, apiSecret)).To(Succeed())
@@ -1004,7 +997,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					// configure the test TLS server
 					ts = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						switch r.URL.Path {
-						case "/rest/config":
+						case api.ConfigEndpoint:
 							if r.Method == "GET" {
 								resBytes, _ := json.Marshal(serverSyncthingConfig)
 								fmt.Fprintln(w, string(resBytes))
@@ -1016,12 +1009,12 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 								}
 							}
 							return
-						case "/rest/system/status":
+						case api.SystemStatusEndpoint:
 							res := sStatus
 							resBytes, _ := json.Marshal(res)
 							fmt.Fprintln(w, string(resBytes))
 							return
-						case "/rest/system/connections":
+						case api.SystemConnectionsEndpoint:
 							res := sConnections
 							resBytes, _ := json.Marshal(res)
 							fmt.Fprintln(w, string(resBytes))
@@ -1047,10 +1040,10 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 						Spec: corev1.ServiceSpec{
 							Ports: []corev1.ServicePort{
 								{
-									Name:       "data",
+									Name:       dataPortName,
 									Protocol:   corev1.ProtocolTCP,
-									Port:       22000,
-									TargetPort: intstr.FromInt(22000),
+									Port:       dataPort,
+									TargetPort: intstr.FromInt(dataPort),
 								},
 							},
 							Type:      corev1.ServiceTypeClusterIP,
@@ -1127,17 +1120,16 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					// make sure the mover's containerImage was specified for stContainer
 					Expect(stContainer.Image).To(Equal(mover.containerImage))
 
-					// expect STGUIAPIKEY to be set as one of the envs & referencing the secret
 					Expect(stContainer.Env).To(HaveLen(4))
 					for _, env := range stContainer.Env {
-						if env.Name == "STGUIAPIKEY" {
+						if env.Name == apiKeyEnv {
 							Expect(env.ValueFrom.SecretKeyRef.Name).To(Equal(apiSecret.Name))
-							Expect(env.ValueFrom.SecretKeyRef.Key).To(Equal("apikey"))
+							Expect(env.ValueFrom.SecretKeyRef.Key).To(Equal(apiKeyDataKey))
 						}
 					}
 
 					// validate that the deployment exposes API & data ports
-					var portNames []string = []string{"api", "data"}
+					var portNames []string = []string{apiPortName, dataPortName}
 
 					// make sure the above ports exist in container's ports
 					for _, port := range stContainer.Ports {
@@ -1153,22 +1145,59 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					}
 
 					// make sure that configPVC and srcPVC are referenced in the deployment
+					necessaryVolumeMounts := []string{
+						configVolumeName,
+						dataVolumeName,
+						certVolumeName,
+					}
+					found := 0
 					for _, volume := range deployment.Spec.Template.Spec.Volumes {
-						if volume.Name == "syncthing-config" {
-							Expect(volume.PersistentVolumeClaim.ClaimName).To(Equal(configPVC.Name))
-						} else if volume.Name == "syncthing-data" {
-							Expect(volume.PersistentVolumeClaim.ClaimName).To(Equal(srcPVC.Name))
+						for _, mount := range necessaryVolumeMounts {
+							if volume.Name == mount {
+								found++
+								break
+							}
 						}
 					}
+					Expect(found).To(Equal(len(necessaryVolumeMounts)))
+
+					checked := 0
+					for _, volume := range deployment.Spec.Template.Spec.Volumes {
+						if volume.Name == configVolumeName {
+							Expect(volume.PersistentVolumeClaim.ClaimName).To(Equal(configPVC.Name))
+							checked++
+						} else if volume.Name == dataVolumeName {
+							Expect(volume.PersistentVolumeClaim.ClaimName).To(Equal(srcPVC.Name))
+							checked++
+						} else if volume.Name == certVolumeName {
+							// check that the TLS certificates are properly loaded
+							Expect(volume.Secret.SecretName).To(Equal(apiSecret.Name))
+
+							// make sure the tls certificates are mounted as secret keys
+							httpsKeysChecked := 0
+							httpsItems := []string{httpsKeyDataKey, httpsCertDataKey}
+							for _, item := range volume.Secret.Items {
+								for _, httpItem := range httpsItems {
+									if item.Key == httpItem {
+										httpsKeysChecked++
+									}
+								}
+							}
+							Expect(httpsKeysChecked).To(Equal(len(httpsItems)))
+							checked++
+						}
+					}
+					// make sure that all volumes are accounted for
+					Expect(checked).To(Equal(len(deployment.Spec.Template.Spec.Volumes)))
 
 					// make sure that both deployment's specified volumes are being mounted by the container
 					for _, mount := range stContainer.VolumeMounts {
-						if mount.Name == "syncthing-config" {
-							Expect(mount.MountPath).To(Equal("/config"))
-						} else if mount.Name == "syncthing-data" {
-							Expect(mount.MountPath).To(Equal("/data"))
-						} else if mount.Name == "syncthing-certs" {
-							Expect(mount.MountPath).To(Equal("/certs"))
+						if mount.Name == configVolumeName {
+							Expect(mount.MountPath).To(Equal(configDirMountPath))
+						} else if mount.Name == dataVolumeName {
+							Expect(mount.MountPath).To(Equal(dataDirMountPath))
+						} else if mount.Name == certVolumeName {
+							Expect(mount.MountPath).To(Equal(certDirMountPath))
 						}
 					}
 				})
@@ -1243,7 +1272,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 							// find the API port
 							var apiPort corev1.ContainerPort
 							for _, port := range syncthingContainer.Ports {
-								if port.Name == "api" {
+								if port.Name == apiPortName {
 									apiPort = port
 									break
 								}
@@ -1294,7 +1323,6 @@ var _ = Describe("Syncthing utils", func() {
 
 			// initialize these pointer fields
 			syncthing = api.Syncthing{}
-			// FIXME: determine whether this will break the tests due to the actual syncthing libraries being used.
 			syncthing.SystemStatus.MyID = myID.GoString()
 		})
 
@@ -1312,11 +1340,11 @@ var _ = Describe("Syncthing utils", func() {
 				peerList := []volsyncv1alpha1.SyncthingPeer{
 					{
 						ID:      device1.GoString(),
-						Address: "/ip4/127.0.0.1/tcp/22000/quic",
+						Address: "tcp://127.0.0.1:22000",
 					},
 					{
 						ID:      device2.GoString(),
-						Address: "/ip4/192.168.1.1/tcp/22000/quic",
+						Address: "tcp://192.168.1.1:22000",
 					},
 				}
 
@@ -1359,7 +1387,7 @@ var _ = Describe("Syncthing utils", func() {
 					syncthing.Configuration.Devices = append(syncthing.Configuration.Devices, config.DeviceConfiguration{
 						DeviceID:  myID,
 						Name:      "current Syncthing node",
-						Addresses: []string{"/ip4/0.0.0.0/tcp/22000/quic"},
+						Addresses: []string{"tcp://0.0.0.0:22000"},
 					})
 				})
 
@@ -1379,7 +1407,7 @@ var _ = Describe("Syncthing utils", func() {
 					Expect(syncthingNeedsReconfigure([]volsyncv1alpha1.SyncthingPeer{
 						{
 							ID:      myID.GoString(),
-							Address: "/ip4/127.0.0.1/tcp/22000/quic",
+							Address: "tcp://127.0.0.1:22000",
 						},
 					}, &syncthing)).To(BeFalse())
 
@@ -1387,7 +1415,7 @@ var _ = Describe("Syncthing utils", func() {
 					Expect(syncthingNeedsReconfigure([]volsyncv1alpha1.SyncthingPeer{
 						{
 							ID:      device1.GoString(),
-							Address: "/ip6/::1/tcp/22000/quic",
+							Address: "tcp://[::1]:22000",
 						},
 					}, &syncthing)).To(BeTrue())
 				})
@@ -1409,7 +1437,7 @@ var _ = Describe("Syncthing utils", func() {
 					peerList = []volsyncv1alpha1.SyncthingPeer{
 						{
 							ID:      myID.GoString(),
-							Address: "/ip6/::1/tcp/22000/quic",
+							Address: "",
 						},
 					}
 					needsReconfigure = syncthingNeedsReconfigure(peerList, &syncthing)
@@ -1419,7 +1447,7 @@ var _ = Describe("Syncthing utils", func() {
 					peerList = []volsyncv1alpha1.SyncthingPeer{
 						{
 							ID:      device1.GoString(),
-							Address: "/ip6/::1/tcp/22000/quic",
+							Address: "tcp://[::1]:22000",
 						},
 					}
 					needsReconfigure = syncthingNeedsReconfigure(peerList, &syncthing)
@@ -1432,15 +1460,15 @@ var _ = Describe("Syncthing utils", func() {
 					syncthingPeers := []volsyncv1alpha1.SyncthingPeer{
 						{
 							ID:      device1.GoString(),
-							Address: "/ip6/::1/tcp/22000/quic",
+							Address: "tcp://[::1]:22000",
 						},
 						{
 							ID:      device2.GoString(),
-							Address: "/ip6/::1/tcp/22000/quic",
+							Address: "tcp://[::2]:22000",
 						},
 						{
 							ID:      device3.GoString(),
-							Address: "/ip6/::1/tcp/22000/quic",
+							Address: "tcp://[::3]:22000",
 						},
 					}
 					err := updateSyncthingDevices(syncthingPeers, &syncthing)
@@ -1452,15 +1480,15 @@ var _ = Describe("Syncthing utils", func() {
 					peerList := []volsyncv1alpha1.SyncthingPeer{
 						{
 							ID:      device1.GoString(),
-							Address: "/ip6/::1/tcp/22000/quic",
+							Address: "tcp://[::1]:22000",
 						},
 						{
 							ID:      device2.GoString(),
-							Address: "/ip6/::1/tcp/22000/quic",
+							Address: "tcp://[::2]:22000",
 						},
 						{
 							ID:      device3.GoString(),
-							Address: "/ip6/::1/tcp/22000/quic",
+							Address: "tcp://[::3]:22000",
 						},
 					}
 
@@ -1515,7 +1543,7 @@ var _ = Describe("Syncthing utils", func() {
 					peerList = []volsyncv1alpha1.SyncthingPeer{
 						{
 							ID:      syncthing.SystemStatus.MyID,
-							Address: "/ip6/::1/tcp/22000/quic",
+							Address: "tcp://[::1]:22000",
 						},
 					}
 					Expect(syncthingNeedsReconfigure(peerList, &syncthing)).To(BeTrue())
@@ -1534,7 +1562,7 @@ var _ = Describe("Syncthing utils", func() {
 					replicaPeerList = append(replicaPeerList,
 						volsyncv1alpha1.SyncthingPeer{
 							ID:      device4.GoString(),
-							Address: "/ip4/256.256.256.256/tcp/22000/quic",
+							Address: "tcp://256.256.256.256:22000",
 						},
 					)
 					Expect(syncthingNeedsReconfigure(replicaPeerList, &syncthing)).To(BeTrue())
@@ -1569,15 +1597,15 @@ var _ = Describe("Syncthing utils", func() {
 					peerList := []volsyncv1alpha1.SyncthingPeer{
 						{
 							ID:      device1.GoString(),
-							Address: "/ip6/::1/tcp/22000/quic",
+							Address: "tcp://[::1]:22000",
 						},
 						{
 							ID:      device2.GoString(),
-							Address: "/ip6/::1/tcp/22000/quic",
+							Address: "tcp://[::2]:22000",
 						},
 						{
 							ID:      device3.GoString(),
-							Address: "/ip6/::1/tcp/22000/quic",
+							Address: "tcp://[::3]:22000",
 						},
 					}
 					peerToRemove := peerList[1]

@@ -163,18 +163,15 @@ func GenerateRandomString(length int) (string, error) {
 //
 // See: https://forum.syncthing.net/t/specifying-protocols-without-global-announce-or-relay/18565
 func asTCPAddress(address string) string {
-	// FIXME: check if address is ipv4 or ipv6, add the prefix accordingly
-	// check if the address already has a prefix with REGEX
+	// ignore if a prefix already exists
 	uriPattern := regexp.MustCompile(`(\w+:\/?\/?)[^\s]+`)
-	// check if addr matches the uriPattern
 	if uriPattern.MatchString(address) {
 		return address
 	}
 
-	// return a URI with either tcp4 or tcp6 prefix
+	// address is ipv4
 	if strings.Count(address, ":") < 2 {
 		return "tcp4://" + address
-	} else {
-		return "tcp6://" + address
 	}
+	return "tcp6://" + address
 }

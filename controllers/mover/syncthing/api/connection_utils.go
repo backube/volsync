@@ -37,13 +37,6 @@ type syncthingAPIConnection struct {
 	logger    logr.Logger
 }
 
-// Defines endpoints for the Syncthing API
-const (
-	systemStatusEndpoint      = "/rest/system/status"
-	systemConnectionsEndpoint = "/rest/system/connections"
-	configEndpoint            = "/rest/config"
-)
-
 // headers Returns a map containing the necessary headers for Syncthing API requests.
 // When no API Key is provided, an error is returned.
 func (api *syncthingAPIConnection) headers() (map[string]string, error) {
@@ -101,7 +94,7 @@ func (api *syncthingAPIConnection) jsonRequest(
 func (api *syncthingAPIConnection) fetchConfig() (*config.Configuration, error) {
 	responseBody := &config.Configuration{}
 	api.logger.Info("Fetching Syncthing config")
-	data, err := api.jsonRequest(configEndpoint, "GET", nil)
+	data, err := api.jsonRequest(ConfigEndpoint, "GET", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +109,7 @@ func (api *syncthingAPIConnection) fetchConfig() (*config.Configuration, error) 
 func (api *syncthingAPIConnection) fetchSystemStatus() (*SystemStatus, error) {
 	responseBody := &SystemStatus{}
 	api.logger.Info("Fetching Syncthing system status")
-	data, err := api.jsonRequest(systemStatusEndpoint, "GET", nil)
+	data, err := api.jsonRequest(SystemStatusEndpoint, "GET", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +129,7 @@ func (api *syncthingAPIConnection) fetchSystemConnections() (*SystemConnections,
 		Connections: map[string]ConnectionStats{},
 	}
 	api.logger.Info("Fetching Syncthing connected status")
-	data, err := api.jsonRequest(systemConnectionsEndpoint, "GET", nil)
+	data, err := api.jsonRequest(SystemConnectionsEndpoint, "GET", nil)
 	if err != nil {
 		return nil, err
 	}

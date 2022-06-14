@@ -44,18 +44,54 @@ import (
 	"github.com/backube/volsync/controllers/volumehandler"
 )
 
-// constants used in the syncthing configuration
+// Environment variables used by the Syncthing image.
 const (
-	dataDirEnv            = "SYNCTHING_DATA_DIR"
-	dataDirMountPath      = "/data"
-	configDirEnv          = "SYNCTHING_CONFIG_DIR"
-	configDirMountPath    = "/config"
-	configCapacity        = "1Gi"
-	syncthingAPIPort      = 8384
-	syncthingDataPort     = 22000
-	SyncthingAPIPortName  = "syncthing-api"
-	SyncthingDataPortName = "syncthing-data"
+	dataDirEnv   = "SYNCTHING_DATA_DIR"
+	configDirEnv = "SYNCTHING_CONFIG_DIR"
+	certDirEnv   = "SYNCTHING_CERT_DIR"
+	apiKeyEnv    = "STGUIAPIKEY"
 )
+
+// Directories where files will be loaded into the Syncthing container.
+const (
+	dataDirMountPath   = "/data"
+	configDirMountPath = "/config"
+	certDirMountPath   = "/certs"
+)
+
+// Volume names loaded by the Deployment.
+const (
+	certVolumeName   = "https-certs"
+	configVolumeName = "syncthing-config"
+	dataVolumeName   = "syncthing-data"
+)
+
+// Ports used by the Syncthing container.
+const (
+	apiPort      = 8384
+	apiPortName  = "api"
+	dataPort     = 22000
+	dataPortName = "data"
+)
+
+// Key names which are pulled from a Secret by the Syncthing container.
+const (
+	httpsCertDataKey = "httpsCertPEM"
+	httpsKeyDataKey  = "httpsKeyPEM"
+	apiKeyDataKey    = "apikey"
+	usernameDataKey  = "username"
+	passwordDataKey  = "password"
+)
+
+// Filepaths for where the HTTPS certificate and key will be
+// saved after being loaded into the container.
+const (
+	httpsKeyPath  = "https-key.pem"
+	httpsCertPath = "https-cert.pem"
+)
+
+// configCapacity Sets the size of the config volume used by the Syncthing container.
+const configCapacity = "1Gi"
 
 // Mover is the reconciliation logic for the Restic-based data mover.
 type Mover struct {
@@ -80,13 +116,27 @@ var _ mover.Mover = &Mover{}
 // Name Returns the name of the mover.
 func (m *Mover) Name() string { return "syncthing" }
 
-// We need the following resources available to us in the cluster:
-// - PVC for syncthing-config
-// - PVC that needs to be synced
-// - Secret for the syncthing-apikey
-// - Syncthing mover deployment
-// - Syncthing ClusterIP service exposing API
-// - Service where the data service can be reached
+// Synchronize Runs through a synchronization cycle between
+// the VolSync operator and the Syncthing data mover.
+//
+// Synchronize ensures that the necessary resources required by
+// the Syncthing Deployment are available, including:
+// - a PVC containing the data to be synced
+// - PVC for storing configuration data
+// - Secret containing the API key, TLS Certificates, and the username/password
+//   used to lock down the GUI.
+// - Deployment for the Syncthing data mover
+// - Service exposing Syncthing's API
+// - Service exposing Syncthing's data port
+//
+// Once the resources are all provided, Synchronize will then
+// poll the Syncthing API and make necessary configurations
+// based on the data provided to the Syncthing ReplicationSource spec.
+//
+// Synchronize also updates the ReplicationSource's status
+// with information about our local Syncthing instance, as well
+// as any connections that have been made to the Syncthing instance.
+//
 //nolint:funlen
 func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 	var err error
@@ -245,11 +295,11 @@ func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) 
 	// create a new secret with the generated values
 	secret.Type = corev1.SecretTypeOpaque
 	secret.Data = map[string][]byte{
-		"apikey":       []byte(randomAPIKey),
-		"username":     []byte("syncthing"),
-		"password":     []byte(randomPassword),
-		"httpsCertPEM": certPEM.Bytes(),
-		"httpsKeyPEM":  certPrivKeyPEM.Bytes(),
+		apiKeyDataKey:    []byte(randomAPIKey),
+		usernameDataKey:  []byte("syncthing"),
+		passwordDataKey:  []byte(randomPassword),
+		httpsCertDataKey: certPEM.Bytes(),
+		httpsKeyDataKey:  certPrivKeyPEM.Bytes(),
 	}
 
 	// ensure secret can be deleted once ReplicationSource is deleted
@@ -287,7 +337,6 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 	configPVC *corev1.PersistentVolumeClaim, sa *corev1.ServiceAccount,
 	apiSecret *corev1.Secret) (*appsv1.Deployment, error) {
 	// same thing as ensureJob, except this creates a deployment instead of a job
-	var configVolumeName, dataVolumeName string = "syncthing-config", "syncthing-data"
 	var numReplicas int32 = 1
 
 	deploymentName := "volsync-" + m.owner.GetName()
@@ -339,28 +388,28 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 					{Name: configDirEnv, Value: configDirMountPath},
 					{Name: dataDirEnv, Value: dataDirMountPath},
 					// tell the mover image where to find the HTTPS certs
-					{Name: "SYNCTHING_CERT_DIR", Value: "/certs"},
+					{Name: certDirEnv, Value: certDirMountPath},
 					{
-						Name: "STGUIAPIKEY",
+						Name: apiKeyEnv,
 						ValueFrom: &corev1.EnvVarSource{
 							SecretKeyRef: &corev1.SecretKeySelector{
 								LocalObjectReference: corev1.LocalObjectReference{
 									Name: apiSecret.Name,
 								},
-								Key: "apikey",
+								Key: apiKeyDataKey,
 							},
 						},
 					},
 				},
 				ImagePullPolicy: corev1.PullAlways,
 				Ports: []corev1.ContainerPort{
-					{Name: "api", ContainerPort: syncthingAPIPort},
-					{Name: "data", ContainerPort: syncthingDataPort},
+					{Name: apiPortName, ContainerPort: apiPort},
+					{Name: dataPortName, ContainerPort: dataPort},
 				},
 				VolumeMounts: []corev1.VolumeMount{
 					{Name: configVolumeName, MountPath: configDirMountPath},
 					{Name: dataVolumeName, MountPath: dataDirMountPath},
-					{Name: "https-certs", MountPath: "/certs"},
+					{Name: certVolumeName, MountPath: certDirMountPath},
 				},
 				Resources: corev1.ResourceRequirements{
 					Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("1Gi")},
@@ -388,13 +437,13 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 			},
 			// load the HTTPS certs as a volume
 			{
-				Name: "https-certs",
+				Name: certVolumeName,
 				VolumeSource: corev1.VolumeSource{
 					Secret: &corev1.SecretVolumeSource{
 						SecretName: apiSecret.Name,
 						Items: []corev1.KeyToPath{
-							{Key: "httpsKeyPEM", Path: "https-key.pem"},
-							{Key: "httpsCertPEM", Path: "https-cert.pem"},
+							{Key: httpsKeyDataKey, Path: httpsKeyPath},
+							{Key: httpsCertDataKey, Path: httpsCertPath},
 						},
 					},
 				},
@@ -434,10 +483,10 @@ func (m *Mover) ensureAPIService(ctx context.Context, deployment *appsv1.Deploym
 		service.Spec.Selector = deployment.Spec.Template.Labels
 		service.Spec.Ports = []corev1.ServicePort{
 			{
-				Port:       syncthingAPIPort,
+				Port:       apiPort,
 				TargetPort: intstr.FromString(targetPort),
 				Protocol:   "TCP",
-				Name:       SyncthingAPIPortName,
+				Name:       apiPortName,
 			},
 		}
 		return nil
@@ -471,13 +520,12 @@ func (m *Mover) ensureDataService(ctx context.Context, deployment *appsv1.Deploy
 		service.Spec.Selector = deployment.Spec.Template.Labels
 		service.Spec.Ports = []corev1.ServicePort{
 			{
-				Port:       syncthingDataPort,
-				TargetPort: intstr.FromInt(syncthingDataPort),
+				Port:       dataPort,
+				TargetPort: intstr.FromInt(dataPort),
 				// This port prefers TCP but may also be UDP
-				// HACK: add an option to spec which allows users to select UDP over TCP
 				// this may benefit some envs w/ non-TCP connections
 				Protocol: "TCP",
-				Name:     SyncthingDataPortName,
+				Name:     dataPortName,
 			},
 		}
 		return nil
@@ -496,8 +544,7 @@ func (m *Mover) GetDataServiceAddress(service *corev1.Service) (string, error) {
 	if address == "" {
 		return "", fmt.Errorf("could not get an address for the service")
 	}
-	// FIXME: how will the port insert be handled with IPv6?
-	address = "tcp://" + address + ":" + strconv.Itoa(syncthingDataPort)
+	address = asTCPAddress(address + ":" + strconv.Itoa(dataPort))
 	return address, nil
 }
 
@@ -523,7 +570,7 @@ func (m *Mover) configureSyncthingAPIClient(
 	}
 
 	// configure authentication per request
-	m.apiConfig.APIKey = string(apiSecret.Data["apikey"])
+	m.apiConfig.APIKey = string(apiSecret.Data[apiKeyDataKey])
 	clientConfig, err := m.loadTLSConfigFromSecret(apiSecret)
 	if err != nil {
 		return err
@@ -573,11 +620,11 @@ func (m *Mover) ensureIsConfigured(apiSecret *corev1.Secret, syncthing *api.Sync
 	}
 
 	// set the user and password if not already set
-	if syncthing.Configuration.GUI.User != string(apiSecret.Data["username"]) ||
+	if syncthing.Configuration.GUI.User != string(apiSecret.Data[usernameDataKey]) ||
 		syncthing.Configuration.GUI.Password == "" {
 		m.logger.Info("setting user and password")
-		syncthing.Configuration.GUI.User = string(apiSecret.Data["username"])
-		syncthing.Configuration.GUI.Password = string(apiSecret.Data["password"])
+		syncthing.Configuration.GUI.User = string(apiSecret.Data[usernameDataKey])
+		syncthing.Configuration.GUI.Password = string(apiSecret.Data[passwordDataKey])
 		hasChanged = true
 	}
 
@@ -672,13 +719,13 @@ func (m *Mover) getAPIServiceDNS() string {
 // getAPIServiceAddress Returns the ClusterDNS address of the service exposing the Syncthing API.
 func (m *Mover) getAPIServiceAddress() string {
 	serviceDNS := m.getAPIServiceDNS()
-	return fmt.Sprintf("https://%s:%d", serviceDNS, syncthingAPIPort)
+	return fmt.Sprintf("https://%s:%d", serviceDNS, apiPort)
 }
 
 // loadTLSConfigFromSecret loads the TLS config from the given secret.
 func (m *Mover) loadTLSConfigFromSecret(apiSecret *corev1.Secret) (*tls.Config, error) {
 	// grab the server cert from the secret
-	serverCert, ok := apiSecret.Data["httpsCertPEM"]
+	serverCert, ok := apiSecret.Data[httpsCertDataKey]
 	if !ok {
 		return nil, fmt.Errorf("could not find the server cert in the secret")
 	}

@@ -21,6 +21,13 @@ import (
 	"github.com/syncthing/syncthing/lib/config"
 )
 
+// Defines endpoints for the Syncthing API
+const (
+	SystemStatusEndpoint      = "/rest/system/status"
+	SystemConnectionsEndpoint = "/rest/system/connections"
+	ConfigEndpoint            = "/rest/config"
+)
+
 // Fetch Pulls all of Syncthing's latest information from the API and stores it
 // in the object's local storage.
 func (s *syncthingAPIConnection) Fetch() (*Syncthing, error) {
@@ -54,7 +61,7 @@ func (s *syncthingAPIConnection) Fetch() (*Syncthing, error) {
 func (s *syncthingAPIConnection) PublishConfig(conf config.Configuration) error {
 	// update the config
 	s.logger.Info("Updating Syncthing config")
-	_, err := s.jsonRequest(configEndpoint, "PUT", conf)
+	_, err := s.jsonRequest(ConfigEndpoint, "PUT", conf)
 	if err != nil {
 		s.logger.Error(err, "Failed to update Syncthing config")
 	}
