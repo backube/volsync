@@ -20,7 +20,6 @@ import (
 	"crypto/rand"
 	"fmt"
 	"regexp"
-	"strings"
 
 	"github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers/mover/syncthing/api"
@@ -156,22 +155,16 @@ func GenerateRandomString(length int) (string, error) {
 	return string(acceptableBytes), nil
 }
 
-// asTCPAddress Accepts an address of some form and returns it with a TCP prefix if none exist yet.
-// The applied prefix is either 'tcp4' or 'tcp6' depending on whether the address is ipv4 or ipv6 respectively.
-//
+// asTCPAddress Accepts an address of some form and returns it with a TCP prefix if none exist yet.//
 // If the address already contains a prefix, then it is simply returned.
 //
 // See: https://forum.syncthing.net/t/specifying-protocols-without-global-announce-or-relay/18565
 func asTCPAddress(address string) string {
 	// ignore if a prefix already exists
-	uriPattern := regexp.MustCompile(`(\w+:\/?\/?)[^\s]+`)
+	uriPattern := regexp.MustCompile(`^(\w+:\/\/)[^\s]+$`)
 	if uriPattern.MatchString(address) {
 		return address
 	}
 
-	// address is ipv4
-	if strings.Count(address, ":") < 2 {
-		return "tcp4://" + address
-	}
-	return "tcp6://" + address
+	return "tcp://" + address
 }

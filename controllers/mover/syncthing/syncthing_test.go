@@ -501,9 +501,11 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					corev1.ReadOnlyMany,
 				}
 				configsc := "configsc"
+				configCapacity := resource.MustParse("3Gi")
 				BeforeEach(func() {
 					rs.Spec.Syncthing.ConfigAccessModes = accessModes
 					rs.Spec.Syncthing.ConfigStorageClassName = &configsc
+					rs.Spec.Syncthing.ConfigCapacity = &configCapacity
 				})
 
 				It("sets the options", func() {
@@ -512,6 +514,8 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					Expect(config).NotTo(BeNil())
 					Expect(config.Spec.AccessModes).To(Equal(accessModes))
 					Expect(config.Spec.StorageClassName).To(Equal(&configsc))
+					// dereference to check object equality
+					Expect(*config.Spec.Resources.Requests.Storage()).To(Equal(configCapacity))
 				})
 			})
 		})

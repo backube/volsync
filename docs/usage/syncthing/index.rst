@@ -127,10 +127,44 @@ To create a simple ReplicationSource without connecting to other peers, simply o
 
 In order for two Syncthing-based ReplicationSources to connect to each other, each one must specify the other one in their ``peers`` list.
 
-
 .. note::
   Syncthing unions the data in the provided ``PersistentVolume`` with the data from other peers.
   When two pieces of data have the same name, the most recent data will be favored.
+
+
+Syncthing options
+-----------------
+
+Here are all of the options that can be specified for the Syncthing mover:
+
+
+peers
+   A list of the Syncthing devices this ReplicationSource should sync the ``sourcePVC`` with. The peers
+   being listed must also specify this ReplicationSource's Syncthing details in their spec for them to
+   successfully connect with one another. Each peer contains the following fields:
+
+   - ``ID`` - The peer's device ID, this is a base32 encoding of the peer's TLS certificate.
+   - ``address`` - The peer's address that we will attempt to connect on. This will usually be a TCP connection.
+   - ``introducer`` - Whether this peer should act as an introducer node or not. If true, this peer will automatically connect us to other nodes that also have it set as an introducer. More on this later.  
+serviceType
+   The type of service used to expose Syncthing's data connection. Defaults to ``clusterIP``. Valid values are:
+
+   - ``clusterIP`` - VolSync will expose the service through a ClusterIP; used for in-cluster networking.
+   - ``loadBalancer`` - The Syncthing data port is exposed through a LoadBalancer, which is used for connecting to other Syncthing instances outside of the cluster.
+configCapacity
+   Amount of storage to be used by the PVC storing Syncthing's configuration data.
+   The default is ``1Gi`` when left unspecified.
+configStorageClassName
+   The name of the storage class to use for the PVC storing Syncthing's configuration data.
+   When unspecified, VolSync will default to the storage class being used by the source PVC.
+configVolumeAccessModes
+   These are used to set the accessModes of the config PVC. When unspecified, these default to
+   the accessModes present on the source PVC.
+
+
+.. note::
+  You can create syncthing-based ReplicationSources without specifying to peers by
+  specifying ``.spec.syncthing`` and setting ``.spec.syncthing.serviceType`` to ``clusterIP``. 
 
 
 Source Status
@@ -148,10 +182,10 @@ Here's an example of a ReplicationSource with a status:
     ---
     apiVersion: volsync.backube/v1alpha1
     kind: ReplicationSource
-    metadata:
       name: sync-todo-database
     spec:
       sourcePVC: todo-database
+    metadata:
       syncthing:
         serviceType: ClusterIP
         peers:
@@ -192,7 +226,7 @@ Additionally, it displays a list of peers that this ReplicationSource is connect
 Each peer listing contains the following fields:
 
 ID
-   The Syncthing ID of the peer.
+   The connected peer's Syncthing device ID.
 
 address
    The connected peer's address.

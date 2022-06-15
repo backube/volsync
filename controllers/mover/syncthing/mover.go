@@ -99,6 +99,7 @@ type Mover struct {
 	logger              logr.Logger
 	owner               client.Object
 	eventRecorder       events.EventRecorder
+	configCapacity      *resource.Quantity
 	configStorageClass  *string
 	configAccessModes   []corev1.PersistentVolumeAccessMode
 	containerImage      string
@@ -203,10 +204,16 @@ func (m *Mover) ensureConfigPVC(
 	ctx context.Context,
 	dataPVC *corev1.PersistentVolumeClaim,
 ) (*corev1.PersistentVolumeClaim, error) {
-	capacity := resource.MustParse(configCapacity)
+	// default capacity if none was specified
+	var capacity *resource.Quantity = m.configCapacity
+	if capacity == nil {
+		cap := resource.MustParse(configCapacity)
+		capacity = &cap
+	}
+
 	options := volsyncv1alpha1.ReplicationSourceVolumeOptions{
 		CopyMethod: volsyncv1alpha1.CopyMethodDirect,
-		Capacity:   &capacity,
+		Capacity:   capacity,
 	}
 
 	// ensure configStorageClassName

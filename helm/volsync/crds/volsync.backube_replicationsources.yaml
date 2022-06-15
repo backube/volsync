@@ -291,8 +291,7 @@ spec:
                   replication.
                 properties:
                   configAccessModes:
-                    description: Used to set the accessModes of Syncthing metadata
-                      cache volume.
+                    description: Used to set the accessModes of Syncthing config volume.
                     items:
                       type: string
                     type: array
@@ -300,13 +299,12 @@ spec:
                     anyOf:
                     - type: integer
                     - type: string
-                    description: Used to set the size of the Syncthing metadata cache
-                      volume.
+                    description: Used to set the size of the Syncthing config volume.
                     pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                     x-kubernetes-int-or-string: true
                   configStorageClassName:
-                    description: Used to set the StorageClass of the Syncthing metadata
-                      cache volume.
+                    description: Used to set the StorageClass of the Syncthing config
+                      volume.
                     type: string
                   peers:
                     description: List of Syncthing peers to be connected for syncing
