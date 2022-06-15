@@ -29,6 +29,6 @@ helm install --create-namespace -n "${MINIO_NAMESPACE}" \
     --set secretKey.password=password \
     --set defaultBuckets=mybucket \
     "${SECURITY_ARGS[@]}" \
-    --version 9.0.5 \
+    --version 11.6.3 \
     --wait --timeout=300s \
     minio bitnami/minio
