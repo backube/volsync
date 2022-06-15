@@ -7,8 +7,8 @@
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
 
 # Bundle Version being built right now and channels to use
-VERSION := 0.4.0
-CHANNELS := stable,acm-2.5
+VERSION := 0.5.0
+CHANNELS := stable,acm-2.6
 DEFAULT_CHANNEL := stable
 MIN_KUBE_VERSION := 1.20.0
 

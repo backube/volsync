@@ -26,12 +26,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - CLI: Fixed bug where previously specified options couldn't be removed from
   relationship file
+- Fixed issue where a snapshot or clone created from a source PVC could
+  request an incorrect size if the PVC capacity did not match the
+  requested size.
 
 ### Removed
 
 - "Reconciled" condition removed from ReplicationSource and
   ReplicationDestination `.status.conditions[]` in favor of returning errors via
   the "Synchronizing" Condition.
+
+## [0.4.1] - TBD (currently unreleased)
 
 ## [0.4.0] - 2022-05-12
 

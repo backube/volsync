@@ -43,7 +43,8 @@ metadata:
     capabilities: Basic Install
     operators.operatorframework.io/builder: operator-sdk-v1.21.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
-  name: volsync.v0.4.0
+    olm.skipRange: '>=0.4.0 <0.5.0'
+  name: volsync.v0.5.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -419,4 +420,4 @@ spec:
     name: rclone-container
   - image: quay.io/backube/volsync-mover-restic:latest
     name: restic-container
-  version: 0.4.0
+  version: 0.5.0
