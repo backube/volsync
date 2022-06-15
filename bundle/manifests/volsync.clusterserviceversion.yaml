@@ -43,7 +43,7 @@ metadata:
     capabilities: Basic Install
     operators.operatorframework.io/builder: operator-sdk-v1.14.0+git
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
-  name: volsync.v0.4.0
+  name: volsync.v0.4.1
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -386,4 +386,4 @@ spec:
   minKubeVersion: 1.20.0
   provider:
     name: Red Hat
-  version: 0.4.0
+  version: 0.4.1
