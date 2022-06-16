@@ -387,6 +387,15 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 				}},
 			},
 		}
+		if m.vh.IsCopyMethodDirect() {
+			affinity, err := utils.AffinityFromVolume(ctx, m.client, logger, dataPVC)
+			if err != nil {
+				logger.Error(err, "unable to determine proper affinity", "PVC", client.ObjectKeyFromObject(dataPVC))
+				return err
+			}
+			job.Spec.Template.Spec.NodeName = affinity.NodeName
+			job.Spec.Template.Spec.Tolerations = affinity.Tolerations
+		}
 		return nil
 	})
 	// If Job had failed, delete it so it can be recreated
