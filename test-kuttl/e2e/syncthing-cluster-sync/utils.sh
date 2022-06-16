@@ -1,4 +1,4 @@
-#!/usr/bin/sh
+#!/bin/bash
 
 ##################################################################
 # Wait until all of the given list of
@@ -12,20 +12,20 @@
 # Returns:
 #   None
 ##################################################################
-function wait_for_syncthing_ready() {
-	local replication_source="${1}"
+wait_for_syncthing_ready() {
+	replication_source="${1}"
 
 	echo "waiting for syncthing address and ID for ${replication_source}..."
 	# sleep until replicationsource has syncthing address and ID
 
-	local st_address=""
-	local st_device_id=""
+	st_address=""
+	st_device_id=""
 	while [[ -z "${st_address}" || -z "${st_device_id}" ]]; do
 		st_address=$(kubectl get replicationsource "${replication_source}" -n "${NAMESPACE}" -o jsonpath='{.status.syncthing.address}')
 		st_device_id=$(kubectl get replicationsource "${replication_source}" -n "${NAMESPACE}" -o jsonpath='{.status.syncthing.ID}')
 		if [[ -z "${st_address}" || -z "${st_device_id}" ]]; then
 			echo "syncthing info not yet available, current status:"
-			echo $(kubectl get replicationsource "${replication_source}" -n "${NAMESPACE}" -o jsonpath='{.status}')
+			kubectl get replicationsource "${replication_source}" -n "${NAMESPACE}" -o jsonpath='{.status}'
 			sleep 5
 		fi
 	done
@@ -45,21 +45,21 @@ function wait_for_syncthing_ready() {
 # Returns:
 #   (int) 0 on success, 1 on failure
 ##########################################################
-function connect_to_target() {
-	local source_rs_name="${1}"
-	local target_rs_name="${2}"
-	local as_introducer="${3}"
+connect_to_target() {
+	source_rs_name="${1}"
+	target_rs_name="${2}"
+	as_introducer="${3}"
 
 	# grab the target RS's address and device ID
-	local target_st_address=$(kubectl get replicationsource "${target_rs_name}" -n "${NAMESPACE}" -o jsonpath='{.status.syncthing.address}')
-	local target_st_device_id=$(kubectl get replicationsource "${target_rs_name}" -n "${NAMESPACE}" -o jsonpath='{.status.syncthing.ID}')
+	target_st_address=$(kubectl get replicationsource "${target_rs_name}" -n "${NAMESPACE}" -o jsonpath='{.status.syncthing.address}')
+	target_st_device_id=$(kubectl get replicationsource "${target_rs_name}" -n "${NAMESPACE}" -o jsonpath='{.status.syncthing.ID}')
 
 
 	# grab the current source RS's peer list as a json list and append the target RS's address and device ID
-	local current_spec=$(kubectl get replicationsource "${source_rs_name}" -n "${NAMESPACE}" -o jsonpath='{.spec}' | jq -c '{spec: .}')
+	current_spec=$(kubectl get replicationsource "${source_rs_name}" -n "${NAMESPACE}" -o jsonpath='{.spec}' | jq -c '{spec: .}')
 
 	# insert new_peers into .spec.syncthing.peers in skeleton_spec
-	local new_spec=""
+	new_spec=""
 	if [ "${as_introducer}" -eq '1' ]; then
 		# introducer
 		new_spec=$(echo "${current_spec}" | jq -c \
@@ -77,13 +77,11 @@ function connect_to_target() {
 	fi
 
 	# patch the replicationsource with the new spec
-	kubectl patch replicationsource "${source_rs_name}" -n "${NAMESPACE}" --type=merge --patch "${new_spec}"
-
-	# check that the patch was successful
-	if [[ $? -ne 0 ]]; then
+	if [[ $(kubectl patch replicationsource "${source_rs_name}" -n "${NAMESPACE}" --type=merge --patch "${new_spec}") ]]; then
+		return 0
+	else
 		return 1
 	fi
-	return 0
 }
 
 
@@ -97,17 +95,16 @@ function connect_to_target() {
 # Returns:
 #   None
 ############################################################
-function connect_syncthing() {
-	local source_rs="$1"
-	local target_rs="$2"
-
-	connect_to_target "${source_rs}" "${target_rs}" "0"
-	if [[ $? -ne 0 ]]; then
+connect_syncthing() {
+	source_rs="$1"
+	target_rs="$2"
+	
+	if ! [[ $(connect_to_target "${source_rs}" "${target_rs}" "0") ]]; then
 		echo "failed to connect ${source_rs} to ${target_rs}"
 		return 1
 	fi
-	connect_to_target "${target_rs}" "${source_rs}" "0"
-	if [[ $? -ne 0 ]]; then
+
+	if ! [[ $(connect_to_target "${target_rs}" "${source_rs}" "0") ]]; then
 		echo "failed to connect ${target_rs} to ${source_rs}"
 		return 1
 	fi
@@ -120,33 +117,33 @@ function connect_syncthing() {
 # Arguments:
 #   None
 # Globals:
-#   replication_sources
+#   NAMESPACE
 # Returns:
 #  0 if all ReplicationSources have each other in their peer list, 
 #  1 otherwise
 ##################################################################
-function verify_rs_are_connected() {
+verify_rs_are_connected() {
 	# get all of the IDs for every replicationsource
-	local st_ids=$(echo "${replication_sources}" | jq -r '.[] | .status.syncthing.ID')
+	replication_sources=$(update_replication_sources)
+	st_ids=$(echo "${replication_sources}" | jq -r '.[] | .status.syncthing.ID')
 	for st_id in ${st_ids}; do
-		# get the replicationsource with the current ID
-		local rs=$(echo "${replication_sources}" | jq -r --arg currentID "${st_id}" \
+		rs=$(echo "${replication_sources}" | jq -r --arg currentID "${st_id}" \
 			'.[] | select(.status.syncthing.ID == $currentID)'
 		)
 
 		# get the peer list for the current replicationsource
-		local peers=$(echo "${rs}" | jq -r '.spec.syncthing.peers')
-		local peer_ids=$(echo "${peers}" | jq -r '.[] | .ID')
+		peers=$(echo "${rs}" | jq -r '.spec.syncthing.peers')
+		peer_ids=$(echo "${peers}" | jq -r '.[] | .ID')
 
 		# all syncthing IDs in cluster
-		local full_peer_ids=$(echo "${replication_sources}" | jq -r \
+		full_peer_ids=$(echo "${replication_sources}" | jq -r \
 			--arg currentID "${st_id}" \
 			'.[] | select(.status.syncthing.ID != $currentID) | .status.syncthing.ID'
 		)
 
 		# ensure that each element of full_peer_ids is in peer_ids
 		for peer_id in ${full_peer_ids}; do
-			if [[ ! "${peer_ids}" =~ "${peer_id}" ]]; then
+			if [[ ! "${peer_ids}" =~ ${peer_id} ]]; then
 				# ReplicationSource ${st_id} does not have ${peer_id} in its peer list
 				return 1
 			fi
@@ -168,29 +165,30 @@ function verify_rs_are_connected() {
 #  0 if all ReplicationSources are connected to their Syncthing devices,
 #  1 otherwise
 ########################################################################
-function all_peers_are_connected() {
-	local rs_name="$1"
+all_peers_are_connected() {
+	rs_name="${1}"
 
 	# get the record for the given replicationsource
-	local rs=$(echo "${replication_sources}" | jq --arg rsName "${rs_name}" '.[] | select(.metadata.name == $rsName)')
-	local peer_ids=$(echo "${rs}" | jq -r '.spec.syncthing.peers[].ID')
+	replication_sources=$(update_replication_sources)
+	rs=$(echo "${replication_sources}" | jq --arg rsName "${rs_name}" '.[] | select(.metadata.name == $rsName)')
+	peer_ids=$(echo "${rs}" | jq -r '.spec.syncthing.peers[].ID')
 
 	# check if .status.syncthing.peers is null or empty
 	if [[ $(echo "${rs}" | jq '.status.syncthing | has("peers")') == "true" ]]; then
-		local connected_peers=$(echo "${rs}" | jq -r '.status.syncthing.peers')
-		local connected_peer_ids=$(echo "${connected_peers}" | jq -r '.[] | .ID')
+		connected_peers=$(echo "${rs}" | jq -r '.status.syncthing.peers')
+		connected_peer_ids=$(echo "${connected_peers}" | jq -r '.[] | .ID')
 		IFS=$'\n' read -rd '' -a connected_peer_ids <<< "${connected_peer_ids}" || true
 		unset IFS
 
 		# make sure that each peer_id exists in .status.syncthing.peers
-		for peer_id in ${peer_ids[@]}; do
-			if [[ ! "${connected_peer_ids[@]}" =~ "${peer_id}" ]]; then
+		for peer_id in "${peer_ids[@]}"; do
+			if [[ ! "${connected_peer_ids[*]}" =~ ${peer_id} ]]; then
 				# ReplicationSource ${rs_name} does not have ${peer_id} in its peer list
 				return 1
 			fi
 
 			# grab the peer_id and check if connected: true
-			local peer=$(echo "${connected_peers}" | jq -r --arg peerID "${peer_id}" \
+			peer=$(echo "${connected_peers}" | jq -r --arg peerID "${peer_id}" \
 				'.[] | select(.ID == $peerID)')
 			if [[ $(echo "${peer}" | jq '.connected') != "true" ]]; then
 				# ${peer_id} is not connected in ${rs_name}
@@ -212,7 +210,7 @@ function all_peers_are_connected() {
 # Returns:
 #  (json) replication_sources
 ######################################
-function update_replication_sources() {
-	local sources=$(kubectl get replicationsource -n "${NAMESPACE}" -o json | jq '.items')
+update_replication_sources() {
+	sources=$(kubectl get replicationsource -n "${NAMESPACE}" -o json | jq '.items')
 	echo "${sources}"
 }

@@ -1005,7 +1005,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					result, err := mover.Synchronize(ctx)
 
 					// expect no error to have occurred
-					Expect(err).NotTo(HaveOccurred(), "apikey used by the API server: %s, vs. apikey used by mover: %s", serverState.Configuration.GUI.APIKey, mover.apiConfig.APIKey)
+					Expect(err).NotTo(HaveOccurred())
 					// synchronization is eternal
 					Expect(result.Completed).To(BeFalse())
 				})

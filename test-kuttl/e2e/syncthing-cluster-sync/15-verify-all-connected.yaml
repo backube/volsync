@@ -11,19 +11,17 @@ commands:
       # import the necessary utils for working w/ Syncthing
       source ./utils.sh
 
-      replication_sources=$(kubectl get replicationsource -n "${NAMESPACE}" -o json | jq '.items')
-
       echo "=== Verifying all ReplicationSources have each other in their peer list ==="
       echo "Try to verify rs are connected"
       rs_are_connected=$(verify_rs_are_connected)
       while [[ "${rs_are_connected}" -ne 0 ]]; do
         echo "Wait for all ReplicationSources to have each other in their peer list"
         sleep 5
-        replication_sources=$(update_replication_sources)
         rs_are_connected=$(verify_rs_are_connected)
       done
 
       echo "=== Verifying all ReplicationSources are connected to their Syncthing devices ==="
+      replication_sources=$(update_replication_sources)
       rs_names=$(echo "${replication_sources}" | jq -c -r '.[].metadata.name')
       echo "=== Creating an Array for the names of replicationsources ==="
       echo "=== rs_names: ${rs_names}"
@@ -37,7 +35,6 @@ commands:
         while [[ "${connected_status}" -ne 0 ]]; do
           echo "Wait for all Syncthing IDs in ${rs_name}'s peer list to be connected"
           sleep 5
-          replication_sources=$(update_replication_sources)
           connected_status=$(all_peers_are_connected "${rs_name}")
         done
       done
