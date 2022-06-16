@@ -90,8 +90,13 @@ const (
 	httpsCertPath = "https-cert.pem"
 )
 
-// configCapacity Sets the size of the config volume used by the Syncthing container.
-const configCapacity = "1Gi"
+// Miscellaneous constants.
+const (
+	// configCapacity Sets the size of the config volume used by the Syncthing container.
+	configCapacity = "1Gi"
+	// resourcePrefix Prefixes every name for resources created by the VolSync controller.
+	resourcePrefix = "volsync-"
+)
 
 // Mover is the reconciliation logic for the Restic-based data mover.
 type Mover struct {
@@ -137,66 +142,87 @@ func (m *Mover) Name() string { return "syncthing" }
 // Synchronize also updates the ReplicationSource's status
 // with information about our local Syncthing instance, as well
 // as any connections that have been made to the Syncthing instance.
-//
-//nolint:funlen
 func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
+	dataService, secretAPIKey, err := m.ensureNecessaryResources(ctx)
+	if err != nil {
+		return mover.InProgress(), err
+	}
+	if err = m.interactWithSyncthing(dataService, secretAPIKey); err != nil {
+		return mover.InProgress(), err
+	}
+	var retryAfter = 20 * time.Second
+	return mover.RetryAfter(retryAfter), nil
+}
+
+// ensureNecessaryResources Creates the resources required for VolSync to operate the Syncthing mover,
+// and returns references to the data service exposing the Syncthing connection along with
+// the secret where necessary credentials are stored.
+// If VolSync is unable to ensure the necessary resources, an error is returned.
+func (m *Mover) ensureNecessaryResources(ctx context.Context) (*corev1.Service, *corev1.Secret, error) {
 	var err error
 	dataPVC, err := m.ensureDataPVC(ctx)
 	if dataPVC == nil || err != nil {
-		return mover.InProgress(), err
+		return nil, nil, err
 	}
 
 	configPVC, err := m.ensureConfigPVC(ctx, dataPVC)
 	if configPVC == nil || err != nil {
-		return mover.InProgress(), err
+		return nil, nil, err
 	}
 
 	secretAPIKey, err := m.ensureSecretAPIKey(ctx)
 	if secretAPIKey == nil || err != nil {
-		return mover.InProgress(), err
+		return nil, nil, err
 	}
 
 	sa, err := m.ensureSA(ctx)
 	if sa == nil || err != nil {
-		return mover.InProgress(), err
+		return nil, nil, err
 	}
 
 	deployment, err := m.ensureDeployment(ctx, dataPVC, configPVC, sa, secretAPIKey)
 	if deployment == nil || err != nil {
-		return mover.InProgress(), err
+		return nil, nil, err
 	}
 
 	APIService, err := m.ensureAPIService(ctx, deployment)
 	if APIService == nil || err != nil {
-		return mover.InProgress(), err
+		return nil, nil, err
 	}
 
 	dataService, err := m.ensureDataService(ctx, deployment)
 	if dataService == nil || err != nil {
-		return mover.InProgress(), err
+		return nil, nil, err
 	}
 
-	if err = m.configureSyncthingAPIClient(secretAPIKey); err != nil {
-		return mover.InProgress(), err
+	return dataService, secretAPIKey, nil
+}
+
+// interactWithSyncthing Updates the Syncthing instance with the required connections as defined by VolSync,
+// and sets the status of the ReplicationSource to reflect the current state of the Syncthing instance.
+// An error is returned when it is unable to do so.
+func (m *Mover) interactWithSyncthing(dataService *corev1.Service, apiSecret *corev1.Secret) error {
+	// get the API key from the secret
+	var err error
+	if err = m.configureSyncthingAPIClient(apiSecret); err != nil {
+		return err
 	}
 
 	// fetch the latest data from Syncthing
 	syncthingState, err := m.syncthingConnection.Fetch()
 	if err != nil {
-		return mover.InProgress(), err
+		return err
 	}
 
 	// configure syncthing before grabbing info & updating status
-	if err = m.ensureIsConfigured(secretAPIKey, syncthingState); err != nil {
-		return mover.InProgress(), err
+	if err = m.ensureIsConfigured(apiSecret, syncthingState); err != nil {
+		return err
 	}
 
 	if err = m.ensureStatusIsUpdated(dataService, syncthingState); err != nil {
-		return mover.InProgress(), err
+		return err
 	}
-
-	var retryAfter = 20 * time.Second
-	return mover.RetryAfter(retryAfter), nil
+	return nil
 }
 
 // ensureConfigPVC Ensures that there is a PVC persisting Syncthing's config data.
@@ -241,7 +267,7 @@ func (m *Mover) ensureConfigPVC(
 	}
 
 	// Allocate the config volume
-	configName := "volsync-" + m.owner.GetName() + "-config"
+	configName := resourcePrefix + m.owner.GetName() + "-config"
 	m.logger.Info("allocating config volume", "PVC", configName)
 	return configVh.EnsureNewPVC(ctx, m.logger, configName)
 }
@@ -265,7 +291,7 @@ func (m *Mover) ensureDataPVC(ctx context.Context) (*corev1.PersistentVolumeClai
 
 // ensureSecretAPIKey Ensures ensures that the PVC for API secrets either exists or it will create it.
 func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) {
-	secretName := "volsync-" + m.owner.GetName()
+	secretName := resourcePrefix + m.owner.GetName()
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
@@ -346,7 +372,7 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 	// same thing as ensureJob, except this creates a deployment instead of a job
 	var numReplicas int32 = 1
 
-	deploymentName := "volsync-" + m.owner.GetName()
+	deploymentName := resourcePrefix + m.owner.GetName()
 
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -509,7 +535,7 @@ func (m *Mover) ensureAPIService(ctx context.Context, deployment *appsv1.Deploym
 // ensureDataService Ensures that a service exposing the Syncthing data is present, else it will be created.
 // This service allows Syncthing to share data with the rest of the world.
 func (m *Mover) ensureDataService(ctx context.Context, deployment *appsv1.Deployment) (*corev1.Service, error) {
-	serviceName := "volsync-" + m.owner.GetName() + "-data"
+	serviceName := resourcePrefix + m.owner.GetName() + "-data"
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      serviceName,
@@ -713,7 +739,7 @@ func (m *Mover) getConnectedPeers(syncthing *api.Syncthing) []volsyncv1alpha1.Sy
 
 // getAPIServiceName Returns the name of the API service exposing the Syncthing API.
 func (m *Mover) getAPIServiceName() string {
-	serviceName := "volsync-" + m.owner.GetName() + "-api"
+	serviceName := resourcePrefix + m.owner.GetName() + "-api"
 	return serviceName
 }
 
