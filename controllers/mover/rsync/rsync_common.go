@@ -53,7 +53,7 @@ func (d *rsyncSvcDescription) Reconcile(l logr.Logger) error {
 			logger.Error(err, "unable to set controller reference")
 			return err
 		}
-		utils.SetOwnedByVolSync(d.Owner, d.Service)
+		utils.SetOwnedByVolSync(d.Service)
 
 		if d.Service.ObjectMeta.Annotations == nil {
 			d.Service.ObjectMeta.Annotations = map[string]string{}
@@ -212,7 +212,7 @@ func (k *rsyncSSHKeys) generateMainSecret(l logr.Logger) error {
 		l.Error(err, "unable to set controller reference")
 		return err
 	}
-	utils.SetOwnedByVolSync(k.Owner, k.MainSecret)
+	utils.SetOwnedByVolSync(k.MainSecret)
 
 	priv, pub, err := generateKeyPair(k.Context, l)
 	if err != nil {
@@ -242,7 +242,7 @@ func (k *rsyncSSHKeys) ensureSecret(l logr.Logger, secret *corev1.Secret, keys [
 			logger.Error(err, "unable to set controller reference")
 			return err
 		}
-		utils.SetOwnedByVolSync(k.Owner, secret)
+		utils.SetOwnedByVolSync(secret)
 		if secret.Data == nil {
 			secret.Data = make(map[string][]byte, 3)
 		}

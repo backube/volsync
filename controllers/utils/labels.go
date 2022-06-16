@@ -17,13 +17,12 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 package utils
 
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 const (
 	volsyncLabelPrefix  = "volsync.backube"
 	cleanupLabelKey     = volsyncLabelPrefix + "/cleanup"
 	DoNotDeleteLabelKey = volsyncLabelPrefix + "/do-not-delete"
-	OwnedByLabelKey     = volsyncLabelPrefix + "/owned"
+	OwnedByLabelKey     = "app.kubernetes.io/created-by"
+	OwnedByLabelValue   = "volsync"
 )
 
 type Labelable interface {
@@ -94,16 +93,12 @@ func RemoveLabel(obj Labelable, key string) bool {
 // Returns True if the object contains a label indicating that it was created by
 // VolSync
 func IsOwnedByVolsync(obj Labelable) bool {
-	return HasLabel(obj, OwnedByLabelKey)
+	return HasLabelWithValue(obj, OwnedByLabelKey, OwnedByLabelValue)
 }
 
 // Sets a label on the object to indicate it was created by VolSync
-func SetOwnedByVolSync(volsyncCR metav1.Object, obj Labelable) bool {
-	value := "unknown"
-	if volsyncCR != nil {
-		value = string(volsyncCR.GetUID())
-	}
-	return AddLabel(obj, OwnedByLabelKey, value)
+func SetOwnedByVolSync(obj Labelable) bool {
+	return AddLabel(obj, OwnedByLabelKey, OwnedByLabelValue)
 }
 
 // Removes the "created by Volsync" label

@@ -22,8 +22,6 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/uuid"
 )
 
 type testLabelable struct {
@@ -180,19 +178,11 @@ var _ = Describe("Label helpers", func() {
 			pod := corev1.Pod{}
 			Expect(utils.IsOwnedByVolsync(&pod)).To(BeFalse())
 
-			Expect(utils.SetOwnedByVolSync(nil, &pod)).To(BeTrue())
+			Expect(utils.SetOwnedByVolSync(&pod)).To(BeTrue())
 			Expect(utils.IsOwnedByVolsync(&pod)).To(BeTrue())
 
 			Expect(utils.RemoveOwnedByVolSync(&pod)).To(BeTrue())
 			Expect(utils.IsOwnedByVolsync(&pod)).To(BeFalse())
-		})
-		It("saves the owner UID if available", func() {
-			pod := corev1.Pod{}
-			var owner metav1.Object = &corev1.Pod{}
-			owner.SetUID(uuid.NewUUID())
-			Expect(utils.SetOwnedByVolSync(owner, &pod)).To(BeTrue())
-			Expect(utils.IsOwnedByVolsync(&pod)).To(BeTrue())
-			Expect(utils.HasLabelWithValue(&pod, utils.OwnedByLabelKey, string(owner.GetUID())))
 		})
 	})
 })
