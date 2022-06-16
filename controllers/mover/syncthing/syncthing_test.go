@@ -20,7 +20,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
-	"fmt"
 	"net/http/httptest"
 	"strconv"
 
@@ -1003,7 +1002,6 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 				})
 
 				It("successfully completes a Synchronize", func() {
-					fmt.Printf("API key before hitting synchronize: %s\n", mover.apiConfig.APIKey)
 					result, err := mover.Synchronize(ctx)
 
 					// expect no error to have occurred
