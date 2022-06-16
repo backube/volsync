@@ -65,7 +65,7 @@ func (d *SAHandler) ensureSA(l logr.Logger) (bool, error) {
 	logger := l.WithValues("ServiceAccount", client.ObjectKeyFromObject(d.SA))
 	op, err := ctrlutil.CreateOrUpdate(d.Context, d.Client, d.SA, func() error {
 		if err := ctrl.SetControllerReference(d.Owner, d.SA, d.Client.Scheme()); err != nil {
-			logger.Error(err, "unable to set controller reference")
+			logger.Error(err, ErrUnableToSetControllerRef)
 			return err
 		}
 		SetOwnedByVolSync(d.SA)
@@ -90,7 +90,7 @@ func (d *SAHandler) ensureRole(l logr.Logger) (bool, error) {
 	logger := l.WithValues("Role", client.ObjectKeyFromObject(d.role))
 	op, err := ctrlutil.CreateOrUpdate(d.Context, d.Client, d.role, func() error {
 		if err := ctrl.SetControllerReference(d.Owner, d.role, d.Client.Scheme()); err != nil {
-			logger.Error(err, "unable to set controller reference")
+			logger.Error(err, ErrUnableToSetControllerRef)
 			return err
 		}
 		SetOwnedByVolSync(d.role)
@@ -125,7 +125,7 @@ func (d *SAHandler) ensureRoleBinding(l logr.Logger) (bool, error) {
 	logger := l.WithValues("RoleBinding", client.ObjectKeyFromObject(d.roleBinding))
 	op, err := ctrlutil.CreateOrUpdate(d.Context, d.Client, d.roleBinding, func() error {
 		if err := ctrl.SetControllerReference(d.Owner, d.roleBinding, d.Client.Scheme()); err != nil {
-			logger.Error(err, "unable to set controller reference")
+			logger.Error(err, ErrUnableToSetControllerRef)
 			return err
 		}
 		SetOwnedByVolSync(d.roleBinding)

@@ -362,7 +362,7 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 	// we declare the deployment object in this block line-by-line
 	_, err := ctrlutil.CreateOrUpdate(ctx, m.client, deployment, func() error {
 		if err := ctrl.SetControllerReference(m.owner, deployment, m.client.Scheme()); err != nil {
-			logger.Error(err, "unable to set controller reference")
+			logger.Error(err, utils.ErrUnableToSetControllerRef)
 			return err
 		}
 
@@ -483,7 +483,7 @@ func (m *Mover) ensureAPIService(ctx context.Context, deployment *appsv1.Deploym
 
 	_, err := ctrlutil.CreateOrUpdate(ctx, m.client, service, func() error {
 		if err := ctrl.SetControllerReference(m.owner, service, m.client.Scheme()); err != nil {
-			logger.Error(err, "unable to set controller reference")
+			logger.Error(err, utils.ErrUnableToSetControllerRef)
 			return err
 		}
 		// service should route to the deployment's pods
@@ -520,7 +520,7 @@ func (m *Mover) ensureDataService(ctx context.Context, deployment *appsv1.Deploy
 	logger := m.logger.WithValues("service", client.ObjectKeyFromObject(service))
 	_, err := ctrl.CreateOrUpdate(ctx, m.client, service, func() error {
 		if err := ctrl.SetControllerReference(m.owner, service, m.client.Scheme()); err != nil {
-			logger.Error(err, "unable to set controller reference")
+			logger.Error(err, utils.ErrUnableToSetControllerRef)
 			return err
 		}
 		service.Spec.Type = m.serviceType

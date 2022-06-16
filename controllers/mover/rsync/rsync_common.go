@@ -50,7 +50,7 @@ func (d *rsyncSvcDescription) Reconcile(l logr.Logger) error {
 
 	op, err := ctrlutil.CreateOrUpdate(d.Context, d.Client, d.Service, func() error {
 		if err := ctrl.SetControllerReference(d.Owner, d.Service, d.Client.Scheme()); err != nil {
-			logger.Error(err, "unable to set controller reference")
+			logger.Error(err, utils.ErrUnableToSetControllerRef)
 			return err
 		}
 		utils.SetOwnedByVolSync(d.Service)
@@ -193,7 +193,7 @@ func generateKeyPair(ctx context.Context, l logr.Logger) (private []byte, public
 func (k *rsyncSSHKeys) generateMainSecret(l logr.Logger) error {
 	k.MainSecret.Data = make(map[string][]byte, 4)
 	if err := ctrl.SetControllerReference(k.Owner, k.MainSecret, k.Client.Scheme()); err != nil {
-		l.Error(err, "unable to set controller reference")
+		l.Error(err, utils.ErrUnableToSetControllerRef)
 		return err
 	}
 	utils.SetOwnedByVolSync(k.MainSecret)
@@ -223,7 +223,7 @@ func (k *rsyncSSHKeys) ensureSecret(l logr.Logger, secret *corev1.Secret, keys [
 
 	op, err := ctrlutil.CreateOrUpdate(k.Context, k.Client, secret, func() error {
 		if err := ctrl.SetControllerReference(k.Owner, secret, k.Client.Scheme()); err != nil {
-			logger.Error(err, "unable to set controller reference")
+			logger.Error(err, utils.ErrUnableToSetControllerRef)
 			return err
 		}
 		utils.SetOwnedByVolSync(secret)

@@ -28,6 +28,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// Define the error messages to be returned by VolSync.
+const (
+	ErrUnableToSetControllerRef = "unable to set controller reference"
+)
+
 func GetAndValidateSecret(ctx context.Context, cl client.Client,
 	logger logr.Logger, secret *corev1.Secret, fields ...string) error {
 	if err := cl.Get(ctx, client.ObjectKeyFromObject(secret), secret); err != nil {
