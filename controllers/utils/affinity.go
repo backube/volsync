@@ -31,6 +31,7 @@ type AffinityInfo struct {
 	Tolerations []corev1.Toleration
 }
 
+// Determine the proper affinity to apply based on the current users of a PVC
 func AffinityFromVolume(ctx context.Context, c client.Client, logger logr.Logger,
 	pvc *corev1.PersistentVolumeClaim) (*AffinityInfo, error) {
 	if pvc == nil {
@@ -52,19 +53,33 @@ func AffinityFromVolume(ctx context.Context, c client.Client, logger logr.Logger
 		return nil, err
 	}
 
+	// Loop through all the volumes and find:
+	// - A running Pod using the volume
+	// - A pending Pod using the volume (if none are running)
+	// Do this for both non-VolSync owned Pods as well as VolSync-owned
 	var candidatePod *corev1.Pod
-	for _, pod := range podsUsing {
-		//nolint: exhaustive  // We only care about running and pending
-		switch pod.Status.Phase {
-		case corev1.PodRunning: // A running Pod is authoritative
-			candidatePod = pod.DeepCopy()
-		case corev1.PodPending: // Use a pending Pod only if necessary
-			if candidatePod == nil {
-				candidatePod = pod.DeepCopy()
+	var volsyncUsingPod *corev1.Pod
+	for i := range podsUsing {
+		pod := &podsUsing[i] // Not allocated in range stmt to avoid pointer aliasing
+		if IsOwnedByVolsync(pod) {
+			if (pod.Status.Phase == corev1.PodRunning) ||
+				(pod.Status.Phase == corev1.PodPending && volsyncUsingPod == nil) {
+				volsyncUsingPod = pod
 			}
-		default:
-			// nothing
+		} else {
+			if (pod.Status.Phase == corev1.PodRunning) ||
+				(pod.Status.Phase == corev1.PodPending && candidatePod == nil) {
+				candidatePod = pod
+			}
 		}
+	}
+
+	// If there aren't any "real" users of the PVC, fall back to determining
+	// affinity using VolSync owned Pods, too. We have this fallback in case
+	// there are multiple RS that reference this PVC... Those would need to be
+	// co-scheduled.
+	if candidatePod == nil {
+		candidatePod = volsyncUsingPod
 	}
 
 	if candidatePod == nil {
