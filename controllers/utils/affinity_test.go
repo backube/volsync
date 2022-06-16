@@ -31,8 +31,8 @@ import (
 var _ = Describe("Volume affinity", func() {
 	logger := zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
 	var ns *corev1.Namespace
-	var rwxPVC, rwoBoth, rwoPending, rwoNone *corev1.PersistentVolumeClaim
-	var runningPod, pendingPod *corev1.Pod
+	var rwxPVC, rwoBoth, rwoPending, rwoNone, vsOnly *corev1.PersistentVolumeClaim
+	var runningPod, pendingPod, vsPod *corev1.Pod
 
 	makePVC := func(name string, mode corev1.PersistentVolumeAccessMode) *corev1.PersistentVolumeClaim {
 		pvc := &corev1.PersistentVolumeClaim{
@@ -57,7 +57,7 @@ var _ = Describe("Volume affinity", func() {
 		return pvc
 	}
 
-	makePod := func(name string, PVCs []corev1.PersistentVolumeClaim, phase corev1.PodPhase) *corev1.Pod {
+	makePod := func(name string, PVCs []corev1.PersistentVolumeClaim, phase corev1.PodPhase, isVolsync bool) *corev1.Pod {
 		pod := &corev1.Pod{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
@@ -88,6 +88,9 @@ var _ = Describe("Volume affinity", func() {
 				},
 			})
 		}
+		if isVolsync {
+			utils.SetOwnedByVolSync(pod)
+		}
 		Expect(k8sClient.Create(ctx, pod)).To(Succeed())
 		pod.Status.Phase = phase
 		Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
@@ -113,14 +116,22 @@ var _ = Describe("Volume affinity", func() {
 		rwoPending = makePVC("rwo-pending", corev1.ReadWriteOnce)
 		// Not used by any pods
 		rwoNone = makePVC("rwo-none", corev1.ReadWriteOnce)
+		// Only used by a VolSync-owned Pod
+		vsOnly = makePVC("vs-only", corev1.ReadWriteOnce)
 
 		// Make Pods
 		runningPod = makePod("running",
 			[]corev1.PersistentVolumeClaim{*rwxPVC, *rwoBoth},
-			corev1.PodRunning)
+			corev1.PodRunning,
+			false)
 		pendingPod = makePod("pending",
 			[]corev1.PersistentVolumeClaim{*rwoBoth, *rwoPending},
-			corev1.PodPending)
+			corev1.PodPending,
+			false)
+		vsPod = makePod("vs",
+			[]corev1.PersistentVolumeClaim{*rwoBoth, *vsOnly},
+			corev1.PodRunning,
+			true)
 	})
 	AfterEach(func() {
 		Expect(k8sClient.Delete(ctx, ns)).To(Succeed())
@@ -167,6 +178,15 @@ var _ = Describe("Volume affinity", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ai.NodeName).To(Equal(runningPod.Spec.NodeName))
 			Expect(ai.Tolerations).To(Equal(runningPod.Spec.Tolerations))
+		})
+	})
+
+	When("a PVC is being used only by a VolSync-owned pod", func() {
+		It("will have an affinity that matches that pod", func() {
+			ai, err := utils.AffinityFromVolume(ctx, k8sClient, logger, vsOnly)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ai.NodeName).To(Equal(vsPod.Spec.NodeName))
+			Expect(ai.Tolerations).To(Equal(vsPod.Spec.Tolerations))
 		})
 	})
 })
