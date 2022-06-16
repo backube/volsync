@@ -216,8 +216,10 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 			logger.Error(err, "unable to set controller reference")
 			return err
 		}
+		utils.SetOwnedByVolSync(job)
 		utils.MarkForCleanup(m.owner, job)
 		job.Spec.Template.ObjectMeta.Name = job.Name
+		utils.SetOwnedByVolSync(&job.Spec.Template)
 		backoffLimit := int32(2) //TODO: backofflimit was 8 for restic
 		job.Spec.BackoffLimit = &backoffLimit
 
