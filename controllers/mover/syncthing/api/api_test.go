@@ -1,8 +1,6 @@
 package api
 
 import (
-	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 
@@ -19,70 +17,25 @@ var _ = Describe("Syncthing connection", func() {
 
 		When("Syncthing server exists", func() {
 			var (
-				ts                    *httptest.Server
-				serverSyncthingConfig *config.Configuration
-				sStatus               *SystemStatus
-				sConnections          *SystemConnections
-				myID, _               = protocol.DeviceIDFromString(
+				ts          *httptest.Server
+				serverState *Syncthing
+				myID, _     = protocol.DeviceIDFromString(
 					"ZNWFSWE-RWRV2BD-45BLMCV-LTDE2UR-4LJDW6J-R5BPWEB-TXD27XJ-IZF5RA4",
 				)
 				serverAPIKey = "0xDEADBEEF"
 			)
 
 			BeforeEach(func() {
-				// initialize the config variables here
-				serverSyncthingConfig = &config.Configuration{}
-				sStatus = &SystemStatus{}
-				sConnections = &SystemConnections{}
+				serverState = &Syncthing{}
 			})
 
 			JustBeforeEach(func() {
-				// set status to 10
-				serverSyncthingConfig.Version = 10
+				// set a value in each field
+				serverState.Configuration.Version = 10
+				serverState.SystemStatus.MyID = myID.GoString()
+				serverState.SystemConnections.Total = TotalStats{At: "test"}
 
-				// set our ID
-				sStatus.MyID = myID.GoString()
-
-				// set information about our connections
-				sConnections.Total = TotalStats{At: "test"}
-
-				ts = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					// ensure that the client is authorized
-					apiKey := r.Header.Get("X-API-Key")
-					if apiKey != serverAPIKey {
-						http.Error(w, "Unauthorized client", http.StatusUnauthorized)
-						return
-					}
-					switch r.URL.Path {
-					case ConfigEndpoint:
-						if r.Method == "GET" {
-							resBytes, _ := json.Marshal(serverSyncthingConfig)
-							fmt.Fprintln(w, string(resBytes))
-						} else if r.Method == "PUT" {
-							err := json.NewDecoder(r.Body).Decode(&serverSyncthingConfig)
-							if err != nil {
-								http.Error(w, "Error decoding request body", http.StatusBadRequest)
-								return
-							}
-						}
-						return
-					case SystemStatusEndpoint:
-						res := sStatus
-						resBytes, _ := json.Marshal(res)
-						fmt.Fprintln(w, string(resBytes))
-						return
-					case SystemConnectionsEndpoint:
-						res := sConnections
-						resBytes, _ := json.Marshal(res)
-						fmt.Fprintln(w, string(resBytes))
-						return
-					default:
-						// the endpoint doesn't exist
-						http.Error(w, "the resource path doesn't exist", http.StatusNotFound)
-						return
-					}
-				}))
-
+				ts = CreateSyncthingTestServer(serverState, serverAPIKey)
 			})
 
 			JustAfterEach(func() {
@@ -124,7 +77,7 @@ var _ = Describe("Syncthing connection", func() {
 					// write to the server
 					err := syncthingConnection.PublishConfig(syncthing.Configuration)
 					Expect(err).To(BeNil())
-					Expect(serverSyncthingConfig.Version).To(Equal(9))
+					Expect(serverState.Configuration.Version).To(Equal(9))
 				})
 
 			})
@@ -170,7 +123,7 @@ var _ = Describe("Syncthing connection", func() {
 					mockConfig := config.Configuration{Version: 74}
 					err = apiConnection.PublishConfig(mockConfig)
 					Expect(err).NotTo(HaveOccurred())
-					Expect(serverSyncthingConfig.Version).To(Equal(mockConfig.Version))
+					Expect(serverState.Configuration.Version).To(Equal(mockConfig.Version))
 
 					syncthingResponse, err := apiConnection.Fetch()
 					Expect(err).NotTo(HaveOccurred())
@@ -210,7 +163,7 @@ var _ = Describe("Syncthing connection", func() {
 						mockConfig := config.Configuration{Version: 74}
 						err = apiConnection.PublishConfig(mockConfig)
 						Expect(err).To(HaveOccurred())
-						Expect(serverSyncthingConfig.Version).NotTo(Equal(mockConfig.Version))
+						Expect(serverState.Configuration.Version).NotTo(Equal(mockConfig.Version))
 
 						syncthingResponse, err := apiConnection.Fetch()
 						Expect(err).To(HaveOccurred())

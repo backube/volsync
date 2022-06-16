@@ -20,9 +20,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/http/httptest"
 	"strconv"
 
@@ -640,6 +638,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 				var ts *httptest.Server
 				var syncthingState *api.Syncthing
 				var apiKeys *corev1.Secret
+				var apiKey = "my-secret-apikey-do-not-steal"
 
 				BeforeEach(func() {
 					// initialize the config variables here
@@ -650,43 +649,14 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					// set status to 10
 					syncthingState.Configuration.Version = 10
 					syncthingState.SystemStatus.MyID = myID.GoString()
-
-					// set information about our connections
 					syncthingState.SystemConnections.Total = api.TotalStats{At: "test"}
 
-					ts = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-						switch r.URL.Path {
-						case api.ConfigEndpoint:
-							if r.Method == "GET" {
-								resBytes, _ := json.Marshal(syncthingState.Configuration)
-								fmt.Fprintln(w, string(resBytes))
-							} else if r.Method == "PUT" {
-								err := json.NewDecoder(r.Body).Decode(&syncthingState.Configuration)
-								if err != nil {
-									http.Error(w, "Error decoding request body", http.StatusBadRequest)
-									return
-								}
-							}
-							return
-						case api.SystemStatusEndpoint:
-							res := syncthingState.SystemStatus
-							resBytes, _ := json.Marshal(res)
-							fmt.Fprintln(w, string(resBytes))
-							return
-						case api.SystemConnectionsEndpoint:
-							res := syncthingState.SystemConnections
-							resBytes, _ := json.Marshal(res)
-							fmt.Fprintln(w, string(resBytes))
-							return
-						default:
-							return
-						}
-					}))
+					ts = api.CreateSyncthingTestServer(syncthingState, apiKey)
 
 					// configure connection
 					mover.apiConfig.APIURL = ts.URL
 					mover.apiConfig.Client = ts.Client()
-					mover.apiConfig.APIKey = "test"
+					mover.apiConfig.APIKey = apiKey
 					mover.syncthingConnection = api.NewConnection(mover.apiConfig, logger)
 
 					// create apikeys secret here so we can use it in the tests
@@ -910,6 +880,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 			var sa *corev1.ServiceAccount
 			var deployment *appsv1.Deployment
 			var apiService *corev1.Service
+			var apiKey string = "test"
 
 			// nolint:dupl
 			JustBeforeEach(func() {
@@ -941,7 +912,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 						Namespace: ns.Name,
 					},
 					Data: map[string][]byte{
-						apiKeyDataKey:    []byte("my-secret-apikey-do-not-steal"),
+						apiKeyDataKey:    []byte(apiKey),
 						usernameDataKey:  []byte("gcostanza"),
 						passwordDataKey:  []byte("bosco"),
 						httpsKeyDataKey:  []byte(`-----BEGIN RSA PRIVATE KEY-----123-----END RSA PRIVATE KEY-----`),
@@ -977,62 +948,28 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 
 			When("the API exists", func() {
 				var ts *httptest.Server
-				var serverSyncthingConfig config.Configuration
+				var serverState *api.Syncthing
 				var myID string = "test"
 				var dataService *corev1.Service
+
+				BeforeEach(func() {
+					serverState = &api.Syncthing{}
+				})
 
 				// create the API server
 				JustBeforeEach(func() {
 					// configure the Syncthing server config
-					serverSyncthingConfig = config.Configuration{
-						Version: 10,
-					}
-
-					// configure the Syncthing server status
-					sStatus := api.SystemStatus{
-						MyID: myID,
-					}
-
-					// configure the Syncthing server connections
-					sConnections := api.SystemConnections{
-						Total: api.TotalStats{At: "test"},
-					}
+					serverState.Configuration.Version = 10
+					serverState.SystemStatus.MyID = myID
+					serverState.SystemConnections.Total = api.TotalStats{At: "test"}
 
 					// configure the test TLS server
-					ts = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-						switch r.URL.Path {
-						case api.ConfigEndpoint:
-							if r.Method == "GET" {
-								resBytes, _ := json.Marshal(serverSyncthingConfig)
-								fmt.Fprintln(w, string(resBytes))
-							} else if r.Method == "PUT" {
-								err := json.NewDecoder(r.Body).Decode(&serverSyncthingConfig)
-								if err != nil {
-									http.Error(w, "Error decoding request body", http.StatusBadRequest)
-									return
-								}
-							}
-							return
-						case api.SystemStatusEndpoint:
-							res := sStatus
-							resBytes, _ := json.Marshal(res)
-							fmt.Fprintln(w, string(resBytes))
-							return
-						case api.SystemConnectionsEndpoint:
-							res := sConnections
-							resBytes, _ := json.Marshal(res)
-							fmt.Fprintln(w, string(resBytes))
-							return
-						default:
-							return
-						}
-					}))
+					ts = api.CreateSyncthingTestServer(serverState, apiKey)
 
 					// configure the API
 					apiConfig := api.APIConfig{}
 					apiConfig.APIURL = ts.URL
 					apiConfig.Client = ts.Client()
-					apiConfig.APIKey = "test"
 					mover.apiConfig = apiConfig
 
 					// create the data service
@@ -1066,10 +1003,11 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 				})
 
 				It("successfully completes a Synchronize", func() {
+					fmt.Printf("API key before hitting synchronize: %s\n", mover.apiConfig.APIKey)
 					result, err := mover.Synchronize(ctx)
 
 					// expect no error to have occurred
-					Expect(err).NotTo(HaveOccurred())
+					Expect(err).NotTo(HaveOccurred(), "apikey used by the API server: %s, vs. apikey used by mover: %s", serverState.Configuration.GUI.APIKey, mover.apiConfig.APIKey)
 					// synchronization is eternal
 					Expect(result.Completed).To(BeFalse())
 				})

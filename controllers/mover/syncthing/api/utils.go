@@ -16,7 +16,14 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 package api
 
-import "github.com/syncthing/syncthing/lib/config"
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+
+	"github.com/syncthing/syncthing/lib/config"
+)
 
 // GetDeviceFromID Returns a pointer to the device with the given ID,
 // along with a boolean indicating whether the device was found.
@@ -54,4 +61,49 @@ func (s *Syncthing) ShareFoldersWithDevices(devices []config.DeviceConfiguration
 		newFolders = append(newFolders, newFolder)
 	}
 	s.Configuration.Folders = newFolders
+}
+
+// CreateSyncthingTestServer Returns a test server that mimics the Syncthing API by exposing
+// the endpoints for config, system status, and system connections.
+// The server also accepts an API Key, which is used for authenticating between the client and server.
+//
+// The accepted arguments are pointers so that the state can be changed externally and the server
+// will be updated accordingly.
+func CreateSyncthingTestServer(state *Syncthing, serverAPIKey string) *httptest.Server {
+	return httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// ensure that the client is authorized
+		apiKey := r.Header.Get("X-API-Key")
+		if apiKey != serverAPIKey {
+			http.Error(w, "Unauthorized client", http.StatusUnauthorized)
+			return
+		}
+		switch r.URL.Path {
+		case ConfigEndpoint:
+			if r.Method == "GET" {
+				resBytes, _ := json.Marshal(state.Configuration)
+				fmt.Fprintln(w, string(resBytes))
+			} else if r.Method == "PUT" {
+				err := json.NewDecoder(r.Body).Decode(&state.Configuration)
+				if err != nil {
+					http.Error(w, "Error decoding request body", http.StatusBadRequest)
+					return
+				}
+			}
+			return
+		case SystemStatusEndpoint:
+			res := state.SystemStatus
+			resBytes, _ := json.Marshal(res)
+			fmt.Fprintln(w, string(resBytes))
+			return
+		case SystemConnectionsEndpoint:
+			res := state.SystemConnections
+			resBytes, _ := json.Marshal(res)
+			fmt.Fprintln(w, string(resBytes))
+			return
+		default:
+			// the endpoint doesn't exist
+			http.Error(w, "the resource path doesn't exist", http.StatusNotFound)
+			return
+		}
+	}))
 }
