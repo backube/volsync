@@ -32,6 +32,8 @@ import (
 	"github.com/backube/volsync/controllers/mover"
 )
 
+const jan1st = "0 0 1 1 *"
+
 var ctx = context.Background()
 var logger = zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
 
@@ -154,7 +156,7 @@ var _ = When("in cleanup", func() {
 	When("the trigger is scheduled", func() {
 		BeforeEach(func() {
 			m.TT = scheduleTrigger
-			m.CS = "0 0 1 1 *"
+			m.CS = jan1st
 		})
 		It("waits for schedule if scheduled", func() {
 			m.CleanupResult = mover.Complete()
@@ -231,5 +233,50 @@ var _ = When("the trigger is schedule-based", func() {
 		Expect(c).NotTo(BeNil())
 		Expect(c.Status).To(Equal(metav1.ConditionFalse))
 		Expect(c.Reason).To(Equal(volsyncv1alpha1.SynchronizingReasonError))
+	})
+})
+
+var _ = Context("Issue 271: nextSyncTime not being updated", func() {
+	It("should update nextSyncTime if the schedule is changed", func() {
+		m := newFakeMachine()
+		m.TT = scheduleTrigger
+		m.CS = jan1st
+
+		// To Sync
+		_, _ = Run(ctx, m, logger)
+		// To Cleanup
+		_, _ = Run(ctx, m, logger)
+
+		// Save the nextSyncTime so we can see if it changes
+		initialNST := m.NextSyncTime()
+		Expect(initialNST.IsZero()).To(BeFalse())
+
+		// Change the schedule
+		m.CS = "* * * * *"
+		_, _ = Run(ctx, m, logger)
+
+		// Make sure nextSyncTime was updated
+		currentNST := m.NextSyncTime()
+		Expect(currentNST.IsZero()).To(BeFalse())
+		Expect(currentNST.Time).NotTo(Equal(initialNST.Time))
+	})
+	It("should set nextSyncTime if a manual trigger is replaced by a scheduled trigger", func() {
+		m := newFakeMachine()
+		m.TT = manualTrigger
+		m.MT = "i'm manual"
+
+		// To Sync
+		_, _ = Run(ctx, m, logger)
+		// To Cleanup
+		_, _ = Run(ctx, m, logger)
+
+		Expect(m.NextSyncTime().IsZero()).To(BeTrue())
+
+		m.TT = scheduleTrigger
+		m.MT = ""
+		m.CS = jan1st
+		_, _ = Run(ctx, m, logger)
+
+		Expect(m.NextSyncTime().IsZero()).To(BeFalse())
 	})
 })
