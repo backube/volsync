@@ -24,7 +24,7 @@ import (
 	"testing"
 	"time"
 
-	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1"
+	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	gomegatypes "github.com/onsi/gomega/types"
