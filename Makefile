@@ -101,31 +101,31 @@ help: ## Display this help.
 ##@ Development
 
 .PHONY: manifests
-manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
+manifests: $(CONTROLLER_GEN) ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 	cp config/crd/bases/* helm/volsync/crds
 
 .PHONY: generate
-generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
+generate: $(CONTROLLER_GEN) ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
 .PHONY: lint
-lint: golangci-lint ## Lint source code
+lint: $(GOLANGCILINT) ## Lint source code
 	$(GOLANGCILINT) run ./...
 
 .PHONY: helm-lint
-helm-lint: helm ## Lint Helm chart
+helm-lint: $(HELM) ## Lint Helm chart
 	cd helm && $(HELM) lint volsync
 
 .PHONY: test
 TEST_ARGS ?= -progress -randomizeAllSpecs -randomizeSuites -slowSpecThreshold 30 -p -cover -coverprofile cover.out -outputdir .
 TEST_PACKAGES ?= ./...
-test: manifests generate lint envtest helm-lint ginkgo ## Run tests.
+test: manifests generate lint $(ENVTEST) helm-lint $(GINKGO) ## Run tests.
 	-rm -f cover.out
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" $(GINKGO) $(TEST_ARGS) $(TEST_PACKAGES)
 
 .PHONY: test-e2e
-test-e2e: kuttl ## Run e2e tests. Requires cluster w/ VolSync already installed
+test-e2e: $(KUTTL) ## Run e2e tests. Requires cluster w/ VolSync already installed
 	cd test-kuttl && $(KUTTL) test
 	rm -f test-kuttl/kubeconfig
 
@@ -160,7 +160,7 @@ docker-push: ## Push docker image with the manager.
 	docker push ${IMG}
 
 .PHONY: krew-plugin-manifest
-krew-plugin-manifest: yq bin/kubectl-volsync ## Build & package the kubectl plugin & update the krew manifest
+krew-plugin-manifest: $(YQ) bin/kubectl-volsync ## Build & package the kubectl plugin & update the krew manifest
 	rm -f bin/kubectl-volsync.tar.gz
 	tar czf bin/kubectl-volsync.tar.gz LICENSE -C bin kubectl-volsync
 	HASH="`sha256sum bin/kubectl-volsync.tar.gz | cut -f 1 -d ' '`" \
@@ -174,29 +174,29 @@ ifndef ignore-not-found
 endif
 
 .PHONY: install
-install: manifests kustomize ## Install CRDs into the K8s cluster specified in ~/.kube/config.
+install: manifests $(KUSTOMIZE) ## Install CRDs into the K8s cluster specified in ~/.kube/config.
 	$(KUSTOMIZE) build config/crd | kubectl apply -f -
 
 .PHONY: uninstall
-uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+uninstall: manifests $(KUSTOMIZE) ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/crd | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
 
 .PHONY: deploy
-deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
+deploy: manifests $(KUSTOMIZE) ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default | kubectl apply -f -
 
 .PHONY: deploy-openshift
-deploy-openshift: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
+deploy-openshift: manifests $(KUSTOMIZE) ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/openshift | kubectl apply -f -
 
 .PHONY: undeploy
-undeploy: manifests kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+undeploy: manifests $(KUSTOMIZE) ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/default | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
 
 .PHONY: undeploy-openshift
-undeploy-openshift: manifests kustomize ## Undeploy controller to the K8s cluster specified in ~/.kube/config.
+undeploy-openshift: manifests $(KUSTOMIZE) ## Undeploy controller to the K8s cluster specified in ~/.kube/config.
 	$(KUSTOMIZE) build config/openshift | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
 
 ##@ Build Dependencies
@@ -206,32 +206,24 @@ LOCALBIN ?= $(shell pwd)/bin
 $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
 
-.PHONY: controller-gen
 CONTROLLER_GEN := $(LOCALBIN)/controller-gen
-controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary.
 $(CONTROLLER_GEN): $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
 
-.PHONY: kustomize
 KUSTOMIZE := $(LOCALBIN)/kustomize
-kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
 $(KUSTOMIZE): $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install sigs.k8s.io/kustomize/kustomize/v4@$(KUSTOMIZE_VERSION)
 
-.PHONY: envtest
 ENVTEST := $(LOCALBIN)/setup-envtest
-envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
 $(ENVTEST): $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
 
-.PHONY: yq
 YQ := $(LOCALBIN)/yq
-yq: $(YQ) ## Download yq locally if necessary.
 $(YQ): $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install github.com/mikefarah/yq/v4@latest
 
 .PHONY: bundle
-bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
+bundle: manifests $(KUSTOMIZE) $(OPERATOR_SDK) ## Generate bundle manifests and metadata, then validate generated files.
 	$(OPERATOR_SDK) generate kustomize manifests -q
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
 	$(KUSTOMIZE) build config/manifests | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS)
@@ -246,9 +238,7 @@ bundle-build: ## Build the bundle image.
 bundle-push: ## Push the bundle image.
 	$(MAKE) docker-push IMG=$(BUNDLE_IMG)
 
-.PHONY: opm
 OPM := $(LOCALBIN)/opm
-opm: $(OPM) ## Download opm locally if necessary.
 $(OPM): $(LOCALBIN)
 	@{ \
 	set -e ;\
@@ -274,7 +264,7 @@ endif
 # This recipe invokes 'opm' in 'semver' bundle add mode. For more information on add modes, see:
 # https://github.com/operator-framework/community-operators/blob/7f1438c/docs/packaging-operator.md#updating-your-existing-operator
 .PHONY: catalog-build
-catalog-build: opm ## Build a catalog image.
+catalog-build: $(OPM) ## Build a catalog image.
 	$(OPM) index add --container-tool docker --mode semver --tag $(CATALOG_IMG) --bundles $(BUNDLE_IMGS) $(FROM_INDEX_OPT)
 
 # Push the catalog image.
@@ -282,8 +272,6 @@ catalog-build: opm ## Build a catalog image.
 catalog-push: ## Push a catalog image.
 	$(MAKE) docker-push IMG=$(CATALOG_IMG)
 
-
-##@ Download utilities
 
 OS := $(shell go env GOOS)
 ARCH := $(shell go env GOARCH)
@@ -298,36 +286,26 @@ chmod a+x "$(1)" ;\
 }
 endef
 
-.PHONY: ginkgo
 GINKGO := $(LOCALBIN)/ginkgo
-ginkgo: $(GINKGO) ## Download ginkgo
 $(GINKGO): $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install github.com/onsi/ginkgo/ginkgo@latest
 
-.PHONY: golangci-lint
 GOLANGCILINT := $(LOCALBIN)/golangci-lint
 GOLANGCI_URL := https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh
-golangci-lint: $(GOLANGCILINT) ## Download golangci-lint
 $(GOLANGCILINT): $(LOCALBIN)
 	curl -sSfL $(GOLANGCI_URL) | sh -s -- -b $(LOCALBIN) $(GOLANGCI_VERSION)
 
-.PHONY: helm
 HELM := $(LOCALBIN)/helm
 HELM_URL := https://get.helm.sh/helm-$(HELM_VERSION)-$(OS)-$(ARCH).tar.gz
-helm: $(HELM) ## Download helm
 $(HELM): $(LOCALBIN)
 	curl -sSL "$(HELM_URL)" | tar xzf - -C $(LOCALBIN) --strip-components=1 --wildcards '*/helm'
 
-.PHONY: kuttl
 KUTTL := $(LOCALBIN)/kuttl
 KUTTL_URL := https://github.com/kudobuilder/kuttl/releases/download/v$(KUTTL_VERSION)/kubectl-kuttl_$(KUTTL_VERSION)_$(OS)_x86_64
-kuttl: $(KUTTL) ## Download kuttl
 $(KUTTL): $(LOCALBIN)
 	$(call download-tool,$(KUTTL),$(KUTTL_URL))
 
-.PHONY: operator-sdk
 OPERATOR_SDK := $(LOCALBIN)/operator-sdk
 OPERATOR_SDK_URL := https://github.com/operator-framework/operator-sdk/releases/download/$(OPERATOR_SDK_VERSION)/operator-sdk_$(OS)_$(ARCH)
-operator-sdk: $(OPERATOR_SDK) ## Download operator-sdk
 $(OPERATOR_SDK): $(LOCALBIN)
 	$(call download-tool,$(OPERATOR_SDK),$(OPERATOR_SDK_URL))
