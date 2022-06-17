@@ -119,6 +119,12 @@ func doCleanupState(ctx context.Context, r ReplicationMachine, l logr.Logger) (c
 	if err != nil {
 		return ctrl.Result{}, err
 	}
+
+	// Ensure nextSyncTime picks up any changes made to the schedule
+	if err := updateNextSyncStartTime(r, l); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	// If we have finished cleaning up, we remain in this state until the
 	// next reconcile is triggered, but we tell the user that we are "idle".
 	if result.Completed {
@@ -194,17 +200,8 @@ func transitionToCleaningUp(r ReplicationMachine, l logr.Logger) error {
 	r.ObserveSyncDuration(syncDuration)
 
 	// Determine when our next synchronization should start
-	switch getTrigger(r) {
-	case scheduleTrigger:
-		schedule, err := getSchedule(r.Cronspec())
-		if err != nil {
-			l.Error(err, "error parsing schedule", "cronspec", r.Cronspec())
-			return err
-		}
-		next := schedule.Next(now.Time)
-		r.SetNextSyncTime(&metav1.Time{Time: next})
-	case manualTrigger, noTrigger:
-		r.SetNextSyncTime(nil)
+	if err := updateNextSyncStartTime(r, l); err != nil {
+		return err
 	}
 
 	// Update manual trigger tag in .status to match the one in .spec
@@ -274,4 +271,23 @@ func missedDeadline(r ReplicationMachine) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+func updateNextSyncStartTime(r ReplicationMachine, l logr.Logger) error {
+	lastSync := r.LastSyncTime()
+
+	switch getTrigger(r) {
+	case scheduleTrigger:
+		schedule, err := getSchedule(r.Cronspec())
+		if err != nil {
+			l.Error(err, "error parsing schedule", "cronspec", r.Cronspec())
+			return err
+		}
+		next := schedule.Next(lastSync.Time)
+		r.SetNextSyncTime(&metav1.Time{Time: next})
+	case manualTrigger, noTrigger:
+		r.SetNextSyncTime(nil)
+	}
+
+	return nil
 }
