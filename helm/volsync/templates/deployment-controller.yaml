@@ -31,6 +31,12 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: kube-rbac-proxy
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - "ALL"
+          image: gcr.io/kubebuilder/kube-rbac-proxy:v0.11.0
           args:
             - --secure-listen-address=0.0.0.0:8443
             - --upstream=http://127.0.0.1:8080/
@@ -39,9 +45,9 @@ spec:
             {{- if .Values.metrics.disableAuth }}
             - --ignore-paths=/metrics
             {{- end }}
-          image: gcr.io/kubebuilder/kube-rbac-proxy:v0.11.0
           ports:
             - containerPort: 8443
+              protocol: TCP
               name: https
           resources:
             limits:
@@ -63,6 +69,11 @@ spec:
             - /manager
           image: "{{ include "container-image" (list . .Values.image) }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - "ALL"
           livenessProbe:
             httpGet:
               path: /healthz

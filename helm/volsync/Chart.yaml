@@ -26,7 +26,7 @@ annotations:  # https://artifacthub.io/docs/topics/annotations/helm/
     - kind: added
       description: Publish Kubernetes Events to help troubleshooting
     - kind: changed
-      description: Operator-SDK upgraded to 1.21.0
+      description: Operator-SDK upgraded to 1.22.0
     - kind: changed
       description: Rclone upgraded to 1.58.1
     - kind: changed
