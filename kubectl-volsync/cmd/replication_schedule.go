@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 
-	cron "github.com/robfig/cron/v3"
 	"github.com/spf13/cobra"
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
@@ -67,13 +66,14 @@ func newReplicationSchedule(cmd *cobra.Command) (*replicationSchedule, error) {
 	if err != nil {
 		return nil, err
 	}
-	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
-	if _, err = parser.Parse(cs); err != nil {
-		return nil, err
+
+	cronspec, err := parseCronSpec(cs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse the cronspec, err = %w", err)
 	}
 
 	return &replicationSchedule{
-		schedule: cs,
+		schedule: *cronspec,
 	}, nil
 }
 

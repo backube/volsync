@@ -38,9 +38,14 @@ var pvBackupSyncCmd = &cobra.Command{
 	Use:   "sync",
 	Short: i18n.T("Run single manual backup"),
 	Long: templates.LongDesc(i18n.T(`
-	This command triggers the single backup instance and waits till backup to complete
+	This command triggers the single backup instance and waits till backup to complete.
 
 	ex: kubectl volsync pv-backup sync --relationship pvb1
+
+	NOTE: If user issues sync command, the backup schedule will be cleared. If user wants
+	to continue the schedule, one should issue schedule command and set the schedule for
+	backup
+
 	`)),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ps, err := newPVBackupSync(cmd)

@@ -19,7 +19,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 	"strconv"
 	"time"
 
@@ -59,7 +58,7 @@ type pvBackupRestore struct {
 	RSName string
 	// Restore
 	restoreAsOf string
-	//
+	// specifies an offset for how many snapshots ago we want to restore from
 	prev int
 	// restic configuration details
 	resticConfig
@@ -80,10 +79,14 @@ var pvBackupRestoreCmd = &cobra.Command{
 	Long: templates.LongDesc(i18n.T(`This command creates the necessary configuration
 	inside the Cluster/Namespace, builds the destination CR, restores the PC to
 	latest/an upper-limit on the snapshots and saves the details into to relationship file.
+	If --restoreAsOf flag is not provided, the data will be restored to latest snapshot.
 
-	ex: # kubectl volsync pv-backup restore --relationship pvb1 --pvcname src/pv1
-	--name my-restore --restoreAsOf 2022-08-10T20:01:03-04:00
-	`)),
+	ex: # kubectl volsync pv-backup restore --pvcname dest/pvc1 --relationship pvr1
+	--repository my-backup --restic-config restic-conf.toml --capacity 1Gi
+	--restoreAsOf 2022-06-23T18:34:43+05:30
+
+	NOTE: Example for restic-conf.toml can be found at
+	"https://github.com/backube/volsync/tree/main/examples/restic/pv-backup/restic-conf.toml"`)),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pc, err := newPVBackupRestore(cmd)
 		if err != nil {
@@ -236,7 +239,13 @@ func (pvr *pvBackupRestore) Run(ctx context.Context) error {
 	}
 	pvr.client = k8sClient
 
-	// Get the pvc from cluster
+	// Ensure/create the Namespace to which user wants to restore the data
+	_, err = pvr.ensureNamespace(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Get the pvc from the cluster/namespace
 	pvr.destPVC, err = pvr.getDestinationPVC(ctx)
 	if err != nil {
 		return err
@@ -247,14 +256,6 @@ func (pvr *pvBackupRestore) Run(ctx context.Context) error {
 		return err
 	}
 
-	// Build struct pvBackupRelationshipSource from struct pvBackupRestore
-	pvr.pr.data.Source = pvr.newPVBackupRelationshipSource()
-
-	// Creates the Namespace if it doesn't exist
-	_, err = pvr.ensureNamespace(ctx)
-	if err != nil {
-		return err
-	}
 	// Creates the PVC if it doesn't exist
 	_, err = pvr.ensureDestPVC(ctx)
 	if err != nil {
@@ -267,9 +268,16 @@ func (pvr *pvBackupRestore) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to create secret, %w", err)
 	}
 
-	rs, err := pvr.pr.data.getReplicationSource(ctx, k8sClient)
+	// Build struct pvBackupRelationshipSource from struct pvBackupRestore
+	pvr.pr.data.Source = pvr.newPVBackupRelationshipSource()
+
+	rs, err := pvr.pr.data.Source.getReplicationSource(ctx, k8sClient)
 	if err != nil {
-		return err
+		if client.IgnoreNotFound(err) == nil {
+			klog.Infof("backup source %s not found", pvr.pr.data.Source.RSName)
+		} else {
+			return err
+		}
 	}
 
 	// Pause the RS if exists
@@ -293,14 +301,6 @@ func (pvr *pvBackupRestore) Run(ctx context.Context) error {
 		return err
 	}
 
-	/*
-		// Wait for restore to complete
-		err = pvr.waitForRestore(ctx)
-		if err != nil {
-			return err
-		}
-	*/
-
 	// Restore the RS to previous state
 	if rs != nil {
 		err = pvr.toggleReplicationSourceState(ctx, false)
@@ -309,12 +309,11 @@ func (pvr *pvBackupRestore) Run(ctx context.Context) error {
 		}
 	}
 
-	// Save the replication source details into relationship file
+	// Save the replication destination details into relationship file
+	pvr.pr.data.Source = nil
 	if err = pvr.pr.Save(); err != nil {
 		return fmt.Errorf("unable to save relationship configuration: %w", err)
 	}
-	// Remove the configuration file saved
-	os.Remove(pvr.resticConfig.filename)
 
 	return nil
 }
@@ -325,17 +324,18 @@ func (pvr *pvBackupRestore) newPVBackupRelationshipDestination() (*pvBackupRelat
 			return nil, fmt.Errorf("capacity arg must be provided")
 		}
 	}
+	if len(pvr.restoreAsOf) == 0 {
+		pvr.restoreAsOf = time.Now().Format(time.RFC3339)
+	}
 	// Assign the values from pvBackupRestore built after parsing cmd args
 	return &pvBackupRelationshipDestination{
 		Namespace: pvr.Namespace,
-		//zCluster:   pvr.Cluster,
-		//PVCName:   pvr.DestPVC,
-		RDName: pvr.RDName,
+		RDName:    pvr.RDName,
 		Trigger: volsyncv1alpha1.ReplicationDestinationTriggerSpec{
-			Manual: time.Now().Format(time.RFC3339),
+			Manual: pvr.restoreAsOf,
 		},
 		Destination: volsyncv1alpha1.ReplicationDestinationResticSpec{
-			Repository: pvr.backupInfo,
+			Repository: pvr.backupInfo + "-dest",
 			ReplicationDestinationVolumeOptions: volsyncv1alpha1.ReplicationDestinationVolumeOptions{
 				CopyMethod:     volsyncv1alpha1.CopyMethodDirect,
 				DestinationPVC: &pvr.destPVCName,
@@ -354,38 +354,30 @@ func (pvr *pvBackupRestore) newPVBackupRelationshipSource() *pvBackupRelationshi
 }
 
 func (pvr *pvBackupRestore) ensureSecret(ctx context.Context) error {
-	ns := types.NamespacedName{
-		Name:      pvr.backupInfo,
-		Namespace: pvr.Namespace,
+	secretName := pvr.backupInfo + "-dest"
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      secretName,
+			Namespace: pvr.Namespace,
+		},
+		StringData: pvr.stringData,
 	}
-	secret := &corev1.Secret{}
-
-	err := pvr.client.Get(ctx, ns, secret)
-	if err != nil {
-		if client.IgnoreNotFound(err) == nil {
-			klog.Infof("secret: \"%s\" not found, creating the same", pvr.backupInfo)
-			secret = &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      pvr.backupInfo,
-					Namespace: pvr.Namespace,
-				},
-				StringData: pvr.stringData,
-			}
-			if err := pvr.client.Create(ctx, secret); err != nil {
-				return err
-			}
+	if err := pvr.client.Create(ctx, secret); err != nil {
+		if kerrs.IsAlreadyExists(err) {
+			klog.Infof("Secret: \"%s\" is found, proceeding with the same", secretName)
 			return nil
 		}
-		return err
+		return fmt.Errorf("failed to create secret %w", err)
 	}
 
-	klog.Infof("secret: \"%s\" found, using the same", pvr.backupInfo)
+	klog.Infof("secret: \"%s\" found, using the same", secretName)
 	return nil
 }
 
 func (pvr *pvBackupRestore) ensureReplicationDestination(ctx context.Context) (
 	*volsyncv1alpha1.ReplicationDestination, error) {
 	prd := pvr.pr.data.Destination
+	klog.Infof("Trigger restoreAsof %s", prd.Trigger.Manual)
 	rd := &volsyncv1alpha1.ReplicationDestination{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      prd.RDName,
@@ -414,7 +406,7 @@ func (prd *pvBackupRelationshipDestination) waitForRDStatus(ctx context.Context,
 	)
 	klog.Infof("waiting for destination CR to be available")
 	err = wait.PollImmediate(5*time.Second, defaultRsyncKeyTimeout, func() (bool, error) {
-		rd, err = prd.getDestination(ctx, client)
+		rd, err = prd.getReplicationDestination(ctx, client)
 		if err != nil {
 			return false, err
 		}
@@ -431,35 +423,6 @@ func (prd *pvBackupRelationshipDestination) waitForRDStatus(ctx context.Context,
 
 	return rd, nil
 }
-
-func (prd *pvBackupRelationshipDestination) getDestination(ctx context.Context, client client.Client) (
-	*volsyncv1alpha1.ReplicationDestination, error) {
-	nsName := types.NamespacedName{
-		Namespace: prd.Namespace,
-		Name:      prd.RDName,
-	}
-	rd := &volsyncv1alpha1.ReplicationDestination{}
-	err := client.Get(ctx, nsName, rd)
-	if err != nil {
-		return nil, err
-	}
-
-	return rd, nil
-}
-
-/*
-func (pvr *pvBackupRestore) waitForRestore(ctx context.Context) error {
-	klog.Infof("waiting for restore to complete")
-
-	rs := volsyncv1alpha1.ReplicationDestination{}
-	rdName := types.NamespacedName{
-		Name:      ps.pr.data.Source.RSName,
-		Namespace: ps.pr.data.Source.Namespace,
-	}
-
-	return nil
-}
-*/
 
 func (pvr *pvBackupRestore) toggleReplicationSourceState(ctx context.Context, state bool) error {
 	klog.Infof("Setting ReplicationSource Paused state to %v", state)

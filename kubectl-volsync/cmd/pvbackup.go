@@ -172,21 +172,33 @@ func (pr *pvBackupRelationship) Apply(ctx context.Context, srcClient client.Clie
 	return err
 }
 
-func (prd *pvBackupRelationshipData) getReplicationSource(ctx context.Context, cl client.Client) (
+func (prs *pvBackupRelationshipSource) getReplicationSource(ctx context.Context, cl client.Client) (
 	*volsyncv1alpha1.ReplicationSource, error) {
 	nsName := types.NamespacedName{
-		Namespace: prd.Source.Namespace,
-		Name:      prd.Source.RSName,
+		Namespace: prs.Namespace,
+		Name:      prs.RSName,
 	}
 	rs := &volsyncv1alpha1.ReplicationSource{}
 	err := cl.Get(ctx, nsName, rs)
 	if err != nil {
-		if client.IgnoreNotFound(err) == nil {
-			klog.Info("No need to change ReplicationSource state, backup source not found,")
-			return nil, nil
-		}
 		return nil, err
 	}
 
 	return rs, nil
+}
+
+func (prd *pvBackupRelationshipDestination) getReplicationDestination(ctx context.Context,
+	client client.Client) (
+	*volsyncv1alpha1.ReplicationDestination, error) {
+	nsName := types.NamespacedName{
+		Namespace: prd.Namespace,
+		Name:      prd.RDName,
+	}
+	rd := &volsyncv1alpha1.ReplicationDestination{}
+	err := client.Get(ctx, nsName, rd)
+	if err != nil {
+		return nil, err
+	}
+
+	return rd, nil
 }

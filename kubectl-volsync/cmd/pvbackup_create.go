@@ -18,22 +18,22 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"time"
 
-	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
-	cron "github.com/robfig/cron/v3"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	corev1 "k8s.io/api/core/v1"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
 
 type pvBackupCreate struct {
@@ -171,33 +171,6 @@ func (pc *pvBackupCreate) parseCLI(cmd *cobra.Command) error {
 	return nil
 }
 
-func parseResticConfig(filename string) (*resticConfig, error) {
-	if _, err := os.Stat(filename); errors.Is(err, os.ErrNotExist) {
-		klog.Infof("config filename %s not found", filename)
-		return nil, err
-	}
-	v := viper.New()
-	v.SetConfigFile(filename)
-
-	if err := v.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("unable to read in config file, %w", err)
-	}
-
-	return &resticConfig{
-		Viper:    *v,
-		filename: filename,
-	}, nil
-}
-
-func parseCronSpec(cs string) (*string, error) {
-	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
-	if _, err := parser.Parse(cs); err != nil {
-		return nil, err
-	}
-
-	return &cs, nil
-}
-
 func (pc *pvBackupCreate) Run(ctx context.Context) error {
 	k8sClient, err := newClient(pc.Cluster)
 	if err != nil {
@@ -214,7 +187,7 @@ func (pc *pvBackupCreate) Run(ctx context.Context) error {
 	// Add restic configurations into cluster
 	err = pc.ensureSecret(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to create secrete, %w", err)
+		return err
 	}
 
 	// Creates the ReplicationSource if it doesn't exist
@@ -234,8 +207,6 @@ func (pc *pvBackupCreate) Run(ctx context.Context) error {
 		return fmt.Errorf("unable to save relationship configuration: %w", err)
 	}
 
-	// Remove the configuration file saved
-	os.Remove(pc.resticConfig.filename)
 	return nil
 }
 
@@ -250,7 +221,7 @@ func (pc *pvBackupCreate) newPVBackupRelationshipSource() *pvBackupRelationshipS
 			Schedule: &pc.schedule,
 		},
 		Source: volsyncv1alpha1.ReplicationSourceResticSpec{
-			Repository: pc.Name,
+			Repository: pc.Name + "-source",
 			ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
 				CopyMethod: volsyncv1alpha1.CopyMethodClone,
 			},
@@ -280,13 +251,13 @@ func parseSecretData(v viper.Viper, keys []string) (map[string]string, error) {
 func (pc *pvBackupCreate) ensureSecret(ctx context.Context) error {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      pc.Name,
+			Name:      pc.Name + "-source",
 			Namespace: pc.Namespace,
 		},
 		StringData: pc.stringData,
 	}
 	if err := pc.client.Create(ctx, secret); err != nil {
-		return err
+		return fmt.Errorf("failed to create secret, %w", err)
 	}
 
 	return nil
@@ -325,20 +296,30 @@ func (prd *pvBackupRelationshipData) waitForRSStatus(ctx context.Context, client
 	)
 	klog.Infof("waiting for source CR to be available")
 	err = wait.PollImmediate(5*time.Second, defaultRsyncKeyTimeout, func() (bool, error) {
-		rs, err = prd.getReplicationSource(ctx, client)
+		rs, err = prd.Source.getReplicationSource(ctx, client)
 		if err != nil {
 			return false, err
 		}
-		// TODO: What should be the condition to break the wait ?
-		if rs.Status == nil {
+
+		if rs.Status == nil || rs.Status.Conditions == nil {
 			return false, nil
+		}
+
+		cond := apimeta.FindStatusCondition(rs.Status.Conditions, volsyncv1alpha1.ConditionSynchronizing)
+		if cond == nil {
+			klog.V(2).Infof("Waiting for backup source CR %s to be in Synchronizing state", rs.Name)
+			return false, nil
+		}
+		if cond.Status == metav1.ConditionFalse || cond.Reason == volsyncv1alpha1.SynchronizingReasonError {
+			klog.Info("backup source is in error condition, %s", cond.Message)
+			return false, os.ErrInvalid
 		}
 
 		klog.V(2).Infof("pvbackup source CR is up")
 		return true, nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch rs status: %w,", err)
+		return nil, fmt.Errorf("backup source status: %w,", err)
 	}
 
 	return rs, nil
