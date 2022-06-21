@@ -175,6 +175,7 @@ correct, no need to specify them
     appropriate
   * Make an entry in [CHANGELOG.md](CHANGELOG.md)
   * Make an entry in [Chart.yaml](helm/volsync/Chart.yaml)
+  * Run `make bundle` to propagate changes to the operator bundle files
 * [Rclone](https://github.com/rclone/rclone/releases)
   * Change the version number in
     [mover-rclone/Dockerfile](mover-rclone/Dockerfile) and update GIT hash to match
