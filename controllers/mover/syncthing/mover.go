@@ -204,6 +204,10 @@ func (m *Mover) ensureNecessaryResources(ctx context.Context) (*corev1.Service, 
 func (m *Mover) interactWithSyncthing(dataService *corev1.Service, apiSecret *corev1.Secret) error {
 	// get the API key from the secret
 	var err error
+	if err = m.validatePeerList(); err != nil {
+		return err
+	}
+
 	if err = m.configureSyncthingAPIClient(apiSecret); err != nil {
 		return err
 	}
@@ -618,6 +622,19 @@ func (m *Mover) configureSyncthingAPIClient(
 	)
 
 	return err
+}
+
+// validatePeerList Checks to make sure that there are no duplicate entries within the provided peerList,
+// and errors if there are.
+func (m *Mover) validatePeerList() error {
+	uniquePeers := make(map[string]bool)
+	for _, peer := range m.peerList {
+		if _, ok := uniquePeers[peer.ID]; ok {
+			return fmt.Errorf("duplicate peer found in peer list: %s", peer.ID)
+		}
+		uniquePeers[peer.ID] = true
+	}
+	return nil
 }
 
 // ensureIsConfigured Takes the given syncthing state and updates it with the necessary information

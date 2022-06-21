@@ -24,8 +24,8 @@ commands:
       # loop from 1 to syncthing_count
       i=1
       while [[ "${i}" -lt "${syncthing_count}" ]]; do
-        j=$((i+1))
-        while [[ "$j" -le "${syncthing_count}" ]]; do
+        j=$((i+1))          
+        while [[ "${j}" -le "${syncthing_count}" ]]; do
           echo "connecting syncthing-${i} to syncthing-${j}"
           connect_syncthing "syncthing-${i}" "syncthing-${j}"
           j=$((j+1))

@@ -51,8 +51,8 @@ connect_to_target() {
 	as_introducer="${3}"
 
 	# grab the target RS's address and device ID
-	target_st_address=$(kubectl get replicationsource "${target_rs_name}" -n "${NAMESPACE}" -o jsonpath='{.status.syncthing.address}')
-	target_st_device_id=$(kubectl get replicationsource "${target_rs_name}" -n "${NAMESPACE}" -o jsonpath='{.status.syncthing.ID}')
+	target_address=$(kubectl get replicationsource "${target_rs_name}" -n "${NAMESPACE}" -o jsonpath='{.status.syncthing.address}')
+	target_device_id=$(kubectl get replicationsource "${target_rs_name}" -n "${NAMESPACE}" -o jsonpath='{.status.syncthing.ID}')
 
 
 	# grab the current source RS's peer list as a json list and append the target RS's address and device ID
@@ -60,28 +60,24 @@ connect_to_target() {
 
 	# insert new_peers into .spec.syncthing.peers in skeleton_spec
 	new_spec=""
-	if [ "${as_introducer}" -eq '1' ]; then
+	if [[ "${as_introducer}" -eq '1' ]]; then
 		# introducer
 		new_spec=$(echo "${current_spec}" | jq -c \
-			--arg deviceID "${target_st_device_id}" \
-			--arg address "${target_st_address}" \
+			--arg deviceID "${target_device_id}" \
+			--arg address "${target_address}" \
 			'.spec.syncthing.peers |= . + [{"ID": $deviceID, "address": $address, "introducer": true}]'
 		)
 	else
 			# not introducer
 			new_spec=$(echo "${current_spec}" | jq -c \
-			--arg deviceID "${target_st_device_id}" \
-			--arg address "${target_st_address}" \
+			--arg deviceID "${target_device_id}" \
+			--arg address "${target_address}" \
 			'.spec.syncthing.peers |= . + [{"ID": $deviceID, "address": $address, "introducer": false}]'
 		)
 	fi
 
 	# patch the replicationsource with the new spec
-	if [[ $(kubectl patch replicationsource "${source_rs_name}" -n "${NAMESPACE}" --type=merge --patch "${new_spec}") ]]; then
-		return 0
-	else
-		return 1
-	fi
+	kubectl patch replicationsource "${source_rs_name}" -n "${NAMESPACE}" --type=merge --patch "${new_spec}"
 }
 
 
@@ -93,21 +89,20 @@ connect_to_target() {
 #   (string) source_rs: name of the source ReplicationSource
 #   (string) target_rs: name of the target ReplicationSource
 # Returns:
-#   None
+#   1 if the connection failed, 0 otherwise
 ############################################################
 connect_syncthing() {
-	source_rs="$1"
-	target_rs="$2"
+	source_rs="${1}"
+	target_rs="${2}"
 	
 	if ! [[ $(connect_to_target "${source_rs}" "${target_rs}" "0") ]]; then
-		echo "failed to connect ${source_rs} to ${target_rs}"
 		return 1
 	fi
 
 	if ! [[ $(connect_to_target "${target_rs}" "${source_rs}" "0") ]]; then
-		echo "failed to connect ${target_rs} to ${source_rs}"
 		return 1
 	fi
+	return 0
 }
 
 
