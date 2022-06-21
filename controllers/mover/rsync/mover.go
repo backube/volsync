@@ -354,15 +354,12 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 			logger.Error(err, "unable to set controller reference")
 			return err
 		}
+		utils.SetOwnedByVolSync(job)
 		utils.MarkForCleanup(m.owner, job)
 
 		job.Spec.Template.ObjectMeta.Name = job.Name
-		if job.Spec.Template.ObjectMeta.Labels == nil {
-			job.Spec.Template.ObjectMeta.Labels = map[string]string{}
-		}
-		for k, v := range m.serviceSelector() {
-			job.Spec.Template.ObjectMeta.Labels[k] = v
-		}
+		utils.AddAllLabels(&job.Spec.Template, m.serviceSelector())
+		utils.SetOwnedByVolSync(&job.Spec.Template) // ensure the Job's Pod gets the ownership label
 		backoffLimit := int32(2)
 		job.Spec.BackoffLimit = &backoffLimit
 
@@ -424,6 +421,15 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 				}},
 			},
 		}
+		if m.vh.IsCopyMethodDirect() {
+			affinity, err := utils.AffinityFromVolume(ctx, m.client, logger, dataPVC)
+			if err != nil {
+				logger.Error(err, "unable to determine proper affinity", "PVC", client.ObjectKeyFromObject(dataPVC))
+				return err
+			}
+			job.Spec.Template.Spec.NodeName = affinity.NodeName
+			job.Spec.Template.Spec.Tolerations = affinity.Tolerations
+		}
 		logger.V(1).Info("Job has PVC", "PVC", dataPVC, "DS", dataPVC.Spec.DataSource)
 		return nil
 	})
@@ -437,18 +443,20 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 	}
 	if err != nil {
 		logger.Error(err, "reconcile failed")
-	} else {
-		logger.V(1).Info("Job reconciled", "operation", op)
-		if op == ctrlutil.OperationResultCreated {
-			dir := "receive"
-			if m.isSource {
-				dir = "transmit"
-			}
-			m.eventRecorder.Eventf(m.owner, job, corev1.EventTypeNormal,
-				mover.EvRTransferStarted, mover.EvACreateMover, "starting %s to %s data",
-				utils.KindAndName(m.client.Scheme(), job), dir)
-		}
+		return nil, err
 	}
+
+	logger.V(1).Info("Job reconciled", "operation", op)
+	if op == ctrlutil.OperationResultCreated {
+		dir := "receive"
+		if m.isSource {
+			dir = "transmit"
+		}
+		m.eventRecorder.Eventf(m.owner, job, corev1.EventTypeNormal,
+			mover.EvRTransferStarted, mover.EvACreateMover, "starting %s to %s data",
+			utils.KindAndName(m.client.Scheme(), job), dir)
+	}
+
 	// Stop here if the job hasn't completed yet
 	if job.Status.Succeeded == 0 {
 		return nil, nil

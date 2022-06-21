@@ -216,8 +216,10 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 			logger.Error(err, "unable to set controller reference")
 			return err
 		}
+		utils.SetOwnedByVolSync(job)
 		utils.MarkForCleanup(m.owner, job)
 		job.Spec.Template.ObjectMeta.Name = job.Name
+		utils.SetOwnedByVolSync(&job.Spec.Template)
 		backoffLimit := int32(2) //TODO: backofflimit was 8 for restic
 		job.Spec.BackoffLimit = &backoffLimit
 
@@ -264,6 +266,15 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 					DefaultMode: &secretMode,
 				}},
 			},
+		}
+		if m.vh.IsCopyMethodDirect() {
+			affinity, err := utils.AffinityFromVolume(ctx, m.client, logger, dataPVC)
+			if err != nil {
+				logger.Error(err, "unable to determine proper affinity", "PVC", client.ObjectKeyFromObject(dataPVC))
+				return err
+			}
+			job.Spec.Template.Spec.NodeName = affinity.NodeName
+			job.Spec.Template.Spec.Tolerations = affinity.Tolerations
 		}
 		logger.V(1).Info("Job has PVC", "PVC", dataPVC, "DS", dataPVC.Spec.DataSource)
 		return nil
