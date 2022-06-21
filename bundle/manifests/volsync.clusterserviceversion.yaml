@@ -41,9 +41,8 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    operators.operatorframework.io/builder: operator-sdk-v1.21.0
+    operators.operatorframework.io/builder: operator-sdk-v1.22.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
-    olm.skipRange: '>=0.4.0 <0.5.0'
   name: volsync.v0.5.0
   namespace: placeholder
 spec:
@@ -307,6 +306,11 @@ spec:
                   requests:
                     cpu: 5m
                     memory: 64Mi
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop:
+                    - ALL
               - args:
                 - --health-probe-bind-address=:8081
                 - --metrics-bind-address=127.0.0.1:8080
@@ -344,6 +348,9 @@ spec:
                     memory: 64Mi
                 securityContext:
                   allowPrivilegeEscalation: false
+                  capabilities:
+                    drop:
+                    - ALL
               securityContext:
                 runAsNonRoot: true
               serviceAccountName: volsync-controller-manager
