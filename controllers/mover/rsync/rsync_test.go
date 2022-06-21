@@ -1334,6 +1334,16 @@ var _ = Describe("Rsync as a destination", func() {
 				}
 				Expect(utils.MarkOldSnapshotForCleanup(ctx, k8sClient, logger, rd, oldSnap, latestSnap)).To(Succeed())
 
+				Eventually(func() bool {
+					// Re-load to make sure cache has updated the snap with the label above
+					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(snap1), snap1)
+					if err != nil {
+						return false
+					}
+					_, ok := snap1.GetLabels()["volsync.backube/cleanup"]
+					return ok
+				}, timeout, interval).Should(BeTrue())
+
 				//Reload snap2 and update status
 				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(snap2), snap2)).To(Succeed())
 				// Update RD status to indicate snap3 is the latestImage
