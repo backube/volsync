@@ -393,7 +393,6 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 			SecurityContext: &corev1.SecurityContext{
 				Capabilities: &corev1.Capabilities{
 					Add: []corev1.Capability{
-						"AUDIT_WRITE",
 						"SYS_CHROOT",
 					},
 				},

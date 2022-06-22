@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - "Reconciled" condition removed from ReplicationSource and
   ReplicationDestination `.status.conditions[]` in favor of returning errors via
   the "Synchronizing" Condition.
+- Removed the CAP_AUDIT_WRITE permission from the rsync mover
 
 ## [0.4.1] - TBD (currently unreleased)
 

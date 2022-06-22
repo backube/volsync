@@ -13,7 +13,6 @@ allowHostPorts: false
 allowPrivilegeEscalation: true
 allowPrivilegedContainer: false
 allowedCapabilities:
-  - AUDIT_WRITE
   - SYS_CHROOT
 fsGroup:
   type: RunAsAny

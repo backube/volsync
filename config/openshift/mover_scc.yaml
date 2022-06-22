@@ -11,7 +11,6 @@ allowHostPorts: false
 allowPrivilegeEscalation: true
 allowPrivilegedContainer: false
 allowedCapabilities:
-  - AUDIT_WRITE  # for sshd
   - SYS_CHROOT   # for sshd
 fsGroup:
   type: RunAsAny

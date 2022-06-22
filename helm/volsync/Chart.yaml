@@ -33,6 +33,8 @@ annotations:  # https://artifacthub.io/docs/topics/annotations/helm/
       description: Restic upgraded to 0.13.1
     - kind: changed
       description: Syncthing upgraded to 1.20.1
+    - kind: removed
+      description: Removed CAP_AUDIT_WRITE capabilities from rsync mover
   artifacthub.io/crds: |
     - kind: ReplicationDestination
       version: v1alpha1

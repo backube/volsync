@@ -23,13 +23,15 @@ RUN chmod a+rx /source.sh /destination.sh \destination-command.sh && \
     install /usr/share/doc/rsync/support/rrsync /usr/local/bin && \
     \
     SSHD_CONFIG="/etc/ssh/sshd_config" && \
-    sed -ir 's|^[#\s]*\(.*/etc/ssh/ssh_host_ecdsa_key\)$|#\1|' "$SSHD_CONFIG" && \
-    sed -ir 's|^[#\s]*\(.*/etc/ssh/ssh_host_ed25519_key\)$|#\1|' "$SSHD_CONFIG" && \
-    sed -ir 's|^[#\s]*\(PasswordAuthentication\)\s.*$|\1 no|' "$SSHD_CONFIG" && \
-    sed -ir 's|^[#\s]*\(GSSAPIAuthentication\)\s.*$|\1 no|' "$SSHD_CONFIG" && \
-    sed -ir 's|^[#\s]*\(AllowTcpForwarding\)\s.*$|\1 no|' "$SSHD_CONFIG" && \
-    sed -ir 's|^[#\s]*\(X11Forwarding\)\s.*$|\1 no|' "$SSHD_CONFIG" && \
-    sed -ir 's|^[#\s]*\(PermitTunnel\)\s.*$|\1 no|' "$SSHD_CONFIG"
+    sed -i -E 's|^[#\s]*(.*/etc/ssh/ssh_host_ecdsa_key)$|#\1|' "$SSHD_CONFIG" && \
+    sed -i -E 's|^[#\s]*(.*/etc/ssh/ssh_host_ed25519_key)$|#\1|' "$SSHD_CONFIG" && \
+    sed -i -E 's|^[#\s]*(PasswordAuthentication)\s.*$|\1 no|' "$SSHD_CONFIG" && \
+    sed -i -E 's|^[#\s]*(GSSAPIAuthentication)\s.*$|\1 no|' "$SSHD_CONFIG" && \
+    sed -i -E 's|^[#\s]*(AllowTcpForwarding)\s.*$|\1 no|' "$SSHD_CONFIG" && \
+    sed -i -E 's|^[#\s]*(X11Forwarding)\s.*$|\1 no|' "$SSHD_CONFIG" && \
+    sed -i -E 's|^[#\s]*(PermitTunnel)\s.*$|\1 no|' "$SSHD_CONFIG" && \
+    \
+    sed -i -E 's|session\s+required\s+pam_loginuid.so|session optional pam_loginuid.so|' "/etc/pam.d/sshd"
 
 ARG builddate_arg="(unknown)"
 ARG version_arg="(unknown)"
