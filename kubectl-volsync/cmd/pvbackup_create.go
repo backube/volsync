@@ -149,9 +149,7 @@ func (pc *pvBackupCreate) parseCLI(cmd *cobra.Command) error {
 	}
 	pc.resticConfig = *resticConfig
 
-	keys := []string{"RESTIC_REPOSITORY", "RESTIC_PASSWORD",
-		"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"}
-	stringData, err := parseSecretData(pc.resticConfig.Viper, keys)
+	stringData, err := parseSecretData(pc.resticConfig.Viper)
 	if err != nil {
 		return err
 	}
@@ -185,7 +183,14 @@ func (pc *pvBackupCreate) Run(ctx context.Context) error {
 	}
 
 	// Add restic configurations into cluster
-	err = pc.ensureSecret(ctx)
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      pc.Name + "-source",
+			Namespace: pc.Namespace,
+		},
+		StringData: pc.stringData,
+	}
+	err = createSecret(ctx, secret, pc.client)
 	if err != nil {
 		return err
 	}
@@ -229,38 +234,38 @@ func (pc *pvBackupCreate) newPVBackupRelationshipSource() *pvBackupRelationshipS
 	}
 }
 
-func parseSecretData(v viper.Viper, keys []string) (map[string]string, error) {
+func parseSecretData(v viper.Viper) (map[string]string, error) {
+	mustKeys := []string{"RESTIC_REPOSITORY", "RESTIC_PASSWORD",
+		"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"}
 	stringData := map[string]string{}
-	for _, key := range keys {
+
+	for _, key := range mustKeys {
 		value, ok := v.Get(key).(string)
 		if !ok {
-			klog.Info("interface conversion: interface is not string")
-			return nil, os.ErrInvalid
+			return nil, fmt.Errorf("interface conversion: interface is not string, %w", os.ErrInvalid)
 		}
 
 		if value == "" {
-			klog.Info("value missing for the key = %s", key)
-			return nil, os.ErrInvalid
+			return nil, fmt.Errorf("mandatory value for key %s missing. %w", key, os.ErrNotExist)
 		}
 		stringData[key] = value
 	}
 
+	optKeys := []string{"AWS_DEFAULT_REGION", "ST_AUTH", "ST_USER", "ST_KEY", "OS_AUTH_URL",
+		"OS_REGION_NAME", "OS_USERNAME", "OS_USER_ID", "OS_PASSWORD", "OS_TENANT_ID", "OS_TENANT_NAME",
+		"OS_USER_DOMAIN_NAME", "OS_USER_DOMAIN_ID", "OS_PROJECT_NAME", "OS_PROJECT_DOMAIN_NAME",
+		"OS_PROJECT_DOMAIN_ID", "OS_TRUST_ID", "OS_APPLICATION_CREDENTIAL_ID", "OS_APPLICATION_CREDENTIAL_NAME",
+		"OS_APPLICATION_CREDENTIAL_SECRET", "OS_STORAGE_URL", "OS_AUTH_TOKEN", "B2_ACCOUNT_ID",
+		"B2_ACCOUNT_KEY", "AZURE_ACCOUNT_NAME", "AZURE_ACCOUNT_KEY", "GOOGLE_PROJECT_ID", "GOOGLE_APPLICATION_CREDENTIALS"}
+
+	for _, key := range optKeys {
+		value, ok := v.Get(key).(string)
+		if ok {
+			stringData[key] = value
+		}
+	}
+
 	return stringData, nil
-}
-
-func (pc *pvBackupCreate) ensureSecret(ctx context.Context) error {
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      pc.Name + "-source",
-			Namespace: pc.Namespace,
-		},
-		StringData: pc.stringData,
-	}
-	if err := pc.client.Create(ctx, secret); err != nil {
-		return fmt.Errorf("failed to create secret, %w", err)
-	}
-
-	return nil
 }
 
 func (pc *pvBackupCreate) ensureReplicationSource(ctx context.Context) (

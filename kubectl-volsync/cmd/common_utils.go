@@ -11,6 +11,7 @@ import (
 	cron "github.com/robfig/cron/v3"
 	"github.com/spf13/viper"
 	corev1 "k8s.io/api/core/v1"
+	kerrs "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -36,6 +37,19 @@ func waitForSync(ctx context.Context, srcClient client.Client,
 		return true, nil
 	})
 	return err
+}
+
+func createSecret(ctx context.Context, secret *corev1.Secret, cl client.Client) error {
+	if err := cl.Create(ctx, secret); err != nil {
+		if kerrs.IsAlreadyExists(err) {
+			klog.Infof("Secret: \"%s\" is found, proceeding with the same", secret.Name)
+			return nil
+		}
+		return fmt.Errorf("failed to create secret, %w", err)
+	}
+	klog.Infof("created secret: \"%s\", in the namespace \"%s\"", secret.Name, secret.Namespace)
+
+	return nil
 }
 
 func deleteSecret(ctx context.Context, ns types.NamespacedName, cl client.Client) error {

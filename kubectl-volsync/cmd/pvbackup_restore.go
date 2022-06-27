@@ -199,9 +199,7 @@ func (pvr *pvBackupRestore) parseCLI(cmd *cobra.Command) error {
 	}
 	pvr.resticConfig = *resticConfig
 
-	keys := []string{"RESTIC_REPOSITORY", "RESTIC_PASSWORD",
-		"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"}
-	stringData, err := parseSecretData(pvr.resticConfig.Viper, keys)
+	stringData, err := parseSecretData(pvr.resticConfig.Viper)
 	if err != nil {
 		return err
 	}
@@ -263,9 +261,16 @@ func (pvr *pvBackupRestore) Run(ctx context.Context) error {
 	}
 
 	// Add restic configurations into cluster
-	err = pvr.ensureSecret(ctx)
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      pvr.backupInfo + "-dest",
+			Namespace: pvr.Namespace,
+		},
+		StringData: pvr.stringData,
+	}
+	err = createSecret(ctx, secret, pvr.client)
 	if err != nil {
-		return fmt.Errorf("failed to create secret, %w", err)
+		return err
 	}
 
 	// Build struct pvBackupRelationshipSource from struct pvBackupRestore
@@ -351,27 +356,6 @@ func (pvr *pvBackupRestore) newPVBackupRelationshipSource() *pvBackupRelationshi
 		Namespace: pvr.Namespace,
 		RSName:    pvr.RSName,
 	}
-}
-
-func (pvr *pvBackupRestore) ensureSecret(ctx context.Context) error {
-	secretName := pvr.backupInfo + "-dest"
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      secretName,
-			Namespace: pvr.Namespace,
-		},
-		StringData: pvr.stringData,
-	}
-	if err := pvr.client.Create(ctx, secret); err != nil {
-		if kerrs.IsAlreadyExists(err) {
-			klog.Infof("Secret: \"%s\" is found, proceeding with the same", secretName)
-			return nil
-		}
-		return fmt.Errorf("failed to create secret %w", err)
-	}
-
-	klog.Infof("secret: \"%s\" found, using the same", secretName)
-	return nil
 }
 
 func (pvr *pvBackupRestore) ensureReplicationDestination(ctx context.Context) (

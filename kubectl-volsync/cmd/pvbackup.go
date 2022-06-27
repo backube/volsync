@@ -22,7 +22,6 @@ import (
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
@@ -120,7 +119,6 @@ func init() {
 
 	pvBackupCmd.PersistentFlags().StringP("relationship", "r", "", "relationship name")
 	cobra.CheckErr(pvBackupCmd.MarkPersistentFlagRequired("relationship"))
-	cobra.CheckErr(viper.BindPFlag("relationship", pvBackupCmd.PersistentFlags().Lookup("relationship")))
 }
 
 func loadPVBackupRelationship(cmd *cobra.Command) (*pvBackupRelationship, error) {

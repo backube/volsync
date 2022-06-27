@@ -19,6 +19,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
@@ -56,7 +57,11 @@ var pvBackupSyncCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if pr.data.Source == nil {
+			return fmt.Errorf("incompatible relationship, %w", os.ErrInvalid)
+		}
 		ps.pr = pr
+
 		return ps.Run(cmd.Context())
 	},
 }
