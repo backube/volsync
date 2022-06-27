@@ -25,9 +25,9 @@ There are three different replication methods built into VolSync. Choose the met
    as disaster recovery, mirroring to a test environment, or sending data to a
    remote site for processing.
 :doc:`Syncthing replication <syncthing/index>`
-	 Use Syncthing-based replication for multi-way (1:many), real-time data replication
+	 Use Syncthing-based replication for multi-way (many:many), live, eventually consistent data replication
 	 in scenarios where the data is spread-out and updated in real-time, such as a wiki application,
-	 or a private distributed file-store, safe from peering eyes.
+	 or a private distributed file-store.
 
 Triggers
 ========
