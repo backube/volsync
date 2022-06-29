@@ -17,6 +17,10 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package api
 
 import (
+	"crypto/tls"
+	"net/http"
+	"time"
+
 	"github.com/go-logr/logr"
 	"github.com/syncthing/syncthing/lib/config"
 )
@@ -75,4 +79,30 @@ func NewConnection(cfg APIConfig, logger logr.Logger) SyncthingConnection {
 		apiConfig: cfg,
 		logger:    logger,
 	}
+}
+
+// TLSClient Returns a TLS Client used by the API Config.
+// If the client field is nil, then a new TLS Client is built using
+// either the custom TLS Config set or a default tlsConfig with version 1.2
+func (api APIConfig) TLSClient() *http.Client {
+	if api.Client != nil {
+		return api.Client
+	}
+
+	tlsConfig := api.TLSConfig
+	if tlsConfig == nil {
+		tlsConfig = &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		}
+	}
+
+	// load the TLS config with certificates
+	tr := &http.Transport{
+		TLSClientConfig: tlsConfig,
+	}
+	client := &http.Client{
+		Transport: tr,
+		Timeout:   time.Second * 5,
+	}
+	return client
 }

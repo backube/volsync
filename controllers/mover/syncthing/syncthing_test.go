@@ -948,8 +948,11 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 			When("the API exists", func() {
 				var ts *httptest.Server
 				var serverState *api.Syncthing
-				var myID string = "test"
 				var dataService *corev1.Service
+				var (
+					myID    = "ZNWFSWE-RWRV2BD-45BLMCV-LTDE2UR-4LJDW6J-R5BPWEB-TXD27XJ-IZF5RA4"
+					device1 = "AIR6LPZ-7K4PTTV-UXQSMUU-CPQ5YWH-OEDFIIQ-JUG777G-2YQXXR5-YD6AWQR"
+				)
 
 				BeforeEach(func() {
 					serverState = &api.Syncthing{}
@@ -1009,6 +1012,51 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					// synchronization is eternal
 					Expect(result.Completed).To(BeFalse())
 				})
+
+				When("peer is added", func() {
+					var peer *volsyncv1alpha1.SyncthingPeer
+					JustBeforeEach(func() {
+						peer = &volsyncv1alpha1.SyncthingPeer{
+							Address:    "tcp://1.2.3.4:5678",
+							ID:         device1,
+							Introducer: false,
+						}
+						mover.peerList = []volsyncv1alpha1.SyncthingPeer{*peer}
+					})
+
+					It("doesn't add duplicates", func() {
+						result, err := mover.Synchronize(ctx)
+
+						// expect no error to have occurred
+						Expect(err).NotTo(HaveOccurred())
+						Expect(result.Completed).To(BeFalse())
+
+						// peer should have been listed in status
+						found := 0
+						for _, p := range mover.status.Peers {
+							if p.ID == peer.ID {
+								found++
+							}
+						}
+						Expect(found).To(Equal(1))
+
+						// make sure no duplicates of peer exist in the syncthing state
+						Expect(len(serverState.Configuration.Devices)).To(Equal(1))
+						Expect(len(serverState.SystemConnections.Connections)).To(Equal(1))
+
+						// run again and ensure no duplicates are added
+						result, err = mover.Synchronize(ctx)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(result.Completed).To(BeFalse())
+						found = 0
+						for _, p := range mover.status.Peers {
+							if p.ID == peer.ID {
+								found++
+							}
+						}
+						Expect(found).To(Equal(1))
+					})
+				})
 			})
 
 			When("synchronize is called but server isn't running", func() {
@@ -1045,8 +1093,6 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 			})
 			When("VolSync ensures a deployment", func() {
 				It("creates a new one", func() {
-					// TODO: ensure HTTPS keys are here
-
 					// create a deployment
 					deployment, err := mover.ensureDeployment(ctx, srcPVC, configPVC, sa, apiSecret)
 					Expect(err).NotTo(HaveOccurred())

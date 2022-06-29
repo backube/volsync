@@ -12,8 +12,7 @@ Syncthing-based replication
    .. contents:: Syncthing-based replication
       :local:
 
-VolSync supports synchronization of PersistentVolume data across a vast number of volumes using a Syncthing-based data mover.
-
+VolSync supports active-active synchronization of data across several PersistentVolumes using a Syncthing-based data mover.
 ReplicationSource objects are configured to connect to other Syncthing devices in order to sync data of a provided PVC.
 Any changes made to the PVC will be propagated to the rest of the peers sharing the volume.
 
@@ -24,15 +23,15 @@ Any changes made to the PVC will be propagated to the rest of the peers sharing 
 How Syncthing Works In VolSync
 ==============================
 
-Syncthing connects to a cluster of other Syncthing devices that are all sharing the same synchronized volume.
-When one of the devices changes data, it will propagate the change to all the other devices.
+Syncthing connects to a cluster of nodes sharing a synchronized volume.
+When one of the nodes syncing the volume modifies the data in the PV, the change will be propagated to the rest of the nodes within the Syncthing cluster.
 Syncthing also includes an introducer feature which allows one device to be connected to a cluster of other devices upon configuring a single introducer node.
 This can be used to create a hub-and-spoke model for replication, or any other kind of network.
 
 When a ReplicationSource is created and configured to sync a PVC with other peers, all of the connected peers will maintain their
 own Volume containing the synced data. To detect file changes, Syncthing employs two methods: a filesystem watcher, which notifies 
 Syncthing of any changes to the local filesystem, and a full filesystem scan which occurs routinely at a specified interval (default is an hour).
-Syncthing itself is an "always-on" synchronization system, and so created ReplicationSources will never finish their syncs unless deleted.
+Since Syncthing is an "always-on" synchronization system, ReplicationSources will report their synchronization status as always being 'in-progress'.
 
 VolSync uses a custom-built Syncthing mover which disables the use of relay servers and global announce, and relying instead on 
 being provided with the addresses of other Syncthing peers directly.
@@ -43,56 +42,10 @@ being provided with the addresses of other Syncthing peers directly.
     Because Syncthing lacks centralization, file conflicts are resolved by favoring the `most recent version <https://docs.syncthing.net/users/syncing.html#conflicting-changes>`_.
 
 
-Communicating With Syncthing
-----------------------------
-
-Unlike the other data movers, Syncthing never stops running. This changes our approach of controlling it to
-having Syncthing always be running, and communicating with it through it's REST API.
-
-Syncthing has a REST API which handles connections through HTTPS. In order to do this securely, 
-VolSync provisions a self-signed certificate and key for the Syncthing REST API, passing the generated
-certificate and key to Syncthing on first launch, and adding the Public Key PEM to VolSync's root CA bundle. 
-
-You can provide a custom HTTPS key/certificate pair by overriding the Secret which VolSync uses to store its
-communication credentials for Syncthing.
-
-An example of a Secret which overrides the default Syncthing credentials is shown below, all fields must be provided:
-
-.. code-block:: yaml
-  :caption: Kubernetes Secret preloading custom HTTPS certificates
-
-  kind: Secret
-  apiVersion: v1
-  metadata:
-    # this should be in the format: volsync-<REPLICATION_SOURCE_NAME>
-    name: volsync-my-replication-source
-  type: Opaque
-  # all of these fields must be provided
-  data:
-    # loaded by Syncthing
-    httpsKeyPEM: <your base64 encoded HTTPS private key>
-    # loaded into Syncthing and used by VolSync as a root CA
-    httpsCertPEM: <your base64 encoded HTTPS certificate>
-    # The API key used by VolSync to authenticate API requests
-    apikey: <base64-encoded API Key>
-    # These fields are solely for securing the Web UI from being accessed.
-    username: <base64-encoded username>
-    password: <base64-encoded password>
-
-Once you have deployed this secret in your intended namespace, you will then need to create the ReplicationSource
-using the name you specified in the above Secret. For example, a custom secret named "volsync-my-replication-source"
-would require you to name the ReplicationSource "my-replication-source".
-
-.. note::
-  This Secret must be created **before** creating the ReplicationSource.
-  Otherwise, Syncthing will generate its own set of credentials and ignore yours.  
-
-
-
 Configuring a ReplicationSource
 ===============================
 
-Here's an example of Syncthing-based ReplicationSource.
+Here's an example of a Syncthing-based ReplicationSource.
 
 .. code-block:: yaml
     :caption: ReplicationSource object configuring the peers it should connect to.
@@ -118,18 +71,17 @@ Here's an example of Syncthing-based ReplicationSource.
 The above ReplicationSource tells VolSync that it should use the Syncthing replication method in order
 to sync the ``todo-database`` volume. 
 
-This ReplicationSource tells VolSync to use a ``ClusterIP`` service to expose the Syncthing data port.
-In order for Syncthing to connect to other instances outside of the cluster, you will need to either use
+A service type of ``ClusterIP`` is used to expose the Syncthing data port, allowing us to connect with other peers within the cluster.
+In order for Syncthing to connect to peers outside of the cluster, you will need to either use
 ``serviceType: LoadBalancer``, or a submariner-type cross-cluster networking configuration.
-
-The above ReplicationSource specifies a single peer to sync its data with, however you can specify as many or as little peers as you'd like.
+A single peer is specified for VolSync to sync the ``todo-database`` volume with, however you can specify as many or as few peers as you'd like.
 To create a simple ReplicationSource without connecting to other peers, simply omit the ``peers`` field.
 
 In order for two Syncthing-based ReplicationSources to connect to each other, each one must specify the other one in their ``peers`` list.
 
 .. note::
-  Syncthing unions the data in the provided ``PersistentVolume`` with the data from other peers.
-  When two pieces of data have the same name, the most recent data will be favored.
+  Syncthing combines the set of files in the provided ``PersistentVolume`` with those from the other peers.
+  When two files have the same name, the file with the most recent data will be favored.
 
 
 Syncthing options
@@ -143,14 +95,14 @@ peers
    being listed must also specify this ReplicationSource's Syncthing details in their spec for them to
    successfully connect with one another. Each peer contains the following fields:
 
-   - ``ID`` - The peer's device ID, this is a base32 encoding of the peer's TLS certificate.
+   - ``ID`` - The peer's device ID.
    - ``address`` - The peer's address that we will attempt to connect on. This will usually be a TCP connection.
-   - ``introducer`` - Whether this peer should act as an introducer node or not. If true, this peer will automatically connect us to other nodes that also have it set as an introducer. More on this later.  
+   - ``introducer`` - Whether this peer should act as an introducer node or not. If true, this peer will automatically connect us to other nodes that also have it set as an introducer.
 serviceType
-   The type of service used to expose Syncthing's data connection. Defaults to ``clusterIP``. Valid values are:
+   The type of service used to expose Syncthing's data connection. Defaults to ``ClusterIP``. Valid values are:
 
-   - ``clusterIP`` - VolSync will expose the service through a ClusterIP; used for in-cluster networking.
-   - ``loadBalancer`` - The Syncthing data port is exposed through a LoadBalancer, which is used for connecting to other Syncthing instances outside of the cluster.
+   - ``ClusterIP`` - VolSync will expose the service through a ClusterIP; used for in-cluster networking.
+   - ``LoadBalancer`` - The Syncthing data port is exposed through a LoadBalancer, which is used for connecting to other Syncthing instances outside of the cluster.
 configCapacity
    Amount of storage to be used by the PVC storing Syncthing's configuration data.
    The default is ``1Gi`` when left unspecified.
@@ -160,11 +112,6 @@ configStorageClassName
 configVolumeAccessModes
    These are used to set the accessModes of the config PVC. When unspecified, these default to
    the accessModes present on the source PVC.
-
-
-.. note::
-  You can create syncthing-based ReplicationSources without specifying to peers by
-  specifying ``.spec.syncthing`` and setting ``.spec.syncthing.serviceType`` to ``clusterIP``. 
 
 
 Source Status
@@ -195,10 +142,10 @@ Here's an example of a ReplicationSource with a status:
     status:
       conditions:
       - lastTransitionTime: "2022-04-27T20:26:23Z"
-        message: Reconcile complete
-        reason: ReconcileComplete
+        message: Synchronization in-progress
+        reason: SyncInProgress
         status: "True"
-        type: Reconciled
+        type: Synchronizing
       lastSyncStartTime: "2022-04-27T20:25:32Z"
       syncthing:
         # This ReplicationSource's Syncthing ID.
@@ -424,3 +371,50 @@ Cyclic introducers
 Syncthing introducers also contain a mechanism to automatically re-add introduced nodes if they were disconnected
 for whatever reason. This means that if you configure two nodes as each other's introducer, you will never 
 be able to disconnect them as they'll continue to re-add each other until the end of time.
+
+
+
+Communicating With Syncthing
+============================
+
+Unlike the other data movers, Syncthing never stops running. This changes our approach of controlling it to
+having Syncthing always be running, and communicating with it through it's REST API.
+
+Syncthing has a REST API which handles connections through HTTPS. In order to do this securely, 
+VolSync provisions a self-signed certificate and key for the Syncthing REST API, passing the generated
+certificate and key to Syncthing on first launch, and adding the Public Key PEM to VolSync's root CA bundle. 
+
+You can provide a custom HTTPS key/certificate pair by overriding the Secret which VolSync uses to store its
+communication credentials for Syncthing.
+
+An example of a Secret which overrides the default Syncthing credentials is shown below, all fields must be provided:
+
+.. code-block:: yaml
+  :caption: Kubernetes Secret preloading custom HTTPS certificates
+
+  kind: Secret
+  apiVersion: v1
+  metadata:
+    # this should be in the format: volsync-<REPLICATION_SOURCE_NAME>
+    name: volsync-my-replication-source
+  type: Opaque
+  # all of these fields must be provided
+  data:
+    # loaded by Syncthing
+    httpsKeyPEM: <your base64 encoded HTTPS private key>
+    # loaded into Syncthing and used by VolSync as a root CA
+    httpsCertPEM: <your base64 encoded HTTPS certificate>
+    # The API key used by VolSync to authenticate API requests
+    apikey: <base64-encoded API Key>
+    # These fields are solely for securing the Web UI from being accessed.
+    username: <base64-encoded username>
+    password: <base64-encoded password>
+
+Once you have deployed this secret in your intended namespace, you will then need to create the ReplicationSource
+using the name you specified in the above Secret. For example, a custom secret named "volsync-my-replication-source"
+would require you to name the ReplicationSource "my-replication-source".
+
+.. note::
+  This Secret must be created **before** creating the ReplicationSource.
+  Otherwise, Syncthing will generate its own set of credentials and ignore yours.  
+

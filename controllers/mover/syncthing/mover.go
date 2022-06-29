@@ -223,6 +223,11 @@ func (m *Mover) interactWithSyncthing(dataService *corev1.Service, apiSecret *co
 		return err
 	}
 
+	// obtain the latest state
+	if syncthingState, err = m.syncthingConnection.Fetch(); err != nil {
+		return err
+	}
+
 	if err = m.ensureStatusIsUpdated(dataService, syncthingState); err != nil {
 		return err
 	}
@@ -293,6 +298,15 @@ func (m *Mover) ensureDataPVC(ctx context.Context) (*corev1.PersistentVolumeClai
 	return dataPVC, nil
 }
 
+// serviceSelector Returns a mapping of standardized Kubernetes labels.
+func (m *Mover) serviceSelector() map[string]string {
+	return map[string]string{
+		"app.kubernetes.io/name":      m.owner.GetName(),
+		"app.kubernetes.io/component": "syncthing-mover",
+		"app.kubernetes.io/part-of":   "volsync",
+	}
+}
+
 // ensureSecretAPIKey Ensures ensures that the PVC for API secrets either exists or it will create it.
 func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) {
 	secretName := resourcePrefix + m.owner.GetName()
@@ -344,7 +358,7 @@ func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) 
 		m.logger.Error(err, "could not set owner ref")
 		return nil, err
 	}
-
+	utils.SetOwnedByVolSync(secret)
 	if err := m.client.Create(ctx, secret); err != nil {
 		return nil, err
 	}
@@ -395,24 +409,17 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 			logger.Error(err, utils.ErrUnableToSetControllerRef)
 			return err
 		}
+		utils.SetOwnedByVolSync(deployment)
 
-		// first the top element
 		deployment.Spec.Replicas = &numReplicas
-
-		// next the selector
 		deployment.Spec.Selector = &metav1.LabelSelector{
-			MatchLabels: map[string]string{
-				"app": m.owner.GetName(),
-			},
+			MatchLabels: m.serviceSelector(),
 		}
 
-		// now the template
 		deployment.Spec.Template = corev1.PodTemplateSpec{}
-		deployment.Spec.Template.ObjectMeta.Labels = map[string]string{
-			"app": m.owner.GetName(),
-		}
+		deployment.Spec.Template.ObjectMeta.Name = deployment.Name
+		utils.AddAllLabels(&deployment.Spec.Template, m.serviceSelector())
 
-		// next the Spec
 		deployment.Spec.Template.Spec.ServiceAccountName = sa.Name
 		deployment.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyAlways
 		deployment.Spec.Template.Spec.Containers = []corev1.Container{
@@ -438,7 +445,6 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 						},
 					},
 				},
-				ImagePullPolicy: corev1.PullAlways,
 				Ports: []corev1.ContainerPort{
 					{Name: apiPortName, ContainerPort: apiPort},
 					{Name: dataPortName, ContainerPort: dataPort},
@@ -516,6 +522,8 @@ func (m *Mover) ensureAPIService(ctx context.Context, deployment *appsv1.Deploym
 			logger.Error(err, utils.ErrUnableToSetControllerRef)
 			return err
 		}
+		utils.SetOwnedByVolSync(service)
+
 		// service should route to the deployment's pods
 		service.Spec.Selector = deployment.Spec.Template.Labels
 		service.Spec.Ports = []corev1.ServicePort{
@@ -553,6 +561,8 @@ func (m *Mover) ensureDataService(ctx context.Context, deployment *appsv1.Deploy
 			logger.Error(err, utils.ErrUnableToSetControllerRef)
 			return err
 		}
+		utils.SetOwnedByVolSync(service)
+
 		service.Spec.Type = m.serviceType
 		service.Spec.Selector = deployment.Spec.Template.Labels
 		service.Spec.Ports = []corev1.ServicePort{
@@ -743,7 +753,7 @@ func (m *Mover) getConnectedPeers(syncthing *api.Syncthing) []volsyncv1alpha1.Sy
 		deviceName := device.Name
 
 		// check connection status
-		connectedPeers = append(m.status.Peers, volsyncv1alpha1.SyncthingPeerStatus{
+		connectedPeers = append(connectedPeers, volsyncv1alpha1.SyncthingPeerStatus{
 			ID:           deviceID,
 			Address:      tcpAddress,
 			Connected:    connectionInfo.Connected,

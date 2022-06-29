@@ -69,7 +69,22 @@ func (s *Syncthing) ShareFoldersWithDevices(devices []config.DeviceConfiguration
 //
 // The accepted arguments are pointers so that the state can be changed externally and the server
 // will be updated accordingly.
+// nolint:funlen
 func CreateSyncthingTestServer(state *Syncthing, serverAPIKey string) *httptest.Server {
+	setConnections := func(s *Syncthing) {
+		connections := make(map[string]ConnectionStats, 0)
+		for _, device := range s.Configuration.Devices {
+			connections[device.DeviceID.GoString()] = ConnectionStats{
+				Connected:     true,
+				Paused:        false,
+				Address:       device.Addresses[0],
+				Type:          "TCP",
+				ClientVersion: "v1.0.0",
+			}
+		}
+		s.SystemConnections.Connections = connections
+	}
+
 	return httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// ensure that the client is authorized
 		apiKey := r.Header.Get("X-API-Key")
@@ -88,6 +103,8 @@ func CreateSyncthingTestServer(state *Syncthing, serverAPIKey string) *httptest.
 					http.Error(w, "Error decoding request body", http.StatusBadRequest)
 					return
 				}
+				// update the connections
+				setConnections(state)
 			}
 			return
 		case SystemStatusEndpoint:
