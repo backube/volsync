@@ -13,6 +13,73 @@ KUBE_VERSION="${1:-1.24.0}"
 KIND_CONFIG=""
 KIND_CONFIG_FILE="$(mktemp --tmpdir kind-config-XXXXXX.yaml)"
 
+# Enforce pod security standards
+# https://kubernetes.io/docs/tasks/configure-pod-container/enforce-standards-admission-controller/#configure-the-admission-controller
+# https://kubernetes.io/docs/tutorials/security/cluster-level-pss/
+if [[ $KUBE_MINOR -ge 23 ]]; then
+  # Pod security controller has to be configured by passing a config file to
+  # api-server on the command line
+  SHARED_DIR="$(mktemp -d --tmpdir control-plane-shared-XXXXXX)"
+  cat - > "${SHARED_DIR}/admission.yaml" <<ADMCFG
+apiVersion: apiserver.config.k8s.io/v1
+kind: AdmissionConfiguration
+plugins:
+- name: PodSecurity
+  configuration:
+    apiVersion: pod-security.admission.config.k8s.io/v1beta1
+    kind: PodSecurityConfiguration
+    # Defaults applied when a mode label is not set.
+    #
+    # Level label values must be one of:
+    # - "privileged" (default)
+    # - "baseline"
+    # - "restricted"
+    #
+    # Version label values must be one of:
+    # - "latest" (default)
+    # - specific version like "v1.24"
+    defaults:
+      enforce: "privileged"
+      enforce-version: "latest"
+      audit: "restricted"
+      audit-version: "latest"
+      warn: "restricted"
+      warn-version: "latest"
+    exemptions:
+      usernames: []
+      runtimeClasses: []
+      namespaces:
+        - default             # CSI hostpath runs here
+        - kube-system
+        - local-path-storage  # default local storage provisioner
+ADMCFG
+  KIND_CONFIG="--config ${KIND_CONFIG_FILE}"
+  cat - > "${KIND_CONFIG_FILE}" <<KINDCONFIG
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+  kubeadmConfigPatches:
+  - |
+    kind: ClusterConfiguration
+    apiServer:
+        extraArgs:
+          admission-control-config-file: /etc/config/admission.yaml
+        extraVolumes:
+          - name: config-files
+            hostPath: /shared
+            mountPath: /etc/config
+            readOnly: false
+            pathType: "DirectoryOrCreate"
+  extraMounts:
+  - hostPath: ${SHARED_DIR}
+    containerPath: /shared
+    readOnly: true
+    selinuxRelabel: false
+    propagation: HostToContainer
+KINDCONFIG
+fi
+
 if [[ $KUBE_MINOR -le 16 ]]; then
   KIND_CONFIG="--config ${KIND_CONFIG_FILE}"
   cat - > "${KIND_CONFIG_FILE}" <<KINDCONFIG16
