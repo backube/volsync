@@ -990,7 +990,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 								},
 							},
 							Type:      corev1.ServiceTypeClusterIP,
-							ClusterIP: "10.0.0.129",
+							ClusterIP: "10.0.2.83",
 						},
 					}
 
