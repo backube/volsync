@@ -776,7 +776,7 @@ func (m *Mover) getAPIServiceDNS() string {
 	return fmt.Sprintf("%s.%s", serviceName, m.owner.GetNamespace())
 }
 
-// getAPIServiceAddress Returns the ClusterDNS address of the service exposing the Syncthing API.
+// getAPIServiceAddress Returns a ClusterDNS address of the service exposing the Syncthing API.
 func (m *Mover) getAPIServiceAddress() string {
 	serviceDNS := m.getAPIServiceDNS()
 	return fmt.Sprintf("https://%s:%d", serviceDNS, apiPort)
