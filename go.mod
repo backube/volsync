@@ -5,7 +5,6 @@ go 1.18
 require (
 	github.com/go-logr/logr v1.2.3
 	github.com/google/uuid v1.3.0
-	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0
 	github.com/kubernetes-csi/external-snapshotter/client/v6 v6.0.1
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.19.0

@@ -989,8 +989,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 									TargetPort: intstr.FromInt(dataPort),
 								},
 							},
-							Type:      corev1.ServiceTypeClusterIP,
-							ClusterIP: "10.0.2.83",
+							Type: corev1.ServiceTypeClusterIP,
 						},
 					}
 
