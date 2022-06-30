@@ -33,6 +33,8 @@ annotations:  # https://artifacthub.io/docs/topics/annotations/helm/
       description: Restic upgraded to 0.13.1
     - kind: changed
       description: Syncthing upgraded to 1.20.1
+    - kind: security
+      description: kube-rbac-proxy upgraded to 0.13.0
   artifacthub.io/crds: |
     - kind: ReplicationDestination
       version: v1alpha1

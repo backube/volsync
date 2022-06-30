@@ -30,6 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   request an incorrect size if the PVC capacity did not match the
   requested size.
 
+### Security
+
+- kube-rbac-proxy upgraded to 0.13.0
+
 ### Removed
 
 - "Reconciled" condition removed from ReplicationSource and
