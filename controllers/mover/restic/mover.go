@@ -278,7 +278,6 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 			return err
 		}
 		utils.MarkForCleanup(m.owner, job)
-		job.Spec.Template.ObjectMeta.Name = job.Name
 		backoffLimit := int32(8)
 		job.Spec.BackoffLimit = &backoffLimit
 		parallelism := int32(1)
@@ -286,103 +285,109 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 			parallelism = int32(0)
 		}
 		job.Spec.Parallelism = &parallelism
-		forgetOptions := generateForgetOptions(m.retainPolicy)
-		runAsUser := int64(0)
-		// set default values
-		var restoreAsOf = ""
-		var previous = strconv.Itoa(int(int32(0)))
 
-		var actions []string
-		if m.isSource {
-			actions = []string{"backup"}
-			if m.shouldPrune(time.Now()) {
-				actions = append(actions, "prune")
+		if job.CreationTimestamp.IsZero() {
+			// Job.Spec.Template is immutable - only do this on creation
+			job.Spec.Template.ObjectMeta.Name = job.Name
+			forgetOptions := generateForgetOptions(m.retainPolicy)
+			runAsUser := int64(0)
+			// set default values
+			var restoreAsOf = ""
+			var previous = strconv.Itoa(int(int32(0)))
+
+			var actions []string
+			if m.isSource {
+				actions = []string{"backup"}
+				if m.shouldPrune(time.Now()) {
+					actions = append(actions, "prune")
+				}
+			} else {
+				actions = []string{"restore"}
+				// set the restore selection options when the mover has them
+				if m.restoreAsOf != nil {
+					restoreAsOf = *m.restoreAsOf
+				}
+				if m.previous != nil {
+					previous = strconv.Itoa(int(*m.previous))
+				}
 			}
-		} else {
-			actions = []string{"restore"}
-			// set the restore selection options when the mover has them
-			if m.restoreAsOf != nil {
-				restoreAsOf = *m.restoreAsOf
-			}
-			if m.previous != nil {
-				previous = strconv.Itoa(int(*m.previous))
+			logger.Info("job actions", "actions", actions)
+
+			job.Spec.Template.Spec.Containers = []corev1.Container{{
+				Name: "restic",
+				Env: []corev1.EnvVar{
+					{Name: "FORGET_OPTIONS", Value: forgetOptions},
+					{Name: "DATA_DIR", Value: mountPath},
+					{Name: "RESTIC_CACHE_DIR", Value: resticCacheMountPath},
+					{Name: "RESTORE_AS_OF", Value: restoreAsOf},
+					{Name: "SELECT_PREVIOUS", Value: previous},
+					// We populate environment variables from the restic repo
+					// Secret. They are taken 1-for-1 from the Secret into env vars.
+					// The allowed variables are defined by restic.
+					// https://restic.readthedocs.io/en/stable/040_backup.html#environment-variables
+					// Mandatory variables are needed to define the repository
+					// location and its password.
+					utils.EnvFromSecret(repo.Name, "RESTIC_REPOSITORY", false),
+					utils.EnvFromSecret(repo.Name, "RESTIC_PASSWORD", false),
+					// Optional variables based on what backend is used for restic
+					utils.EnvFromSecret(repo.Name, "AWS_ACCESS_KEY_ID", true),
+					utils.EnvFromSecret(repo.Name, "AWS_SECRET_ACCESS_KEY", true),
+					utils.EnvFromSecret(repo.Name, "AWS_DEFAULT_REGION", true),
+					utils.EnvFromSecret(repo.Name, "ST_AUTH", true),
+					utils.EnvFromSecret(repo.Name, "ST_USER", true),
+					utils.EnvFromSecret(repo.Name, "ST_KEY", true),
+					utils.EnvFromSecret(repo.Name, "OS_AUTH_URL", true),
+					utils.EnvFromSecret(repo.Name, "OS_REGION_NAME", true),
+					utils.EnvFromSecret(repo.Name, "OS_USERNAME", true),
+					utils.EnvFromSecret(repo.Name, "OS_USER_ID", true),
+					utils.EnvFromSecret(repo.Name, "OS_PASSWORD", true),
+					utils.EnvFromSecret(repo.Name, "OS_TENANT_ID", true),
+					utils.EnvFromSecret(repo.Name, "OS_TENANT_NAME", true),
+					utils.EnvFromSecret(repo.Name, "OS_USER_DOMAIN_NAME", true),
+					utils.EnvFromSecret(repo.Name, "OS_USER_DOMAIN_ID", true),
+					utils.EnvFromSecret(repo.Name, "OS_PROJECT_NAME", true),
+					utils.EnvFromSecret(repo.Name, "OS_PROJECT_DOMAIN_NAME", true),
+					utils.EnvFromSecret(repo.Name, "OS_PROJECT_DOMAIN_ID", true),
+					utils.EnvFromSecret(repo.Name, "OS_TRUST_ID", true),
+					utils.EnvFromSecret(repo.Name, "OS_APPLICATION_CREDENTIAL_ID", true),
+					utils.EnvFromSecret(repo.Name, "OS_APPLICATION_CREDENTIAL_NAME", true),
+					utils.EnvFromSecret(repo.Name, "OS_APPLICATION_CREDENTIAL_SECRET", true),
+					utils.EnvFromSecret(repo.Name, "OS_STORAGE_URL", true),
+					utils.EnvFromSecret(repo.Name, "OS_AUTH_TOKEN", true),
+					utils.EnvFromSecret(repo.Name, "B2_ACCOUNT_ID", true),
+					utils.EnvFromSecret(repo.Name, "B2_ACCOUNT_KEY", true),
+					utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_NAME", true),
+					utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_KEY", true),
+					utils.EnvFromSecret(repo.Name, "GOOGLE_PROJECT_ID", true),
+					utils.EnvFromSecret(repo.Name, "GOOGLE_APPLICATION_CREDENTIALS", true),
+				},
+				Command: []string{"/entry.sh"},
+				Args:    actions,
+				Image:   m.containerImage,
+				SecurityContext: &corev1.SecurityContext{
+					RunAsUser: &runAsUser,
+				},
+				VolumeMounts: []corev1.VolumeMount{
+					{Name: dataVolumeName, MountPath: mountPath},
+					{Name: resticCache, MountPath: resticCacheMountPath},
+				},
+			}}
+			job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
+			job.Spec.Template.Spec.ServiceAccountName = sa.Name
+			job.Spec.Template.Spec.Volumes = []corev1.Volume{
+				{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
+					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+						ClaimName: dataPVC.Name,
+					}},
+				},
+				{Name: resticCache, VolumeSource: corev1.VolumeSource{
+					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+						ClaimName: cachePVC.Name,
+					}},
+				},
 			}
 		}
-		logger.Info("job actions", "actions", actions)
 
-		job.Spec.Template.Spec.Containers = []corev1.Container{{
-			Name: "restic",
-			Env: []corev1.EnvVar{
-				{Name: "FORGET_OPTIONS", Value: forgetOptions},
-				{Name: "DATA_DIR", Value: mountPath},
-				{Name: "RESTIC_CACHE_DIR", Value: resticCacheMountPath},
-				{Name: "RESTORE_AS_OF", Value: restoreAsOf},
-				{Name: "SELECT_PREVIOUS", Value: previous},
-				// We populate environment variables from the restic repo
-				// Secret. They are taken 1-for-1 from the Secret into env vars.
-				// The allowed variables are defined by restic.
-				// https://restic.readthedocs.io/en/stable/040_backup.html#environment-variables
-				// Mandatory variables are needed to define the repository
-				// location and its password.
-				utils.EnvFromSecret(repo.Name, "RESTIC_REPOSITORY", false),
-				utils.EnvFromSecret(repo.Name, "RESTIC_PASSWORD", false),
-				// Optional variables based on what backend is used for restic
-				utils.EnvFromSecret(repo.Name, "AWS_ACCESS_KEY_ID", true),
-				utils.EnvFromSecret(repo.Name, "AWS_SECRET_ACCESS_KEY", true),
-				utils.EnvFromSecret(repo.Name, "AWS_DEFAULT_REGION", true),
-				utils.EnvFromSecret(repo.Name, "ST_AUTH", true),
-				utils.EnvFromSecret(repo.Name, "ST_USER", true),
-				utils.EnvFromSecret(repo.Name, "ST_KEY", true),
-				utils.EnvFromSecret(repo.Name, "OS_AUTH_URL", true),
-				utils.EnvFromSecret(repo.Name, "OS_REGION_NAME", true),
-				utils.EnvFromSecret(repo.Name, "OS_USERNAME", true),
-				utils.EnvFromSecret(repo.Name, "OS_USER_ID", true),
-				utils.EnvFromSecret(repo.Name, "OS_PASSWORD", true),
-				utils.EnvFromSecret(repo.Name, "OS_TENANT_ID", true),
-				utils.EnvFromSecret(repo.Name, "OS_TENANT_NAME", true),
-				utils.EnvFromSecret(repo.Name, "OS_USER_DOMAIN_NAME", true),
-				utils.EnvFromSecret(repo.Name, "OS_USER_DOMAIN_ID", true),
-				utils.EnvFromSecret(repo.Name, "OS_PROJECT_NAME", true),
-				utils.EnvFromSecret(repo.Name, "OS_PROJECT_DOMAIN_NAME", true),
-				utils.EnvFromSecret(repo.Name, "OS_PROJECT_DOMAIN_ID", true),
-				utils.EnvFromSecret(repo.Name, "OS_TRUST_ID", true),
-				utils.EnvFromSecret(repo.Name, "OS_APPLICATION_CREDENTIAL_ID", true),
-				utils.EnvFromSecret(repo.Name, "OS_APPLICATION_CREDENTIAL_NAME", true),
-				utils.EnvFromSecret(repo.Name, "OS_APPLICATION_CREDENTIAL_SECRET", true),
-				utils.EnvFromSecret(repo.Name, "OS_STORAGE_URL", true),
-				utils.EnvFromSecret(repo.Name, "OS_AUTH_TOKEN", true),
-				utils.EnvFromSecret(repo.Name, "B2_ACCOUNT_ID", true),
-				utils.EnvFromSecret(repo.Name, "B2_ACCOUNT_KEY", true),
-				utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_NAME", true),
-				utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_KEY", true),
-				utils.EnvFromSecret(repo.Name, "GOOGLE_PROJECT_ID", true),
-				utils.EnvFromSecret(repo.Name, "GOOGLE_APPLICATION_CREDENTIALS", true),
-			},
-			Command: []string{"/entry.sh"},
-			Args:    actions,
-			Image:   m.containerImage,
-			SecurityContext: &corev1.SecurityContext{
-				RunAsUser: &runAsUser,
-			},
-			VolumeMounts: []corev1.VolumeMount{
-				{Name: dataVolumeName, MountPath: mountPath},
-				{Name: resticCache, MountPath: resticCacheMountPath},
-			},
-		}}
-		job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
-		job.Spec.Template.Spec.ServiceAccountName = sa.Name
-		job.Spec.Template.Spec.Volumes = []corev1.Volume{
-			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
-				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-					ClaimName: dataPVC.Name,
-				}},
-			},
-			{Name: resticCache, VolumeSource: corev1.VolumeSource{
-				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-					ClaimName: cachePVC.Name,
-				}},
-			},
-		}
 		return nil
 	})
 	// If Job had failed, delete it so it can be recreated
