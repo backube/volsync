@@ -235,7 +235,7 @@ for var in RESTIC_CACHE_DIR \
            ; do
     check_var_defined $var
 done
-
+START_TIME=$SECONDS
 for op in "$@"; do
     case $op in
         "backup")
@@ -255,6 +255,7 @@ for op in "$@"; do
             ;;
     esac
 done
+echo "Restic completed in $(( SECONDS - START_TIME ))s"
 sync
 echo "=== Done ==="
 # sleep forever so that the containers logs can be inspected
