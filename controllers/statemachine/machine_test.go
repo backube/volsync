@@ -19,6 +19,7 @@ package statemachine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -278,5 +279,38 @@ var _ = Context("Issue 271: nextSyncTime not being updated", func() {
 		_, _ = Run(ctx, m, logger)
 
 		Expect(m.NextSyncTime().IsZero()).To(BeFalse())
+	})
+})
+
+var _ = Context("Issue 290: Synchronizing condition error doesn't clear", func() {
+	It("should clear the error condition if a reconcile doesn't return an error", func() {
+		m := newFakeMachine()
+		m.TT = manualTrigger
+		m.MT = "i'm manual"
+
+		// To Sync
+		_, _ = Run(ctx, m, logger)
+
+		// Reconcile and return an error
+		errString := "a reconcile error"
+		m.SyncResult = mover.InProgress()
+		m.SyncErr = errors.New(errString)
+		_, err := Run(ctx, m, logger)
+		Expect(err).To(Equal(m.SyncErr))
+
+		c := apimeta.FindStatusCondition(*m.Conditions(), volsyncv1alpha1.ConditionSynchronizing)
+		Expect(c).NotTo(BeNil())
+		Expect(c.Status).To(Equal(metav1.ConditionFalse))
+		Expect(c.Reason).To(Equal(volsyncv1alpha1.SynchronizingReasonError))
+
+		// Error clears and we return to syncing
+		m.SyncErr = nil
+		_, err = Run(ctx, m, logger)
+		Expect(err).To(BeNil())
+
+		c = apimeta.FindStatusCondition(*m.Conditions(), volsyncv1alpha1.ConditionSynchronizing)
+		Expect(c).NotTo(BeNil())
+		Expect(c.Status).To(Equal(metav1.ConditionTrue))
+		Expect(c.Reason).To(Equal(volsyncv1alpha1.SynchronizingReasonSync))
 	})
 })
