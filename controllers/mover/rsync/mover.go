@@ -333,13 +333,6 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 		}
 		utils.MarkForCleanup(m.owner, job)
 
-		job.Spec.Template.ObjectMeta.Name = job.Name
-		if job.Spec.Template.ObjectMeta.Labels == nil {
-			job.Spec.Template.ObjectMeta.Labels = map[string]string{}
-		}
-		for k, v := range m.serviceSelector() {
-			job.Spec.Template.ObjectMeta.Labels[k] = v
-		}
 		backoffLimit := int32(2)
 		job.Spec.BackoffLimit = &backoffLimit
 
@@ -349,59 +342,69 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 		}
 		job.Spec.Parallelism = &parallelism
 
-		runAsUser := int64(0)
-
-		containerEnv := []corev1.EnvVar{}
-		containerCmd := []string{"/bin/bash", "-c", "/destination.sh"} // cmd for replicationDestination job
-		if m.isSource {
-			// Set dest address/port if necessary
-			if m.address != nil {
-				containerEnv = append(containerEnv, corev1.EnvVar{Name: "DESTINATION_ADDRESS", Value: *m.address})
-				if m.port != nil {
-					connectPort := strconv.Itoa(int(*m.port))
-					containerEnv = append(containerEnv, corev1.EnvVar{Name: "DESTINATION_PORT", Value: connectPort})
-				}
+		if job.CreationTimestamp.IsZero() {
+			// Job.Spec.Template is immutable - only do this on creation
+			job.Spec.Template.ObjectMeta.Name = job.Name
+			if job.Spec.Template.ObjectMeta.Labels == nil {
+				job.Spec.Template.ObjectMeta.Labels = map[string]string{}
 			}
-			// Set container cmd for the replicationSource job
-			containerCmd = []string{"/bin/bash", "-c", "/source.sh"}
-		}
-		job.Spec.Template.Spec.Containers = []corev1.Container{{
-			Name:    "rsync",
-			Env:     containerEnv,
-			Command: containerCmd,
-			Image:   m.containerImage,
-			SecurityContext: &corev1.SecurityContext{
-				Capabilities: &corev1.Capabilities{
-					Add: []corev1.Capability{
-						"AUDIT_WRITE",
-						"SYS_CHROOT",
+			for k, v := range m.serviceSelector() {
+				job.Spec.Template.ObjectMeta.Labels[k] = v
+			}
+			runAsUser := int64(0)
+
+			containerEnv := []corev1.EnvVar{}
+			containerCmd := []string{"/bin/bash", "-c", "/destination.sh"} // cmd for replicationDestination job
+			if m.isSource {
+				// Set dest address/port if necessary
+				if m.address != nil {
+					containerEnv = append(containerEnv, corev1.EnvVar{Name: "DESTINATION_ADDRESS", Value: *m.address})
+					if m.port != nil {
+						connectPort := strconv.Itoa(int(*m.port))
+						containerEnv = append(containerEnv, corev1.EnvVar{Name: "DESTINATION_PORT", Value: connectPort})
+					}
+				}
+				// Set container cmd for the replicationSource job
+				containerCmd = []string{"/bin/bash", "-c", "/source.sh"}
+			}
+			job.Spec.Template.Spec.Containers = []corev1.Container{{
+				Name:    "rsync",
+				Env:     containerEnv,
+				Command: containerCmd,
+				Image:   m.containerImage,
+				SecurityContext: &corev1.SecurityContext{
+					Capabilities: &corev1.Capabilities{
+						Add: []corev1.Capability{
+							"AUDIT_WRITE",
+							"SYS_CHROOT",
+						},
 					},
+					RunAsUser: &runAsUser,
 				},
-				RunAsUser: &runAsUser,
-			},
-			VolumeMounts: []corev1.VolumeMount{
-				{Name: dataVolumeName, MountPath: mountPath},
-				{Name: "keys", MountPath: "/keys"},
-			},
-		}}
-		job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
-		job.Spec.Template.Spec.ServiceAccountName = sa.Name
-		secretMode := int32(0600)
-		job.Spec.Template.Spec.Volumes = []corev1.Volume{
-			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
-				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-					ClaimName: dataPVC.Name,
-					ReadOnly:  false,
-				}},
-			},
-			{Name: "keys", VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{
-					SecretName:  rsyncSecretName,
-					DefaultMode: &secretMode,
-				}},
-			},
+				VolumeMounts: []corev1.VolumeMount{
+					{Name: dataVolumeName, MountPath: mountPath},
+					{Name: "keys", MountPath: "/keys"},
+				},
+			}}
+			job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
+			job.Spec.Template.Spec.ServiceAccountName = sa.Name
+			secretMode := int32(0600)
+			job.Spec.Template.Spec.Volumes = []corev1.Volume{
+				{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
+					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+						ClaimName: dataPVC.Name,
+						ReadOnly:  false,
+					}},
+				},
+				{Name: "keys", VolumeSource: corev1.VolumeSource{
+					Secret: &corev1.SecretVolumeSource{
+						SecretName:  rsyncSecretName,
+						DefaultMode: &secretMode,
+					}},
+				},
+			}
+			logger.V(1).Info("Job has PVC", "PVC", dataPVC, "DS", dataPVC.Spec.DataSource)
 		}
-		logger.V(1).Info("Job has PVC", "PVC", dataPVC, "DS", dataPVC.Spec.DataSource)
 		return nil
 	})
 	// If Job had failed, delete it so it can be recreated

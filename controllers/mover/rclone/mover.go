@@ -215,7 +215,6 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 			return err
 		}
 		utils.MarkForCleanup(m.owner, job)
-		job.Spec.Template.ObjectMeta.Name = job.Name
 		backoffLimit := int32(2) //TODO: backofflimit was 8 for restic
 		job.Spec.BackoffLimit = &backoffLimit
 
@@ -225,45 +224,51 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 		}
 		job.Spec.Parallelism = &parallelism
 
-		runAsUser := int64(0)
+		if job.CreationTimestamp.IsZero() {
+			// Job.Spec.Template is immutable - only do this on creation
+			job.Spec.Template.ObjectMeta.Name = job.Name
 
-		job.Spec.Template.Spec.Containers = []corev1.Container{{
-			Name: "rclone",
-			Env: []corev1.EnvVar{
-				{Name: "RCLONE_CONFIG", Value: "/rclone-config/rclone.conf"},
-				{Name: "RCLONE_DEST_PATH", Value: *m.rcloneDestPath},
-				{Name: "DIRECTION", Value: direction},
-				{Name: "MOUNT_PATH", Value: mountPath},
-				{Name: "RCLONE_CONFIG_SECTION", Value: *m.rcloneConfigSection},
-			},
-			Command: []string{"/bin/bash", "-c", "./active.sh"},
-			Image:   m.containerImage,
-			SecurityContext: &corev1.SecurityContext{
-				RunAsUser: &runAsUser,
-			},
-			VolumeMounts: []corev1.VolumeMount{
-				{Name: dataVolumeName, MountPath: mountPath},
-				{Name: rcloneSecret, MountPath: "/rclone-config/"},
-			},
-		}}
-		job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
-		job.Spec.Template.Spec.ServiceAccountName = sa.Name
-		secretMode := int32(0600)
-		job.Spec.Template.Spec.Volumes = []corev1.Volume{
-			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
-				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-					ClaimName: dataPVC.Name,
-					ReadOnly:  false,
-				}},
-			},
-			{Name: rcloneSecret, VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{
-					SecretName:  rcloneConfigSecret.Name,
-					DefaultMode: &secretMode,
-				}},
-			},
+			runAsUser := int64(0)
+
+			job.Spec.Template.Spec.Containers = []corev1.Container{{
+				Name: "rclone",
+				Env: []corev1.EnvVar{
+					{Name: "RCLONE_CONFIG", Value: "/rclone-config/rclone.conf"},
+					{Name: "RCLONE_DEST_PATH", Value: *m.rcloneDestPath},
+					{Name: "DIRECTION", Value: direction},
+					{Name: "MOUNT_PATH", Value: mountPath},
+					{Name: "RCLONE_CONFIG_SECTION", Value: *m.rcloneConfigSection},
+				},
+				Command: []string{"/bin/bash", "-c", "./active.sh"},
+				Image:   m.containerImage,
+				SecurityContext: &corev1.SecurityContext{
+					RunAsUser: &runAsUser,
+				},
+				VolumeMounts: []corev1.VolumeMount{
+					{Name: dataVolumeName, MountPath: mountPath},
+					{Name: rcloneSecret, MountPath: "/rclone-config/"},
+				},
+			}}
+			job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
+			job.Spec.Template.Spec.ServiceAccountName = sa.Name
+			secretMode := int32(0600)
+			job.Spec.Template.Spec.Volumes = []corev1.Volume{
+				{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
+					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+						ClaimName: dataPVC.Name,
+						ReadOnly:  false,
+					}},
+				},
+				{Name: rcloneSecret, VolumeSource: corev1.VolumeSource{
+					Secret: &corev1.SecretVolumeSource{
+						SecretName:  rcloneConfigSecret.Name,
+						DefaultMode: &secretMode,
+					}},
+				},
+			}
+			logger.V(1).Info("Job has PVC", "PVC", dataPVC, "DS", dataPVC.Spec.DataSource)
 		}
-		logger.V(1).Info("Job has PVC", "PVC", dataPVC, "DS", dataPVC.Spec.DataSource)
+
 		return nil
 	})
 	// If Job had failed, delete it so it can be recreated

@@ -831,6 +831,30 @@ var _ = Describe("Rsync as a source", func() {
 				})
 			})
 
+			When("Doing a sync when the job already exists", func() {
+				It("Should not modify job.spec.template", func() {
+					j, e := mover.ensureJob(ctx, sPVC, sa, sshKeysSecret.GetName()) // Using sPVC as dataPVC (i.e. direct)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil()) // hasn't completed
+
+					job = &batchv1.Job{}
+					Eventually(func() error {
+						err := k8sClient.Get(ctx, types.NamespacedName{
+							Name:      jobName,
+							Namespace: ns.Name,
+						}, job)
+						return err
+					}).Should(Succeed())
+
+					// Force a change that would be in the job.spec.template (different rsync ssh keys secret name)
+					// This should not fail as the job.spec.template update should be skipped since it's not initial creation
+					// Would throw an error about modifying an immutable field if job.spec.template was updated
+					j, e = mover.ensureJob(ctx, sPVC, sa, "updated-secret-name")
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil()) // hasn't completed
+				})
+			})
+
 			When("the job has failed", func() {
 				It("should be restarted", func() {
 					j, e := mover.ensureJob(ctx, sPVC, sa, sshKeysSecret.GetName()) // Using sPVC as dataPVC (i.e. direct)
