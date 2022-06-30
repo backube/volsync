@@ -417,6 +417,7 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 		}
 
 		deployment.Spec.Template = corev1.PodTemplateSpec{}
+		utils.SetOwnedByVolSync(&deployment.Spec.Template)
 		deployment.Spec.Template.ObjectMeta.Name = deployment.Name
 		utils.AddAllLabels(&deployment.Spec.Template, m.serviceSelector())
 
