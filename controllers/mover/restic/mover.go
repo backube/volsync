@@ -276,7 +276,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 	logger := m.logger.WithValues("job", client.ObjectKeyFromObject(job))
 	_, err := ctrlutil.CreateOrUpdate(ctx, m.client, job, func() error {
 		if err := ctrl.SetControllerReference(m.owner, job, m.client.Scheme()); err != nil {
-			logger.Error(err, "unable to set controller reference")
+			logger.Error(err, utils.ErrUnableToSetControllerRef)
 			return err
 		}
 		utils.SetOwnedByVolSync(job)

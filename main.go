@@ -36,6 +36,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers"
@@ -43,6 +44,7 @@ import (
 	"github.com/backube/volsync/controllers/mover/rclone"
 	"github.com/backube/volsync/controllers/mover/restic"
 	"github.com/backube/volsync/controllers/mover/rsync"
+	"github.com/backube/volsync/controllers/mover/syncthing"
 	"github.com/backube/volsync/controllers/utils"
 	//+kubebuilder:scaffold:imports
 )
@@ -60,28 +62,49 @@ func init() {
 	//+kubebuilder:scaffold:scheme
 }
 
-//nolint:funlen
-func main() {
-	// Register the data movers
+// registerMovers Registers the data movers to be used by the VolSync operator.
+func registerMovers() error {
 	if err := rsync.Register(); err != nil {
-		setupLog.Error(err, "Error registering rsync data mover")
-		os.Exit(1)
+		return fmt.Errorf("error registering rsync data mover: %w", err)
 	}
 	if err := rclone.Register(); err != nil {
-		setupLog.Error(err, "Error registering rclone data mover")
-		os.Exit(1)
+		return fmt.Errorf("error registering rclone data mover: %w", err)
 	}
 	if err := restic.Register(); err != nil {
-		setupLog.Error(err, "Error registering restic data mover")
-		os.Exit(1)
+		return fmt.Errorf("error registering restic data mover: %w", err)
 	}
+	if err := syncthing.Register(); err != nil {
+		return fmt.Errorf("error registering syncthing data mover: %w", err)
+	}
+	return nil
+}
 
-	var metricsAddr string
-	var enableLeaderElection bool
-	var probeAddr string
-	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
-	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
-	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
+// printInfo Prints version information about the operating system and movers to STDOUT.
+func printInfo() {
+	setupLog.Info(fmt.Sprintf("Go Version: %s", runtime.Version()))
+	setupLog.Info(fmt.Sprintf("Go OS/Arch: %s/%s", runtime.GOOS, runtime.GOARCH))
+	setupLog.Info(fmt.Sprintf("Operator Version: %s", volsyncVersion))
+	for _, b := range mover.Catalog {
+		setupLog.Info(b.VersionInfo())
+	}
+}
+
+// configureChecks Configures the manager with a healthz and readyz check.
+func configureChecks(mgr manager.Manager) error {
+	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
+		return fmt.Errorf("unable to setup health check: %w", err)
+	}
+	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
+		return fmt.Errorf("unable to setup ready check: %w", err)
+	}
+	return nil
+}
+
+// addCommandFlags Configures flags to be bound to the VolSync command.
+func addCommandFlags(probeAddr *string, metricsAddr *string, enableLeaderElection *bool) {
+	flag.StringVar(metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
+	flag.StringVar(probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
+	flag.BoolVar(enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.StringVar(&utils.SCCName, "scc-name",
@@ -100,14 +123,18 @@ func main() {
 	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+}
 
-	setupLog.Info(fmt.Sprintf("Go Version: %s", runtime.Version()))
-	setupLog.Info(fmt.Sprintf("Go OS/Arch: %s/%s", runtime.GOOS, runtime.GOARCH))
-	setupLog.Info(fmt.Sprintf("Operator Version: %s", volsyncVersion))
-	for _, b := range mover.Catalog {
-		setupLog.Info(b.VersionInfo())
+func main() {
+	err := registerMovers()
+	if err != nil {
+		setupLog.Error(err, "error registering data movers")
+		os.Exit(1)
 	}
-
+	var probeAddr, metricsAddr string
+	var enableLeaderElection bool
+	addCommandFlags(&probeAddr, &metricsAddr, &enableLeaderElection)
+	printInfo()
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
 		MetricsBindAddress:     metricsAddr,
@@ -146,16 +173,10 @@ func main() {
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder
-
-	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
-		setupLog.Error(err, "unable to set up health check")
+	if err := configureChecks(mgr); err != nil {
+		setupLog.Error(err, "unable to setup checks")
 		os.Exit(1)
 	}
-	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
-		setupLog.Error(err, "unable to set up ready check")
-		os.Exit(1)
-	}
-
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")

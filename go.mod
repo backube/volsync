@@ -13,6 +13,7 @@ require (
 	github.com/spf13/cobra v1.5.0
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.12.0
+	github.com/syncthing/syncthing v1.20.2
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.24.2
 	k8s.io/apimachinery v0.24.2
@@ -22,6 +23,39 @@ require (
 	k8s.io/kubectl v0.24.2
 	k8s.io/utils v0.0.0-20220210201930-3a6ce19ff2f9
 	sigs.k8s.io/controller-runtime v0.12.2
+)
+
+require (
+	github.com/AudriusButkevicius/pfilter v0.0.10 // indirect
+	github.com/calmh/xdr v1.1.0 // indirect
+	github.com/ccding/go-stun v0.1.3 // indirect
+	github.com/cheekybits/genny v1.0.0 // indirect
+	github.com/go-ole/go-ole v1.2.6 // indirect
+	github.com/go-task/slim-sprig v0.0.0-20210107165309-348f09dbbbc0 // indirect
+	github.com/golang/snappy v0.0.4 // indirect
+	github.com/greatroar/blobloom v0.7.0 // indirect
+	github.com/hashicorp/golang-lru v0.5.4 // indirect
+	github.com/jackpal/gateway v1.0.7 // indirect
+	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
+	github.com/klauspost/cpuid/v2 v2.0.9 // indirect
+	github.com/lucas-clemente/quic-go v0.27.0 // indirect
+	github.com/marten-seemann/qtls-go1-16 v0.1.5 // indirect
+	github.com/marten-seemann/qtls-go1-17 v0.1.1 // indirect
+	github.com/marten-seemann/qtls-go1-18 v0.1.1 // indirect
+	github.com/minio/sha256-simd v1.0.0 // indirect
+	github.com/miscreant/miscreant.go v0.0.0-20200214223636-26d376326b75 // indirect
+	github.com/petermattis/goid v0.0.0-20180202154549-b0b1615b78e5 // indirect
+	github.com/pierrec/lz4/v4 v4.1.13 // indirect
+	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
+	github.com/sasha-s/go-deadlock v0.3.1 // indirect
+	github.com/shirou/gopsutil/v3 v3.21.12 // indirect
+	github.com/syncthing/notify v0.0.0-20210616190510-c6b7342338d2 // indirect
+	github.com/syndtr/goleveldb v1.0.1-0.20200815071216-d9e9293bd0f7 // indirect
+	github.com/thejerf/suture/v4 v4.0.2 // indirect
+	github.com/yusufpapurcu/wmi v1.2.2 // indirect
+	golang.org/x/mod v0.6.0-dev.0.20220106191415-9b9b3d81d5e3 // indirect
+	golang.org/x/tools v0.1.10-0.20220218145154-897bd77cd717 // indirect
+	golang.org/x/xerrors v0.0.0-20220517211312-f3a8303e98df // indirect
 )
 
 require (

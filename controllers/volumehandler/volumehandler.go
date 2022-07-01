@@ -153,7 +153,7 @@ func (vh *VolumeHandler) EnsureNewPVC(ctx context.Context, log logr.Logger,
 
 	op, err := ctrlutil.CreateOrUpdate(ctx, vh.client, pvc, func() error {
 		if err := ctrl.SetControllerReference(vh.owner, pvc, vh.client.Scheme()); err != nil {
-			logger.Error(err, "unable to set controller reference")
+			logger.Error(err, utils.ErrUnableToSetControllerRef)
 			return err
 		}
 		utils.SetOwnedByVolSync(pvc)
@@ -233,7 +233,7 @@ func (vh *VolumeHandler) ensureImageSnapshot(ctx context.Context, log logr.Logge
 			utils.UnMarkForCleanupAndRemoveOwnership(snap, vh.owner)
 		} else {
 			if err := ctrl.SetControllerReference(vh.owner, snap, vh.client.Scheme()); err != nil {
-				logger.Error(err, "unable to set controller reference")
+				logger.Error(err, utils.ErrUnableToSetControllerRef)
 				return err
 			}
 			utils.SetOwnedByVolSync(snap)
@@ -306,7 +306,7 @@ func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,
 
 	op, err := ctrlutil.CreateOrUpdate(ctx, vh.client, clone, func() error {
 		if err := ctrl.SetControllerReference(vh.owner, clone, vh.client.Scheme()); err != nil {
-			logger.Error(err, "unable to set controller reference")
+			logger.Error(err, utils.ErrUnableToSetControllerRef)
 			return err
 		}
 		utils.SetOwnedByVolSync(clone)
@@ -386,7 +386,7 @@ func (vh *VolumeHandler) ensureSnapshot(ctx context.Context, log logr.Logger,
 
 	op, err := ctrlutil.CreateOrUpdate(ctx, vh.client, snap, func() error {
 		if err := ctrl.SetControllerReference(vh.owner, snap, vh.client.Scheme()); err != nil {
-			logger.Error(err, "unable to set controller reference")
+			logger.Error(err, utils.ErrUnableToSetControllerRef)
 			return err
 		}
 		utils.SetOwnedByVolSync(snap)
@@ -449,7 +449,7 @@ func (vh *VolumeHandler) pvcFromSnapshot(ctx context.Context, log logr.Logger,
 
 	op, err := ctrlutil.CreateOrUpdate(ctx, vh.client, pvc, func() error {
 		if err := ctrl.SetControllerReference(vh.owner, pvc, vh.client.Scheme()); err != nil {
-			logger.Error(err, "unable to set controller reference")
+			logger.Error(err, utils.ErrUnableToSetControllerRef)
 			return err
 		}
 		utils.SetOwnedByVolSync(pvc)

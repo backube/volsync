@@ -28,6 +28,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// Define the error messages to be returned by VolSync.
+const (
+	ErrUnableToSetControllerRef = "unable to set controller reference"
+)
+
 func GetAndValidateSecret(ctx context.Context, cl client.Client,
 	logger logr.Logger, secret *corev1.Secret, fields ...string) error {
 	if err := cl.Get(ctx, client.ObjectKeyFromObject(secret), secret); err != nil {
@@ -75,4 +80,21 @@ func KindAndName(scheme *runtime.Scheme, obj client.Object) string {
 		return obj.GetName()
 	}
 	return ref.Kind + "/" + ref.Name
+}
+
+// GetServiceAddress Returns the address of the given service as a string.
+func GetServiceAddress(svc *corev1.Service) string {
+	address := svc.Spec.ClusterIP
+	if svc.Spec.Type == corev1.ServiceTypeLoadBalancer {
+		if len(svc.Status.LoadBalancer.Ingress) > 0 {
+			if svc.Status.LoadBalancer.Ingress[0].Hostname != "" {
+				address = svc.Status.LoadBalancer.Ingress[0].Hostname
+			} else if svc.Status.LoadBalancer.Ingress[0].IP != "" {
+				address = svc.Status.LoadBalancer.Ingress[0].IP
+			}
+		} else {
+			address = ""
+		}
+	}
+	return address
 }

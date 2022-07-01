@@ -1,0 +1,9 @@
+---
+kind: ReplicationSource
+apiVersion: volsync.backube/v1alpha1
+metadata:
+  name: sync-dokuwiki
+spec:
+  sourcePVC: dokuwiki-pvc
+  syncthing:
+    serviceType: ClusterIP

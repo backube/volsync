@@ -1,0 +1,35 @@
+---
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+timeout: 600
+commands:
+  - script: |
+      set -e -o pipefail
+
+      # import the necessary utils for working w/ Syncthing
+      source ./utils.sh
+
+      # delete all of the Syncthing Pods belonging to ReplicationSources
+      for k in $(seq 1 2); do
+        target_rs="syncthing-${k}"
+
+        # get the previious syncthing peer ID for replicationsource 'syncthing-1'
+        prev_st_peer_id="$(kubectl get replicationsource "${target_rs}" -n "${NAMESPACE}" -o jsonpath='{.status.syncthing.ID}')"
+
+        # find the Syncthing pod belonging to the first ReplicationSource 'syncthing-1' and delete it
+        syncthing_podname="$(kubectl get pods -l app.kubernetes.io/name="${target_rs}" -n "${NAMESPACE}" -o jsonpath='{.items[0].metadata.name}')"
+        kubectl delete pod "${syncthing_podname}" -n "${NAMESPACE}"
+
+        # wait until a new pod is created
+        syncthing_new_podname=$(kubectl get pods -l app.kubernetes.io/name="${target_rs}" -n "${NAMESPACE}" -o jsonpath='{.items[0].metadata.name}')
+        kubectl wait --for=condition=Ready pod "${syncthing_new_podname}" -n "${NAMESPACE}" --timeout=600s
+
+        # get the new syncthing peer ID for the target replicationsource
+        new_st_peer_id=$(kubectl get replicationsource "${target_rs}" -n "${NAMESPACE}" -o jsonpath='{.status.syncthing.ID}')
+
+        # assert that the new syncthing peer ID is the same as the previous one
+        if [[ "${prev_st_peer_id}" != "${new_st_peer_id}" ]]; then
+          echo "ERROR: new syncthing peer ID is not the same as the previous one"
+          exit 1
+        fi
+      done

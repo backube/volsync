@@ -2,6 +2,14 @@
 
 set -e -o pipefail
 
+# check if commands exist
+for cmd in helm docker kind; do
+	if ! command -v $cmd >/dev/null 2>&1; then
+		echo "Error: $cmd is not installed"
+		exit 1
+	fi
+done
+
 # cd to top dir
 scriptdir="$(dirname "$(realpath "$0")")"
 cd "$scriptdir/.."
@@ -38,6 +46,7 @@ helm upgrade --install --create-namespace -n volsync-system \
     --set rclone.tag="${KIND_TAG}" \
     --set restic.tag="${KIND_TAG}" \
     --set rsync.tag="${KIND_TAG}" \
+    --set syncthing.tag="${KIND_TAG}" \
     --set metrics.disableAuth=true \
     --wait --timeout=300s \
     volsync ./helm/volsync

@@ -156,7 +156,7 @@ func (m *Mover) ensureServiceAndPublishAddress(ctx context.Context) (bool, error
 }
 
 func (m *Mover) publishSvcAddress(service *corev1.Service) (bool, error) {
-	address := getServiceAddress(service)
+	address := utils.GetServiceAddress(service)
 	if address == "" {
 		// We don't have an address yet, try again later
 		m.updateStatusAddress(nil)
@@ -351,7 +351,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 
 	op, err := ctrlutil.CreateOrUpdate(ctx, m.client, job, func() error {
 		if err := ctrl.SetControllerReference(m.owner, job, m.client.Scheme()); err != nil {
-			logger.Error(err, "unable to set controller reference")
+			logger.Error(err, utils.ErrUnableToSetControllerRef)
 			return err
 		}
 		utils.SetOwnedByVolSync(job)

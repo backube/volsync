@@ -60,7 +60,7 @@ check_var_defined() {
 #   None
 #####################################################
 preconfigure_folder() {
-  # TODO: make the config.xml template more configurable 
+  # HACK: make the config.xml template more configurable 
   #       in case these variables change 
 
   local filepath="${1}"
