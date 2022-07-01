@@ -110,6 +110,8 @@ func doSynchronizingState(ctx context.Context, r ReplicationMachine, l logr.Logg
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+	} else {
+		setConditionSyncing(r, l)
 	}
 	return result.ReconcileResult(), nil
 }
@@ -148,6 +150,8 @@ func doCleanupState(ctx context.Context, r ReplicationMachine, l logr.Logger) (c
 				return ctrl.Result{RequeueAfter: *timeToNext}, nil
 			}
 		}
+	} else {
+		setConditionCleanup(r, l)
 	}
 	return result.ReconcileResult(), nil
 }
