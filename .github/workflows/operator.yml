@@ -8,8 +8,9 @@ on:  # yamllint disable-line rule:truthy
     tags: ["*"]
   pull_request:
     branches: ["main", "ocm-*", "release-*"]
-  schedule:
-    - cron: "15 4 * * 1"  # 4:15 every Monday
+  # This workflow must be able to be triggered manually so that it can be
+  # started from another workflow
+  workflow_dispatch:
 
 env:
   GO_VERSION: "1.17"
