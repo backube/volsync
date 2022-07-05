@@ -10,10 +10,10 @@ spec:
     spec:
       containers:
       - name: reader
-        image: alpine
+        image: busybox
         # validate that the testdata file contains "hello from syncthing-1"
         command: ["/bin/sh", "-c"]
-        args: ["cat /data-2/testdata.txt | grep 'hello from syncthing-1'"]
+        args: ["grep 'hello from syncthing-1' /data-2/testdata.txt"]
         volumeMounts:
         - name: test-data-2
           mountPath: /data-2
