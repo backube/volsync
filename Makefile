@@ -234,8 +234,11 @@ $(YQ): $(LOCALBIN)
 bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
 	$(OPERATOR_SDK) generate kustomize manifests -q
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
-	$(KUSTOMIZE) build config/manifests | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS)
-	sed -i "s/MIN_KUBE_VERSION/$(MIN_KUBE_VERSION)/" bundle/manifests/volsync.clusterserviceversion.yaml
+	$(KUSTOMIZE) build config/manifests | \
+		sed "s/MIN_KUBE_VERSION/$(MIN_KUBE_VERSION)/" | \
+		sed "s/OLM_SKIPRANGE/$(OLM_SKIPRANGE)/" | \
+		sed "s/CSV_REPLACES_VERSION/$(CSV_REPLACES_VERSION)/" | \
+		$(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS)
 	$(OPERATOR_SDK) bundle validate --select-optional suite=operatorframework --optional-values k8s-version=$(ENVTEST_K8S_VERSION) ./bundle
 
 .PHONY: bundle-build
