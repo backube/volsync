@@ -802,7 +802,9 @@ var _ = Describe("Restic as a source", func() {
 					}, timeout, interval).Should(Succeed())
 					Eventually(func() int32 {
 						j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo)
-						Expect(e).NotTo(HaveOccurred())
+						if e != nil {
+							return 98
+						}
 						Expect(j).To(BeNil())
 						e = k8sClient.Get(ctx, nsn, job)
 						if e != nil {
