@@ -39,3 +39,11 @@ patches:
         value: quay.io/backube/volsync-mover-restic:latest
   target:
     kind: Deployment
+- patch: |-
+    - op: add
+      path: /spec/template/spec/containers/0/env/-
+      value:
+        name: RELATED_IMAGE_SYNCTHING_CONTAINER
+        value: quay.io/backube/volsync-mover-syncthing:latest
+  target:
+    kind: Deployment

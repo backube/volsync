@@ -346,6 +346,8 @@ spec:
                   value: quay.io/backube/volsync-mover-rclone:latest
                 - name: RELATED_IMAGE_RESTIC_CONTAINER
                   value: quay.io/backube/volsync-mover-restic:latest
+                - name: RELATED_IMAGE_SYNCTHING_CONTAINER
+                  value: quay.io/backube/volsync-mover-syncthing:latest
                 image: quay.io/backube/volsync:latest
                 livenessProbe:
                   httpGet:
@@ -448,4 +450,6 @@ spec:
     name: rclone-container
   - image: quay.io/backube/volsync-mover-restic:latest
     name: restic-container
+  - image: quay.io/backube/volsync-mover-syncthing:latest
+    name: syncthing-container
   version: 0.5.0
