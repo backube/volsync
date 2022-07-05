@@ -33,6 +33,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -403,8 +404,14 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 	}
 	logger := m.logger.WithValues("deployment", client.ObjectKeyFromObject(deployment))
 
+	affinity, err := utils.AffinityFromVolume(ctx, m.client, logger, dataPVC)
+	if err != nil {
+		logger.Error(err, "unable to determine proper affinity", "PVC", client.ObjectKeyFromObject(dataPVC))
+		return nil, err
+	}
+
 	// we declare the deployment object in this block line-by-line
-	_, err := ctrlutil.CreateOrUpdate(ctx, m.client, deployment, func() error {
+	_, err = ctrlutil.CreateOrUpdate(ctx, m.client, deployment, func() error {
 		if err := ctrl.SetControllerReference(m.owner, deployment, m.client.Scheme()); err != nil {
 			logger.Error(err, utils.ErrUnableToSetControllerRef)
 			return err
@@ -415,14 +422,22 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 		deployment.Spec.Selector = &metav1.LabelSelector{
 			MatchLabels: m.serviceSelector(),
 		}
+		// We don't want >1 ST instance running at a time for a given PVC
+		deployment.Spec.Strategy = appsv1.DeploymentStrategy{
+			Type: appsv1.RecreateDeploymentStrategyType,
+		}
 
 		deployment.Spec.Template = corev1.PodTemplateSpec{}
 		utils.SetOwnedByVolSync(&deployment.Spec.Template)
 		deployment.Spec.Template.ObjectMeta.Name = deployment.Name
 		utils.AddAllLabels(&deployment.Spec.Template, m.serviceSelector())
 
+		deployment.Spec.Template.Spec.NodeName = affinity.NodeName
+		deployment.Spec.Template.Spec.Tolerations = affinity.Tolerations
+
 		deployment.Spec.Template.Spec.ServiceAccountName = sa.Name
 		deployment.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyAlways
+		deployment.Spec.Template.Spec.TerminationGracePeriodSeconds = pointer.Int64(10)
 		deployment.Spec.Template.Spec.Containers = []corev1.Container{
 			{
 				Name:    "syncthing",
