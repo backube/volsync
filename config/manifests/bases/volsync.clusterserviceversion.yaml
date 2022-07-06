@@ -4,6 +4,7 @@ metadata:
   annotations:
     alm-examples: '[]'
     capabilities: Basic Install
+    olm.skipRange: OLM_SKIPRANGE
   name: volsync.v0.0.0
   namespace: placeholder
 spec:
@@ -60,4 +61,5 @@ spec:
   minKubeVersion: MIN_KUBE_VERSION
   provider:
     name: Red Hat
+  replaces: CSV_REPLACES_VERSION
   version: 0.0.0
