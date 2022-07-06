@@ -56,30 +56,15 @@ func AffinityFromVolume(ctx context.Context, c client.Client, logger logr.Logger
 	// Loop through all the volumes and find:
 	// - A running Pod using the volume
 	// - A pending Pod using the volume (if none are running)
-	// Do this for both non-VolSync owned Pods as well as VolSync-owned
 	var candidatePod *corev1.Pod
-	var volsyncUsingPod *corev1.Pod
 	for i := range podsUsing {
 		pod := &podsUsing[i] // Not allocated in range stmt to avoid pointer aliasing
-		if IsOwnedByVolsync(pod) {
-			if (pod.Status.Phase == corev1.PodRunning) ||
-				(pod.Status.Phase == corev1.PodPending && volsyncUsingPod == nil) {
-				volsyncUsingPod = pod
-			}
-		} else {
+		if !IsOwnedByVolsync(pod) {
 			if (pod.Status.Phase == corev1.PodRunning) ||
 				(pod.Status.Phase == corev1.PodPending && candidatePod == nil) {
 				candidatePod = pod
 			}
 		}
-	}
-
-	// If there aren't any "real" users of the PVC, fall back to determining
-	// affinity using VolSync owned Pods, too. We have this fallback in case
-	// there are multiple RS that reference this PVC... Those would need to be
-	// co-scheduled.
-	if candidatePod == nil {
-		candidatePod = volsyncUsingPod
 	}
 
 	if candidatePod == nil {

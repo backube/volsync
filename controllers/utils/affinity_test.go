@@ -181,7 +181,8 @@ var _ = Describe("Volume affinity", func() {
 		})
 	})
 
-	When("a PVC is being used only by a VolSync-owned pod", func() {
+	// Disabled since the code was removed. VolSync ignores its own pods now
+	XWhen("a PVC is being used only by a VolSync-owned pod", func() {
 		It("will have an affinity that matches that pod", func() {
 			ai, err := utils.AffinityFromVolume(ctx, k8sClient, logger, vsOnly)
 			Expect(err).NotTo(HaveOccurred())
