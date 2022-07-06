@@ -1,9 +1,9 @@
 ---
 apiVersion: kuttl.dev/v1beta1
 kind: TestStep
-timeout: 600
 commands:
-  - script: |
+  - timeout: 600
+    script: |
       set -e -o pipefail
 
       # import the necessary utils for working w/ Syncthing

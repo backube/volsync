@@ -1,9 +1,9 @@
 ---
 apiVersion: kuttl.dev/v1beta1
 kind: TestStep
-timeout: 600
 commands:
-  - script: |
+  - timeout: 600
+    script: |
       # for this test, we need to perform two checks:
       # 	1. All of the replication_sources have each other's Syncthing config in their peer list
       #   2. Each of the Syncthing IDs in .spec.syncthing.peers appears in .status.syncthing.peers and is connected

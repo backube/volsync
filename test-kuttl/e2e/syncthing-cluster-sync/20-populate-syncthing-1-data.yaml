@@ -9,7 +9,7 @@ spec:
     spec:
       containers:
       - name: writer
-        image: alpine
+        image: busybox
         command: ["/bin/sh", "-c"]
         args: ["echo 'hello from syncthing-1' > /data/testdata.txt"]
         volumeMounts:
