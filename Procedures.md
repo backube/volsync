@@ -95,8 +95,8 @@ This will allow upgrades (even between channels) to `0.4.2` from any version
 starting from `0.4.0`.  It will also upgrade directly to `0.4.2` without
 installing any versions in-between.
 
-In addition, 'replaces' can be specified in the spec to indicate a specific version that the operator version
-replaces.
+In addition, 'replaces' can be specified in the spec to indicate a specific version
+that the operator version replaces.
 
 As an example:
 
@@ -106,13 +106,14 @@ As an example:
     replaces: volsync.v0.4.1
 ```
 
-The advantage of using 'replaces' along with the skipRange is that the version in replaces will not be removed
-from the update graph in the channel.  That is, with the above, a user could still install version 0.4.1.  If the csv
-only had the skip range and not the replaces, then users would not be able to install the 0.4.1 release and only 
-the 0.4.2 release.
+The advantage of using 'replaces' along with the skipRange is that the version
+in spec.replaces will not be removed from the update graph in the channel.
+That is, with the above, a user could still install version 0.4.1.  If the csv
+only had the skip range and not the replaces, then users would not be able to
+install the 0.4.1 release and only the 0.4.2 release.
 
-***Update*** This is now automated using `make bundle`.  CSV should be updated to insert
-the olm.skipRange and replaces (if required).
+***Update*** This is now automated using `make bundle`.  CSV should be updated
+to insert the olm.skipRange and replaces (if required).
 
 See references:
 
