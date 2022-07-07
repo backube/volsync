@@ -4,12 +4,13 @@
 name: operator
 on:  # yamllint disable-line rule:truthy
   push:
-    branches: ["main", "ocm-*", "release-*"]
+    branches: ["main", "release-*"]
     tags: ["*"]
   pull_request:
-    branches: ["main", "ocm-*", "release-*"]
-  schedule:
-    - cron: "15 4 * * 1"  # 4:15 every Monday
+    branches: ["main", "release-*"]
+  # This workflow must be able to be triggered manually so that it can be
+  # started from another workflow
+  workflow_dispatch:
 
 env:
   GO_VERSION: "1.18"
@@ -369,287 +370,73 @@ jobs:
       - name: Success
         run: echo "Previous steps were successful"
 
-  push-operator:
-    name: Push operator container to registry
+  # This is a dummy job that gates whether the container image artifacts should
+  # be pushed to the registry. It is only here so that the "if" clause doesn't
+  # need to be repeated for each push job.
+  push-gate:
+    name: Containers should be pushed
     needs: e2e-success
     if: >
-      (github.event_name == 'push' || github.event_name == 'schedule') &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
       (github.ref == 'refs/heads/main' ||
-       startsWith(github.ref, 'refs/heads/ocm-') ||
        startsWith(github.ref, 'refs/heads/release-') ||
        startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-20.04
-
     steps:
-      - name: Load container artifact
-        uses: actions/download-artifact@fb598a63ae348fa914e94cd0ff38f362e927b741
-        with:
-          name: volsync-operator
-          path: /tmp
+      - name: No-op
+        run: /bin/true
 
-      - name: Import container image
-        run: |
-          docker load -i /tmp/image.tar
-          docker inspect ${OPERATOR_IMAGE}
-      - name: Login to registry
-        # If the registry server is specified in the image name, we use that.
-        # If the server isn't in the image name, default to docker.io
-        run: |
-          [[ "${OPERATOR_IMAGE}" =~ ^([^/]+)/[^/]+/[^/]+ ]] && REGISTRY="${BASH_REMATCH[1]}" || REGISTRY="docker.io"
-          echo "Attempting docker login to: ${REGISTRY}"
-          echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login -u "${{ secrets.REGISTRY_USERNAME }}" --password-stdin ${REGISTRY}
-      - name: Push to registry (latest)
-        if: >
-          (github.event_name == 'push' || github.event_name == 'schedule') &&
-          github.ref == 'refs/heads/main'
-        run: |
-          docker push "${OPERATOR_IMAGE}"
-      - name: Push to registry (version tag)
-        if: >
-          (github.event_name == 'push' || github.event_name == 'schedule') &&
-          startsWith(github.ref, 'refs/tags/v')
-        run: |
-          [[ "${{ github.ref }}" =~ ^refs/tags/v([0-9]+\..*) ]] || exit 0
-          TAG="${BASH_REMATCH[1]}"
-          echo "Pushing to $TAG"
-          docker tag "${OPERATOR_IMAGE}" "${OPERATOR_IMAGE}:${TAG}"
-          docker push "${OPERATOR_IMAGE}:${TAG}"
-      - name: Push to registry (release branch)
-        if: >
-          (github.event_name == 'push' || github.event_name == 'schedule') &&
-          (startsWith(github.ref, 'refs/heads/ocm-') ||
-           startsWith(github.ref, 'refs/heads/release-'))
-        run: |
-          [[ "${{ github.ref }}" =~ ^refs/heads/(.+)$ ]] || exit 0
-          TAG="${BASH_REMATCH[1]}"
-          echo "Pushing to $TAG"
-          docker tag "${OPERATOR_IMAGE}" "${OPERATOR_IMAGE}:${TAG}"
-          docker push "${OPERATOR_IMAGE}:${TAG}"
+  push-operator:
+    name: Push operator container to registry
+    needs: push-gate
+    uses: ./.github/workflows/registry-push.yml
+    with:
+      artifact-name: volsync-operator
+      image-name: ${OPERATOR_IMAGE}
+    secrets:
+      registry-username: ${{ secrets.REGISTRY_USERNAME }}
+      registry-password: ${{ secrets.REGISTRY_PASSWORD }}
 
   push-rclone:
     name: Push rclone container to registry
-    needs: e2e-success
-    if: >
-      (github.event_name == 'push' || github.event_name == 'schedule') &&
-      (github.ref == 'refs/heads/main' ||
-       startsWith(github.ref, 'refs/heads/ocm-') ||
-       startsWith(github.ref, 'refs/heads/release-') ||
-       startsWith(github.ref, 'refs/tags/v'))
-    runs-on: ubuntu-20.04
-
-    steps:
-      - name: Load container artifact
-        uses: actions/download-artifact@fb598a63ae348fa914e94cd0ff38f362e927b741
-        with:
-          name: volsync-mover-rclone-container
-          path: /tmp
-
-      - name: Import container image
-        run: |
-          docker load -i /tmp/image.tar
-          docker inspect ${RCLONE_IMAGE}
-      - name: Login to registry
-        # If the registry server is specified in the image name, we use that.
-        # If the server isn't in the image name, default to docker.io
-        run: |
-          [[ "${RCLONE_IMAGE}" =~ ^([^/]+)/[^/]+/[^/]+ ]] && REGISTRY="${BASH_REMATCH[1]}" || REGISTRY="docker.io"
-          echo "Attempting docker login to: ${REGISTRY}"
-          echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login -u "${{ secrets.REGISTRY_USERNAME }}" --password-stdin ${REGISTRY}
-      - name: Push to registry (latest)
-        if: >
-          (github.event_name == 'push' || github.event_name == 'schedule') &&
-          github.ref == 'refs/heads/main'
-        run: |
-          docker push "${RCLONE_IMAGE}"
-      - name: Push to registry (version tag)
-        if: >
-          (github.event_name == 'push' || github.event_name == 'schedule') &&
-          startsWith(github.ref, 'refs/tags/v')
-        run: |
-          [[ "${{ github.ref }}" =~ ^refs/tags/v([0-9]+\..*) ]] || exit 0
-          TAG="${BASH_REMATCH[1]}"
-          echo "Pushing to $TAG"
-          docker tag "${RCLONE_IMAGE}" "${RCLONE_IMAGE}:${TAG}"
-          docker push "${RCLONE_IMAGE}:${TAG}"
-      - name: Push to registry (release branch)
-        if: >
-          (github.event_name == 'push' || github.event_name == 'schedule') &&
-          (startsWith(github.ref, 'refs/heads/ocm-') ||
-           startsWith(github.ref, 'refs/heads/release-'))
-        run: |
-          [[ "${{ github.ref }}" =~ ^refs/heads/(.+)$ ]] || exit 0
-          TAG="${BASH_REMATCH[1]}"
-          echo "Pushing to $TAG"
-          docker tag "${RCLONE_IMAGE}" "${RCLONE_IMAGE}:${TAG}"
-          docker push "${RCLONE_IMAGE}:${TAG}"
+    needs: push-gate
+    uses: ./.github/workflows/registry-push.yml
+    with:
+      artifact-name: volsync-mover-rclone-container
+      image-name: ${RCLONE_IMAGE}
+    secrets:
+      registry-username: ${{ secrets.REGISTRY_USERNAME }}
+      registry-password: ${{ secrets.REGISTRY_PASSWORD }}
 
   push-restic:
     name: Push restic container to registry
-    needs: e2e-success
-    if: >
-      (github.event_name == 'push' || github.event_name == 'schedule') &&
-      (github.ref == 'refs/heads/main' ||
-       startsWith(github.ref, 'refs/heads/ocm-') ||
-       startsWith(github.ref, 'refs/heads/release-') ||
-       startsWith(github.ref, 'refs/tags/v'))
-    runs-on: ubuntu-20.04
-
-    steps:
-      - name: Load container artifact
-        uses: actions/download-artifact@fb598a63ae348fa914e94cd0ff38f362e927b741
-        with:
-          name: volsync-mover-restic-container
-          path: /tmp
-
-      - name: Import container image
-        run: |
-          docker load -i /tmp/image.tar
-          docker inspect ${RESTIC_IMAGE}
-      - name: Login to registry
-        # If the registry server is specified in the image name, we use that.
-        # If the server isn't in the image name, default to docker.io
-        run: |
-          [[ "${RESTIC_IMAGE}" =~ ^([^/]+)/[^/]+/[^/]+ ]] && REGISTRY="${BASH_REMATCH[1]}" || REGISTRY="docker.io"
-          echo "Attempting docker login to: ${REGISTRY}"
-          echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login -u "${{ secrets.REGISTRY_USERNAME }}" --password-stdin ${REGISTRY}
-      - name: Push to registry (latest)
-        if: >
-          (github.event_name == 'push' || github.event_name == 'schedule') &&
-          github.ref == 'refs/heads/main'
-        run: |
-          docker push "${RESTIC_IMAGE}"
-      - name: Push to registry (version tag)
-        if: >
-          (github.event_name == 'push' || github.event_name == 'schedule') &&
-          startsWith(github.ref, 'refs/tags/v')
-        run: |
-          [[ "${{ github.ref }}" =~ ^refs/tags/v([0-9]+\..*) ]] || exit 0
-          TAG="${BASH_REMATCH[1]}"
-          echo "Pushing to $TAG"
-          docker tag "${RESTIC_IMAGE}" "${RESTIC_IMAGE}:${TAG}"
-          docker push "${RESTIC_IMAGE}:${TAG}"
-      - name: Push to registry (release branch)
-        if: >
-          (github.event_name == 'push' || github.event_name == 'schedule') &&
-          (startsWith(github.ref, 'refs/heads/ocm-') ||
-           startsWith(github.ref, 'refs/heads/release-'))
-        run: |
-          [[ "${{ github.ref }}" =~ ^refs/heads/(.+)$ ]] || exit 0
-          TAG="${BASH_REMATCH[1]}"
-          echo "Pushing to $TAG"
-          docker tag "${RESTIC_IMAGE}" "${RESTIC_IMAGE}:${TAG}"
-          docker push "${RESTIC_IMAGE}:${TAG}"
+    needs: push-gate
+    uses: ./.github/workflows/registry-push.yml
+    with:
+      artifact-name: volsync-mover-restic-container
+      image-name: ${RESTIC_IMAGE}
+    secrets:
+      registry-username: ${{ secrets.REGISTRY_USERNAME }}
+      registry-password: ${{ secrets.REGISTRY_PASSWORD }}
 
   push-rsync:
     name: Push rsync container to registry
-    needs: e2e-success
-    if: >
-      (github.event_name == 'push' || github.event_name == 'schedule') &&
-      (github.ref == 'refs/heads/main' ||
-       startsWith(github.ref, 'refs/heads/ocm-') ||
-       startsWith(github.ref, 'refs/heads/release-') ||
-       startsWith(github.ref, 'refs/tags/v'))
-    runs-on: ubuntu-20.04
-
-    steps:
-      - name: Load container artifact
-        uses: actions/download-artifact@fb598a63ae348fa914e94cd0ff38f362e927b741
-        with:
-          name: volsync-mover-rsync-container
-          path: /tmp
-
-      - name: Import container image
-        run: |
-          docker load -i /tmp/image.tar
-          docker inspect ${RSYNC_IMAGE}
-      - name: Login to registry
-        # If the registry server is specified in the image name, we use that.
-        # If the server isn't in the image name, default to docker.io
-        run: |
-          [[ "${RSYNC_IMAGE}" =~ ^([^/]+)/[^/]+/[^/]+ ]] && REGISTRY="${BASH_REMATCH[1]}" || REGISTRY="docker.io"
-          echo "Attempting docker login to: ${REGISTRY}"
-          echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login -u "${{ secrets.REGISTRY_USERNAME }}" --password-stdin ${REGISTRY}
-      - name: Push to registry (latest)
-        if: >
-          (github.event_name == 'push' || github.event_name == 'schedule') &&
-          github.ref == 'refs/heads/main'
-        run: |
-          docker push "${RSYNC_IMAGE}"
-      - name: Push to registry (version tag)
-        if: >
-          (github.event_name == 'push' || github.event_name == 'schedule') &&
-          startsWith(github.ref, 'refs/tags/v')
-        run: |
-          [[ "${{ github.ref }}" =~ ^refs/tags/v([0-9]+\..*) ]] || exit 0
-          TAG="${BASH_REMATCH[1]}"
-          echo "Pushing to $TAG"
-          docker tag "${RSYNC_IMAGE}" "${RSYNC_IMAGE}:${TAG}"
-          docker push "${RSYNC_IMAGE}:${TAG}"
-      - name: Push to registry (release branch)
-        if: >
-          (github.event_name == 'push' || github.event_name == 'schedule') &&
-          (startsWith(github.ref, 'refs/heads/ocm-') ||
-           startsWith(github.ref, 'refs/heads/release-'))
-        run: |
-          [[ "${{ github.ref }}" =~ ^refs/heads/(.+)$ ]] || exit 0
-          TAG="${BASH_REMATCH[1]}"
-          echo "Pushing to $TAG"
-          docker tag "${RSYNC_IMAGE}" "${RSYNC_IMAGE}:${TAG}"
-          docker push "${RSYNC_IMAGE}:${TAG}"
+    needs: push-gate
+    uses: ./.github/workflows/registry-push.yml
+    with:
+      artifact-name: volsync-mover-rsync-container
+      image-name: ${RSYNC_IMAGE}
+    secrets:
+      registry-username: ${{ secrets.REGISTRY_USERNAME }}
+      registry-password: ${{ secrets.REGISTRY_PASSWORD }}
 
   push-syncthing:
     name: Push syncthing container to registry
-    needs: e2e-success
-    if: >
-      (github.event_name == 'push' || github.event_name == 'schedule') &&
-      (github.ref == 'refs/heads/main' ||
-       startsWith(github.ref, 'refs/heads/ocm-') ||
-       startsWith(github.ref, 'refs/heads/release-') ||
-       startsWith(github.ref, 'refs/tags/v'))
-    runs-on: ubuntu-20.04
-
-    steps:
-      - name: Load container artifact
-        uses: actions/download-artifact@fb598a63ae348fa914e94cd0ff38f362e927b741
-        with:
-          name: volsync-mover-syncthing-container
-          path: /tmp
-
-      - name: Import container image
-        run: |
-          docker load -i /tmp/image.tar
-          docker inspect ${SYNCTHING_IMAGE}
-      - name: Login to registry
-        # If the registry server is specified in the image name, we use that.
-        # If the server isn't in the image name, default to docker.io
-        run: |
-          [[ "${SYNCTHING_IMAGE}" =~ ^([^/]+)/[^/]+/[^/]+ ]] && REGISTRY="${BASH_REMATCH[1]}" || REGISTRY="docker.io"
-          echo "Attempting docker login to: ${REGISTRY}"
-          echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login -u "${{ secrets.REGISTRY_USERNAME }}" --password-stdin ${REGISTRY}
-      - name: Push to registry (latest)
-        if: >
-          (github.event_name == 'push' || github.event_name == 'schedule') &&
-          github.ref == 'refs/heads/main'
-        run: |
-          docker push "${SYNCTHING_IMAGE}"
-      - name: Push to registry (version tag)
-        if: >
-          (github.event_name == 'push' || github.event_name == 'schedule') &&
-          startsWith(github.ref, 'refs/tags/v')
-        run: |
-          [[ "${{ github.ref }}" =~ ^refs/tags/v([0-9]+\..*) ]] || exit 0
-          TAG="${BASH_REMATCH[1]}"
-          echo "Pushing to $TAG"
-          docker tag "${SYNCTHING_IMAGE}" "${SYNCTHING_IMAGE}:${TAG}"
-          docker push "${SYNCTHING_IMAGE}:${TAG}"
-      - name: Push to registry (release branch)
-        if: >
-          (github.event_name == 'push' || github.event_name == 'schedule') &&
-          (startsWith(github.ref, 'refs/heads/ocm-') ||
-           startsWith(github.ref, 'refs/heads/release-'))
-        run: |
-          [[ "${{ github.ref }}" =~ ^refs/heads/(.+)$ ]] || exit 0
-          TAG="${BASH_REMATCH[1]}"
-          echo "Pushing to $TAG"
-          docker tag "${SYNCTHING_IMAGE}" "${SYNCTHING_IMAGE}:${TAG}"
-          docker push "${SYNCTHING_IMAGE}:${TAG}"
+    needs: push-gate
+    uses: ./.github/workflows/registry-push.yml
+    with:
+      artifact-name: volsync-mover-syncthing-container
+      image-name: ${SYNCTHING_IMAGE}
+    secrets:
+      registry-username: ${{ secrets.REGISTRY_USERNAME }}
+      registry-password: ${{ secrets.REGISTRY_PASSWORD }}

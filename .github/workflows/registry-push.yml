@@ -1,0 +1,81 @@
+---
+# yamllint disable rule:line-length
+
+# This is a re-usable workflow, meant to be called as a step from other
+# workflows. It is not meant to be triggered on its own.
+
+# This will take a continer image that was previously stored as a build artifact
+# and push it to a container registry.
+
+on:  # yamllint disable-line rule:truthy
+  workflow_call:
+    inputs:
+      artifact-name:
+        description: Name of the previously uploaded artifact
+        required: true
+        type: string
+      image-filename:
+        description: Name of the image tar in the artifact
+        default: image.tar
+        required: false
+        type: string
+      image-name:
+        description: Name of the container image to push
+        required: true
+        type: string
+    secrets:
+      registry-username:
+        description: Username for the image registry
+        required: true
+      registry-password:
+        description: Password for the image registry
+        required: true
+
+jobs:
+  push-to-registry:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Load container artifact
+        uses: actions/download-artifact@fb598a63ae348fa914e94cd0ff38f362e927b741
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: /tmp
+
+      - name: Import container image
+        run: |
+          docker load -i /tmp/${{ inputs.image-filename }}
+          docker inspect ${{ inputs.image-name }}
+
+      - name: Login to registry
+        # If the registry server is specified in the image name, we use that.
+        # If the server isn't in the image name, default to docker.io
+        run: |
+          [[ "${{ inputs.image-name }}" =~ ^([^/]+)/[^/]+/[^/]+ ]] && REGISTRY="${BASH_REMATCH[1]}" || REGISTRY="docker.io"
+          echo "Attempting docker login to: ${REGISTRY}"
+          echo "${{ secrets.registry-password }}" | docker login -u "${{ secrets.registry-username }}" --password-stdin ${REGISTRY}
+
+      # If we're on the default branch, we push to :latest
+      - name: Push to registry (as :latest)
+        if: github.ref_name == github.event.repository.default_branch
+        run: |
+          docker push "${{ inputs.image-name }}"
+
+      # if we're on a non-default branch, push to that ref name
+      - name: Push to registry (branch)
+        if: github.ref_name != github.event.repository.default_branch &&
+            github.ref_type == 'branch'
+        run: |
+          TAG="${{ github.ref_name }}"
+          echo "Pushing to $TAG"
+          docker tag "${{ inputs.image-name }}" "${{ inputs.image-name }}:${TAG}"
+          docker push "${{ inputs.image-name }}:${TAG}"
+
+      # if we're on a tag, strip the leading "v" and push to that ref name
+      - name: Push to registry (tag)
+        if: github.ref_type == 'tag'
+        run: |
+          [[ "${{ github.ref_name }}" =~ ^v([0-9]+.*) ]] || exit 0
+          TAG="${BASH_REMATCH[1]}"
+          echo "Pushing to $TAG"
+          docker tag "${{ inputs.image-name }}" "${{ inputs.image-name }}:${TAG}"
+          docker push "${{ inputs.image-name }}:${TAG}"
