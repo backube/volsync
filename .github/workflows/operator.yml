@@ -332,6 +332,19 @@ jobs:
           docker tag ${RSYNC_IMAGE} ${RSYNC_IMAGE}:ci-build
           kind load docker-image "${RSYNC_IMAGE}:ci-build"
 
+      - name: Load syncthing container artifact
+        uses: actions/download-artifact@fb598a63ae348fa914e94cd0ff38f362e927b741
+        with:
+          name: volsync-mover-syncthing-container
+          path: /tmp
+
+      - name: Import container image into cluster
+        run: |
+          docker load -i /tmp/image.tar
+          docker inspect ${SYNCTHING_IMAGE}
+          docker tag ${SYNCTHING_IMAGE} ${SYNCTHING_IMAGE}:ci-build
+          kind load docker-image "${SYNCTHING_IMAGE}:ci-build"
+
       - name: Start operator
         run: |
           helm install --create-namespace -n volsync-system \
@@ -339,6 +352,7 @@ jobs:
               --set rclone.tag=ci-build \
               --set rsync.tag=ci-build \
               --set restic.tag=ci-build \
+              --set syncthing.tag=ci-build \
               --wait --timeout=300s \
               volsync-ghaction ./helm/volsync
 

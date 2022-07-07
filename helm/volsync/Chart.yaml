@@ -25,6 +25,8 @@ annotations:  # https://artifacthub.io/docs/topics/annotations/helm/
       description: Users can manually label destination Snapshot objects with volsync.backube/do-not-delete to prevent VolSync from deleting them. This provides a way for users to avoid having a Snapshot deleted while they are trying to use it. Users are then responsible for deleting the Snapshot.
     - kind: added
       description: Publish Kubernetes Events to help troubleshooting
+    - kind: added
+      description: New Syncthing-based mover for live data replication
     - kind: changed
       description: Operator-SDK upgraded to 1.22.0
     - kind: changed
