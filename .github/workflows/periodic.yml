@@ -1,0 +1,44 @@
+---
+# yamllint disable rule:line-length
+
+# We want to have our active branches built periodically to ensure they continue
+# to build correctly, and to pick up any updates to underlying packages/images.
+# Unfortunately, GitHub only allows scheduled workflow runs against the
+# "default" branch (main). This job, residing on the default branch, will
+# trigger other jobs (across other branches) at a regular interval.
+#
+# Jobs triggered by this workflow:
+# - Must have "workflow_dispatch" as a trigger method
+# - Must either:
+#   - Be on the default branch OR
+#   - Have executed at least once previously
+#
+# The above conditions are met in our case since we're just trying to
+# periodically trigger workflows that run with each PR/Push.
+name: Periodic
+on:  # yamllint disable-line rule:truthy
+  schedule:
+    - cron: "15 4 * * 1"  # 4:15 every Monday
+  workflow_dispatch:  # Useful for testing, but not necessary
+
+jobs:
+  trigger-workflows:
+    name: Trigger other workflows
+    runs-on: ubuntu-20.04
+
+    steps:
+      # Must checkout source or gh can't figure out what to trigger
+      - name: Checkout source
+        uses: actions/checkout@d0651293c4a5a52e711f25b41b05b2212f385d28
+
+      - name: Trigger workflows
+        env:
+          # Must use a personal access token w/ workflow permissions. The
+          # default GH workflow token doesn't have permission to trigger other
+          # workflows regardless of permissions granted.
+          GITHUB_TOKEN: ${{ secrets.PAT_WORKFLOW }}
+        run: |
+          gh workflow run --ref "main" "operator.yml"
+          gh workflow run --ref "main" "documentation.yml"
+          # gh workflow run --ref "release-0.4" "operator.yml"
+          # gh workflow run --ref "release-0.4" "documentation.yml"
