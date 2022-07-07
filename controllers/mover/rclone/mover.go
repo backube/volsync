@@ -29,7 +29,6 @@ import (
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/backube/volsync/controllers/mover"
 	"github.com/backube/volsync/controllers/utils"
@@ -211,7 +210,8 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 		},
 	}
 	logger := m.logger.WithValues("job", client.ObjectKeyFromObject(job))
-	_, err := ctrlutil.CreateOrUpdate(ctx, m.client, job, func() error {
+
+	_, err := utils.CreateOrUpdateDeleteOnImmutableErr(ctx, m.client, job, logger, func() error {
 		if err := ctrl.SetControllerReference(m.owner, job, m.client.Scheme()); err != nil {
 			logger.Error(err, utils.ErrUnableToSetControllerRef)
 			return err
@@ -287,6 +287,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 	}
 	if err != nil {
 		logger.Error(err, "reconcile failed")
+		return nil, err
 	}
 	// Stop here if the job hasn't completed yet
 	if job.Status.Succeeded == 0 {

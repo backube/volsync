@@ -349,7 +349,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 	}
 	logger := m.logger.WithValues("job", client.ObjectKeyFromObject(job))
 
-	op, err := ctrlutil.CreateOrUpdate(ctx, m.client, job, func() error {
+	op, err := utils.CreateOrUpdateDeleteOnImmutableErr(ctx, m.client, job, logger, func() error {
 		if err := ctrl.SetControllerReference(m.owner, job, m.client.Scheme()); err != nil {
 			logger.Error(err, utils.ErrUnableToSetControllerRef)
 			return err

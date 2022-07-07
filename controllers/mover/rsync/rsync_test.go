@@ -22,14 +22,16 @@ import (
 	"os"
 	"strconv"
 
-	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+
+	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -736,7 +738,7 @@ var _ = Describe("Rsync as a source", func() {
 					Eventually(func() error {
 						err := k8sClient.Get(ctx, nsn, job)
 						return err
-					}).Should(Succeed())
+					}, timeout, interval).Should(Succeed())
 					Expect(*job.Spec.Parallelism).To(Equal(int32(1)))
 
 					mover.paused = true
@@ -747,7 +749,7 @@ var _ = Describe("Rsync as a source", func() {
 						err := k8sClient.Get(ctx, nsn, job)
 						Expect(err).ToNot(HaveOccurred())
 						return *job.Spec.Parallelism
-					}).Should(Equal(int32(0)))
+					}, timeout, interval).Should(Equal(int32(0)))
 
 					mover.paused = false
 					Eventually(func() int32 {
@@ -757,7 +759,7 @@ var _ = Describe("Rsync as a source", func() {
 						err := k8sClient.Get(ctx, nsn, job)
 						Expect(err).ToNot(HaveOccurred())
 						return *job.Spec.Parallelism
-					}).Should(Equal(int32(1)))
+					}, timeout, interval).Should(Equal(int32(1)))
 				})
 
 				It("should have no env vars when no address is set in spec", func() {
@@ -769,7 +771,7 @@ var _ = Describe("Rsync as a source", func() {
 					Eventually(func() error {
 						err := k8sClient.Get(ctx, nsn, job)
 						return err
-					}).Should(Succeed())
+					}, timeout, interval).Should(Succeed())
 
 					// Validate job env vars
 					env := job.Spec.Template.Spec.Containers[0].Env
@@ -793,7 +795,7 @@ var _ = Describe("Rsync as a source", func() {
 					Eventually(func() error {
 						err := k8sClient.Get(ctx, nsn, job)
 						return err
-					}).Should(Succeed())
+					}, timeout, interval).Should(Succeed())
 
 					// Validate job env vars
 					env := job.Spec.Template.Spec.Containers[0].Env
@@ -822,13 +824,71 @@ var _ = Describe("Rsync as a source", func() {
 					Eventually(func() error {
 						err := k8sClient.Get(ctx, nsn, job)
 						return err
-					}).Should(Succeed())
+					}, timeout, interval).Should(Succeed())
 
 					// Validate job env vars
 					env := job.Spec.Template.Spec.Containers[0].Env
 					Expect(len(env)).To(Equal(2))
 					validateEnvVar(env, "DESTINATION_ADDRESS", address)
 					validateEnvVar(env, "DESTINATION_PORT", strconv.Itoa(int(port)))
+				})
+			})
+
+			When("Doing a sync when the job already exists", func() {
+				JustBeforeEach(func() {
+					mover.containerImage = "my-rsync-mover-image"
+
+					// Initial job creation
+					j, e := mover.ensureJob(ctx, sPVC, sa, sshKeysSecret.GetName()) // Using sPVC as dataPVC (i.e. direct)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil()) // hasn't completed
+
+					job = &batchv1.Job{}
+					Eventually(func() error {
+						err := k8sClient.Get(ctx, types.NamespacedName{
+							Name:      jobName,
+							Namespace: ns.Name,
+						}, job)
+						return err
+					}, timeout, interval).Should(Succeed())
+
+					Expect(job.Spec.Template.Spec.Containers[0].Image).To(Equal(mover.containerImage))
+				})
+
+				It("Should recreate the job if job.spec.template needs modification", func() {
+					myUpdatedImage := "somenew-rsync-mover:latest"
+
+					// change to simulate mover image being updated
+					mover.containerImage = myUpdatedImage
+
+					// Mover should get immutable err for updating the image and then delete the job
+					j, e := mover.ensureJob(ctx, sPVC, sa, sshKeysSecret.GetName()) // Using sPVC as dataPVC (i.e. direct)
+					Expect(e).To(HaveOccurred())
+					Expect(j).To(BeNil())
+
+					// Make sure job has been deleted
+					job = &batchv1.Job{}
+					Eventually(func() bool {
+						return kerrors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{
+							Name:      jobName,
+							Namespace: ns.Name,
+						}, job))
+					}, timeout, interval).Should(BeTrue())
+
+					// Run ensureJob again as the reconciler would do - should recreate the job
+					j, e = mover.ensureJob(ctx, sPVC, sa, sshKeysSecret.GetName()) // Using sPVC as dataPVC (i.e. direct)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil()) // job hasn't completed
+
+					job = &batchv1.Job{}
+					Eventually(func() error {
+						return k8sClient.Get(ctx, types.NamespacedName{
+							Name:      jobName,
+							Namespace: ns.Name,
+						}, job)
+					}, timeout, interval).Should(Succeed())
+
+					Expect(job.Spec.Template.Spec.Containers[0].Image).To(Equal(myUpdatedImage))
 				})
 			})
 
@@ -963,7 +1023,7 @@ var _ = Describe("Rsync as a destination", func() {
 							pvc = tempPVC
 						}
 						return e
-					}).ShouldNot(HaveOccurred())
+					}, timeout, interval).ShouldNot(HaveOccurred())
 					Expect(pvc).NotTo(BeNil())
 					Expect(pvc.Name).To(Equal(dPVC.Name))
 					// It's not owned by the CR

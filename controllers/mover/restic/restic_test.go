@@ -29,6 +29,7 @@ import (
 	"github.com/spf13/viper"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -728,6 +729,62 @@ var _ = Describe("Restic as a source", func() {
 					Expect(mover.sourceStatus.LastPruned.Time.After(lastMonth.Time))
 				})
 			})
+
+			When("Doing a sync when the job already exists", func() {
+				JustBeforeEach(func() {
+					mover.containerImage = "my-restic-mover-image"
+
+					// Initial job creation
+					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil()) // hasn't completed
+
+					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+					job = &batchv1.Job{}
+					Eventually(func() error {
+						return k8sClient.Get(ctx, nsn, job)
+					}, timeout, interval).Should(Succeed())
+
+					Expect(job.Spec.Template.Spec.Containers[0].Image).To(Equal(mover.containerImage))
+				})
+
+				It("Should recreate the job if job.spec.template needs modification", func() {
+					myUpdatedImage := "somenew-restic-mover:latest"
+
+					// change to simulate mover image being updated
+					mover.containerImage = myUpdatedImage
+
+					// Mover should get immutable err for updating the image and then delete the job
+					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo)
+					Expect(e).To(HaveOccurred())
+					Expect(j).To(BeNil())
+
+					// Make sure job has been deleted
+					job = &batchv1.Job{}
+					Eventually(func() bool {
+						return kerrors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{
+							Name:      jobName,
+							Namespace: ns.Name,
+						}, job))
+					}, timeout, interval).Should(BeTrue())
+
+					// Run ensureJob again as the reconciler would do - should recreate the job
+					j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil()) // job hasn't completed
+
+					job = &batchv1.Job{}
+					Eventually(func() error {
+						return k8sClient.Get(ctx, types.NamespacedName{
+							Name:      jobName,
+							Namespace: ns.Name,
+						}, job)
+					}, timeout, interval).Should(Succeed())
+
+					Expect(job.Spec.Template.Spec.Containers[0].Image).To(Equal(myUpdatedImage))
+				})
+			})
+
 			When("the job has failed", func() {
 				It("should be restarted", func() {
 					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo)
@@ -745,7 +802,9 @@ var _ = Describe("Restic as a source", func() {
 					}, timeout, interval).Should(Succeed())
 					Eventually(func() int32 {
 						j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo)
-						Expect(e).NotTo(HaveOccurred())
+						if e != nil {
+							return 98
+						}
 						Expect(j).To(BeNil())
 						e = k8sClient.Get(ctx, nsn, job)
 						if e != nil {
