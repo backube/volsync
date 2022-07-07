@@ -8,6 +8,7 @@ import (
 	"time"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
+	"github.com/backube/volsync/controllers/utils"
 	cron "github.com/robfig/cron/v3"
 	"github.com/spf13/viper"
 	corev1 "k8s.io/api/core/v1"
@@ -18,6 +19,10 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+type persistentVolumeClaim struct {
+	pvc *corev1.PersistentVolumeClaim
+}
 
 func waitForSync(ctx context.Context, srcClient client.Client,
 	rsName types.NamespacedName, rs volsyncv1alpha1.ReplicationSource) error {
@@ -97,4 +102,23 @@ func parseResticConfig(filename string) (*resticConfig, error) {
 		Viper:    *v,
 		filename: filename,
 	}, nil
+}
+
+func (pvc *persistentVolumeClaim) checkPVCMountStatus(ctx context.Context,
+	client client.Client) error {
+	podsUsing, err := utils.PodsUsingPVC(ctx, client, pvc.pvc)
+	if err != nil {
+		return fmt.Errorf("failed to fetch the pvc affinity, %w", err)
+	}
+
+	if len(podsUsing) > 0 {
+		podNames := []string{}
+		for _, pod := range podsUsing {
+			podNames = append(podNames, pod.Name)
+		}
+		return fmt.Errorf(`WARNING: The pvc "%s" is currently in use by following pods,"%v",
+		this may result in pvc/data corruption, you may choose to temporarily stop the pods
+		and continue restore operation. Aborting Restore`, pvc.pvc.Name, podNames)
+	}
+	return nil
 }

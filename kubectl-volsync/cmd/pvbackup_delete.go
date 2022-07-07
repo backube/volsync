@@ -87,7 +87,7 @@ func (pd *pvBackupDelete) Run(ctx context.Context) error {
 
 		ns := types.NamespacedName{
 			Namespace: prs.Namespace,
-			Name:      prs.Source.Repository + "-source"}
+			Name:      prs.Source.Repository}
 		// Delete the Secret
 		err = deleteSecret(ctx, ns, pd.client)
 		if err != nil {
@@ -111,7 +111,7 @@ func (pd *pvBackupDelete) Run(ctx context.Context) error {
 		// Delete the Secret
 		ns := types.NamespacedName{
 			Namespace: prd.Namespace,
-			Name:      prd.Destination.Repository + "-dest"}
+			Name:      prd.Destination.Repository}
 		err = deleteSecret(ctx, ns, pd.client)
 		if err != nil {
 			return err

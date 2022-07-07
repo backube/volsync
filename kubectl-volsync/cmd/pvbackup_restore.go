@@ -34,7 +34,6 @@ import (
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 type pvBackupRestore struct {
@@ -45,7 +44,7 @@ type pvBackupRestore struct {
 	// PVC to which data to be restored
 	destPVCName string
 	// PVC object associated with pvcName used to create destination object
-	destPVC *corev1.PersistentVolumeClaim
+	destPVC persistentVolumeClaim
 	// capacity is the size of the destination volume to create
 	Capacity *resource.Quantity
 	// AccessModes contains the desired access modes the volume should have
@@ -59,15 +58,13 @@ type pvBackupRestore struct {
 	// Restore
 	restoreAsOf string
 	// specifies an offset for how many snapshots ago we want to restore from
-	prev int
+	prev int32
 	// restic configuration details
 	resticConfig
 	// read in restic-config into stringData
 	stringData map[string]string
 	// client object to communicate with a cluster
 	client client.Client
-	// replicationsource object
-	rs *volsyncv1alpha1.ReplicationSource
 	// backup relationship object to be persisted to a config file
 	pr *pvBackupRelationship
 }
@@ -219,11 +216,11 @@ func (pvr *pvBackupRestore) parseCLI(cmd *cobra.Command) error {
 		return fmt.Errorf("failed to fetch the previous flag, err = %w", err)
 	}
 	if len(prev) > 0 {
-		prevInt, err := strconv.Atoi(prev)
+		prevInt, err := strconv.ParseInt(prev, 10, 32)
 		if err != nil {
 			return fmt.Errorf("string conversion resulted in error, %w", err)
 		}
-		pvr.prev = prevInt
+		pvr.prev = int32(prevInt)
 	}
 
 	return nil
@@ -244,10 +241,19 @@ func (pvr *pvBackupRestore) Run(ctx context.Context) error {
 	}
 
 	// Get the pvc from the cluster/namespace
-	pvr.destPVC, err = pvr.getDestinationPVC(ctx)
+	pvr.destPVC.pvc, err = pvr.getDestinationPVC(ctx)
 	if err != nil {
 		return err
 	}
+
+	// We need to make sure pvc is not use by anyother pod before restoring the data to avoid
+	// data corruption
+	if pvr.destPVC.pvc != nil {
+		if err = pvr.destPVC.checkPVCMountStatus(ctx, k8sClient); err != nil {
+			return err
+		}
+	}
+
 	// Build struct pvBackupRelationshipSource from struct pvBackupRestore
 	pvr.pr.data.Destination, err = pvr.newPVBackupRelationshipDestination()
 	if err != nil {
@@ -273,27 +279,6 @@ func (pvr *pvBackupRestore) Run(ctx context.Context) error {
 		return err
 	}
 
-	// Build struct pvBackupRelationshipSource from struct pvBackupRestore
-	pvr.pr.data.Source = pvr.newPVBackupRelationshipSource()
-
-	rs, err := pvr.pr.data.Source.getReplicationSource(ctx, k8sClient)
-	if err != nil {
-		if client.IgnoreNotFound(err) == nil {
-			klog.Infof("backup source %s not found", pvr.pr.data.Source.RSName)
-		} else {
-			return err
-		}
-	}
-
-	// Pause the RS if exists
-	if rs != nil {
-		pvr.rs = rs
-		err = pvr.toggleReplicationSourceState(ctx, true)
-		if err != nil {
-			return err
-		}
-	}
-
 	// Creates the RD if it doesn't exist
 	_, err = pvr.ensureReplicationDestination(ctx)
 	if err != nil {
@@ -306,16 +291,7 @@ func (pvr *pvBackupRestore) Run(ctx context.Context) error {
 		return err
 	}
 
-	// Restore the RS to previous state
-	if rs != nil {
-		err = pvr.toggleReplicationSourceState(ctx, false)
-		if err != nil {
-			return err
-		}
-	}
-
 	// Save the replication destination details into relationship file
-	pvr.pr.data.Source = nil
 	if err = pvr.pr.Save(); err != nil {
 		return fmt.Errorf("unable to save relationship configuration: %w", err)
 	}
@@ -324,11 +300,12 @@ func (pvr *pvBackupRestore) Run(ctx context.Context) error {
 }
 
 func (pvr *pvBackupRestore) newPVBackupRelationshipDestination() (*pvBackupRelationshipDestination, error) {
-	if pvr.destPVC == nil {
+	if pvr.destPVC.pvc == nil {
 		if pvr.Capacity == nil {
 			return nil, fmt.Errorf("capacity arg must be provided")
 		}
 	}
+
 	if len(pvr.restoreAsOf) == 0 {
 		pvr.restoreAsOf = time.Now().Format(time.RFC3339)
 	}
@@ -337,7 +314,7 @@ func (pvr *pvBackupRestore) newPVBackupRelationshipDestination() (*pvBackupRelat
 		Namespace: pvr.Namespace,
 		RDName:    pvr.RDName,
 		Trigger: volsyncv1alpha1.ReplicationDestinationTriggerSpec{
-			Manual: pvr.restoreAsOf,
+			Manual: time.Now().Format(time.RFC3339),
 		},
 		Destination: volsyncv1alpha1.ReplicationDestinationResticSpec{
 			Repository: pvr.backupInfo + "-dest",
@@ -346,22 +323,16 @@ func (pvr *pvBackupRestore) newPVBackupRelationshipDestination() (*pvBackupRelat
 				DestinationPVC: &pvr.destPVCName,
 				Capacity:       pvr.Capacity,
 			},
+			RestoreAsOf: &pvr.restoreAsOf,
+			Previous:    &pvr.prev,
 		},
 	}, nil
-}
-
-func (pvr *pvBackupRestore) newPVBackupRelationshipSource() *pvBackupRelationshipSource {
-	// Assign the values from pvBackupRestore built after parsing cmd args
-	return &pvBackupRelationshipSource{
-		Namespace: pvr.Namespace,
-		RSName:    pvr.RSName,
-	}
 }
 
 func (pvr *pvBackupRestore) ensureReplicationDestination(ctx context.Context) (
 	*volsyncv1alpha1.ReplicationDestination, error) {
 	prd := pvr.pr.data.Destination
-	klog.Infof("Trigger restoreAsof %s", prd.Trigger.Manual)
+	klog.Infof("Trigger restore As of %s", *prd.Destination.RestoreAsOf)
 	rd := &volsyncv1alpha1.ReplicationDestination{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      prd.RDName,
@@ -408,34 +379,6 @@ func (prd *pvBackupRelationshipDestination) waitForRDStatus(ctx context.Context,
 	return rd, nil
 }
 
-func (pvr *pvBackupRestore) toggleReplicationSourceState(ctx context.Context, state bool) error {
-	klog.Infof("Setting ReplicationSource Paused state to %v", state)
-	rs := &volsyncv1alpha1.ReplicationSource{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      pvr.rs.Name,
-			Namespace: pvr.rs.Namespace,
-		},
-	}
-
-	_, err := ctrlutil.CreateOrUpdate(ctx, pvr.client, rs, func() error {
-		pvr.pr.AddIDLabel(rs)
-		rs.Spec = volsyncv1alpha1.ReplicationSourceSpec{
-			Paused:    state,
-			SourcePVC: pvr.rs.Spec.SourcePVC,
-			Trigger:   pvr.rs.Spec.Trigger,
-			Restic: &volsyncv1alpha1.ReplicationSourceResticSpec{
-				Repository: pvr.rs.Spec.Restic.Repository,
-				ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
-					CopyMethod: pvr.rs.Spec.Restic.CopyMethod,
-				},
-			},
-		}
-		return nil
-	})
-
-	return err
-}
-
 func (pvr *pvBackupRestore) getDestinationPVC(ctx context.Context) (*corev1.PersistentVolumeClaim, error) {
 	destPVC := &corev1.PersistentVolumeClaim{}
 	pvcInfo := types.NamespacedName{
@@ -454,18 +397,18 @@ func (pvr *pvBackupRestore) getDestinationPVC(ctx context.Context) (*corev1.Pers
 }
 
 func (pvr *pvBackupRestore) ensureDestPVC(ctx context.Context) (*corev1.PersistentVolumeClaim, error) {
-	if pvr.destPVC == nil {
+	if pvr.destPVC.pvc == nil {
 		PVC, err := pvr.createDestinationPVC(ctx)
 		if err != nil {
 			return nil, err
 		}
-		pvr.destPVC = PVC
+		pvr.destPVC.pvc = PVC
 	} else {
 		klog.Infof("Destination PVC: \"%s\" is found in Namespace: \"%s\" and is used to create replication destination",
-			pvr.destPVC.Name, pvr.destPVC.Namespace)
+			pvr.destPVC.pvc.Name, pvr.destPVC.pvc.Namespace)
 	}
 
-	return pvr.destPVC, nil
+	return pvr.destPVC.pvc, nil
 }
 
 func (pvr *pvBackupRestore) createDestinationPVC(ctx context.Context) (*corev1.PersistentVolumeClaim, error) {
