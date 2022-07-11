@@ -400,13 +400,16 @@ jobs:
       - name: No-op
         run: /bin/true
 
+  # The operator images are specified directly because the env context isn't
+  # available in the job.with.
+  # https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idwithinput_id
   push-operator:
     name: Push operator container to registry
     needs: push-gate
     uses: ./.github/workflows/registry-push.yml
     with:
       artifact-name: volsync-operator
-      image-name: ${OPERATOR_IMAGE}
+      image-name: quay.io/backube/volsync
     secrets:
       registry-username: ${{ secrets.REGISTRY_USERNAME }}
       registry-password: ${{ secrets.REGISTRY_PASSWORD }}
@@ -417,7 +420,7 @@ jobs:
     uses: ./.github/workflows/registry-push.yml
     with:
       artifact-name: volsync-mover-rclone-container
-      image-name: ${RCLONE_IMAGE}
+      image-name: quay.io/backube/volsync-mover-rclone
     secrets:
       registry-username: ${{ secrets.REGISTRY_USERNAME }}
       registry-password: ${{ secrets.REGISTRY_PASSWORD }}
@@ -428,7 +431,7 @@ jobs:
     uses: ./.github/workflows/registry-push.yml
     with:
       artifact-name: volsync-mover-restic-container
-      image-name: ${RESTIC_IMAGE}
+      image-name: quay.io/backube/volsync-mover-restic
     secrets:
       registry-username: ${{ secrets.REGISTRY_USERNAME }}
       registry-password: ${{ secrets.REGISTRY_PASSWORD }}
@@ -439,7 +442,7 @@ jobs:
     uses: ./.github/workflows/registry-push.yml
     with:
       artifact-name: volsync-mover-rsync-container
-      image-name: ${RSYNC_IMAGE}
+      image-name: quay.io/backube/volsync-mover-rsync
     secrets:
       registry-username: ${{ secrets.REGISTRY_USERNAME }}
       registry-password: ${{ secrets.REGISTRY_PASSWORD }}
@@ -450,7 +453,7 @@ jobs:
     uses: ./.github/workflows/registry-push.yml
     with:
       artifact-name: volsync-mover-syncthing-container
-      image-name: ${SYNCTHING_IMAGE}
+      image-name: quay.io/backube/volsync-mover-syncthing
     secrets:
       registry-username: ${{ secrets.REGISTRY_USERNAME }}
       registry-password: ${{ secrets.REGISTRY_PASSWORD }}
