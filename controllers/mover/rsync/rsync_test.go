@@ -249,11 +249,6 @@ var _ = Describe("Rsync as a source", func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, sPVC)).To(Succeed())
-		Eventually(func() error {
-			pvc := &corev1.PersistentVolumeClaim{}
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(sPVC), pvc)
-			return err
-		}, timeout, interval).Should(Succeed())
 
 		// Scaffold ReplicationSource
 		rs = &volsyncv1alpha1.ReplicationSource{
@@ -339,26 +334,23 @@ var _ = Describe("Rsync as a source", func() {
 					_, err := mover.ensureSourcePVC(ctx)
 					Expect(err).ToNot(HaveOccurred())
 
-					// Set snapshot to be bound so the ensureSourcePVC can proceed
+					// Snapshot should have been created
 					snapshots := &snapv1.VolumeSnapshotList{}
-					Eventually(func() []snapv1.VolumeSnapshot {
-						_ = k8sClient.List(ctx, snapshots, client.InNamespace(rs.Namespace))
-						return snapshots.Items
-					}, timeout, interval).Should(Not(BeEmpty()))
+					Expect(k8sClient.List(ctx, snapshots, client.InNamespace(rs.Namespace))).To(Succeed())
+					Expect(len(snapshots.Items)).To(Equal(1))
 					// update the VS name
 					snapshot := snapshots.Items[0]
 					foo := "dummysourcesnapshot"
+					// Set snapshot to be bound so the ensureSourcePVC can proceed
 					snapshot.Status = &snapv1.VolumeSnapshotStatus{
 						BoundVolumeSnapshotContentName: &foo,
 					}
 					Expect(k8sClient.Status().Update(ctx, &snapshot)).To(Succeed())
 
 					var dataPVC *corev1.PersistentVolumeClaim
-					Eventually(func() bool {
-						dataPVC, err = mover.ensureSourcePVC(ctx)
-						return dataPVC != nil && err == nil
-					}, timeout, interval).Should(BeTrue())
-					Expect(err).ToNot(HaveOccurred())
+					dataPVC, err = mover.ensureSourcePVC(ctx)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(dataPVC).NotTo(BeNil())
 					Expect(dataPVC.Name).NotTo(Equal(sPVC.Name))
 					// It's owned by the CR
 					Expect(dataPVC.OwnerReferences).NotTo(BeEmpty())
@@ -393,9 +385,7 @@ var _ = Describe("Rsync as a source", func() {
 							Namespace: rs.Namespace,
 						},
 					}
-					Eventually(func() error {
-						return k8sClient.Get(ctx, client.ObjectKeyFromObject(svc), svc)
-					}, maxWait, interval).Should(Succeed())
+					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(svc), svc)).To(Succeed())
 
 					if !result {
 						// This means the svc address wasn't populated immediately
@@ -435,9 +425,8 @@ var _ = Describe("Rsync as a source", func() {
 							Namespace: rs.Namespace,
 						},
 					}
-					Consistently(func() error {
-						return k8sClient.Get(ctx, client.ObjectKeyFromObject(svc), svc)
-					}, "2s", interval).Should(Not(Succeed()))
+					// No service should be created
+					Expect(kerrors.IsNotFound(k8sClient.Get(ctx, client.ObjectKeyFromObject(svc), svc))).To(BeTrue())
 				})
 			})
 		})
@@ -451,6 +440,8 @@ var _ = Describe("Rsync as a source", func() {
 				It("Generates ssh keys automatically", func() {
 					var keyName *string
 					var err error
+					// Call ensureSecrets in eventually as it needs to be called multiple times
+					// to create each secret (then expects to be reconciled again to verify)
 					Eventually(func() *string {
 						keyName, err = mover.ensureSecrets(ctx)
 						if err != nil {
@@ -469,10 +460,8 @@ var _ = Describe("Rsync as a source", func() {
 
 					// Check exported secret from status - For replication source this should be a dest secret
 					secret1 := &corev1.Secret{}
-					Eventually(func() error {
-						return k8sClient.Get(ctx, types.NamespacedName{Name: *rs.Status.Rsync.SSHKeys,
-							Namespace: rs.Namespace}, secret1)
-					}).Should(Succeed())
+					Expect(k8sClient.Get(ctx, types.NamespacedName{Name: *rs.Status.Rsync.SSHKeys,
+						Namespace: rs.Namespace}, secret1)).To(Succeed())
 					Expect(secret1.Data).To(HaveKey("destination"))
 					Expect(secret1.Data).To(HaveKey("source.pub"))
 					Expect(secret1.Data).To(HaveKey("destination.pub"))
@@ -569,13 +558,9 @@ var _ = Describe("Rsync as a source", func() {
 
 		Context("ServiceAccount, Role, RoleBinding are handled properly", func() {
 			It("Should create a service account", func() {
-				var sa *corev1.ServiceAccount
-				var err error
-				Eventually(func() bool {
-					sa, err = mover.ensureSA(ctx)
-					return sa != nil && err == nil
-				}, timeout, interval).Should(BeTrue())
+				sa, err := mover.ensureSA(ctx)
 				Expect(err).ToNot(HaveOccurred())
+				Expect(sa).ToNot(BeNil())
 
 				validateSaRoleAndRoleBinding(sa, ns.GetName())
 			})
@@ -620,9 +605,7 @@ var _ = Describe("Rsync as a source", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						return k8sClient.Get(ctx, nsn, job)
-					}).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 					Expect(len(job.Spec.Template.Spec.Containers)).To(Equal(1))
 					Expect(job.Spec.Template.Spec.Containers[0].Command).To(Equal(
 						[]string{"/bin/bash", "-c", "/source.sh"}))
@@ -634,10 +617,7 @@ var _ = Describe("Rsync as a source", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						err := k8sClient.Get(ctx, nsn, job)
-						return err
-					}).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 					Expect(len(job.Spec.Template.Spec.Containers)).To(BeNumerically(">", 0))
 					Expect(job.Spec.Template.Spec.Containers[0].Image).To(Equal(defaultRsyncContainerImage))
 				})
@@ -648,10 +628,7 @@ var _ = Describe("Rsync as a source", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						err := k8sClient.Get(ctx, nsn, job)
-						return err
-					}).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 					Expect(job.Spec.Template.Spec.ServiceAccountName).To(Equal(sa.Name))
 				})
 
@@ -661,10 +638,7 @@ var _ = Describe("Rsync as a source", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						err := k8sClient.Get(ctx, nsn, job)
-						return err
-					}).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
 					c := job.Spec.Template.Spec.Containers[0]
 					// Validate job volume mounts
@@ -690,10 +664,7 @@ var _ = Describe("Rsync as a source", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						err := k8sClient.Get(ctx, nsn, job)
-						return err
-					}).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
 					volumes := job.Spec.Template.Spec.Volumes
 					Expect(len(volumes)).To(Equal(2))
@@ -720,10 +691,7 @@ var _ = Describe("Rsync as a source", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						err := k8sClient.Get(ctx, nsn, job)
-						return err
-					}).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
 					// It should be marked for cleaned up
 					Expect(job.Labels).To(HaveKey("volsync.backube/cleanup"))
@@ -735,31 +703,22 @@ var _ = Describe("Rsync as a source", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						err := k8sClient.Get(ctx, nsn, job)
-						return err
-					}, timeout, interval).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 					Expect(*job.Spec.Parallelism).To(Equal(int32(1)))
 
 					mover.paused = true
-					Eventually(func() int32 {
-						j, e := mover.ensureJob(ctx, sPVC, sa, sshKeysSecret.GetName()) // Using sPVC as dataPVC (i.e. direct)
-						Expect(e).NotTo(HaveOccurred())
-						Expect(j).To(BeNil()) // hasn't completed
-						err := k8sClient.Get(ctx, nsn, job)
-						Expect(err).ToNot(HaveOccurred())
-						return *job.Spec.Parallelism
-					}, timeout, interval).Should(Equal(int32(0)))
+					j, e = mover.ensureJob(ctx, sPVC, sa, sshKeysSecret.GetName()) // Using sPVC as dataPVC (i.e. direct)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil()) // hasn't completed
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+					Expect(*job.Spec.Parallelism).To(Equal(int32(0)))
 
 					mover.paused = false
-					Eventually(func() int32 {
-						j, e := mover.ensureJob(ctx, sPVC, sa, sshKeysSecret.GetName()) // Using sPVC as dataPVC (i.e. direct)
-						Expect(e).NotTo(HaveOccurred())
-						Expect(j).To(BeNil()) // hasn't completed
-						err := k8sClient.Get(ctx, nsn, job)
-						Expect(err).ToNot(HaveOccurred())
-						return *job.Spec.Parallelism
-					}, timeout, interval).Should(Equal(int32(1)))
+					j, e = mover.ensureJob(ctx, sPVC, sa, sshKeysSecret.GetName()) // Using sPVC as dataPVC (i.e. direct)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil()) // hasn't completed
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+					Expect(*job.Spec.Parallelism).To(Equal(int32(1)))
 				})
 
 				It("should have no env vars when no address is set in spec", func() {
@@ -768,10 +727,7 @@ var _ = Describe("Rsync as a source", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						err := k8sClient.Get(ctx, nsn, job)
-						return err
-					}, timeout, interval).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
 					// Validate job env vars
 					env := job.Spec.Template.Spec.Containers[0].Env
@@ -792,10 +748,7 @@ var _ = Describe("Rsync as a source", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						err := k8sClient.Get(ctx, nsn, job)
-						return err
-					}, timeout, interval).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
 					// Validate job env vars
 					env := job.Spec.Template.Spec.Containers[0].Env
@@ -821,10 +774,7 @@ var _ = Describe("Rsync as a source", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						err := k8sClient.Get(ctx, nsn, job)
-						return err
-					}, timeout, interval).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
 					// Validate job env vars
 					env := job.Spec.Template.Spec.Containers[0].Env
@@ -843,14 +793,9 @@ var _ = Describe("Rsync as a source", func() {
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 
+					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						err := k8sClient.Get(ctx, types.NamespacedName{
-							Name:      jobName,
-							Namespace: ns.Name,
-						}, job)
-						return err
-					}, timeout, interval).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
 					Expect(job.Spec.Template.Spec.Containers[0].Image).To(Equal(mover.containerImage))
 				})
@@ -867,27 +812,16 @@ var _ = Describe("Rsync as a source", func() {
 					Expect(j).To(BeNil())
 
 					// Make sure job has been deleted
+					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() bool {
-						return kerrors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{
-							Name:      jobName,
-							Namespace: ns.Name,
-						}, job))
-					}, timeout, interval).Should(BeTrue())
+					Expect(kerrors.IsNotFound(k8sClient.Get(ctx, nsn, job))).To(BeTrue())
 
 					// Run ensureJob again as the reconciler would do - should recreate the job
 					j, e = mover.ensureJob(ctx, sPVC, sa, sshKeysSecret.GetName()) // Using sPVC as dataPVC (i.e. direct)
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // job hasn't completed
 
-					job = &batchv1.Job{}
-					Eventually(func() error {
-						return k8sClient.Get(ctx, types.NamespacedName{
-							Name:      jobName,
-							Namespace: ns.Name,
-						}, job)
-					}, timeout, interval).Should(Succeed())
-
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 					Expect(job.Spec.Template.Spec.Containers[0].Image).To(Equal(myUpdatedImage))
 				})
 			})
@@ -899,26 +833,27 @@ var _ = Describe("Rsync as a source", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						if err := k8sClient.Get(ctx, nsn, job); err != nil {
-							return err
-						}
-						job.Status.Failed = *job.Spec.BackoffLimit
-						err := k8sClient.Status().Update(ctx, job)
-						return err
-					}, timeout, interval).Should(Succeed())
-					Eventually(func() int32 {
-						j, e := mover.ensureJob(ctx, sPVC, sa, sshKeysSecret.GetName()) // Using sPVC as dataPVC (i.e. direct)
-						if e != nil {
-							return 98
-						}
-						Expect(j).To(BeNil())
-						e = k8sClient.Get(ctx, nsn, job)
-						if e != nil {
-							return 99
-						}
-						return job.Status.Failed
-					}, timeout, interval).Should(Equal(int32(0)))
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+
+					// Set the job status to have failed backofflimit times
+					job.Status.Failed = *job.Spec.BackoffLimit
+					Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
+
+					// Since job is failed >= backofflimit, ensureJob should remove the job so it can be recreated
+					j, e = mover.ensureJob(ctx, sPVC, sa, sshKeysSecret.GetName()) // Using sPVC as dataPVC (i.e. direct)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil())
+					// Job should be deleted
+					Expect(kerrors.IsNotFound(k8sClient.Get(ctx, nsn, job))).To(BeTrue())
+
+					// Reconcile again, job should get recreated on next call to ensureJob
+					j, e = mover.ensureJob(ctx, sPVC, sa, sshKeysSecret.GetName()) // Using sPVC as dataPVC (i.e. direct)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil()) // will return nil since job is not completed
+
+					// Job should now be recreated
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+					Expect(job.Status.Failed).Should(Equal(int32(0)))
 				})
 			})
 		})
@@ -1016,21 +951,14 @@ var _ = Describe("Rsync as a destination", func() {
 					rd.Spec.Rsync.DestinationPVC = &dPVC.Name
 				})
 				It("is used directly", func() {
-					var pvc *corev1.PersistentVolumeClaim
-					Eventually(func() error {
-						tempPVC, e := mover.ensureDestinationPVC(ctx)
-						if e == nil {
-							pvc = tempPVC
-						}
-						return e
-					}, timeout, interval).ShouldNot(HaveOccurred())
+					pvc, e := mover.ensureDestinationPVC(ctx)
+					Expect(e).NotTo(HaveOccurred())
 					Expect(pvc).NotTo(BeNil())
 					Expect(pvc.Name).To(Equal(dPVC.Name))
 					// It's not owned by the CR
 					Expect(pvc.OwnerReferences).To(BeEmpty())
 					// It won't be cleaned up at the end of the transfer
 					Expect(pvc.Labels).NotTo(HaveKey("volsync.backube/cleanup"))
-
 				})
 			})
 		})
@@ -1054,9 +982,7 @@ var _ = Describe("Rsync as a destination", func() {
 							Namespace: rd.Namespace,
 						},
 					}
-					Eventually(func() error {
-						return k8sClient.Get(ctx, client.ObjectKeyFromObject(svc), svc)
-					}, maxWait, interval).Should(Succeed())
+					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(svc), svc)).To(Succeed())
 
 					if !result {
 						// This means the svc address wasn't populated immediately
@@ -1093,9 +1019,7 @@ var _ = Describe("Rsync as a destination", func() {
 							Namespace: rd.Namespace,
 						},
 					}
-					Consistently(func() error {
-						return k8sClient.Get(ctx, client.ObjectKeyFromObject(svc), svc)
-					}, "2s", interval).Should(Not(Succeed()))
+					Expect(kerrors.IsNotFound(k8sClient.Get(ctx, client.ObjectKeyFromObject(svc), svc))).To(BeTrue())
 				})
 			})
 		})
@@ -1109,6 +1033,8 @@ var _ = Describe("Rsync as a destination", func() {
 				It("Generates ssh keys automatically", func() {
 					var keyName *string
 					var err error
+					// Call ensureSecrets in eventually as it needs to be called multiple times
+					// to create each secret (then expects to be reconciled again to verify)
 					Eventually(func() *string {
 						keyName, err = mover.ensureSecrets(ctx)
 						if err != nil {
@@ -1126,10 +1052,8 @@ var _ = Describe("Rsync as a destination", func() {
 					Expect(*rd.Status.Rsync.SSHKeys).To(Equal("volsync-rsync-dst-src-" + rd.GetName()))
 
 					secret := &corev1.Secret{}
-					Eventually(func() error {
-						return k8sClient.Get(ctx, types.NamespacedName{Name: *rd.Status.Rsync.SSHKeys,
-							Namespace: rd.Namespace}, secret)
-					}, maxWait, interval).Should(Succeed())
+					Expect(k8sClient.Get(ctx, types.NamespacedName{Name: *rd.Status.Rsync.SSHKeys,
+						Namespace: rd.Namespace}, secret)).To(Succeed())
 					Expect(secret.Data).To(HaveKey("source"))
 					Expect(secret.Data).To(HaveKey("source.pub"))
 					Expect(secret.Data).To(HaveKey("destination.pub"))
@@ -1138,10 +1062,8 @@ var _ = Describe("Rsync as a destination", func() {
 
 					// Check secret that will be mounted by the job
 					secret2 := &corev1.Secret{}
-					Eventually(func() error {
-						return k8sClient.Get(ctx, types.NamespacedName{Name: *keyName,
-							Namespace: rd.Namespace}, secret2)
-					}, maxWait, interval).Should(Succeed())
+					Expect(k8sClient.Get(ctx, types.NamespacedName{Name: *keyName,
+						Namespace: rd.Namespace}, secret2)).To(Succeed())
 					Expect(secret2.Data).To(HaveKey("destination"))
 					Expect(secret2.Data).To(HaveKey("source.pub"))
 					Expect(secret2.Data).To(HaveKey("destination.pub"))
@@ -1150,10 +1072,8 @@ var _ = Describe("Rsync as a destination", func() {
 
 					// Check that the main secret that contains both source&dest was created
 					secret3 := &corev1.Secret{}
-					Eventually(func() error {
-						return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-dst-main-" + rd.GetName(),
-							Namespace: rd.Namespace}, secret3)
-					}, maxWait, interval).Should(Succeed())
+					Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-dst-main-" + rd.GetName(),
+						Namespace: rd.Namespace}, secret3)).To(Succeed())
 					Expect(secret3.Data).To(HaveKey("source"))
 					Expect(secret3.Data).To(HaveKey("destination"))
 					Expect(secret3.Data).To(HaveKey("source.pub"))
@@ -1285,9 +1205,7 @@ var _ = Describe("Rsync as a destination", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						return k8sClient.Get(ctx, nsn, job)
-					}).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 					Expect(len(job.Spec.Template.Spec.Containers)).To(Equal(1))
 					Expect(job.Spec.Template.Spec.Containers[0].Command).To(Equal(
 						[]string{"/bin/bash", "-c", "/destination.sh"}))
@@ -1298,10 +1216,7 @@ var _ = Describe("Rsync as a destination", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						err := k8sClient.Get(ctx, nsn, job)
-						return err
-					}).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
 					// Validate job env vars - no env vars on dest job
 					Expect(len(job.Spec.Template.Spec.Containers[0].Env)).To(Equal(0))
@@ -1331,18 +1246,13 @@ var _ = Describe("Rsync as a destination", func() {
 				Expect(k8sClient.Create(ctx, dPVC)).To(Succeed())
 				rd.Spec.Rsync.DestinationPVC = &dPVC.Name
 
-				Eventually(func() error {
-					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dPVC), dPVC)
-					if err != nil {
-						return err
-					}
-					// Update this PVC manually for the test to put the snapshot annotation on it
-					if dPVC.Annotations == nil {
-						dPVC.Annotations = make(map[string]string)
-					}
-					dPVC.Annotations["volsync.backube/snapname"] = "testisafakesnapshotannoation"
-					return k8sClient.Update(ctx, dPVC)
-				}, timeout, interval).Should(Succeed())
+				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dPVC), dPVC)).To(Succeed())
+				// Update this PVC manually for the test to put the snapshot annotation on it
+				if dPVC.Annotations == nil {
+					dPVC.Annotations = make(map[string]string)
+				}
+				dPVC.Annotations["volsync.backube/snapname"] = "testisafakesnapshotannoation"
+				Expect(k8sClient.Update(ctx, dPVC)).To(Succeed())
 
 			})
 			JustBeforeEach(func() {
@@ -1394,15 +1304,9 @@ var _ = Describe("Rsync as a destination", func() {
 				}
 				Expect(utils.MarkOldSnapshotForCleanup(ctx, k8sClient, logger, rd, oldSnap, latestSnap)).To(Succeed())
 
-				Eventually(func() bool {
-					// Re-load to make sure cache has updated the snap with the label above
-					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(snap1), snap1)
-					if err != nil {
-						return false
-					}
-					_, ok := snap1.GetLabels()["volsync.backube/cleanup"]
-					return ok
-				}, timeout, interval).Should(BeTrue())
+				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(snap1), snap1)).To(Succeed())
+				_, ok := snap1.GetLabels()["volsync.backube/cleanup"]
+				Expect(ok).To(BeTrue())
 
 				//Reload snap2 and update status
 				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(snap2), snap2)).To(Succeed())
@@ -1418,9 +1322,7 @@ var _ = Describe("Rsync as a destination", func() {
 				result, err := mover.Cleanup(ctx)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(result.Completed).To(BeTrue())
-				Eventually(func() error {
-					return k8sClient.Get(ctx, client.ObjectKeyFromObject(dPVC), dPVC)
-				}, timeout, interval).Should(Succeed())
+				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dPVC), dPVC)).To(Succeed())
 				Expect(dPVC.GetAnnotations()["volsync.backube/snap"])
 				Expect(dPVC.Annotations).ToNot(HaveKey("volsync.backube/snapname"))
 			})
@@ -1430,10 +1332,8 @@ var _ = Describe("Rsync as a destination", func() {
 				Expect(result.Completed).To(BeTrue())
 
 				snapshots := &snapv1.VolumeSnapshotList{}
-				Eventually(func() int {
-					_ = k8sClient.List(ctx, snapshots, client.InNamespace(rd.Namespace))
-					return len(snapshots.Items)
-				}, timeout, interval).Should(Equal(1))
+				Expect(k8sClient.List(ctx, snapshots, client.InNamespace(rd.Namespace))).To(Succeed())
+				Expect(len(snapshots.Items)).Should(Equal(1))
 				// Snapshot left should be our "latestImage"
 				Expect(snapshots.Items[0].Name).To(Equal("mytestsnap2"))
 			})
@@ -1457,12 +1357,9 @@ func validateSaRoleAndRoleBinding(sa *corev1.ServiceAccount, namespace string) {
 			Namespace: namespace,
 		},
 	}
-	Eventually(func() bool {
-		err1 := k8sClient.Get(ctx, client.ObjectKeyFromObject(sa), sa)
-		err2 := k8sClient.Get(ctx, client.ObjectKeyFromObject(role), role)
-		err3 := k8sClient.Get(ctx, client.ObjectKeyFromObject(roleBinding), roleBinding)
-		return err1 == nil && err2 == nil && err3 == nil
-	}, timeout, interval).Should(BeTrue())
+	Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sa), sa)).To(Succeed())
+	Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(role), role)).To(Succeed())
+	Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(roleBinding), roleBinding)).To(Succeed())
 }
 
 func validateEnvVar(env []corev1.EnvVar, envVarName, envVarExpectedValue string) {
