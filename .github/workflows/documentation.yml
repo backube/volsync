@@ -4,11 +4,12 @@
 name: Documentation
 on:  # yamllint disable-line rule:truthy
   push:
-    branches: ["main", "ocm-*", "release-*"]
+    branches: ["main", "release-*"]
   pull_request:
-    branches: ["main", "ocm-*", "release-*"]
-  schedule:
-    - cron: "15 4 * * 1"  # 4:15 every Monday
+    branches: ["main", "release-*"]
+  # This workflow must be able to be triggered manually so that it can be
+  # started from another workflow
+  workflow_dispatch:
 
 jobs:
   build-docs:
