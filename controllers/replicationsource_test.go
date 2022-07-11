@@ -36,7 +36,7 @@ var _ = Describe("ReplicationSource", func() {
 				GenerateName: "volsync-test-",
 			},
 		}
-		Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+		createWithCacheReload(ctx, k8sClient, namespace)
 		Expect(namespace.Name).NotTo(BeEmpty())
 
 		srcPVC = &corev1.PersistentVolumeClaim{
@@ -71,15 +71,10 @@ var _ = Describe("ReplicationSource", func() {
 		Expect(k8sClient.Delete(ctx, namespace)).To(Succeed())
 	})
 	JustBeforeEach(func() {
-		Expect(k8sClient.Create(ctx, srcPVC)).To(Succeed())
+		createWithCacheReload(ctx, k8sClient, srcPVC)
 		// ReplicationSource should have been customized in the BeforeEach
 		// at each level, so now we create it.
-		Expect(k8sClient.Create(ctx, rs)).To(Succeed())
-		// Wait for it to show up in the API server
-		Eventually(func() error {
-			inst := &volsyncv1alpha1.ReplicationSource{}
-			return k8sClient.Get(ctx, client.ObjectKeyFromObject(rs), inst)
-		}, maxWait, interval).Should(Succeed())
+		createWithCacheReload(ctx, k8sClient, rs)
 	})
 
 	Context("when an external replication method is specified", func() {
@@ -624,7 +619,7 @@ var _ = Describe("ReplicationSource", func() {
 					"destination.pub": "baz",
 				},
 			}
-			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+			createWithCacheReload(ctx, k8sClient, secret)
 			rs.Spec.Rsync = &volsyncv1alpha1.ReplicationSourceRsyncSpec{
 				ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
 					CopyMethod: volsyncv1alpha1.CopyMethodClone,
