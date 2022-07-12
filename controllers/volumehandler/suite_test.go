@@ -21,7 +21,6 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
-	"time"
 
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
 	. "github.com/onsi/ginkgo"
@@ -41,12 +40,6 @@ import (
 
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
-
-const (
-	//duration = 10 * time.Second
-	maxWait  = 60 * time.Second
-	interval = 250 * time.Millisecond
-)
 
 var cfg *rest.Config
 var k8sClient client.Client
@@ -91,13 +84,6 @@ var _ = BeforeSuite(func(done Done) {
 
 	//+kubebuilder:scaffold:scheme
 
-	/*
-		// From original boilerplate
-		k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
-		Expect(err).ToNot(HaveOccurred())
-		Expect(k8sClient).ToNot(BeNil())
-	*/
-
 	k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:             scheme.Scheme,
 		MetricsBindAddress: "0",
@@ -106,28 +92,15 @@ var _ = BeforeSuite(func(done Done) {
 
 	// Don't start the controllers. We're testing volumehandler directly
 
-	// err = (&sc.ReplicationDestinationReconciler{
-	// 	Client: k8sManager.GetClient(),
-	// 	Log:    ctrl.Log.WithName("controllers").WithName("Destination"),
-	// 	Scheme: k8sManager.GetScheme(),
-	// }).SetupWithManager(k8sManager)
-	// Expect(err).ToNot(HaveOccurred())
-
-	// err = (&sc.ReplicationSourceReconciler{
-	// 	Client: k8sManager.GetClient(),
-	// 	Log:    ctrl.Log.WithName("controllers").WithName("Source"),
-	// 	Scheme: k8sManager.GetScheme(),
-	// }).SetupWithManager(k8sManager)
-	// Expect(err).ToNot(HaveOccurred())
-
 	go func() {
 		defer GinkgoRecover()
 		err = k8sManager.Start(ctx)
 		Expect(err).ToNot(HaveOccurred())
 	}()
 
-	k8sClient = k8sManager.GetClient()
-	Expect(k8sClient).ToNot(BeNil())
+	// Instantiate direct client for tests (reads directly from API server rather than caching)
+	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	Expect(err).NotTo(HaveOccurred())
 
 	close(done)
 }, 60)

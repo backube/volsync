@@ -101,9 +101,23 @@ func (vh *VolumeHandler) EnsureImage(ctx context.Context, log logr.Logger,
 		if snap == nil || err != nil {
 			return nil, err
 		}
+
+		snapKind := snap.Kind
+		if snapKind == "" {
+			// In case kind is not filled out, although it should be when read from k8sclient cache
+			// Unit tests that use a direct API client may not have kind - but we can get it from the scheme
+			gvks, _, _ := vh.client.Scheme().ObjectKinds(snap)
+			for _, gvk := range gvks {
+				if gvk.Kind != "" {
+					snapKind = gvk.Kind
+					break
+				}
+			}
+		}
+
 		return &corev1.TypedLocalObjectReference{
 			APIGroup: &snapv1.SchemeGroupVersion.Group,
-			Kind:     snap.Kind,
+			Kind:     snapKind,
 			Name:     snap.Name,
 		}, nil
 	default:
