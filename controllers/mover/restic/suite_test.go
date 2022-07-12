@@ -94,32 +94,11 @@ var _ = BeforeSuite(func(done Done) {
 
 	//+kubebuilder:scaffold:scheme
 
-	/*
-		// From original boilerplate
-		k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
-		Expect(err).ToNot(HaveOccurred())
-		Expect(k8sClient).ToNot(BeNil())
-	*/
-
 	k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:             scheme.Scheme,
 		MetricsBindAddress: "0",
 	})
 	Expect(err).ToNot(HaveOccurred())
-
-	// err = (&sc.ReplicationDestinationReconciler{
-	// 	Client: k8sManager.GetClient(),
-	// 	Log:    ctrl.Log.WithName("controllers").WithName("Destination"),
-	// 	Scheme: k8sManager.GetScheme(),
-	// }).SetupWithManager(k8sManager)
-	// Expect(err).ToNot(HaveOccurred())
-
-	// err = (&sc.ReplicationSourceReconciler{
-	// 	Client: k8sManager.GetClient(),
-	// 	Log:    ctrl.Log.WithName("controllers").WithName("Source"),
-	// 	Scheme: k8sManager.GetScheme(),
-	// }).SetupWithManager(k8sManager)
-	// Expect(err).ToNot(HaveOccurred())
 
 	go func() {
 		defer GinkgoRecover()
@@ -127,8 +106,9 @@ var _ = BeforeSuite(func(done Done) {
 		Expect(err).ToNot(HaveOccurred())
 	}()
 
-	k8sClient = k8sManager.GetClient()
-	Expect(k8sClient).ToNot(BeNil())
+	// Instantiate direct client for tests (reads directly from API server rather than caching)
+	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	Expect(err).NotTo(HaveOccurred())
 
 	// Instantiate common restic builder to use for tests in this test suite
 	commonBuilderForTestSuite, err = newBuilder(viper.New(), flag.NewFlagSet("testfsetrestic", flag.ExitOnError))
