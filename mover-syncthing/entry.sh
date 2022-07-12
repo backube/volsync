@@ -10,7 +10,7 @@ set -e -o pipefail
 #####################################################
 # Logs the given input
 # Globals:
-#   None 
+#   None
 # Arguments:
 #   String(s) to be logged
 # Returns:
@@ -25,9 +25,10 @@ log_msg "STARTING CONTAINER"
 log_msg "VolSync Syncthing container version: ${version:-unknown}"
 log_msg "${@}"
 
-# variables we can't proceed without 
+# variables we can't proceed without
 required_vars=(
   SYNCTHING_DATA_DIR
+  SYNCTHING_CERT_DIR
   SYNCTHING_CONFIG_DIR
   STGUIAPIKEY
 )
@@ -50,7 +51,7 @@ check_var_defined() {
 
 #####################################################
 # Replaces the placeholders in config.xml
-# with the values of their respective envs 
+# with the values of their respective envs
 # Arguments:
 #   Filepath - path to the config file to operate on
 # Globals:
@@ -60,19 +61,19 @@ check_var_defined() {
 #   None
 #####################################################
 preconfigure_folder() {
-  # HACK: make the config.xml template more configurable 
-  #       in case these variables change 
+  # HACK: make the config.xml template more configurable
+  #       in case these variables change
 
   local filepath="${1}"
-  # use a vertical bar here so sed doesn't misinterpret the path 
+  # use a vertical bar here so sed doesn't misinterpret the path
   sed -i "s|SYNCTHING_DATA_DIR|${SYNCTHING_DATA_DIR}|g" "${filepath}"
   sed -i "s/SYNCTHING_DATA_TRANSFERMODE/${SYNCTHING_DATA_TRANSFERMODE}/g" "${filepath}"
 }
 
 #####################################################
-# Copies the HTTPS certificates from the 
-# predefined certificate directory 
-# to the config directory. 
+# Copies the HTTPS certificates from the
+# predefined certificate directory
+# to the config directory.
 # Arguments:
 # 	None
 # Globals:
@@ -82,21 +83,16 @@ preconfigure_folder() {
 # 	None
 #####################################################
 ensure_https_certificates() {
-  # check if SYNCTHING_CERT_DIR is defined and mounted
-  if [[ -z "${SYNCTHING_CERT_DIR}" ]]; then
-    log_msg "SYNCTHING_CERT_DIR is not defined, default HTTPS Syncthing certificates will be used"
-    return 0
-  fi
-
   # copy the https-key.pem and https-cert.pem over to the config directory
   cp "${SYNCTHING_CERT_DIR}/https-key.pem" "${SYNCTHING_CONFIG_DIR}/https-key.pem"
   cp "${SYNCTHING_CERT_DIR}/https-cert.pem" "${SYNCTHING_CONFIG_DIR}/https-cert.pem"
+
   return 0
 }
 
 
 #####################################################
-# Performs the necessary steps for 
+# Performs the necessary steps for
 # Syncthing to run as an image
 # Globals:
 #   SYNCTHING_CONFIG_DIR
@@ -121,7 +117,7 @@ preflight_check() {
     preconfigure_folder "${SYNCTHING_CONFIG_DIR}/config.xml"
   else
     log_msg "${SYNCTHING_CONFIG_DIR}/config.xml already exists"
-  fi 
+  fi
 
   # ensure the HTTPS certificates
   ensure_https_certificates
@@ -133,8 +129,8 @@ for op in "$@"; do
       # ensure our environment is configured before syncthing runs
       preflight_check
 
-      # launch syncthing			
-      syncthing -home "${SYNCTHING_CONFIG_DIR}"
+      # launch syncthing
+      exec syncthing -home "${SYNCTHING_CONFIG_DIR}" --verbose
       ;;
     *)
       error "unknown operation"
