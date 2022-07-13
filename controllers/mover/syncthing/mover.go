@@ -339,6 +339,7 @@ func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) 
 
 	// Generate TLS Certificates for communicating between VolSync and the Syncthing API
 	apiServiceDNS := m.getAPIServiceDNS()
+	m.logger.Info("generating TLS certificates", "DNS", apiServiceDNS)
 	certPEM, certPrivKeyPEM, err := generateTLSCertificatesForSyncthing(apiServiceDNS)
 	if err != nil {
 		return nil, err
