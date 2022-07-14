@@ -17,10 +17,7 @@ commands:
         prev_st_peer_id="$(kubectl get replicationsource "${target_rs}" -n "${NAMESPACE}" -o jsonpath='{.status.syncthing.ID}')"
 
         # find the Syncthing pod belonging to the first ReplicationSource 'syncthing-1' and delete it
-        syncthing_podname="$(kubectl get pods -l app.kubernetes.io/name="${target_rs}" -n "${NAMESPACE}" -o jsonpath='{.items[0].metadata.name}')"
-        kubectl delete pod "${syncthing_podname}" -n "${NAMESPACE}"
-        # Ensure the pod is gone
-        kubectl wait --for=delete pod "${syncthing_podname}" -n "${NAMESPACE}" --timeout=60s || true
+        kubectl delete pod -l app.kubernetes.io/name="${target_rs}" -n "${NAMESPACE}"
 
         # wait until a new pod is created
         while ! kubectl get pods -l app.kubernetes.io/name="${target_rs}" -n "${NAMESPACE}" | grep syncthing | grep -v Terminating; do

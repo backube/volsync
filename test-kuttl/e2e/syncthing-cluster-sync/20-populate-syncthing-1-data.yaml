@@ -11,7 +11,7 @@ spec:
       - name: writer
         image: busybox
         command: ["/bin/sh", "-c"]
-        args: ["echo 'hello from syncthing-1' > /data/testdata.txt && sync && sleep 1"]
+        args: ["echo 'hello from syncthing-1' > /data/testdata.txt && sync && sleep 3600"]
         volumeMounts:
         - name: test-data
           mountPath: /data
