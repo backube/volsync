@@ -61,6 +61,7 @@ type Mover struct {
 	mainPVCName    *string
 	sourceStatus   *volsyncv1alpha1.ReplicationSourceRsyncStatus
 	destStatus     *volsyncv1alpha1.ReplicationDestinationRsyncStatus
+	nfs            *corev1.NFSVolumeSource
 }
 
 var _ mover.Mover = &Mover{}
@@ -407,13 +408,8 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 		job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
 		job.Spec.Template.Spec.ServiceAccountName = sa.Name
 		secretMode := int32(0600)
+
 		job.Spec.Template.Spec.Volumes = []corev1.Volume{
-			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
-				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-					ClaimName: dataPVC.Name,
-					ReadOnly:  false,
-				}},
-			},
 			{Name: "keys", VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
 					SecretName:  rsyncSecretName,
@@ -421,6 +417,30 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 				}},
 			},
 		}
+
+		dataVolume := []corev1.Volume{
+			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: dataPVC.Name,
+					ReadOnly:  false,
+				}},
+			},
+		}
+
+		if m.nfs.Server != "" && m.nfs.Path != "" {
+			dataVolume = []corev1.Volume{
+				{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
+					NFS: &corev1.NFSVolumeSource{
+						Server:   m.nfs.Server,
+						Path:     m.nfs.Path,
+						ReadOnly: false,
+					}},
+				},
+			}
+		}
+
+		job.Spec.Template.Spec.Volumes = append(job.Spec.Template.Spec.Volumes, dataVolume...)
+
 		if m.vh.IsCopyMethodDirect() {
 			affinity, err := utils.AffinityFromVolume(ctx, m.client, logger, dataPVC)
 			if err != nil {

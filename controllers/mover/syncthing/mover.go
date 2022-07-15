@@ -116,6 +116,7 @@ type Mover struct {
 	serviceType         corev1.ServiceType
 	syncthingConnection api.SyncthingConnection
 	apiConfig           api.APIConfig
+	nfs                 *corev1.NFSVolumeSource
 }
 
 var _ mover.Mover = &Mover{}
@@ -476,27 +477,9 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 			},
 		}
 
-		// configure volumes
+		// load the HTTPS certs as a volume
 		deployment.Spec.Template.Spec.Volumes = []corev1.Volume{
-			{
-				Name: configVolumeName,
-				VolumeSource: corev1.VolumeSource{
-					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-						ClaimName: configPVC.Name,
-					},
-				},
-			},
-			{
-				Name: dataVolumeName,
-				VolumeSource: corev1.VolumeSource{
-					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-						ClaimName: dataPVC.Name,
-					},
-				},
-			},
-			// load the HTTPS certs as a volume
-			{
-				Name: certVolumeName,
+			{Name: certVolumeName,
 				VolumeSource: corev1.VolumeSource{
 					Secret: &corev1.SecretVolumeSource{
 						SecretName: apiSecret.Name,
@@ -508,6 +491,42 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 				},
 			},
 		}
+
+		deployment.Spec.Template.Spec.Volumes = append(deployment.Spec.Template.Spec.Volumes, []corev1.Volume{
+			{Name: configVolumeName,
+				VolumeSource: corev1.VolumeSource{
+					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+						ClaimName: configPVC.Name,
+					},
+				},
+			},
+		}...)
+
+		dataVolume := []corev1.Volume{
+			{Name: dataVolumeName,
+				VolumeSource: corev1.VolumeSource{
+					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+						ClaimName: dataPVC.Name,
+						ReadOnly:  false,
+					},
+				},
+			},
+		}
+
+		if m.nfs.Server != "" && m.nfs.Path != "" {
+			dataVolume = []corev1.Volume{
+				{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
+					NFS: &corev1.NFSVolumeSource{
+						Server:   m.nfs.Server,
+						Path:     m.nfs.Path,
+						ReadOnly: false,
+					}},
+				},
+			}
+		}
+
+		deployment.Spec.Template.Spec.Volumes = append(deployment.Spec.Template.Spec.Volumes, dataVolume...)
+
 		return nil
 	})
 

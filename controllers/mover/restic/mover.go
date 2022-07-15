@@ -61,6 +61,7 @@ type Mover struct {
 	isSource              bool
 	paused                bool
 	mainPVCName           *string
+	nfs                   *corev1.NFSVolumeSource
 	// Source-only fields
 	pruneInterval *int32
 	retainPolicy  *volsyncv1alpha1.ResticRetainPolicy
@@ -375,18 +376,39 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 		}}
 		job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
 		job.Spec.Template.Spec.ServiceAccountName = sa.Name
+
 		job.Spec.Template.Spec.Volumes = []corev1.Volume{
-			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
-				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-					ClaimName: dataPVC.Name,
-				}},
-			},
 			{Name: resticCache, VolumeSource: corev1.VolumeSource{
 				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 					ClaimName: cachePVC.Name,
+					ReadOnly:  false,
 				}},
 			},
 		}
+
+		dataVolume := []corev1.Volume{
+			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: dataPVC.Name,
+					ReadOnly:  false,
+				}},
+			},
+		}
+
+		if m.nfs.Server != "" && m.nfs.Path != "" {
+			dataVolume = []corev1.Volume{
+				{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
+					NFS: &corev1.NFSVolumeSource{
+						Server:   m.nfs.Server,
+						Path:     m.nfs.Path,
+						ReadOnly: false,
+					}},
+				},
+			}
+		}
+
+		job.Spec.Template.Spec.Volumes = append(job.Spec.Template.Spec.Volumes, dataVolume...)
+
 		if m.vh.IsCopyMethodDirect() {
 			affinity, err := utils.AffinityFromVolume(ctx, m.client, logger, dataPVC)
 			if err != nil {

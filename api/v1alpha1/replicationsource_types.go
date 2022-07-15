@@ -90,6 +90,9 @@ type ReplicationSourceVolumeOptions struct {
 	// copyMethod is Snapshot. If not set, the default VSC is used.
 	//+optional
 	VolumeSnapshotClassName *string `json:"volumeSnapshotClassName,omitempty"`
+	// nfs can be used to specify the NFS server and path
+	//+optional
+	NFS *corev1.NFSVolumeSource `json:"nfs,omitempty"`
 }
 
 type ReplicationSourceRsyncSpec struct {
