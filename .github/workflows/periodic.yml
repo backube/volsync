@@ -40,5 +40,5 @@ jobs:
         run: |
           gh workflow run --ref "main" "operator.yml"
           gh workflow run --ref "main" "documentation.yml"
-          # gh workflow run --ref "release-0.4" "operator.yml"
-          # gh workflow run --ref "release-0.4" "documentation.yml"
+          gh workflow run --ref "release-0.4" "operator.yml"
+          gh workflow run --ref "release-0.4" "documentation.yml"
