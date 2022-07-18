@@ -45,10 +45,12 @@
     </gui>
     <ldap></ldap>
     <options>
-        <listenAddress>default</listenAddress>
+        <announceLANAddresses>false</announceLANAddresses>
         <globalAnnounceEnabled>false</globalAnnounceEnabled>
+        <listenAddress>tcp://0.0.0.0:22000</listenAddress>
         <localAnnounceEnabled>false</localAnnounceEnabled>
         <localAnnouncePort>21027</localAnnouncePort>
+        <natEnabled>false</natEnabled>
         <relaysEnabled>false</relaysEnabled>
         <startBrowser>false</startBrowser>
     </options>
