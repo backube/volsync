@@ -47,6 +47,7 @@
     <options>
         <announceLANAddresses>false</announceLANAddresses>
         <globalAnnounceEnabled>false</globalAnnounceEnabled>
+        <insecureAllowOldTLSVersions>true</insecureAllowOldTLSVersions>
         <listenAddress>tcp://0.0.0.0:22000</listenAddress>
         <localAnnounceEnabled>false</localAnnounceEnabled>
         <localAnnouncePort>21027</localAnnouncePort>
