@@ -15,10 +15,10 @@ require (
 	github.com/spf13/viper v1.12.0
 	github.com/syncthing/syncthing v1.20.2
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/api v0.24.2
-	k8s.io/apimachinery v0.24.2
-	k8s.io/client-go v0.24.2
-	k8s.io/component-base v0.24.2
+	k8s.io/api v0.24.3
+	k8s.io/apimachinery v0.24.3
+	k8s.io/client-go v0.24.3
+	k8s.io/component-base v0.24.3
 	k8s.io/klog/v2 v2.70.0
 	k8s.io/kubectl v0.24.2
 	k8s.io/utils v0.0.0-20220210201930-3a6ce19ff2f9
