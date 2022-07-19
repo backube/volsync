@@ -99,10 +99,9 @@ var _ = BeforeSuite(func() {
 		Expect(err).ToNot(HaveOccurred())
 	}()
 
-	Eventually(func() client.Client {
-		k8sClient = k8sManager.GetClient()
-		return k8sClient
-	}, "60s", "1s").Should(Not(BeNil()))
+	// Instantiate direct client for tests (reads directly from API server rather than caching)
+	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	Expect(err).NotTo(HaveOccurred())
 
 	// Instantiate common rsync builder to use for tests in this test suite
 	commonBuilderForTestSuite, err = newBuilder(viper.New(), flag.NewFlagSet("testfsetrsynctests", flag.ExitOnError))

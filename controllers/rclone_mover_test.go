@@ -47,7 +47,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 			},
 		}
 		// crete ns
-		Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+		createWithCacheReload(ctx, k8sClient, namespace)
 		Expect(namespace.Name).NotTo(BeEmpty())
 
 		// sets up RD, Rclone, Secret & PVC spec
@@ -95,14 +95,9 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 	})
 	JustBeforeEach(func() {
 		// create necessary resources
-		Expect(k8sClient.Create(ctx, pvc)).To(Succeed())
-		Expect(k8sClient.Create(ctx, rcloneSecret)).To(Succeed())
-		Expect(k8sClient.Create(ctx, rd)).To(Succeed())
-		// wait for the ReplicationDestination to actually come up
-		Eventually(func() error {
-			inst := &volsyncv1alpha1.ReplicationDestination{}
-			return k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), inst)
-		}, maxWait, interval).Should(Succeed())
+		createWithCacheReload(ctx, k8sClient, pvc)
+		createWithCacheReload(ctx, k8sClient, rcloneSecret)
+		createWithCacheReload(ctx, k8sClient, rd)
 	})
 
 	//nolint:dupl
@@ -655,7 +650,7 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 			},
 		}
 		// crete ns
-		Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+		createWithCacheReload(ctx, k8sClient, namespace)
 		Expect(namespace.Name).NotTo(BeEmpty())
 		srcPVC = &corev1.PersistentVolumeClaim{
 			ObjectMeta: metav1.ObjectMeta{
@@ -705,18 +700,13 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 	})
 	JustBeforeEach(func() {
 		// at least the srcPVC & rcloneSecret should be expected to start at this point
-		Expect(k8sClient.Create(ctx, srcPVC)).To(Succeed())
-		Expect(k8sClient.Create(ctx, rcloneSecret)).To(Succeed())
+		createWithCacheReload(ctx, k8sClient, srcPVC)
+		createWithCacheReload(ctx, k8sClient, rcloneSecret)
 	})
 	When("Components are expected to start", func() {
 		JustBeforeEach(func() {
 			// source pvc comes up
-			Expect(k8sClient.Create(ctx, rs)).To(Succeed())
-			// wait for the ReplicationSource to actually come up
-			Eventually(func() error {
-				inst := &volsyncv1alpha1.ReplicationSource{}
-				return k8sClient.Get(ctx, client.ObjectKeyFromObject(rs), inst)
-			}, maxWait, interval).Should(Succeed())
+			createWithCacheReload(ctx, k8sClient, rs)
 		})
 
 		When("ReplicationSource is provided with an Rclone spec", func() {

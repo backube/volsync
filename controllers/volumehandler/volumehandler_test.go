@@ -82,11 +82,6 @@ var _ = Describe("Volumehandler", func() {
 			// ReplicationDestination should have been customized in the BeforeEach
 			// at each level, so now we create it.
 			Expect(k8sClient.Create(ctx, rd)).To(Succeed())
-			// Wait for it to show up in the API server
-			Eventually(func() error {
-				inst := &volsyncv1alpha1.ReplicationDestination{}
-				return k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), inst)
-			}, maxWait, interval).Should(Succeed())
 		})
 
 		When("capacity & sc are specified", func() {
@@ -157,11 +152,6 @@ var _ = Describe("Volumehandler", func() {
 						},
 					}
 					Expect(k8sClient.Create(ctx, pvc)).To(Succeed())
-					// Wait for it to show up in the API server
-					Eventually(func() error {
-						inst := &corev1.PersistentVolumeClaim{}
-						return k8sClient.Get(ctx, types.NamespacedName{Name: "mypvc", Namespace: ns.Name}, inst)
-					}, maxWait, interval).Should(Succeed())
 
 					tlor, err := vh.EnsureImage(ctx, logger, pvc)
 					Expect(err).NotTo(HaveOccurred())
@@ -205,11 +195,6 @@ var _ = Describe("Volumehandler", func() {
 					},
 				}
 				Expect(k8sClient.Create(ctx, pvc)).To(Succeed())
-				// Wait for it to show up in the API server
-				Eventually(func() error {
-					inst := &corev1.PersistentVolumeClaim{}
-					return k8sClient.Get(ctx, types.NamespacedName{Name: "mypvc", Namespace: ns.Name}, inst)
-				}, maxWait, interval).Should(Succeed())
 
 				tlor, err := vh.EnsureImage(ctx, logger, pvc)
 				Expect(err).NotTo(HaveOccurred())
@@ -220,9 +205,7 @@ var _ = Describe("Volumehandler", func() {
 				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pvc), pvc)).To(Succeed())
 				snapname := pvc.Annotations[snapshotAnnotation]
 				snap := &snapv1.VolumeSnapshot{}
-				Eventually(func() error {
-					return k8sClient.Get(ctx, types.NamespacedName{Name: snapname, Namespace: ns.Name}, snap)
-				}, maxWait, interval).Should(Succeed())
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: snapname, Namespace: ns.Name}, snap)).To(Succeed())
 
 				// At this point the snapshot should have ownership set
 				Expect(len(snap.GetOwnerReferences())).To(Equal(1))
@@ -240,37 +223,19 @@ var _ = Describe("Volumehandler", func() {
 					utils.DoNotDeleteLabelKey: "0", // value of label should not matter
 				}
 				Expect(k8sClient.Update(ctx, snap)).Should(Succeed())
-				// Make sure the label update has propagated to the cache before proceeding
-				Eventually(func() bool {
-					err := k8sClient.Get(ctx, types.NamespacedName{Name: snapname, Namespace: ns.Name}, snap)
-					if err != nil {
-						return false
-					}
-					_, ok := snap.Labels[utils.DoNotDeleteLabelKey]
-					return ok
-				}, maxWait, interval).Should(BeTrue())
 
 				// Retry expecting success
-				Eventually(func() *corev1.TypedLocalObjectReference {
-					tlor, err = vh.EnsureImage(ctx, logger, pvc)
-					if err != nil {
-						return nil
-					}
-					return tlor
-				}, maxWait, interval).ShouldNot(BeNil())
+				tlor, err = vh.EnsureImage(ctx, logger, pvc)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(tlor).NotTo(BeNil())
 				Expect(tlor.Kind).To(Equal("VolumeSnapshot"))
 				Expect(tlor.Name).To(Equal(snapname))
 				Expect(*tlor.APIGroup).To(Equal(snapv1.SchemeGroupVersion.Group))
 
 				// Because do-not-delete label was on the snapshot, ownership should be removed
 				snapReloaded := &snapv1.VolumeSnapshot{}
-				Eventually(func() int {
-					err := k8sClient.Get(ctx, types.NamespacedName{Name: snapname, Namespace: ns.Name}, snapReloaded)
-					if err != nil {
-						return 1
-					}
-					return len(snapReloaded.GetOwnerReferences())
-				}, maxWait, interval).Should(Equal(0)) // Owner ref should be removed
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: snapname, Namespace: ns.Name}, snapReloaded)).To(Succeed())
+				Expect(len(snapReloaded.GetOwnerReferences())).To(Equal(0)) // Owner ref should be removed
 			})
 		})
 	})
@@ -329,15 +294,6 @@ var _ = Describe("Volumehandler", func() {
 			// at each level, so now we create it.
 			Expect(k8sClient.Create(ctx, rs)).To(Succeed())
 			Expect(k8sClient.Create(ctx, src)).To(Succeed())
-			// Wait for it to show up in the API server
-			Eventually(func() error {
-				inst := &volsyncv1alpha1.ReplicationSource{}
-				return k8sClient.Get(ctx, client.ObjectKeyFromObject(rs), inst)
-			}, maxWait, interval).Should(Succeed())
-			Eventually(func() error {
-				inst := &corev1.PersistentVolumeClaim{}
-				return k8sClient.Get(ctx, client.ObjectKeyFromObject(src), inst)
-			}, maxWait, interval).Should(Succeed())
 		})
 
 		When("CopyMethod is Clone", func() {
@@ -448,22 +404,12 @@ var _ = Describe("Volumehandler", func() {
 					// Grab the snap and make it look bound
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(src), src)).To(Succeed())
 					snap = &snapv1.VolumeSnapshot{}
-					Eventually(func() error {
-						return k8sClient.Get(ctx, types.NamespacedName{Name: newPvcName, Namespace: ns.Name}, snap)
-					}, maxWait, interval).Should(Succeed())
+					Expect(k8sClient.Get(ctx, types.NamespacedName{Name: newPvcName, Namespace: ns.Name}, snap)).To(Succeed())
 					boundTo := "bar"
 					snap.Status = &snapv1.VolumeSnapshotStatus{
 						BoundVolumeSnapshotContentName: &boundTo,
 					}
 					Expect(k8sClient.Status().Update(ctx, snap)).To(Succeed())
-					Eventually(func() bool {
-						// Make sure the cache picks up the update
-						err := k8sClient.Get(ctx, client.ObjectKeyFromObject(snap), snap)
-						if err != nil {
-							return false
-						}
-						return snap.Status != nil && snap.Status.BoundVolumeSnapshotContentName != nil
-					}, maxWait, interval).Should(BeTrue())
 					Expect(snap.Spec.VolumeSnapshotClassName).To(BeNil())
 				})
 
@@ -482,14 +428,6 @@ var _ = Describe("Volumehandler", func() {
 						ready := false
 						snap.Status.ReadyToUse = &ready
 						Expect(k8sClient.Status().Update(ctx, snap)).To(Succeed())
-						Eventually(func() bool {
-							// Make sure the cache picks up the update
-							err := k8sClient.Get(ctx, client.ObjectKeyFromObject(snap), snap)
-							if err != nil {
-								return false
-							}
-							return snap.Status != nil && snap.Status.ReadyToUse != nil && !*snap.Status.ReadyToUse
-						}, maxWait, interval).Should(BeTrue())
 					})
 
 					It("Does not create a PVC when the snapshot is not ready", func() {
@@ -506,28 +444,13 @@ var _ = Describe("Volumehandler", func() {
 						ready := true
 						snap.Status.ReadyToUse = &ready
 						Expect(k8sClient.Status().Update(ctx, snap)).To(Succeed())
-						Eventually(func() bool {
-							// Make sure the cache picks up the update
-							err := k8sClient.Get(ctx, client.ObjectKeyFromObject(snap), snap)
-							if err != nil {
-								return false
-							}
-							return snap.Status != nil && snap.Status.ReadyToUse != nil && *snap.Status.ReadyToUse
-						}, maxWait, interval).Should(BeTrue())
 					})
 
 					When("Snapshot status.restoreSize is not set and no status.capacity on PVC", func() {
 						It("creates a snapshot and temporary PVC from a source using the request size from the src pvc", func() {
 							// Retry EnsurePVCFromSRC (first attempt is in the BeforeEach()) expecting success
-							var new *corev1.PersistentVolumeClaim
-							var err error
-							Eventually(func() *corev1.PersistentVolumeClaim {
-								new, err = vh.EnsurePVCFromSrc(ctx, logger, src, newPvcName, true)
-								if err != nil {
-									return nil
-								}
-								return new
-							}, maxWait, interval).ShouldNot(BeNil())
+							new, err := vh.EnsurePVCFromSrc(ctx, logger, src, newPvcName, true)
+							Expect(err).NotTo(HaveOccurred())
 							Expect(new).ToNot(BeNil())
 							Expect(new.Name).To(Equal(newPvcName))
 							// The PVC from snapshot should look just like the source
@@ -546,15 +469,8 @@ var _ = Describe("Volumehandler", func() {
 
 						It("creates a snapshot and temporary PVC from a source using the capacity from the src pvc", func() {
 							// Retry EnsurePVCFromSRC (first attempt is in the BeforeEach()) expecting success
-							var new *corev1.PersistentVolumeClaim
-							var err error
-							Eventually(func() *corev1.PersistentVolumeClaim {
-								new, err = vh.EnsurePVCFromSrc(ctx, logger, src, newPvcName, true)
-								if err != nil {
-									return nil
-								}
-								return new
-							}, maxWait, interval).ShouldNot(BeNil())
+							new, err := vh.EnsurePVCFromSrc(ctx, logger, src, newPvcName, true)
+							Expect(err).NotTo(HaveOccurred())
 							Expect(new).ToNot(BeNil())
 							Expect(new.Name).To(Equal(newPvcName))
 							// The PVC from snapshot should look just like the source,
@@ -576,27 +492,12 @@ var _ = Describe("Volumehandler", func() {
 							snap.Status.RestoreSize = &snapshotRestoreSize
 
 							Expect(k8sClient.Status().Update(ctx, snap)).To(Succeed())
-							Eventually(func() bool {
-								// Make sure the cache has picked up the update
-								err := k8sClient.Get(ctx, client.ObjectKeyFromObject(snap), snap)
-								if err != nil {
-									return false
-								}
-								return snap.Status.RestoreSize != nil && *snap.Status.RestoreSize == snapshotRestoreSize
-							}, maxWait, interval).Should(BeTrue())
 						})
 
 						It("creates a snapshot and temporary PVC from a source using the capacity from the src pvc", func() {
 							// Retry EnsurePVCFromSRC (first attempt is in the BeforeEach()) expecting success
-							var new *corev1.PersistentVolumeClaim
-							var err error
-							Eventually(func() *corev1.PersistentVolumeClaim {
-								new, err = vh.EnsurePVCFromSrc(ctx, logger, src, newPvcName, true)
-								if err != nil {
-									return nil
-								}
-								return new
-							}, maxWait, interval).ShouldNot(BeNil())
+							new, err := vh.EnsurePVCFromSrc(ctx, logger, src, newPvcName, true)
+							Expect(err).NotTo(HaveOccurred())
 							Expect(new).ToNot(BeNil())
 							Expect(new.Name).To(Equal(newPvcName))
 							// The PVC from snapshot should look just like the source,
@@ -636,9 +537,7 @@ var _ = Describe("Volumehandler", func() {
 					// Grab the snap and make it look bound
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(src), src)).To(Succeed())
 					snap := &snapv1.VolumeSnapshot{}
-					Eventually(func() error {
-						return k8sClient.Get(ctx, types.NamespacedName{Name: "newpvc", Namespace: ns.Name}, snap)
-					}, maxWait, interval).Should(Succeed())
+					Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "newpvc", Namespace: ns.Name}, snap)).To(Succeed())
 					boundTo := "foo2"
 					snap.Status = &snapv1.VolumeSnapshotStatus{
 						BoundVolumeSnapshotContentName: &boundTo,
@@ -647,13 +546,7 @@ var _ = Describe("Volumehandler", func() {
 					Expect(*snap.Spec.VolumeSnapshotClassName).To(Equal(newVSC))
 
 					// Retry expecting success
-					Eventually(func() *corev1.PersistentVolumeClaim {
-						new, err = vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc", true)
-						if err != nil {
-							return nil
-						}
-						return new
-					}, maxWait, interval).ShouldNot(BeNil())
+					new, err = vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc", true)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(new).ToNot(BeNil())
 					Expect(new.Name).To(Equal("newpvc"))
@@ -673,12 +566,4 @@ func setPvcCapacityInStatus(ctx context.Context, pvc *corev1.PersistentVolumeCla
 		"storage": pvcCapacity,
 	}
 	Expect(k8sClient.Status().Update(ctx, pvc)).To(Succeed())
-	Eventually(func() bool {
-		// Make sure the cache has picked up the update
-		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(pvc), pvc)
-		if err != nil {
-			return false
-		}
-		return pvc.Status.Capacity != nil && pvc.Status.Capacity["storage"] == pvcCapacity
-	}, maxWait, interval).Should(BeTrue())
 }

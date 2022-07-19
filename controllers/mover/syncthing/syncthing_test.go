@@ -37,7 +37,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/events"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
@@ -153,14 +152,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 				},
 			},
 		}
-
-		// wait until the PVC is available
 		Expect(k8sClient.Create(ctx, srcPVC)).To(Succeed())
-		Eventually(func() error {
-			pvc := &corev1.PersistentVolumeClaim{}
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(srcPVC), pvc)
-			return err
-		}, "10s", "1s").Should(Succeed())
 
 		// create replicationsource
 		rs = &volsyncv1alpha1.ReplicationSource{
@@ -265,29 +257,13 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 				}
 				Expect(k8sClient.Create(ctx, apiSecret)).To(Succeed())
 
-				// expect the resources to have been created by now
-				Eventually(func() error {
-					err := k8sClient.Get(ctx, types.NamespacedName{Name: configPVC.Name, Namespace: ns.Name}, configPVC)
-					if err != nil {
-						return err
-					}
-
-					err = k8sClient.Get(ctx, types.NamespacedName{Name: apiSecret.Name, Namespace: ns.Name}, apiSecret)
-					if err != nil {
-						return err
-					}
-					return nil
-				}, timeout, interval).Should(Succeed())
-
 				// ensure the SA exists
 				sa, err = mover.ensureSA(ctx)
 				Expect(sa).NotTo(BeNil())
 				Expect(err).NotTo(HaveOccurred())
 
 				// ensure the SA exists in-cluster
-				Eventually(func() error {
-					return k8sClient.Get(ctx, types.NamespacedName{Name: sa.Name, Namespace: ns.Name}, sa)
-				}, timeout, interval).Should(Succeed())
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: sa.Name, Namespace: ns.Name}, sa)).To(Succeed())
 			})
 
 			When("data serviceType is ClusterIP", func() {
@@ -465,9 +441,6 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 						},
 					}
 					Expect(k8sClient.Create(ctx, configPVC)).To(Succeed())
-					Eventually(func() error {
-						return k8sClient.Get(ctx, types.NamespacedName{Name: configPVC.Name, Namespace: ns.Name}, configPVC)
-					}).Should(Succeed())
 				})
 
 				It("VolSync uses existing configPVC", func() {
@@ -487,9 +460,8 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					Expect(configPVC).NotTo(BeNil())
 
 					// ensure the PVC is created
-					Eventually(func() error {
-						return k8sClient.Get(ctx, types.NamespacedName{Name: configPVC.Name, Namespace: configPVC.Namespace}, configPVC)
-					}, timeout, interval).Should(Succeed())
+					Expect(k8sClient.Get(ctx, types.NamespacedName{
+						Name: configPVC.Name, Namespace: configPVC.Namespace}, configPVC)).To(Succeed())
 				})
 			})
 
@@ -535,9 +507,6 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 						},
 					}
 					Expect(k8sClient.Create(ctx, apiKeys)).To(Succeed())
-					Eventually(func() error {
-						return k8sClient.Get(ctx, types.NamespacedName{Name: apiKeys.Name, Namespace: ns.Name}, apiKeys)
-					}, timeout, interval).Should(Succeed())
 				})
 
 				It("VolSync retrieves secret", func() {
@@ -562,12 +531,10 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					Expect(returnedSecret).NotTo(BeNil())
 
 					// ensure the secret is created
-					Eventually(func() error {
-						return k8sClient.Get(ctx, types.NamespacedName{
-							Name:      returnedSecret.Name,
-							Namespace: returnedSecret.Namespace,
-						}, returnedSecret)
-					}, timeout, interval).Should(Succeed())
+					Expect(k8sClient.Get(ctx, types.NamespacedName{
+						Name:      returnedSecret.Name,
+						Namespace: returnedSecret.Namespace,
+					}, returnedSecret)).Should(Succeed())
 
 					// ensure that all of the required keys exist
 					requiredKeys := []string{apiKeyDataKey, usernameDataKey, passwordDataKey, httpsCertDataKey, httpsKeyDataKey}
@@ -867,9 +834,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 				Expect(sa).NotTo(BeNil())
 
 				// make sure that the SA exists in-cluster
-				Eventually(func() error {
-					return k8sClient.Get(ctx, types.NamespacedName{Name: sa.Name, Namespace: ns.Name}, sa)
-				}, timeout, interval).Should(Succeed())
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: sa.Name, Namespace: ns.Name}, sa)).To(Succeed())
 			})
 		})
 
@@ -920,29 +885,13 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 				}
 				Expect(k8sClient.Create(ctx, apiSecret)).To(Succeed())
 
-				// expect the resources to have been created by now
-				Eventually(func() error {
-					err := k8sClient.Get(ctx, types.NamespacedName{Name: configPVC.Name, Namespace: ns.Name}, configPVC)
-					if err != nil {
-						return err
-					}
-
-					err = k8sClient.Get(ctx, types.NamespacedName{Name: apiSecret.Name, Namespace: ns.Name}, apiSecret)
-					if err != nil {
-						return err
-					}
-					return nil
-				}, timeout, interval).Should(Succeed())
-
 				// ensure the SA exists
 				sa, err = mover.ensureSA(ctx)
 				Expect(sa).NotTo(BeNil())
 				Expect(err).NotTo(HaveOccurred())
 
 				// ensure the SA exists in-cluster
-				Eventually(func() error {
-					return k8sClient.Get(ctx, types.NamespacedName{Name: sa.Name, Namespace: ns.Name}, sa)
-				}, timeout, interval).Should(Succeed())
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: sa.Name, Namespace: ns.Name}, sa)).To(Succeed())
 			})
 
 			When("the API exists", func() {
@@ -995,7 +944,6 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 
 					// launch the data service in our cluster
 					Expect(k8sClient.Create(ctx, dataService)).To(Succeed())
-
 				})
 
 				// close down the server after testing
@@ -1072,7 +1020,6 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 				})
 
 				When("datapvcname is invalid", func() {
-
 					It("errors out", func() {
 						// mess up the datapvcname
 						var newDataPVCName = "invalid-name"
@@ -1197,10 +1144,9 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 						Expect(err).NotTo(HaveOccurred())
 						Expect(deployment).NotTo(BeNil())
 
-						// await the avalability of the deployment
-						Eventually(func() error {
-							return k8sClient.Get(ctx, types.NamespacedName{Name: deployment.Name, Namespace: ns.Name}, deployment)
-						}, timeout, interval).Should(Succeed())
+						// Check the deployment exists
+						Expect(k8sClient.Get(ctx, types.NamespacedName{
+							Name: deployment.Name, Namespace: ns.Name}, deployment)).To(Succeed())
 					})
 
 					It("reuses the running deployment", func() {
@@ -1226,9 +1172,8 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 							Expect(apiService).NotTo(BeNil())
 
 							// get the service from the cluster
-							Eventually(func() error {
-								return k8sClient.Get(ctx, types.NamespacedName{Name: apiService.Name, Namespace: ns.Name}, apiService)
-							}, timeout, interval).Should(Succeed())
+							Expect(k8sClient.Get(ctx, types.NamespacedName{
+								Name: apiService.Name, Namespace: ns.Name}, apiService)).To(Succeed())
 						})
 
 						It("is properly configured", func() {
@@ -1243,9 +1188,8 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 							Expect(apiService).NotTo(BeNil())
 
 							// get the service from the cluster
-							Eventually(func() error {
-								return k8sClient.Get(ctx, types.NamespacedName{Name: apiService.Name, Namespace: ns.Name}, apiService)
-							}, timeout, interval).Should(Succeed())
+							Expect(k8sClient.Get(ctx, types.NamespacedName{
+								Name: apiService.Name, Namespace: ns.Name}, apiService)).To(Succeed())
 
 							// ensure that the service's ports match the deployments
 							Expect(deployment.Spec.Template.Spec.Containers).To(HaveLen(1))

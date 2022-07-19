@@ -44,11 +44,6 @@ var testEnv *envtest.Environment
 var commonBuilderForTestSuite *Builder
 var cancel context.CancelFunc
 
-const (
-	timeout  = "30s"
-	interval = "1s"
-)
-
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
 
@@ -104,8 +99,9 @@ var _ = BeforeSuite(func(done Done) {
 		Expect(err).ToNot(HaveOccurred())
 	}()
 
-	k8sClient = k8sManager.GetClient()
-	Expect(k8sClient).ToNot(BeNil())
+	// Instantiate direct client for tests (reads directly from API server rather than caching)
+	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	Expect(err).NotTo(HaveOccurred())
 
 	// Instantiate common syncthing builder to use for tests in this test suite
 	commonBuilderForTestSuite, err = newBuilder(viper.New(), flag.NewFlagSet("testfsetsyncthing", flag.ExitOnError))

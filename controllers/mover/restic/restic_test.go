@@ -34,16 +34,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers/mover"
-)
-
-const (
-	timeout  = "30s"
-	interval = "1s"
 )
 
 var _ = Describe("Restic retain policy", func() {
@@ -360,11 +354,6 @@ var _ = Describe("Restic as a source", func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, sPVC)).To(Succeed())
-		Eventually(func() error {
-			pvc := &corev1.PersistentVolumeClaim{}
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(sPVC), pvc)
-			return err
-		}, timeout, interval).Should(Succeed())
 
 		// Scaffold ReplicationSource
 		rs = &volsyncv1alpha1.ReplicationSource{
@@ -428,13 +417,14 @@ var _ = Describe("Restic as a source", func() {
 						repo.Data[k] = []byte("HELLO")
 					}
 					Expect(k8sClient.Update(ctx, repo)).To(Succeed())
-					Eventually(func() bool {
-						s, e := mover.validateRepository(ctx)
-						if td.ok {
-							return s != nil && e == nil
-						}
-						return s == nil && e != nil
-					}, "5s", "1s").Should(BeTrue())
+					s, e := mover.validateRepository(ctx)
+					if td.ok {
+						Expect(s).NotTo(BeNil())
+						Expect(e).NotTo(HaveOccurred())
+					} else {
+						Expect(s).To(BeNil())
+						Expect(e).To(HaveOccurred())
+					}
 				}
 			})
 		})
@@ -627,10 +617,7 @@ var _ = Describe("Restic as a source", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						err := k8sClient.Get(ctx, nsn, job)
-						return err
-					}).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 					Expect(len(job.Spec.Template.Spec.Containers)).To(BeNumerically(">", 0))
 					args := job.Spec.Template.Spec.Containers[0].Args
 					Expect(args).To(ConsistOf("backup"))
@@ -641,10 +628,7 @@ var _ = Describe("Restic as a source", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						err := k8sClient.Get(ctx, nsn, job)
-						return err
-					}).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 					Expect(len(job.Spec.Template.Spec.Containers)).To(BeNumerically(">", 0))
 					args := job.Spec.Template.Spec.Containers[0].Image
 					Expect(args).To(Equal(defaultResticContainerImage))
@@ -655,10 +639,7 @@ var _ = Describe("Restic as a source", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						err := k8sClient.Get(ctx, nsn, job)
-						return err
-					}).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 					Expect(job.Spec.Template.Spec.ServiceAccountName).To(Equal(sa.Name))
 				})
 				It("should support pausing", func() {
@@ -667,32 +648,22 @@ var _ = Describe("Restic as a source", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						err := k8sClient.Get(ctx, nsn, job)
-						return err
-					}).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 					Expect(*job.Spec.Parallelism).To(Equal(int32(1)))
 
 					mover.paused = true
-					Eventually(func() int32 {
-						j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo)
-						Expect(e).NotTo(HaveOccurred())
-						Expect(j).To(BeNil()) // hasn't completed
-						err := k8sClient.Get(ctx, nsn, job)
-						Expect(err).ToNot(HaveOccurred())
-						return *job.Spec.Parallelism
-					}).Should(Equal(int32(0)))
+					j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil()) // hasn't completed
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+					Expect(*job.Spec.Parallelism).To(Equal(int32(0)))
 
 					mover.paused = false
-					Eventually(func() int32 {
-						j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo)
-						Expect(e).NotTo(HaveOccurred())
-						Expect(j).To(BeNil()) // hasn't completed
-						err := k8sClient.Get(ctx, nsn, job)
-						Expect(err).ToNot(HaveOccurred())
-						return *job.Spec.Parallelism
-					}).Should(Equal(int32(1)))
-
+					j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil()) // hasn't completed
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+					Expect(*job.Spec.Parallelism).To(Equal(int32(1)))
 				})
 			})
 			When("it's time to prune", func() {
@@ -711,10 +682,7 @@ var _ = Describe("Restic as a source", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						err := k8sClient.Get(ctx, nsn, job)
-						return err
-					}, timeout, interval).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 					Expect(mover.shouldPrune(time.Now())).To(BeTrue())
 					Expect(len(job.Spec.Template.Spec.Containers)).To(BeNumerically(">", 0))
 					args := job.Spec.Template.Spec.Containers[0].Args
@@ -722,10 +690,9 @@ var _ = Describe("Restic as a source", func() {
 					// Mark completed
 					job.Status.Succeeded = int32(1)
 					Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
-					Eventually(func() bool {
-						j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo)
-						return j != nil && e == nil
-					}, timeout, interval).Should(BeTrue())
+					j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).NotTo(BeNil())
 					Expect(mover.sourceStatus.LastPruned.Time.After(lastMonth.Time))
 				})
 			})
@@ -741,9 +708,7 @@ var _ = Describe("Restic as a source", func() {
 
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						return k8sClient.Get(ctx, nsn, job)
-					}, timeout, interval).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
 					Expect(job.Spec.Template.Spec.Containers[0].Image).To(Equal(mover.containerImage))
 				})
@@ -760,13 +725,9 @@ var _ = Describe("Restic as a source", func() {
 					Expect(j).To(BeNil())
 
 					// Make sure job has been deleted
+					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() bool {
-						return kerrors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{
-							Name:      jobName,
-							Namespace: ns.Name,
-						}, job))
-					}, timeout, interval).Should(BeTrue())
+					Expect(kerrors.IsNotFound(k8sClient.Get(ctx, nsn, job))).To(BeTrue())
 
 					// Run ensureJob again as the reconciler would do - should recreate the job
 					j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo)
@@ -774,12 +735,7 @@ var _ = Describe("Restic as a source", func() {
 					Expect(j).To(BeNil()) // job hasn't completed
 
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						return k8sClient.Get(ctx, types.NamespacedName{
-							Name:      jobName,
-							Namespace: ns.Name,
-						}, job)
-					}, timeout, interval).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
 					Expect(job.Spec.Template.Spec.Containers[0].Image).To(Equal(myUpdatedImage))
 				})
@@ -792,26 +748,23 @@ var _ = Describe("Restic as a source", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						if err := k8sClient.Get(ctx, nsn, job); err != nil {
-							return err
-						}
-						job.Status.Failed = *job.Spec.BackoffLimit
-						err := k8sClient.Status().Update(ctx, job)
-						return err
-					}, timeout, interval).Should(Succeed())
-					Eventually(func() int32 {
-						j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo)
-						if e != nil {
-							return 98
-						}
-						Expect(j).To(BeNil())
-						e = k8sClient.Get(ctx, nsn, job)
-						if e != nil {
-							return 99
-						}
-						return job.Status.Failed
-					}, timeout, interval).Should(Equal(int32(0)))
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+					job.Status.Failed = *job.Spec.BackoffLimit
+					Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
+
+					// 1st reconcile should delete the job
+					j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil())
+					// Job should be deleted
+					Expect(kerrors.IsNotFound(k8sClient.Get(ctx, nsn, job))).To(BeTrue())
+
+					// 2nd reconcile should recreate the job
+					j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil()) // hasn't completed
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+					Expect(job.Status.Failed).To(Equal(int32(0)))
 				})
 			})
 		})
@@ -906,14 +859,8 @@ var _ = Describe("Restic as a destination", func() {
 				rd.Spec.Restic.DestinationPVC = &dPVC.Name
 			})
 			It("is used directly", func() {
-				var pvc *corev1.PersistentVolumeClaim
-				Eventually(func() error {
-					tempPVC, e := mover.ensureDestinationPVC(ctx)
-					if e == nil {
-						pvc = tempPVC
-					}
-					return e
-				}).ShouldNot(HaveOccurred())
+				pvc, e := mover.ensureDestinationPVC(ctx)
+				Expect(e).NotTo(HaveOccurred())
 				Expect(pvc).NotTo(BeNil())
 				Expect(pvc.Name).To(Equal(dPVC.Name))
 			})
@@ -925,12 +872,10 @@ var _ = Describe("Restic as a destination", func() {
 				Expect(sa).NotTo(BeNil())
 				saName := sa.Name
 				sa2 := &corev1.ServiceAccount{}
-				Eventually(func() error {
-					return k8sClient.Get(ctx, types.NamespacedName{
-						Name:      saName,
-						Namespace: ns.Name,
-					}, sa2)
-				}, timeout, interval).Should(Succeed())
+				Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Name:      saName,
+					Namespace: ns.Name,
+				}, sa2)).To(Succeed())
 				Expect(sa2.Name).To(Equal(sa.Name))
 			})
 		})
@@ -1003,10 +948,7 @@ var _ = Describe("Restic as a destination", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						err := k8sClient.Get(ctx, nsn, job)
-						return err
-					}).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 					Expect(len(job.Spec.Template.Spec.Containers)).To(BeNumerically(">", 0))
 					args := job.Spec.Template.Spec.Containers[0].Args
 					Expect(args).To(ConsistOf("restore"))

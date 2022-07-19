@@ -34,7 +34,7 @@ var _ = Describe("ReplicationDestination", func() {
 				GenerateName: "volsync-test-",
 			},
 		}
-		Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+		createWithCacheReload(ctx, k8sClient, namespace)
 		Expect(namespace.Name).NotTo(BeEmpty())
 
 		// Scaffold the ReplicationDestination, but don't create so that it can
@@ -53,12 +53,7 @@ var _ = Describe("ReplicationDestination", func() {
 	JustBeforeEach(func() {
 		// ReplicationDestination should have been customized in the BeforeEach
 		// at each level, so now we create it.
-		Expect(k8sClient.Create(ctx, rd)).To(Succeed())
-		// Wait for it to show up in the API server
-		Eventually(func() error {
-			inst := &volsyncv1alpha1.ReplicationDestination{}
-			return k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), inst)
-		}, maxWait, interval).Should(Succeed())
+		createWithCacheReload(ctx, k8sClient, rd)
 	})
 
 	Context("when an external replication method is specified", func() {
@@ -106,7 +101,7 @@ var _ = Describe("ReplicationDestination", func() {
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, pvc)).To(Succeed())
+			createWithCacheReload(ctx, k8sClient, pvc)
 			rd.Spec.Rsync = &volsyncv1alpha1.ReplicationDestinationRsyncSpec{
 				ReplicationDestinationVolumeOptions: volsyncv1alpha1.ReplicationDestinationVolumeOptions{
 					DestinationPVC: &pvc.Name,
@@ -326,7 +321,7 @@ var _ = Describe("ReplicationDestination", func() {
 						"source.pub":      "baz",
 					},
 				}
-				Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+				createWithCacheReload(ctx, k8sClient, secret)
 				rd.Spec.Rsync.SSHKeys = &secret.Name
 			})
 			It("they are used by the sync Job", func() {

@@ -158,6 +158,31 @@ func beOwnedBy(owner interface{}) gomegatypes.GomegaMatcher {
 	}
 }
 
+// Useful to avoid timing issues if the k8sclient must have the object
+// created/updated etc in cache before the next step is run
+func createWithCacheReload(ctx context.Context, c client.Client, obj client.Object, intervals ...interface{}) {
+	Expect(c.Create(ctx, obj)).To(Succeed())
+
+	// Make sure the k8sClient cache has been updated with this change before returning
+	Eventually(func() error {
+		err := c.Get(ctx, client.ObjectKeyFromObject(obj), obj)
+		return err
+	}, getIntervals(intervals...)...).Should(Succeed())
+}
+
+func getIntervals(intervals ...interface{}) []interface{} {
+	// Setting defaults that apply to our volsync tests
+	if len(intervals) == 0 {
+		return []interface{}{duration, interval}
+	}
+
+	if len(intervals) == 1 {
+		return []interface{}{intervals[0], interval}
+	}
+
+	return []interface{}{intervals[0], intervals[1]}
+}
+
 type ownerRefMatcher struct {
 	owner  interface{}
 	reason string

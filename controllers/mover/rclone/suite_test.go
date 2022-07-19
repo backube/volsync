@@ -93,30 +93,15 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
-	// err = (&sc.ReplicationDestinationReconciler{
-	// 	Client: k8sManager.GetClient(),
-	// 	Log:    ctrl.Log.WithName("controllers").WithName("Destination"),
-	// 	Scheme: k8sManager.GetScheme(),
-	// }).SetupWithManager(k8sManager)
-	// Expect(err).ToNot(HaveOccurred())
-
-	// err = (&sc.ReplicationSourceReconciler{
-	// 	Client: k8sManager.GetClient(),
-	// 	Log:    ctrl.Log.WithName("controllers").WithName("Source"),
-	// 	Scheme: k8sManager.GetScheme(),
-	// }).SetupWithManager(k8sManager)
-	// Expect(err).ToNot(HaveOccurred())
-
 	go func() {
 		defer GinkgoRecover()
 		err = k8sManager.Start(ctx)
 		Expect(err).ToNot(HaveOccurred())
 	}()
 
-	Eventually(func() client.Client {
-		k8sClient = k8sManager.GetClient()
-		return k8sClient
-	}, "60s", "1s").Should(Not(BeNil()))
+	// Instantiate direct client for tests (reads directly from API server rather than caching)
+	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	Expect(err).NotTo(HaveOccurred())
 
 	// Instantiate common rsync builder to use for tests in this test suite
 	commonBuilderForTestSuite, err = newBuilder(viper.New(), flag.NewFlagSet("testfsetrclonetests", flag.ExitOnError))

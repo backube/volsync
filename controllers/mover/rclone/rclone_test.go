@@ -230,6 +230,7 @@ var _ = Describe("Rclone as a source", func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, ns)).To(Succeed())
+
 		Expect(ns.Name).NotTo(BeEmpty())
 
 		sc := "spvcsc"
@@ -251,11 +252,6 @@ var _ = Describe("Rclone as a source", func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, sPVC)).To(Succeed())
-		Eventually(func() error {
-			pvc := &corev1.PersistentVolumeClaim{}
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(sPVC), pvc)
-			return err
-		}, timeout, interval).Should(Succeed())
 
 		// Scaffold ReplicationSource
 		rs = &volsyncv1alpha1.ReplicationSource{
@@ -382,10 +378,10 @@ var _ = Describe("Rclone as a source", func() {
 						"rclone.conf": "fakeconfig stuff here",
 					}
 					Expect(k8sClient.Update(ctx, rcloneConfigSecret)).To(Succeed())
-					Eventually(func() bool {
-						secret, err := mover.validateRcloneConfig(ctx)
-						return secret != nil && err == nil
-					}, "5s", "1s").Should(BeTrue())
+
+					secret, err := mover.validateRcloneConfig(ctx)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(secret).NotTo(BeNil())
 				})
 			})
 		})
@@ -440,12 +436,11 @@ var _ = Describe("Rclone as a source", func() {
 					_, err := mover.ensureSourcePVC(ctx)
 					Expect(err).ToNot(HaveOccurred())
 
-					// Set snapshot to be bound so the ensureSourcePVC can proceed
+					// Snapshot should have been created
 					snapshots := &snapv1.VolumeSnapshotList{}
-					Eventually(func() []snapv1.VolumeSnapshot {
-						_ = k8sClient.List(ctx, snapshots, client.InNamespace(rs.Namespace))
-						return snapshots.Items
-					}, timeout, interval).Should(Not(BeEmpty()))
+					Expect(k8sClient.List(ctx, snapshots, client.InNamespace(rs.Namespace))).To(Succeed())
+					Expect(len(snapshots.Items)).To(Equal(1))
+
 					// update the VS name
 					snapshot := snapshots.Items[0]
 					foo := "dummysourcesnapshot"
@@ -523,10 +518,9 @@ var _ = Describe("Rclone as a source", func() {
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						return k8sClient.Get(ctx, nsn, job)
-					}).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 					Expect(len(job.Spec.Template.Spec.Containers)).To(Equal(1))
 					Expect(job.Spec.Template.Spec.Containers[0].Command).To(Equal(
 						[]string{"/bin/bash", "-c", "./active.sh"}))
@@ -538,10 +532,7 @@ var _ = Describe("Rclone as a source", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						err := k8sClient.Get(ctx, nsn, job)
-						return err
-					}).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 					Expect(len(job.Spec.Template.Spec.Containers)).To(BeNumerically(">", 0))
 					Expect(job.Spec.Template.Spec.Containers[0].Image).To(Equal(defaultRcloneContainerImage))
 				})
@@ -552,10 +543,7 @@ var _ = Describe("Rclone as a source", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						err := k8sClient.Get(ctx, nsn, job)
-						return err
-					}).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 					Expect(job.Spec.Template.Spec.ServiceAccountName).To(Equal(sa.Name))
 				})
 
@@ -565,10 +553,7 @@ var _ = Describe("Rclone as a source", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						err := k8sClient.Get(ctx, nsn, job)
-						return err
-					}).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
 					// Validate job env vars
 					validateJobEnvVars(job.Spec.Template.Spec.Containers[0].Env, true)
@@ -580,10 +565,7 @@ var _ = Describe("Rclone as a source", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						err := k8sClient.Get(ctx, nsn, job)
-						return err
-					}).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
 					c := job.Spec.Template.Spec.Containers[0]
 					// Validate job volume mounts
@@ -609,10 +591,7 @@ var _ = Describe("Rclone as a source", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						err := k8sClient.Get(ctx, nsn, job)
-						return err
-					}).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
 					volumes := job.Spec.Template.Spec.Volumes
 					Expect(len(volumes)).To(Equal(2))
@@ -639,10 +618,7 @@ var _ = Describe("Rclone as a source", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						err := k8sClient.Get(ctx, nsn, job)
-						return err
-					}).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
 					// It should be marked for cleaned up
 					Expect(job.Labels).To(HaveKey("volsync.backube/cleanup"))
@@ -654,31 +630,22 @@ var _ = Describe("Rclone as a source", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						err := k8sClient.Get(ctx, nsn, job)
-						return err
-					}).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 					Expect(*job.Spec.Parallelism).To(Equal(int32(1)))
 
 					mover.paused = true
-					Eventually(func() int32 {
-						j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret) // Using sPVC as dataPVC (i.e. direct)
-						Expect(e).NotTo(HaveOccurred())
-						Expect(j).To(BeNil()) // hasn't completed
-						err := k8sClient.Get(ctx, nsn, job)
-						Expect(err).ToNot(HaveOccurred())
-						return *job.Spec.Parallelism
-					}).Should(Equal(int32(0)))
+					j, e = mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret) // Using sPVC as dataPVC (i.e. direct)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil()) // hasn't completed
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+					Expect(*job.Spec.Parallelism).Should(Equal(int32(0)))
 
 					mover.paused = false
-					Eventually(func() int32 {
-						j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret) // Using sPVC as dataPVC (i.e. direct)
-						Expect(e).NotTo(HaveOccurred())
-						Expect(j).To(BeNil()) // hasn't completed
-						err := k8sClient.Get(ctx, nsn, job)
-						Expect(err).ToNot(HaveOccurred())
-						return *job.Spec.Parallelism
-					}).Should(Equal(int32(1)))
+					j, e = mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret) // Using sPVC as dataPVC (i.e. direct)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil()) // hasn't completed
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+					Expect(*job.Spec.Parallelism).Should(Equal(int32(1)))
 				})
 			})
 
@@ -692,13 +659,10 @@ var _ = Describe("Rclone as a source", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						err := k8sClient.Get(ctx, types.NamespacedName{
-							Name:      jobName,
-							Namespace: ns.Name,
-						}, job)
-						return err
-					}, timeout, interval).Should(Succeed())
+					Expect(k8sClient.Get(ctx, types.NamespacedName{
+						Name:      jobName,
+						Namespace: ns.Name,
+					}, job)).To(Succeed())
 
 					Expect(job.Spec.Template.Spec.Containers[0].Image).To(Equal(mover.containerImage))
 				})
@@ -716,12 +680,10 @@ var _ = Describe("Rclone as a source", func() {
 
 					// Make sure job has been deleted
 					job = &batchv1.Job{}
-					Eventually(func() bool {
-						return kerrors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{
-							Name:      jobName,
-							Namespace: ns.Name,
-						}, job))
-					}, timeout, interval).Should(BeTrue())
+					Expect(kerrors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{
+						Name:      jobName,
+						Namespace: ns.Name,
+					}, job))).To(BeTrue())
 
 					// Run ensureJob again as the reconciler would do - should recreate the job
 					j, e = mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret) // Using sPVC as dataPVC (i.e. direct)
@@ -729,12 +691,10 @@ var _ = Describe("Rclone as a source", func() {
 					Expect(j).To(BeNil()) // job hasn't completed
 
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						return k8sClient.Get(ctx, types.NamespacedName{
-							Name:      jobName,
-							Namespace: ns.Name,
-						}, job)
-					}, timeout, interval).Should(Succeed())
+					Expect(k8sClient.Get(ctx, types.NamespacedName{
+						Name:      jobName,
+						Namespace: ns.Name,
+					}, job)).To(Succeed())
 
 					Expect(job.Spec.Template.Spec.Containers[0].Image).To(Equal(myUpdatedImage))
 				})
@@ -747,26 +707,25 @@ var _ = Describe("Rclone as a source", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						if err := k8sClient.Get(ctx, nsn, job); err != nil {
-							return err
-						}
-						job.Status.Failed = *job.Spec.BackoffLimit
-						err := k8sClient.Status().Update(ctx, job)
-						return err
-					}, timeout, interval).Should(Succeed())
-					Eventually(func() int32 {
-						j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret) // Using sPVC as dataPVC (i.e. direct)
-						if e != nil {
-							return 98
-						}
-						Expect(j).To(BeNil())
-						e = k8sClient.Get(ctx, nsn, job)
-						if e != nil {
-							return 99
-						}
-						return job.Status.Failed
-					}, timeout, interval).Should(Equal(int32(0)))
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+					job.Status.Failed = *job.Spec.BackoffLimit
+					Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
+
+					// Ensure job should delete the job since backoff limit is reached
+					j, e = mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret) // Using sPVC as dataPVC (i.e. direct)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil())
+					// Job should be deleted
+					Expect(kerrors.IsNotFound(k8sClient.Get(ctx, nsn, job))).To(BeTrue())
+
+					// Reconcile again, job should get recreated on next call to ensureJob
+					j, e = mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret) // Using sPVC as dataPVC (i.e. direct)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil()) // will return nil since job is not completed
+
+					// Job should now be recreated
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+					Expect(job.Status.Failed).Should(Equal(int32(0)))
 				})
 			})
 		})
@@ -950,10 +909,7 @@ var _ = Describe("Rclone as a destination", func() {
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
-					Eventually(func() error {
-						err := k8sClient.Get(ctx, nsn, job)
-						return err
-					}).Should(Succeed())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
 					// Validate job env vars
 					validateJobEnvVars(job.Spec.Template.Spec.Containers[0].Env, false)
@@ -1013,6 +969,7 @@ var _ = Describe("Rclone as a destination", func() {
 					},
 				}
 				Expect(k8sClient.Create(ctx, snap1)).To(Succeed())
+
 				snap2 := &snapv1.VolumeSnapshot{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "mytestsnap2",
@@ -1026,12 +983,6 @@ var _ = Describe("Rclone as a destination", func() {
 					},
 				}
 				Expect(k8sClient.Create(ctx, snap2)).To(Succeed())
-
-				snapshots := &snapv1.VolumeSnapshotList{}
-				Eventually(func() int {
-					_ = k8sClient.List(ctx, snapshots, client.InNamespace(rd.Namespace))
-					return len(snapshots.Items)
-				}, timeout, interval).Should(Equal(2))
 
 				// Mark prev snapshot (snap1) for cleanup
 				oldSnap := &corev1.TypedLocalObjectReference{
@@ -1060,9 +1011,7 @@ var _ = Describe("Rclone as a destination", func() {
 				result, err := mover.Cleanup(ctx)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(result.Completed).To(BeTrue())
-				Eventually(func() error {
-					return k8sClient.Get(ctx, client.ObjectKeyFromObject(dPVC), dPVC)
-				}, timeout, interval).Should(Succeed())
+				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dPVC), dPVC)).To(Succeed())
 				Expect(dPVC.GetAnnotations()["volsync.backube/snap"])
 				Expect(dPVC.Annotations).ToNot(HaveKey("volsync.backube/snapname"))
 			})
@@ -1072,10 +1021,8 @@ var _ = Describe("Rclone as a destination", func() {
 				Expect(result.Completed).To(BeTrue())
 
 				snapshots := &snapv1.VolumeSnapshotList{}
-				Eventually(func() int {
-					_ = k8sClient.List(ctx, snapshots, client.InNamespace(rd.Namespace))
-					return len(snapshots.Items)
-				}, timeout, interval).Should(Equal(1))
+				Expect(k8sClient.List(ctx, snapshots, client.InNamespace(rd.Namespace))).To(Succeed())
+				Expect(len(snapshots.Items)).Should(Equal(1))
 				// Snapshot left should be our "latestImage"
 				Expect(snapshots.Items[0].Name).To(Equal("mytestsnap2"))
 			})
