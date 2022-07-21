@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -49,14 +50,25 @@ type pvBackupCreate struct {
 	RSName string
 	// Back up schedule
 	schedule string
-	// restic configuration details
+	// Restic configuration details
 	resticConfig
-	// read in restic-config into stringData
+	// Read in restic-config into stringData
 	stringData map[string]string
-	// client object to communicate with a cluster
+	// Client object to communicate with a cluster
 	client client.Client
-	// backup relationship object to be persisted to a config file
+	// Backup relationship object to be persisted to a config file
 	pr *pvBackupRelationship
+	// Backup retention policy
+	retain retainPolicy
+}
+
+type retainPolicy struct {
+	hourly  int32
+	daily   int32
+	weekly  int32
+	monthly int32
+	yearly  int32
+	within  string
 }
 
 type resticConfig struct {
@@ -155,6 +167,11 @@ func (pc *pvBackupCreate) parseCLI(cmd *cobra.Command) error {
 	}
 	pc.stringData = stringData
 
+	err = pc.userBackupRetainPolicy(pc.resticConfig.Viper)
+	if err != nil {
+		return err
+	}
+
 	cronSpec, err := cmd.Flags().GetString("cronspec")
 	if err != nil {
 		return fmt.Errorf("failed to fetch the cronspec, err = %w", err)
@@ -230,6 +247,14 @@ func (pc *pvBackupCreate) newPVBackupRelationshipSource() *pvBackupRelationshipS
 			ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
 				CopyMethod: volsyncv1alpha1.CopyMethodClone,
 			},
+			Retain: &volsyncv1alpha1.ResticRetainPolicy{
+				Hourly:  &pc.retain.hourly,
+				Daily:   &pc.retain.daily,
+				Weekly:  &pc.retain.weekly,
+				Monthly: &pc.retain.monthly,
+				Yearly:  &pc.retain.yearly,
+				Within:  &pc.retain.within,
+			},
 		},
 	}
 }
@@ -266,6 +291,37 @@ func parseSecretData(v viper.Viper) (map[string]string, error) {
 	}
 
 	return stringData, nil
+}
+
+func (pc *pvBackupCreate) userBackupRetainPolicy(v viper.Viper) error {
+	keys := []string{"KEEP_HOURLY", "KEEP_DAILY", "KEEP_WEEKLY", "KEEP_MONTHLY",
+		"KEEP_YEARLY", "KEEP_WITHIN"}
+	for _, key := range keys {
+		value, ok := v.Get(key).(string)
+		if ok {
+			if key == "KEEP_WITHIN" {
+				pc.retain.within = value
+				continue
+			}
+			keepValue, err := strconv.ParseInt(value, 10, 32)
+			if err != nil {
+				return fmt.Errorf("failed to build user backup retain policy, %w", err)
+			}
+			switch key {
+			case "KEEP_HOURLY":
+				pc.retain.hourly = int32(keepValue)
+			case "KEEP_DAILY":
+				pc.retain.daily = int32(keepValue)
+			case "KEEP_WEEKLY":
+				pc.retain.weekly = int32(keepValue)
+			case "KEEP_MONTHLY":
+				pc.retain.monthly = int32(keepValue)
+			case "KEEP_YEARLY":
+				pc.retain.yearly = int32(keepValue)
+			}
+		}
+	}
+	return nil
 }
 
 func (pc *pvBackupCreate) ensureReplicationSource(ctx context.Context) (
@@ -316,8 +372,7 @@ func (prd *pvBackupRelationshipData) waitForRSStatus(ctx context.Context, client
 			return false, nil
 		}
 		if cond.Status == metav1.ConditionFalse || cond.Reason == volsyncv1alpha1.SynchronizingReasonError {
-			klog.Info("backup source is in error condition, %s", cond.Message)
-			return false, os.ErrInvalid
+			return false, fmt.Errorf("backup source is in error condition, %s", cond.Message)
 		}
 
 		klog.V(2).Infof("pvbackup source CR is up")

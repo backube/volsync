@@ -306,11 +306,8 @@ func (pvr *pvBackupRestore) newPVBackupRelationshipDestination() (*pvBackupRelat
 		}
 	}
 
-	if len(pvr.restoreAsOf) == 0 {
-		pvr.restoreAsOf = time.Now().Format(time.RFC3339)
-	}
 	// Assign the values from pvBackupRestore built after parsing cmd args
-	return &pvBackupRelationshipDestination{
+	pvd := &pvBackupRelationshipDestination{
 		Namespace: pvr.Namespace,
 		RDName:    pvr.RDName,
 		Trigger: volsyncv1alpha1.ReplicationDestinationTriggerSpec{
@@ -323,16 +320,24 @@ func (pvr *pvBackupRestore) newPVBackupRelationshipDestination() (*pvBackupRelat
 				DestinationPVC: &pvr.destPVCName,
 				Capacity:       pvr.Capacity,
 			},
-			RestoreAsOf: &pvr.restoreAsOf,
-			Previous:    &pvr.prev,
 		},
-	}, nil
+	}
+
+	if len(pvr.restoreAsOf) > 0 {
+		pvd.Destination.RestoreAsOf = &pvr.restoreAsOf
+	}
+
+	if pvr.prev > 0 {
+		pvd.Destination.Previous = &pvr.prev
+	}
+
+	return pvd, nil
 }
 
 func (pvr *pvBackupRestore) ensureReplicationDestination(ctx context.Context) (
 	*volsyncv1alpha1.ReplicationDestination, error) {
 	prd := pvr.pr.data.Destination
-	klog.Infof("Trigger restore As of %s", *prd.Destination.RestoreAsOf)
+	klog.Infof("Triggering restore")
 	rd := &volsyncv1alpha1.ReplicationDestination{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      prd.RDName,
