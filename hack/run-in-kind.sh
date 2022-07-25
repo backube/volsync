@@ -42,6 +42,7 @@ docker pull busybox
 kind load docker-image busybox
 
 helm upgrade --install --create-namespace -n volsync-system \
+    --debug \
     --set image.tag="${KIND_TAG}" \
     --set rclone.tag="${KIND_TAG}" \
     --set restic.tag="${KIND_TAG}" \

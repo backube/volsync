@@ -77,6 +77,7 @@ ENV SYNCTHING_DATA_TRANSFERMODE="sendreceive"
 
 # move the config to the root directory so it can be copied before syncthing boot
 COPY config.xml /config.xml
+RUN chmod a+r /config.xml
 
 COPY entry.sh \
   /

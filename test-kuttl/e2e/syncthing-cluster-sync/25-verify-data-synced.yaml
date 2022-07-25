@@ -13,7 +13,7 @@ spec:
         image: busybox
         # validate that the testdata file contains "hello from syncthing-1"
         command: ["/bin/sh", "-c"]
-        args: ["grep 'hello from syncthing-1' /data-2/testdata.txt"]
+        args: ["while ! grep 'hello from syncthing-1' /data-2/testdata.txt; do sleep 1; done"]
         volumeMounts:
         - name: test-data-2
           mountPath: /data-2
