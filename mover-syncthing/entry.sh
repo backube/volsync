@@ -130,7 +130,7 @@ for op in "$@"; do
       preflight_check
 
       # launch syncthing
-      exec syncthing -home "${SYNCTHING_CONFIG_DIR}" --verbose
+      exec syncthing -home "${SYNCTHING_CONFIG_DIR}"
       ;;
     *)
       error "unknown operation"
