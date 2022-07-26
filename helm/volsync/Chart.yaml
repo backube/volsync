@@ -30,7 +30,7 @@ annotations:  # https://artifacthub.io/docs/topics/annotations/helm/
     - kind: changed
       description: Operator-SDK upgraded to 1.22.0
     - kind: changed
-      description: Rclone upgraded to 1.58.1
+      description: Rclone upgraded to 1.59.0
     - kind: changed
       description: Restic upgraded to 0.13.1
     - kind: changed

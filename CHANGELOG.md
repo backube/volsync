@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Operator-SDK upgraded to 1.22.0
-- Rclone upgraded to 1.58.1
+- Rclone upgraded to 1.59.0
 - Restic upgraded to 0.13.1
 - Syncthing upgraded to 1.20.1
 
