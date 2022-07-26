@@ -7,8 +7,13 @@ set -e -o pipefail
 # skopeo list-tags docker://kindest/node
 KUBE_VERSION="${1:-1.24.0}"
 
+function log {
+  echo "=====  $*  ====="
+}
+
 # Determine the Kube minor version
 [[ "${KUBE_VERSION}" =~ ^[0-9]+\.([0-9]+) ]] && KUBE_MINOR="${BASH_REMATCH[1]}" || exit 1
+log "Detected kubernetes minor version: ${KUBE_MINOR}"
 
 KIND_CONFIG=""
 KIND_CONFIG_FILE="$(mktemp --tmpdir kind-config-XXXXXX.yaml)"
@@ -17,6 +22,7 @@ KIND_CONFIG_FILE="$(mktemp --tmpdir kind-config-XXXXXX.yaml)"
 # https://kubernetes.io/docs/tasks/configure-pod-container/enforce-standards-admission-controller/#configure-the-admission-controller
 # https://kubernetes.io/docs/tutorials/security/cluster-level-pss/
 if [[ $KUBE_MINOR -ge 23 ]]; then
+  log "Setting up PodSecurity admission"
   # Pod security controller has to be configured by passing a config file to
   # api-server on the command line
   SHARED_DIR="$(mktemp -d --tmpdir control-plane-shared-XXXXXX)"
@@ -158,14 +164,17 @@ rm -f "${KIND_CONFIG_FILE}"
 # Kube >= 1.17, we need to deploy the snapshot controller
 if [[ $KUBE_MINOR -ge 24 ]]; then  # Kube 1.24 removed snapshot.storage.k8s.io/v1beta1
   TAG="v6.0.0"  # https://github.com/kubernetes-csi/external-snapshotter/releases
+  log "Deploying external snapshotter: ${TAG}"
   kubectl create -k "https://github.com/kubernetes-csi/external-snapshotter/client/config/crd?ref=${TAG}"
   kubectl create -n kube-system -k "https://github.com/kubernetes-csi/external-snapshotter/deploy/kubernetes/snapshot-controller?ref=${TAG}"
 elif [[ $KUBE_MINOR -ge 20 ]]; then  # Kube 1.20 added snapshot.storage.k8s.io/v1
   TAG="v5.0.1"  # https://github.com/kubernetes-csi/external-snapshotter/releases
+  log "Deploying external snapshotter: ${TAG}"
   kubectl create -k "https://github.com/kubernetes-csi/external-snapshotter/client/config/crd?ref=${TAG}"
   kubectl create -n kube-system -k "https://github.com/kubernetes-csi/external-snapshotter/deploy/kubernetes/snapshot-controller?ref=${TAG}"
 elif [[ $KUBE_MINOR -ge 17 ]]; then  # Kube 1.17 switched snapshot.storage.k8s.io/v1alpha1 -> v1beta1
   TAG="v3.0.3"  # https://github.com/kubernetes-csi/external-snapshotter/releases
+  log "Deploying external snapshotter: ${TAG}"
   kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/${TAG}/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml"
   kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/${TAG}/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml"
   kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/${TAG}/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml"
@@ -209,10 +218,11 @@ case "$KUBE_MINOR" in
     DEPLOY_SCRIPT="deploy.sh"
     ;;
   *)
-    HOSTPATH_BRANCH="v1.8.0"
+    HOSTPATH_BRANCH="v1.9.0"
     DEPLOY_SCRIPT="deploy.sh"
     ;;
 esac
+log "Deploying CSI hostpath driver: ${HOSTPATH_BRANCH}"
 git clone --depth 1 -b "$HOSTPATH_BRANCH" https://github.com/kubernetes-csi/csi-driver-host-path.git "$HP_BASE"
 
 DEPLOY_PATH="${HP_BASE}/deploy/kubernetes-1.${KUBE_MINOR}/"
@@ -227,6 +237,7 @@ CSI_DRIVER_NAME="hostpath.csi.k8s.io"
 if [[ $KUBE_MINOR -eq 13 ]]; then
   CSI_DRIVER_NAME="csi-hostpath"
 fi
+log "Creating StorageClass for CSI hostpath driver"
 kubectl apply -f - <<SC
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
@@ -244,6 +255,7 @@ kubectl annotate sc/csi-hostpath-sc storageclass.kubernetes.io/is-default-class=
 
 # For some versions we need to create the snapclass ourselves
 if [[ $KUBE_MINOR -eq 15 || $KUBE_MINOR -eq 16 ]]; then
+  log "Creating VolumeStorageClass for CSI hostpath driver"
   kubectl create -f - <<SNAPALPHA
 apiVersion: snapshot.storage.k8s.io/v1alpha1
 kind: VolumeSnapshotClass
@@ -255,6 +267,30 @@ fi
 
 # Make VSC the cluster default
 kubectl annotate volumesnapshotclass/csi-hostpath-snapclass snapshot.storage.kubernetes.io/is-default-class="true"
+
+# On 1.20, we need to enable fsGroup so that volumes are writable
+# Release v1.9.0 included this change for 1.21+
+if [[ $KUBE_MINOR -eq 20 ]]; then
+  log "Enabling fsGroupPolicy for CSI driver"
+  kubectl delete csidriver hostpath.csi.k8s.io
+  kubectl create -f - <<DRIVERINFO
+apiVersion: storage.k8s.io/v1
+kind: CSIDriver
+metadata:
+  name: hostpath.csi.k8s.io
+  labels:
+    app.kubernetes.io/instance: hostpath.csi.k8s.io
+    app.kubernetes.io/part-of: csi-driver-host-path
+    app.kubernetes.io/name: hostpath.csi.k8s.io
+    app.kubernetes.io/component: csi-driver
+spec:
+  volumeLifecycleModes:
+  - Persistent
+  - Ephemeral
+  podInfoOnMount: true
+  fsGroupPolicy: File
+DRIVERINFO
+fi
 
 # Add a node topology key so that e2e tests can run
 kubectl label nodes --all topology.kubernetes.io/zone=z1
