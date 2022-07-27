@@ -26,6 +26,9 @@
   `cd ../helm-charts`  
   `./build-index ../volsync/volsync-X.Y.Z.tgz`
 * Create a PR against that repo w/ the changes
+* If updating the helm chart README.md, then make sure to update the
+  description in the [csv](config/manifests/bases/volsync.clusterserviceversion.yaml).
+  Then run `make bundle` to make sure the csv in the bundle dir is updated.
 
 ### Release an updated CLI plugin to krew
 

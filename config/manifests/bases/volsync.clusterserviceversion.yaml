@@ -22,7 +22,32 @@ spec:
       kind: ReplicationSource
       name: replicationsources.volsync.backube
       version: v1alpha1
-  description: Asynchronous volume replication for Kubernetes CSI storage
+  description: "Asynchronous volume replication for Kubernetes CSI storage\n\n VolSync
+    is a Kubernetes operator that performs asynchronous replication of\npersistent
+    volumes within, or across, clusters. VolSync supports replication in a\nstorage
+    system independent manner. This means replication can be used with\nstorage systems
+    that do not support replication natively. Data can also be\nreplicated across
+    different types (and vendors) of storage.\n\nVolSync supports both 1:1 replication
+    relationships as well as 1:many\nrelationships. This provides the flexibility
+    to support use cases such as:\n\n- Disaster recovery\n- Mirroring data to a test
+    environment\n- Data distribution to a set of remote clusters from a central site\n-
+    Migrating between storage vendors (changing the StorageClass of a PVC)\n- Creating
+    periodic data backups\n\n### How it works\n\nA ReplicationSource object in the
+    same Namespace as the volume (PVC) to be\nreplicated determines how, when, and
+    to where the data should be replicated.\n\nA ReplicationDestination object at
+    the destination serves as the target for the\nreplicated data.\n\nVolSync has
+    several replication methods than can be used to replicate data.\n\n- Rclone-based
+    replication for 1:many data distribution  \n  With this replication method, data
+    is replicated from the source to an\n  intermediate cloud storage service ([supported
+    by\n  Rclone](https://rclone.org/#providers)). The destination(s) then retrieve
+    the\n  data from this intermediate location.\n- Restic-based backup of PVC contents
+    \ \n  This data mover uses [restic](https://restic.net/) to create backups of
+    the\n  data in a PVC. This works well for situations when the application's\n
+    \ deployment configuration is already source controlled, and all that's needed\n
+    \ is preservation of its persistent state.\n- Rsync-based replication for 1:1
+    data replication  \n  This replication method is designed to replicate data directly
+    to a remote\n  location. It uses [Rsync](https://rsync.samba.org/) over an ssh
+    connection to\n  securely and efficiently transfer data."
   displayName: VolSync
   icon:
   - base64data: PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxOTIgMTQ1Ij48ZGVmcz48c3R5bGU+LmNscy0xe2ZpbGw6I2UwMDt9PC9zdHlsZT48L2RlZnM+PHRpdGxlPlJlZEhhdC1Mb2dvLUhhdC1Db2xvcjwvdGl0bGU+PHBhdGggZD0iTTE1Ny43Nyw2Mi42MWExNCwxNCwwLDAsMSwuMzEsMy40MmMwLDE0Ljg4LTE4LjEsMTcuNDYtMzAuNjEsMTcuNDZDNzguODMsODMuNDksNDIuNTMsNTMuMjYsNDIuNTMsNDRhNi40Myw2LjQzLDAsMCwxLC4yMi0xLjk0bC0zLjY2LDkuMDZhMTguNDUsMTguNDUsMCwwLDAtMS41MSw3LjMzYzAsMTguMTEsNDEsNDUuNDgsODcuNzQsNDUuNDgsMjAuNjksMCwzNi40My03Ljc2LDM2LjQzLTIxLjc3LDAtMS4wOCwwLTEuOTQtMS43My0xMC4xM1oiLz48cGF0aCBjbGFzcz0iY2xzLTEiIGQ9Ik0xMjcuNDcsODMuNDljMTIuNTEsMCwzMC42MS0yLjU4LDMwLjYxLTE3LjQ2YTE0LDE0LDAsMCwwLS4zMS0zLjQybC03LjQ1LTMyLjM2Yy0xLjcyLTcuMTItMy4yMy0xMC4zNS0xNS43My0xNi42QzEyNC44OSw4LjY5LDEwMy43Ni41LDk3LjUxLjUsOTEuNjkuNSw5MCw4LDgzLjA2LDhjLTYuNjgsMC0xMS42NC01LjYtMTcuODktNS42LTYsMC05LjkxLDQuMDktMTIuOTMsMTIuNSwwLDAtOC40MSwyMy43Mi05LjQ5LDI3LjE2QTYuNDMsNi40MywwLDAsMCw0Mi41Myw0NGMwLDkuMjIsMzYuMywzOS40NSw4NC45NCwzOS40NU0xNjAsNzIuMDdjMS43Myw4LjE5LDEuNzMsOS4wNSwxLjczLDEwLjEzLDAsMTQtMTUuNzQsMjEuNzctMzYuNDMsMjEuNzdDNzguNTQsMTA0LDM3LjU4LDc2LjYsMzcuNTgsNTguNDlhMTguNDUsMTguNDUsMCwwLDEsMS41MS03LjMzQzIyLjI3LDUyLC41LDU1LC41LDc0LjIyYzAsMzEuNDgsNzQuNTksNzAuMjgsMTMzLjY1LDcwLjI4LDQ1LjI4LDAsNTYuNy0yMC40OCw1Ni43LTM2LjY1LDAtMTIuNzItMTEtMjcuMTYtMzAuODMtMzUuNzgiLz48L3N2Zz4=
