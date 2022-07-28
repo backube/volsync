@@ -29,7 +29,7 @@ replicated determines how, when, and to where the data should be replicated.
 A ReplicationDestination object at the destination serves as the target for the
 replicated data.
 
-VolSync has several replication methods than can be used to replicate data.
+VolSync has several replication methods that can be used to replicate data.
 
 - Rclone-based replication for 1:many data distribution  
   With this replication method, data is replicated from the source to an
