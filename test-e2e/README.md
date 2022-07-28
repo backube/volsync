@@ -25,9 +25,13 @@ To activate this project's virtualenv, run pipenv shell.
 Alternatively, run a command inside the virtualenv with pipenv run.
 All dependencies are now up-to-date!
 
-$ pipenv run ansible-galaxy collection install -p .collections kubernetes.core
+$ pipenv run ansible-galaxy install -r requirements.yml
 Starting galaxy collection install process
-Nothing to do. All requested collections are already installed. If you want to reinstall them, consider using `--force`.
+Process install dependency map
+Starting collection install process
+Downloading https://galaxy.ansible.com/download/kubernetes-core-2.3.2.tar.gz to /home/jstrunk/.ansible/tmp/ansible-local-1420409oj_yy_7w/tmpihwf81je/kubernetes-core-2.3.2-cya2zdq7
+Installing 'kubernetes.core:2.3.2' to '/home/jstrunk/src/backube/volsync/test-e2e/.collections/ansible_collections/kubernetes/core'
+kubernetes.core:2.3.2 was installed successfully
 
 # Run a test
 $ pipenv run ansible-playbook test_simple_rclone.yml
