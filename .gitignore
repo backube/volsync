@@ -40,3 +40,5 @@ test-kuttl/kubeconfig
 
 # temp bundle files
 /bundle_tmp*
+/test-e2e/.collections/
+/test-e2e/.venv/

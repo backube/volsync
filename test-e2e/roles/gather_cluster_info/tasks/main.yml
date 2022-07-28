@@ -1,0 +1,14 @@
+---
+
+- name: Probe cluster information
+  kubernetes.core.k8s_cluster_info:
+  register: res
+
+- name: Save cluster information
+  ansible.builtin.set_fact:
+    cluster_info: res.cluster_info
+
+# - name: Print cluster information
+#   changed_when: true
+#   ansible.builtin.debug:
+#     var: cluster_info

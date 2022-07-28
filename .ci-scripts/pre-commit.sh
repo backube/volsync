@@ -22,7 +22,8 @@ function run_check() {
         find . \
             -path ./vendor -prune -o \
             -path ./.venv -prune -o \
-            -path ./testbin -prune -o \
+            -path ./test-e2e/.collections -prune -o \
+            -path ./test-e2e/.venv -prune -o \
             -regextype egrep -iregex "$regex" -print0 | \
             xargs -0rt "$exe" "$@"
         echo

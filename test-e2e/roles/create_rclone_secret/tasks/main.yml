@@ -1,0 +1,36 @@
+---
+
+- name: Check for required variables
+  fail: msg="Variable {{ item }} must be defined to use this role"
+  when: item is undefined
+  with_items:
+    - minio_namespace
+    - namespace
+    - rclone_secret_name
+
+- include_role:
+    name: get_minio_credentials
+
+- name: Build rclone.conf contents
+  ansible.builtin.set_fact:
+    rclone_conf: |
+      [rclone-data-mover]
+      type = s3
+      provider = Minio
+      env_auth = false
+      access_key_id = {{ minio_access_key }}
+      secret_access_key = {{ minio_secret_key }}
+      region = us-east-1
+      endpoint = http://minio.{{ minio_namespace }}.svc.cluster.local:9000
+
+- name: Create rclone secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "{{ rclone_secret_name }}"
+        namespace: "{{ namespace }}"
+      data:
+        rclone.conf: "{{ rclone_conf | b64encode }}"
