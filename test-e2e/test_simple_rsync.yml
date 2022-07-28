@@ -1,0 +1,197 @@
+---
+- hosts: localhost
+  tasks:
+    - include_role:
+        name: gather_cluster_info
+
+    - include_role:
+        name: create_namespace
+
+    - name: Create ReplicationDestination
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationDestination
+          metadata:
+            name: test
+            namespace: "{{ namespace }}"
+          spec:
+            rsync:
+              copyMethod: Snapshot
+              capacity: 1Gi
+              accessModes:
+                - ReadWriteOnce
+
+    - name: Create source PVC
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          kind: PersistentVolumeClaim
+          apiVersion: v1
+          metadata:
+            name: data-source
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 1Gi
+
+    - name: Create source Pod
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          kind: Pod
+          apiVersion: v1
+          metadata:
+            name: source
+            namespace: "{{ namespace }}"
+          spec:
+            containers:
+              - name: busybox
+                image: busybox
+                imagePullPolicy: IfNotPresent
+                command: ["/bin/sh", "-c"]
+                args: ["echo 'data' > /mnt/datafile; sync; sleep 99999"]
+                volumeMounts:
+                  - name: data
+                    mountPath: "/mnt"
+            terminationGracePeriodSeconds: 2
+            volumes:
+              - name: data
+                persistentVolumeClaim:
+                  claimName: data-source
+
+    - name: Wait for source to be running
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        name: source
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.phase=="Running"
+      delay: 1
+      retries: 60
+
+    - name: Wait for ssh keys and address to be ready
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationDestination
+        name: test
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.rsync is defined and
+        res.resources[0].status.rsync.sshKeys is defined and
+        res.resources[0].status.rsync.address is defined
+      delay: 5
+      retries: 60
+
+    - name: Create ReplicationDestination
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationSource
+          metadata:
+            name: source
+            namespace: "{{ namespace }}"
+          spec:
+            sourcePVC: data-source
+            trigger:
+              schedule: "0 0 1 1 *"
+            rsync:
+              sshKeys: "{{ res.resources[0].status.rsync.sshKeys }}"
+              address: "{{ res.resources[0].status.rsync.address }}"
+              copyMethod: Snapshot
+
+    - name: Wait for sync to complete
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationDestination
+        name: test
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.latestImage is defined and
+        res.resources[0].status.latestImage.kind == "VolumeSnapshot"
+      delay: 10
+      retries: 60
+
+    - name: Delete source Pod
+      kubernetes.core.k8s:
+        state: absent
+        api_version: v1
+        kind: Pod
+        name: source
+        namespace: "{{ namespace }}"
+
+    - name: Convert latestImage to PVC
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: data-dest
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            dataSource:
+              kind: VolumeSnapshot
+              apiGroup: snapshot.storage.k8s.io
+              name: "{{ res.resources[0].status.latestImage.name }}"
+            resources:
+              requests:
+                storage: 1Gi
+
+    - name: Start verification Pod
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          kind: Pod
+          apiVersion: v1
+          metadata:
+            name: verify
+            namespace: "{{ namespace }}"
+          spec:
+            containers:
+              - name: busybox
+                image: busybox
+                imagePullPolicy: IfNotPresent
+                command: ["/bin/sh", "-c"]
+                args: ["rm -rf /mnt/lost+found; rm -rf /mnt2/lost+found; diff -rs /mnt /mnt2"]
+                volumeMounts:
+                  - name: data-src
+                    mountPath: "/mnt"
+                  - name: data-dest
+                    mountPath: "/mnt2"
+            restartPolicy: OnFailure
+            terminationGracePeriodSeconds: 2
+            volumes:
+              - name: data-dest
+                persistentVolumeClaim:
+                  claimName: data-dest
+              - name: data-src
+                persistentVolumeClaim:
+                  claimName: data-source
+
+    - name: Wait for verification to complete
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        name: verify
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.phase=="Succeeded"
+      delay: 5
+      retries: 60
