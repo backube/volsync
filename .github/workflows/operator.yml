@@ -372,6 +372,24 @@ jobs:
       - name: Run e2e tests
         run: make test-e2e
 
+      - name: Setup Python
+        uses: actions/setup-python@c4e89fac7e8767b327bbad6cb4d859eda999cf08
+        with:
+          python-version: '3.10'
+          cache: 'pipenv'
+
+      - name: Install pipenv
+        run: python -m pip install pipenv
+
+      - name: Initialize virtual env
+        run: cd test-e2e && pipenv install --deploy --no-site-packages -v
+
+      - name: Install from Ansible Galaxy
+        run: cd test-e2e && pipenv run ansible-galaxy install -r requirements.yml
+
+      - name: Run Ansible-based tests
+        run: cd test-e2e && pipenv run ansible-parallel test_*.yml
+
   # This is a dummy job that can be used to determine success of CI:
   # - by Mergify instead of having to list a bunch of other jobs
   # - by the push jobs to ensure all pre-reqs pass before ANY containers are
