@@ -83,3 +83,30 @@ We can use tags to select subsets of tests to run:
   - Returns:
     - `minio_access_key`
     - `minio_secret_key`
+- `write_to_pvc` - Write data into a PVC  
+  Spawn a Pod that writes some data into a file on the PVC
+  - Uses: TBD
+  - Parameters:
+    - `namespace`
+    - `pvc_name`
+    - `path`: Path relative to the root of the PVC's file system
+    - `data`: File contents
+  - Returns: none
+
+ToDo:
+
+- `compare_pvc_data` - Compare the contents of 2 PVCs  
+  Spawns a Pod that mounts both PVCs and compares their contents, failing if
+  they differ
+  - Uses: TBD
+  - Parameters:
+    - `namespace`
+    - `pvc1`, `pvc2`
+  - Returns: none
+
+Open questions:
+
+- OpenShift and vanilla kube (specifically kind w/ csi-hostpath) require
+  different Pod security settings so that they can run and successfully write
+  into a mounted PVC. How can we simplify that templating across all the places
+  where we want to create a Pod-like thing (Pod, Job, Deployment, etc.)?

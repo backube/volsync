@@ -42,43 +42,13 @@
               requests:
                 storage: 1Gi
 
-    - name: Create source Pod
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          kind: Pod
-          apiVersion: v1
-          metadata:
-            name: source
-            namespace: "{{ namespace }}"
-          spec:
-            containers:
-              - name: busybox
-                image: busybox
-                imagePullPolicy: IfNotPresent
-                command: ["/bin/sh", "-c"]
-                args: ["echo 'data' > /mnt/datafile; sync; sleep 99999"]
-                volumeMounts:
-                  - name: data
-                    mountPath: "/mnt"
-            terminationGracePeriodSeconds: 2
-            volumes:
-              - name: data
-                persistentVolumeClaim:
-                  claimName: data-source
-
-    - name: Wait for source to be running
-      kubernetes.core.k8s_info:
-        api_version: v1
-        kind: Pod
-        name: source
-        namespace: "{{ namespace }}"
-      register: res
-      until: >
-        res.resources | length > 0 and
-        res.resources[0].status.phase=="Running"
-      delay: 1
-      retries: 60
+    - name: Write data into the source PVC
+      include_role:
+        name: write_to_pvc
+      vars:
+        data: 'data'
+        path: '/datafile'
+        pvc_name: 'data-source'
 
     - name: Wait for ssh keys and address to be ready
       kubernetes.core.k8s_info:
@@ -126,14 +96,6 @@
         res.resources[0].status.latestImage.kind == "VolumeSnapshot"
       delay: 10
       retries: 60
-
-    - name: Delete source Pod
-      kubernetes.core.k8s:
-        state: absent
-        api_version: v1
-        kind: Pod
-        name: source
-        namespace: "{{ namespace }}"
 
     - name: Convert latestImage to PVC
       kubernetes.core.k8s:
