@@ -10,3 +10,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+
+  - package-ecosystem: "pip"
+    directory: "/test-e2e"
+    schedule:
+      interval: "weekly"
