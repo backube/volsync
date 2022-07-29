@@ -7,9 +7,9 @@ Asynchronous volume replication for Kubernetes CSI storage
 ![maturity](https://img.shields.io/static/v1?label=maturity&message=alpha&color=red)
 
 VolSync is a Kubernetes operator that performs asynchronous replication of
-persistent volumes within, or across, clusters. VolSync supports replication in a
-storage system independent manner. This means replication can be used with
-storage systems that do not support replication natively. Data can also be
+persistent volumes within, or across, clusters. VolSync supports replication
+independent of the storage system. This means that replication can be used
+with storage systems that do not natively support replication. Data can also be
 replicated across different types (and vendors) of storage.
 
 VolSync supports both 1:1 replication relationships as well as 1:many
@@ -18,33 +18,34 @@ relationships. This provides the flexibility to support use cases such as:
 - Disaster recovery
 - Mirroring data to a test environment
 - Data distribution to a set of remote clusters from a central site
-- Migrating between storage vendors (changing the StorageClass of a PVC)
+- Migrating between storage vendors (changing the StorageClass of a
+  persistent volume claim).
 - Creating periodic data backups
 
 ### How it works
 
-A ReplicationSource object in the same Namespace as the volume (PVC) to be
-replicated determines how, when, and to where the data should be replicated.
+You specify the details of how, when, and where to replicate the data
+in a ReplicationSource object in the same namespace as the persistent
+volume claim (PVC).
 
-A ReplicationDestination object at the destination serves as the target for the
-replicated data.
+You create a ReplicationDestination object at the destination, which
+specifies the target for the replicated data.
 
-VolSync has several replication methods that can be used to replicate data.
+VolSync uses multiple replication methods to replicate data:
 
-- Rclone-based replication for 1:many data distribution  
-  With this replication method, data is replicated from the source to an
-  intermediate cloud storage service ([supported by
-  Rclone](https://rclone.org/#providers)). The destination(s) then retrieve the
-  data from this intermediate location.
-- Restic-based backup of PVC contents  
-  This data mover uses [restic](https://restic.net/) to create backups of the
-  data in a PVC. This works well for situations when the application's
-  deployment configuration is already source controlled, and all that's needed
-  is preservation of its persistent state.
-- Rsync-based replication for 1:1 data replication  
-  This replication method is designed to replicate data directly to a remote
-  location. It uses [Rsync](https://rsync.samba.org/) over an ssh connection to
-  securely and efficiently transfer data.
+- Rclone-based replication for 1:many data distribution:  
+  Data is replicated from the source to an intermediate cloud storage
+  service, which is [supported by Rclone](https://rclone.org/#providers).
+  The destinations retrieve the data from the intermediate location.
+- Restic-based backup of PVC contents:  
+  Data in a PVC is backed up by using the [restic](https://restic.net/)
+  program. This method works well when the deployment configuration of
+  the application is already source-controlled, and only the
+  preservation of its persistent state is needed.
+- Rsync-based replication for one-to-one data replication:  
+  Data is replicated directly to a remote location. The replication uses
+  the [Rsync](https://rsync.samba.org/) utility over an ssh connection
+  to securely and efficiently transfer data.
 
 **Please see the [📖 full documentation
 📖](https://volsync.readthedocs.io/) for more details.**
