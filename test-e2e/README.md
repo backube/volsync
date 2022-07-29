@@ -52,6 +52,14 @@ We can use tags to select subsets of tests to run:
 
 ## Roles
 
+- `compare_pvc_data` - Compare the contents of 2 PVCs  
+  Spawns a Pod that mounts both PVCs and compares their contents, failing if
+  they differ
+  - Uses: TBD
+  - Parameters:
+    - `namespace`
+    - `pvc1_name`, `pvc2_name`
+  - Returns: none
 - `create_namespace` - Creates a temporary test Namespace and deletes it at the
   end of the test
   - Uses: none
@@ -91,17 +99,6 @@ We can use tags to select subsets of tests to run:
     - `pvc_name`
     - `path`: Path relative to the root of the PVC's file system
     - `data`: File contents
-  - Returns: none
-
-ToDo:
-
-- `compare_pvc_data` - Compare the contents of 2 PVCs  
-  Spawns a Pod that mounts both PVCs and compares their contents, failing if
-  they differ
-  - Uses: TBD
-  - Parameters:
-    - `namespace`
-    - `pvc1`, `pvc2`
   - Returns: none
 
 Open questions:
