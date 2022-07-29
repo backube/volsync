@@ -48,7 +48,7 @@ func AffinityFromVolume(ctx context.Context, c client.Client, logger logr.Logger
 	}
 
 	// Find all the Pods that are using the PVC
-	podsUsing, err := podsUsingPVC(ctx, c, logger, pvc)
+	podsUsing, err := PodsUsingPVC(ctx, c, pvc)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +81,7 @@ func AffinityFromVolume(ctx context.Context, c client.Client, logger logr.Logger
 }
 
 // Find all the Pods using a PVC
-func podsUsingPVC(ctx context.Context, c client.Client, logger logr.Logger,
+func PodsUsingPVC(ctx context.Context, c client.Client,
 	pvc *corev1.PersistentVolumeClaim) ([]corev1.Pod, error) {
 	podList := corev1.PodList{}
 	if err := c.List(ctx, &podList, client.InNamespace(pvc.Namespace)); err != nil {
