@@ -83,6 +83,9 @@ type ReplicationDestinationVolumeOptions struct {
 	// accessModes must be specified.
 	//+optional
 	DestinationPVC *string `json:"destinationPVC,omitempty"`
+	// nfs can be used to specify the NFS server and path
+	//+optional
+	NFS *corev1.NFSVolumeSource `json:"nfs,omitempty"`
 }
 
 type ReplicationDestinationRsyncSpec struct {

@@ -116,6 +116,11 @@ replication method.
      #storageClassName: my-sc-name
      # The VSC to use if the copy method is Snapshot (default if omitted)
      #volumeSnapshotClassName: my-vsc-name
+     # Mount an NFS export in the data-mover pod
+     # RESTIC_REPOSITORY must be set to /data
+     #nfs:
+     #  server: some-server
+     #  path: some-path
 
 Backup options
 --------------
@@ -160,7 +165,10 @@ retain
    When more than the specified number of backups are present in the repository,
    they will be removed via Restic's ``forget`` operation, and the space will be
    reclaimed during the next prune.
-
+nfs
+   This is the configuration option to allow to back up to or restore from a NFS 
+   server. `RESTIC_REPOSITORY` must be set to `/data` for the data-mover to have
+   access to the volume.
 
 Performing a restore
 ====================
