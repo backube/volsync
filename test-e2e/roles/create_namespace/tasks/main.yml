@@ -1,0 +1,16 @@
+---
+
+- name: Create a temporary Namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        generateName: test-
+  register: test_namespace
+  notify: Delete temporary Namespace
+
+- name: Save name of test Namespace
+  ansible.builtin.set_fact:
+    namespace: "{{ test_namespace.result.metadata.name }}"
