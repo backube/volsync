@@ -26,9 +26,9 @@ spec:
     Asynchronous volume replication for Kubernetes CSI storage
 
     VolSync is a Kubernetes operator that performs asynchronous replication of
-    persistent volumes within, or across, clusters. VolSync supports replication in a
-    storage system independent manner. This means replication can be used with
-    storage systems that do not support replication natively. Data can also be
+    persistent volumes within, or across, clusters. VolSync supports replication
+    independent of the storage system. This means that replication can be used
+    with storage systems that do not natively support replication. Data can also be
     replicated across different types (and vendors) of storage.
 
     VolSync supports both 1:1 replication relationships as well as 1:many
@@ -37,38 +37,39 @@ spec:
     - Disaster recovery
     - Mirroring data to a test environment
     - Data distribution to a set of remote clusters from a central site
-    - Migrating between storage vendors (changing the StorageClass of a PVC)
+    - Migrating between storage vendors (changing the StorageClass of a
+      persistent volume claim).
     - Creating periodic data backups
 
     ### How it works
 
-    A ReplicationSource object in the same Namespace as the volume (PVC) to be
-    replicated determines how, when, and to where the data should be replicated.
+    You specify the details of how, when, and where to replicate the data
+    in a ReplicationSource object in the same namespace as the persistent
+    volume claim (PVC).
 
-    A ReplicationDestination object at the destination serves as the target for the
-    replicated data.
+    You create a ReplicationDestination object at the destination, which
+    specifies the target for the replicated data.
 
-    VolSync has several replication methods that can be used to replicate data.
+    VolSync uses multiple replication methods to replicate data:
 
-    - Rclone-based replication for 1:many data distribution
+    - Rclone-based replication for 1:many data distribution:
 
-      With this replication method, data is replicated from the source to an
-      intermediate cloud storage service ([supported by
-      Rclone](https://rclone.org/#providers)). The destination(s) then retrieve the
-      data from this intermediate location.
+      Data is replicated from the source to an intermediate cloud storage
+      service, which is [supported by Rclone](https://rclone.org/#providers).
+      The destinations retrieve the data from the intermediate location.
 
-    - Restic-based backup of PVC contents
+    - Restic-based backup of PVC contents:
 
-      This data mover uses [restic](https://restic.net/) to create backups of the
-      data in a PVC. This works well for situations when the application's
-      deployment configuration is already source controlled, and all that's needed
-      is preservation of its persistent state.
+      Data in a PVC is backed up by using the [restic](https://restic.net/)
+      program. This method works well when the deployment configuration of
+      the application is already source-controlled, and only the
+      preservation of its persistent state is needed.
 
-    - Rsync-based replication for 1:1 data replication
+    - Rsync-based replication for one-to-one data replication:
 
-      This replication method is designed to replicate data directly to a remote
-      location. It uses [Rsync](https://rsync.samba.org/) over an ssh connection to
-      securely and efficiently transfer data.
+      Data is replicated directly to a remote location. The replication uses
+      the [Rsync](https://rsync.samba.org/) utility over an ssh connection
+      to securely and efficiently transfer data.
   displayName: VolSync
   icon:
   - base64data: PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxOTIgMTQ1Ij48ZGVmcz48c3R5bGU+LmNscy0xe2ZpbGw6I2UwMDt9PC9zdHlsZT48L2RlZnM+PHRpdGxlPlJlZEhhdC1Mb2dvLUhhdC1Db2xvcjwvdGl0bGU+PHBhdGggZD0iTTE1Ny43Nyw2Mi42MWExNCwxNCwwLDAsMSwuMzEsMy40MmMwLDE0Ljg4LTE4LjEsMTcuNDYtMzAuNjEsMTcuNDZDNzguODMsODMuNDksNDIuNTMsNTMuMjYsNDIuNTMsNDRhNi40Myw2LjQzLDAsMCwxLC4yMi0xLjk0bC0zLjY2LDkuMDZhMTguNDUsMTguNDUsMCwwLDAtMS41MSw3LjMzYzAsMTguMTEsNDEsNDUuNDgsODcuNzQsNDUuNDgsMjAuNjksMCwzNi40My03Ljc2LDM2LjQzLTIxLjc3LDAtMS4wOCwwLTEuOTQtMS43My0xMC4xM1oiLz48cGF0aCBjbGFzcz0iY2xzLTEiIGQ9Ik0xMjcuNDcsODMuNDljMTIuNTEsMCwzMC42MS0yLjU4LDMwLjYxLTE3LjQ2YTE0LDE0LDAsMCwwLS4zMS0zLjQybC03LjQ1LTMyLjM2Yy0xLjcyLTcuMTItMy4yMy0xMC4zNS0xNS43My0xNi42QzEyNC44OSw4LjY5LDEwMy43Ni41LDk3LjUxLjUsOTEuNjkuNSw5MCw4LDgzLjA2LDhjLTYuNjgsMC0xMS42NC01LjYtMTcuODktNS42LTYsMC05LjkxLDQuMDktMTIuOTMsMTIuNSwwLDAtOC40MSwyMy43Mi05LjQ5LDI3LjE2QTYuNDMsNi40MywwLDAsMCw0Mi41Myw0NGMwLDkuMjIsMzYuMywzOS40NSw4NC45NCwzOS40NU0xNjAsNzIuMDdjMS43Myw4LjE5LDEuNzMsOS4wNSwxLjczLDEwLjEzLDAsMTQtMTUuNzQsMjEuNzctMzYuNDMsMjEuNzdDNzguNTQsMTA0LDM3LjU4LDc2LjYsMzcuNTgsNTguNDlhMTguNDUsMTguNDUsMCwwLDEsMS41MS03LjMzQzIyLjI3LDUyLC41LDU1LC41LDc0LjIyYzAsMzEuNDgsNzQuNTksNzAuMjgsMTMzLjY1LDcwLjI4LDQ1LjI4LDAsNTYuNy0yMC40OCw1Ni43LTM2LjY1LDAtMTIuNzItMTEtMjcuMTYtMzAuODMtMzUuNzgiLz48L3N2Zz4=
