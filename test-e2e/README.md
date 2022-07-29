@@ -42,6 +42,14 @@ $ pipenv run ansible-parallel test_*.yml
 ...
 ```
 
+## Tags
+
+We can use tags to select subsets of tests to run:
+
+- `e2e` - Main operator e2e tests
+- `cli` - Tests for the kubectl plugin/cli
+- `rclone`, `restic`, `rsync`, `syncthing` - Tests involving specific movers
+
 ## Roles
 
 - `create_namespace` - Creates a temporary test Namespace and deletes it at the

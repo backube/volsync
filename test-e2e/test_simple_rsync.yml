@@ -1,5 +1,8 @@
 ---
 - hosts: localhost
+  tags:
+    - e2e
+    - rsync
   tasks:
     - include_role:
         name: gather_cluster_info
