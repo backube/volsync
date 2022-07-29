@@ -388,7 +388,7 @@ jobs:
         run: cd test-e2e && pipenv run ansible-galaxy install -r requirements.yml
 
       - name: Run Ansible-based tests
-        run: cd test-e2e && pipenv run ansible-parallel test_*.yml
+        run: cd test-e2e && ./run_tests_in_parallel.sh
 
   # This is a dummy job that can be used to determine success of CI:
   # - by Mergify instead of having to list a bunch of other jobs

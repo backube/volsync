@@ -37,8 +37,9 @@ test-kuttl/kubeconfig
 /test-kuttl/e2e/restic-with-restoreasof/22-timestamp.txt
 /test-kuttl/e2e/*/*-snapshot.txt
 /test-kuttl/e2e/*/rclone.conf
+/test-e2e/.collections/
+/test-e2e/.venv/
+/test-e2e/test_*.log
 
 # temp bundle files
 /bundle_tmp*
-/test-e2e/.collections/
-/test-e2e/.venv/
