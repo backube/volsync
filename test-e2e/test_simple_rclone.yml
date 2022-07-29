@@ -128,46 +128,9 @@
               requests:
                 storage: 1Gi
 
-    - name: Start verification Pod
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          kind: Pod
-          apiVersion: v1
-          metadata:
-            name: verify
-            namespace: "{{ namespace }}"
-          spec:
-            containers:
-              - name: busybox
-                image: busybox
-                imagePullPolicy: IfNotPresent
-                command: ["/bin/sh", "-c"]
-                args: ["rm -rf /mnt/lost+found; rm -rf /mnt2/lost+found; diff -rs /mnt /mnt2"]
-                volumeMounts:
-                  - name: data-src
-                    mountPath: "/mnt"
-                  - name: data-dest
-                    mountPath: "/mnt2"
-            restartPolicy: OnFailure
-            terminationGracePeriodSeconds: 2
-            volumes:
-              - name: data-dest
-                persistentVolumeClaim:
-                  claimName: data-dest
-              - name: data-src
-                persistentVolumeClaim:
-                  claimName: data-source
-
-    - name: Wait for verification to complete
-      kubernetes.core.k8s_info:
-        api_version: v1
-        kind: Pod
-        name: verify
-        namespace: "{{ namespace }}"
-      register: res
-      until: >
-        res.resources | length > 0 and
-        res.resources[0].status.phase=="Succeeded"
-      delay: 5
-      retries: 60
+    - name: Verify contents of PVC
+      include_role:
+        name: compare_pvc_data
+      vars:
+        pvc1_name: data-source
+        pvc2_name: data-dest
