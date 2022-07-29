@@ -1,5 +1,8 @@
 ---
 - hosts: localhost
+  tags:
+    - e2e
+    - rclone
   vars:
     rclone_secret_name: rclone-secret
   tasks:
