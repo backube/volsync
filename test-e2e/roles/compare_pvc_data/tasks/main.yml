@@ -2,11 +2,13 @@
 
 - name: Check for required variables
   fail: msg="Variable {{ item }} must be defined to use this role"
-  when: vars[item] is undefined
+  when: vars[var_check] is undefined
   with_items:
     - namespace
     - pvc1_name
     - pvc2_name
+  loop_control:
+    loop_var: var_check
 
 - name: Create Pod
   kubernetes.core.k8s:

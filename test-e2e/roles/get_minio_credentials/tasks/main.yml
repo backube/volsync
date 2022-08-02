@@ -2,9 +2,11 @@
 
 - name: Check for required variables
   fail: msg="Variable {{ item }} must be defined to use this role"
-  when: vars[item] is undefined
+  when: vars[var_check] is undefined
   with_items:
     - minio_namespace
+  loop_control:
+    loop_var: var_check
 
 - name: Get MinIO Secret
   kubernetes.core.k8s_info:
