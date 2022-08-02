@@ -2,7 +2,7 @@
 
 - name: Check for required variables
   fail: msg="Variable {{ item }} must be defined to use this role"
-  when: item is undefined
+  when: vars[item] is undefined
   with_items:
     - namespace
     - pvc1_name
