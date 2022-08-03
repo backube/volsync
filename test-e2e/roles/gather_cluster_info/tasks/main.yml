@@ -1,0 +1,41 @@
+---
+
+- name: Probe cluster information
+  kubernetes.core.k8s_cluster_info:
+  register: cluster_info
+
+- name: Determine if cluster is OpenShift
+  ansible.builtin.set_fact:
+    cluster_info: >
+      {{ cluster_info | combine({
+        'is_openshift': cluster_info.apis["security.openshift.io/v1"] is defined
+      }, recursive=True) }}
+
+# Probe configuration specific to OpenShift
+- when: cluster_info.is_openshift
+  block:
+    - name: Look for restricted-v2 SCC
+      kubernetes.core.k8s_info:
+        api_version: security.openshift.io/v1
+        kind: SecurityContextConstraints
+        name: restricted-v2
+      register: res_v2
+
+    - name: Save OpenShift information
+      ansible.builtin.set_fact:
+        cluster_info: >
+          {{ cluster_info | combine({
+            'openshift_has_scc_restricted_v2': res_v2.resources | length > 0,
+            'version': {
+              'server': {
+                'openshift': {
+                  'major': '4',
+                  'minor': (cluster_info.version.server.kubernetes.minor | int - 13) | string
+                }
+              }
+            }
+          }, recursive=True) }}
+
+# - name: Print cluster information
+#   ansible.builtin.debug:
+#     var: cluster_info
