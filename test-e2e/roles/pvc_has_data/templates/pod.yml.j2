@@ -3,7 +3,7 @@
 kind: Pod
 apiVersion: v1
 metadata:
-  generateName: compare-pvcs-
+  generateName: grep-contents-
   namespace: "{{ namespace }}"
 spec:
   containers:
@@ -11,7 +11,7 @@ spec:
       image: gcr.io/distroless/static:debug-nonroot
       imagePullPolicy: IfNotPresent
       command: ["sh", "-c"]
-      args: ["find /mnt | xargs sha256sum | sed 's|^/mnt/|/mnt2/|' | grep -v lost+found | sha256sum -c"]
+      args: ["while ! grep '{{ data }}' '/mnt/{{ path }}'; do sleep 1; done"]
       securityContext:
         allowPrivilegeEscalation: false
         capabilities:
@@ -24,10 +24,8 @@ spec:
           type: RuntimeDefault
 {% endif %}
       volumeMounts:
-        - name: pvc1
+        - name: pvc
           mountPath: "/mnt"
-        - name: pvc2
-          mountPath: "/mnt2"
   restartPolicy: OnFailure
   securityContext:
 {# On Openshift, we can't specify fsGroup becuase the group must be #}
@@ -38,9 +36,6 @@ spec:
     runAsNonRoot: true
   terminationGracePeriodSeconds: 2
   volumes:
-    - name: pvc1
+    - name: pvc
       persistentVolumeClaim:
-        claimName: "{{ pvc1_name }}"
-    - name: pvc2
-      persistentVolumeClaim:
-        claimName: "{{ pvc2_name }}"
+        claimName: "{{ pvc_name }}"

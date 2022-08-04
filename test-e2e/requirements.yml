@@ -1,4 +1,6 @@
 ---
 collections:
+  - name: community.general
+    version: "*"
   - name: kubernetes.core
     version: "*"

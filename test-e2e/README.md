@@ -91,6 +91,15 @@ We can use tags to select subsets of tests to run:
   - Returns:
     - `minio_access_key`
     - `minio_secret_key`
+- `pvc_has_data` - Ensure a file in a PVC contains specific data
+  - Uses:
+    - `gather_cluster_info`
+  - Parameters:
+    - `data`: Expected file contents
+    - `namespace`: Namespace holding the PVC
+    - `path`: Path from root of PVC file system
+    - `pvc_name`: Name of the PVC object
+  - Returns: none
 - `write_to_pvc` - Write data into a PVC  
   Spawn a Pod that writes some data into a file on the PVC
   - Uses: TBD

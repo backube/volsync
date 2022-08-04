@@ -1,0 +1,58 @@
+---
+# This set of tasks waits for the 2 "instances" of syncthing to be connected to
+# each other (as indicated by the .status.peers...) for each instance
+
+- name: Check for required variables
+  fail: msg="Variable {{ item }} must be defined to use this role"
+  when: vars[var_check] is undefined
+  with_items:
+    - instances
+    - namespace
+  loop_control:
+    loop_var: var_check
+
+- name: Ensure 2 Syncthings have been specified
+  fail: msg="Exactly 2 Syncthing instances must be specified"
+  when: instances | length != 2
+
+- name: Get info about first syncthing
+  kubernetes.core.k8s_info:
+    api_version: volsync.backube/v1alpha1
+    kind: ReplicationSource
+    name: "{{ instances[0] }}"
+    namespace: "{{ namespace }}"
+  register: first
+
+- name: Get info about second syncthing
+  kubernetes.core.k8s_info:
+    api_version: volsync.backube/v1alpha1
+    kind: ReplicationSource
+    name: "{{ instances[1] }}"
+    namespace: "{{ namespace }}"
+  register: second
+
+- name: "Await {{ first.resources[0].metadata.name }} ==> {{ second.resources[0].metadata.name }}"
+  kubernetes.core.k8s_info:
+    api_version: volsync.backube/v1alpha1
+    kind: ReplicationSource
+    name: "{{ first.resources[0].metadata.name }}"
+    namespace: "{{ first.resources[0].metadata.namespace }}"
+  register: res
+  until: (res | community.general.json_query(query)) | first == true
+  vars:
+    query: "resources[0].status.syncthing.peers[?ID=='{{ second.resources[0].status.syncthing.ID }}'].connected"
+  retries: 60
+  delay: 5
+
+- name: "Await {{ second.resources[0].metadata.name }} ==> {{ first.resources[0].metadata.name }}"
+  kubernetes.core.k8s_info:
+    api_version: volsync.backube/v1alpha1
+    kind: ReplicationSource
+    name: "{{ second.resources[0].metadata.name }}"
+    namespace: "{{ second.resources[0].metadata.namespace }}"
+  register: res
+  until: (res | community.general.json_query(query)) | first == true
+  vars:
+    query: "resources[0].status.syncthing.peers[?ID=='{{ first.resources[0].status.syncthing.ID }}'].connected"
+  retries: 60
+  delay: 5

@@ -1,0 +1,72 @@
+---
+# This connects 2 instances of syncthings together, but doesn't wait for them to
+# actually be connected
+
+- name: Check for required variables
+  fail: msg="Variable {{ item }} must be defined to use this role"
+  when: vars[var_check] is undefined
+  with_items:
+    - instances
+    - namespace
+  loop_control:
+    loop_var: var_check
+
+- name: Ensure 2 Syncthings have been specified
+  fail: msg="Exactly 2 Syncthing instances must be specified"
+  when: instances | length != 2
+
+- name: Get info about first syncthing
+  kubernetes.core.k8s_info:
+    api_version: volsync.backube/v1alpha1
+    kind: ReplicationSource
+    name: "{{ instances[0] }}"
+    namespace: "{{ namespace }}"
+  register: first
+
+- name: Get info about second syncthing
+  kubernetes.core.k8s_info:
+    api_version: volsync.backube/v1alpha1
+    kind: ReplicationSource
+    name: "{{ instances[1] }}"
+    namespace: "{{ namespace }}"
+  register: second
+
+- name: Construct new peer list
+  ansible.builtin.set_fact:
+    newobj: >
+      {{ first.resources[0] | combine({
+        'spec': {
+          'syncthing': {
+            'peers': [{
+              'ID': second.resources[0].status.syncthing.ID,
+              'address': second.resources[0].status.syncthing.address,
+              'introducer': false
+            }]
+          }
+        }
+      }, recursive=True, list_merge="append_rp")}}
+
+- name: "Connect {{ first.resources[0].metadata.name }} ==> {{ second.resources[0].metadata.name }}"
+  kubernetes.core.k8s:
+    state: patched
+    definition: "{{ newobj }}"
+
+- name: Construct new peer list
+  ansible.builtin.set_fact:
+    newobj: >
+      {{ second.resources[0] | combine({
+        'spec': {
+          'syncthing': {
+            'peers': [{
+              'ID': first.resources[0].status.syncthing.ID,
+              'address': first.resources[0].status.syncthing.address,
+              'introducer': false
+            }]
+          }
+        }
+      }, recursive=True, list_merge="append_rp")}}
+
+- name: "Connect {{ second.resources[0].metadata.name }} ==> {{ first.resources[0].metadata.name }}"
+  kubernetes.core.k8s:
+    state: patched
+    definition: "{{ newobj }}"

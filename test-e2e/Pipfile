@@ -9,8 +9,9 @@ ansible-parallel = "*"
 jsonpatch = "*"
 kubernetes = ">=12.0.0"
 pyyaml = ">=3.11"
+jmespath = "*"
 
 [dev-packages]
 
-[requires]
-python_version = "3.10"
+#[requires]
+#python_version = "3.10"

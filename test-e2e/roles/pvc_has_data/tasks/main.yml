@@ -1,0 +1,39 @@
+---
+
+- name: Check for required variables
+  fail: msg="Variable {{ item }} must be defined to use this role"
+  when: vars[var_check] is undefined
+  with_items:
+    - data
+    - namespace
+    - path
+    - pvc_name
+  loop_control:
+    loop_var: var_check
+
+- name: Create Pod
+  kubernetes.core.k8s:
+    state: present
+    template: pod.yml.j2
+  register: res
+
+- name: Wait for Pod to complete
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    name: "{{ res.result.metadata.name }}"
+    namespace: "{{ namespace }}"
+  register: res2
+  until: >
+    res2.resources | length > 0 and
+    res2.resources[0].status.phase=="Succeeded"
+  delay: 1
+  retries: 60
+
+- name: Delete Pod
+  kubernetes.core.k8s:
+    state: absent
+    api_version: v1
+    kind: Pod
+    name: "{{ res.result.metadata.name }}"
+    namespace: "{{ namespace }}"
