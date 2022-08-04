@@ -1,0 +1,13 @@
+---
+- hosts: localhost
+  tags:
+    - e2e
+    - syncthing
+  tasks:
+    - include_role:
+        name: create_namespace
+
+    - include_role:
+        name: test_syncthing_cluster_sync
+      vars:
+        num_syncthings: 3

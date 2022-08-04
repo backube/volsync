@@ -1,0 +1,130 @@
+---
+
+- name: Check for required variables
+  fail: msg="Variable {{ item }} must be defined to use this role"
+  when: vars[var_check] is undefined
+  with_items:
+    - namespace
+    - num_syncthings
+  loop_control:
+    loop_var: var_check
+
+- name: Build list of syncthings
+  set_fact:
+    syncthings: "{{ syncthings | default([]) + ['test-%s' | format(item)] }}"
+  loop: "{{ range(0, num_syncthings) | list }}"
+
+- name: Create data PVCs
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      kind: PersistentVolumeClaim
+      apiVersion: v1
+      metadata:
+        name: "{{ item }}"
+        namespace: "{{ namespace }}"
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+  with_items: "{{ syncthings }}"
+
+- name: Create Syncthings
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: volsync.backube/v1alpha1
+      kind: ReplicationSource
+      metadata:
+        name: "{{ item }}"
+        namespace: "{{ namespace }}"
+      spec:
+        sourcePVC: "{{ item }}"
+        syncthing:
+          serviceType: ClusterIP
+  with_items: "{{ syncthings }}"
+
+- name: Wait for Syncthings to be ready
+  kubernetes.core.k8s_info:
+    api_version: volsync.backube/v1alpha1
+    kind: ReplicationSource
+    name: "{{ item }}"
+    namespace: "{{ namespace }}"
+  register: res
+  until: >
+    res.resources | length > 0 and
+    res.resources[0].status.syncthing is defined and
+    res.resources[0].status.syncthing.address is defined and
+    res.resources[0].status.syncthing.ID is defined
+  with_items: "{{ syncthings }}"
+  delay: 5
+  retries: 60
+
+# Loop over all "syncthings", calling connect on each possible pair
+- name: Peer Syncthings to each other
+  include_tasks:
+    file: connect.yml
+  loop: "{{ syncthings | ansible.builtin.combinations(2) | list }}"
+  loop_control:
+    loop_var: instances
+
+- name: Wait for instances to connect
+  include_tasks:
+    file: await_connected.yml
+  loop: "{{ syncthings | ansible.builtin.combinations(2) | list }}"
+  loop_control:
+    loop_var: instances
+
+- name: Write data into first PVC
+  include_role:
+    name: write_to_pvc
+  vars:
+    data: 'hello from syncthing-1'
+    path: /testdata.txt
+    pvc_name: "{{ syncthings[0] }}"
+
+- name: Ensure data was synchronized to other instances
+  include_role:
+    name: pvc_has_data
+  vars:
+    data: 'hello from syncthing-1'
+    path: /testdata.txt
+    pvc_name: "{{ item }}"
+  loop: "{{ syncthings[1:] }}"
+
+- name: Find syncthing pods
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ namespace }}"
+    label_selectors:
+      - "app.kubernetes.io/component=syncthing-mover"
+  register: st_pods
+
+- name: Kill all syncthing pod instances
+  kubernetes.core.k8s:
+    state: absent
+    api_version: v1
+    kind: Pod
+    name: "{{ item.metadata.name }}"
+    namespace: "{{ namespace }}"
+  loop: "{{ st_pods.resources }}"
+
+- name: Wait for pods to be gone
+  kubernetes.core.k8s:
+    state: absent
+    api_version: v1
+    kind: Pod
+    name: "{{ item.metadata.name }}"
+    namespace: "{{ namespace }}"
+    wait: true
+  loop: "{{ st_pods.resources }}"
+
+- name: Wait for instances to reconnect
+  include_tasks:
+    file: await_connected.yml
+  loop: "{{ syncthings | ansible.builtin.combinations(2) | list }}"
+  loop_control:
+    loop_var: instances

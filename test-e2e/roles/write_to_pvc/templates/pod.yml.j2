@@ -11,7 +11,7 @@ spec:
       image: gcr.io/distroless/static:debug-nonroot
       imagePullPolicy: IfNotPresent
       command: ["sh", "-c"]
-      args: ["echo '{{ data }}' > '/mnt/{{ path }}'; sync"]
+      args: ["mkdir -p `dirname \"/mnt/{{ path }}\"` && echo '{{ data }}' > '/mnt/{{ path }}' && sync"]
       securityContext:
         allowPrivilegeEscalation: false
         capabilities:
