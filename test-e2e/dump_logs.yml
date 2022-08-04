@@ -1,0 +1,5 @@
+---
+- hosts: localhost
+  tasks:
+    - include_role:
+        name: dump_logs

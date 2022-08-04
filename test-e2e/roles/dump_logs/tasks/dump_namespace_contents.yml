@@ -1,0 +1,17 @@
+---
+
+- name: Check for required variables
+  fail: msg="Variable {{ item }} must be defined to use this role"
+  when: vars[var_check] is undefined
+  with_items:
+    - namespace
+  loop_control:
+    loop_var: var_check
+
+- name: Retrieve objects
+  command: "kubectl -n {{ namespace }} describe all,pvc,volumesnapshots,replicationsource,replicationdestination"
+  register: rv
+
+- name: Print objects in {{ namespace }}
+  ansible.builtin.debug:
+    var: rv.stdout_lines

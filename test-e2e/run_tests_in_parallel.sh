@@ -28,6 +28,9 @@ else
         cat "$logfile"
     done
 
+    # Dump cluster state for debugging
+    pipenv run ansible-playbook dump_logs.yml
+
     echo; echo "!!! TESTS FAILED !!!"
 fi
 
