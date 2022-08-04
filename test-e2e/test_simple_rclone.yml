@@ -7,9 +7,6 @@
     rclone_secret_name: rclone-secret
   tasks:
     - include_role:
-        name: gather_cluster_info
-
-    - include_role:
         name: create_namespace
 
     - include_role:

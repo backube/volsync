@@ -13,33 +13,7 @@
 - name: Create Pod
   kubernetes.core.k8s:
     state: present
-    definition:
-      kind: Pod
-      apiVersion: v1
-      metadata:
-        generateName: verify-
-        namespace: "{{ namespace }}"
-      spec:
-        containers:
-          - name: busybox
-            image: busybox
-            imagePullPolicy: IfNotPresent
-            command: ["/bin/sh", "-c"]
-            args: ["find /mnt | xargs sha256sum | sed 's|^/mnt/|/mnt2/|' | grep -v lost+found | sha256sum -c"]
-            volumeMounts:
-              - name: pvc1
-                mountPath: "/mnt"
-              - name: pvc2
-                mountPath: "/mnt2"
-        restartPolicy: OnFailure
-        terminationGracePeriodSeconds: 2
-        volumes:
-          - name: pvc1
-            persistentVolumeClaim:
-              claimName: "{{ pvc1_name }}"
-          - name: pvc2
-            persistentVolumeClaim:
-              claimName: "{{ pvc2_name }}"
+    template: pod.yml.j2
   register: res
 
 - name: Wait for Pod to complete
