@@ -11,7 +11,12 @@ spec:
       image: gcr.io/distroless/static:debug-nonroot
       imagePullPolicy: IfNotPresent
       command: ["sh", "-c"]
-      args: ["while ! grep '{{ data }}' '/mnt/{{ path }}'; do sleep 1; done"]
+      args:
+        - |
+          set -x -e -o pipefail
+          while ! grep '{{ data }}' '/mnt/{{ path }}'; do
+            sleep 1
+          done
       securityContext:
         allowPrivilegeEscalation: false
         capabilities:

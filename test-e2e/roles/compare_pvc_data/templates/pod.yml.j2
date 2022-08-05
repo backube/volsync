@@ -11,7 +11,21 @@ spec:
       image: gcr.io/distroless/static:debug-nonroot
       imagePullPolicy: IfNotPresent
       command: ["sh", "-c"]
-      args: ["find /mnt | xargs sha256sum | sed 's|^/mnt/|/mnt2/|' | grep -v lost+found | sha256sum -c"]
+      args:
+        - |
+          set -x -e -o pipefail
+
+          find /mnt -type f | \
+            xargs sha256sum | \
+            sed 's| /mnt/| /mnt2/|g' | \
+            grep -v lost+found | \
+            sha256sum -c
+
+          find /mnt2 -type f | \
+            xargs sha256sum | \
+            sed 's| /mnt2/| /mnt/|' | \
+            grep -v lost+found | \
+            sha256sum -c
       securityContext:
         allowPrivilegeEscalation: false
         capabilities:
