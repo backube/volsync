@@ -17,7 +17,9 @@
     template: pod.yml.j2
   register: res
 
+# Default behavior, let pod terminate after writing to PVC and check
 - name: Wait for Pod to complete
+  when: not persist_pod|default(false)|bool
   kubernetes.core.k8s_info:
     api_version: v1
     kind: Pod
@@ -31,9 +33,25 @@
   retries: 60
 
 - name: Delete Pod
+  when: not persist_pod|default(false)|bool
   kubernetes.core.k8s:
     state: absent
     api_version: v1
     kind: Pod
     name: "{{ res.result.metadata.name }}"
     namespace: "{{ namespace }}"
+
+# Persist behavior, leave pod running after writing to PVC and check
+- name: Wait for Pod to start running
+  when: persist_pod|default(false)|bool
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    name: "{{ res.result.metadata.name }}"
+    namespace: "{{ namespace }}"
+  register: res2
+  until: >
+    res2.resources | length > 0 and
+    res2.resources[0].status.phase=="Running"
+  delay: 1
+  retries: 60
