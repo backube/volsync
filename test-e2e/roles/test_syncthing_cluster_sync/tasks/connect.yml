@@ -33,40 +33,46 @@
 
 - name: Construct new peer list
   ansible.builtin.set_fact:
-    newobj: >
-      {{ first.resources[0] | combine({
-        'spec': {
-          'syncthing': {
-            'peers': [{
-              'ID': second.resources[0].status.syncthing.ID,
-              'address': second.resources[0].status.syncthing.address,
-              'introducer': false
-            }]
-          }
-        }
+    newpeers: >
+      {{ first.resources[0].spec.syncthing | combine({
+        'peers': [{
+          'ID': second.resources[0].status.syncthing.ID,
+          'address': second.resources[0].status.syncthing.address,
+          'introducer': false
+        }]
       }, recursive=True, list_merge="append_rp")}}
 
 - name: "Connect {{ first.resources[0].metadata.name }} ==> {{ second.resources[0].metadata.name }}"
   kubernetes.core.k8s:
     state: patched
-    definition: "{{ newobj }}"
+    definition:
+      apiVersion: volsync.backube/v1alpha1
+      kind: ReplicationSource
+      metadata:
+        name: "{{ first.resources[0].metadata.name }}"
+        namespace: "{{ first.resources[0].metadata.namespace }}"
+      spec:
+        syncthing: "{{ newpeers }}"
 
 - name: Construct new peer list
   ansible.builtin.set_fact:
-    newobj: >
-      {{ second.resources[0] | combine({
-        'spec': {
-          'syncthing': {
-            'peers': [{
-              'ID': first.resources[0].status.syncthing.ID,
-              'address': first.resources[0].status.syncthing.address,
-              'introducer': false
-            }]
-          }
-        }
+    newpeers: >
+      {{ second.resources[0].spec.syncthing | combine({
+        'peers': [{
+          'ID': first.resources[0].status.syncthing.ID,
+          'address': first.resources[0].status.syncthing.address,
+          'introducer': false
+        }]
       }, recursive=True, list_merge="append_rp")}}
 
 - name: "Connect {{ second.resources[0].metadata.name }} ==> {{ first.resources[0].metadata.name }}"
   kubernetes.core.k8s:
     state: patched
-    definition: "{{ newobj }}"
+    definition:
+      apiVersion: volsync.backube/v1alpha1
+      kind: ReplicationSource
+      metadata:
+        name: "{{ second.resources[0].metadata.name }}"
+        namespace: "{{ second.resources[0].metadata.namespace }}"
+      spec:
+        syncthing: "{{ newpeers }}"
