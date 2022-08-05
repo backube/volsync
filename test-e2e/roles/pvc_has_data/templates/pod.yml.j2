@@ -14,9 +14,7 @@ spec:
       args:
         - |
           set -x -e -o pipefail
-          while ! grep '{{ data }}' '/mnt/{{ path }}'; do
-            sleep 1
-          done
+          grep '{{ data }}' '/mnt/{{ path }}'
       securityContext:
         allowPrivilegeEscalation: false
         capabilities:
@@ -31,7 +29,11 @@ spec:
       volumeMounts:
         - name: pvc
           mountPath: "/mnt"
+{% if local_should_fail %}
+  restartPolicy: Never
+{% else %}
   restartPolicy: OnFailure
+{% endif %}
   securityContext:
 {# On Openshift, we can't specify fsGroup becuase the group must be #}
 {# auto-chosen w/in the range allowed in the Namespace #}

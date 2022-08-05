@@ -42,7 +42,11 @@ spec:
           mountPath: "/mnt"
         - name: pvc2
           mountPath: "/mnt2"
+{% if local_should_fail %}
+  restartPolicy: Never
+{% else %}
   restartPolicy: OnFailure
+{% endif %}
   securityContext:
 {# On Openshift, we can't specify fsGroup becuase the group must be #}
 {# auto-chosen w/in the range allowed in the Namespace #}
