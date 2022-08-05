@@ -1,0 +1,253 @@
+---
+- hosts: localhost
+  tags:
+    - e2e
+    - rclone
+  vars:
+    rclone_secret_name: rclone-secret
+  tasks:
+    - include_role:
+        name: create_namespace
+
+    - include_role:
+        name: create_rclone_secret
+      vars:
+        minio_namespace: minio
+
+    - name: Create source PVC
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          kind: PersistentVolumeClaim
+          apiVersion: v1
+          metadata:
+            name: data-source
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 1Gi
+
+    - name: Write data into the source PVC
+      include_role:
+        name: write_to_pvc
+      vars:
+        data: 'data'
+        path: '/datafile'
+        pvc_name: 'data-source'
+
+    - name: Sync data from source volume
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationSource
+          metadata:
+            name: source
+            namespace: "{{ namespace }}"
+          spec:
+            sourcePVC: data-source
+            trigger:
+              manual: firstsync
+            rclone:
+              rcloneConfigSection: "rclone-data-mover"
+              rcloneDestPath: "test-e2e-multi-sync-snapshot-rclone"
+              rcloneConfig: "{{ rclone_secret_name }}"
+              copyMethod: Snapshot
+
+    - name: Wait for sync to MinIO to complete
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationSource
+        name: source
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastManualSync is defined and
+        res.resources[0].status.lastManualSync=="firstsync"
+      delay: 10
+      retries: 60
+
+    - name: Sync data to destination
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationDestination
+          metadata:
+            name: destination
+            namespace: "{{ namespace }}"
+          spec:
+            trigger:
+              manual: firstsync
+            rclone:
+              rcloneConfigSection: "rclone-data-mover"
+              rcloneDestPath: "test-e2e-multi-sync-snapshot-rclone"
+              rcloneConfig: "rclone-secret"
+              copyMethod: Snapshot
+              accessModes: [ReadWriteOnce]
+              capacity: 1Gi
+
+    - name: Wait for sync from MinIO to complete
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationDestination
+        name: destination
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastManualSync is defined and
+        res.resources[0].status.lastManualSync=="firstsync"
+      delay: 10
+      retries: 60
+
+    - name: Save name of first snapshot
+      ansible.builtin.set_fact:
+        first_snap: "{{ res.resources[0].status.latestImage.name }}"
+
+    - name: Convert latestImage to PVC
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: data-dest-1
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            dataSource:
+              kind: VolumeSnapshot
+              apiGroup: snapshot.storage.k8s.io
+              name: "{{ first_snap }}"
+            resources:
+              requests:
+                storage: 1Gi
+
+    - name: Verify contents of PVC
+      include_role:
+        name: compare_pvc_data
+      vars:
+        pvc1_name: data-source
+        pvc2_name: data-dest-1
+
+    - name: Update data in the source PVC
+      include_role:
+        name: write_to_pvc
+      vars:
+        data: 'moredata'
+        path: '/datafile'
+        pvc_name: 'data-source'
+
+    - name: Trigger 2nd sync from source volume
+      kubernetes.core.k8s:
+        state: patched
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationSource
+          metadata:
+            name: source
+            namespace: "{{ namespace }}"
+          spec:
+            trigger:
+              manual: secondsync
+
+    - name: Wait for sync to MinIO to complete
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationSource
+        name: source
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastManualSync is defined and
+        res.resources[0].status.lastManualSync=="secondsync"
+      delay: 10
+      retries: 60
+
+    - name: Trigger 2nd sync to destination
+      kubernetes.core.k8s:
+        state: patched
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationDestination
+          metadata:
+            name: destination
+            namespace: "{{ namespace }}"
+          spec:
+            trigger:
+              manual: secondsync
+
+    - name: Wait for sync from MinIO to complete
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationDestination
+        name: destination
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastManualSync is defined and
+        res.resources[0].status.lastManualSync=="secondsync"
+      delay: 10
+      retries: 60
+
+    - name: Save name of second snapshot
+      ansible.builtin.set_fact:
+        second_snap: "{{ res.resources[0].status.latestImage.name }}"
+
+    - name: Convert latestImage to PVC
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: data-dest-2
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            dataSource:
+              kind: VolumeSnapshot
+              apiGroup: snapshot.storage.k8s.io
+              name: "{{ second_snap }}"
+            resources:
+              requests:
+                storage: 1Gi
+
+    - name: Verify contents of PVC
+      include_role:
+        name: compare_pvc_data
+      vars:
+        pvc1_name: data-source
+        pvc2_name: data-dest-2
+
+    - name: Verify first and second snaps were different
+      fail: msg="Both snapshots had the same name"
+      when: first_snap == second_snap
+
+    - name: Ensure first snapshot was deleted
+      kubernetes.core.k8s_info:
+        api_version: snapshot.storage.k8s.io/v1
+        kind: VolumeSnapshot
+        name: "{{ first_snap }}"
+        namespace: "{{ namespace }}"
+      register: res
+      until: res.resources | length == 0
+      delay: 1
+      retries: 60
+
+    - name: Ensure destination has correct contents
+      include_role:
+        name: pvc_has_data
+      vars:
+        data: 'moredata'
+        path: '/datafile'
+        pvc_name: 'data-dest-2'
