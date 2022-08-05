@@ -1,0 +1,7 @@
+---
+
+- name: Delete cli temp directory
+  ansible.builtin.file:
+    path: "{{ volsync_cli_tempdir.path }}"
+    state: absent
+  when: volsync_cli_tempdir.path is defined
