@@ -15,3 +15,4 @@
 - name: Execute cli command
   ansible.builtin.command:
     argv: "{{ volsync_cli_exe + params }}"
+  timeout: "{{ timeout | default(lookup('ansible.builtin.config', 'TASK_TIMEOUT')) }}"
