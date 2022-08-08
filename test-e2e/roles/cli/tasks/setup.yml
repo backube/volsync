@@ -1,0 +1,21 @@
+---
+
+- name: Generate a tempdir to hold the cli
+  ansible.builtin.tempfile:
+    state: directory
+    suffix: "-volsync-cli"
+  register: volsync_cli_tempdir
+  notify: Delete cli temp directory
+
+- name: Save cli location for use
+  ansible.builtin.set_fact:
+    volsync_cli_exe:
+      - "{{ volsync_cli_tempdir.path }}/kubectl-volsync"
+      - "--config-dir"
+      - "{{ volsync_cli_tempdir.path }}"
+
+- name: Copy cli into position
+  ansible.builtin.copy:
+    mode: 0755
+    dest: "{{ volsync_cli_exe[0] }}"
+    src: "../bin/kubectl-volsync"

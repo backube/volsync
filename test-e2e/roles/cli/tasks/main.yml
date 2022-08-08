@@ -1,0 +1,17 @@
+---
+- name: Ensure cli is set up
+  include_tasks:
+    file: setup.yml
+  when: volsync_cli_exe is not defined
+
+- name: Check for required variables
+  fail: msg="Variable {{ item }} must be defined to use this role"
+  when: vars[var_check] is undefined
+  with_items:
+    - params
+  loop_control:
+    loop_var: var_check
+
+- name: Execute cli command
+  ansible.builtin.command:
+    argv: "{{ volsync_cli_exe + params }}"
