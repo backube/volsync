@@ -230,6 +230,12 @@ DEPLOY_PATH="${HP_BASE}/deploy/kubernetes-1.${KUBE_MINOR}/"
 if [[ ! -d "${DEPLOY_PATH}" ]]; then
   DEPLOY_PATH="${HP_BASE}/deploy/kubernetes-latest/"
 fi
+
+# Remove the CSI testing manifest. It exposes csi.sock as a TCP socket using
+# socat. This is insecure, but the larger problem is that it pulls the socat
+# image from docker.io, making it subject to rate limits that break this script.
+rm -f "${DEPLOY_PATH}/hostpath/csi-hostpath-testing.yaml"
+
 "${DEPLOY_PATH}/${DEPLOY_SCRIPT}"
 rm -rf "${HP_BASE}"
 
