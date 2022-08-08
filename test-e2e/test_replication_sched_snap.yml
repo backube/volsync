@@ -80,7 +80,7 @@
           - "schedule"
           - "--cronspec"
           - "*/5 * * * *"
-      timeout: 300  # Command doesn't return until keys have been generated & copied
+        timeout: 300  # Command doesn't return until keys have been generated & copied
 
     - name: Wait for sync to complete
       kubernetes.core.k8s_info:

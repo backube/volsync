@@ -52,6 +52,10 @@ We can use tags to select subsets of tests to run:
 
 ## Roles
 
+- `cli` - Invoke the VolSync CLI
+  - Parameters:
+    - `params` - a list that is passed to the CLI executable as ARGV
+    - `timeout` - (optional) Timeout for the CLI call to complete (sec)
 - `compare_pvc_data` - Compare the contents of 2 PVCs  
   Spawns a Pod that mounts both PVCs and compares their contents, failing if
   they differ
