@@ -24,7 +24,9 @@
         namespace: "{{ namespace }}"
       type: Opaque
       stringData:
-        RESTIC_REPOSITORY: s3:http://minio.{{ minio_namespace }}.svc.cluster.local:9000/restic-manual-trigger
-        RESTIC_PASSWORD: ThisIsTheResticPassword
+        # Path in restic will include the namespace to avoid re-runs of tests interferring with each-other
+        # And also to prevent multiple tests from using the same path (each test should use its own namespace)
+        RESTIC_REPOSITORY: s3:http://minio.{{ minio_namespace }}.svc.cluster.local:9000/restic-e2e/{{ namespace }}
+        RESTIC_PASSWORD: ThisIsTheResticPassword{{ namespace }}
         AWS_ACCESS_KEY_ID: "{{ minio_access_key }}"
         AWS_SECRET_ACCESS_KEY: "{{ minio_secret_key }}"

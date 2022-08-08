@@ -1,0 +1,114 @@
+---
+- hosts: localhost
+  tags:
+    - e2e
+    - restic
+  vars:
+    restic_secret_name: restic-secret
+  tasks:
+    - include_role:
+        name: create_namespace
+
+    - include_role:
+        name: create_restic_secret
+      vars:
+        minio_namespace: minio
+
+    - name: Create source PVC
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          kind: PersistentVolumeClaim
+          apiVersion: v1
+          metadata:
+            name: data-source
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 1Gi
+
+    - name: Write data into the source PVC
+      include_role:
+        name: write_to_pvc
+      vars:
+        data: 'data'
+        path: '/datafile'
+        pvc_name: 'data-source'
+
+    - name: Backup data from source volume with manual trigger
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationSource
+          metadata:
+            name: source
+            namespace: "{{ namespace }}"
+          spec:
+            sourcePVC: data-source
+            restic:
+              pruneIntervalDays: 1
+              repository: "{{ restic_secret_name }}"
+              retain:
+                hourly: 3
+                daily: 2
+                monthly: 1
+              copyMethod: Direct
+              cacheCapacity: 1Gi
+
+    # Ensure multiple syncs - wait for 1 sync to start/end, then check a 2nd one completes
+    - name: Wait for a sync to start
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationSource
+        name: source
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.conditions | length > 0 and
+        res.resources[0].status.conditions is defined and
+        res.resources[0].status.conditions | selectattr('type', '==', 'Synchronizing')
+          | map(attribute='status') | list | first == 'True'
+      delay: 1
+      retries: 60
+
+    - name: Wait for a sync to complete
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationSource
+        name: source
+        namespace: "{{ namespace }}"
+      register: res1
+      until: >
+        res1.resources | length > 0 and
+        res1.resources[0].status.conditions | length > 0 and
+        res1.resources[0].status.lastSyncTime is defined
+      delay: 1
+      retries: 60
+
+    - name: Print out lastSyncTime after sync complete
+      ansible.builtin.debug:
+        msg: "lastSyncTime is: {{ res1.resources[0].status.lastSyncTime }}"
+
+    - name: Wait for another sync to complete
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationSource
+        name: source
+        namespace: "{{ namespace }}"
+      register: res2
+      until: >
+        res2.resources | length > 0 and
+        res2.resources[0].status.conditions | length > 0 and
+        res2.resources[0].status.lastSyncTime is defined and
+        res2.resources[0].status.lastSyncTime != res1.resources[0].status.lastSyncTime
+      delay: 1
+      retries: 60
+
+    - name: Print out lastSyncTime after another sync complete
+      ansible.builtin.debug:
+        msg: "lastSyncTime is: {{ res2.resources[0].status.lastSyncTime }}"

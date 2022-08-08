@@ -1,0 +1,371 @@
+---
+- hosts: localhost
+  tags:
+    - e2e
+    - restic
+  vars:
+    restic_secret_name: restic-secret
+  tasks:
+    - include_role:
+        name: create_namespace
+
+    - include_role:
+        name: create_restic_secret
+      vars:
+        minio_namespace: minio
+
+    - name: Create source PVC
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          kind: PersistentVolumeClaim
+          apiVersion: v1
+          metadata:
+            name: data-source
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 1Gi
+
+    - name: Write data into the source PVC
+      include_role:
+        name: write_to_pvc
+      vars:
+        data: 'data'
+        path: '/datafile'
+        pvc_name: 'data-source'
+        persist_pod: true
+        labels:
+          affinity: 'source'
+
+    - name: Backup data from source volume with manual trigger
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationSource
+          metadata:
+            name: source
+            namespace: "{{ namespace }}"
+          spec:
+            sourcePVC: data-source
+            trigger:
+              manual: once
+            restic:
+              pruneIntervalDays: 1
+              repository: "{{ restic_secret_name }}"
+              retain:
+                hourly: 3
+                daily: 2
+                monthly: 1
+              copyMethod: Snapshot
+              cacheCapacity: 1Gi
+
+    - name: Wait for sync to MinIO to complete
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationSource
+        name: source
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastManualSync is defined and
+        res.resources[0].status.lastManualSync=="once"
+      delay: 10
+      retries: 60
+
+    - name: Create dest PVC (restore volume)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          kind: PersistentVolumeClaim
+          apiVersion: v1
+          metadata:
+            name: data-dest
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 1Gi
+
+    - name: Run affinity setter job
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: affinity-setter
+            namespace: "{{ namespace }}"
+          spec:
+            template:
+              spec:
+                affinity:
+                  podAffinity:
+                    requiredDuringSchedulingIgnoredDuringExecution:
+                      - labelSelector:
+                          matchExpressions:
+                            - key: affinity
+                              operator: In
+                              values:
+                                - source
+                        topologyKey: topology.kubernetes.io/zone
+                containers:
+                  - name: busybox
+                    image: busybox
+                    imagePullPolicy: IfNotPresent
+                    command: ["/bin/true"]
+                    volumeMounts:
+                      - name: data-dest
+                        mountPath: "/mnt"
+                volumes:
+                  - name: data-dest
+                    persistentVolumeClaim:
+                      claimName: data-dest
+                restartPolicy: Never
+
+    - name: Wait for affinity-setter job to complete
+      kubernetes.core.k8s_info:
+        api_version: batch/v1
+        kind: Job
+        name: affinity-setter
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.succeeded is defined and
+        res.resources[0].status.succeeded==1
+      delay: 1
+      retries: 60
+
+    - name: Restore data from long time ago
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationDestination
+          metadata:
+            name: restore
+            namespace: "{{ namespace }}"
+          spec:
+            trigger:
+              manual: restore-once
+            restic:
+              repository: "{{ restic_secret_name }}"
+              destinationPVC: data-dest
+              copyMethod: Direct
+              cacheCapacity: 1Gi
+              restoreAsOf: 1980-08-10T23:59:59-04:00
+
+    - name: Wait for restore to complete
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationDestination
+        name: restore
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastManualSync is defined and
+        res.resources[0].status.lastManualSync=="restore-once"
+      delay: 10
+      retries: 60
+
+    - name: shutdown source writer pod
+      kubernetes.core.k8s:
+        state: absent
+        api_version: v1
+        kind: Pod
+        name: "{{ write_to_pvc_pod_name }}"
+        namespace: "{{ namespace }}"
+
+    - name: Verify contents of PVC do not match
+      include_role:
+        name: compare_pvc_data
+      vars:
+        pvc1_name: data-source
+        pvc2_name: data-dest
+        should_fail: true
+
+    - name: Remove restore CR
+      kubernetes.core.k8s:
+        state: absent
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationDestination
+        name: restore
+        namespace: "{{ namespace }}"
+
+    - name: Get current timestamp from shell
+      ansible.builtin.shell: |
+        set -e -o pipefail
+
+        CURRENT_TIME=$(date --rfc-3339=seconds)
+        # split the time string by space so we can convert it to proper k8s date-time format
+        read -r -a TIME_ARRAY <<< "${CURRENT_TIME}"
+        DATE_TIME_STRING="${TIME_ARRAY[0]}T${TIME_ARRAY[1]}"
+        # save the timestamp so it can be recalled later
+        echo "${DATE_TIME_STRING}"
+      register: current_timestamp_shell
+
+    - name: Save name of first snapshot
+      ansible.builtin.set_fact:
+        current_timestamp: "{{ current_timestamp_shell.stdout }}"
+
+    - name: Restore data from the current restoreasof time
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationDestination
+          metadata:
+            name: restore
+            namespace: "{{ namespace }}"
+          spec:
+            trigger:
+              manual: restore-once-now
+            restic:
+              repository: "{{ restic_secret_name }}"
+              destinationPVC: data-dest
+              copyMethod: Direct
+              cacheCapacity: 1Gi
+              restoreAsOf: "{{ current_timestamp }}"
+
+    - name: Wait for restore with current restoreasof time to complete
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationDestination
+        name: restore
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastManualSync is defined and
+        res.resources[0].status.lastManualSync=="restore-once-now"
+      delay: 10
+      retries: 60
+
+    - name: Verify contents of PVC now match
+      include_role:
+        name: compare_pvc_data
+      vars:
+        pvc1_name: data-source
+        pvc2_name: data-dest
+
+    - name: Remove backup CR
+      kubernetes.core.k8s:
+        state: absent
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationSource
+        name: source
+        namespace: "{{ namespace }}"
+
+    - name: Remove restore CR
+      kubernetes.core.k8s:
+        state: absent
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationDestination
+        name: restore
+        namespace: "{{ namespace }}"
+
+    - name: Write new data into the source PVC
+      include_role:
+        name: write_to_pvc
+      vars:
+        data: 'newdata'
+        path: '/datafile'
+        pvc_name: 'data-source'
+        persist_pod: true
+        labels:
+          affinity: 'source'
+
+    - name: Backup data from source volume again with manual trigger
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationSource
+          metadata:
+            name: source
+            namespace: "{{ namespace }}"
+          spec:
+            sourcePVC: data-source
+            trigger:
+              manual: once-again
+            restic:
+              pruneIntervalDays: 1
+              repository: "{{ restic_secret_name }}"
+              retain:
+                hourly: 3
+                daily: 2
+                monthly: 1
+              copyMethod: Snapshot
+              cacheCapacity: 1Gi
+
+    - name: Wait for sync to MinIO to complete again
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationSource
+        name: source
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastManualSync is defined and
+        res.resources[0].status.lastManualSync=="once-again"
+      delay: 10
+      retries: 60
+
+    - name: shutdown source writer pod again
+      kubernetes.core.k8s:
+        state: absent
+        api_version: v1
+        kind: Pod
+        name: "{{ write_to_pvc_pod_name }}"
+        namespace: "{{ namespace }}"
+
+    - name: Restore data from previous restoreasof time
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationDestination
+          metadata:
+            name: restore
+            namespace: "{{ namespace }}"
+          spec:
+            trigger:
+              manual: restore-once-previous
+            restic:
+              repository: "{{ restic_secret_name }}"
+              destinationPVC: data-dest
+              copyMethod: Direct
+              cacheCapacity: 1Gi
+              restoreAsOf: "{{ current_timestamp }}"
+
+    - name: Wait for restore with previous restoreasof time to complete
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationDestination
+        name: restore
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastManualSync is defined and
+        res.resources[0].status.lastManualSync=="restore-once-previous"
+      delay: 10
+      retries: 60
+
+    - name: Verify restored contents of PVC do not match current
+      include_role:
+        name: compare_pvc_data
+      vars:
+        pvc1_name: data-source
+        pvc2_name: data-dest
+        should_fail: true

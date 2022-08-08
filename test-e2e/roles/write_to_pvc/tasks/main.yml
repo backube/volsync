@@ -55,3 +55,8 @@
     res2.resources[0].status.phase=="Running"
   delay: 1
   retries: 60
+
+- name: Save persisted_pod name
+  when: persist_pod|default(false)|bool
+  ansible.builtin.set_fact:
+    write_to_pvc_pod_name: "{{ res.result.metadata.name }}"
