@@ -77,13 +77,14 @@
         pvc2_name: pvc2
         should_fail: true
 
-    - name: Write data into PVC2
+    - name: Write data into PVC2 - leave data writer pod running
       include_role:
         name: write_to_pvc
       vars:
         data: 'some data'
         path: '/thedatafile'
         pvc_name: 'pvc2'
+        persist_pod: true
 
     - name: Verify contents of matching PVCs match
       include_role:
@@ -91,3 +92,25 @@
       vars:
         pvc1_name: pvc1
         pvc2_name: pvc2
+
+    - name: Verify data writer pod is still running
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        name: "{{ write_to_pvc_pod_name }}"
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.phase is defined and
+        res.resources[0].status.phase=="Running"
+      delay: 10
+      retries: 60
+
+    - name: Shutdown data writer pod
+      kubernetes.core.k8s:
+        state: absent
+        api_version: v1
+        kind: Pod
+        name: "{{ write_to_pvc_pod_name }}"
+        namespace: "{{ namespace }}"
