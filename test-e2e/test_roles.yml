@@ -86,13 +86,6 @@
         pvc_name: 'pvc2'
         persist_pod: true
 
-    - name: Verify contents of matching PVCs match
-      include_role:
-        name: compare_pvc_data
-      vars:
-        pvc1_name: pvc1
-        pvc2_name: pvc2
-
     - name: Verify data writer pod is still running
       kubernetes.core.k8s_info:
         api_version: v1
@@ -114,3 +107,10 @@
         kind: Pod
         name: "{{ write_to_pvc_pod_name }}"
         namespace: "{{ namespace }}"
+
+    - name: Verify contents of matching PVCs match
+      include_role:
+        name: compare_pvc_data
+      vars:
+        pvc1_name: pvc1
+        pvc2_name: pvc2

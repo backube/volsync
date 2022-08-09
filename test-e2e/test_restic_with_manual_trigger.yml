@@ -176,6 +176,14 @@
       delay: 10
       retries: 60
 
+    - name: Shutdown source data writer pod
+      kubernetes.core.k8s:
+        state: absent
+        api_version: v1
+        kind: Pod
+        name: "{{ write_to_pvc_pod_name }}"
+        namespace: "{{ namespace }}"
+
     - name: Verify contents of PVC
       include_role:
         name: compare_pvc_data
