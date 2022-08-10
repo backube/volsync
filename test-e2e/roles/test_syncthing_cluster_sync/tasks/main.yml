@@ -120,6 +120,8 @@
     name: "{{ item.metadata.name }}"
     namespace: "{{ namespace }}"
     wait: true
+    wait_timeout: 600
+  timeout: 600
   loop: "{{ st_pods.resources }}"
 
 - name: Wait for instances to reconnect
