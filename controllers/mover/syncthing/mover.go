@@ -433,7 +433,7 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 		deployment.Spec.Template.ObjectMeta.Name = deployment.Name
 		utils.AddAllLabels(&deployment.Spec.Template, m.serviceSelector())
 
-		deployment.Spec.Template.Spec.NodeName = affinity.NodeName
+		deployment.Spec.Template.Spec.NodeSelector = affinity.NodeSelector
 		deployment.Spec.Template.Spec.Tolerations = affinity.Tolerations
 
 		deployment.Spec.Template.Spec.ServiceAccountName = sa.Name
