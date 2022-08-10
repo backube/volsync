@@ -27,8 +27,8 @@ import (
 )
 
 type AffinityInfo struct {
-	NodeName    string
-	Tolerations []corev1.Toleration
+	NodeSelector map[string]string
+	Tolerations  []corev1.Toleration
 }
 
 // Determine the proper affinity to apply based on the current users of a PVC
@@ -73,7 +73,9 @@ func AffinityFromVolume(ctx context.Context, c client.Client, logger logr.Logger
 	}
 
 	affinity := AffinityInfo{
-		NodeName:    candidatePod.Spec.NodeName,
+		NodeSelector: map[string]string{
+			"kubernetes.io/hostname": candidatePod.Spec.NodeName,
+		},
 		Tolerations: candidatePod.Spec.Tolerations,
 	}
 

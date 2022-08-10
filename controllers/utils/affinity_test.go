@@ -141,7 +141,7 @@ var _ = Describe("Volume affinity", func() {
 		It("will have an empty (unrestricted) affinity", func() {
 			ai, err := utils.AffinityFromVolume(ctx, k8sClient, logger, rwxPVC)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(ai.NodeName).To(BeEmpty())
+			Expect(ai.NodeSelector).To(BeEmpty())
 			Expect(ai.Tolerations).To(BeEmpty())
 		})
 	})
@@ -158,7 +158,7 @@ var _ = Describe("Volume affinity", func() {
 		It("will have an empty (unrestricted) affinity", func() {
 			ai, err := utils.AffinityFromVolume(ctx, k8sClient, logger, rwoNone)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(ai.NodeName).To(BeEmpty())
+			Expect(ai.NodeSelector).To(BeEmpty())
 			Expect(ai.Tolerations).To(BeEmpty())
 		})
 	})
@@ -167,7 +167,11 @@ var _ = Describe("Volume affinity", func() {
 		It("will have an affinity that matches that pod", func() {
 			ai, err := utils.AffinityFromVolume(ctx, k8sClient, logger, rwoPending)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(ai.NodeName).To(Equal(pendingPod.Spec.NodeName))
+			Expect(ai.NodeSelector).To(Equal(
+				map[string]string{
+					"kubernetes.io/hostname": pendingPod.Spec.NodeName,
+				},
+			))
 			Expect(ai.Tolerations).To(Equal(pendingPod.Spec.Tolerations))
 		})
 	})
@@ -176,7 +180,11 @@ var _ = Describe("Volume affinity", func() {
 		It("will have an affinity that matches that pod", func() {
 			ai, err := utils.AffinityFromVolume(ctx, k8sClient, logger, rwoBoth)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(ai.NodeName).To(Equal(runningPod.Spec.NodeName))
+			Expect(ai.NodeSelector).To(Equal(
+				map[string]string{
+					"kubernetes.io/hostname": runningPod.Spec.NodeName,
+				},
+			))
 			Expect(ai.Tolerations).To(Equal(runningPod.Spec.Tolerations))
 		})
 	})
@@ -186,7 +194,11 @@ var _ = Describe("Volume affinity", func() {
 		It("will have an affinity that matches that pod", func() {
 			ai, err := utils.AffinityFromVolume(ctx, k8sClient, logger, vsOnly)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(ai.NodeName).To(Equal(vsPod.Spec.NodeName))
+			Expect(ai.NodeSelector).To(Equal(
+				map[string]string{
+					"kubernetes.io/hostname": vsPod.Spec.NodeName,
+				},
+			))
 			Expect(ai.Tolerations).To(Equal(vsPod.Spec.Tolerations))
 		})
 	})
