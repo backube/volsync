@@ -393,7 +393,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 				logger.Error(err, "unable to determine proper affinity", "PVC", client.ObjectKeyFromObject(dataPVC))
 				return err
 			}
-			job.Spec.Template.Spec.NodeName = affinity.NodeName
+			job.Spec.Template.Spec.NodeSelector = affinity.NodeSelector
 			job.Spec.Template.Spec.Tolerations = affinity.Tolerations
 		}
 		return nil
