@@ -37,9 +37,6 @@
         data: 'data'
         path: '/datafile'
         pvc_name: 'data-source'
-        persist_pod: true
-        labels:
-          affinity: 'source'
 
     - name: Backup data from source volume with manual trigger
       kubernetes.core.k8s:
@@ -94,55 +91,12 @@
               requests:
                 storage: 1Gi
 
-    - name: Run affinity setter job
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          apiVersion: batch/v1
-          kind: Job
-          metadata:
-            name: affinity-setter
-            namespace: "{{ namespace }}"
-          spec:
-            template:
-              spec:
-                affinity:
-                  podAffinity:
-                    requiredDuringSchedulingIgnoredDuringExecution:
-                      - labelSelector:
-                          matchExpressions:
-                            - key: affinity
-                              operator: In
-                              values:
-                                - source
-                        topologyKey: topology.kubernetes.io/zone
-                containers:
-                  - name: busybox
-                    image: busybox
-                    imagePullPolicy: IfNotPresent
-                    command: ["/bin/true"]
-                    volumeMounts:
-                      - name: data-dest
-                        mountPath: "/mnt"
-                volumes:
-                  - name: data-dest
-                    persistentVolumeClaim:
-                      claimName: data-dest
-                restartPolicy: Never
-
-    - name: Wait for affinity-setter job to complete
-      kubernetes.core.k8s_info:
-        api_version: batch/v1
-        kind: Job
-        name: affinity-setter
-        namespace: "{{ namespace }}"
-      register: res
-      until: >
-        res.resources | length > 0 and
-        res.resources[0].status.succeeded is defined and
-        res.resources[0].status.succeeded==1
-      delay: 1
-      retries: 60
+    - name: Run pvc affinity pod for dest PVC
+      include_role:
+        name: pvc_affinity_pod
+      vars:
+        pvc_names:
+          - data-dest
 
     - name: Restore data from long time ago
       kubernetes.core.k8s:
@@ -177,12 +131,12 @@
       delay: 10
       retries: 60
 
-    - name: shutdown source writer pod
+    - name: Shutdown pvc affinity pod
       kubernetes.core.k8s:
         state: absent
         api_version: v1
         kind: Pod
-        name: "{{ write_to_pvc_pod_name }}"
+        name: "{{ pvc_affinity_pod_name }}"
         namespace: "{{ namespace }}"
 
     - name: Verify contents of PVC do not match
@@ -217,6 +171,13 @@
       ansible.builtin.set_fact:
         current_timestamp: "{{ current_timestamp_shell.stdout }}"
 
+    - name: Run pvc affinity pod for dest PVC for current restoreasof
+      include_role:
+        name: pvc_affinity_pod
+      vars:
+        pvc_names:
+          - data-dest
+
     - name: Restore data from the current restoreasof time
       kubernetes.core.k8s:
         state: present
@@ -250,6 +211,14 @@
       delay: 10
       retries: 60
 
+    - name: Shutdown pvc affinity pod for current restoreasof
+      kubernetes.core.k8s:
+        state: absent
+        api_version: v1
+        kind: Pod
+        name: "{{ pvc_affinity_pod_name }}"
+        namespace: "{{ namespace }}"
+
     - name: Verify contents of PVC now match
       include_role:
         name: compare_pvc_data
@@ -280,9 +249,6 @@
         data: 'newdata'
         path: '/datafile'
         pvc_name: 'data-source'
-        persist_pod: true
-        labels:
-          affinity: 'source'
 
     - name: Backup data from source volume again with manual trigger
       kubernetes.core.k8s:
@@ -321,13 +287,12 @@
       delay: 10
       retries: 60
 
-    - name: shutdown source writer pod again
-      kubernetes.core.k8s:
-        state: absent
-        api_version: v1
-        kind: Pod
-        name: "{{ write_to_pvc_pod_name }}"
-        namespace: "{{ namespace }}"
+    - name: Run pvc affinity pod for dest PVC for previous restoreasof
+      include_role:
+        name: pvc_affinity_pod
+      vars:
+        pvc_names:
+          - data-dest
 
     - name: Restore data from previous restoreasof time
       kubernetes.core.k8s:
@@ -361,6 +326,14 @@
         res.resources[0].status.lastManualSync=="restore-once-previous"
       delay: 10
       retries: 60
+
+    - name: Shutdown pvc affinity pod for previous restoreasof
+      kubernetes.core.k8s:
+        state: absent
+        api_version: v1
+        kind: Pod
+        name: "{{ pvc_affinity_pod_name }}"
+        namespace: "{{ namespace }}"
 
     - name: Verify restored contents of PVC do not match current
       include_role:

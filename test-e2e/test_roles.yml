@@ -77,20 +77,34 @@
         pvc2_name: pvc2
         should_fail: true
 
-    - name: Write data into PVC2 - leave data writer pod running
+    - name: Write data into PVC2
       include_role:
         name: write_to_pvc
       vars:
         data: 'some data'
         path: '/thedatafile'
         pvc_name: 'pvc2'
-        persist_pod: true
 
-    - name: Verify data writer pod is still running
+    - name: Verify contents of matching PVCs match
+      include_role:
+        name: compare_pvc_data
+      vars:
+        pvc1_name: pvc1
+        pvc2_name: pvc2
+
+    - name: Run pvc affinity pod
+      include_role:
+        name: pvc_affinity_pod
+      vars:
+        pvc_names:
+          - pvc1
+          - pvc2
+
+    - name: Check pvc affinity pod is running
       kubernetes.core.k8s_info:
         api_version: v1
         kind: Pod
-        name: "{{ write_to_pvc_pod_name }}"
+        name: "{{ pvc_affinity_pod_name }}"
         namespace: "{{ namespace }}"
       register: res
       until: >
@@ -100,17 +114,10 @@
       delay: 10
       retries: 60
 
-    - name: Shutdown data writer pod
+    - name: Shutdown pvc affinity pod
       kubernetes.core.k8s:
         state: absent
         api_version: v1
         kind: Pod
-        name: "{{ write_to_pvc_pod_name }}"
+        name: "{{ pvc_affinity_pod_name }}"
         namespace: "{{ namespace }}"
-
-    - name: Verify contents of matching PVCs match
-      include_role:
-        name: compare_pvc_data
-      vars:
-        pvc1_name: pvc1
-        pvc2_name: pvc2

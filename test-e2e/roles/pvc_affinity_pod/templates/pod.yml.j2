@@ -3,7 +3,7 @@
 kind: Pod
 apiVersion: v1
 metadata:
-  generateName: writer-
+  generateName: pvc-affinity-pod-
   namespace: "{{ namespace }}"
 spec:
   containers:
@@ -13,11 +13,7 @@ spec:
       command: ["sh", "-c"]
       args:
         - |
-          set -x -e -o pipefail
-
-          mkdir -p `dirname /mnt/{{ path }}`
-          echo '{{ data }}' > '/mnt/{{ path }}'
-          sync
+          sleep 99999
       securityContext:
         allowPrivilegeEscalation: false
         capabilities:
@@ -30,8 +26,10 @@ spec:
           type: RuntimeDefault
 {% endif %}
       volumeMounts:
-        - name: pvc
-          mountPath: "/mnt"
+{% for pvc_name in pvc_names %}
+        - name: "pvc-{{ pvc_name }}"
+          mountPath: "/mnt-{{ pvc_name }}"
+{% endfor %}
   restartPolicy: OnFailure
   securityContext:
 {# On Openshift, we can't specify fsGroup becuase the group must be #}
@@ -42,6 +40,8 @@ spec:
     runAsNonRoot: true
   terminationGracePeriodSeconds: 2
   volumes:
-    - name: pvc
+{% for pvc_name in pvc_names %}
+    - name: "pvc-{{ pvc_name }}"
       persistentVolumeClaim:
         claimName: "{{ pvc_name }}"
+{% endfor %}

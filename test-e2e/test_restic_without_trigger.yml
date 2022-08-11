@@ -38,6 +38,13 @@
         path: '/datafile'
         pvc_name: 'data-source'
 
+    - name: Run pvc affinity pod for source PVC
+      include_role:
+        name: pvc_affinity_pod
+      vars:
+        pvc_names:
+          - data-source
+
     - name: Backup data from source volume with manual trigger
       kubernetes.core.k8s:
         state: present
