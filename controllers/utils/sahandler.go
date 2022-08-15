@@ -135,7 +135,11 @@ func (d *SAHandler) ensureRoleBinding(l logr.Logger) (bool, error) {
 			Name:     d.role.Name,
 		}
 		d.roleBinding.Subjects = []rbacv1.Subject{
-			{Kind: "ServiceAccount", Name: d.SA.Name},
+			{
+				Kind:      "ServiceAccount",
+				Name:      d.SA.Name,
+				Namespace: d.SA.Namespace,
+			},
 		}
 		return nil
 	})
