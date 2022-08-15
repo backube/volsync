@@ -91,11 +91,15 @@
               requests:
                 storage: 1Gi
 
-    - name: Run pvc affinity pod for dest PVC
+    # Run affinity pod attached to both pvcs to make sure they end up in the
+    # same availability zone so they can be mounted by a single pod later
+    # when running compare-pvcs
+    - name: Run pvc affinity pod
       include_role:
         name: pvc_affinity_pod
       vars:
         pvc_names:
+          - data-source
           - data-dest
 
     - name: Restore data from long time ago

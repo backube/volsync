@@ -91,9 +91,27 @@
               requests:
                 storage: 1Gi
 
-    # Not running an affinity pod here to test that direct mode works with no affinity.
+    # Run affinity pod attached to both pvcs to make sure they end up in the
+    # same availability zone so they can be mounted by a single pod later
+    # when running compare-pvcs
+    - name: Run pvc affinity pod
+      include_role:
+        name: pvc_affinity_pod
+      vars:
+        pvc_names:
+          - data-source
+          - data-dest
+
+    # Shutdown affinity pod here to test that direct mode works with no affinity.
     # Affinity is tested in direct mode in test_restic_with_manual_trigger as well as
     # test_restic_with_restoreasof and test_restic_without_trigger.
+    - name: Shutdown pvc affinity pod
+      kubernetes.core.k8s:
+        state: absent
+        api_version: v1
+        kind: Pod
+        name: "{{ pvc_affinity_pod_name }}"
+        namespace: "{{ namespace }}"
 
     - name: Restore data from very far previous to destination
       kubernetes.core.k8s:
