@@ -385,7 +385,7 @@ jobs:
         run: cd test-e2e && pipenv install --deploy --no-site-packages -v
 
       - name: Install from Ansible Galaxy
-        run: cd test-e2e && pipenv run ansible-galaxy install -r requirements.yml
+        run: cd test-e2e && ../.ci-scripts/retry.sh pipenv run ansible-galaxy install -r requirements.yml
 
       - name: Run Ansible-based tests
         run: cd test-e2e && ./run_tests_in_parallel.sh
