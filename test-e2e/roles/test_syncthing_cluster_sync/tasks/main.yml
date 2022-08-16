@@ -92,6 +92,7 @@
     data: 'hello from syncthing-1'
     path: /testdata.txt
     pvc_name: "{{ item }}"
+    retries: 300
   loop: "{{ syncthings[1:] }}"
 
 - name: Find syncthing pods
