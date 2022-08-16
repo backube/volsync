@@ -13,5 +13,10 @@
     namespace: "{{ item }}"
   with_items: "{{ all_namespaces.resources | selectattr('metadata.name', 'match', '^test-') | map(attribute='metadata.name') }}"
 
-- name: Dump volsync controller logs
-  include_tasks: dump_volsync_logs.yml
+- name: Dump contents of volsync namespaces
+  include_tasks: dump_namespace_contents.yml
+  vars:
+    namespace: "{{ item }}"
+  with_items:
+    - volsync-system
+    - openshift-operators

@@ -9,9 +9,24 @@
     loop_var: var_check
 
 - name: Retrieve objects
-  command: "kubectl -n {{ namespace }} describe all,pvc,volumesnapshots,replicationsource,replicationdestination"
+  command: "kubectl -n {{ namespace }} describe all,pvc,secrets,volumesnapshots,replicationsource,replicationdestination"
   register: rv
 
 - name: Print objects in {{ namespace }}
   ansible.builtin.debug:
     var: rv.stdout_lines
+
+- name: Retrieve pods
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ namespace }}"
+  register: pods
+
+- name: Dump pod logs
+  include_tasks: dump_logs.yml
+  vars:
+    object: "{{ p }}"
+  with_items: "{{ pods.resources | map(attribute='metadata.name') }}"
+  loop_control:
+    loop_var: p
