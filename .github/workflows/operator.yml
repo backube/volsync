@@ -281,6 +281,10 @@ jobs:
         run: |
           ./hack/run-minio.sh
 
+      - name: Start MinIO w/ TLS
+        run: |
+          MINIO_NAMESPACE=minio-tls MINIO_USE_TLS=1 ./hack/run-minio.sh
+
       - name: Load operator container artifact
         uses: actions/download-artifact@fb598a63ae348fa914e94cd0ff38f362e927b741
         with:
