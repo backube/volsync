@@ -1,0 +1,19 @@
+---
+
+- name: Check for required variables
+  fail: msg="Variable {{ item }} must be defined to use this role"
+  when: vars[var_check] is undefined
+  with_items:
+    - namespace
+    - object
+  loop_control:
+    loop_var: var_check
+
+- name: Retrieve logs
+  command: "kubectl -n {{ namespace }} logs {{ object }} --all-containers"
+  register: rv
+  failed_when: false
+
+- name: Print logs
+  ansible.builtin.debug:
+    var: rv.stdout_lines | map('regex_replace', '\t', '    ')

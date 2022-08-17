@@ -1,0 +1,9 @@
+---
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+commands:
+  - script: |
+      set -e -o pipefail
+
+      kubectl label "ns/${NAMESPACE}" "security.openshift.io/scc.podSecurityLabelSync=false"
+      kubectl label "ns/${NAMESPACE}" "pod-security.kubernetes.io/enforce=privileged" --overwrite
