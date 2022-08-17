@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [unreleased]
 
+### Changed
+
+- :warning: Breaking change :warning: - Helm chart now manages VolSync CRDs
+  directly.  
+  Upgrading the VolSync Helm chart from an earlier version will produce the
+  following error:
+
+  ```
+  Error: UPGRADE FAILED: rendered manifests contain a resource that already exists. Unable to continue with update: CustomResourceDefinition "replicationdestinations.volsync.backube" in namespace "" exists and cannot be imported into the current release: invalid ownership metadata; label validation error: missing key "app.kubernetes.io/managed-by": must be set to "Helm"; annotation validation error: missing key "meta.helm.sh/release-name": must be set to "volsync"; annotation validation error: missing key "meta.helm.sh/release-namespace": must be set to "volsync-system"
+  ```
+
+  To fix, apply the missing labels and annotations as mentioned in the error
+  message (your values may differ), then retry the upgrade:
+
+  ```console
+  $ kubectl label crd/replicationdestinations.volsync.backube app.kubernetes.io/managed-by=Helm
+  customresourcedefinition.apiextensions.k8s.io/replicationdestinations.volsync.backube labeled
+  $ kubectl label crd/replicationsources.volsync.backube app.kubernetes.io/managed-by=Helm
+  customresourcedefinition.apiextensions.k8s.io/replicationsources.volsync.backube labeled
+  $ kubectl annotate crd/replicationdestinations.volsync.backube meta.helm.sh/release-name=volsync
+  customresourcedefinition.apiextensions.k8s.io/replicationdestinations.volsync.backube annotated
+  $ kubectl annotate crd/replicationsources.volsync.backube meta.helm.sh/release-name=volsync
+  customresourcedefinition.apiextensions.k8s.io/replicationsources.volsync.backube annotated
+  $ kubectl annotate crd/replicationdestinations.volsync.backube meta.helm.sh/release-namespace=volsync-system
+  customresourcedefinition.apiextensions.k8s.io/replicationdestinations.volsync.backube annotated
+  $ kubectl annotate crd/replicationsources.volsync.backube meta.helm.sh/release-namespace=volsync-system
+  customresourcedefinition.apiextensions.k8s.io/replicationsources.volsync.backube annotated
+  ```
+
 ### Security
 
 - kube-rbac-proxy upgraded to 0.13.1

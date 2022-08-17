@@ -103,7 +103,14 @@ help: ## Display this help.
 .PHONY: manifests
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
-	cp config/crd/bases/* helm/volsync/crds
+	@{ \
+		for SRC in config/crd/bases/*.yaml; do \
+			DST="helm/volsync/templates/$$(basename "$$SRC")"; \
+			echo "{{- if .Values.manageCRDs }}" > "$$DST"; \
+			cat "$$SRC" >> "$$DST"; \
+			echo "{{- end }}" >> "$$DST"; \
+		done; \
+	}
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
