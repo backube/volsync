@@ -14,7 +14,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.12.0
 	github.com/syncthing/syncthing v1.20.2
-	go.uber.org/zap v1.21.0
+	go.uber.org/zap v1.22.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.24.3
 	k8s.io/apimachinery v0.24.3
