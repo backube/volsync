@@ -36,6 +36,7 @@ spec:
             capabilities:
               drop:
                 - "ALL"
+            readOnlyRootFilesystem: true
           image: gcr.io/kubebuilder/kube-rbac-proxy:v0.13.0
           args:
             - --secure-listen-address=0.0.0.0:8443
@@ -70,11 +71,6 @@ spec:
             - /manager
           image: "{{ include "container-image" (list . .Values.image) }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop:
-                - "ALL"
           livenessProbe:
             httpGet:
               path: /healthz
@@ -91,6 +87,9 @@ spec:
             {{- toYaml .Values.resources | nindent 12 }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: tempdir
+              mountPath: /tmp
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -104,3 +103,7 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      volumes:
+        - name: tempdir
+          emptyDir:
+            medium: "Memory"
