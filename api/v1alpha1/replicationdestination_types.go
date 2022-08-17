@@ -176,11 +176,20 @@ type ReplicationDestinationRsyncStatus struct {
 	Port *int32 `json:"port,omitempty"`
 }
 
+type ReplicationDestinationResticCA struct {
+	// The name of a Secret that contains the custom CA certificate
+	SecretName string `json:"secretName,omitempty"`
+	// The key within the Secret containing the CA certificate
+	Key string `json:"key,omitempty"`
+}
+
 // ReplicationDestinationResticSpec defines the field for restic in replicationDestination.
 type ReplicationDestinationResticSpec struct {
 	ReplicationDestinationVolumeOptions `json:",inline"`
 	// Repository is the secret name containing repository info
 	Repository string `json:"repository,omitempty"`
+	// customCA is a custom CA that will be used to verify the remote
+	CustomCA ReplicationDestinationResticCA `json:"customCA,omitempty"`
 	// cacheCapacity can be used to set the size of the restic metadata cache volume
 	//+optional
 	CacheCapacity *resource.Quantity `json:"cacheCapacity,omitempty"`

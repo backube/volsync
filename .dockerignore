@@ -2,3 +2,4 @@
 .venv
 bin
 testbin
+test-e2e/.venv

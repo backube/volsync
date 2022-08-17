@@ -164,6 +164,18 @@ spec:
                     - Clone
                     - Snapshot
                     type: string
+                  customCA:
+                    description: customCA is a custom CA that will be used to verify
+                      the remote
+                    properties:
+                      key:
+                        description: The key within the Secret containing the CA certificate
+                        type: string
+                      secretName:
+                        description: The name of a Secret that contains the custom
+                          CA certificate
+                        type: string
+                    type: object
                   pruneIntervalDays:
                     description: PruneIntervalDays define how often to prune the repository
                     format: int32

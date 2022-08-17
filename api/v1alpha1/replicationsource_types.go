@@ -151,6 +151,13 @@ type ResticRetainPolicy struct {
 	Within *string `json:"within,omitempty"`
 }
 
+type ReplicationSourceResticCA struct {
+	// The name of a Secret that contains the custom CA certificate
+	SecretName string `json:"secretName,omitempty"`
+	// The key within the Secret containing the CA certificate
+	Key string `json:"key,omitempty"`
+}
+
 // ReplicationSourceResticSpec defines the field for restic in replicationSource.
 type ReplicationSourceResticSpec struct {
 	ReplicationSourceVolumeOptions `json:",inline"`
@@ -158,6 +165,8 @@ type ReplicationSourceResticSpec struct {
 	PruneIntervalDays *int32 `json:"pruneIntervalDays,omitempty"`
 	// Repository is the secret name containing repository info
 	Repository string `json:"repository,omitempty"`
+	// customCA is a custom CA that will be used to verify the remote
+	CustomCA ReplicationSourceResticCA `json:"customCA,omitempty"`
 	// ResticRetainPolicy define the retain policy
 	//+optional
 	Retain *ResticRetainPolicy `json:"retain,omitempty"`
