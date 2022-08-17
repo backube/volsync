@@ -33,7 +33,7 @@
     res2.resources[0].status.succeeded is defined and
     res2.resources[0].status.succeeded==1
   delay: 1
-  retries: 60
+  retries: "{{ timeout | default(60) }}"
 
 - name: Wait for compare to fail
   kubernetes.core.k8s_info:
@@ -48,7 +48,7 @@
     res2.resources[0].status.failed is defined and
     res2.resources[0].status.failed==1
   delay: 1
-  retries: 60
+  retries: "{{ timeout | default(60) }}"
 
 - name: Delete Job
   kubernetes.core.k8s:

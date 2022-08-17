@@ -131,3 +131,4 @@
       vars:
         pvc1_name: data-source
         pvc2_name: data-dest
+        timeout: 300

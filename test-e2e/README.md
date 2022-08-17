@@ -63,6 +63,7 @@ We can use tags to select subsets of tests to run:
   - Parameters:
     - `namespace`
     - `pvc1_name`, `pvc2_name`
+    - `timeout`: (optional) Time in seconds to wait
   - Returns: none
 - `create_namespace` - Creates a temporary test Namespace and deletes it at the
   end of the test
@@ -103,6 +104,7 @@ We can use tags to select subsets of tests to run:
     - `namespace`: Namespace holding the PVC
     - `path`: Path from root of PVC file system
     - `pvc_name`: Name of the PVC object
+    - `timeout`: (optional) Time in seconds to wait
   - Returns: none
 - `write_to_pvc` - Write data into a PVC  
   Spawn a Pod that writes some data into a file on the PVC

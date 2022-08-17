@@ -33,7 +33,7 @@
     res2.resources | length > 0 and
     res2.resources[0].status.phase=="Succeeded"
   delay: 1
-  retries: "{{ retries | default(60) }}"
+  retries: "{{ timeout | default(60) }}"
 
 - name: Wait for check to fail
   kubernetes.core.k8s_info:
@@ -47,7 +47,7 @@
     res2.resources | length > 0 and
     res2.resources[0].status.phase=="Failed"
   delay: 1
-  retries: "{{ retries | default(60) }}"
+  retries: "{{ timeout | default(60) }}"
 
 - name: Delete Pod
   kubernetes.core.k8s:

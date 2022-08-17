@@ -124,6 +124,7 @@
       vars:
         pvc1_name: data-source
         pvc2_name: data-dest-1
+        timeout: 300
 
     - name: Update data in the source PVC
       include_role:
@@ -190,6 +191,7 @@
       vars:
         pvc1_name: data-source
         pvc2_name: data-dest-2
+        timeout: 300
 
     - name: Ensure first snapshot was deleted
       kubernetes.core.k8s_info:
