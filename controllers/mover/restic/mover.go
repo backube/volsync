@@ -20,6 +20,7 @@ package restic
 import (
 	"context"
 	"fmt"
+	"path"
 	"strconv"
 	"time"
 
@@ -44,6 +45,8 @@ const (
 	mountPath            = "/data"
 	dataVolumeName       = "data"
 	resticCache          = "cache"
+	resticCAMountPath    = "/customCA"
+	resticCAFilename     = "ca.crt"
 )
 
 // Mover is the reconciliation logic for the Restic-based data mover.
@@ -61,6 +64,8 @@ type Mover struct {
 	isSource              bool
 	paused                bool
 	mainPVCName           *string
+	caSecretName          string
+	caSecretKey           string
 	// Source-only fields
 	pruneInterval *int32
 	retainPolicy  *volsyncv1alpha1.ResticRetainPolicy
@@ -113,8 +118,15 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 		return mover.InProgress(), err
 	}
 
+	// Validate custom CA Secret
+	caSecret, err := m.validateCASecret(ctx)
+	// nil caSecret is ok (indicates we're not using a custom CA)
+	if err != nil {
+		return mover.InProgress(), err
+	}
+
 	// Start mover Job
-	job, err := m.ensureJob(ctx, cachePVC, dataPVC, sa, repo)
+	job, err := m.ensureJob(ctx, cachePVC, dataPVC, sa, repo, caSecret)
 	if job == nil || err != nil {
 		return mover.InProgress(), err
 	}
@@ -258,9 +270,31 @@ func (m *Mover) validateRepository(ctx context.Context) (*corev1.Secret, error) 
 	return secret, nil
 }
 
+func (m *Mover) validateCASecret(ctx context.Context) (*corev1.Secret, error) {
+	if m.caSecretName == "" || m.caSecretKey == "" {
+		// Not using a custom CA
+		return nil, nil
+	}
+
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      m.caSecretName,
+			Namespace: m.owner.GetNamespace(),
+		},
+	}
+	logger := m.logger.WithValues("caSecret", client.ObjectKeyFromObject(secret))
+	if err := utils.GetAndValidateSecret(ctx, m.client, logger, secret,
+		m.caSecretKey); err != nil {
+		logger.Error(err, "Restic CA secret does not contain the proper field", "missingField", m.caSecretKey)
+		return nil, err
+	}
+	return secret, nil
+}
+
 //nolint:funlen
 func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolumeClaim,
-	dataPVC *corev1.PersistentVolumeClaim, sa *corev1.ServiceAccount, repo *corev1.Secret) (*batchv1.Job, error) {
+	dataPVC *corev1.PersistentVolumeClaim, sa *corev1.ServiceAccount, repo *corev1.Secret,
+	caSecret *corev1.Secret) (*batchv1.Job, error) {
 	dir := "src"
 	if !m.isSource {
 		dir = "dst"
@@ -395,6 +429,30 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 			}
 			job.Spec.Template.Spec.NodeSelector = affinity.NodeSelector
 			job.Spec.Template.Spec.Tolerations = affinity.Tolerations
+		}
+		if caSecret != nil {
+			// Tell mover where to find the cert
+			job.Spec.Template.Spec.Containers[0].Env = append(job.Spec.Template.Spec.Containers[0].Env, corev1.EnvVar{
+				Name:  "CUSTOM_CA",
+				Value: path.Join(resticCAMountPath, resticCAFilename),
+			})
+			// Mount the custom CA certificate
+			job.Spec.Template.Spec.Containers[0].VolumeMounts =
+				append(job.Spec.Template.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
+					Name:      "custom-ca",
+					MountPath: resticCAMountPath,
+				})
+			job.Spec.Template.Spec.Volumes = append(job.Spec.Template.Spec.Volumes, corev1.Volume{
+				Name: "custom-ca",
+				VolumeSource: corev1.VolumeSource{
+					Secret: &corev1.SecretVolumeSource{
+						SecretName: caSecret.Name,
+						Items: []corev1.KeyToPath{
+							{Key: m.caSecretKey, Path: resticCAFilename},
+						},
+					},
+				},
+			})
 		}
 		return nil
 	})

@@ -9,6 +9,12 @@ set -e -o pipefail
 echo "VolSync restic container version: ${version:-unknown}"
 echo  "$@"
 
+declare -a RESTIC
+RESTIC=("restic")
+if [[ -n "${CUSTOM_CA}" ]]; then
+    echo "Using custom CA."
+    RESTIC+=(--cacert "${CUSTOM_CA}")
+fi
 
 # Force the associated backup host name to be "volsync"
 RESTIC_HOST="volsync"
@@ -44,11 +50,11 @@ function ensure_initialized {
     echo "== Initialize Dir ======="
     # Try a restic command and capture the rc & output
     outfile=$(mktemp -q)
-    if ! restic snapshots 2>"$outfile"; then
+    if ! "${RESTIC[@]}" snapshots 2>"$outfile"; then
         output=$(<"$outfile")
         # Match against error string for uninitialized repo
         if [[ $output =~ .*(Is there a repository at the following location).* ]]; then
-            restic init
+            "${RESTIC[@]}" init
         else
             cat "$outfile"
             error 3 "failure checking existence of repository"
@@ -60,7 +66,7 @@ function ensure_initialized {
 function do_backup {
     echo "=== Starting backup ==="
     pushd "${DATA_DIR}"
-    restic backup --host "${RESTIC_HOST}" .
+    "${RESTIC[@]}" backup --host "${RESTIC_HOST}" .
     popd
 }
 
@@ -68,13 +74,13 @@ function do_forget {
     echo "=== Starting forget ==="
     if [[ -n ${FORGET_OPTIONS} ]]; then
         #shellcheck disable=SC2086
-        restic forget --host "${RESTIC_HOST}" ${FORGET_OPTIONS}
+        "${RESTIC[@]}" forget --host "${RESTIC_HOST}" ${FORGET_OPTIONS}
     fi
 }
 
 function do_prune {
     echo "=== Starting prune ==="
-    restic prune
+    "${RESTIC[@]}" prune
 }
 
 #######################################
@@ -162,7 +168,7 @@ function select_restic_snapshot_to_restore() {
 
     # go through the timestamps received from restic
     IFS=$'\n'
-    for line in $(restic -r "${RESTIC_REPOSITORY}" snapshots | grep /data | awk '{print $1 "\t" $2 " " $3}'); do
+    for line in $("${RESTIC[@]}" -r "${RESTIC_REPOSITORY}" snapshots | grep /data | awk '{print $1 "\t" $2 " " $3}'); do
         # extract the proper variables
         snapshot_id=$(echo -e "${line}" | cut -d$'\t' -f1)
         snapshot_ts=$(echo -e "${line}" | cut -d$'\t' -f2)
@@ -222,7 +228,7 @@ function do_restore {
     else
     pushd "${DATA_DIR}"
         echo "Selected restic snapshot with id: ${snapshot_id}"
-        restic restore -t . --host "${RESTIC_HOST}" "${snapshot_id}"
+        "${RESTIC[@]}" restore -t . --host "${RESTIC_HOST}" "${snapshot_id}"
         popd
     fi
 }
