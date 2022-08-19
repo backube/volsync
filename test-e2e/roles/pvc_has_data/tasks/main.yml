@@ -15,44 +15,46 @@
   ansible.builtin.set_fact:
     local_should_fail: "{{ should_fail | default(false) }}"
 
-- name: Create Pod
+- name: Create Job
   kubernetes.core.k8s:
     state: present
-    template: pod.yml.j2
+    template: job.yml.j2
   register: res
 
 - name: Wait for check to complete successfully
   kubernetes.core.k8s_info:
-    api_version: v1
-    kind: Pod
+    api_version: batch/v1
+    kind: Job
     name: "{{ res.result.metadata.name }}"
     namespace: "{{ namespace }}"
   register: res2
   when: not local_should_fail
   until: >
     res2.resources | length > 0 and
-    res2.resources[0].status.phase=="Succeeded"
+    res2.resources[0].status.succeeded is defined and
+    res2.resources[0].status.succeeded==1
   delay: 1
   retries: "{{ timeout | default(60) }}"
 
 - name: Wait for check to fail
   kubernetes.core.k8s_info:
-    api_version: v1
-    kind: Pod
+    api_version: batch/v1
+    kind: Job
     name: "{{ res.result.metadata.name }}"
     namespace: "{{ namespace }}"
   register: res2
   when: local_should_fail
   until: >
     res2.resources | length > 0 and
-    res2.resources[0].status.phase=="Failed"
+    res2.resources[0].status.failed is defined and
+    res2.resources[0].status.failed==1
   delay: 1
   retries: "{{ timeout | default(60) }}"
 
-- name: Delete Pod
+- name: Delete Job
   kubernetes.core.k8s:
     state: absent
-    api_version: v1
-    kind: Pod
+    api_version: batch/v1
+    kind: Job
     name: "{{ res.result.metadata.name }}"
     namespace: "{{ namespace }}"
