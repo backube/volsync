@@ -14,6 +14,7 @@ GOLANGCI_VERSION := v1.46.1
 HELM_VERSION := v3.8.2
 KUSTOMIZE_VERSION := v4.5.4
 OPERATOR_SDK_VERSION := v1.22.0
+PIPENV_VERSION := 2022.8.19
 
 # We don't vendor modules. Enforce that behavior
 export GOFLAGS := -mod=readonly
@@ -125,7 +126,7 @@ test: bundle generate lint envtest helm-lint ginkgo ## Run tests.
 
 .PHONY: test-e2e-install
 test-e2e-install: ## Install environment for running e2e
-	pip install --user --upgrade pipenv
+	pip install --user --upgrade pipenv==$(PIPENV_VERSION)
 	cd test-e2e && pipenv install --deploy --no-site-packages -v
 	cd test-e2e && pipenv run ansible-galaxy install -r requirements.yml
 
