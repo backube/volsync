@@ -1,7 +1,0 @@
----
-kind: Pod
-apiVersion: v1
-metadata:
-  name: source
-status:
-  phase: Running

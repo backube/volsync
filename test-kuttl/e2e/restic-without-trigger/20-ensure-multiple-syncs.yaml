@@ -1,9 +1,0 @@
----
-apiVersion: kuttl.dev/v1beta1
-kind: TestStep
-commands:
-  - script: |
-      set -e -o pipefail
-      kubectl -n $NAMESPACE wait --for=condition=Synchronizing=true --timeout=5m ReplicationSource/source
-      kubectl -n $NAMESPACE wait --for=condition=Synchronizing=false --timeout=5m ReplicationSource/source
-      kubectl -n $NAMESPACE wait --for=condition=Synchronizing=true --timeout=5m ReplicationSource/source

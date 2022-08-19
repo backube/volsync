@@ -13,8 +13,8 @@ CONTROLLER_TOOLS_VERSION := v0.9.0
 GOLANGCI_VERSION := v1.46.1
 HELM_VERSION := v3.8.2
 KUSTOMIZE_VERSION := v4.5.4
-KUTTL_VERSION := 0.12.1
 OPERATOR_SDK_VERSION := v1.22.0
+PIPENV_VERSION := 2022.8.19
 
 # We don't vendor modules. Enforce that behavior
 export GOFLAGS := -mod=readonly
@@ -124,10 +124,15 @@ test: bundle generate lint envtest helm-lint ginkgo ## Run tests.
 	-rm -f cover.out
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" $(GINKGO) $(TEST_ARGS) $(TEST_PACKAGES)
 
+.PHONY: test-e2e-install
+test-e2e-install: ## Install environment for running e2e
+	pip install --user --upgrade pipenv==$(PIPENV_VERSION)
+	cd test-e2e && pipenv install --deploy --no-site-packages -v
+	cd test-e2e && pipenv run ansible-galaxy install -r requirements.yml
+
 .PHONY: test-e2e
-test-e2e: kuttl ## Run e2e tests. Requires cluster w/ VolSync already installed
-	cd test-kuttl && $(KUTTL) test
-	rm -f test-kuttl/kubeconfig
+test-e2e: ## Run e2e tests. Requires cluster w/ VolSync + minio already installed
+	./test-e2e/run_tests_in_parallel.sh
 
 .PHONY: test-krew
 test-krew: krew-plugin-manifest
@@ -320,13 +325,6 @@ HELM_URL := https://get.helm.sh/helm-$(HELM_VERSION)-$(OS)-$(ARCH).tar.gz
 helm: $(HELM) ## Download helm
 $(HELM): $(LOCALBIN)
 	curl -sSL "$(HELM_URL)" | tar xzf - -C $(LOCALBIN) --strip-components=1 --wildcards '*/helm'
-
-.PHONY: kuttl
-KUTTL := $(LOCALBIN)/kuttl
-KUTTL_URL := https://github.com/kudobuilder/kuttl/releases/download/v$(KUTTL_VERSION)/kubectl-kuttl_$(KUTTL_VERSION)_$(OS)_x86_64
-kuttl: $(KUTTL) ## Download kuttl
-$(KUTTL): $(LOCALBIN)
-	$(call download-tool,$(KUTTL),$(KUTTL_URL))
 
 .PHONY: operator-sdk
 OPERATOR_SDK := $(LOCALBIN)/operator-sdk
