@@ -91,3 +91,33 @@
       vars:
         pvc1_name: pvc1
         pvc2_name: pvc2
+
+    - name: Run pvc affinity pod
+      include_role:
+        name: pvc_affinity_pod
+      vars:
+        pvc_names:
+          - pvc1
+          - pvc2
+
+    - name: Check pvc affinity pod is running
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        name: "{{ pvc_affinity_pod_name }}"
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.phase is defined and
+        res.resources[0].status.phase=="Running"
+      delay: 10
+      retries: 60
+
+    - name: Shutdown pvc affinity pod
+      kubernetes.core.k8s:
+        state: absent
+        api_version: v1
+        kind: Pod
+        name: "{{ pvc_affinity_pod_name }}"
+        namespace: "{{ namespace }}"

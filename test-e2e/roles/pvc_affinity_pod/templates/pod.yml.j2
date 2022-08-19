@@ -3,7 +3,7 @@
 kind: Pod
 apiVersion: v1
 metadata:
-  generateName: compare-pvcs-
+  generateName: pvc-affinity-pod-
   namespace: "{{ namespace }}"
 spec:
   containers:
@@ -13,19 +13,7 @@ spec:
       command: ["sh", "-c"]
       args:
         - |
-          set -x -e -o pipefail
-
-          find /mnt -type f | \
-            xargs sha256sum | \
-            sed 's| /mnt/| /mnt2/|g' | \
-            grep -v lost+found | \
-            sha256sum -c
-
-          find /mnt2 -type f | \
-            xargs sha256sum | \
-            sed 's| /mnt2/| /mnt/|' | \
-            grep -v lost+found | \
-            sha256sum -c
+          sleep 99999
       securityContext:
         allowPrivilegeEscalation: false
         capabilities:
@@ -38,15 +26,11 @@ spec:
           type: RuntimeDefault
 {% endif %}
       volumeMounts:
-        - name: pvc1
-          mountPath: "/mnt"
-        - name: pvc2
-          mountPath: "/mnt2"
-{% if local_should_fail %}
-  restartPolicy: Never
-{% else %}
+{% for pvc_name in pvc_names %}
+        - name: "pvc-{{ pvc_name }}"
+          mountPath: "/mnt-{{ pvc_name }}"
+{% endfor %}
   restartPolicy: OnFailure
-{% endif %}
   securityContext:
 {# On Openshift, we can't specify fsGroup becuase the group must be #}
 {# auto-chosen w/in the range allowed in the Namespace #}
@@ -56,9 +40,8 @@ spec:
     runAsNonRoot: true
   terminationGracePeriodSeconds: 2
   volumes:
-    - name: pvc1
+{% for pvc_name in pvc_names %}
+    - name: "pvc-{{ pvc_name }}"
       persistentVolumeClaim:
-        claimName: "{{ pvc1_name }}"
-    - name: pvc2
-      persistentVolumeClaim:
-        claimName: "{{ pvc2_name }}"
+        claimName: "{{ pvc_name }}"
+{% endfor %}
