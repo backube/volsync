@@ -50,6 +50,7 @@ function ensure_initialized {
         if [[ $output =~ .*(Is there a repository at the following location).* ]]; then
             restic init
         else
+            cat "$outfile"
             error 3 "failure checking existence of repository"
         fi
     fi
