@@ -29,7 +29,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@d0651293c4a5a52e711f25b41b05b2212f385d28
+        uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b
 
       - name: Install prereqs
         run: |
@@ -47,7 +47,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@d0651293c4a5a52e711f25b41b05b2212f385d28
+        uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b
         with:
           fetch-depth: 0
 
@@ -83,7 +83,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@d0651293c4a5a52e711f25b41b05b2212f385d28
+        uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b
 
       - name: Build operator container
         run: make docker-build IMG=${OPERATOR_IMAGE}
@@ -103,7 +103,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@d0651293c4a5a52e711f25b41b05b2212f385d28
+        uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b
 
       - name: Build operator container
         run: make -C mover-rclone image
@@ -123,7 +123,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@d0651293c4a5a52e711f25b41b05b2212f385d28
+        uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b
 
       - name: Build operator container
         run: make -C mover-restic image
@@ -143,7 +143,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@d0651293c4a5a52e711f25b41b05b2212f385d28
+        uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b
 
       - name: Build operator container
         run: make -C mover-rsync image
@@ -163,7 +163,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@d0651293c4a5a52e711f25b41b05b2212f385d28
+        uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b
 
       - name: Build operator container
         run: make -C mover-syncthing image
@@ -186,7 +186,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@d0651293c4a5a52e711f25b41b05b2212f385d28
+        uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b
         with:
           # Fetch whole history so we can properly determine the version string
           # (required by krew validation)
@@ -246,7 +246,7 @@ jobs:
       KUBERNETES_VERSION: ${{ matrix.KUBERNETES_VERSIONS }}
     steps:
       - name: Checkout source
-        uses: actions/checkout@d0651293c4a5a52e711f25b41b05b2212f385d28
+        uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b
 
       # We set bash as the default shell (instead of dash) because the kuttl
       # test steps require bash, but the "script" directive executes them as "sh
