@@ -72,6 +72,7 @@ var _ sm.ReplicationMachine = &rdMachine{}
 //+kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=core,resources=namespaces,verbs=get;list;watch
 //+kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;update;patch
 //+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=roles,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;list;watch;create;update;patch;delete
@@ -103,7 +104,13 @@ func (r *ReplicationDestinationReconciler) Reconcile(ctx context.Context, req ct
 		return result, err
 	}
 
-	rdm, err := newRDMachine(inst, r.Client, logger, record.NewEventRecorderAdapter(r.EventRecorder))
+	// Check if privileged movers are allowed via namespace annotation
+	privilegedMoverOk, err := utils.PrivilegedMoversOk(ctx, r.Client, logger, inst.GetNamespace())
+	if err != nil {
+		return result, err
+	}
+
+	rdm, err := newRDMachine(inst, r.Client, logger, record.NewEventRecorderAdapter(r.EventRecorder), privilegedMoverOk)
 
 	// Using only external method
 	if errors.Is(err, mover.ErrNoMoverFound) && inst.Spec.External != nil {
@@ -164,8 +171,8 @@ func (r *ReplicationDestinationReconciler) SetupWithManager(mgr ctrl.Manager) er
 }
 
 func newRDMachine(rd *volsyncv1alpha1.ReplicationDestination, c client.Client,
-	l logr.Logger, er events.EventRecorder) (*rdMachine, error) {
-	dataMover, err := mover.GetDestinationMoverFromCatalog(c, l, er, rd)
+	l logr.Logger, er events.EventRecorder, privilegedMoverOk bool) (*rdMachine, error) {
+	dataMover, err := mover.GetDestinationMoverFromCatalog(c, l, er, rd, privilegedMoverOk)
 	if err != nil {
 		return nil, err
 	}

@@ -117,7 +117,8 @@ var _ = Describe("Rclone init flags and env vars", func() {
 				},
 				Status: &volsyncv1alpha1.ReplicationSourceStatus{}, // Controller sets status to non-nil
 			}
-			sourceMover, err := builderForInitTests.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs)
+			sourceMover, err := builderForInitTests.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs,
+				true /* privileged */)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(sourceMover).NotTo(BeNil())
 			sourceRcloneMover, _ := sourceMover.(*Mover)
@@ -134,7 +135,8 @@ var _ = Describe("Rclone init flags and env vars", func() {
 				},
 				Status: &volsyncv1alpha1.ReplicationDestinationStatus{}, // Controller sets status to non-nil
 			}
-			destMover, err := builderForInitTests.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd)
+			destMover, err := builderForInitTests.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd,
+				true /* privileged */)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(destMover).NotTo(BeNil())
 			destRcloneMover, _ := destMover.(*Mover)
@@ -193,7 +195,8 @@ var _ = Describe("Rclone ignores other movers", func() {
 					Rclone: nil,
 				},
 			}
-			m, e := commonBuilderForTestSuite.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs)
+			m, e := commonBuilderForTestSuite.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs,
+				true /* privileged */)
 			Expect(m).To(BeNil())
 			Expect(e).NotTo(HaveOccurred())
 		})
@@ -209,7 +212,8 @@ var _ = Describe("Rclone ignores other movers", func() {
 					Rclone: nil,
 				},
 			}
-			m, e := commonBuilderForTestSuite.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd)
+			m, e := commonBuilderForTestSuite.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd,
+				true /* privileged */)
 			Expect(m).To(BeNil())
 			Expect(e).NotTo(HaveOccurred())
 		})
@@ -279,7 +283,8 @@ var _ = Describe("Rclone as a source", func() {
 			// Controller sets status to non-nil
 			rs.Status = &volsyncv1alpha1.ReplicationSourceStatus{}
 			// Instantiate a rclone mover for the tests
-			m, err := commonBuilderForTestSuite.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs)
+			m, err := commonBuilderForTestSuite.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs,
+				true /* privileged */)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(m).NotTo(BeNil())
 			mover, _ = m.(*Mover)
@@ -771,7 +776,8 @@ var _ = Describe("Rclone as a destination", func() {
 			// Controller sets status to non-nil
 			rd.Status = &volsyncv1alpha1.ReplicationDestinationStatus{}
 			// Instantiate a restic mover for the tests
-			m, err := commonBuilderForTestSuite.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd)
+			m, err := commonBuilderForTestSuite.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd,
+				true /* privileged */)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(m).NotTo(BeNil())
 			mover, _ = m.(*Mover)

@@ -88,7 +88,7 @@ func (rb *Builder) getRsyncContainerImage() string {
 
 func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 	eventRecorder events.EventRecorder,
-	source *volsyncv1alpha1.ReplicationSource) (mover.Mover, error) {
+	source *volsyncv1alpha1.ReplicationSource, privileged bool) (mover.Mover, error) {
 	// Only build if the CR belongs to us
 	if source.Spec.Rsync == nil {
 		return nil, nil
@@ -129,7 +129,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 
 func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 	eventRecorder events.EventRecorder,
-	destination *volsyncv1alpha1.ReplicationDestination) (mover.Mover, error) {
+	destination *volsyncv1alpha1.ReplicationDestination, privileged bool) (mover.Mover, error) {
 	// Only build if the CR belongs to us
 	if destination.Spec.Rsync == nil {
 		return nil, nil

@@ -76,7 +76,8 @@ var _ = Describe("Syncthing ignores other movers", func() {
 		}
 
 		// ensures that nothing happens
-		mover, err := commonBuilderForTestSuite.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs)
+		mover, err := commonBuilderForTestSuite.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs,
+			true /* privileged */)
 		Expect(mover).To(BeNil())
 		Expect(err).NotTo(HaveOccurred())
 	})
@@ -111,7 +112,8 @@ var _ = Describe("Syncthing doesn't implement RD", func() {
 			}
 
 			// get a builder from the xRD to ensure that this errors
-			m, e := commonBuilderForTestSuite.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd)
+			m, e := commonBuilderForTestSuite.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd,
+				true /* privileged */)
 			Expect(e).To(BeNil())
 			Expect(m).To(BeNil())
 		})
@@ -188,7 +190,8 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 			rs.Status = &volsyncv1alpha1.ReplicationSourceStatus{}
 
 			// create a syncthing mover
-			m, err := commonBuilderForTestSuite.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs)
+			m, err := commonBuilderForTestSuite.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs,
+				true /* privileged */)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(m).NotTo(BeNil())
 
@@ -1225,7 +1228,8 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 		rs.Status = &volsyncv1alpha1.ReplicationSourceStatus{}
 
 		// make sure that builder is successfully retrieved
-		m, err := commonBuilderForTestSuite.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs)
+		m, err := commonBuilderForTestSuite.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs,
+			true /* privileged */)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(m).ToNot(BeNil())
 	})

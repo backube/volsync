@@ -41,6 +41,7 @@ import (
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers/mover"
 	sm "github.com/backube/volsync/controllers/statemachine"
+	"github.com/backube/volsync/controllers/utils"
 )
 
 // ReplicationSourceReconciler reconciles a ReplicationSource object
@@ -74,6 +75,7 @@ var _ sm.ReplicationMachine = &rsMachine{}
 //+kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=core,resources=namespaces,verbs=get;list;watch
 //+kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;update;patch
 //+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=roles,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;list;watch;create;update;patch;delete
@@ -98,7 +100,13 @@ func (r *ReplicationSourceReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	var result ctrl.Result
 	var err error
 
-	rsm, err := newRSMachine(inst, r.Client, logger, record.NewEventRecorderAdapter(r.EventRecorder))
+	// Check if privileged movers are allowed via namespace annotation
+	privilegedMoverOk, err := utils.PrivilegedMoversOk(ctx, r.Client, logger, inst.GetNamespace())
+	if err != nil {
+		return result, err
+	}
+
+	rsm, err := newRSMachine(inst, r.Client, logger, record.NewEventRecorderAdapter(r.EventRecorder), privilegedMoverOk)
 
 	// Using only external method
 	if errors.Is(err, mover.ErrNoMoverFound) && inst.Spec.External != nil {
@@ -156,8 +164,8 @@ func (r *ReplicationSourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func newRSMachine(rs *volsyncv1alpha1.ReplicationSource, c client.Client,
-	l logr.Logger, er events.EventRecorder) (*rsMachine, error) {
-	dataMover, err := mover.GetSourceMoverFromCatalog(c, l, er, rs)
+	l logr.Logger, er events.EventRecorder, privilegedMoverOk bool) (*rsMachine, error) {
+	dataMover, err := mover.GetSourceMoverFromCatalog(c, l, er, rs, privilegedMoverOk)
 	if err != nil {
 		return nil, err
 	}
