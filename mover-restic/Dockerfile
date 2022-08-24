@@ -19,7 +19,8 @@ RUN /bin/bash -c "[[ $(git rev-list -n 1 HEAD) == ${RESTIC_GIT_HASH} ]]"
 ENV GOFLAGS=-mod=readonly
 # Preserve symbols so that we can verify crypto libs
 RUN sed -i 's/preserveSymbols := false/preserveSymbols := true/g' build.go
-RUN go run build.go --enable-cgo
+# RUN go run build.go --enable-cgo
+RUN go run build.go  # with cgo disabled, fips libraries will not be used
 
 # Verify that FIPS crypto libs are accessible
 # Check removed since official images don't support boring crypto
