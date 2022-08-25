@@ -4,16 +4,21 @@ USER root
 
 WORKDIR /workspace
 
-ARG RESTIC_VERSION=v0.13.1
 # hash: git rev-list -n 1 ${RESTIC_VERSION}
+ARG RESTIC_VERSION=v0.13.1
 ARG RESTIC_GIT_HASH=594f155eb6faf57dd02508283f8d84dfa4c125a7
-
 RUN git clone --depth 1 -b ${RESTIC_VERSION} https://github.com/restic/restic.git
+RUN cd restic && /bin/bash -c "[[ $(git rev-list -n 1 HEAD) == ${RESTIC_GIT_HASH} ]]"
+
+ARG MINIOGO_VERSION=v7.0.14
+ARG MINIOGO_GIT_HASH=33097a3528aba03acc94231fe8fe0d174c6b6411
+RUN git clone --depth 1 -b ${MINIOGO_VERSION} https://github.com/minio/minio-go.git
+RUN cd minio-go && /bin/bash -c "[[ $(git rev-list -n 1 HEAD) == ${MINIOGO_GIT_HASH} ]]"
+
+ADD patch-sources.sh .
+RUN ./patch-sources.sh
 
 WORKDIR /workspace/restic
-
-# Make sure the Restic version tag matches the git hash we're expecting
-RUN /bin/bash -c "[[ $(git rev-list -n 1 HEAD) == ${RESTIC_GIT_HASH} ]]"
 
 # We don't vendor modules. Enforce that behavior
 ENV GOFLAGS=-mod=readonly
