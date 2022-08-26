@@ -13,6 +13,17 @@
 - include_role:
     name: get_minio_credentials
 
+# Path in restic will include the namespace to avoid re-runs of tests interferring with each-other
+# And also to prevent multiple tests from using the same path (each test should use its own namespace)
+- name: Determine repo URL
+  set_fact:
+    repo_url: "s3:http://minio.{{ minio_namespace }}.svc.cluster.local:9000/restic-e2e/{{ namespace }}"
+
+- name: Set repo URL to use TLS
+  set_fact:
+    repo_url: "s3:https://minio.{{ minio_namespace }}.svc.cluster.local:9000/restic-e2e/{{ namespace }}"
+  when: use_tls is defined and use_tls == true
+
 - name: Create restic secret
   kubernetes.core.k8s:
     state: present
@@ -24,9 +35,7 @@
         namespace: "{{ namespace }}"
       type: Opaque
       stringData:
-        # Path in restic will include the namespace to avoid re-runs of tests interferring with each-other
-        # And also to prevent multiple tests from using the same path (each test should use its own namespace)
-        RESTIC_REPOSITORY: s3:http://minio.{{ minio_namespace }}.svc.cluster.local:9000/restic-e2e/{{ namespace }}
+        RESTIC_REPOSITORY: "{{ repo_url }}"
         RESTIC_PASSWORD: ThisIsTheResticPassword{{ namespace }}
         AWS_ACCESS_KEY_ID: "{{ minio_access_key }}"
         AWS_SECRET_ACCESS_KEY: "{{ minio_secret_key }}"
