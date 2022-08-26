@@ -97,25 +97,25 @@ replication method.
      trigger:
        # Take a backup every 30 minutes
        schedule: "*/30 * * * *"
-   restic:
-     # Prune the repository (repack to free space) every 2 weeks
-     pruneIntervalDays: 14
-     # Name of the Secret with the connection information
-     repository: restic-config
-     # Retention policy for backups
-     retain:
-       hourly: 6
-       daily: 5
-       weekly: 4
-       monthly: 2
-       yearly: 1
-     # Clone the source volume prior to taking a backup to ensure a
-     # point-in-time image.
-     copyMethod: Clone
-     # The StorageClass to use when creating the PiT copy (same as source PVC if omitted)
-     #storageClassName: my-sc-name
-     # The VSC to use if the copy method is Snapshot (default if omitted)
-     #volumeSnapshotClassName: my-vsc-name
+     restic:
+       # Prune the repository (repack to free space) every 2 weeks
+       pruneIntervalDays: 14
+       # Name of the Secret with the connection information
+       repository: restic-config
+       # Retention policy for backups
+       retain:
+         hourly: 6
+         daily: 5
+         weekly: 4
+         monthly: 2
+         yearly: 1
+       # Clone the source volume prior to taking a backup to ensure a
+       # point-in-time image.
+       copyMethod: Clone
+       # The StorageClass to use when creating the PiT copy (same as source PVC if omitted)
+       #storageClassName: my-sc-name
+       # The VSC to use if the copy method is Snapshot (default if omitted)
+       #volumeSnapshotClassName: my-vsc-name
 
 Backup options
 --------------
@@ -137,6 +137,16 @@ cacheAccessModes
    This is the access mode(s) that should be used to provision the cache volume.
    It defaults to ``.spec.accessModes``, then to the access modes used by the
    source PVC.
+customCA
+   This option allows a custom certificate authority to be used when making TLS
+   (https) connections to the remote repository.
+
+   key
+      This is the name of the field within the Secret that holds the CA
+      certificate
+   secretName
+      This is the name of a Secret containing the CA certificate
+
 pruneIntervalDays
    This determines the number of days between running ``restic prune`` on the
    repository. The prune operation repacks the data to free space, but it can
@@ -179,11 +189,11 @@ For example, create a PVC to hold the restored data:
    metadata:
      name: datavol
    spec:
-   accessModes:
-     - ReadWriteOnce
-   resources:
-     requests:
-       storage: 3Gi
+     accessModes:
+       - ReadWriteOnce
+     resources:
+       requests:
+         storage: 3Gi
 
 Restore the data into ``datavol``:
 
@@ -235,6 +245,16 @@ cacheAccessModes
    This is the access mode(s) that should be used to provision the cache volume.
    It defaults to ``.spec.accessModes``, then to the access modes used by the
    source PVC.
+customCA
+   This option allows a custom certificate authority to be used when making TLS
+   (https) connections to the remote repository.
+
+   key
+      This is the name of the field within the Secret that holds the CA
+      certificate
+   secretName
+      This is the name of a Secret containing the CA certificate
+
 previous
    Non-negative integer which specifies an offset for how many snapshots ago we
    want to restore from. When ``restoreAsOf`` is provided, the behavior is the
@@ -251,3 +271,50 @@ restoreAsOf
    timestamp, Kubernetes will only accept ones with the day and hour fields
    separated by a ``T``. E.g, ``2022-08-10T20:01:03-04:00`` will work but
    ``2022-08-10 20:01:03-04:00`` will fail.
+
+Using a custom certificate authority
+====================================
+
+Normally, Restic will use a default set of certificates to verify the validity
+of remote repositories when making https connections. However, users that deploy
+with a self-signed certificate will need to provide their CA's certificate via
+the ``customCA`` option.
+
+The custom CA certificate needs to be provided in a Secret to VolSync. For
+example, if the CA certificate is a file in the current directory named
+``ca.crt``, it can be loaded as a Secret:
+
+.. code-block:: console
+
+   $ kubectl create secret generic tls-secret --from-file=ca.crt=./ca.crt
+   secret/tls-secret created
+
+   $ kubectl describe secret/tls-secret
+   Name:         tls-secret
+   Namespace:    default
+   Labels:       <none>
+   Annotations:  <none>
+
+   Type:  Opaque
+
+   Data
+   ====
+   ca.crt:  1127 bytes
+
+This Secret would then be used in the ReplicationSource and/or
+ReplicationDestination objects:
+
+.. code-block:: yaml
+
+   ---
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: mydata-backup-with-customca
+   spec:
+     # ... fields omitted ...
+     restic:
+       # ... other fields omitted ...
+       customCA:
+         secretName: tls-secret
+         key: ca.crt
