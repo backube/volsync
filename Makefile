@@ -126,9 +126,9 @@ test: bundle generate lint envtest helm-lint ginkgo ## Run tests.
 
 .PHONY: test-e2e-install
 test-e2e-install: ## Install environment for running e2e
-	pip install --user --upgrade pipenv==$(PIPENV_VERSION)
-	cd test-e2e && pipenv install --deploy --no-site-packages -v
-	cd test-e2e && pipenv run ansible-galaxy install -r requirements.yml
+	./.ci-scripts/retry.sh pip install --user --upgrade pipenv==$(PIPENV_VERSION)
+	cd test-e2e && ../.ci-scripts/retry.sh pipenv install --deploy --no-site-packages -v
+	cd test-e2e && ../.ci-scripts/retry.sh pipenv run ansible-galaxy install -r requirements.yml
 
 .PHONY: test-e2e
 test-e2e: ## Run e2e tests. Requires cluster w/ VolSync + minio already installed
