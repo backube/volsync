@@ -9,7 +9,7 @@
     loop_var: var_check
 
 - name: Retrieve objects
-  command: "kubectl -n {{ namespace }} describe all,pvc,secrets,volumesnapshots,replicationsource,replicationdestination"
+  command: "kubectl -n {{ namespace }} describe all,pvc,volumesnapshots,replicationsource,replicationdestination"
   register: rv
 
 - name: Print objects in {{ namespace }}
