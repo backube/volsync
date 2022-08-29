@@ -27,7 +27,7 @@
     res2.resources | length > 0 and
     res2.resources[0].status.phase=="Running"
   delay: 1
-  retries: 60
+  retries: "{{ timeout | default(300) }}"
 
 - name: Save pod name
   ansible.builtin.set_fact:

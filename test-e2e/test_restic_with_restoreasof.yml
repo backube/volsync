@@ -72,8 +72,8 @@
         res.resources | length > 0 and
         res.resources[0].status.lastManualSync is defined and
         res.resources[0].status.lastManualSync=="once"
-      delay: 10
-      retries: 60
+      delay: 1
+      retries: 900
 
     - name: Create dest PVC (restore volume)
       kubernetes.core.k8s:
@@ -132,8 +132,8 @@
         res.resources | length > 0 and
         res.resources[0].status.lastManualSync is defined and
         res.resources[0].status.lastManualSync=="restore-once"
-      delay: 10
-      retries: 60
+      delay: 1
+      retries: 300
 
     - name: Shutdown pvc affinity pod
       kubernetes.core.k8s:
@@ -212,8 +212,8 @@
         res.resources | length > 0 and
         res.resources[0].status.lastManualSync is defined and
         res.resources[0].status.lastManualSync=="restore-once-now"
-      delay: 10
-      retries: 60
+      delay: 1
+      retries: 300
 
     - name: Shutdown pvc affinity pod for current restoreasof
       kubernetes.core.k8s:
@@ -288,8 +288,8 @@
         res.resources | length > 0 and
         res.resources[0].status.lastManualSync is defined and
         res.resources[0].status.lastManualSync=="once-again"
-      delay: 10
-      retries: 60
+      delay: 1
+      retries: 900
 
     - name: Run pvc affinity pod for dest PVC for previous restoreasof
       include_role:
@@ -328,8 +328,8 @@
         res.resources | length > 0 and
         res.resources[0].status.lastManualSync is defined and
         res.resources[0].status.lastManualSync=="restore-once-previous"
-      delay: 10
-      retries: 60
+      delay: 1
+      retries: 300
 
     - name: Shutdown pvc affinity pod for previous restoreasof
       kubernetes.core.k8s:

@@ -103,7 +103,7 @@
           - "-r"
           - "replication"
           - "sync"
-        timeout: 300  # Command doesn't return until keys have been generated & copied
+        timeout: 900  # Command doesn't return until sync completes
 
     - name: Clean up replication resources
       include_role:
