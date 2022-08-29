@@ -48,6 +48,9 @@ const (
 	// CopyMethodSnapshot indicates a copy should be created using a volume
 	// snapshot.
 	CopyMethodSnapshot CopyMethodType = "Snapshot"
+
+	// Namespace annotation to indicate that elevated permissions are ok for movers
+	PrivilegedMoversNamespaceAnnotation = "volsync.backube/privileged-movers"
 )
 
 const (

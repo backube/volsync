@@ -50,14 +50,14 @@ type Builder interface {
 	// this function should return (nil, nil).
 	FromSource(client client.Client, logger logr.Logger,
 		eventRecorder events.EventRecorder,
-		source *volsyncv1alpha1.ReplicationSource) (Mover, error)
+		source *volsyncv1alpha1.ReplicationSource, privileged bool) (Mover, error)
 
 	// FromDestination attempts to construct a Mover from the provided
 	// ReplicationDestination. If the RS does not reference the Builder's mover
 	// type, this function should return (nil, nil).
 	FromDestination(client client.Client, logger logr.Logger,
 		eventRecorder events.EventRecorder,
-		destination *volsyncv1alpha1.ReplicationDestination) (Mover, error)
+		destination *volsyncv1alpha1.ReplicationDestination, privileged bool) (Mover, error)
 
 	// VersionInfo returns a string describing the version of this mover. In
 	// most cases, this is the container image/tag that will be used.
@@ -66,10 +66,10 @@ type Builder interface {
 
 func GetDestinationMoverFromCatalog(client client.Client, logger logr.Logger,
 	eventRecorder events.EventRecorder,
-	destination *volsyncv1alpha1.ReplicationDestination) (Mover, error) {
+	destination *volsyncv1alpha1.ReplicationDestination, privileged bool) (Mover, error) {
 	var dataMover Mover
 	for _, builder := range Catalog {
-		candidate, err := builder.FromDestination(client, logger, eventRecorder, destination)
+		candidate, err := builder.FromDestination(client, logger, eventRecorder, destination, privileged)
 		if err == nil && candidate != nil {
 			if dataMover != nil {
 				// Found 2 movers claiming this CR...
@@ -86,10 +86,10 @@ func GetDestinationMoverFromCatalog(client client.Client, logger logr.Logger,
 
 func GetSourceMoverFromCatalog(client client.Client, logger logr.Logger,
 	eventRecorder events.EventRecorder,
-	source *volsyncv1alpha1.ReplicationSource) (Mover, error) {
+	source *volsyncv1alpha1.ReplicationSource, privileged bool) (Mover, error) {
 	var dataMover Mover
 	for _, builder := range Catalog {
-		candidate, err := builder.FromSource(client, logger, eventRecorder, source)
+		candidate, err := builder.FromSource(client, logger, eventRecorder, source, privileged)
 		if err == nil && candidate != nil {
 			if dataMover != nil {
 				// Found 2 movers claiming this CR...
