@@ -79,7 +79,7 @@
           - "replication"
           - "schedule"
           - "--cronspec"
-          - "*/5 * * * *"
+          - "0 0 1 1 *"
         timeout: 300  # Command doesn't return until keys have been generated & copied
 
     - name: Wait for sync to complete
@@ -122,3 +122,4 @@
       vars:
         pvc1_name: data-source
         pvc2_name: data-dest
+        timeout: 300
