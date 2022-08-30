@@ -98,3 +98,19 @@ func GetServiceAddress(svc *corev1.Service) string {
 	}
 	return address
 }
+
+func PvcIsReadOnly(pvc *corev1.PersistentVolumeClaim) bool {
+	pvcAccessModes := pvc.Status.AccessModes
+	if len(pvcAccessModes) == 0 {
+		// fall back to spec
+		pvcAccessModes = pvc.Spec.AccessModes
+	}
+
+	if len(pvcAccessModes) == 1 && pvcAccessModes[0] == corev1.ReadOnlyMany {
+		// PVC only supports ROX
+		return true
+	}
+
+	// All other access modes support write
+	return false
+}
