@@ -1,14 +1,23 @@
 #! /bin/bash
 
 # 0 is unlimited
-MAX_PARALLELISM=0
+MAX_PARALLELISM=${MAX_PARALLELISM:-0}
+BATCHES=${BATCHES:-0}
 
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 cd "$SCRIPT_DIR" || exit 1
 
 # Tests fit the pattern test_*.xml and are in the current directory
 TESTS="$(find . -maxdepth 1 -type f -name 'test_*.yml' -exec basename {} \;)"
-echo "Tests found: $(echo "$TESTS" | wc -w)"
+NUM_TESTS=$(echo "$TESTS" | wc -w)
+
+if [[ $MAX_PARALLELISM == 0 ]] && [[ $BATCHES -gt 0 ]]; then
+    MAX_PARALLELISM=$(( (NUM_TESTS + BATCHES - 1) / BATCHES ))
+fi
+
+echo "Tests found: $NUM_TESTS"
+echo "Number of batches: $BATCHES"
+echo "Maximum parallelism: $MAX_PARALLELISM"
 
 # Use xargs to run tests in parallel
 # Output is logged to a file .xml -> .log
