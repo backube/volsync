@@ -14,7 +14,7 @@ GOLANGCI_VERSION := v1.46.1
 HELM_VERSION := v3.8.2
 KUSTOMIZE_VERSION := v4.5.4
 OPERATOR_SDK_VERSION := v1.22.0
-PIPENV_VERSION := 2022.8.19
+PIPENV_VERSION := 2022.8.30
 
 # We don't vendor modules. Enforce that behavior
 export GOFLAGS := -mod=readonly
