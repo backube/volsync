@@ -59,8 +59,8 @@
         res.resources[0].status.rsync is defined and
         res.resources[0].status.rsync.sshKeys is defined and
         res.resources[0].status.rsync.address is defined
-      delay: 5
-      retries: 60
+      delay: 1
+      retries: 300
 
     - name: Create ReplicationSource
       kubernetes.core.k8s:
@@ -91,8 +91,8 @@
         res.resources | length > 0 and
         res.resources[0].status.latestImage is defined and
         res.resources[0].status.latestImage.kind == "VolumeSnapshot"
-      delay: 10
-      retries: 60
+      delay: 1
+      retries: 900
 
     - name: Save name of first snapshot
       ansible.builtin.set_fact:
@@ -124,7 +124,7 @@
       vars:
         pvc1_name: data-source
         pvc2_name: data-dest-1
-        timeout: 300
+        timeout: 900
 
     - name: Update data in the source PVC
       include_role:
@@ -158,8 +158,8 @@
         res.resources | length > 0 and
         res.resources[0].status.latestImage is defined and
         res.resources[0].status.latestImage.name != first_snap
-      delay: 10
-      retries: 60
+      delay: 1
+      retries: 900
 
     - name: Save name of second snapshot
       ansible.builtin.set_fact:
@@ -191,7 +191,7 @@
       vars:
         pvc1_name: data-source
         pvc2_name: data-dest-2
-        timeout: 300
+        timeout: 900
 
     - name: Ensure first snapshot was deleted
       kubernetes.core.k8s_info:

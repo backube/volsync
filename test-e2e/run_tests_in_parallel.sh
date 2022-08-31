@@ -29,7 +29,7 @@ else
     done
 
     # Dump cluster state for debugging
-    pipenv run ansible-playbook dump_logs.yml
+    pipenv run ansible-playbook dump_logs.yml | tee dump_logs.log
 
     echo; echo "!!! TESTS FAILED !!!"
 fi

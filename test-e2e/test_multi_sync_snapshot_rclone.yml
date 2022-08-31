@@ -68,8 +68,8 @@
         res.resources | length > 0 and
         res.resources[0].status.lastManualSync is defined and
         res.resources[0].status.lastManualSync=="firstsync"
-      delay: 10
-      retries: 60
+      delay: 1
+      retries: 900
 
     - name: Sync data to destination
       kubernetes.core.k8s:
@@ -102,8 +102,8 @@
         res.resources | length > 0 and
         res.resources[0].status.lastManualSync is defined and
         res.resources[0].status.lastManualSync=="firstsync"
-      delay: 10
-      retries: 60
+      delay: 1
+      retries: 300
 
     - name: Save name of first snapshot
       ansible.builtin.set_fact:
@@ -135,7 +135,7 @@
       vars:
         pvc1_name: data-source
         pvc2_name: data-dest-1
-        timeout: 300
+        timeout: 900
 
     - name: Update data in the source PVC
       include_role:
@@ -169,8 +169,8 @@
         res.resources | length > 0 and
         res.resources[0].status.lastManualSync is defined and
         res.resources[0].status.lastManualSync=="secondsync"
-      delay: 10
-      retries: 60
+      delay: 1
+      retries: 900
 
     - name: Trigger 2nd sync to destination
       kubernetes.core.k8s:
@@ -196,8 +196,8 @@
         res.resources | length > 0 and
         res.resources[0].status.lastManualSync is defined and
         res.resources[0].status.lastManualSync=="secondsync"
-      delay: 10
-      retries: 60
+      delay: 1
+      retries: 300
 
     - name: Save name of second snapshot
       ansible.builtin.set_fact:
@@ -229,7 +229,7 @@
       vars:
         pvc1_name: data-source
         pvc2_name: data-dest-2
-        timeout: 300
+        timeout: 900
 
     - name: Verify first and second snaps were different
       fail: msg="Both snapshots had the same name"

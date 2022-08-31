@@ -59,8 +59,8 @@
         res.resources[0].status.rsync is defined and
         res.resources[0].status.rsync.sshKeys is defined and
         res.resources[0].status.rsync.address is defined
-      delay: 5
-      retries: 60
+      delay: 1
+      retries: 300
 
     - name: Create ReplicationSource
       kubernetes.core.k8s:
@@ -91,8 +91,8 @@
         res.resources | length > 0 and
         res.resources[0].status.latestImage is defined and
         res.resources[0].status.latestImage.kind == "VolumeSnapshot"
-      delay: 10
-      retries: 60
+      delay: 1
+      retries: 900
 
     - name: Convert latestImage to PVC
       kubernetes.core.k8s:
@@ -120,4 +120,4 @@
       vars:
         pvc1_name: data-source
         pvc2_name: data-dest
-        timeout: 300
+        timeout: 900
