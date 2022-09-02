@@ -27,6 +27,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -55,6 +56,7 @@ type Mover struct {
 	isSource            bool
 	paused              bool
 	mainPVCName         *string
+	privileged          bool // true if the mover should have elevated privileges
 }
 
 var _ mover.Mover = &Mover{}
@@ -95,7 +97,7 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 	}
 
 	// Prepare ServiceAccount, role, rolebinding
-	sa, err := m.ensureSA(ctx)
+	sa, err := m.ensureSA(ctx, m.privileged)
 	if sa == nil || err != nil {
 		return mover.InProgress(), err
 	}
@@ -174,7 +176,7 @@ func (m *Mover) getDestinationPVCName() (bool, string) {
 }
 
 // this is so far is common to rclone & restic
-func (m *Mover) ensureSA(ctx context.Context) (*corev1.ServiceAccount, error) {
+func (m *Mover) ensureSA(ctx context.Context, privileged bool) (*corev1.ServiceAccount, error) {
 	dir := "src"
 	if !m.isSource {
 		dir = "dst"
@@ -185,7 +187,7 @@ func (m *Mover) ensureSA(ctx context.Context) (*corev1.ServiceAccount, error) {
 			Namespace: m.owner.GetNamespace(),
 		},
 	}
-	saDesc := utils.NewSAHandler(ctx, m.client, m.owner, sa)
+	saDesc := utils.NewSAHandler(ctx, m.client, m.owner, sa, privileged)
 	cont, err := saDesc.Reconcile(m.logger)
 	if cont {
 		return sa, err
@@ -229,8 +231,6 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 		}
 		job.Spec.Parallelism = &parallelism
 
-		runAsUser := int64(0)
-
 		job.Spec.Template.Spec.Containers = []corev1.Container{{
 			Name: "rclone",
 			Env: []corev1.EnvVar{
@@ -243,7 +243,12 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 			Command: []string{"/bin/bash", "-c", "./active.sh"},
 			Image:   m.containerImage,
 			SecurityContext: &corev1.SecurityContext{
-				RunAsUser: &runAsUser,
+				AllowPrivilegeEscalation: pointer.Bool(false),
+				Capabilities: &corev1.Capabilities{
+					Drop: []corev1.Capability{"ALL"},
+				},
+				Privileged:             pointer.Bool(false),
+				ReadOnlyRootFilesystem: pointer.Bool(true),
 			},
 			VolumeMounts: []corev1.VolumeMount{
 				{Name: dataVolumeName, MountPath: mountPath},
@@ -253,7 +258,6 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 		}}
 		job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
 		job.Spec.Template.Spec.ServiceAccountName = sa.Name
-		secretMode := int32(0600)
 		job.Spec.Template.Spec.Volumes = []corev1.Volume{
 			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
 				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
@@ -264,7 +268,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 			{Name: rcloneSecret, VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
 					SecretName:  rcloneConfigSecret.Name,
-					DefaultMode: &secretMode,
+					DefaultMode: pointer.Int32(0600),
 				}},
 			},
 			{Name: "tempdir", VolumeSource: corev1.VolumeSource{
@@ -283,6 +287,23 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 			job.Spec.Template.Spec.Tolerations = affinity.Tolerations
 		}
 		logger.V(1).Info("Job has PVC", "PVC", dataPVC, "DS", dataPVC.Spec.DataSource)
+
+		// Adjust the Job based on whether the mover should be running as privileged
+		logger.Info("mover permissions", "privileged-mover", m.privileged)
+		podSpec := &job.Spec.Template.Spec
+		if m.privileged {
+			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
+				Name:  "PRIVILEGED_MOVER",
+				Value: "1",
+			})
+			podSpec.Containers[0].SecurityContext.RunAsUser = pointer.Int64(0)
+		} else {
+			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
+				Name:  "PRIVILEGED_MOVER",
+				Value: "0",
+			})
+		}
+
 		return nil
 	})
 	// If Job had failed, delete it so it can be recreated

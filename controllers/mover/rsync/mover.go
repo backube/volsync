@@ -330,7 +330,7 @@ func (m *Mover) ensureSA(ctx context.Context) (*corev1.ServiceAccount, error) {
 			Namespace: m.owner.GetNamespace(),
 		},
 	}
-	saDesc := utils.NewSAHandler(ctx, m.client, m.owner, sa)
+	saDesc := utils.NewSAHandler(ctx, m.client, m.owner, sa, true)
 	cont, err := saDesc.Reconcile(m.logger)
 	if cont {
 		return sa, err

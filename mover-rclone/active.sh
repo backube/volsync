@@ -15,6 +15,8 @@ function error {
 
 [[ -n "${RCLONE_DEST_PATH}" ]] || error 1 "RCLONE_DEST_PATH must be defined"
 [[ -n "${DIRECTION}" ]] || error 1 "DIRECTION must be defined"
+[[ -n "${PRIVILEGED_MOVER}" ]] || error 1 "PRIVILEGED_MOVER must be defined"
+
 
 RCLONE_FLAGS=(--checksum --one-file-system --create-empty-src-dirs --progress --stats-one-line-date --stats 20s --transfers 10)
 

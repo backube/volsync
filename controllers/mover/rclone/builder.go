@@ -117,6 +117,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		isSource:            true,
 		paused:              source.Spec.Paused,
 		mainPVCName:         &source.Spec.SourcePVC,
+		privileged:          privileged,
 	}, nil
 }
 
@@ -151,5 +152,6 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		isSource:            false,
 		paused:              destination.Spec.Paused,
 		mainPVCName:         destination.Spec.Rclone.DestinationPVC,
+		privileged:          privileged,
 	}, nil
 }
