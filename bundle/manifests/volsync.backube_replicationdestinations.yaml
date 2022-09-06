@@ -168,6 +168,18 @@ spec:
                     - Clone
                     - Snapshot
                     type: string
+                  customCA:
+                    description: customCA is a custom CA that will be used to verify
+                      the remote
+                    properties:
+                      key:
+                        description: The key within the Secret containing the CA certificate
+                        type: string
+                      secretName:
+                        description: The name of a Secret that contains the custom
+                          CA certificate
+                        type: string
+                    type: object
                   destinationPVC:
                     description: destinationPVC is a PVC to use as the transfer destination
                       instead of automatically provisioning one. Either this field
