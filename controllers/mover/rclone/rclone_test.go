@@ -574,9 +574,10 @@ var _ = Describe("Rclone as a source", func() {
 
 					c := job.Spec.Template.Spec.Containers[0]
 					// Validate job volume mounts
-					Expect(len(c.VolumeMounts)).To(Equal(2))
+					Expect(len(c.VolumeMounts)).To(Equal(3))
 					foundDataVolumeMount := false
 					foundRcloneSecretVolumeMount := false
+					foundTempMount := false
 					for _, volMount := range c.VolumeMounts {
 						if volMount.Name == dataVolumeName {
 							foundDataVolumeMount = true
@@ -584,10 +585,14 @@ var _ = Describe("Rclone as a source", func() {
 						} else if volMount.Name == rcloneSecret {
 							foundRcloneSecretVolumeMount = true
 							Expect(volMount.MountPath).To(Equal("/rclone-config/"))
+						} else if volMount.Name == "tempdir" {
+							foundTempMount = true
+							Expect(volMount.MountPath).To(Equal("/tmp"))
 						}
 					}
 					Expect(foundDataVolumeMount).To(BeTrue())
 					Expect(foundRcloneSecretVolumeMount).To(BeTrue())
+					Expect(foundTempMount).To(BeTrue())
 				})
 
 				It("Should have correct volumes", func() {
@@ -599,9 +604,10 @@ var _ = Describe("Rclone as a source", func() {
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
 					volumes := job.Spec.Template.Spec.Volumes
-					Expect(len(volumes)).To(Equal(2))
+					Expect(len(volumes)).To(Equal(3))
 					foundDataVolume := false
 					foundRcloneSecretVolume := false
+					foundTemp := false
 					for _, vol := range volumes {
 						if vol.Name == dataVolumeName {
 							foundDataVolume = true
@@ -611,10 +617,14 @@ var _ = Describe("Rclone as a source", func() {
 							foundRcloneSecretVolume = true
 							Expect(vol.VolumeSource.Secret).ToNot(BeNil())
 							Expect(vol.VolumeSource.Secret.SecretName).To(Equal(testRcloneConfig))
+						} else if vol.Name == "tempdir" {
+							foundTemp = true
+							Expect(vol.EmptyDir).ToNot(BeNil())
 						}
 					}
 					Expect(foundDataVolume).To(BeTrue())
 					Expect(foundRcloneSecretVolume).To(BeTrue())
+					Expect(foundTemp).To(BeTrue())
 				})
 
 				It("Should have correct labels", func() {
