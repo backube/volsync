@@ -31,7 +31,7 @@ import (
 // Properties contains properties about the environment in which we are running
 type Properties struct {
 	IsOpenShift        bool // True if we are running on OpenShift
-	HasSCCRestrictedV2 bool // True if the StorageContextConstraints "restricted-v2" exists
+	HasSCCRestrictedV2 bool // True if the SecurityContextConstraints "restricted-v2" exists
 }
 
 //+kubebuilder:rbac:groups=security.openshift.io,resources=securitycontextconstraints,verbs=get;list;watch
