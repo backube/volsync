@@ -5,6 +5,7 @@ extends: default
 ignore: |
   bundle/**
   config/**
+  controllers/platform/scc-crd.yml
   hack/crds/*
   helm/volsync/**
 rules:
