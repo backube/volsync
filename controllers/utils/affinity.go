@@ -23,13 +23,19 @@ import (
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+const nodeHostnameLabelKey = "kubernetes.io/hostname" // Standard kube node hostname label
 
 type AffinityInfo struct {
 	NodeSelector map[string]string
 	Tolerations  []corev1.Toleration
 }
+
+//+kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
+//+kubebuilder:rbac:groups=core,resources=nodes,verbs=get;list;watch
 
 // Determine the proper affinity to apply based on the current users of a PVC
 func AffinityFromVolume(ctx context.Context, c client.Client, logger logr.Logger,
@@ -72,14 +78,42 @@ func AffinityFromVolume(ctx context.Context, c client.Client, logger logr.Logger
 		return &AffinityInfo{}, nil
 	}
 
+	nodeSelector, err := getNodeSelectorForNode(ctx, c, logger, candidatePod.Spec.NodeName)
+	if err != nil {
+		return nil, err
+	}
+
 	affinity := AffinityInfo{
-		NodeSelector: map[string]string{
-			"kubernetes.io/hostname": candidatePod.Spec.NodeName,
-		},
-		Tolerations: candidatePod.Spec.Tolerations,
+		NodeSelector: nodeSelector,
+		Tolerations:  candidatePod.Spec.Tolerations,
 	}
 
 	return &affinity, nil
+}
+
+func getNodeSelectorForNode(ctx context.Context, c client.Client, logger logr.Logger,
+	nodeName string) (map[string]string, error) {
+	node := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: nodeName,
+		},
+	}
+
+	err := c.Get(ctx, client.ObjectKeyFromObject(node), node)
+	if err != nil {
+		logger.Error(err, "Error getting node", "nodeName", nodeName)
+		return nil, err
+	}
+
+	nodeHostnameLabelVal := node.GetLabels()[nodeHostnameLabelKey]
+
+	if nodeHostnameLabelVal == "" {
+		nodeLabelErr := fmt.Errorf("unable to find %s label from node %s for nodeSelector", nodeHostnameLabelKey, nodeName)
+		logger.Error(nodeLabelErr, "Error getting nodeSelector for node", "nodeName", nodeName)
+		return nil, nodeLabelErr
+	}
+
+	return map[string]string{nodeHostnameLabelKey: nodeHostnameLabelVal}, nil
 }
 
 // Find all the Pods using a PVC
