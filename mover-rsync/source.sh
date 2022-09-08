@@ -40,9 +40,18 @@ Host *
 SSHCONFIG
 
 URL_DESTINATION_ADDRESS=$DESTINATION_ADDRESS
-if [[ "$DESTINATION_ADDRESS" == *"::"* || "$DESTINATION_ADDRESS" == *":"*":"*":"*":"*":"*":"*":"* ]]; then
+
+# If we get a bare ipv6 address it must be wrapped with [] for rsync
+# Looking for either:
+# 1) 8 groups of hex digits separated by ":"
+# 2) a "::" in the string
+IPV6_REGEX='(([0-9a-fA-F]{0,4}:){7}[0-9a-fA-F]{0,4})|(::)'
+
+if [[ "$DESTINATION_ADDRESS" =~ $IPV6_REGEX ]]; then
   echo "Destination address $DESTINATION_ADDRESS is ipv6"
-  if [[ "$DESTINATION_ADDRESS" != *"["*"]"* ]]; then
+
+  if [[ ! "$DESTINATION_ADDRESS" =~ \[.*\] ]]; then
+    echo "updating dest ipv6 address to include brackets"
     URL_DESTINATION_ADDRESS="[$DESTINATION_ADDRESS]"
   fi
 fi
