@@ -199,11 +199,16 @@ func (m *Mover) ensureSA(ctx context.Context, privileged bool) (*corev1.ServiceA
 //nolint:funlen
 func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeClaim,
 	sa *corev1.ServiceAccount, rcloneConfigSecret *corev1.Secret) (*batchv1.Job, error) {
-	dir := "src"
-	direction := "source"
-	if !m.isSource {
-		dir = "dst"
-		direction = "destination"
+	dir := "dst"
+	direction := "destination"
+
+	readOnlyVolume := false
+	if m.isSource {
+		dir = "src"
+		direction = "source"
+
+		// Set read-only for volume in source mover job spec if the PVC only supports read-only
+		readOnlyVolume = utils.PvcIsReadOnly(dataPVC)
 	}
 
 	job := &batchv1.Job{
@@ -264,7 +269,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
 				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 					ClaimName: dataPVC.Name,
-					ReadOnly:  false,
+					ReadOnly:  readOnlyVolume,
 				}},
 			},
 			{Name: rcloneSecret, VolumeSource: corev1.VolumeSource{
