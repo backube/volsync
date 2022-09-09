@@ -248,6 +248,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 			VolumeMounts: []corev1.VolumeMount{
 				{Name: dataVolumeName, MountPath: mountPath},
 				{Name: rcloneSecret, MountPath: "/rclone-config/"},
+				{Name: "tempdir", MountPath: "/tmp"},
 			},
 		}}
 		job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
@@ -264,6 +265,11 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 				Secret: &corev1.SecretVolumeSource{
 					SecretName:  rcloneConfigSecret.Name,
 					DefaultMode: &secretMode,
+				}},
+			},
+			{Name: "tempdir", VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{
+					Medium: corev1.StorageMediumMemory,
 				}},
 			},
 		}
