@@ -43,8 +43,8 @@ metadata:
     capabilities: Basic Install
     operators.operatorframework.io/builder: operator-sdk-v1.14.0+git
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
-  name: volsync.v0.4.1
-  olm.skipRange: '>=0.4.0 <0.4.1'
+  name: volsync.v0.4.2
+  olm.skipRange: '>=0.4.0 <0.4.2'
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -387,5 +387,5 @@ spec:
   minKubeVersion: 1.20.0
   provider:
     name: Red Hat
-  replaces: volsync.v0.4.0
-  version: 0.4.1
+  replaces: volsync.v0.4.1
+  version: 0.4.2
