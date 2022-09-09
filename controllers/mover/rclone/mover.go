@@ -42,21 +42,22 @@ const (
 	rcloneSecret   = "rclone-secret"
 )
 
-// Mover is the reconciliation logic for the Restic-based data mover.
+// Mover is the reconciliation logic for the Rclone-based data mover.
 type Mover struct {
-	client              client.Client
-	logger              logr.Logger
-	eventRecorder       events.EventRecorder
-	owner               client.Object
-	vh                  *volumehandler.VolumeHandler
-	containerImage      string
-	rcloneConfigSection *string
-	rcloneDestPath      *string
-	rcloneConfig        *string
-	isSource            bool
-	paused              bool
-	mainPVCName         *string
-	privileged          bool // true if the mover should have elevated privileges
+	client               client.Client
+	logger               logr.Logger
+	eventRecorder        events.EventRecorder
+	owner                client.Object
+	vh                   *volumehandler.VolumeHandler
+	containerImage       string
+	rcloneConfigSection  *string
+	rcloneDestPath       *string
+	rcloneConfig         *string
+	isSource             bool
+	paused               bool
+	mainPVCName          *string
+	privileged           bool // true if the mover should have elevated privileges
+	moverSecurityContext *corev1.PodSecurityContext
 }
 
 var _ mover.Mover = &Mover{}
@@ -258,6 +259,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 		}}
 		job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
 		job.Spec.Template.Spec.ServiceAccountName = sa.Name
+		job.Spec.Template.Spec.SecurityContext = m.moverSecurityContext
 		job.Spec.Template.Spec.Volumes = []corev1.Volume{
 			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
 				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
