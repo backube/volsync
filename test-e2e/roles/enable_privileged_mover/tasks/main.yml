@@ -1,0 +1,25 @@
+---
+
+- name: Check for required variables
+  fail: msg="Variable {{ item }} must be defined to use this role"
+  when: vars[var_check] is undefined
+  with_items:
+    - namespace
+  loop_control:
+    loop_var: var_check
+
+- name: Set namespace annotation for privileged VolSync movers
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ namespace }}"
+        annotations:
+          volsync.backube/privileged-movers: "true"
+        labels:
+          # On OpenShift, this will be overridden, but access granted due to the
+          # SCC used by the mover. On other distros, this will turn off
+          # enforcement so that the mover can run.
+          pod-security.kubernetes.io/enforce: "privileged"

@@ -1,0 +1,18 @@
+---
+
+- name: Check for required variables
+  fail: msg="Variable {{ item }} must be defined to use this role"
+  when: vars[var_check] is undefined
+  with_items:
+    - namespace
+    - pvc_affinity_name
+  loop_control:
+    loop_var: var_check
+
+- name: Delete PVC affinity pod
+  kubernetes.core.k8s:
+    state: absent
+    api_version: apps/v1
+    kind: Deployment
+    name: "{{ pvc_affinity_name }}"
+    namespace: "{{ namespace }}"

@@ -136,12 +136,9 @@
       retries: 300
 
     - name: Shutdown pvc affinity pod
-      kubernetes.core.k8s:
-        state: absent
-        api_version: v1
-        kind: Pod
-        name: "{{ pvc_affinity_pod_name }}"
-        namespace: "{{ namespace }}"
+      include_role:
+        name: pvc_affinity_pod
+        tasks_from: "delete"
 
     - name: Verify contents of PVC do not match
       include_role:
@@ -215,13 +212,10 @@
       delay: 1
       retries: 300
 
-    - name: Shutdown pvc affinity pod for current restoreasof
-      kubernetes.core.k8s:
-        state: absent
-        api_version: v1
-        kind: Pod
-        name: "{{ pvc_affinity_pod_name }}"
-        namespace: "{{ namespace }}"
+    - name: Shutdown pvc affinity pod
+      include_role:
+        name: pvc_affinity_pod
+        tasks_from: "delete"
 
     - name: Verify contents of PVC now match
       include_role:
@@ -331,13 +325,10 @@
       delay: 1
       retries: 300
 
-    - name: Shutdown pvc affinity pod for previous restoreasof
-      kubernetes.core.k8s:
-        state: absent
-        api_version: v1
-        kind: Pod
-        name: "{{ pvc_affinity_pod_name }}"
-        namespace: "{{ namespace }}"
+    - name: Shutdown pvc affinity pod
+      include_role:
+        name: pvc_affinity_pod
+        tasks_from: "delete"
 
     - name: Verify restored contents of PVC do not match current
       include_role:

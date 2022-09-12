@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: busybox
-          image: gcr.io/distroless/static:debug-nonroot
+          image: gcr.io/distroless/static:debug
           imagePullPolicy: IfNotPresent
           command: ["sh", "-c"]
           args:
@@ -40,25 +40,15 @@ spec:
             capabilities:
               drop: ["ALL"]
             readOnlyRootFilesystem: true
-{# Seccomp went GA in 1.19, but requires scc/restricted-v2 in OpenShift #}
-{% if not cluster_info.is_openshift and cluster_info.version.server.kubernetes.minor | int >= 19 or
-          cluster_info.is_openshift and cluster_info.openshift_has_scc_restricted_v2%}
-            seccompProfile:
-              type: RuntimeDefault
-{% endif %}
           volumeMounts:
             - name: pvc1
               mountPath: "/mnt"
             - name: pvc2
               mountPath: "/mnt2"
       restartPolicy: Never
-      securityContext:
-{# On Openshift, we can't specify fsGroup becuase the group must be #}
-{# auto-chosen w/in the range allowed in the Namespace #}
-{% if not cluster_info.is_openshift %}
-        fsGroup: 9999
+{% if podSecurityContext is defined %}
+      securityContext: {{ podSecurityContext }}
 {% endif %}
-        runAsNonRoot: true
       terminationGracePeriodSeconds: 2
       volumes:
         - name: pvc1
