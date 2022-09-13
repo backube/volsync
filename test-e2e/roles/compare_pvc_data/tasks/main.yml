@@ -10,6 +10,27 @@
   loop_control:
     loop_var: var_check
 
+# The following flags are eventually passed to the busybox implementation of
+# stat. See its explanation of format parameters for details.
+- name: Set up initial properties to verify
+  ansible.builtin.set_fact:
+    properties_to_verify: "%N %F"
+
+- name: Determine whether uid should be checked
+  ansible.builtin.set_fact:
+    properties_to_verify: "{{ properties_to_verify }} uid:%u"
+  when: verify_uid | default(true) == true
+
+- name: Determine whether gid should be checked
+  ansible.builtin.set_fact:
+    properties_to_verify: "{{ properties_to_verify }} gid:%g"
+  when: verify_gid | default(true) == true
+
+- name: Determine whether mode should be checked
+  ansible.builtin.set_fact:
+    properties_to_verify: "{{ properties_to_verify }} mode:%a"
+  when: verify_mode | default(true) == true
+
 - name: Determine whether the check should fail
   ansible.builtin.set_fact:
     local_should_fail: "{{ should_fail | default(false) }}"
@@ -20,35 +41,48 @@
     template: job.yml.j2
   register: res
 
-- name: Wait for compare to complete successfully
-  kubernetes.core.k8s_info:
-    api_version: batch/v1
-    kind: Job
-    name: "{{ res.result.metadata.name }}"
-    namespace: "{{ namespace }}"
-  register: res2
-  when: not local_should_fail
-  until: >
-    res2.resources | length > 0 and
-    res2.resources[0].status.succeeded is defined and
-    res2.resources[0].status.succeeded==1
-  delay: 1
-  retries: "{{ timeout | default(300) }}"
+- block:
+    - name: Wait for compare to complete successfully
+      kubernetes.core.k8s_info:
+        api_version: batch/v1
+        kind: Job
+        name: "{{ res.result.metadata.name }}"
+        namespace: "{{ namespace }}"
+      register: res2
+      when: not local_should_fail
+      until: >
+        res2.resources | length > 0 and
+        res2.resources[0].status.succeeded is defined and
+        res2.resources[0].status.succeeded==1
+      delay: 1
+      retries: "{{ timeout | default(300) }}"
 
-- name: Wait for compare to fail
-  kubernetes.core.k8s_info:
-    api_version: batch/v1
-    kind: Job
-    name: "{{ res.result.metadata.name }}"
-    namespace: "{{ namespace }}"
-  register: res2
-  when: local_should_fail
-  until: >
-    res2.resources | length > 0 and
-    res2.resources[0].status.failed is defined and
-    res2.resources[0].status.failed==1
-  delay: 1
-  retries: "{{ timeout | default(300) }}"
+    - name: Wait for compare to fail
+      kubernetes.core.k8s_info:
+        api_version: batch/v1
+        kind: Job
+        name: "{{ res.result.metadata.name }}"
+        namespace: "{{ namespace }}"
+      register: res2
+      when: local_should_fail
+      until: >
+        res2.resources | length > 0 and
+        res2.resources[0].status.failed is defined and
+        res2.resources[0].status.failed==1
+      delay: 1
+      retries: "{{ timeout | default(300) }}"
+  always:
+    - name: Retrieve logs from unsuccessful Job
+      kubernetes.core.k8s_log:
+        api_version: batch/v1
+        kind: Job
+        name: "{{ res.result.metadata.name }}"
+        namespace: "{{ namespace }}"
+      register: log
+
+    - name: Dump Job log
+      debug:
+        var: log.log_lines
 
 - name: Delete Job
   kubernetes.core.k8s:
