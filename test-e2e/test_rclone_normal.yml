@@ -3,11 +3,27 @@
   tags:
     - e2e
     - rclone
+    - unprivileged
   vars:
     rclone_secret_name: rclone-secret
   tasks:
     - include_role:
         name: create_namespace
+
+    - include_role:
+        name: gather_cluster_info
+
+    # We're running everything as a normal user
+    - name: Define podSecurityContext
+      ansible.builtin.set_fact:
+        podSecurityContext:
+          fsGroup: 5678
+          runAsGroup: 5678
+          runAsNonRoot: true
+          runAsUser: 1234
+          seccompProfile:
+            type: RuntimeDefault
+      when: not cluster_info.is_openshift
 
     - include_role:
         name: create_rclone_secret
@@ -38,7 +54,7 @@
         path: '/datafile'
         pvc_name: 'data-source'
 
-    - name: Sync data from source volume
+    - name: Sync data from source volume (w/ mSC)
       kubernetes.core.k8s:
         state: present
         definition:
@@ -52,10 +68,32 @@
             trigger:
               manual: once
             rclone:
-              rcloneConfigSection: "rclone-data-mover"
-              rcloneDestPath: "test-e2e-simple-rclone"
+              rcloneConfigSection: rclone-data-mover
+              rcloneDestPath: test-e2e-simple-rclone
               rcloneConfig: "{{ rclone_secret_name }}"
               copyMethod: Snapshot
+              moverSecurityContext: "{{ podSecurityContext }}"
+      when: podSecurityContext is defined
+
+    - name: Sync data from source volume (w/o mSC)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationSource
+          metadata:
+            name: source
+            namespace: "{{ namespace }}"
+          spec:
+            sourcePVC: data-source
+            trigger:
+              manual: once
+            rclone:
+              rcloneConfigSection: rclone-data-mover
+              rcloneDestPath: test-e2e-simple-rclone
+              rcloneConfig: "{{ rclone_secret_name }}"
+              copyMethod: Snapshot
+      when: podSecurityContext is not defined
 
     - name: Wait for sync to MinIO to complete
       kubernetes.core.k8s_info:
@@ -71,7 +109,7 @@
       delay: 1
       retries: 900
 
-    - name: Sync data to destination
+    - name: Sync data to destination (w/ mSC)
       kubernetes.core.k8s:
         state: present
         definition:
@@ -84,12 +122,35 @@
             trigger:
               manual: once
             rclone:
-              rcloneConfigSection: "rclone-data-mover"
-              rcloneDestPath: "test-e2e-simple-rclone"
-              rcloneConfig: "rclone-secret"
+              rcloneConfigSection: rclone-data-mover
+              rcloneDestPath: test-e2e-simple-rclone
+              rcloneConfig: "{{ rclone_secret_name }}"
               copyMethod: Snapshot
               accessModes: [ReadWriteOnce]
               capacity: 1Gi
+              moverSecurityContext: "{{ podSecurityContext }}"
+      when: podSecurityContext is defined
+
+    - name: Sync data to destination (w/o mSC)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationDestination
+          metadata:
+            name: destination
+            namespace: "{{ namespace }}"
+          spec:
+            trigger:
+              manual: once
+            rclone:
+              rcloneConfigSection: rclone-data-mover
+              rcloneDestPath: test-e2e-simple-rclone
+              rcloneConfig: "{{ rclone_secret_name }}"
+              copyMethod: Snapshot
+              accessModes: [ReadWriteOnce]
+              capacity: 1Gi
+      when: podSecurityContext is not defined
 
     - name: Wait for sync from MinIO to complete
       kubernetes.core.k8s_info:
