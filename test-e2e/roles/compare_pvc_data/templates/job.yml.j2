@@ -8,11 +8,7 @@ metadata:
 spec:
   completions: 1
   parallelism: 1
-{% if local_should_fail %}
   backoffLimit: 0
-{% else %}
-  backoffLimit: 999
-{% endif %}
   template:
     spec:
       containers:
