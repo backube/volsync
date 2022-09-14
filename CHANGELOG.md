@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0]
 
 ### Added
 
@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fix to RoleBinding created by VolSync for OCP namespace labeler.
+- Fix to helm charts to remove hardcoded overwriting of pod security settings.
+- Fix for node affinity (when using ReplicationSource in Direct mode) to use NodeSelector.
+- Fixed log timestamps to be more readable.
 - CLI: Fixed bug where previously specified options couldn't be removed from
   relationship file
 - Fixed issue where a snapshot or clone created from a source PVC could
@@ -39,8 +43,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - "Reconciled" condition removed from ReplicationSource and
   ReplicationDestination `.status.conditions[]` in favor of returning errors via
   the "Synchronizing" Condition.
-
-## [0.4.1] - TBD (currently unreleased)
 
 ## [0.4.0] - 2022-05-12
 
@@ -115,7 +117,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for rsync & rclone replication
 - Helm chart to deploy operator
 
-[Unreleased]: https://github.com/backube/volsync/compare/v0.4.0...HEAD
+[0.5.0]: https://github.com/backube/volsync/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/backube/volsync/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/backube/volsync/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/backube/volsync/compare/v0.1.0...v0.2.0
