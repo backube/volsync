@@ -298,6 +298,11 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 				Name:  "PRIVILEGED_MOVER",
 				Value: "1",
 			})
+			podSpec.Containers[0].SecurityContext.Capabilities.Add = []corev1.Capability{
+				"DAC_OVERRIDE", // Read/write all files
+				"CHOWN",        // chown files
+				"FOWNER",       // Set permission bits & times
+			}
 			podSpec.Containers[0].SecurityContext.RunAsUser = pointer.Int64(0)
 		} else {
 			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{

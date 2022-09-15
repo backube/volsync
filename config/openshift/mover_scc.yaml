@@ -8,19 +8,24 @@ allowHostIPC: false
 allowHostNetwork: false
 allowHostPID: false
 allowHostPorts: false
-allowPrivilegeEscalation: true
+allowPrivilegeEscalation: false
 allowPrivilegedContainer: false
 allowedCapabilities:
-  - AUDIT_WRITE  # for sshd
-  - SYS_CHROOT   # for sshd
+  - AUDIT_WRITE   # for sshd
+  - CHOWN         # allow files to have their uid restored
+  - DAC_OVERRIDE  # allow all files in PVs to be read/written
+  - FOWNER        # allow setting all file permissions & times
+  - SYS_CHROOT    # for sshd
 fsGroup:
   type: RunAsAny
 readOnlyRootFilesystem: false
-requiredDropCapabilities: [MKNOD]
+requiredDropCapabilities: [ALL]
 runAsUser:
   type: RunAsAny  # allow mover to run as root
 seLinuxContext:
   type: MustRunAs
+seccompProfiles:
+  - runtime/default
 supplementalGroups:
   type: RunAsAny
 volumes:
