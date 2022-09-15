@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- New data mover based on Syncthing for live data synchronization.
 - Users can manually label destination Snapshot objects with
   `volsync.backube/do-not-delete` to prevent VolSync from deleting them. This
   provides a way for users to avoid having a Snapshot deleted while they are
