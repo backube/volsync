@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -327,7 +328,6 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 		}
 		job.Spec.Parallelism = &parallelism
 		forgetOptions := generateForgetOptions(m.retainPolicy)
-		runAsUser := int64(0)
 		// set default values
 		var restoreAsOf = ""
 		var previous = strconv.Itoa(int(int32(0)))
@@ -401,11 +401,23 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 			Args:    actions,
 			Image:   m.containerImage,
 			SecurityContext: &corev1.SecurityContext{
-				RunAsUser: &runAsUser,
+				AllowPrivilegeEscalation: pointer.Bool(false),
+				Capabilities: &corev1.Capabilities{
+					Add: []corev1.Capability{
+						"DAC_OVERRIDE", // Read/write all files
+						"CHOWN",        // chown files
+						"FOWNER",       // Set permission bits & times
+					},
+					Drop: []corev1.Capability{"ALL"},
+				},
+				Privileged:             pointer.Bool(false),
+				ReadOnlyRootFilesystem: pointer.Bool(true),
+				RunAsUser:              pointer.Int64(0),
 			},
 			VolumeMounts: []corev1.VolumeMount{
 				{Name: dataVolumeName, MountPath: mountPath},
 				{Name: resticCache, MountPath: resticCacheMountPath},
+				{Name: "tempdir", MountPath: "/tmp"},
 			},
 		}}
 		job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
@@ -419,6 +431,11 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 			{Name: resticCache, VolumeSource: corev1.VolumeSource{
 				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 					ClaimName: cachePVC.Name,
+				}},
+			},
+			{Name: "tempdir", VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{
+					Medium: corev1.StorageMediumMemory,
 				}},
 			},
 		}
