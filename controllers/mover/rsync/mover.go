@@ -28,6 +28,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -369,8 +370,6 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 		}
 		job.Spec.Parallelism = &parallelism
 
-		runAsUser := int64(0)
-
 		readOnlyVolume := false
 
 		containerEnv := []corev1.EnvVar{}
@@ -396,22 +395,32 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 			Command: containerCmd,
 			Image:   m.containerImage,
 			SecurityContext: &corev1.SecurityContext{
+				AllowPrivilegeEscalation: pointer.Bool(false),
 				Capabilities: &corev1.Capabilities{
 					Add: []corev1.Capability{
-						"AUDIT_WRITE",
-						"SYS_CHROOT",
+						"AUDIT_WRITE",  // sshd
+						"CHOWN",        // chown files
+						"DAC_OVERRIDE", // Read/write all files
+						"FOWNER",       // Set permission bits & times
+						"SETGID",       // sshd
+						"SETUID",       // sshd
+						"SYS_CHROOT",   // sshd
 					},
+					Drop: []corev1.Capability{"ALL"},
 				},
-				RunAsUser: &runAsUser,
+				Privileged:             pointer.Bool(false),
+				ReadOnlyRootFilesystem: pointer.Bool(true),
+				RunAsUser:              pointer.Int64(0),
 			},
 			VolumeMounts: []corev1.VolumeMount{
 				{Name: dataVolumeName, MountPath: mountPath},
 				{Name: "keys", MountPath: "/keys"},
+				{Name: "tempsshdir", MountPath: "/root/.ssh"},
+				{Name: "tempdir", MountPath: "/tmp"},
 			},
 		}}
 		job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
 		job.Spec.Template.Spec.ServiceAccountName = sa.Name
-		secretMode := int32(0600)
 		job.Spec.Template.Spec.Volumes = []corev1.Volume{
 			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
 				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
@@ -422,7 +431,17 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 			{Name: "keys", VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
 					SecretName:  rsyncSecretName,
-					DefaultMode: &secretMode,
+					DefaultMode: pointer.Int32(0600),
+				}},
+			},
+			{Name: "tempsshdir", VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{
+					Medium: corev1.StorageMediumMemory,
+				}},
+			},
+			{Name: "tempdir", VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{
+					Medium: corev1.StorageMediumMemory,
 				}},
 			},
 		}
