@@ -1,0 +1,15 @@
+---
+# This tests the ansible roles that are used by the actual tests This test won't
+# actually run the roles as UID 0 on OCP due to the auto UID assignment of the
+# SCCs, etc.
+- hosts: localhost
+  tasks:
+    - include_role:
+        name: create_namespace
+
+    # This is just here to disarm the PSA on kube
+    - include_role:
+        name: enable_privileged_mover
+
+    - include_role:
+        name: test_roles

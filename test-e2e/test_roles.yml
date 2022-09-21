@@ -4,120 +4,22 @@
   tasks:
     - include_role:
         name: create_namespace
-
-    - name: Create PVC1
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          kind: PersistentVolumeClaim
-          apiVersion: v1
-          metadata:
-            name: pvc1
-            namespace: "{{ namespace }}"
-          spec:
-            accessModes:
-              - ReadWriteOnce
-            resources:
-              requests:
-                storage: 1Gi
-
-    - name: Create PVC2
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          kind: PersistentVolumeClaim
-          apiVersion: v1
-          metadata:
-            name: pvc2
-            namespace: "{{ namespace }}"
-          spec:
-            accessModes:
-              - ReadWriteOnce
-            resources:
-              requests:
-                storage: 1Gi
-
-    - name: PVC1 should not have thedatafile
-      include_role:
-        name: pvc_has_data
       vars:
-        data: 'some data'
-        path: '/thedatafile'
-        pvc_name: 'pvc1'
-        should_fail: true
+        pss_enforce: restricted
 
-    - name: Verify contents of empty PVCs match
-      include_role:
-        name: compare_pvc_data
-      vars:
-        pvc1_name: pvc1
-        pvc2_name: pvc2
+    - include_role:
+        name: gather_cluster_info
 
-    - name: Write data into PVC1
-      include_role:
-        name: write_to_pvc
-      vars:
-        data: 'some data'
-        path: '/thedatafile'
-        pvc_name: 'pvc1'
+    - name: Define podSecurityContext
+      ansible.builtin.set_fact:
+        podSecurityContext:
+          fsGroup: 1000
+          runAsGroup: 1000
+          runAsNonRoot: true
+          runAsUser: 1000
+          seccompProfile:
+            type: RuntimeDefault
+      when: not cluster_info.is_openshift
 
-    - name: PVC1 should have thedatafile
-      include_role:
-        name: pvc_has_data
-      vars:
-        data: 'some data'
-        path: '/thedatafile'
-        pvc_name: 'pvc1'
-
-    - name: Verify contents of differing PVCs don't match
-      include_role:
-        name: compare_pvc_data
-      vars:
-        pvc1_name: pvc1
-        pvc2_name: pvc2
-        should_fail: true
-
-    - name: Write data into PVC2
-      include_role:
-        name: write_to_pvc
-      vars:
-        data: 'some data'
-        path: '/thedatafile'
-        pvc_name: 'pvc2'
-
-    - name: Verify contents of matching PVCs match
-      include_role:
-        name: compare_pvc_data
-      vars:
-        pvc1_name: pvc1
-        pvc2_name: pvc2
-
-    - name: Run pvc affinity pod
-      include_role:
-        name: pvc_affinity_pod
-      vars:
-        pvc_names:
-          - pvc1
-          - pvc2
-
-    - name: Check pvc affinity pod is running
-      kubernetes.core.k8s_info:
-        api_version: v1
-        kind: Pod
-        name: "{{ pvc_affinity_pod_name }}"
-        namespace: "{{ namespace }}"
-      register: res
-      until: >
-        res.resources | length > 0 and
-        res.resources[0].status.phase is defined and
-        res.resources[0].status.phase=="Running"
-      delay: 10
-      retries: 60
-
-    - name: Shutdown pvc affinity pod
-      kubernetes.core.k8s:
-        state: absent
-        api_version: v1
-        kind: Pod
-        name: "{{ pvc_affinity_pod_name }}"
-        namespace: "{{ namespace }}"
+    - include_role:
+        name: test_roles

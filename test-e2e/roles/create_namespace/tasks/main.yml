@@ -11,6 +11,19 @@
   register: test_namespace
   notify: Delete temporary Namespace
 
+- name: Set PSS enforcement mode
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ test_namespace.result.metadata.name }}"
+        labels:
+          pod-security.kubernetes.io/enforce: "{{ pss_enforce }}"
+          security.openshift.io/scc.podSecurityLabelSync: "false"
+  when: pss_enforce is defined
+
 - name: Save name of test Namespace
   ansible.builtin.set_fact:
     namespace: "{{ test_namespace.result.metadata.name }}"

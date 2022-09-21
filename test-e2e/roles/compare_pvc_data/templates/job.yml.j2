@@ -8,59 +8,67 @@ metadata:
 spec:
   completions: 1
   parallelism: 1
-{% if local_should_fail %}
   backoffLimit: 0
-{% else %}
-  backoffLimit: 999
-{% endif %}
   template:
     spec:
       containers:
         - name: busybox
-          image: gcr.io/distroless/static:debug-nonroot
+          image: gcr.io/distroless/static:debug
           imagePullPolicy: IfNotPresent
           command: ["sh", "-c"]
           args:
             - |
-              set -x -e -o pipefail
+              set -e -o pipefail
 
+              echo "Validating contents: PVC1 -> PVC2"
               find /mnt -type f | \
                 xargs sha256sum | \
                 sed 's| /mnt/| /mnt2/|g' | \
                 grep -v lost+found | \
                 sha256sum -c
 
+              echo "Validating contents: PVC2 -> PVC1"
               find /mnt2 -type f | \
                 xargs sha256sum | \
                 sed 's| /mnt2/| /mnt/|' | \
                 grep -v lost+found | \
                 sha256sum -c
+
+              echo "... all file contents matched"
+
+              echo "File attributes:"
+              find /mnt -exec stat -c "{{ properties_to_verify }}" {} \; | \
+                grep -v lost+found | \
+                sort | tee /tmp/attributes-mnt
+              sed -ri 's|/mnt|/mnt2|' /tmp/attributes-mnt
+              find /mnt2 -exec stat -c "{{ properties_to_verify }}" {} \; | \
+                grep -v lost+found | \
+                sort > /tmp/attributes-mnt2
+
+              echo "Looking for differences:"
+              diff /tmp/attributes-mnt /tmp/attributes-mnt2
+              echo "... none found"
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
             readOnlyRootFilesystem: true
-{# Seccomp went GA in 1.19, but requires scc/restricted-v2 in OpenShift #}
-{% if not cluster_info.is_openshift and cluster_info.version.server.kubernetes.minor | int >= 19 or
-          cluster_info.is_openshift and cluster_info.openshift_has_scc_restricted_v2%}
-            seccompProfile:
-              type: RuntimeDefault
-{% endif %}
           volumeMounts:
+            - name: tmp
+              mountPath: "/tmp"
             - name: pvc1
               mountPath: "/mnt"
             - name: pvc2
               mountPath: "/mnt2"
       restartPolicy: Never
-      securityContext:
-{# On Openshift, we can't specify fsGroup becuase the group must be #}
-{# auto-chosen w/in the range allowed in the Namespace #}
-{% if not cluster_info.is_openshift %}
-        fsGroup: 9999
+{% if podSecurityContext is defined %}
+      securityContext: {{ podSecurityContext }}
 {% endif %}
-        runAsNonRoot: true
       terminationGracePeriodSeconds: 2
       volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
         - name: pvc1
           persistentVolumeClaim:
             claimName: "{{ pvc1_name }}"

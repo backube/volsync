@@ -106,12 +106,9 @@
     # Affinity is tested in direct mode in test_restic_with_manual_trigger as well as
     # test_restic_with_restoreasof and test_restic_without_trigger.
     - name: Shutdown pvc affinity pod
-      kubernetes.core.k8s:
-        state: absent
-        api_version: v1
-        kind: Pod
-        name: "{{ pvc_affinity_pod_name }}"
-        namespace: "{{ namespace }}"
+      include_role:
+        name: pvc_affinity_pod
+        tasks_from: "delete"
 
     - name: Restore data from very far previous to destination
       kubernetes.core.k8s:

@@ -68,7 +68,9 @@ We can use tags to select subsets of tests to run:
 - `create_namespace` - Creates a temporary test Namespace and deletes it at the
   end of the test
   - Uses: none
-  - Parameters: none
+  - Parameters:
+    - `pss_enforce`: (optional) Enforce a Pod Security Standards level
+      (privileged, baseline, restricted)
   - Returns:
     - `namespace` - The name of the temporary namespace that was created
 - `create_rclone_secret` - Creates a Secret for accessing the in-cluster MinIO

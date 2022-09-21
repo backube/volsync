@@ -1,0 +1,122 @@
+---
+- name: Check for required variables
+  fail: msg="Variable {{ item }} must be defined to use this role"
+  when: vars[var_check] is undefined
+  with_items:
+    - namespace
+  loop_control:
+    loop_var: var_check
+
+
+- name: Create PVC1
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      kind: PersistentVolumeClaim
+      apiVersion: v1
+      metadata:
+        name: pvc1
+        namespace: "{{ namespace }}"
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+
+- name: Create PVC2
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      kind: PersistentVolumeClaim
+      apiVersion: v1
+      metadata:
+        name: pvc2
+        namespace: "{{ namespace }}"
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+
+- name: PVC1 should not have thedatafile
+  include_role:
+    name: pvc_has_data
+  vars:
+    data: 'some data'
+    path: '/thedatafile'
+    pvc_name: 'pvc1'
+    should_fail: true
+
+- name: Verify contents of empty PVCs match
+  include_role:
+    name: compare_pvc_data
+  vars:
+    pvc1_name: pvc1
+    pvc2_name: pvc2
+
+- name: Write data into PVC1
+  include_role:
+    name: write_to_pvc
+  vars:
+    data: 'some data'
+    path: '/thedatafile'
+    pvc_name: 'pvc1'
+
+- name: PVC1 should have thedatafile
+  include_role:
+    name: pvc_has_data
+  vars:
+    data: 'some data'
+    path: '/thedatafile'
+    pvc_name: 'pvc1'
+
+- name: Verify contents of differing PVCs don't match
+  include_role:
+    name: compare_pvc_data
+  vars:
+    pvc1_name: pvc1
+    pvc2_name: pvc2
+    should_fail: true
+
+- name: Write data into PVC2
+  include_role:
+    name: write_to_pvc
+  vars:
+    data: 'some data'
+    path: '/thedatafile'
+    pvc_name: 'pvc2'
+
+- name: Verify contents of matching PVCs match
+  include_role:
+    name: compare_pvc_data
+  vars:
+    pvc1_name: pvc1
+    pvc2_name: pvc2
+
+- name: Run pvc affinity pod
+  include_role:
+    name: pvc_affinity_pod
+  vars:
+    pvc_names:
+      - pvc1
+      - pvc2
+
+- name: Check pvc affinity pod is running
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: "{{ pvc_affinity_name }}"
+    namespace: "{{ namespace }}"
+  register: res
+  until: >
+    res.resources | length > 0 and
+    res.resources[0].status.availableReplicas == 1
+  delay: 1
+  retries: 10
+
+- name: Shutdown pvc affinity pod
+  include_role:
+    name: pvc_affinity_pod
+    tasks_from: "delete"

@@ -9,26 +9,27 @@
   loop_control:
     loop_var: var_check
 
-- name: Create Pod
+- name: Create Deployment
   kubernetes.core.k8s:
     state: present
-    template: pod.yml.j2
+    template: deployment.yml.j2
   register: res
 
-# Create pod that mounts the PVC and leave running
-- name: Wait for Pod to start running
+# Create Job that mounts the PVC and leave running
+- name: Wait for Deployment to be ready
   kubernetes.core.k8s_info:
-    api_version: v1
-    kind: Pod
+    api_version: apps/v1
+    kind: Deployment
     name: "{{ res.result.metadata.name }}"
     namespace: "{{ namespace }}"
   register: res2
   until: >
     res2.resources | length > 0 and
-    res2.resources[0].status.phase=="Running"
+    res2.resources[0].status.availableReplicas is defined and
+    res2.resources[0].status.availableReplicas == 1
   delay: 1
   retries: "{{ timeout | default(300) }}"
 
-- name: Save pod name
+- name: Save Deployment name
   ansible.builtin.set_fact:
-    pvc_affinity_pod_name: "{{ res.result.metadata.name }}"
+    pvc_affinity_name: "{{ res.result.metadata.name }}"

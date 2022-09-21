@@ -1,42 +1,43 @@
 ---
-kind: Job
-apiVersion: batch/v1
+
+kind: Deployment
+apiVersion: apps/v1
 metadata:
-  generateName: grep-contents-
+  generateName: pvc-affinity-pod-
   namespace: "{{ namespace }}"
 spec:
-  completions: 1
-  parallelism: 1
-{% if local_should_fail %}
-  backoffLimit: 0
-{% else %}
-  backoffLimit: 999
-{% endif %}
+  replicas: 1
+  selector:
+    matchLabels:
+      app: affinity-pod
   template:
+    metadata:
+      labels:
+        app: affinity-pod
     spec:
       containers:
         - name: busybox
           image: gcr.io/distroless/static:debug
           imagePullPolicy: IfNotPresent
           command: ["sh", "-c"]
-          args:
-            - |
-              set -x -e -o pipefail
-              grep '{{ data }}' '/mnt/{{ path }}'
+          args: ["sleep 99999"]
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
             readOnlyRootFilesystem: true
           volumeMounts:
-            - name: pvc
-              mountPath: "/mnt"
-      restartPolicy: Never
+{% for pvc_name in pvc_names %}
+            - name: "pvc-{{ pvc_name }}"
+              mountPath: "/mnt-{{ pvc_name }}"
+{% endfor %}
 {% if podSecurityContext is defined %}
       securityContext: {{ podSecurityContext }}
 {% endif %}
       terminationGracePeriodSeconds: 2
       volumes:
-        - name: pvc
+{% for pvc_name in pvc_names %}
+        - name: "pvc-{{ pvc_name }}"
           persistentVolumeClaim:
             claimName: "{{ pvc_name }}"
+{% endfor %}
