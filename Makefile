@@ -118,7 +118,7 @@ helm-lint: helm ## Lint Helm chart
 	cd helm && $(HELM) lint volsync
 
 .PHONY: test
-TEST_ARGS ?= -progress -randomizeAllSpecs -randomizeSuites -slowSpecThreshold 30 -p -cover -coverprofile cover.out -outputdir .
+TEST_ARGS ?= -progress -randomizeAllSpecs -randomizeSuites -slowSpecThreshold 30 -p -cover -coverprofile cover.out -outputdir . -skipPackage mover-restic
 TEST_PACKAGES ?= ./...
 test: bundle generate lint envtest helm-lint ginkgo ## Run tests.
 	-rm -f cover.out
