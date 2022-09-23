@@ -24,6 +24,8 @@ function run_check() {
             -path ./.venv -prune -o \
             -path ./test-e2e/.collections -prune -o \
             -path ./test-e2e/.venv -prune -o \
+            -path ./mover-restic/restic -prune -o \
+            -path ./mover-restic/minio-go -prune -o \
             -regextype egrep -iregex "$regex" -print0 | \
             xargs -0rt "$exe" "$@"
         echo

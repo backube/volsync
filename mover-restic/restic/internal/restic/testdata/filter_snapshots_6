@@ -1,0 +1,147 @@
+[
+  {
+    "time": "2016-01-12T21:02:03Z",
+    "tree": null,
+    "paths": [
+      "/usr",
+      "/sbin"
+    ],
+    "hostname": "bar",
+    "username": "root",
+    "tags": [
+      "foo"
+    ]
+  },
+  {
+    "time": "2016-01-08T20:02:03Z",
+    "tree": null,
+    "paths": [
+      "/usr",
+      "/sbin"
+    ],
+    "hostname": "foo",
+    "username": "root",
+    "tags": [
+      "foo"
+    ]
+  },
+  {
+    "time": "2016-01-05T09:02:03Z",
+    "tree": null,
+    "paths": [
+      "/usr",
+      "/bin"
+    ],
+    "hostname": "foo",
+    "username": "testuser",
+    "tags": [
+      "foo"
+    ]
+  },
+  {
+    "time": "2016-01-04T12:30:03Z",
+    "tree": null,
+    "paths": [
+      "/usr",
+      "/bin"
+    ],
+    "hostname": "foo",
+    "username": "testuser",
+    "tags": [
+      "test",
+      "foo",
+      "bar"
+    ]
+  },
+  {
+    "time": "2016-01-04T12:23:03Z",
+    "tree": null,
+    "paths": [
+      "/usr",
+      "/bin"
+    ],
+    "hostname": "foo",
+    "username": "testuser",
+    "tags": [
+      "foo"
+    ]
+  },
+  {
+    "time": "2016-01-04T11:23:03Z",
+    "tree": null,
+    "paths": [
+      "/usr",
+      "/bin"
+    ],
+    "hostname": "foo",
+    "username": "testuser",
+    "tags": [
+      "foo"
+    ]
+  },
+  {
+    "time": "2016-01-04T10:23:03Z",
+    "tree": null,
+    "paths": [
+      "/usr",
+      "/bin"
+    ],
+    "hostname": "foo",
+    "username": "testuser",
+    "tags": [
+      "foo"
+    ]
+  },
+  {
+    "time": "2016-01-03T07:02:03Z",
+    "tree": null,
+    "paths": [
+      "/usr",
+      "/bin"
+    ],
+    "hostname": "foo",
+    "username": "testuser",
+    "tags": [
+      "foo"
+    ]
+  },
+  {
+    "time": "2016-01-01T07:08:03Z",
+    "tree": null,
+    "paths": [
+      "/usr",
+      "/bin"
+    ],
+    "hostname": "bar",
+    "username": "testuser",
+    "tags": [
+      "foo"
+    ]
+  },
+  {
+    "time": "2016-01-01T01:03:03Z",
+    "tree": null,
+    "paths": [
+      "/usr",
+      "/bin"
+    ],
+    "hostname": "bar",
+    "username": "testuser",
+    "tags": [
+      "foo"
+    ]
+  },
+  {
+    "time": "2016-01-01T01:02:03Z",
+    "tree": null,
+    "paths": [
+      "/usr",
+      "/bin"
+    ],
+    "hostname": "foo",
+    "username": "testuser",
+    "tags": [
+      "foo"
+    ]
+  }
+]
