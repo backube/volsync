@@ -1,0 +1,15 @@
+[
+  {
+    "time": "2016-01-09T21:02:03Z",
+    "tree": null,
+    "paths": [
+      "/usr",
+      "/sbin"
+    ],
+    "hostname": "foo",
+    "username": "root",
+    "tags": [
+      "fox"
+    ]
+  }
+]

@@ -1,0 +1,32 @@
+{{- range $changes := . }}{{ with $changes -}}
+Changelog for restic {{ .Version }} ({{ .Date }})
+=======================================
+
+The following sections list the changes in restic {{ .Version }} relevant to
+restic users. The changes are ordered by importance.
+
+Summary
+-------
+{{ range $entry := .Entries }}{{ with $entry }}
+ * {{ .TypeShort }} #{{ .PrimaryID }}: {{ .Title }}
+{{- end }}{{ end }}
+
+Details
+-------
+{{ range $entry := .Entries }}{{ with $entry }}
+ * {{ .Type }} #{{ .PrimaryID }}: {{ .Title }}
+{{ range $par := .Paragraphs }}
+   {{ wrapIndent $par 80 3 }}
+{{ end -}}
+{{ range $url := .IssueURLs }}
+   {{ $url -}}
+{{ end -}}
+{{ range $url := .PRURLs }}
+   {{ $url -}}
+{{ end -}}
+{{ range $url := .OtherURLs }}
+   {{ $url -}}
+{{ end }}
+{{ end }}{{ end }}
+
+{{ end }}{{ end -}}

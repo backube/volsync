@@ -23,6 +23,8 @@ function run_check() {
             -path ./vendor -prune -o \
             -path ./.venv -prune -o \
             -path ./testbin -prune -o \
+            -path ./mover-restic/restic -prune -o \
+            -path ./mover-restic/minio-go -prune -o \
             -regextype egrep -iregex "$regex" -print0 | \
             xargs -0rt "$exe" "$@"
         echo
