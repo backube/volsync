@@ -1,0 +1,77 @@
+# Build the volsync-custom-scorecard-tests binary
+FROM golang:1.18 as builder
+
+# Copy the go source
+COPY ./custom-scorecard-tests/. /workspace/
+
+WORKDIR /workspace
+
+# cache deps before building and copying source so that we don't need to re-download as much
+# and so that source changes don't invalidate our downloaded layer
+RUN go mod download
+
+ARG version_arg="(unknown)"
+
+# Build
+RUN GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o volsync-custom-scorecard-tests -ldflags "-X=main.version=${version_arg}" main.go
+
+# Build final container
+FROM registry.access.redhat.com/ubi9-minimal
+
+RUN microdnf --refresh update -y && \
+    microdnf --nodocs --setopt=install_weak_deps=0 install -y \
+      bash \
+      python \
+      python3-pip \
+      tar \
+      gzip \
+    && microdnf clean all
+
+ENV HOME=/opt/volsync-custom-scorecard-tests \
+    USER_NAME=volsync-custom-scorecard-tests \
+    USER_UID=1001
+
+RUN echo "${USER_NAME}:x:${USER_UID}:0:${USER_NAME} user:${HOME}:/sbin/nologin" >> /etc/passwd
+
+WORKDIR ${HOME}
+
+COPY --from=builder /workspace/volsync-custom-scorecard-tests /usr/local/bin/volsync-custom-scorecard-tests
+
+# Copy e2e tests into the container
+COPY ./test-e2e/. ./test-e2e
+COPY ./hack/run-minio.sh .
+
+ARG pipenv_version_arg
+ARG helm_version_arg
+ARG kubectl_version_arg
+
+RUN cd test-e2e && \
+    python -m pip install --upgrade pip && \
+    pip install --upgrade pipenv=="${pipenv_version_arg}" && \
+    pipenv sync && \
+    pipenv run ansible-galaxy install -r requirements.yml
+
+# Install helm & kubectl
+RUN	curl -sSL "https://get.helm.sh/helm-${helm_version_arg}-linux-amd64.tar.gz" | tar xzf - -C /usr/local/bin/ --strip-components=1 --wildcards '*/helm' && \
+    chmod 0755 /usr/local/bin/helm && \
+    cd /usr/local/bin && curl -LO "https://dl.k8s.io/release/${kubectl_version_arg}/bin/linux/amd64/kubectl" && \
+    chmod 0755 /usr/local/bin/kubectl
+
+ARG builddate_arg="(unknown)"
+ARG version_arg="(unknown)"
+ENV builddate="${builddate_arg}"
+ENV version="${version_arg}"
+
+LABEL org.label-schema.build-date="${builddate}" \
+      org.label-schema.description="custom scorecard tests for VolSync" \
+      org.label-schema.license="AGPL v3" \
+      org.label-schema.name="volsync-custom-scorecard-tests" \
+      org.label-schema.schema-version="1.0" \
+      org.label-schema.vcs-ref="${version}" \
+      org.label-schema.vcs-url="https://github.com/backube/volsync" \
+      org.label-schema.vendor="Backube" \
+      org.label-schema.version="${version}"
+
+ENTRYPOINT ["/usr/local/bin/volsync-custom-scorecard-tests"]
+
+USER ${USER_UID}
