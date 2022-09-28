@@ -5,6 +5,9 @@ to run them via operator-sdk scorecard tests.
 
 More info about scorecard tests [here](https://sdk.operatorframework.io/docs/testing-operators/scorecard/custom-tests/)
 
+For more info (this is downstream specific) for CVP running custom scorecard tests see
+[here](https://docs.engineering.redhat.com/display/CVP/Operator+Verification+Pipeline+Documentation#operator-custom-scorecard-tests)
+
 The intention is these tests will also be run by downstream CVP E2E tests.  Downstream the scorecard config.yaml
 can be used to specify which e2e tests should be run against a downstream operator installation.
 

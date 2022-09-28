@@ -148,15 +148,26 @@ func DeployPrereqs(bundle *apimanifests.Bundle) scapiv1alpha3.TestStatus {
 	r.Errors = make([]string, 0)
 	r.Suggestions = make([]string, 0)
 
+	// Run minio
 	// helm writes to $HOME so set it to /tmp before running this step
 	output, err := shellout("export HOME=/tmp && ./run-minio.sh")
 
+	r.Log = output
+
+	if err != nil {
+		r.State = scapiv1alpha3.ErrorState
+		return wrapResult(r)
+	}
+
+	// Run minio w/ tls
+	output2, err := shellout("export HOME=/tmp/ && MINIO_NAMESPACE=minio-tls MINIO_USE_TLS=1 ./run-minio.sh")
+
+	r.Log = r.Log + "\n\n" + output2
+
 	if err != nil {
 		r.State = scapiv1alpha3.FailState
-		r.Log = "==FAILED==\n" + output
 	} else {
 		r.State = scapiv1alpha3.PassState
-		r.Log = "==PASSED==\n" + output
 	}
 
 	return wrapResult(r)
@@ -171,19 +182,16 @@ func testAnsiblePlaybook(ansiblePlaybookTestName string) scapiv1alpha3.TestStatu
 
 	output, err := shellout(fmt.Sprintf("cd test-e2e && pipenv run ansible-playbook %s", ansiblePlaybookTestName))
 
+	r.Log = output
+
 	if err != nil {
 		r.State = scapiv1alpha3.FailState
-		r.Log = "==FAILED==\n" + output
 
-		dumpLogsOutput, dumpLogsErr := shellout("cd test-e2e && pipenv run ansible-playbook dump_logs.yml")
-		if dumpLogsErr != nil {
-			r.Log = r.Log + "\n\nError dumping logs: \n" + dumpLogsErr.Error()
-		} else {
-			r.Log = r.Log + "\n\n==DUMPLOGS==\n" + dumpLogsOutput
-		}
+		// Playbook run failed, run the playbook to dump logs
+		dumpLogsOutput, _ := shellout("cd test-e2e && pipenv run ansible-playbook dump_logs.yml")
+		r.Log = r.Log + "\n\n==DUMPLOGS==\n" + dumpLogsOutput
 	} else {
 		r.State = scapiv1alpha3.PassState
-		r.Log = "==PASSED==\n" + output
 	}
 
 	return wrapResult(r)
@@ -207,6 +215,12 @@ func shellout(command string) (output string, err error) {
 	err = cmd.Run()
 	line := "---------------------------------------------------\n"
 	output = line + "COMMAND: " + command + "\n" + "OUTPUT: \n" + stdOutAndErr.String()
+
+	if err != nil {
+		output = fmt.Sprintf("==FAILED==\nERROR: %v\n", err) + output
+	} else {
+		output = "==PASSED==\n" + output
+	}
 
 	return output, err
 }
