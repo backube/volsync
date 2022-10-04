@@ -4,7 +4,7 @@
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_restic_with_customca.yml
-    image: quay.io/tflower/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
       test: test_restic_with_customca.yml
@@ -14,7 +14,7 @@
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_restic_with_previous.yml
-    image: quay.io/tflower/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
       test: test_restic_with_previous.yml
@@ -24,7 +24,7 @@
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_replication_sync_direct.yml
-    image: quay.io/tflower/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
       test: test_replication_sync_direct.yml
@@ -34,7 +34,7 @@
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_multi_sync_snapshot_rclone.yml
-    image: quay.io/tflower/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
       test: test_multi_sync_snapshot_rclone.yml
@@ -44,7 +44,7 @@
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_restic_with_manual_trigger.yml
-    image: quay.io/tflower/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
       test: test_restic_with_manual_trigger.yml
@@ -54,7 +54,7 @@
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_roles_privileged.yml
-    image: quay.io/tflower/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
       test: test_roles_privileged.yml
@@ -64,7 +64,7 @@
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_simple_rclone.yml
-    image: quay.io/tflower/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
       test: test_simple_rclone.yml
@@ -74,7 +74,7 @@
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_roles.yml
-    image: quay.io/tflower/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
       test: test_roles.yml
@@ -84,7 +84,7 @@
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_restic_with_restoreasof.yml
-    image: quay.io/tflower/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
       test: test_restic_with_restoreasof.yml
@@ -94,7 +94,7 @@
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_simple_rsync.yml
-    image: quay.io/tflower/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
       test: test_simple_rsync.yml
@@ -104,7 +104,7 @@
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_restic_without_trigger.yml
-    image: quay.io/tflower/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
       test: test_restic_without_trigger.yml
@@ -114,7 +114,7 @@
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_replication_sched_snap.yml
-    image: quay.io/tflower/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
       test: test_replication_sched_snap.yml
@@ -124,7 +124,7 @@
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_syncthing_cluster_sync.yml
-    image: quay.io/tflower/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
       test: test_syncthing_cluster_sync.yml
@@ -134,7 +134,7 @@
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_multi_sync_snapshot_rsync.yml
-    image: quay.io/tflower/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
       test: test_multi_sync_snapshot_rsync.yml

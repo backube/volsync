@@ -148,22 +148,26 @@ func DeployPrereqs(bundle *apimanifests.Bundle) scapiv1alpha3.TestStatus {
 	r.Errors = make([]string, 0)
 	r.Suggestions = make([]string, 0)
 
+	// Ensure csi storagedriver is default
+	output, err := shellout("./ensure-default-csi.sh")
+	r.Log = output
+	if err != nil {
+		r.State = scapiv1alpha3.ErrorState
+		return wrapResult(r)
+	}
+
 	// Run minio
 	// helm writes to $HOME so set it to /tmp before running this step
-	output, err := shellout("export HOME=/tmp && ./run-minio.sh")
-
-	r.Log = output
-
+	output2, err := shellout("export HOME=/tmp && ./run-minio.sh")
+	r.Log = r.Log + "\n\n" + output2
 	if err != nil {
 		r.State = scapiv1alpha3.ErrorState
 		return wrapResult(r)
 	}
 
 	// Run minio w/ tls
-	output2, err := shellout("export HOME=/tmp/ && MINIO_NAMESPACE=minio-tls MINIO_USE_TLS=1 ./run-minio.sh")
-
-	r.Log = r.Log + "\n\n" + output2
-
+	output3, err := shellout("export HOME=/tmp/ && MINIO_NAMESPACE=minio-tls MINIO_USE_TLS=1 ./run-minio.sh")
+	r.Log = r.Log + "\n\n" + output3
 	if err != nil {
 		r.State = scapiv1alpha3.FailState
 	} else {

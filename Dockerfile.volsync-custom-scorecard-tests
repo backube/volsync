@@ -48,6 +48,7 @@ COPY --from=builder /workspace-cli/bin/kubectl-volsync ./bin/kubectl-volsync
 
 # Copy e2e tests into the container
 COPY ./test-e2e/. ./test-e2e
+COPY ./hack/ensure-default-csi.sh .
 COPY ./hack/run-minio.sh .
 
 ARG pipenv_version_arg
