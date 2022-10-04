@@ -6,6 +6,7 @@ ignore: |
   bundle/**
   config/**
   controllers/platform/scc-crd.yml
+  custom-scorecard-tests/**
   hack/crds/*
   helm/volsync/**
 rules:
