@@ -20,6 +20,7 @@ package restic
 import (
 	"context"
 	"fmt"
+	"path"
 	"strconv"
 	"time"
 
@@ -44,6 +45,8 @@ const (
 	mountPath            = "/data"
 	dataVolumeName       = "data"
 	resticCache          = "cache"
+	credentialDir        = "/credentials"
+	gcsCredentialFile    = "gcs.json"
 )
 
 // Mover is the reconciliation logic for the Restic-based data mover.
@@ -360,7 +363,6 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 				utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_NAME", true),
 				utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_KEY", true),
 				utils.EnvFromSecret(repo.Name, "GOOGLE_PROJECT_ID", true),
-				utils.EnvFromSecret(repo.Name, "GOOGLE_APPLICATION_CREDENTIALS", true),
 			},
 			Command: []string{"/entry.sh"},
 			Args:    actions,
@@ -395,6 +397,37 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 			}
 			job.Spec.Template.Spec.NodeSelector = affinity.NodeSelector
 			job.Spec.Template.Spec.Tolerations = affinity.Tolerations
+		}
+		// We handle GOOGLE_APPLICATION_CREDENTIALS specially...
+		// restic expects it to be an env var pointing to a file w/ the
+		// credentials, but we have users provide the actual file data in the
+		// Secret under that key name. The following code sets the env var to be
+		// what restic expects, then mounts just that Secret key into the
+		// container, pointed to by the env var.
+		if _, ok := repo.Data["GOOGLE_APPLICATION_CREDENTIALS"]; ok {
+			container := &job.Spec.Template.Spec.Containers[0]
+			// Tell restic where to look for the credential file
+			container.Env = append(container.Env, corev1.EnvVar{
+				Name:  "GOOGLE_APPLICATION_CREDENTIALS",
+				Value: path.Join(credentialDir, gcsCredentialFile),
+			})
+			// Mount the credential file
+			container.VolumeMounts =
+				append(container.VolumeMounts, corev1.VolumeMount{
+					Name:      "gcs-credentials",
+					MountPath: credentialDir,
+				})
+			job.Spec.Template.Spec.Volumes = append(job.Spec.Template.Spec.Volumes, corev1.Volume{
+				Name: "gcs-credentials",
+				VolumeSource: corev1.VolumeSource{
+					Secret: &corev1.SecretVolumeSource{
+						SecretName: repo.Name,
+						Items: []corev1.KeyToPath{
+							{Key: "GOOGLE_APPLICATION_CREDENTIALS", Path: gcsCredentialFile},
+						},
+					},
+				},
+			})
 		}
 		return nil
 	})

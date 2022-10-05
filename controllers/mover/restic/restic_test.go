@@ -21,6 +21,7 @@ import (
 	"context"
 	"flag"
 	"os"
+	"path"
 	"time"
 
 	. "github.com/onsi/ginkgo"
@@ -952,6 +953,72 @@ var _ = Describe("Restic as a destination", func() {
 					Expect(len(job.Spec.Template.Spec.Containers)).To(BeNumerically(">", 0))
 					args := job.Spec.Template.Spec.Containers[0].Args
 					Expect(args).To(ConsistOf("restore"))
+				})
+			})
+			Context("Handling GCS credentials", func() {
+				When("no credentials are provided", func() {
+					It("shouldn't mount the Secret", func() {
+						j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(j).To(BeNil()) // hasn't completed
+						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+						job = &batchv1.Job{}
+						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+
+						for _, env := range job.Spec.Template.Spec.Containers[0].Env {
+							Expect(env.Name).NotTo(Equal("GOOGLE_APPLICATION_CREDENTIALS"))
+						}
+						for _, v := range job.Spec.Template.Spec.Containers[0].VolumeMounts {
+							Expect(v.Name).NotTo(Equal("gcs-credentials"))
+						}
+						for _, v := range job.Spec.Template.Spec.Volumes {
+							Expect(v.Name).NotTo(Equal("gcs-credentials"))
+						}
+					})
+				})
+				When("credentials are provided", func() {
+					BeforeEach(func() {
+						repo.Data = map[string][]byte{
+							"GOOGLE_APPLICATION_CREDENTIALS": []byte("dummy"),
+						}
+					})
+					It("should mount the Secret", func() {
+						j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(j).To(BeNil()) // hasn't completed
+						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+						job = &batchv1.Job{}
+						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+
+						found := false
+						for _, env := range job.Spec.Template.Spec.Containers[0].Env {
+							if env.Name == "GOOGLE_APPLICATION_CREDENTIALS" {
+								found = true
+								Expect(env.Value).To(Equal(path.Join(credentialDir, gcsCredentialFile)))
+							}
+						}
+						Expect(found).To(BeTrue())
+						found = false
+						for _, v := range job.Spec.Template.Spec.Containers[0].VolumeMounts {
+							if v.Name == "gcs-credentials" {
+								found = true
+								Expect(v.MountPath).To(Equal(credentialDir))
+							}
+						}
+						Expect(found).To(BeTrue())
+						found = false
+						for _, v := range job.Spec.Template.Spec.Volumes {
+							if v.Name == "gcs-credentials" {
+								found = true
+								Expect(v.Secret).NotTo(BeNil())
+								Expect(v.Secret.Items).To(ContainElement(corev1.KeyToPath{
+									Key:  "GOOGLE_APPLICATION_CREDENTIALS",
+									Path: gcsCredentialFile,
+								}))
+							}
+						}
+						Expect(found).To(BeTrue())
+					})
 				})
 			})
 		})
