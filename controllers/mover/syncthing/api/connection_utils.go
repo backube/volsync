@@ -22,7 +22,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strings"
 
@@ -86,7 +85,7 @@ func (api *syncthingAPIConnection) jsonRequest(
 	}
 
 	// read body into response
-	return ioutil.ReadAll(resp.Body)
+	return io.ReadAll(resp.Body)
 }
 
 // fetchConfig Fetches the latest configuration data from the Syncthing API

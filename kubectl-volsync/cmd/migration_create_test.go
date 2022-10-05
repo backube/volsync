@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 
 	. "github.com/onsi/ginkgo"
@@ -38,7 +37,7 @@ var _ = Describe("migration", func() {
 		initMigrationCreateCmd(cmd)
 		cmd.Flags().String("relationship", "test", "")
 
-		dirname, err = ioutil.TempDir("", "relation")
+		dirname, err = os.MkdirTemp("", "relation")
 		Expect(err).NotTo(HaveOccurred())
 		cmd.Flags().String("config-dir", dirname, "")
 
