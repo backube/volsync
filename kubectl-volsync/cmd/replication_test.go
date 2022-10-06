@@ -18,7 +18,6 @@ package cmd
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"reflect"
 
@@ -39,7 +38,7 @@ var _ = Describe("Replication relationships can create/save/load", func() {
 	BeforeEach(func() {
 		var err error
 		// Create temp directory for relationship files
-		dirname, err = ioutil.TempDir("", "relation")
+		dirname, err = os.MkdirTemp("", "relation")
 		Expect(err).NotTo(HaveOccurred())
 
 		cmd = &cobra.Command{}
@@ -109,7 +108,7 @@ var _ = Describe("Replication relationships", func() {
 		ctx = context.TODO()
 		var err error
 		// Create temp directory for relationship files
-		dirname, err = ioutil.TempDir("", "relation")
+		dirname, err = os.MkdirTemp("", "relation")
 		Expect(err).NotTo(HaveOccurred())
 		// Create a new generic relationship
 		rel, err := createRelationship(dirname, "test", ReplicationRelationshipType)

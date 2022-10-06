@@ -19,7 +19,6 @@ package rsync
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -172,7 +171,7 @@ func (k *rsyncSSHKeys) ensureMainSecret(l logr.Logger) (bool, error) {
 }
 
 func generateKeyPair(ctx context.Context, l logr.Logger) (private []byte, public []byte, err error) {
-	keydir, err := ioutil.TempDir("", "sshkeys")
+	keydir, err := os.MkdirTemp("", "sshkeys")
 	if err != nil {
 		l.Error(err, "unable to create temporary directory")
 		return
@@ -183,10 +182,10 @@ func generateKeyPair(ctx context.Context, l logr.Logger) (private []byte, public
 		"-f", filename, "-C", "", "-N", "").Run(); err != nil {
 		return
 	}
-	if private, err = ioutil.ReadFile(filename); err != nil {
+	if private, err = os.ReadFile(filename); err != nil {
 		return
 	}
-	public, err = ioutil.ReadFile(filename + ".pub")
+	public, err = os.ReadFile(filename + ".pub")
 	return
 }
 

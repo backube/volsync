@@ -19,7 +19,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -147,19 +146,19 @@ func (ms *migrationSync) retrieveSecrets(ctx context.Context) (*string, error) {
 		return nil, fmt.Errorf("error retrieving destination sshSecret %s: %w", *sshKeysSecret, err)
 	}
 
-	sshKeydir, err := ioutil.TempDir("", "sshkeys")
+	sshKeydir, err := os.MkdirTemp("", "sshkeys")
 	if err != nil {
 		return nil, fmt.Errorf("unable to create temporary directory %w", err)
 	}
 
 	filename := filepath.Join(sshKeydir, "source")
-	err = ioutil.WriteFile(filename, sshSecret.Data["source"], 0600)
+	err = os.WriteFile(filename, sshSecret.Data["source"], 0600)
 	if err != nil {
 		return &sshKeydir, fmt.Errorf("unable to write to the file, %w", err)
 	}
 
 	filename = filepath.Join(sshKeydir, "source.pub")
-	err = ioutil.WriteFile(filename, sshSecret.Data["source.pub"], 0600)
+	err = os.WriteFile(filename, sshSecret.Data["source.pub"], 0600)
 	if err != nil {
 		return &sshKeydir, fmt.Errorf("unable to write to the file, %w", err)
 	}
@@ -167,7 +166,7 @@ func (ms *migrationSync) retrieveSecrets(ctx context.Context) (*string, error) {
 	filename = filepath.Join(sshKeydir, "destination.pub")
 	destinationPub := fmt.Sprintf("%s %s", ms.DestAddr,
 		sshSecret.Data["destination.pub"])
-	err = ioutil.WriteFile(filename, []byte(destinationPub), 0600)
+	err = os.WriteFile(filename, []byte(destinationPub), 0600)
 	if err != nil {
 		return &sshKeydir, fmt.Errorf("unable to write to the file, %w", err)
 	}
