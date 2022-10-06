@@ -42,6 +42,31 @@
 * Submit the updated yaml to the [krew-index
   repo](https://github.com/kubernetes-sigs/krew-index/blob/master/plugins/volsync.yaml)
 
+## Creating a release branch
+
+When creating a release branch use the format `release-X.Y`. For example
+`release-0.6`.
+
+* Make sure the version.mk file is updated with the version to be published
+* Make sure the bundle metadata has been updated with this information (see
+  steps below).  The operator csv yaml in bundle/manifests should contain the
+  proper release version.  Note that this step and the previous may already be
+  done prior to creating the relesae branch.
+* Run the make target to update the custom scorecard config.yaml and have it
+  point to the custom scorecard image tagged with the release.
+
+  e.g. If creating a `release-0.6` branch, do the following:
+
+  ```bash
+  make custom-scorecard-tests-generate-config CUSTOM_SCORECARD_IMG=quay.io/backube/volsync-custom-scorecard-tests:release-0.6
+  ```
+
+* Commit the generated changes in custom-scorecard-tests (particularly the
+  config.yaml).
+* custom-scorecard-tests/config.yaml should also be copied over to the CICD
+  midstream repo (volsync-projects) in the appropriate downstream build
+  branch.
+
 ## Creating/Updating the operator bundle
 
 * Note: For packaging as an operator, the CSV file is normally auto-generated,
