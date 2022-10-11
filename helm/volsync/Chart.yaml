@@ -21,22 +21,8 @@ annotations:  # https://artifacthub.io/docs/topics/annotations/helm/
   # Changelog for current chart & app version
   # Kinds: added, changed, deprecated, removed, fixed, and security
   artifacthub.io/changes: |
-    - kind: added
-      description: Users can manually label destination Snapshot objects with volsync.backube/do-not-delete to prevent VolSync from deleting them. This provides a way for users to avoid having a Snapshot deleted while they are trying to use it. Users are then responsible for deleting the Snapshot.
-    - kind: added
-      description: Publish Kubernetes Events to help troubleshooting
-    - kind: added
-      description: New Syncthing-based mover for live data replication
-    - kind: changed
-      description: Operator-SDK upgraded to 1.22.0
-    - kind: changed
-      description: Rclone upgraded to 1.59.0
-    - kind: changed
-      description: Restic upgraded to 0.13.1
-    - kind: changed
-      description: Syncthing upgraded to 1.20.1
     - kind: security
-      description: kube-rbac-proxy upgraded to 0.13.0
+      description: kube-rbac-proxy upgraded to 0.13.1
   artifacthub.io/crds: |
     - kind: ReplicationDestination
       version: v1alpha1
