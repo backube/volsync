@@ -42,6 +42,20 @@ updateDefaultVolumeSnapshotClass() {
       return 0
     fi
   done
+
+  # At this point no volume snapshot class was found that matches the driver - create one
+  echo "Creating VolumeStorageClass for ${DRIVER_TO_USE} driver ..."
+  kubectl create -f - <<SNAPCLASS
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: test-csi-snap
+  annotations:
+    snapshot.storage.kubernetes.io/is-default-class: "true"
+driver: ${DRIVER_TO_USE}
+deletionPolicy: Delete
+SNAPCLASS
+
 }
 
 # Log storageclasses and volumesnapshotclasses (for debug purposes)
