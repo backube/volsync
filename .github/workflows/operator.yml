@@ -21,6 +21,7 @@ env:
   RESTIC_IMAGE: "quay.io/backube/volsync-mover-restic"
   RSYNC_IMAGE: "quay.io/backube/volsync-mover-rsync"
   SYNCTHING_IMAGE: "quay.io/backube/volsync-mover-syncthing"
+  CUSTOM_SCORECARD_IMAGE: "quay.io/backube/volsync-custom-scorecard-tests"
 
 jobs:
   lint:
@@ -177,6 +178,26 @@ jobs:
           name: volsync-mover-syncthing-container
           path: /tmp/image.tar
 
+  build-scorecard:
+    name: Build-custom-scorecard-tests
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b
+
+      - name: Build operator container
+        run: make custom-scorecard-tests-build CUSTOM_SCORECARD_IMG=${CUSTOM_SCORECARD_IMAGE}
+
+      - name: Export container image
+        run: docker save -o /tmp/image.tar ${CUSTOM_SCORECARD_IMAGE}
+
+      - name: Save container as artifact
+        uses: actions/upload-artifact@3cea5372237819ed00197afe530f5a7ea3e805c8
+        with:
+          name: volsync-custom-scorecard-tests-container
+          path: /tmp/image.tar
+
   kubectl-plugin:
     name: kubectl-plugin
     runs-on: ubuntu-20.04
@@ -227,7 +248,7 @@ jobs:
 
   e2e:
     name: End-to-end
-    needs: [build-operator, build-rclone, build-restic, build-rsync, build-syncthing, kubectl-plugin]
+    needs: [build-operator, build-rclone, build-restic, build-rsync, build-syncthing, build-scorecard, kubectl-plugin]
     runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
@@ -468,6 +489,17 @@ jobs:
     with:
       artifact-name: volsync-mover-syncthing-container
       image-name: quay.io/backube/volsync-mover-syncthing
+    secrets:
+      registry-username: ${{ secrets.REGISTRY_USERNAME }}
+      registry-password: ${{ secrets.REGISTRY_PASSWORD }}
+
+  push-scorecard:
+    name: Push custom scorecard container to registry
+    needs: push-gate
+    uses: ./.github/workflows/registry-push.yml
+    with:
+      artifact-name: volsync-custom-scorecard-tests-container
+      image-name: quay.io/backube/volsync-custom-scorecard-tests
     secrets:
       registry-username: ${{ secrets.REGISTRY_USERNAME }}
       registry-password: ${{ secrets.REGISTRY_PASSWORD }}
