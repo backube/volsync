@@ -101,13 +101,13 @@ help: ## Display this help.
 ##@ Development
 
 .PHONY: manifests
-manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
+manifests: controller-gen yq ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 	@{ \
 		for SRC in config/crd/bases/*.yaml; do \
 			DST="helm/volsync/templates/$$(basename "$$SRC")"; \
 			echo "{{- if .Values.manageCRDs }}" > "$$DST"; \
-			cat "$$SRC" >> "$$DST"; \
+			$(YQ) '.metadata.annotations."helm.sh/resource-policy"="keep"' "$$SRC" >> "$$DST"; \
 			echo "{{- end }}" >> "$$DST"; \
 		done; \
 	}
