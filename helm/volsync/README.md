@@ -87,7 +87,7 @@ The following parameters in the chart can be configured, either by using `--set`
 on the command line or via a custom `values.yaml` file.
 
 - `manageCRDs`: true
-  - Whether the chart should install/upgrade/remove the VolSync CRDs
+  - Whether the chart should install/upgrade the VolSync CRDs
 - `replicaCount`: `1`
   - The number of replicas of the operator to run. Only one is active at a time,
     controlled via leader election.
