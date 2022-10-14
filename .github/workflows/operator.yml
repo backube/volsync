@@ -186,6 +186,18 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b
 
+      - name: Ensure go module files are up-to-date
+        run: |
+          cd custom-scorecard-tests
+          go mod tidy
+          diff=$(git diff --color -- go.mod go.sum)
+          if [ -n "$diff" ]; then
+            echo "$diff"
+            echo "***** go modules in custom-scorecard-tests are out-of-date *****"
+            echo "*****     run 'go mod tidy'      *****"
+            exit 1
+          fi
+
       - name: Build operator container
         run: make custom-scorecard-tests-build CUSTOM_SCORECARD_IMG=${CUSTOM_SCORECARD_IMAGE}
 
@@ -248,7 +260,7 @@ jobs:
 
   e2e:
     name: End-to-end
-    needs: [build-operator, build-rclone, build-restic, build-rsync, build-syncthing, build-scorecard, kubectl-plugin]
+    needs: [build-operator, build-rclone, build-restic, build-rsync, build-syncthing, kubectl-plugin]
     runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
@@ -413,7 +425,7 @@ jobs:
   #   pushed.
   e2e-success:
     name: Successful e2e tests
-    needs: [e2e, lint, test-operator]
+    needs: [e2e, lint, test-operator, build-scorecard]
     runs-on: ubuntu-20.04
     steps:
       - name: Success
