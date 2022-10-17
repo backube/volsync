@@ -15,3 +15,8 @@ updates:
     directory: "/test-e2e"
     schedule:
       interval: "weekly"
+
+  - package-ecosystem: "gomod"
+    directory: "/custom-scorecard-tests"
+    schedule:
+      interval: "weekly"

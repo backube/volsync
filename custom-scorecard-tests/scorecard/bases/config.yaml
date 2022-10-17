@@ -1,0 +1,13 @@
+apiVersion: scorecard.operatorframework.io/v1alpha3
+kind: Configuration
+metadata:
+  name: config
+serviceaccount: volsync-test-runner
+stages:
+- parallel: false
+  tests: []
+- parallel: true
+  tests: []
+storage:
+  spec:
+    mountPath: {}

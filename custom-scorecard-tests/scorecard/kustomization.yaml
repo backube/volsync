@@ -1,0 +1,15 @@
+resources:
+- bases/config.yaml
+patchesJson6902:
+- path: patches/deploy-prereqs.yaml
+  target:
+    group: scorecard.operatorframework.io
+    version: v1alpha3
+    kind: Configuration
+    name: config
+- path: patches/e2e-tests.yaml
+  target:
+    group: scorecard.operatorframework.io
+    version: v1alpha3
+    kind: Configuration
+    name: config

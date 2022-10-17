@@ -21,6 +21,7 @@ env:
   RESTIC_IMAGE: "quay.io/backube/volsync-mover-restic"
   RSYNC_IMAGE: "quay.io/backube/volsync-mover-rsync"
   SYNCTHING_IMAGE: "quay.io/backube/volsync-mover-syncthing"
+  CUSTOM_SCORECARD_IMAGE: "quay.io/backube/volsync-custom-scorecard-tests"
 
 jobs:
   lint:
@@ -175,6 +176,43 @@ jobs:
         uses: actions/upload-artifact@3cea5372237819ed00197afe530f5a7ea3e805c8
         with:
           name: volsync-mover-syncthing-container
+          path: /tmp/image.tar
+
+  build-scorecard:
+    name: Build-custom-scorecard-tests
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b
+
+      - name: Install Go
+        uses: actions/setup-go@268d8c0ca0432bb2cf416faae41297df9d262d7f
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Ensure go module files are up-to-date
+        run: |
+          cd custom-scorecard-tests
+          go mod tidy
+          diff=$(git diff --color -- go.mod go.sum)
+          if [ -n "$diff" ]; then
+            echo "$diff"
+            echo "***** go modules in custom-scorecard-tests are out-of-date *****"
+            echo "*****     run 'go mod tidy'      *****"
+            exit 1
+          fi
+
+      - name: Build operator container
+        run: make custom-scorecard-tests-build CUSTOM_SCORECARD_IMG=${CUSTOM_SCORECARD_IMAGE}
+
+      - name: Export container image
+        run: docker save -o /tmp/image.tar ${CUSTOM_SCORECARD_IMAGE}
+
+      - name: Save container as artifact
+        uses: actions/upload-artifact@3cea5372237819ed00197afe530f5a7ea3e805c8
+        with:
+          name: volsync-custom-scorecard-tests-container
           path: /tmp/image.tar
 
   kubectl-plugin:
@@ -392,7 +430,7 @@ jobs:
   #   pushed.
   e2e-success:
     name: Successful e2e tests
-    needs: [e2e, lint, test-operator]
+    needs: [e2e, lint, test-operator, build-scorecard]
     runs-on: ubuntu-20.04
     steps:
       - name: Success
@@ -468,6 +506,17 @@ jobs:
     with:
       artifact-name: volsync-mover-syncthing-container
       image-name: quay.io/backube/volsync-mover-syncthing
+    secrets:
+      registry-username: ${{ secrets.REGISTRY_USERNAME }}
+      registry-password: ${{ secrets.REGISTRY_PASSWORD }}
+
+  push-scorecard:
+    name: Push custom scorecard container to registry
+    needs: push-gate
+    uses: ./.github/workflows/registry-push.yml
+    with:
+      artifact-name: volsync-custom-scorecard-tests-container
+      image-name: quay.io/backube/volsync-custom-scorecard-tests
     secrets:
       registry-username: ${{ secrets.REGISTRY_USERNAME }}
       registry-password: ${{ secrets.REGISTRY_PASSWORD }}

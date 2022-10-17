@@ -15,6 +15,7 @@ HELM_VERSION := v3.8.2
 KUSTOMIZE_VERSION := v4.5.4
 OPERATOR_SDK_VERSION := v1.22.0
 PIPENV_VERSION := 2022.8.30
+KUBECTL_VERSION := v1.25.2
 
 # We don't vendor modules. Enforce that behavior
 export GOFLAGS := -mod=readonly
@@ -296,6 +297,21 @@ catalog-build: opm ## Build a catalog image.
 .PHONY: catalog-push
 catalog-push: ## Push a catalog image.
 	$(MAKE) docker-push IMG=$(CATALOG_IMG)
+
+
+# Name of volsync custom scorecard test image
+CUSTOM_SCORECARD_IMG ?= $(IMAGE_TAG_BASE)-custom-scorecard-tests:latest
+
+# Build the custom scorecard image - this can be used to run e2e tests using operator-sdk
+# See more info here: https://sdk.operatorframework.io/docs/testing-operators/scorecard/custom-tests/
+.PHONY: custom-scorecard-tests-build
+custom-scorecard-tests-build:
+	docker build --build-arg "version_arg=$(BUILD_VERSION)" --build-arg "pipenv_version_arg=$(PIPENV_VERSION)" --build-arg "helm_version_arg=$(HELM_VERSION)" --build-arg "kubectl_version_arg=$(KUBECTL_VERSION)" -f Dockerfile.volsync-custom-scorecard-tests -t ${CUSTOM_SCORECARD_IMG} .
+
+.PHONY: custom-scorecard-tests-generate-config
+custom-scorecard-tests-generate-config: kustomize
+	cd custom-scorecard-tests && ./generateE2ETestsConfig.sh ${CUSTOM_SCORECARD_IMG}
+	cd custom-scorecard-tests && $(KUSTOMIZE) build scorecard > config.yaml
 
 
 ##@ Download utilities
