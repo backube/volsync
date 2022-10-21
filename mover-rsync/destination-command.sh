@@ -11,7 +11,7 @@ function do_shutdown {
     # the return code for the container.
     echo "$rc" >> /tmp/exit_code
 
-    PIDFILE="/run/sshd.pid"
+    PIDFILE="/tmp/sshd.pid"
     [[ -e "$PIDFILE" ]] && kill -SIGTERM "$(<"$PIDFILE")"
 }
 

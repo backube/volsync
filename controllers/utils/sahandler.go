@@ -40,16 +40,19 @@ type SAHandler struct {
 	Client      client.Client
 	SA          *corev1.ServiceAccount
 	Owner       metav1.Object
+	Privileged  bool
 	role        *rbacv1.Role
 	roleBinding *rbacv1.RoleBinding
 }
 
-func NewSAHandler(ctx context.Context, c client.Client, owner metav1.Object, sa *corev1.ServiceAccount) SAHandler {
+func NewSAHandler(ctx context.Context, c client.Client, owner metav1.Object, sa *corev1.ServiceAccount,
+	privileged bool) SAHandler {
 	return SAHandler{
-		Context: ctx,
-		Client:  c,
-		SA:      sa,
-		Owner:   owner,
+		Context:    ctx,
+		Client:     c,
+		SA:         sa,
+		Owner:      owner,
+		Privileged: privileged,
 	}
 }
 
@@ -94,15 +97,17 @@ func (d *SAHandler) ensureRole(l logr.Logger) (bool, error) {
 			return err
 		}
 		SetOwnedByVolSync(d.role)
-		d.role.Rules = []rbacv1.PolicyRule{
-			{
-				APIGroups: []string{"security.openshift.io"},
-				Resources: []string{"securitycontextconstraints"},
-				// Must match the name of the SCC that is deployed w/ the operator
-				// config/openshift/mover_scc.yaml
-				ResourceNames: []string{SCCName},
-				Verbs:         []string{"use"},
-			},
+		if d.Privileged { // Only grant SCC to privileged movers
+			d.role.Rules = []rbacv1.PolicyRule{
+				{
+					APIGroups: []string{"security.openshift.io"},
+					Resources: []string{"securitycontextconstraints"},
+					// Must match the name of the SCC that is deployed w/ the operator
+					// config/openshift/mover_scc.yaml
+					ResourceNames: []string{SCCName},
+					Verbs:         []string{"use"},
+				},
+			}
 		}
 		return nil
 	})

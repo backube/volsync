@@ -647,9 +647,11 @@ var _ = Describe("Rsync as a source", func() {
 
 					c := job.Spec.Template.Spec.Containers[0]
 					// Validate job volume mounts
-					Expect(len(c.VolumeMounts)).To(Equal(2))
+					Expect(len(c.VolumeMounts)).To(Equal(4))
 					foundDataVolumeMount := false
 					foundSSHSecretVolumeMount := false
+					foundDotSSHMount := false
+					foundTmpMount := false
 					for _, volMount := range c.VolumeMounts {
 						if volMount.Name == dataVolumeName {
 							foundDataVolumeMount = true
@@ -657,10 +659,18 @@ var _ = Describe("Rsync as a source", func() {
 						} else if volMount.Name == "keys" {
 							foundSSHSecretVolumeMount = true
 							Expect(volMount.MountPath).To(Equal("/keys"))
+						} else if volMount.Name == "tempsshdir" {
+							foundDotSSHMount = true
+							Expect(volMount.MountPath).To(Equal("/root/.ssh"))
+						} else if volMount.Name == "tempdir" {
+							foundTmpMount = true
+							Expect(volMount.MountPath).To(Equal("/tmp"))
 						}
 					}
 					Expect(foundDataVolumeMount).To(BeTrue())
 					Expect(foundSSHSecretVolumeMount).To(BeTrue())
+					Expect(foundDotSSHMount).To(BeTrue())
+					Expect(foundTmpMount).To(BeTrue())
 				})
 
 				It("Should have correct volumes", func() {
@@ -672,9 +682,11 @@ var _ = Describe("Rsync as a source", func() {
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
 					volumes := job.Spec.Template.Spec.Volumes
-					Expect(len(volumes)).To(Equal(2))
+					Expect(len(volumes)).To(Equal(4))
 					foundDataVolume := false
 					foundSSHSecretVolume := false
+					foundDotSSHVolume := false
+					foundTmpVolume := false
 					for _, vol := range volumes {
 						if vol.Name == dataVolumeName {
 							foundDataVolume = true
@@ -684,10 +696,18 @@ var _ = Describe("Rsync as a source", func() {
 							foundSSHSecretVolume = true
 							Expect(vol.VolumeSource.Secret).ToNot(BeNil())
 							Expect(vol.VolumeSource.Secret.SecretName).To(Equal(sshKeysSecret.GetName()))
+						} else if vol.Name == "tempsshdir" {
+							foundDotSSHVolume = true
+							Expect(vol.VolumeSource.EmptyDir).ToNot(BeNil())
+						} else if vol.Name == "tempdir" {
+							foundTmpVolume = true
+							Expect(vol.VolumeSource.EmptyDir).ToNot(BeNil())
 						}
 					}
 					Expect(foundDataVolume).To(BeTrue())
 					Expect(foundSSHSecretVolume).To(BeTrue())
+					Expect(foundDotSSHVolume).To(BeTrue())
+					Expect(foundTmpVolume).To(BeTrue())
 				})
 
 				It("Should have correct labels", func() {

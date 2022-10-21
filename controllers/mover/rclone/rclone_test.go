@@ -477,7 +477,7 @@ var _ = Describe("Rclone as a source", func() {
 				var sa *corev1.ServiceAccount
 				var err error
 				Eventually(func() bool {
-					sa, err = mover.ensureSA(ctx)
+					sa, err = mover.ensureSA(ctx, true)
 					return sa != nil && err == nil
 				}, timeout, interval).Should(BeTrue())
 				Expect(err).ToNot(HaveOccurred())
@@ -862,7 +862,7 @@ var _ = Describe("Rclone as a destination", func() {
 				var sa *corev1.ServiceAccount
 				var err error
 				Eventually(func() bool {
-					sa, err = mover.ensureSA(ctx)
+					sa, err = mover.ensureSA(ctx, false)
 					return sa != nil && err == nil
 				}, timeout, interval).Should(BeTrue())
 				Expect(err).ToNot(HaveOccurred())
@@ -1072,7 +1072,6 @@ func validateSaRoleAndRoleBinding(sa *corev1.ServiceAccount, namespace string) {
 
 func validateJobEnvVars(env []corev1.EnvVar, isSource bool) {
 	// Validate job env vars
-	Expect(len(env)).To(Equal(5))
 	validateEnvVar(env, "RCLONE_CONFIG", "/rclone-config/rclone.conf")
 	validateEnvVar(env, "RCLONE_DEST_PATH", testRcloneDestPath)
 	if isSource {

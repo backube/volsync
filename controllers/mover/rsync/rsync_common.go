@@ -75,7 +75,7 @@ func (d *rsyncSvcDescription) Reconcile(l logr.Logger) error {
 			d.Service.Spec.Ports[0].Port = 22
 		}
 		d.Service.Spec.Ports[0].Protocol = corev1.ProtocolTCP
-		d.Service.Spec.Ports[0].TargetPort = intstr.FromInt(22)
+		d.Service.Spec.Ports[0].TargetPort = intstr.FromInt(8022)
 		if d.Service.Spec.Type == corev1.ServiceTypeClusterIP {
 			d.Service.Spec.Ports[0].NodePort = 0
 		}

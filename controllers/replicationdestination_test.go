@@ -189,7 +189,7 @@ var _ = Describe("ReplicationDestination", func() {
 			Expect(thePort.Name).To(Equal("ssh"))
 			Expect(thePort.Port).To(Equal(int32(22)))
 			Expect(thePort.Protocol).To(Equal(corev1.ProtocolTCP))
-			Expect(thePort.TargetPort).To(Equal(intstr.FromInt(22)))
+			Expect(thePort.TargetPort).To(Equal(intstr.FromInt(8022)))
 		})
 
 		Context("when serviceType is LoadBalancer", func() {
