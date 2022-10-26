@@ -9,7 +9,7 @@
 include ./version.mk
 
 # Helper software versions
-GOLANGCI_VERSION := v1.43.0
+GOLANGCI_VERSION := v1.46.1
 HELM_VERSION := v3.7.1
 OPERATOR_SDK_VERSION := v1.15.0
 KUTTL_VERSION := 0.11.1
@@ -181,11 +181,15 @@ undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/confi
 undeploy-openshift: manifests kustomize ## Undeploy controller to the K8s cluster specified in ~/.kube/config.
 	$(KUSTOMIZE) build config/openshift | kubectl delete -f -
 
+## Location to install dependencies to
+LOCALBIN ?= $(shell pwd)/bin
+$(LOCALBIN):
+	mkdir -p $(LOCALBIN)
 
 .PHONY: controller-gen
 CONTROLLER_GEN = $(shell pwd)/bin/controller-gen
 controller-gen: ## Download controller-gen locally if necessary.
-	$(call go-get-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen@v0.7.0)
+	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.7.0
 
 .PHONY: kustomize
 KUSTOMIZE = $(shell pwd)/bin/kustomize
@@ -195,12 +199,12 @@ kustomize: ## Download kustomize locally if necessary.
 .PHONY: envtest
 ENVTEST = $(shell pwd)/bin/setup-envtest
 envtest: ## Download envtest-setup locally if necessary.
-	$(call go-get-tool,$(ENVTEST),sigs.k8s.io/controller-runtime/tools/setup-envtest@latest)
+	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
 
 .PHONY: yq
 YQ = $(shell pwd)/bin/yq
 yq: ## Download yq locally if necessary.
-	$(call go-get-tool,$(YQ),github.com/mikefarah/yq/v4@latest)
+	GOBIN=$(LOCALBIN) go install github.com/mikefarah/yq/v4@latest
 
 
 # go-get-tool will 'go get' any package $2 and install it to $1.
@@ -293,7 +297,7 @@ endef
 .PHONY: ginkgo
 GINKGO := $(PROJECT_DIR)/bin/ginkgo
 ginkgo: ## Download ginkgo
-	$(call go-get-tool,$(GINKGO),github.com/onsi/ginkgo/ginkgo)
+	GOBIN=$(LOCALBIN) go install github.com/onsi/ginkgo/ginkgo@v1.16.4
 
 .PHONY: golangci-lint
 GOLANGCILINT := $(PROJECT_DIR)/bin/golangci-lint
