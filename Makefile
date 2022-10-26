@@ -204,7 +204,7 @@ envtest: ## Download envtest-setup locally if necessary.
 .PHONY: yq
 YQ = $(shell pwd)/bin/yq
 yq: ## Download yq locally if necessary.
-	$(call go-get-tool,$(YQ),github.com/mikefarah/yq/v4@latest)
+	GOBIN=$(LOCALBIN) go install github.com/mikefarah/yq/v4@latest
 
 
 # go-get-tool will 'go get' any package $2 and install it to $1.
