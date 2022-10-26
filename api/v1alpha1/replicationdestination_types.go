@@ -31,7 +31,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-//+kubebuilder:validation:Required
+// +kubebuilder:validation:Required
 package v1alpha1
 
 import (
@@ -210,6 +210,9 @@ type ReplicationDestinationResticSpec struct {
 	// +kubebuilder:validation:Format="date-time"
 	//+optional
 	RestoreAsOf *string `json:"restoreAsOf,omitempty"`
+	// MoverSecurityContext allows specifying the PodSecurityContext that will
+	// be used by the data mover
+	MoverSecurityContext *corev1.PodSecurityContext `json:"moverSecurityContext,omitempty"`
 }
 
 // ReplicationDestinationStatus defines the observed state of ReplicationDestination
@@ -248,12 +251,12 @@ type ReplicationDestinationStatus struct {
 }
 
 // ReplicationDestination defines the destination for a replicated volume
-//+kubebuilder:object:root=true
-//+kubebuilder:resource:scope=Namespaced
-//+kubebuilder:subresource:status
-//+kubebuilder:printcolumn:name="Last sync",type="string",format="date-time",JSONPath=`.status.lastSyncTime`
-//+kubebuilder:printcolumn:name="Duration",type="string",JSONPath=`.status.lastSyncDuration`
-//+kubebuilder:printcolumn:name="Next sync",type="string",format="date-time",JSONPath=`.status.nextSyncTime`
+// +kubebuilder:object:root=true
+// +kubebuilder:resource:scope=Namespaced
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Last sync",type="string",format="date-time",JSONPath=`.status.lastSyncTime`
+// +kubebuilder:printcolumn:name="Duration",type="string",JSONPath=`.status.lastSyncDuration`
+// +kubebuilder:printcolumn:name="Next sync",type="string",format="date-time",JSONPath=`.status.nextSyncTime`
 type ReplicationDestination struct {
 	metav1.TypeMeta `json:",inline"`
 	//+optional
@@ -268,7 +271,7 @@ type ReplicationDestination struct {
 }
 
 // ReplicationDestinationList contains a list of ReplicationDestination
-//+kubebuilder:object:root=true
+// +kubebuilder:object:root=true
 type ReplicationDestinationList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
