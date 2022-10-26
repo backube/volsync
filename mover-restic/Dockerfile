@@ -1,5 +1,5 @@
 # Build restic
-FROM registry.access.redhat.com/ubi8/go-toolset as builder
+FROM golang:1.18 as builder
 USER root
 
 WORKDIR /workspace
@@ -22,7 +22,8 @@ RUN sed -i 's/preserveSymbols := false/preserveSymbols := true/g' build.go
 RUN go run build.go --enable-cgo
 
 # Verify that FIPS crypto libs are accessible
-RUN nm restic | grep -q goboringcrypto
+# Check removed since official images don't support boring crypto
+#RUN nm rclone | grep -q goboringcrypto
 
 # Build final container
 FROM registry.access.redhat.com/ubi8-minimal
