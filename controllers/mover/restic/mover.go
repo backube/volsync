@@ -332,12 +332,16 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 		var restoreAsOf = ""
 		var previous = strconv.Itoa(int(int32(0)))
 
+		readOnlyVolume := false
 		var actions []string
 		if m.isSource {
 			actions = []string{"backup"}
 			if m.shouldPrune(time.Now()) {
 				actions = append(actions, "prune")
 			}
+
+			// Set read-only for volume in source mover job spec if the PVC only supports read-only
+			readOnlyVolume = utils.PvcIsReadOnly(dataPVC)
 		} else {
 			actions = []string{"restore"}
 			// set the restore selection options when the mover has them
@@ -426,6 +430,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
 				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 					ClaimName: dataPVC.Name,
+					ReadOnly:  readOnlyVolume,
 				}},
 			},
 			{Name: resticCache, VolumeSource: corev1.VolumeSource{

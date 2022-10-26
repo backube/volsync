@@ -692,6 +692,7 @@ var _ = Describe("Rsync as a source", func() {
 							foundDataVolume = true
 							Expect(vol.VolumeSource.PersistentVolumeClaim).ToNot(BeNil())
 							Expect(vol.VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(sPVC.GetName()))
+							Expect(vol.VolumeSource.PersistentVolumeClaim.ReadOnly).To(Equal(false))
 						} else if vol.Name == "keys" {
 							foundSSHSecretVolume = true
 							Expect(vol.VolumeSource.Secret).ToNot(BeNil())
@@ -708,6 +709,52 @@ var _ = Describe("Rsync as a source", func() {
 					Expect(foundSSHSecretVolume).To(BeTrue())
 					Expect(foundDotSSHVolume).To(BeTrue())
 					Expect(foundTmpVolume).To(BeTrue())
+				})
+
+				When("The source PVC is ROX", func() {
+					var roxPVC *corev1.PersistentVolumeClaim
+					BeforeEach(func() {
+						// Create a ROX PVC to use as the src
+						roxScName := "test-rox-storageclass"
+						roxPVC = &corev1.PersistentVolumeClaim{
+							ObjectMeta: metav1.ObjectMeta{
+								GenerateName: "test-rox-pvc-",
+								Namespace:    ns.Name,
+							},
+							Spec: corev1.PersistentVolumeClaimSpec{
+								StorageClassName: &roxScName,
+								AccessModes: []corev1.PersistentVolumeAccessMode{
+									corev1.ReadOnlyMany,
+								},
+								Resources: corev1.ResourceRequirements{
+									Requests: corev1.ResourceList{
+										"storage": resource.MustParse("1Gi"),
+									},
+								},
+							},
+						}
+						Expect(k8sClient.Create(ctx, roxPVC)).To(Succeed())
+					})
+					It("Mover job should mount the PVC as read-only", func() {
+						j, e := mover.ensureJob(ctx, roxPVC, sa, sshKeysSecret.GetName()) // Using sPVC as dataPVC (i.e. direct)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(j).To(BeNil()) // hasn't completed
+						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+						job = &batchv1.Job{}
+						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+
+						foundDataVolume := false
+						for _, vol := range job.Spec.Template.Spec.Volumes {
+							if vol.Name == dataVolumeName {
+								foundDataVolume = true
+								Expect(vol.VolumeSource.PersistentVolumeClaim).ToNot(BeNil())
+								Expect(vol.VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(roxPVC.GetName()))
+								// The volumes should be mounted read-only
+								Expect(vol.VolumeSource.PersistentVolumeClaim.ReadOnly).To(Equal(true))
+							}
+						}
+						Expect(foundDataVolume).To(Equal(true))
+					})
 				})
 
 				It("Should have correct labels", func() {

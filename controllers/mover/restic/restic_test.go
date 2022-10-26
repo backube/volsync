@@ -671,7 +671,82 @@ var _ = Describe("Restic as a source", func() {
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 					Expect(*job.Spec.Parallelism).To(Equal(int32(1)))
 				})
+
+				It("Should have correct volumes", func() {
+					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil()) // hasn't completed
+					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+					job = &batchv1.Job{}
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+
+					volumes := job.Spec.Template.Spec.Volumes
+					Expect(len(volumes)).To(Equal(3))
+					foundDataVolume := false
+					foundCacheVolume := false
+					for _, vol := range volumes {
+						if vol.Name == dataVolumeName {
+							foundDataVolume = true
+							Expect(vol.VolumeSource.PersistentVolumeClaim).ToNot(BeNil())
+							Expect(vol.VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(sPVC.GetName()))
+							Expect(vol.VolumeSource.PersistentVolumeClaim.ReadOnly).To(Equal(false))
+						} else if vol.Name == resticCache {
+							foundCacheVolume = true
+							Expect(vol.VolumeSource.PersistentVolumeClaim).ToNot(BeNil())
+							Expect(vol.VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(cache.GetName()))
+						}
+					}
+					Expect(foundDataVolume).To(BeTrue())
+					Expect(foundCacheVolume).To(BeTrue())
+				})
 			})
+
+			When("The source PVC is ROX", func() {
+				var roxPVC *corev1.PersistentVolumeClaim
+				BeforeEach(func() {
+					// Create a ROX PVC to use as the src
+					roxScName := "test-rox-storageclass"
+					roxPVC = &corev1.PersistentVolumeClaim{
+						ObjectMeta: metav1.ObjectMeta{
+							GenerateName: "test-rox-pvc-",
+							Namespace:    ns.Name,
+						},
+						Spec: corev1.PersistentVolumeClaimSpec{
+							StorageClassName: &roxScName,
+							AccessModes: []corev1.PersistentVolumeAccessMode{
+								corev1.ReadOnlyMany,
+							},
+							Resources: corev1.ResourceRequirements{
+								Requests: corev1.ResourceList{
+									"storage": resource.MustParse("1Gi"),
+								},
+							},
+						},
+					}
+					Expect(k8sClient.Create(ctx, roxPVC)).To(Succeed())
+				})
+				It("Mover job should mount the PVC as read-only", func() {
+					j, e := mover.ensureJob(ctx, cache, roxPVC, sa, repo, nil)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil()) // hasn't completed
+					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+					job = &batchv1.Job{}
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+
+					foundDataVolume := false
+					for _, vol := range job.Spec.Template.Spec.Volumes {
+						if vol.Name == dataVolumeName {
+							foundDataVolume = true
+							Expect(vol.VolumeSource.PersistentVolumeClaim).ToNot(BeNil())
+							Expect(vol.VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(roxPVC.GetName()))
+							// The volumes should be mounted read-only
+							Expect(vol.VolumeSource.PersistentVolumeClaim.ReadOnly).To(Equal(true))
+						}
+					}
+					Expect(foundDataVolume).To(Equal(true))
+				})
+			})
+
 			When("it's time to prune", func() {
 				var lastMonth metav1.Time
 				JustBeforeEach(func() {
