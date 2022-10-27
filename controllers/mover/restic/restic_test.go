@@ -35,6 +35,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
@@ -699,6 +700,60 @@ var _ = Describe("Restic as a source", func() {
 					Expect(foundDataVolume).To(BeTrue())
 					Expect(foundCacheVolume).To(BeTrue())
 				})
+
+				It("Should not have a PodSecurityContext by default", func() {
+					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil()) // hasn't completed
+					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+					job = &batchv1.Job{}
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+
+					psc := job.Spec.Template.Spec.SecurityContext
+					Expect(psc).NotTo(BeNil())
+					Expect(psc.RunAsUser).To(BeNil())
+					Expect(psc.FSGroup).To(BeNil())
+				})
+				When("A moverSecurityContext is provided", func() {
+					BeforeEach(func() {
+						rs.Spec.Restic.MoverSecurityContext = &corev1.PodSecurityContext{
+							RunAsUser: pointer.Int64(7),
+							FSGroup:   pointer.Int64(8),
+						}
+					})
+					It("Should appear in the mover Job", func() {
+						j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(j).To(BeNil()) // hasn't completed
+						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+						job = &batchv1.Job{}
+						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+
+						psc := job.Spec.Template.Spec.SecurityContext
+						Expect(psc).NotTo(BeNil())
+						Expect(psc.RunAsUser).NotTo(BeNil())
+						Expect(*psc.RunAsUser).To(Equal(int64(7)))
+						Expect(psc.FSGroup).NotTo(BeNil())
+						Expect(*psc.FSGroup).To(Equal(int64(8)))
+					})
+				})
+
+				When("The NS allows privileged movers", func() { // Already the case in this block
+					It("Should start a privileged mover", func() {
+						j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(j).To(BeNil()) // hasn't completed
+						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+						job = &batchv1.Job{}
+						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+
+						sc := job.Spec.Template.Spec.Containers[0].SecurityContext
+						Expect(sc).NotTo(BeNil())
+						Expect(len(sc.Capabilities.Add)).To(BeNumerically(">", 0))
+						Expect(sc.RunAsUser).NotTo(BeNil())
+						Expect(*sc.RunAsUser).To(Equal(int64(0)))
+					})
+				})
 			})
 
 			When("The source PVC is ROX", func() {
@@ -847,6 +902,71 @@ var _ = Describe("Restic as a source", func() {
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 					Expect(job.Status.Failed).To(Equal(int32(0)))
 				})
+			})
+		})
+	})
+
+	When("used as source", func() {
+		JustBeforeEach(func() {
+			// Controller sets status to non-nil
+			rs.Status = &volsyncv1alpha1.ReplicationSourceStatus{}
+			// Instantiate a restic mover for the tests
+			m, err := commonBuilderForTestSuite.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs,
+				false /* UNprivileged */)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(m).NotTo(BeNil())
+			mover, _ = m.(*Mover)
+			Expect(mover).NotTo(BeNil())
+		})
+
+		Context("mover Job is handled properly", func() {
+			var jobName string
+			var cache *corev1.PersistentVolumeClaim
+			var sa *corev1.ServiceAccount
+			var repo *corev1.Secret
+			var job *batchv1.Job
+			BeforeEach(func() {
+				// hardcoded since we don't get access unless the job is
+				// completed
+				jobName = "volsync-src-" + rs.Name
+				cache = &corev1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "thecache",
+						Namespace: ns.Name,
+					},
+				}
+				sPVC.Spec.DeepCopyInto(&cache.Spec)
+				sa = &corev1.ServiceAccount{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "thesa",
+						Namespace: ns.Name,
+					},
+				}
+				repo = &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "mysecret",
+						Namespace: ns.Name,
+					},
+				}
+			})
+			JustBeforeEach(func() {
+				Expect(k8sClient.Create(ctx, cache)).To(Succeed())
+				Expect(k8sClient.Create(ctx, sa)).To(Succeed())
+				Expect(k8sClient.Create(ctx, repo)).To(Succeed())
+			})
+
+			It("Should run unprivileged by default", func() {
+				j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+				Expect(e).NotTo(HaveOccurred())
+				Expect(j).To(BeNil()) // hasn't completed
+				nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+				job = &batchv1.Job{}
+				Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+
+				sc := job.Spec.Template.Spec.Containers[0].SecurityContext
+				Expect(sc).NotTo(BeNil())
+				Expect(len(sc.Capabilities.Add)).To(Equal(0))
+				Expect(sc.RunAsUser).To(BeNil())
 			})
 		})
 	})
