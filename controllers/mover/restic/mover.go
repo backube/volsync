@@ -69,6 +69,8 @@ type Mover struct {
 	mainPVCName           *string
 	caSecretName          string
 	caSecretKey           string
+	privileged            bool
+	moverSecurityContext  *corev1.PodSecurityContext
 	// Source-only fields
 	pruneInterval *int32
 	retainPolicy  *volsyncv1alpha1.ResticRetainPolicy
@@ -249,7 +251,7 @@ func (m *Mover) ensureSA(ctx context.Context) (*corev1.ServiceAccount, error) {
 			Namespace: m.owner.GetNamespace(),
 		},
 	}
-	saDesc := utils.NewSAHandler(ctx, m.client, m.owner, sa, true)
+	saDesc := utils.NewSAHandler(ctx, m.client, m.owner, sa, m.privileged)
 	cont, err := saDesc.Reconcile(m.logger)
 	if cont {
 		return sa, err
@@ -353,8 +355,9 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 			}
 		}
 		logger.Info("job actions", "actions", actions)
+		podSpec := &job.Spec.Template.Spec
 
-		job.Spec.Template.Spec.Containers = []corev1.Container{{
+		podSpec.Containers = []corev1.Container{{
 			Name: "restic",
 			Env: []corev1.EnvVar{
 				{Name: "FORGET_OPTIONS", Value: forgetOptions},
@@ -407,16 +410,10 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 			SecurityContext: &corev1.SecurityContext{
 				AllowPrivilegeEscalation: pointer.Bool(false),
 				Capabilities: &corev1.Capabilities{
-					Add: []corev1.Capability{
-						"DAC_OVERRIDE", // Read/write all files
-						"CHOWN",        // chown files
-						"FOWNER",       // Set permission bits & times
-					},
 					Drop: []corev1.Capability{"ALL"},
 				},
 				Privileged:             pointer.Bool(false),
 				ReadOnlyRootFilesystem: pointer.Bool(true),
-				RunAsUser:              pointer.Int64(0),
 			},
 			VolumeMounts: []corev1.VolumeMount{
 				{Name: dataVolumeName, MountPath: mountPath},
@@ -424,9 +421,10 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 				{Name: "tempdir", MountPath: "/tmp"},
 			},
 		}}
-		job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
-		job.Spec.Template.Spec.ServiceAccountName = sa.Name
-		job.Spec.Template.Spec.Volumes = []corev1.Volume{
+		podSpec.RestartPolicy = corev1.RestartPolicyNever
+		podSpec.ServiceAccountName = sa.Name
+		podSpec.SecurityContext = m.moverSecurityContext
+		podSpec.Volumes = []corev1.Volume{
 			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
 				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 					ClaimName: dataPVC.Name,
@@ -450,22 +448,22 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 				logger.Error(err, "unable to determine proper affinity", "PVC", client.ObjectKeyFromObject(dataPVC))
 				return err
 			}
-			job.Spec.Template.Spec.NodeSelector = affinity.NodeSelector
-			job.Spec.Template.Spec.Tolerations = affinity.Tolerations
+			podSpec.NodeSelector = affinity.NodeSelector
+			podSpec.Tolerations = affinity.Tolerations
 		}
 		if caSecret != nil {
 			// Tell mover where to find the cert
-			job.Spec.Template.Spec.Containers[0].Env = append(job.Spec.Template.Spec.Containers[0].Env, corev1.EnvVar{
+			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
 				Name:  "CUSTOM_CA",
 				Value: path.Join(resticCAMountPath, resticCAFilename),
 			})
 			// Mount the custom CA certificate
-			job.Spec.Template.Spec.Containers[0].VolumeMounts =
-				append(job.Spec.Template.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
+			podSpec.Containers[0].VolumeMounts =
+				append(podSpec.Containers[0].VolumeMounts, corev1.VolumeMount{
 					Name:      "custom-ca",
 					MountPath: resticCAMountPath,
 				})
-			job.Spec.Template.Spec.Volumes = append(job.Spec.Template.Spec.Volumes, corev1.Volume{
+			podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
 				Name: "custom-ca",
 				VolumeSource: corev1.VolumeSource{
 					Secret: &corev1.SecretVolumeSource{
@@ -484,7 +482,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 		// what restic expects, then mounts just that Secret key into the
 		// container, pointed to by the env var.
 		if _, ok := repo.Data["GOOGLE_APPLICATION_CREDENTIALS"]; ok {
-			container := &job.Spec.Template.Spec.Containers[0]
+			container := &podSpec.Containers[0]
 			// Tell restic where to look for the credential file
 			container.Env = append(container.Env, corev1.EnvVar{
 				Name:  "GOOGLE_APPLICATION_CREDENTIALS",
@@ -496,7 +494,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 					Name:      "gcs-credentials",
 					MountPath: credentialDir,
 				})
-			job.Spec.Template.Spec.Volumes = append(job.Spec.Template.Spec.Volumes, corev1.Volume{
+			podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
 				Name: "gcs-credentials",
 				VolumeSource: corev1.VolumeSource{
 					Secret: &corev1.SecretVolumeSource{
@@ -506,6 +504,23 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 						},
 					},
 				},
+			})
+		}
+		if m.privileged {
+			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
+				Name:  "PRIVILEGED_MOVER",
+				Value: "1",
+			})
+			podSpec.Containers[0].SecurityContext.Capabilities.Add = []corev1.Capability{
+				"DAC_OVERRIDE", // Read/write all files
+				"CHOWN",        // chown files
+				"FOWNER",       // Set permission bits & times
+			}
+			podSpec.Containers[0].SecurityContext.RunAsUser = pointer.Int64(0)
+		} else {
+			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
+				Name:  "PRIVILEGED_MOVER",
+				Value: "0",
 			})
 		}
 		return nil

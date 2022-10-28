@@ -235,7 +235,8 @@ function do_restore {
 
 echo "Testing mandatory env variables"
 # Check the mandatory env variables
-for var in RESTIC_CACHE_DIR \
+for var in PRIVILEGED_MOVER \
+           RESTIC_CACHE_DIR \
            RESTIC_PASSWORD \
            RESTIC_REPOSITORY \
            DATA_DIR \
