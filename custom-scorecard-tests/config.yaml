@@ -17,21 +17,71 @@ stages:
   tests:
   - entrypoint:
     - volsync-custom-scorecard-tests
-    - test_restic_with_customca.yml
+    - test_multi_sync_snapshot_rclone.yml
     image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
-      test: test_restic_with_customca.yml
+      test: test_multi_sync_snapshot_rclone.yml
     storage:
       spec:
         mountPath: {}
   - entrypoint:
     - volsync-custom-scorecard-tests
-    - test_restic_with_restoreasof.yml
+    - test_multi_sync_snapshot_rsync.yml
     image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
-      test: test_restic_with_restoreasof.yml
+      test: test_multi_sync_snapshot_rsync.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_rclone_normal.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_rclone_normal.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_rclone_priv.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_rclone_priv.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_replication_sched_snap.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_replication_sched_snap.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_replication_sync_direct.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_replication_sync_direct.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_restic_manual_normal.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_restic_manual_normal.yml
     storage:
       spec:
         mountPath: {}
@@ -47,31 +97,41 @@ stages:
         mountPath: {}
   - entrypoint:
     - volsync-custom-scorecard-tests
-    - test_simple_rsync.yml
+    - test_restic_with_customca.yml
     image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
-      test: test_simple_rsync.yml
+      test: test_restic_with_customca.yml
     storage:
       spec:
         mountPath: {}
   - entrypoint:
     - volsync-custom-scorecard-tests
-    - test_syncthing_cluster_sync.yml
+    - test_restic_with_previous.yml
     image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
-      test: test_syncthing_cluster_sync.yml
+      test: test_restic_with_previous.yml
     storage:
       spec:
         mountPath: {}
   - entrypoint:
     - volsync-custom-scorecard-tests
-    - test_rclone_normal.yml
+    - test_restic_with_restoreasof.yml
     image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
-      test: test_rclone_normal.yml
+      test: test_restic_with_restoreasof.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_restic_without_trigger.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_restic_without_trigger.yml
     storage:
       spec:
         mountPath: {}
@@ -97,81 +157,21 @@ stages:
         mountPath: {}
   - entrypoint:
     - volsync-custom-scorecard-tests
-    - test_restic_with_previous.yml
+    - test_simple_rsync.yml
     image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
-      test: test_restic_with_previous.yml
+      test: test_simple_rsync.yml
     storage:
       spec:
         mountPath: {}
   - entrypoint:
     - volsync-custom-scorecard-tests
-    - test_multi_sync_snapshot_rsync.yml
+    - test_syncthing_cluster_sync.yml
     image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
-      test: test_multi_sync_snapshot_rsync.yml
-    storage:
-      spec:
-        mountPath: {}
-  - entrypoint:
-    - volsync-custom-scorecard-tests
-    - test_rclone_priv.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
-    labels:
-      suite: volsync-e2e
-      test: test_rclone_priv.yml
-    storage:
-      spec:
-        mountPath: {}
-  - entrypoint:
-    - volsync-custom-scorecard-tests
-    - test_restic_without_trigger.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
-    labels:
-      suite: volsync-e2e
-      test: test_restic_without_trigger.yml
-    storage:
-      spec:
-        mountPath: {}
-  - entrypoint:
-    - volsync-custom-scorecard-tests
-    - test_multi_sync_snapshot_rclone.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
-    labels:
-      suite: volsync-e2e
-      test: test_multi_sync_snapshot_rclone.yml
-    storage:
-      spec:
-        mountPath: {}
-  - entrypoint:
-    - volsync-custom-scorecard-tests
-    - test_restic_manual_normal.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
-    labels:
-      suite: volsync-e2e
-      test: test_restic_manual_normal.yml
-    storage:
-      spec:
-        mountPath: {}
-  - entrypoint:
-    - volsync-custom-scorecard-tests
-    - test_replication_sync_direct.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
-    labels:
-      suite: volsync-e2e
-      test: test_replication_sync_direct.yml
-    storage:
-      spec:
-        mountPath: {}
-  - entrypoint:
-    - volsync-custom-scorecard-tests
-    - test_replication_sched_snap.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
-    labels:
-      suite: volsync-e2e
-      test: test_replication_sched_snap.yml
+      test: test_syncthing_cluster_sync.yml
     storage:
       spec:
         mountPath: {}
