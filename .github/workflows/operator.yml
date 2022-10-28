@@ -42,6 +42,63 @@ jobs:
       - name: Run linters
         run: ./.ci-scripts/pre-commit.sh --require-all
 
+  generated-files-check:
+    name: Auto Generated Files Check
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8
+
+      - name: Install Go
+        uses: actions/setup-go@268d8c0ca0432bb2cf416faae41297df9d262d7f
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Ensure custom-scorecard-tests config.yaml is up-to-date
+        run: |
+          make custom-scorecard-tests-generate-config
+          diff=$(git diff --color --ignore-space-change -- custom-scorecard-tests/config.yaml)
+          if [ -n "$diff" ]; then
+            echo "$diff"
+            echo "***** custom-scorecard-tests/config.yaml is out-of-date *****"
+            echo "*****     run 'make custom-scorecard-tests-generate-config'      *****"
+            exit 1
+          fi
+
+      - name: crd files check
+        run: |
+          make manifests
+          diff=$(git diff --color --ignore-space-change config/crd/bases)
+          if [ -n "$diff" ]; then
+            echo "$diff"
+            echo "***** config/crd/bases is out-of-date *****"
+            echo "*****     run 'make manifests'      *****"
+            exit 1
+          fi
+
+      - name: generated deepcopy files check
+        run: |
+          make generate
+          diff=$(git diff --color --ignore-space-change api/v1alpha1/*generated*.go)
+          if [ -n "$diff" ]; then
+            echo "$diff"
+            echo "***** api/v1alpha1 generated files are out-of-date *****"
+            echo "*****     run 'make generate'      *****"
+            exit 1
+          fi
+
+      - name: CSV bundle files check
+        run: |
+          make bundle
+          diff=$(git diff --color --ignore-space-change bundle)
+          if [ -n "$diff" ]; then
+            echo "$diff"
+            echo "***** CSV bundle files are out-of-date *****"
+            echo "*****     run 'make bundle'      *****"
+            exit 1
+          fi
+
   test-operator:
     name: Test-operator
     runs-on: ubuntu-20.04
@@ -430,7 +487,7 @@ jobs:
   #   pushed.
   e2e-success:
     name: Successful e2e tests
-    needs: [e2e, lint, test-operator, build-scorecard]
+    needs: [e2e, lint, generated-files-check, test-operator, build-scorecard]
     runs-on: ubuntu-20.04
     steps:
       - name: Success
