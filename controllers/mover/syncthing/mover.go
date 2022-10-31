@@ -101,21 +101,23 @@ const (
 
 // Mover is the reconciliation logic for the Restic-based data mover.
 type Mover struct {
-	client              client.Client
-	logger              logr.Logger
-	owner               client.Object
-	eventRecorder       events.EventRecorder
-	configCapacity      *resource.Quantity
-	configStorageClass  *string
-	configAccessModes   []corev1.PersistentVolumeAccessMode
-	containerImage      string
-	paused              bool
-	dataPVCName         *string
-	peerList            []volsyncv1alpha1.SyncthingPeer
-	status              *volsyncv1alpha1.ReplicationSourceSyncthingStatus
-	serviceType         corev1.ServiceType
-	syncthingConnection api.SyncthingConnection
-	apiConfig           api.APIConfig
+	client               client.Client
+	logger               logr.Logger
+	owner                client.Object
+	eventRecorder        events.EventRecorder
+	configCapacity       *resource.Quantity
+	configStorageClass   *string
+	configAccessModes    []corev1.PersistentVolumeAccessMode
+	containerImage       string
+	paused               bool
+	dataPVCName          *string
+	peerList             []volsyncv1alpha1.SyncthingPeer
+	status               *volsyncv1alpha1.ReplicationSourceSyncthingStatus
+	serviceType          corev1.ServiceType
+	syncthingConnection  api.SyncthingConnection
+	apiConfig            api.APIConfig
+	privileged           bool
+	moverSecurityContext *corev1.PodSecurityContext
 }
 
 var _ mover.Mover = &Mover{}
@@ -376,7 +378,7 @@ func (m *Mover) ensureSA(ctx context.Context) (*corev1.ServiceAccount, error) {
 			Namespace: m.owner.GetNamespace(),
 		},
 	}
-	saDesc := utils.NewSAHandler(ctx, m.client, m.owner, sa, true)
+	saDesc := utils.NewSAHandler(ctx, m.client, m.owner, sa, m.privileged)
 	cont, err := saDesc.Reconcile(m.logger)
 	if cont {
 		return sa, err
@@ -433,13 +435,15 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 		deployment.Spec.Template.ObjectMeta.Name = deployment.Name
 		utils.AddAllLabels(&deployment.Spec.Template, m.serviceSelector())
 
-		deployment.Spec.Template.Spec.NodeSelector = affinity.NodeSelector
-		deployment.Spec.Template.Spec.Tolerations = affinity.Tolerations
+		podSpec := &deployment.Spec.Template.Spec
 
-		deployment.Spec.Template.Spec.ServiceAccountName = sa.Name
-		deployment.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyAlways
-		deployment.Spec.Template.Spec.TerminationGracePeriodSeconds = pointer.Int64(10)
-		deployment.Spec.Template.Spec.Containers = []corev1.Container{
+		podSpec.NodeSelector = affinity.NodeSelector
+		podSpec.Tolerations = affinity.Tolerations
+
+		podSpec.ServiceAccountName = sa.Name
+		podSpec.RestartPolicy = corev1.RestartPolicyAlways
+		podSpec.TerminationGracePeriodSeconds = pointer.Int64(10)
+		podSpec.Containers = []corev1.Container{
 			{
 				Name:    "syncthing",
 				Image:   m.containerImage,
@@ -474,11 +478,22 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 				Resources: corev1.ResourceRequirements{
 					Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("1Gi")},
 				},
+				SecurityContext: &corev1.SecurityContext{
+					AllowPrivilegeEscalation: pointer.Bool(false),
+					Capabilities: &corev1.Capabilities{
+						Drop: []corev1.Capability{"ALL"},
+					},
+					Privileged:             pointer.Bool(false),
+					ReadOnlyRootFilesystem: pointer.Bool(true),
+				},
 			},
 		}
 
+		// security context
+		podSpec.SecurityContext = m.moverSecurityContext
+
 		// configure volumes
-		deployment.Spec.Template.Spec.Volumes = []corev1.Volume{
+		podSpec.Volumes = []corev1.Volume{
 			{
 				Name: configVolumeName,
 				VolumeSource: corev1.VolumeSource{
@@ -500,7 +515,8 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 				Name: certVolumeName,
 				VolumeSource: corev1.VolumeSource{
 					Secret: &corev1.SecretVolumeSource{
-						SecretName: apiSecret.Name,
+						SecretName:  apiSecret.Name,
+						DefaultMode: pointer.Int32(0600),
 						Items: []corev1.KeyToPath{
 							{Key: httpsKeyDataKey, Path: httpsKeyPath},
 							{Key: httpsCertDataKey, Path: httpsCertPath},
@@ -509,6 +525,25 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 				},
 			},
 		}
+
+		if m.privileged {
+			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
+				Name:  "PRIVILEGED_MOVER",
+				Value: "1",
+			})
+			podSpec.Containers[0].SecurityContext.Capabilities.Add = []corev1.Capability{
+				"DAC_OVERRIDE", // Read/write all files
+				"CHOWN",        // chown files
+				"FOWNER",       // Set permission bits & times
+			}
+			podSpec.Containers[0].SecurityContext.RunAsUser = pointer.Int64(0)
+		} else {
+			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
+				Name:  "PRIVILEGED_MOVER",
+				Value: "0",
+			})
+		}
+
 		return nil
 	})
 
