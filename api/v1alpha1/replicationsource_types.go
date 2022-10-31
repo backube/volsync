@@ -211,6 +211,9 @@ type ReplicationSourceSyncthingSpec struct {
 	// Used to set the accessModes of Syncthing config volume.
 	//+optional
 	ConfigAccessModes []corev1.PersistentVolumeAccessMode `json:"configAccessModes,omitempty"`
+	// MoverSecurityContext allows specifying the PodSecurityContext that will
+	// be used by the data mover
+	MoverSecurityContext *corev1.PodSecurityContext `json:"moverSecurityContext,omitempty"`
 }
 
 // ReplicationSourceSpec defines the desired state of ReplicationSource

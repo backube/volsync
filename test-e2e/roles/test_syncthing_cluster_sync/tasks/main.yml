@@ -31,7 +31,24 @@
             storage: 1Gi
   with_items: "{{ syncthings }}"
 
-- name: Create Syncthings
+- name: Create Syncthings (w/ mSC)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: volsync.backube/v1alpha1
+      kind: ReplicationSource
+      metadata:
+        name: "{{ item }}"
+        namespace: "{{ namespace }}"
+      spec:
+        sourcePVC: "{{ item }}"
+        syncthing:
+          serviceType: ClusterIP
+          moverSecurityContext: "{{ podSecurityContext }}"
+  with_items: "{{ syncthings }}"
+  when: podSecurityContext is defined
+
+- name: Create Syncthings (w/o mSC)
   kubernetes.core.k8s:
     state: present
     definition:
@@ -45,6 +62,7 @@
         syncthing:
           serviceType: ClusterIP
   with_items: "{{ syncthings }}"
+  when: podSecurityContext is not defined
 
 - name: Wait for Syncthings to be ready
   kubernetes.core.k8s_info:
