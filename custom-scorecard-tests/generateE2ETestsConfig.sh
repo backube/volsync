@@ -7,10 +7,12 @@ if [[ -z "${CUSTOM_SCORECARD_IMG}" ]]; then
   exit 1
 fi
 
-if ! TESTS="$(find ../test-e2e -maxdepth 1 -type f -name 'test_*.yml' -exec basename {} \;)"; then
+if ! TESTS_UNSORTED="$(find ../test-e2e -maxdepth 1 -type f -name 'test_*.yml' -exec basename {} \;)"; then
   echo "Unable to get list of e2e tests"
   exit 1
 fi
+
+TESTS=$(echo "${TESTS_UNSORTED}" | sort)
 
 echo "# E2E test list is: "
 echo "${TESTS}"
