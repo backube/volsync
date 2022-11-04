@@ -22,6 +22,9 @@ spec:
           args:
             - |
               set -x -e -o pipefail
+
+              id
+              stat '/mnt/{{ path }}'
               grep '{{ data }}' '/mnt/{{ path }}'
           securityContext:
             allowPrivilegeEscalation: false

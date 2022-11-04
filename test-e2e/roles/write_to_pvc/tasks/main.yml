@@ -17,19 +17,33 @@
     template: job.yml.j2
   register: res
 
-- name: Wait for Job to complete
-  kubernetes.core.k8s_info:
-    api_version: batch/v1
-    kind: Job
-    name: "{{ res.result.metadata.name }}"
-    namespace: "{{ namespace }}"
-  register: res2
-  until: >
-    res2.resources | length > 0 and
-    res2.resources[0].status.succeeded is defined and
-    res2.resources[0].status.succeeded==1
-  delay: 1
-  retries: "{{ timeout | default(300) }}"
+- block:
+    - name: Wait for Job to complete
+      kubernetes.core.k8s_info:
+        api_version: batch/v1
+        kind: Job
+        name: "{{ res.result.metadata.name }}"
+        namespace: "{{ namespace }}"
+      register: res2
+      until: >
+        res2.resources | length > 0 and
+        res2.resources[0].status.succeeded is defined and
+        res2.resources[0].status.succeeded==1
+      delay: 1
+      retries: "{{ timeout | default(300) }}"
+
+  always:
+    - name: Retrieve logs from Job
+      kubernetes.core.k8s_log:
+        api_version: batch/v1
+        kind: Job
+        name: "{{ res.result.metadata.name }}"
+        namespace: "{{ namespace }}"
+      register: log
+
+    - name: Dump Job log
+      debug:
+        var: log.log_lines
 
 - name: Delete Job
   kubernetes.core.k8s:
