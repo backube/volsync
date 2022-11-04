@@ -151,4 +151,3 @@
         pvc1_name: data-source
         pvc2_name: data-dest
         timeout: 900
-        verify_uid: false
