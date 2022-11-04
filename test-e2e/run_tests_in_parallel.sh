@@ -20,17 +20,22 @@ TESTRC=$?
 if [[ $TESTRC == 0 ]]; then
     echo; echo "Tests completed successfully"
 else
+    FAILURES=""
     # Dump the log files so they are easier to read than the above interleaved output
     for test in $TESTS; do
         logfile="$(basename -s .yml "$test").log"
-        echo; echo; echo
-        echo "==================== $logfile ===================="
-        cat "$logfile"
+        if grep -q 'failed=1' "$logfile"; then
+            FAILURES="$FAILURES $test"
+            echo; echo; echo
+            echo "==================== $logfile ===================="
+            cat "$logfile"
+        fi
     done
 
     # Dump cluster state for debugging
     pipenv run ansible-playbook dump_logs.yml | tee dump_logs.log
 
+    echo "Failures:$FAILURES"
     echo; echo "!!! TESTS FAILED !!!"
 fi
 
