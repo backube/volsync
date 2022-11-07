@@ -71,6 +71,8 @@ func EnsureVolSyncMoverSCCIfOpenShift(ctx context.Context, k8sClient client.Clie
 		return nil // Not OpenShift, nothing to do here
 	}
 
+	l := logger.WithValues("scc name", sccName)
+
 	decoder := serializer.NewCodecFactory(k8sClient.Scheme()).UniversalDeserializer()
 
 	volsyncMoverScc := &ocpsecurityv1.SecurityContextConstraints{}
@@ -90,7 +92,7 @@ func EnsureVolSyncMoverSCCIfOpenShift(ctx context.Context, k8sClient client.Clie
 			// SCC doesn't exist, create it
 			utils.SetOwnedByVolSync(volsyncMoverScc)
 
-			logger.Info("Creating volsync mover scc", "scc name", volsyncMoverScc.GetName())
+			l.Info("Creating volsync mover scc")
 			return k8sClient.Create(ctx, volsyncMoverScc)
 		}
 		// Error retrieving SCC, return the err
@@ -100,12 +102,12 @@ func EnsureVolSyncMoverSCCIfOpenShift(ctx context.Context, k8sClient client.Clie
 	// The scc is found on the system - to avoid issues with updating SCCs that perhaps we do not own,
 	// only update the SCC if it has the owned by volsync label
 	if !utils.IsOwnedByVolsync(currentScc) {
-		logger.Info("VolSync Mover SCC is not owned by VolSync, not updating.", "scc name", sccName)
+		l.Info("VolSync Mover SCC is not owned by VolSync, not updating.")
 		return nil
 	}
 
 	// Update the scc via a merge patch
-	logger.Info("Updating volsync mover scc via merge patch", "scc name", sccName)
+	l.Info("Updating volsync mover scc via merge patch")
 
 	// Leave metadata untouched
 	volsyncMoverScc.ObjectMeta = currentScc.ObjectMeta
