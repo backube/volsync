@@ -2,7 +2,7 @@
 apiVersion: security.openshift.io/v1
 kind: SecurityContextConstraints
 metadata:
-  name: volsync-mover
+  name: volsync-privileged-mover
 allowHostDirVolumePlugin: false
 allowHostIPC: false
 allowHostNetwork: false

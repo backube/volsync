@@ -143,7 +143,3 @@ on the command line or via a custom `values.yaml` file.
   - Allows applying tolerations to the operator pod
 - `affinity`: none
   - Allows setting the operator pod's affinity
-- `openshift.forceSCC`: false
-  - Forces the VolSync mover SecurityContextConstraint to be deployed even if
-    the API can't be detected. Normally, auto-detection is used to determine
-    whether the SCC should be deployed.
