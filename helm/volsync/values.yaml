@@ -76,7 +76,3 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
-
-openshift:
-  # Force deployment of the SCC even if the api resource isn't detected
-  forceSCC: false

@@ -149,13 +149,16 @@ rules:
   resources:
   - securitycontextconstraints
   verbs:
+  - create
   - get
   - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - security.openshift.io
   resourceNames:
-  - {{ include "volsync.fullname" . }}-mover
+  - volsync-privileged-mover
   resources:
   - securitycontextconstraints
   verbs:

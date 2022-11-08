@@ -261,14 +261,16 @@ spec:
           resources:
           - securitycontextconstraints
           verbs:
+          - create
           - get
           - list
+          - patch
+          - update
           - watch
         - apiGroups:
           - security.openshift.io
           resourceNames:
-          - privileged
-          - volsync-mover
+          - volsync-privileged-mover
           resources:
           - securitycontextconstraints
           verbs:
@@ -409,7 +411,7 @@ spec:
                 - --health-probe-bind-address=:8081
                 - --metrics-bind-address=127.0.0.1:8080
                 - --leader-elect
-                - --scc-name=privileged
+                - --scc-name=volsync-privileged-mover
                 command:
                 - /manager
                 env:

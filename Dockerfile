@@ -14,6 +14,7 @@ RUN go mod download
 COPY main.go main.go
 COPY api/ api/
 COPY controllers/ controllers/
+COPY config/openshift config/openshift
 
 # Build
 # We don't vendor modules. Enforce that behavior
