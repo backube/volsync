@@ -136,6 +136,16 @@ var _ = Describe("A cluster w/ StorageContextConstraints", func() {
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: sccName}, existingScc)
 				Expect(kerrors.IsNotFound(err)).To(BeTrue())
 			})
+
+			AfterEach(func() {
+				// Make sure we clean up the scc if it was successfully created
+				createdScc := &ocpsecurityv1.SecurityContextConstraints{}
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: sccName}, createdScc)
+				if err != nil {
+					Expect(k8sClient.Delete(ctx, createdScc)).To(Succeed())
+				}
+			})
+
 			It("Should be created and have the volsync owned-by label", func() {
 				Expect(EnsureVolSyncMoverSCCIfOpenShift(ctx, k8sClient, logger,
 					sccName, sccRaw)).To(Succeed())
@@ -173,6 +183,13 @@ var _ = Describe("A cluster w/ StorageContextConstraints", func() {
 				existingScc.AllowHostDirVolumePlugin = true
 
 				Expect(k8sClient.Update(ctx, existingScc)).To(Succeed())
+			})
+
+			AfterEach(func() {
+				// clean up the scc after test
+				existingScc := &ocpsecurityv1.SecurityContextConstraints{}
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: existingSccName}, existingScc)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, existingScc)).To(Succeed())
 			})
 
 			When("The scc has the volsync owned by label", func() {
