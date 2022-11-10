@@ -72,7 +72,7 @@
               manual: once
             rclone:
               rcloneConfigSection: rclone-data-mover
-              rcloneDestPath: test-e2e-simple-rclone
+              rcloneDestPath: "rclone-{{ namespace }}"
               rcloneConfig: "{{ rclone_secret_name }}"
               copyMethod: Snapshot
 
@@ -104,7 +104,7 @@
               manual: once
             rclone:
               rcloneConfigSection: rclone-data-mover
-              rcloneDestPath: test-e2e-simple-rclone
+              rcloneDestPath: "rclone-{{ namespace }}"
               rcloneConfig: "{{ rclone_secret_name }}"
               copyMethod: Snapshot
               accessModes: [ReadWriteOnce]
