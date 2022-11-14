@@ -69,7 +69,7 @@
               manual: once
             rclone:
               rcloneConfigSection: rclone-data-mover
-              rcloneDestPath: test-e2e-simple-rclone
+              rcloneDestPath: "rclone-{{ namespace }}"
               rcloneConfig: "{{ rclone_secret_name }}"
               copyMethod: Snapshot
               moverSecurityContext: "{{ podSecurityContext }}"
@@ -90,7 +90,7 @@
               manual: once
             rclone:
               rcloneConfigSection: rclone-data-mover
-              rcloneDestPath: test-e2e-simple-rclone
+              rcloneDestPath: "rclone-{{ namespace }}"
               rcloneConfig: "{{ rclone_secret_name }}"
               copyMethod: Snapshot
       when: podSecurityContext is not defined
@@ -123,7 +123,7 @@
               manual: once
             rclone:
               rcloneConfigSection: rclone-data-mover
-              rcloneDestPath: test-e2e-simple-rclone
+              rcloneDestPath: "rclone-{{ namespace }}"
               rcloneConfig: "{{ rclone_secret_name }}"
               copyMethod: Snapshot
               accessModes: [ReadWriteOnce]
@@ -145,7 +145,7 @@
               manual: once
             rclone:
               rcloneConfigSection: rclone-data-mover
-              rcloneDestPath: test-e2e-simple-rclone
+              rcloneDestPath: "rclone-{{ namespace }}"
               rcloneConfig: "{{ rclone_secret_name }}"
               copyMethod: Snapshot
               accessModes: [ReadWriteOnce]

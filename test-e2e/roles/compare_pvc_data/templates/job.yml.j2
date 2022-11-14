@@ -20,6 +20,8 @@ spec:
             - |
               set -e -o pipefail
 
+              id
+
               echo "Validating contents: PVC1 -> PVC2"
               find /mnt -type f | \
                 xargs sha256sum | \

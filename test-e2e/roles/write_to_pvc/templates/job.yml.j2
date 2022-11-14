@@ -20,8 +20,10 @@ spec:
             - |
               set -x -e -o pipefail
 
+              id
               mkdir -p `dirname /mnt/{{ path }}`
               echo '{{ data }}' > '/mnt/{{ path }}'
+              stat '/mnt/{{ path }}'
               sync
           securityContext:
             allowPrivilegeEscalation: false
