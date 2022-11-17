@@ -23,3 +23,5 @@
 
     - include_role:
         name: test_roles
+      vars:
+        namespace: "{{ namespaces[0] }}"

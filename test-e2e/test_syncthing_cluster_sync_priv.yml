@@ -7,12 +7,11 @@
   tasks:
     - include_role:
         name: create_namespace
+      vars:
+        num_namespaces: 3
 
     - include_role:
         name: gather_cluster_info
-
-    - include_role:
-        name: enable_privileged_mover
 
     # We're running everything as a normal user
     - name: Define podSecurityContext
@@ -30,3 +29,4 @@
         name: test_syncthing_cluster_sync
       vars:
         num_syncthings: 3
+        privileged: true

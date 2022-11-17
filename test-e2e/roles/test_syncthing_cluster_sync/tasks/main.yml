@@ -1,17 +1,28 @@
 ---
 
 - name: Check for required variables
-  fail: msg="Variable {{ item }} must be defined to use this role"
+  fail: msg="Variable {{ var_check }} must be defined to use this role"
   when: vars[var_check] is undefined
   with_items:
-    - namespace
+    - namespaces
     - num_syncthings
   loop_control:
     loop_var: var_check
 
+- name: Check for 1 namespace per syncthing
+  fail: msg="num_namespaces must be >= num_syncthings to use this role"
+  when: (namespaces | length) < num_syncthings
+
+- include_role:
+    name: enable_privileged_mover
+  when: privileged
+  loop: "{{ namespaces }}"
+  loop_control:
+    loop_var: mover_namespace
+
 - name: Build list of syncthings
   set_fact:
-    syncthings: "{{ syncthings | default([]) + ['test-%s' | format(item)] }}"
+    syncthings: "{{ syncthings | default([]) + [{ 'Name': 'test-%s' | format(item), 'Namespace': namespaces[item] }] }}"
   loop: "{{ range(0, num_syncthings) | list }}"
 
 - name: Create data PVCs
@@ -21,8 +32,8 @@
       kind: PersistentVolumeClaim
       apiVersion: v1
       metadata:
-        name: "{{ item }}"
-        namespace: "{{ namespace }}"
+        name: "{{ item.Name }}"
+        namespace: "{{ item.Namespace }}"
       spec:
         accessModes:
           - ReadWriteOnce
@@ -38,10 +49,10 @@
       apiVersion: volsync.backube/v1alpha1
       kind: ReplicationSource
       metadata:
-        name: "{{ item }}"
-        namespace: "{{ namespace }}"
+        name: "{{ item.Name }}"
+        namespace: "{{ item.Namespace }}"
       spec:
-        sourcePVC: "{{ item }}"
+        sourcePVC: "{{ item.Name }}"
         syncthing:
           serviceType: ClusterIP
           moverSecurityContext: "{{ podSecurityContext }}"
@@ -55,10 +66,10 @@
       apiVersion: volsync.backube/v1alpha1
       kind: ReplicationSource
       metadata:
-        name: "{{ item }}"
-        namespace: "{{ namespace }}"
+        name: "{{ item.Name }}"
+        namespace: "{{ item.Namespace }}"
       spec:
-        sourcePVC: "{{ item }}"
+        sourcePVC: "{{ item.Name }}"
         syncthing:
           serviceType: ClusterIP
   with_items: "{{ syncthings }}"
@@ -68,8 +79,8 @@
   kubernetes.core.k8s_info:
     api_version: volsync.backube/v1alpha1
     kind: ReplicationSource
-    name: "{{ item }}"
-    namespace: "{{ namespace }}"
+    name: "{{ item.Name }}"
+    namespace: "{{ item.Namespace }}"
   register: res
   until: >
     res.resources | length > 0 and
@@ -79,6 +90,15 @@
   with_items: "{{ syncthings }}"
   delay: 5
   retries: 60
+
+- name: Check syncthing movers are privileged
+  include_role:
+    name: mover_pod_is_privileged
+  vars:
+    component: "syncthing-mover"
+  loop: "{{ syncthings | map(attribute='Namespace') | list }}"
+  loop_control:
+    loop_var: mover_namespace
 
 # Loop over all "syncthings", calling connect on each possible pair
 - name: Peer Syncthings to each other
@@ -101,7 +121,8 @@
   vars:
     data: 'hello from syncthing-1'
     path: /testdata.txt
-    pvc_name: "{{ syncthings[0] }}"
+    pvc_name: "{{ syncthings[0].Name }}"
+    pvc_namespace: "{{ syncthings[0].Namespace }}"
 
 - name: Ensure data was synchronized to other instances
   include_role:
@@ -109,39 +130,17 @@
   vars:
     data: 'hello from syncthing-1'
     path: /testdata.txt
-    pvc_name: "{{ item }}"
+    pvc_name: "{{ item.Name }}"
+    pvc_namespace: "{{ item.Namespace }}"
     timeout: 300
   loop: "{{ syncthings[1:] }}"
 
-- name: Find syncthing pods
-  kubernetes.core.k8s_info:
-    api_version: v1
-    kind: Pod
-    namespace: "{{ namespace }}"
-    label_selectors:
-      - "app.kubernetes.io/component=syncthing-mover"
-  register: st_pods
-
 - name: Kill all syncthing pod instances
-  kubernetes.core.k8s:
-    state: absent
-    api_version: v1
-    kind: Pod
-    name: "{{ item.metadata.name }}"
-    namespace: "{{ namespace }}"
-  loop: "{{ st_pods.resources }}"
-
-- name: Wait for pods to be gone
-  kubernetes.core.k8s:
-    state: absent
-    api_version: v1
-    kind: Pod
-    name: "{{ item.metadata.name }}"
-    namespace: "{{ namespace }}"
-    wait: true
-    wait_timeout: 600
-  timeout: 600
-  loop: "{{ st_pods.resources }}"
+  include_tasks:
+    file: kill_pods_by_label.yml
+  loop: "{{ syncthings | map(attribute='Namespace') | list }}"
+  loop_control:
+    loop_var: st_namespace
 
 - name: Wait for instances to reconnect
   include_tasks:

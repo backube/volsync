@@ -53,6 +53,7 @@
         data: 'data'
         path: '/datafile'
         pvc_name: 'data-source'
+        pvc_namespace: "{{ namespace }}"
 
     - name: Backup data from source volume with manual trigger (w/ mSC)
       kubernetes.core.k8s:
@@ -206,5 +207,6 @@
       include_role:
         name: compare_pvc_data
       vars:
+        pvc_namespace: "{{ namespace }}"
         pvc1_name: data-source
         pvc2_name: data-dest

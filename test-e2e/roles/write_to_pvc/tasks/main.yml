@@ -5,9 +5,9 @@
   when: vars[var_check] is undefined
   with_items:
     - data
-    - namespace
     - path
     - pvc_name
+    - pvc_namespace
   loop_control:
     loop_var: var_check
 
@@ -23,7 +23,7 @@
         api_version: batch/v1
         kind: Job
         name: "{{ res.result.metadata.name }}"
-        namespace: "{{ namespace }}"
+        namespace: "{{ pvc_namespace }}"
       register: res2
       until: >
         res2.resources | length > 0 and
@@ -38,7 +38,7 @@
         api_version: batch/v1
         kind: Job
         name: "{{ res.result.metadata.name }}"
-        namespace: "{{ namespace }}"
+        namespace: "{{ pvc_namespace }}"
       register: log
 
     - name: Dump Job log
@@ -51,4 +51,4 @@
     api_version: batch/v1
     kind: Job
     name: "{{ res.result.metadata.name }}"
-    namespace: "{{ namespace }}"
+    namespace: "{{ pvc_namespace }}"

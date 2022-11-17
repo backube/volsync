@@ -4,7 +4,7 @@ kind: Job
 apiVersion: batch/v1
 metadata:
   generateName: writer-
-  namespace: "{{ namespace }}"
+  namespace: "{{ pvc_namespace }}"
 spec:
   completions: 1
   parallelism: 1

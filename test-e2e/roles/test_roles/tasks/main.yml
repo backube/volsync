@@ -1,6 +1,6 @@
 ---
 - name: Check for required variables
-  fail: msg="Variable {{ item }} must be defined to use this role"
+  fail: msg="Variable {{ var_check }} must be defined to use this role"
   when: vars[var_check] is undefined
   with_items:
     - namespace
@@ -47,12 +47,14 @@
     data: 'some data'
     path: '/thedatafile'
     pvc_name: 'pvc1'
+    pvc_namespace: "{{ namespace }}"
     should_fail: true
 
 - name: Verify contents of empty PVCs match
   include_role:
     name: compare_pvc_data
   vars:
+    pvc_namespace: "{{ namespace }}"
     pvc1_name: pvc1
     pvc2_name: pvc2
 
@@ -63,6 +65,7 @@
     data: 'some data'
     path: '/thedatafile'
     pvc_name: 'pvc1'
+    pvc_namespace: "{{ namespace }}"
 
 - name: PVC1 should have thedatafile
   include_role:
@@ -71,11 +74,13 @@
     data: 'some data'
     path: '/thedatafile'
     pvc_name: 'pvc1'
+    pvc_namespace: "{{ namespace }}"
 
 - name: Verify contents of differing PVCs don't match
   include_role:
     name: compare_pvc_data
   vars:
+    pvc_namespace: "{{ namespace }}"
     pvc1_name: pvc1
     pvc2_name: pvc2
     should_fail: true
@@ -87,11 +92,13 @@
     data: 'some data'
     path: '/thedatafile'
     pvc_name: 'pvc2'
+    pvc_namespace: "{{ namespace }}"
 
 - name: Verify contents of matching PVCs match
   include_role:
     name: compare_pvc_data
   vars:
+    pvc_namespace: "{{ namespace }}"
     pvc1_name: pvc1
     pvc2_name: pvc2
 
