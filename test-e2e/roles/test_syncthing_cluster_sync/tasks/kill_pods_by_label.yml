@@ -1,0 +1,41 @@
+---
+# This task finds all syncthing pods by label in a namespace, kills
+# them and then waits for them to get removed
+
+- name: Check for required variables
+  fail: msg="Variable {{ var_check }} must be defined to use this role"
+  when: vars[var_check] is undefined
+  with_items:
+    - st_namespace
+  loop_control:
+    loop_var: var_check
+
+- name: Find syncthing pods in namespace
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ st_namespace }}"
+    label_selectors:
+      - "app.kubernetes.io/component=syncthing-mover"
+  register: st_pods
+
+- name: Kill all syncthing pod instances in namespace
+  kubernetes.core.k8s:
+    state: absent
+    api_version: v1
+    kind: Pod
+    name: "{{ item.metadata.name }}"
+    namespace: "{{ st_namespace }}"
+  loop: "{{ st_pods.resources }}"
+
+- name: Wait for pods to be gone
+  kubernetes.core.k8s:
+    state: absent
+    api_version: v1
+    kind: Pod
+    name: "{{ item.metadata.name }}"
+    namespace: "{{ st_namespace }}"
+    wait: true
+    wait_timeout: 600
+  timeout: 600
+  loop: "{{ st_pods.resources }}"

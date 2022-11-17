@@ -1,10 +1,10 @@
 ---
 
 - name: Check for required variables
-  fail: msg="Variable {{ item }} must be defined to use this role"
+  fail: msg="Variable {{ var_check }} must be defined to use this role"
   when: vars[var_check] is undefined
   with_items:
-    - namespace
+    - mover_namespace
   loop_control:
     loop_var: var_check
 
@@ -15,7 +15,7 @@
       apiVersion: v1
       kind: Namespace
       metadata:
-        name: "{{ namespace }}"
+        name: "{{ mover_namespace }}"
         annotations:
           volsync.backube/privileged-movers: "true"
         labels:

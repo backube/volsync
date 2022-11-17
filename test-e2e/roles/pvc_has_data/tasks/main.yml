@@ -1,13 +1,13 @@
 ---
 
 - name: Check for required variables
-  fail: msg="Variable {{ item }} must be defined to use this role"
+  fail: msg="Variable {{ var_check }} must be defined to use this role"
   when: vars[var_check] is undefined
   with_items:
     - data
-    - namespace
     - path
     - pvc_name
+    - pvc_namespace
   loop_control:
     loop_var: var_check
 
@@ -27,7 +27,7 @@
         api_version: batch/v1
         kind: Job
         name: "{{ res.result.metadata.name }}"
-        namespace: "{{ namespace }}"
+        namespace: "{{ pvc_namespace }}"
       register: res2
       when: not local_should_fail
       until: >
@@ -42,7 +42,7 @@
         api_version: batch/v1
         kind: Job
         name: "{{ res.result.metadata.name }}"
-        namespace: "{{ namespace }}"
+        namespace: "{{ pvc_namespace }}"
       register: res2
       when: local_should_fail
       until: >
@@ -58,7 +58,7 @@
         api_version: batch/v1
         kind: Job
         name: "{{ res.result.metadata.name }}"
-        namespace: "{{ namespace }}"
+        namespace: "{{ pvc_namespace }}"
       register: log
 
     - name: Dump Job log
@@ -71,4 +71,4 @@
     api_version: batch/v1
     kind: Job
     name: "{{ res.result.metadata.name }}"
-    namespace: "{{ namespace }}"
+    namespace: "{{ pvc_namespace }}"

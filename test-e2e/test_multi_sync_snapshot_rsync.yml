@@ -46,6 +46,7 @@
         data: 'data'
         path: '/datafile'
         pvc_name: 'data-source'
+        pvc_namespace: "{{ namespace }}"
 
     - name: Wait for ssh keys and address to be ready
       kubernetes.core.k8s_info:
@@ -122,6 +123,7 @@
       include_role:
         name: compare_pvc_data
       vars:
+        pvc_namespace: "{{ namespace }}"
         pvc1_name: data-source
         pvc2_name: data-dest-1
         timeout: 900
@@ -133,6 +135,7 @@
         data: 'moredata'
         path: '/datafile'
         pvc_name: 'data-source'
+        pvc_namespace: "{{ namespace }}"
 
     - name: Trigger 2nd sync from source volume
       kubernetes.core.k8s:
@@ -189,6 +192,7 @@
       include_role:
         name: compare_pvc_data
       vars:
+        pvc_namespace: "{{ namespace }}"
         pvc1_name: data-source
         pvc2_name: data-dest-2
         timeout: 900
@@ -211,3 +215,4 @@
         data: 'moredata'
         path: '/datafile'
         pvc_name: 'data-dest-2'
+        pvc_namespace: "{{ namespace }}"

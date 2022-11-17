@@ -4,7 +4,7 @@
   fail: msg="Variable {{ item }} must be defined to use this role"
   when: vars[var_check] is undefined
   with_items:
-    - namespace
+    - pvc_namespace
     - pvc1_name
     - pvc2_name
   loop_control:
@@ -47,7 +47,7 @@
         api_version: batch/v1
         kind: Job
         name: "{{ res.result.metadata.name }}"
-        namespace: "{{ namespace }}"
+        namespace: "{{ pvc_namespace }}"
       register: res2
       # We wait until we either get a job success or a failure
       until: >
@@ -78,7 +78,7 @@
         api_version: batch/v1
         kind: Job
         name: "{{ res.result.metadata.name }}"
-        namespace: "{{ namespace }}"
+        namespace: "{{ pvc_namespace }}"
       register: log
 
     - name: Dump Job log
@@ -91,4 +91,4 @@
     api_version: batch/v1
     kind: Job
     name: "{{ res.result.metadata.name }}"
-    namespace: "{{ namespace }}"
+    namespace: "{{ pvc_namespace }}"

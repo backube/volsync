@@ -7,6 +7,9 @@
   tasks:
     - include_role:
         name: create_namespace
+      vars:
+        num_namespaces: 3
+        pss_enforce: restricted
 
     - include_role:
         name: gather_cluster_info
@@ -27,3 +30,4 @@
         name: test_syncthing_cluster_sync
       vars:
         num_syncthings: 3
+        privileged: false

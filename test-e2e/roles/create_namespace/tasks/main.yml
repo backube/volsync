@@ -1,15 +1,38 @@
 ---
 
-- name: Create a temporary Namespace
+- name: Get number of namespaces to create (default is 1)
+  ansible.builtin.set_fact:
+    num_namespaces: "{{ num_namespaces | default(1) }}"
+
+- name: Build list of namespaces
+  ansible.builtin.set_fact:
+    namespace_name_prefixes: "{{ namespace_name_prefixes | default([]) + ['test-%s-' | format(item)] }}"
+  loop: "{{ range(0, (num_namespaces | int)) | list }}"
+
+- name: Create temporary Namespaces
   kubernetes.core.k8s:
     state: present
     definition:
       apiVersion: v1
       kind: Namespace
       metadata:
-        generateName: test-
-  register: test_namespace
-  notify: Delete temporary Namespace
+        generateName: "{{ item }}"
+  register: test_namespaces
+  with_items: "{{ namespace_name_prefixes }}"
+  notify: Delete temporary Namespaces
+
+- name: Save name of test Namespaces
+  ansible.builtin.set_fact:
+    namespaces: "{{ namespaces | default([]) + [item.result.metadata.name] }}"
+  with_items: "{{ test_namespaces.results }}"
+
+- name: Save name of first namespace (useful for tests that use 1 namespace)
+  ansible.builtin.set_fact:
+    namespace: "{{ namespaces[0] }}"
+
+- name: Print out created namespaces
+  ansible.builtin.debug:
+    msg: namespaces {{ namespaces }} namespace is {{ namespace }}
 
 - name: Set PSS enforcement mode
   kubernetes.core.k8s:
@@ -18,12 +41,9 @@
       apiVersion: v1
       kind: Namespace
       metadata:
-        name: "{{ test_namespace.result.metadata.name }}"
+        name: "{{ item }}"
         labels:
           pod-security.kubernetes.io/enforce: "{{ pss_enforce }}"
           security.openshift.io/scc.podSecurityLabelSync: "false"
   when: pss_enforce is defined
-
-- name: Save name of test Namespace
-  ansible.builtin.set_fact:
-    namespace: "{{ test_namespace.result.metadata.name }}"
+  with_items: "{{ namespaces }}"
