@@ -120,6 +120,12 @@ on the command line or via a custom `values.yaml` file.
   - The tag to use for the rsync-based data mover
 - `rsync.image`: (empty)
   - Allows overriding the repository & tag as a single field.
+- `rsync-tls.repository`: `quay.io/backube/volsync-mover-rsync-tls`
+  - The container image for VolSync's rsync-tls-based data mover
+- `rsync-tls.tag`: (current appVersion)
+  - The tag to use for the rsync-based data mover
+- `rsync-tls.image`: (empty)
+  - Allows overriding the repository & tag as a single field.
 - `imagePullSecrets`: none
   - May be set if pull secret(s) are needed to retrieve the operator image
 - `serviceAccount.create`: `true`
