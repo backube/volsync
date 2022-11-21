@@ -51,6 +51,7 @@ import (
 	"github.com/backube/volsync/controllers/mover/rclone"
 	"github.com/backube/volsync/controllers/mover/restic"
 	"github.com/backube/volsync/controllers/mover/rsync"
+	"github.com/backube/volsync/controllers/mover/rsynctls"
 	"github.com/backube/volsync/controllers/mover/syncthing"
 	"github.com/backube/volsync/controllers/platform"
 	"github.com/backube/volsync/controllers/utils"
@@ -84,6 +85,9 @@ func registerMovers() error {
 	}
 	if err := restic.Register(); err != nil {
 		return fmt.Errorf("error registering restic data mover: %w", err)
+	}
+	if err := rsynctls.Register(); err != nil {
+		return fmt.Errorf("error registering rsync-tls data mover: %w", err)
 	}
 	if err := syncthing.Register(); err != nil {
 		return fmt.Errorf("error registering syncthing data mover: %w", err)

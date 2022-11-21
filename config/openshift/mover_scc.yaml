@@ -15,7 +15,7 @@ allowedCapabilities:
   - CHOWN         # allow files to have their uid restored
   - DAC_OVERRIDE  # allow all files in PVs to be read/written
   - FOWNER        # allow setting all file permissions & times
-  - SETGID        # for sshd
+  - SETGID        # for sshd & allow rsyncd to set its supplemental groups
   - SETUID        # for sshd
   - SYS_CHROOT    # for sshd
 fsGroup:
