@@ -93,6 +93,16 @@
         mountPath: {}
   - entrypoint:
     - volsync-custom-scorecard-tests
+    - test_restic_without_trigger.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_restic_without_trigger.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
     - test_restic_with_previous.yml
     image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
@@ -113,11 +123,11 @@
         mountPath: {}
   - entrypoint:
     - volsync-custom-scorecard-tests
-    - test_restic_without_trigger.yml
+    - test_roles_privileged.yml
     image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
-      test: test_restic_without_trigger.yml
+      test: test_roles_privileged.yml
     storage:
       spec:
         mountPath: {}
@@ -133,11 +143,21 @@
         mountPath: {}
   - entrypoint:
     - volsync-custom-scorecard-tests
-    - test_roles_privileged.yml
+    - test_rsync_tls_normal.yml
     image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
-      test: test_roles_privileged.yml
+      test: test_rsync_tls_normal.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_rsync_tls_priv.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_rsync_tls_priv.yml
     storage:
       spec:
         mountPath: {}
