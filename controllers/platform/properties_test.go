@@ -71,13 +71,15 @@ var _ = Describe("A cluster w/ StorageContextConstraints", func() {
 		Expect(err).NotTo(HaveOccurred())
 		// Parsed yaml correctly
 		Expect(sccCRD.Name).To(Equal("securitycontextconstraints.security.openshift.io"))
-		err = k8sClient.Create(ctx, sccCRD)
-		Expect(kerrors.IsAlreadyExists(err) || err == nil).To(BeTrue())
+		Expect(k8sClient.Create(ctx, sccCRD)).NotTo(HaveOccurred())
 		Eventually(func() bool {
-			// Getting a random SCC should return NotFound as opposed to NoKindMatchError
-			scc := ocpsecurityv1.SecurityContextConstraints{}
-			err := k8sClient.Get(ctx, client.ObjectKey{Name: "zzzz"}, &scc)
-			return kerrors.IsNotFound(err)
+			// Getting sccs list should return empty list (no error)
+			sccList := ocpsecurityv1.SecurityContextConstraintsList{}
+			err := k8sClient.List(ctx, &sccList)
+			if err != nil {
+				return false
+			}
+			return len(sccList.Items) == 0
 		}, 5*time.Second).Should(BeTrue())
 		priv = &ocpsecurityv1.SecurityContextConstraints{
 			ObjectMeta: metav1.ObjectMeta{
@@ -88,6 +90,21 @@ var _ = Describe("A cluster w/ StorageContextConstraints", func() {
 	})
 	AfterEach(func() {
 		Expect(k8sClient.Delete(ctx, priv)).To(Succeed())
+
+		Expect(k8sClient.Delete(ctx, sccCRD)).To(Succeed())
+		Eventually(func() bool {
+			// CRD can take a while to cleanup and leak into subsequent tests that run in the same process, wait
+			// to ensure it's gone
+			reloadErr := k8sClient.Get(ctx, client.ObjectKeyFromObject(sccCRD), sccCRD)
+			if !kerrors.IsNotFound(reloadErr) {
+				return false // SCC CRD is still there, keep trying
+			}
+
+			// Doublecheck sccs gone
+			sccList := ocpsecurityv1.SecurityContextConstraintsList{}
+			getSccErr := k8sClient.List(ctx, &sccList)
+			return kerrors.IsNotFound(getSccErr)
+		}, 60*time.Second, 250*time.Millisecond).Should(BeTrue())
 	})
 	It("should be detected as OpenShift", func() {
 		props, err := GetProperties(ctx, k8sClient, logger)
