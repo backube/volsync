@@ -523,7 +523,7 @@ spec:
                           type: object
                       type: object
                     serviceType:
-                      description: serviceType determines the Service type that will be created for incoming SSH connections.
+                      description: serviceType determines the Service type that will be created for incoming TLS connections.
                       type: string
                     storageClassName:
                       description: storageClassName can be used to specify the StorageClass of the destination volume. If not set, the default StorageClass will be used.

@@ -78,7 +78,7 @@ type ReplicationDestinationRsyncTLSSpec struct {
 	//+optional
 	KeySecret *string `json:"keySecret,omitempty"`
 	// serviceType determines the Service type that will be created for incoming
-	// SSH connections.
+	// TLS connections.
 	//+optional
 	ServiceType *corev1.ServiceType `json:"serviceType,omitempty"`
 	// MoverSecurityContext allows specifying the PodSecurityContext that will
