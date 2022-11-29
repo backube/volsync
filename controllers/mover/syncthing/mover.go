@@ -537,6 +537,7 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 				"FOWNER",       // Set permission bits & times
 			}
 			podSpec.Containers[0].SecurityContext.RunAsUser = pointer.Int64(0)
+			podSpec.Containers[0].SecurityContext.RunAsNonRoot = pointer.Bool(false)
 		} else {
 			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
 				Name:  "PRIVILEGED_MOVER",
