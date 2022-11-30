@@ -130,13 +130,13 @@ func (m *Mover) Name() string { return "syncthing" }
 //
 // Synchronize ensures that the necessary resources required by
 // the Syncthing Deployment are available, including:
-// - a PVC containing the data to be synced
-// - PVC for storing configuration data
-// - Secret containing the API key, TLS Certificates, and the username/password
-//   used to lock down the GUI.
-// - Deployment for the Syncthing data mover
-// - Service exposing Syncthing's API
-// - Service exposing Syncthing's data port
+//   - a PVC containing the data to be synced
+//   - PVC for storing configuration data
+//   - Secret containing the API key, TLS Certificates, and the username/password
+//     used to lock down the GUI.
+//   - Deployment for the Syncthing data mover
+//   - Service exposing Syncthing's API
+//   - Service exposing Syncthing's data port
 //
 // Once the resources are all provided, Synchronize will then
 // poll the Syncthing API and make necessary configurations
@@ -387,6 +387,7 @@ func (m *Mover) ensureSA(ctx context.Context) (*corev1.ServiceAccount, error) {
 }
 
 // ensureDeployment Will ensure that a Deployment for the Syncthing mover exists, or it will be created.
+//
 //nolint:funlen
 func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.PersistentVolumeClaim,
 	configPVC *corev1.PersistentVolumeClaim, sa *corev1.ServiceAccount,

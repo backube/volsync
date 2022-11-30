@@ -121,6 +121,7 @@ func podsUsingPVC(ctx context.Context, c client.Client, logger logr.Logger,
 	pvc *corev1.PersistentVolumeClaim) ([]corev1.Pod, error) {
 	podList := corev1.PodList{}
 	if err := c.List(ctx, &podList, client.InNamespace(pvc.Namespace)); err != nil {
+		logger.Error(err, "unable to list pods in namespace")
 		return nil, err
 	}
 
