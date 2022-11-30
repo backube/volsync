@@ -10,20 +10,25 @@ Usage
    rclone/index
    restic/index
    rsync/index
+   rsync-tls/index
    syncthing/index
    cli/index
 
-There are three different replication methods built into VolSync. Choose the method that best fits your use-case:
+There are four different replication methods built into VolSync. Choose the method that best fits your use-case:
 
 :doc:`Rclone replication <rclone/index>`
    Use Rclone-based replication for multi-way (1:many) scenarios such as
    distributing data to edge clusters from a central site.
 :doc:`Restic backup <restic/index>`
    Create a Restic-based backup of the data in a PersistentVolume.
-:doc:`Rsync replication <rsync/index>`
+:doc:`Rsync replication (via TLS) <rsync-tls/index>`
    Use Rsync-based replication for 1:1 replication of volumes in scenarios such
    as disaster recovery, mirroring to a test environment, or sending data to a
    remote site for processing.
+:doc:`Rsync replication (via ssh) <rsync/index>`
+   This is the original rsync-based mover for 1:1 data replication. New
+   deployments should favor the TLS-based implementation since the mover
+   requires fewer privileges.
 :doc:`Syncthing replication <syncthing/index>`
 	 Use Syncthing-based replication for multi-way (many:many), live, eventually consistent data replication
 	 in scenarios where the data is spread-out and updated in real-time, such as a wiki application,
