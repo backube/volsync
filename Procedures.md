@@ -204,8 +204,11 @@ from the csv.spec when it's empty for us.
   * Change the version number in [operator.yml](.github/workflows/operator.yml)
   * Change the version number in [go.mod](go.mod)
     * Run `go mod tidy -go=X.Y`
+  * Change the version number in [custom-scorecard-tests/go.mod](custom-scorecard-tests/go.mod)
+    * Run `go mod tidy -go=X.Y`
   * Change the version number for the builder images in
     * [Dockerfile](Dockerfile)
+    * [Dockerfile.volsync-custom-scorecard-tests](Dockerfile.volsync-custom-scorecard-tests)
     * [mover-rclone/Dockerfile](mover-rclone/Dockerfile)
     * [mover-restic/Dockerfile](mover-restic/Dockerfile)
     * [mover-syncthing/Dockerfile](mover-syncthing/Dockerfile)

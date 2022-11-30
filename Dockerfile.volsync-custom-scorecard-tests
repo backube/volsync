@@ -1,5 +1,5 @@
 # Build the volsync-custom-scorecard-tests binary
-FROM golang:1.18 as builder
+FROM golang:1.19 as builder
 
 # Copy the go source
 COPY ./custom-scorecard-tests/. /workspace/
