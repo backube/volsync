@@ -3,7 +3,7 @@ kind: Job
 apiVersion: batch/v1
 metadata:
   generateName: grep-contents-
-  namespace: "{{ pvc_namespace }}"
+  namespace: "{{ namespace }}"
 spec:
   completions: 1
   parallelism: 1

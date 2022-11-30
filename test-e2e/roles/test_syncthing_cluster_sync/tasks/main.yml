@@ -18,7 +18,7 @@
   when: privileged
   loop: "{{ namespaces }}"
   loop_control:
-    loop_var: mover_namespace
+    loop_var: namespace
 
 - name: Build list of syncthings
   set_fact:
@@ -98,7 +98,7 @@
     component: "syncthing-mover"
   loop: "{{ syncthings | map(attribute='Namespace') | list }}"
   loop_control:
-    loop_var: mover_namespace
+    loop_var: namespace
 
 # Loop over all "syncthings", calling connect on each possible pair
 - name: Peer Syncthings to each other
@@ -122,7 +122,7 @@
     data: 'hello from syncthing-1'
     path: /testdata.txt
     pvc_name: "{{ syncthings[0].Name }}"
-    pvc_namespace: "{{ syncthings[0].Namespace }}"
+    namespace: "{{ syncthings[0].Namespace }}"
 
 - name: Ensure data was synchronized to other instances
   include_role:
@@ -131,7 +131,7 @@
     data: 'hello from syncthing-1'
     path: /testdata.txt
     pvc_name: "{{ item.Name }}"
-    pvc_namespace: "{{ item.Namespace }}"
+    namespace: "{{ item.Namespace }}"
     timeout: 300
   loop: "{{ syncthings[1:] }}"
 

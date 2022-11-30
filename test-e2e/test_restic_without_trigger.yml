@@ -37,7 +37,6 @@
         data: 'data'
         path: '/datafile'
         pvc_name: 'data-source'
-        pvc_namespace: "{{ namespace }}"
 
     - name: Run pvc affinity pod for source PVC
       include_role:
