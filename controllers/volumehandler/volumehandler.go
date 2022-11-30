@@ -140,7 +140,7 @@ func (vh *VolumeHandler) getPVCByName(ctx context.Context, pvcName string) (*cor
 	return pvc, err
 }
 
-//nolint: funlen
+// nolint: funlen
 func (vh *VolumeHandler) EnsureNewPVC(ctx context.Context, log logr.Logger,
 	name string) (*corev1.PersistentVolumeClaim, error) {
 	logger := log.WithValues("PVC", name)
@@ -215,7 +215,7 @@ func (vh *VolumeHandler) GetAccessModes() []corev1.PersistentVolumeAccessMode {
 	return vh.accessModes
 }
 
-//nolint: funlen
+// nolint: funlen
 func (vh *VolumeHandler) ensureImageSnapshot(ctx context.Context, log logr.Logger,
 	src *corev1.PersistentVolumeClaim) (*snapv1.VolumeSnapshot, error) {
 	// create & record name (if necessary)
@@ -307,7 +307,7 @@ func (vh *VolumeHandler) RemoveSnapshotAnnotationFromPVC(ctx context.Context, lo
 	return nil
 }
 
-//nolint: funlen
+// nolint: funlen
 func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,
 	src *corev1.PersistentVolumeClaim, name string, isTemporary bool) (*corev1.PersistentVolumeClaim, error) {
 	clone := &corev1.PersistentVolumeClaim{
@@ -387,7 +387,7 @@ func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,
 	return clone, err
 }
 
-//nolint: funlen
+// nolint: funlen
 func (vh *VolumeHandler) ensureSnapshot(ctx context.Context, log logr.Logger,
 	src *corev1.PersistentVolumeClaim, name string, isTemporary bool) (*snapv1.VolumeSnapshot, error) {
 	snap := &snapv1.VolumeSnapshot{
@@ -449,7 +449,7 @@ func (vh *VolumeHandler) ensureSnapshot(ctx context.Context, log logr.Logger,
 	return snap, nil
 }
 
-//nolint: funlen
+// nolint: funlen
 func (vh *VolumeHandler) pvcFromSnapshot(ctx context.Context, log logr.Logger,
 	snap *snapv1.VolumeSnapshot, original *corev1.PersistentVolumeClaim,
 	name string, isTemporary bool) (*corev1.PersistentVolumeClaim, error) {
