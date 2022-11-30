@@ -26,9 +26,11 @@
     namespaces: "{{ namespaces | default([]) + [item.result.metadata.name] }}"
   with_items: "{{ test_namespaces.results }}"
 
+# Only set namespace var when 1 namespace is being used
 - name: Save name of first namespace (useful for tests that use 1 namespace)
   ansible.builtin.set_fact:
     namespace: "{{ namespaces[0] }}"
+  when: num_namespaces | int == 1
 
 - name: Print out created namespaces
   ansible.builtin.debug:

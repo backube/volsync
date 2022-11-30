@@ -10,10 +10,6 @@
     # This is just here to disarm the PSA on kube
     - include_role:
         name: enable_privileged_mover
-      vars:
-        mover_namespace: "{{ namespaces[0] }}"
 
     - include_role:
         name: test_roles
-      vars:
-        namespace: "{{ namespaces[0] }}"

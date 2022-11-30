@@ -7,7 +7,7 @@
     - data
     - path
     - pvc_name
-    - pvc_namespace
+    - namespace
   loop_control:
     loop_var: var_check
 
@@ -27,7 +27,7 @@
         api_version: batch/v1
         kind: Job
         name: "{{ res.result.metadata.name }}"
-        namespace: "{{ pvc_namespace }}"
+        namespace: "{{ namespace }}"
       register: res2
       when: not local_should_fail
       until: >
@@ -42,7 +42,7 @@
         api_version: batch/v1
         kind: Job
         name: "{{ res.result.metadata.name }}"
-        namespace: "{{ pvc_namespace }}"
+        namespace: "{{ namespace }}"
       register: res2
       when: local_should_fail
       until: >
@@ -58,7 +58,7 @@
         api_version: batch/v1
         kind: Job
         name: "{{ res.result.metadata.name }}"
-        namespace: "{{ pvc_namespace }}"
+        namespace: "{{ namespace }}"
       register: log
 
     - name: Dump Job log
@@ -71,4 +71,4 @@
     api_version: batch/v1
     kind: Job
     name: "{{ res.result.metadata.name }}"
-    namespace: "{{ pvc_namespace }}"
+    namespace: "{{ namespace }}"
