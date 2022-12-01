@@ -89,7 +89,7 @@ var _ = Describe("A cluster w/ StorageContextConstraints", func() {
 		Expect(k8sClient.Create(ctx, priv)).To(Succeed())
 	})
 	AfterEach(func() {
-		Expect(k8sClient.Delete(ctx, priv)).To(Succeed())
+	  deleteScc(priv)
 
 		Expect(k8sClient.Delete(ctx, sccCRD)).To(Succeed())
 		Eventually(func() bool {
@@ -127,7 +127,7 @@ var _ = Describe("A cluster w/ StorageContextConstraints", func() {
 			Expect(k8sClient.Create(ctx, rv2)).To(Succeed())
 		})
 		AfterEach(func() {
-			Expect(k8sClient.Delete(ctx, rv2)).To(Succeed())
+			deleteScc(rv2)
 		})
 		It("should be detected", func() {
 			props, err := GetProperties(ctx, k8sClient, logger)
@@ -159,7 +159,7 @@ var _ = Describe("A cluster w/ StorageContextConstraints", func() {
 				createdScc := &ocpsecurityv1.SecurityContextConstraints{}
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: sccName}, createdScc)
 				if err != nil {
-					Expect(k8sClient.Delete(ctx, createdScc)).To(Succeed())
+					deleteScc(createdScc)
 				}
 			})
 
@@ -206,7 +206,7 @@ var _ = Describe("A cluster w/ StorageContextConstraints", func() {
 				// clean up the scc after test
 				existingScc := &ocpsecurityv1.SecurityContextConstraints{}
 				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: existingSccName}, existingScc)).To(Succeed())
-				Expect(k8sClient.Delete(ctx, existingScc)).To(Succeed())
+				deleteScc(existingScc)
 			})
 
 			When("The scc has the volsync owned by label", func() {
@@ -266,3 +266,16 @@ var _ = Describe("A cluster w/ StorageContextConstraints", func() {
 		})
 	})
 })
+
+const maxWait = 10 * time.Second
+const interval = 250 * time.Millisecond
+
+func deleteScc(scc *ocpsecurityv1.SecurityContextConstraints) {
+	// Delete's scc and uses Eventually() to check that it's completed the deletion
+	// Doing this to avoid timing issues with multiple tests that may share the same control plane
+	Expect(k8sClient.Delete(ctx, scc)).To(Succeed())
+
+	Eventually(func() bool {
+		return kerrors.IsNotFound(k8sClient.Get(ctx, client.ObjectKeyFromObject(scc), scc))
+	}, maxWait, interval).Should(BeTrue())
+}

@@ -7,7 +7,6 @@
   when: vars[var_check] is undefined
   with_items:
     - instances
-    - namespace
   loop_control:
     loop_var: var_check
 
@@ -19,16 +18,16 @@
   kubernetes.core.k8s_info:
     api_version: volsync.backube/v1alpha1
     kind: ReplicationSource
-    name: "{{ instances[0] }}"
-    namespace: "{{ namespace }}"
+    name: "{{ instances[0].Name }}"
+    namespace: "{{ instances[0].Namespace }}"
   register: first
 
 - name: Get info about second syncthing
   kubernetes.core.k8s_info:
     api_version: volsync.backube/v1alpha1
     kind: ReplicationSource
-    name: "{{ instances[1] }}"
-    namespace: "{{ namespace }}"
+    name: "{{ instances[1].Name }}"
+    namespace: "{{ instances[1].Namespace }}"
   register: second
 
 - name: Construct new peer list
