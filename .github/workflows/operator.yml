@@ -20,6 +20,7 @@ env:
   RCLONE_IMAGE: "quay.io/backube/volsync-mover-rclone"
   RESTIC_IMAGE: "quay.io/backube/volsync-mover-restic"
   RSYNC_IMAGE: "quay.io/backube/volsync-mover-rsync"
+  RSYNC_TLS_IMAGE: "quay.io/backube/volsync-mover-rsync-tls"
   SYNCTHING_IMAGE: "quay.io/backube/volsync-mover-syncthing"
   CUSTOM_SCORECARD_IMAGE: "quay.io/backube/volsync-custom-scorecard-tests"
 
@@ -215,6 +216,26 @@ jobs:
           name: volsync-mover-rsync-container
           path: /tmp/image.tar
 
+  build-rsync-tls:
+    name: Build-mover-rsync-tls
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8
+
+      - name: Build operator container
+        run: make -C mover-rsync-tls image
+
+      - name: Export container image
+        run: docker save -o /tmp/image.tar ${RSYNC_TLS_IMAGE}
+
+      - name: Save container as artifact
+        uses: actions/upload-artifact@83fd05a356d7e2593de66fc9913b3002723633cb
+        with:
+          name: volsync-mover-rsync-tls-container
+          path: /tmp/image.tar
+
   build-syncthing:
     name: build-mover-syncthing
     runs-on: ubuntu-20.04
@@ -322,7 +343,7 @@ jobs:
 
   e2e:
     name: End-to-end
-    needs: [build-operator, build-rclone, build-restic, build-rsync, build-syncthing, kubectl-plugin]
+    needs: [build-operator, build-rclone, build-restic, build-rsync, build-rsync-tls, build-syncthing, kubectl-plugin]
     runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
@@ -433,6 +454,19 @@ jobs:
           docker tag ${RSYNC_IMAGE} ${RSYNC_IMAGE}:ci-build
           kind load docker-image "${RSYNC_IMAGE}:ci-build"
 
+      - name: Load rsync-tls container artifact
+        uses: actions/download-artifact@9782bd6a9848b53b110e712e20e42d89988822b7
+        with:
+          name: volsync-mover-rsync-tls-container
+          path: /tmp
+
+      - name: Import container image into cluster
+        run: |
+          docker load -i /tmp/image.tar
+          docker inspect ${RSYNC_TLS_IMAGE}
+          docker tag ${RSYNC_TLS_IMAGE} ${RSYNC_TLS_IMAGE}:ci-build
+          kind load docker-image "${RSYNC_TLS_IMAGE}:ci-build"
+
       - name: Load syncthing container artifact
         uses: actions/download-artifact@9782bd6a9848b53b110e712e20e42d89988822b7
         with:
@@ -452,6 +486,7 @@ jobs:
               --set image.tag=ci-build \
               --set rclone.tag=ci-build \
               --set rsync.tag=ci-build \
+              --set rsync-tls.tag=ci-build \
               --set restic.tag=ci-build \
               --set syncthing.tag=ci-build \
               --wait --timeout=300s \
@@ -552,6 +587,17 @@ jobs:
     with:
       artifact-name: volsync-mover-rsync-container
       image-name: quay.io/backube/volsync-mover-rsync
+    secrets:
+      registry-username: ${{ secrets.REGISTRY_USERNAME }}
+      registry-password: ${{ secrets.REGISTRY_PASSWORD }}
+
+  push-rsync-tls:
+    name: Push rsync-tls container to registry
+    needs: push-gate
+    uses: ./.github/workflows/registry-push.yml
+    with:
+      artifact-name: volsync-mover-rsync-tls-container
+      image-name: quay.io/backube/volsync-mover-rsync-tls
     secrets:
       registry-username: ${{ secrets.REGISTRY_USERNAME }}
       registry-password: ${{ secrets.REGISTRY_PASSWORD }}
