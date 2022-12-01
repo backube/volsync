@@ -56,7 +56,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Ensure go module files are up-to-date (main branch)
-        if: github.ref_name == github.event.repository.default_branch
+        if: github.base_ref == github.event.repository.default_branch
         run: |
           echo "Generating custom-scorecard-config for latest"
           make custom-scorecard-tests-generate-config
@@ -69,7 +69,7 @@ jobs:
           fi
 
       - name: Ensure custom-scorecard-tests config.yaml is up-to-date (release branch)
-        if: github.ref_name != github.event.repository.default_branch &&
+        if: github.base_ref != github.event.repository.default_branch &&
             github.ref_type == 'branch'
         run: |
           CUST_IMG_TAG="${{ github.ref_name }}"
