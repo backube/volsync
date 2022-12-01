@@ -300,7 +300,8 @@ catalog-push: ## Push a catalog image.
 
 
 # Name of volsync custom scorecard test image
-CUSTOM_SCORECARD_IMG ?= $(IMAGE_TAG_BASE)-custom-scorecard-tests:latest
+CUSTOM_SCORECARD_IMG_TAG ?= latest
+CUSTOM_SCORECARD_IMG ?= $(IMAGE_TAG_BASE)-custom-scorecard-tests:$(CUSTOM_SCORECARD_IMG_TAG)
 
 # Build the custom scorecard image - this can be used to run e2e tests using operator-sdk
 # See more info here: https://sdk.operatorframework.io/docs/testing-operators/scorecard/custom-tests/
