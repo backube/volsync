@@ -1,6 +1,6 @@
 ---
 - name: Check for required variables
-  fail: msg="Variable {{ item }} must be defined to use this role"
+  fail: msg="Variable {{ var_check }} must be defined to use this role"
   when: vars[var_check] is undefined
   with_items:
     - namespace

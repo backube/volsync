@@ -31,6 +31,7 @@ required_vars=(
   SYNCTHING_CERT_DIR
   SYNCTHING_CONFIG_DIR
   STGUIAPIKEY
+  PRIVILEGED_MOVER
 )
 
 #####################################################

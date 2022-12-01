@@ -1,0 +1,40 @@
+---
+# This task finds all mover pods by label in a namespace, and then checks
+# if they are privileged
+# Basic check at the moment - this could be expanded
+- name: Check for required variables
+  fail: msg="Variable {{ var_check }} must be defined to use this role"
+  when: vars[var_check] is undefined
+  with_items:
+    - namespace
+    - component
+    - privileged
+  loop_control:
+    loop_var: var_check
+
+- name: Find mover pods in namespace
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ namespace }}"
+    label_selectors:
+      - "app.kubernetes.io/component={{ component }}"
+  register: mover_pods
+
+- name: Ensure mover pod(s) found
+  fail: msg="No mover pods were found with 'app.kubernetes.io/component' label = {{ component }}"
+  when: mover_pods.resources | length < 1
+
+- name: Check for privileged
+  fail: msg="Mover pod {{ item.metadata.name }} in namespace {{ namespace }} is not running in privileged mode"
+  when:
+    - privileged
+    - (item.spec.containers[0].env | selectattr("name", "equalto", "PRIVILEGED_MOVER") | list | first).value != "1"
+  loop: "{{ mover_pods.resources }}"
+
+- name: Check for unprivileged
+  fail: msg="Mover pod {{ item.metadata.name }} in namespace {{ namespace }} is running in privileged mode"
+  when:
+    - not privileged
+    - (item.spec.containers[0].env | selectattr("name", "equalto", "PRIVILEGED_MOVER") | list | first).value != "0"
+  loop: "{{ mover_pods.resources }}"

@@ -1,8 +1,9 @@
 ---
 
-- name: Delete temporary Namespace
+- name: Delete temporary Namespaces
   kubernetes.core.k8s:
     state: absent
     api_version: v1
     kind: Namespace
-    name: "{{ namespace }}"
+    name: "{{ item }}"
+  with_items: "{{ namespaces }}"
