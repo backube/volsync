@@ -36,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   customresourcedefinition.apiextensions.k8s.io/replicationsources.volsync.backube annotated
   ```
 
+- Syncthing upgraded to 1.22.1
+
 ### Security
 
 - kube-rbac-proxy upgraded to 0.13.1
