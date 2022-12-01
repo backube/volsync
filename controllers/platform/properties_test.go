@@ -89,7 +89,7 @@ var _ = Describe("A cluster w/ StorageContextConstraints", func() {
 		Expect(k8sClient.Create(ctx, priv)).To(Succeed())
 	})
 	AfterEach(func() {
-	  deleteScc(priv)
+		deleteScc(priv)
 
 		Expect(k8sClient.Delete(ctx, sccCRD)).To(Succeed())
 		Eventually(func() bool {
