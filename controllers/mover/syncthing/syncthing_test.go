@@ -37,6 +37,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
@@ -1041,100 +1042,194 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 				})
 			})
 			When("VolSync ensures a deployment", func() {
-				It("creates a new one", func() {
-					// create a deployment
-					deployment, err := mover.ensureDeployment(ctx, srcPVC, configPVC, sa, apiSecret)
-					Expect(err).NotTo(HaveOccurred())
-					Expect(deployment).NotTo(BeNil())
+				When("No deployment currently exists", func() {
+					It("creates a new one", func() {
+						// create a deployment
+						deployment, err := mover.ensureDeployment(ctx, srcPVC, configPVC, sa, apiSecret)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(deployment).NotTo(BeNil())
 
-					// expect deployment to have syncthing container
-					Expect(deployment.Spec.Template.Spec.Containers).To(HaveLen(1))
-					stContainer := deployment.Spec.Template.Spec.Containers[0]
-					Expect(stContainer.Name).To(Equal("syncthing"))
+						// expect deployment to have syncthing container
+						Expect(deployment.Spec.Template.Spec.Containers).To(HaveLen(1))
+						stContainer := deployment.Spec.Template.Spec.Containers[0]
+						Expect(stContainer.Name).To(Equal("syncthing"))
 
-					// make sure the mover's containerImage was specified for stContainer
-					Expect(stContainer.Image).To(Equal(mover.containerImage))
+						// make sure the mover's containerImage was specified for stContainer
+						Expect(stContainer.Image).To(Equal(mover.containerImage))
 
-					Expect(stContainer.Env).To(HaveLen(4))
-					for _, env := range stContainer.Env {
-						if env.Name == apiKeyEnv {
-							Expect(env.ValueFrom.SecretKeyRef.Name).To(Equal(apiSecret.Name))
-							Expect(env.ValueFrom.SecretKeyRef.Key).To(Equal(apiKeyDataKey))
-						}
-					}
-
-					// validate that the deployment exposes API & data ports
-					var portNames []string = []string{apiPortName, dataPortName}
-
-					// make sure the above ports exist in container's ports
-					for _, port := range stContainer.Ports {
-						found := false
-						for _, name := range portNames {
-							if port.Name == name {
-								found = true
-								break
+						Expect(stContainer.Env).To(HaveLen(5)) // secret env vars + PRIVILEGED_MOVER env var
+						for _, env := range stContainer.Env {
+							if env.Name == apiKeyEnv {
+								Expect(env.ValueFrom.SecretKeyRef.Name).To(Equal(apiSecret.Name))
+								Expect(env.ValueFrom.SecretKeyRef.Key).To(Equal(apiKeyDataKey))
 							}
 						}
-						// portname should be found in the list
-						Expect(found).To(BeTrue())
-					}
 
-					// make sure that configPVC and srcPVC are referenced in the deployment
-					necessaryVolumeMounts := []string{
-						configVolumeName,
-						dataVolumeName,
-						certVolumeName,
-					}
-					found := 0
-					for _, volume := range deployment.Spec.Template.Spec.Volumes {
-						for _, mount := range necessaryVolumeMounts {
-							if volume.Name == mount {
-								found++
-								break
-							}
-						}
-					}
-					Expect(found).To(Equal(len(necessaryVolumeMounts)))
+						// validate that the deployment exposes API & data ports
+						var portNames []string = []string{apiPortName, dataPortName}
 
-					checked := 0
-					for _, volume := range deployment.Spec.Template.Spec.Volumes {
-						if volume.Name == configVolumeName {
-							Expect(volume.PersistentVolumeClaim.ClaimName).To(Equal(configPVC.Name))
-							checked++
-						} else if volume.Name == dataVolumeName {
-							Expect(volume.PersistentVolumeClaim.ClaimName).To(Equal(srcPVC.Name))
-							checked++
-						} else if volume.Name == certVolumeName {
-							// check that the TLS certificates are properly loaded
-							Expect(volume.Secret.SecretName).To(Equal(apiSecret.Name))
-
-							// make sure the tls certificates are mounted as secret keys
-							httpsKeysChecked := 0
-							httpsItems := []string{httpsKeyDataKey, httpsCertDataKey}
-							for _, item := range volume.Secret.Items {
-								for _, httpItem := range httpsItems {
-									if item.Key == httpItem {
-										httpsKeysChecked++
-									}
+						// make sure the above ports exist in container's ports
+						for _, port := range stContainer.Ports {
+							found := false
+							for _, name := range portNames {
+								if port.Name == name {
+									found = true
+									break
 								}
 							}
-							Expect(httpsKeysChecked).To(Equal(len(httpsItems)))
-							checked++
+							// portname should be found in the list
+							Expect(found).To(BeTrue())
 						}
-					}
-					// make sure that all volumes are accounted for
-					Expect(checked).To(Equal(len(deployment.Spec.Template.Spec.Volumes)))
 
-					// make sure that both deployment's specified volumes are being mounted by the container
-					for _, mount := range stContainer.VolumeMounts {
-						if mount.Name == configVolumeName {
-							Expect(mount.MountPath).To(Equal(configDirMountPath))
-						} else if mount.Name == dataVolumeName {
-							Expect(mount.MountPath).To(Equal(dataDirMountPath))
-						} else if mount.Name == certVolumeName {
-							Expect(mount.MountPath).To(Equal(certDirMountPath))
+						// make sure that configPVC and srcPVC are referenced in the deployment
+						necessaryVolumeMounts := []string{
+							configVolumeName,
+							dataVolumeName,
+							certVolumeName,
 						}
-					}
+						found := 0
+						for _, volume := range deployment.Spec.Template.Spec.Volumes {
+							for _, mount := range necessaryVolumeMounts {
+								if volume.Name == mount {
+									found++
+									break
+								}
+							}
+						}
+						Expect(found).To(Equal(len(necessaryVolumeMounts)))
+
+						checked := 0
+						for _, volume := range deployment.Spec.Template.Spec.Volumes {
+							if volume.Name == configVolumeName {
+								Expect(volume.PersistentVolumeClaim.ClaimName).To(Equal(configPVC.Name))
+								checked++
+							} else if volume.Name == dataVolumeName {
+								Expect(volume.PersistentVolumeClaim.ClaimName).To(Equal(srcPVC.Name))
+								checked++
+							} else if volume.Name == certVolumeName {
+								// check that the TLS certificates are properly loaded
+								Expect(volume.Secret.SecretName).To(Equal(apiSecret.Name))
+
+								// make sure the tls certificates are mounted as secret keys
+								httpsKeysChecked := 0
+								httpsItems := []string{httpsKeyDataKey, httpsCertDataKey}
+								for _, item := range volume.Secret.Items {
+									for _, httpItem := range httpsItems {
+										if item.Key == httpItem {
+											httpsKeysChecked++
+										}
+									}
+								}
+								Expect(httpsKeysChecked).To(Equal(len(httpsItems)))
+								checked++
+							}
+						}
+						// make sure that all volumes are accounted for
+						Expect(checked).To(Equal(len(deployment.Spec.Template.Spec.Volumes)))
+
+						// make sure that both deployment's specified volumes are being mounted by the container
+						for _, mount := range stContainer.VolumeMounts {
+							if mount.Name == configVolumeName {
+								Expect(mount.MountPath).To(Equal(configDirMountPath))
+							} else if mount.Name == dataVolumeName {
+								Expect(mount.MountPath).To(Equal(dataDirMountPath))
+							} else if mount.Name == certVolumeName {
+								Expect(mount.MountPath).To(Equal(certDirMountPath))
+							}
+						}
+					})
+
+					Context("Privileged vs unprivileged mover", func() {
+						It("Should not have a PodSecurityContext by default", func() {
+							deployment, err := mover.ensureDeployment(ctx, srcPVC, configPVC, sa, apiSecret)
+							Expect(err).NotTo(HaveOccurred())
+							Expect(deployment).NotTo(BeNil())
+
+							podSpec := deployment.Spec.Template.Spec
+							Expect(podSpec.SecurityContext).NotTo(BeNil())
+							Expect(podSpec.SecurityContext.RunAsUser).To(BeNil())
+							Expect(podSpec.SecurityContext.FSGroup).To(BeNil())
+
+						})
+
+						When("A moverSecurityContext is provided", func() {
+							BeforeEach(func() {
+								rs.Spec.Syncthing.MoverSecurityContext = &corev1.PodSecurityContext{
+									RunAsUser: pointer.Int64(7),
+									FSGroup:   pointer.Int64(8),
+								}
+							})
+							It("Should appear in the mover Job", func() {
+								deployment, err := mover.ensureDeployment(ctx, srcPVC, configPVC, sa, apiSecret)
+								Expect(err).NotTo(HaveOccurred())
+								Expect(deployment).NotTo(BeNil())
+
+								psc := deployment.Spec.Template.Spec.SecurityContext
+								Expect(psc).NotTo(BeNil())
+								Expect(psc.RunAsUser).NotTo(BeNil())
+								Expect(*psc.RunAsUser).To(Equal(int64(7)))
+								Expect(psc.FSGroup).NotTo(BeNil())
+								Expect(*psc.FSGroup).To(Equal(int64(8)))
+							})
+						})
+
+						When("The NS does not allow privileged movers", func() {
+							It("Should run unprivileged", func() {
+								mover.privileged = false // Mover created with true above, change for this test
+
+								deployment, err := mover.ensureDeployment(ctx, srcPVC, configPVC, sa, apiSecret)
+								Expect(err).NotTo(HaveOccurred())
+								Expect(deployment).NotTo(BeNil())
+
+								stContainer := deployment.Spec.Template.Spec.Containers[0]
+								Expect(*stContainer.SecurityContext.AllowPrivilegeEscalation).To(Equal(false))
+								Expect(*stContainer.SecurityContext.Privileged).To(Equal(false))
+								Expect(*stContainer.SecurityContext.ReadOnlyRootFilesystem).To(Equal(true))
+
+								Expect(stContainer.SecurityContext.Capabilities).To(Equal(&corev1.Capabilities{
+									Drop: []corev1.Capability{"ALL"},
+								}))
+								Expect(stContainer.SecurityContext.RunAsUser).To(BeNil())
+
+								foundPrivilegedMoverEnvVar := false
+								for _, envVar := range stContainer.Env {
+									if envVar.Name == "PRIVILEGED_MOVER" {
+										foundPrivilegedMoverEnvVar = true
+										Expect(envVar.Value).To(Equal("0"))
+										break
+									}
+								}
+								Expect(foundPrivilegedMoverEnvVar).To(BeTrue())
+							})
+						})
+
+						When("The NS allows privileged movers", func() { // Already the case in this block
+							It("Should start a privileged mover", func() {
+								deployment, err := mover.ensureDeployment(ctx, srcPVC, configPVC, sa, apiSecret)
+								Expect(err).NotTo(HaveOccurred())
+								Expect(deployment).NotTo(BeNil())
+
+								stContainer := deployment.Spec.Template.Spec.Containers[0]
+								Expect(*stContainer.SecurityContext.AllowPrivilegeEscalation).To(Equal(false))
+								Expect(*stContainer.SecurityContext.Privileged).To(Equal(false))
+								Expect(*stContainer.SecurityContext.ReadOnlyRootFilesystem).To(Equal(true))
+
+								Expect(len(stContainer.SecurityContext.Capabilities.Add)).To(BeNumerically(">", 0))
+								Expect(stContainer.SecurityContext.RunAsUser).NotTo(BeNil())
+								Expect(*stContainer.SecurityContext.RunAsUser).To(Equal(int64(0)))
+
+								foundPrivilegedMoverEnvVar := false
+								for _, envVar := range stContainer.Env {
+									if envVar.Name == "PRIVILEGED_MOVER" {
+										foundPrivilegedMoverEnvVar = true
+										Expect(envVar.Value).To(Equal("1"))
+										break
+									}
+								}
+								Expect(foundPrivilegedMoverEnvVar).To(BeTrue())
+							})
+						})
+					})
 				})
 
 				When("Deployment already exists", func() {

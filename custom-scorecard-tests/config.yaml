@@ -167,11 +167,21 @@ stages:
         mountPath: {}
   - entrypoint:
     - volsync-custom-scorecard-tests
-    - test_syncthing_cluster_sync.yml
+    - test_syncthing_cluster_sync_normal.yml
     image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
-      test: test_syncthing_cluster_sync.yml
+      test: test_syncthing_cluster_sync_normal.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_syncthing_cluster_sync_priv.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_syncthing_cluster_sync_priv.yml
     storage:
       spec:
         mountPath: {}
