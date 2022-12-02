@@ -1,13 +1,13 @@
 # Build the Syncthing image from Golang
-FROM golang:1.18 as builder
+FROM golang:1.19 as builder
 USER root
 
 # source directory
 WORKDIR /workspace
 
 # latest release as of writing this
-ARG SYNCTHING_VERSION="v1.20.1"
-ARG SYNCTHING_GIT_HASH="2145b3701d6f4f615e55e87374e13b9a12077a74"
+ARG SYNCTHING_VERSION="v1.22.1"
+ARG SYNCTHING_GIT_HASH="abb921acbc21191f18ac4a6884f5296acb216e86"
 
 # clone & cd
 RUN git clone \
