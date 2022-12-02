@@ -160,6 +160,7 @@ func beOwnedBy(owner interface{}) gomegatypes.GomegaMatcher {
 
 // Useful to avoid timing issues if the k8sclient must have the object
 // created/updated etc in cache before the next step is run
+// nolint:unparam
 func createWithCacheReload(ctx context.Context, c client.Client, obj client.Object, intervals ...interface{}) {
 	Expect(c.Create(ctx, obj)).To(Succeed())
 

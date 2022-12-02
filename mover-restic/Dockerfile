@@ -1,5 +1,5 @@
 # Build restic
-FROM golang:1.18 as builder
+FROM golang:1.19 as builder
 USER root
 
 WORKDIR /workspace
