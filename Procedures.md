@@ -58,7 +58,7 @@ When creating a release branch use the format `release-X.Y`. For example
   e.g. If creating a `release-0.6` branch, do the following:
 
   ```bash
-  make custom-scorecard-tests-generate-config CUSTOM_SCORECARD_IMG=quay.io/backube/volsync-custom-scorecard-tests:release-0.6
+  make custom-scorecard-tests-generate-config CUSTOM_SCORECARD_IMG_TAG=release-0.6
   ```
 
 * Commit the generated changes in custom-scorecard-tests (particularly the
