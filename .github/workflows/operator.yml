@@ -529,6 +529,8 @@ jobs:
         run: make test-e2e-install
 
       - name: Run e2e tests
+        env:
+          BATCHES: 2
         run: make test-e2e
 
   # This is a dummy job that can be used to determine success of CI:
