@@ -5,6 +5,7 @@ Usage
 .. toctree::
    :hidden:
 
+   permissionmodel
    triggers
    metrics/index
    rclone/index
@@ -33,6 +34,14 @@ There are four different replication methods built into VolSync. Choose the meth
 	 Use Syncthing-based replication for multi-way (many:many), live, eventually consistent data replication
 	 in scenarios where the data is spread-out and updated in real-time, such as a wiki application,
 	 or a private distributed file-store.
+
+Permission model
+================
+
+The data replication mover Pods run in the user's source and destination
+Namespaces. The permissions that are given to these Pods control what data can
+be replicated. They also affect the security of the cluster. Please see the
+:doc:`permission model documentation <permissionmodel>` for more details.
 
 Triggers
 ========

@@ -309,6 +309,15 @@ The corresponding Secret would be:
       name: tls-key-secret
     type: Opaque
 
+Rsync-TLS mover permissions
+---------------------------
+
+Due to limitations of rsync, when run in the normal, unprivileged mode, the data
+mover Pod must run with a non-zero UID. This may require specifying a Pod
+Security Context in the ReplicationSource and ReplicationDestination objects to
+explicitly set the UID for the mover. Please see the documentation on the
+:doc:`mover permission model </usage/permissionmodel>` for more details.
+
 .. _RsyncTLSServiceExplanation:
 
 Choosing between Service types (ClusterIP vs LoadBalancer)

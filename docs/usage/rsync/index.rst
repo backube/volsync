@@ -1,6 +1,6 @@
-=======================
-Rsync-based replication
-=======================
+=============================
+Rsync-based replication (ssh)
+=============================
 
 .. toctree::
    :hidden:
@@ -28,6 +28,11 @@ synchronization is kept to a minimum, and the ssh connection ensures that the
 data transfer is both authenticated and secure.
 
 ------
+
+.. warning::
+
+  Using rsync replication over SSH is deprecated. Users should move to the
+  :doc:`TLS-based rsync </usage/rsync-tls/index>` replication method.
 
 The Rsync method is typically configured to use a "push" model for the data
 replication. A schedule or other trigger is used on the source side of the
