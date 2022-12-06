@@ -26,15 +26,6 @@
     kind: Pod
     name: "{{ item.metadata.name }}"
     namespace: "{{ st_namespace }}"
-  loop: "{{ st_pods.resources }}"
-
-- name: Wait for pods to be gone
-  kubernetes.core.k8s:
-    state: absent
-    api_version: v1
-    kind: Pod
-    name: "{{ item.metadata.name }}"
-    namespace: "{{ st_namespace }}"
     wait: true
     wait_timeout: 600
   timeout: 600
