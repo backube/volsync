@@ -243,7 +243,7 @@ func (m *Mover) ensureSecrets(ctx context.Context) (*string, error) {
 			return nil, err
 		}
 		keySecret.StringData = map[string]string{
-			"psk.txt": "1:" + hex.EncodeToString(keyData),
+			"psk.txt": "volsync:" + hex.EncodeToString(keyData),
 		}
 		if err := ctrl.SetControllerReference(m.owner, keySecret, m.client.Scheme()); err != nil {
 			m.logger.Error(err, utils.ErrUnableToSetControllerRef)
