@@ -6,8 +6,8 @@ USER root
 WORKDIR /workspace
 
 # latest release as of writing this
-ARG SYNCTHING_VERSION="v1.22.1"
-ARG SYNCTHING_GIT_HASH="abb921acbc21191f18ac4a6884f5296acb216e86"
+ARG SYNCTHING_VERSION="v1.22.2"
+ARG SYNCTHING_GIT_HASH="d16c0652f7ea160b4aed0cdbcb9216573baf0107"
 
 # clone & cd
 RUN git clone \
