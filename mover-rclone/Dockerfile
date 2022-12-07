@@ -4,9 +4,9 @@ USER root
 
 WORKDIR /workspace
 
-ARG RCLONE_VERSION=v1.59.0
+ARG RCLONE_VERSION=v1.60.1
 # hash: git rev-list -n 1 ${RCLONE_VERSION}
-ARG RCLONE_GIT_HASH=00a684d877548b47990a96cef8eeb1462a590c2a
+ARG RCLONE_GIT_HASH=ab8be2663fca662398983a9372f5ee1c39cb2862
 
 RUN git clone --depth 1 -b ${RCLONE_VERSION} https://github.com/rclone/rclone.git
 
