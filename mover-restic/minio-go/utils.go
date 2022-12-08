@@ -52,7 +52,7 @@ var expirationRegex = regexp.MustCompile(`expiry-date="(.*?)", rule-id="(.*?)"`)
 
 func amzExpirationToExpiryDateRuleID(expiration string) (time.Time, string) {
 	if matches := expirationRegex.FindStringSubmatch(expiration); len(matches) == 3 {
-		expTime, err := time.Parse(http.TimeFormat, matches[1])
+		expTime, err := parseRFC7231Time(matches[1])
 		if err != nil {
 			return time.Time{}, ""
 		}
@@ -73,7 +73,7 @@ func amzRestoreToStruct(restore string) (ongoing bool, expTime time.Time, err er
 		return false, time.Time{}, err
 	}
 	if matches[3] != "" {
-		expTime, err = time.Parse(http.TimeFormat, matches[3])
+		expTime, err = parseRFC7231Time(matches[3])
 		if err != nil {
 			return false, time.Time{}, err
 		}
@@ -105,21 +105,6 @@ func sumMD5Base64(data []byte) string {
 
 // getEndpointURL - construct a new endpoint.
 func getEndpointURL(endpoint string, secure bool) (*url.URL, error) {
-	if strings.Contains(endpoint, ":") {
-		host, _, err := net.SplitHostPort(endpoint)
-		if err != nil {
-			return nil, err
-		}
-		if !s3utils.IsValidIP(host) && !s3utils.IsValidDomain(host) {
-			msg := "Endpoint: " + endpoint + " does not follow ip address or domain name standards."
-			return nil, errInvalidArgument(msg)
-		}
-	} else {
-		if !s3utils.IsValidIP(endpoint) && !s3utils.IsValidDomain(endpoint) {
-			msg := "Endpoint: " + endpoint + " does not follow ip address or domain name standards."
-			return nil, errInvalidArgument(msg)
-		}
-	}
 	// If secure is false, use 'http' scheme.
 	scheme := "https"
 	if !secure {
@@ -176,12 +161,18 @@ func isValidEndpointURL(endpointURL url.URL) error {
 	if endpointURL.Path != "/" && endpointURL.Path != "" {
 		return errInvalidArgument("Endpoint url cannot have fully qualified paths.")
 	}
-	if strings.Contains(endpointURL.Host, ".s3.amazonaws.com") {
+	host := endpointURL.Hostname()
+	if !s3utils.IsValidIP(host) && !s3utils.IsValidDomain(host) {
+		msg := "Endpoint: " + endpointURL.Host + " does not follow ip address or domain name standards."
+		return errInvalidArgument(msg)
+	}
+
+	if strings.Contains(host, ".s3.amazonaws.com") {
 		if !s3utils.IsAmazonEndpoint(endpointURL) {
 			return errInvalidArgument("Amazon S3 endpoint should be 's3.amazonaws.com'.")
 		}
 	}
-	if strings.Contains(endpointURL.Host, ".googleapis.com") {
+	if strings.Contains(host, ".googleapis.com") {
 		if !s3utils.IsGoogleEndpoint(endpointURL) {
 			return errInvalidArgument("Google Cloud Storage endpoint should be 'storage.googleapis.com'.")
 		}
@@ -240,6 +231,27 @@ func extractObjMetadata(header http.Header) http.Header {
 	return filteredHeader
 }
 
+const (
+	// RFC 7231#section-7.1.1.1 timetamp format. e.g Tue, 29 Apr 2014 18:30:38 GMT
+	rfc822TimeFormat                           = "Mon, 2 Jan 2006 15:04:05 GMT"
+	rfc822TimeFormatSingleDigitDay             = "Mon, _2 Jan 2006 15:04:05 GMT"
+	rfc822TimeFormatSingleDigitDayTwoDigitYear = "Mon, _2 Jan 06 15:04:05 GMT"
+)
+
+func parseTime(t string, formats ...string) (time.Time, error) {
+	for _, format := range formats {
+		tt, err := time.Parse(format, t)
+		if err == nil {
+			return tt, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("unable to parse %s in any of the input formats: %s", t, formats)
+}
+
+func parseRFC7231Time(lastModified string) (time.Time, error) {
+	return parseTime(lastModified, rfc822TimeFormat, rfc822TimeFormatSingleDigitDay, rfc822TimeFormatSingleDigitDayTwoDigitYear)
+}
+
 // ToObjectInfo converts http header values into ObjectInfo type,
 // extracts metadata and fills in all the necessary fields in ObjectInfo.
 func ToObjectInfo(bucketName string, objectName string, h http.Header) (ObjectInfo, error) {
@@ -267,7 +279,7 @@ func ToObjectInfo(bucketName string, objectName string, h http.Header) (ObjectIn
 	}
 
 	// Parse Last-Modified has http time format.
-	date, err := time.Parse(http.TimeFormat, h.Get("Last-Modified"))
+	mtime, err := parseRFC7231Time(h.Get("Last-Modified"))
 	if err != nil {
 		return ObjectInfo{}, ErrorResponse{
 			Code:       "InternalError",
@@ -289,7 +301,18 @@ func ToObjectInfo(bucketName string, objectName string, h http.Header) (ObjectIn
 	expiryStr := h.Get("Expires")
 	var expiry time.Time
 	if expiryStr != "" {
-		expiry, _ = time.Parse(http.TimeFormat, expiryStr)
+		expiry, err = parseRFC7231Time(expiryStr)
+		if err != nil {
+			return ObjectInfo{}, ErrorResponse{
+				Code:       "InternalError",
+				Message:    fmt.Sprintf("'Expiry' is not in supported format: %v", err),
+				BucketName: bucketName,
+				Key:        objectName,
+				RequestID:  h.Get("x-amz-request-id"),
+				HostID:     h.Get("x-amz-id-2"),
+				Region:     h.Get("x-amz-bucket-region"),
+			}
+		}
 	}
 
 	metadata := extractObjMetadata(h)
@@ -337,7 +360,7 @@ func ToObjectInfo(bucketName string, objectName string, h http.Header) (ObjectIn
 		ETag:              etag,
 		Key:               objectName,
 		Size:              size,
-		LastModified:      date,
+		LastModified:      mtime,
 		ContentType:       contentType,
 		Expires:           expiry,
 		VersionID:         h.Get(amzVersionID),
@@ -404,7 +427,7 @@ func redactSignature(origAuth string) string {
 		return "AWS **REDACTED**:**REDACTED**"
 	}
 
-	/// Signature V4 authorization header.
+	// Signature V4 authorization header.
 
 	// Strip out accessKeyID from:
 	// Credential=<access-key-id>/<date>/<aws-region>/<aws-service>/aws4_request
@@ -481,15 +504,17 @@ func isAmzHeader(headerKey string) bool {
 	return strings.HasPrefix(key, "x-amz-meta-") || strings.HasPrefix(key, "x-amz-grant-") || key == "x-amz-acl" || isSSEHeader(headerKey)
 }
 
-var md5Pool = sync.Pool{New: func() interface{} { return md5.New() }}
-var sha256Pool = sync.Pool{New: func() interface{} { return sha256.New() }}
+var (
+	md5Pool    = sync.Pool{New: func() interface{} { return md5.New() }}
+	sha256Pool = sync.Pool{New: func() interface{} { return sha256.New() }}
+)
 
 func newMd5Hasher() md5simd.Hasher {
-	return hashWrapper{Hash: md5Pool.New().(hash.Hash), isMD5: true}
+	return &hashWrapper{Hash: md5Pool.Get().(hash.Hash), isMD5: true}
 }
 
 func newSHA256Hasher() md5simd.Hasher {
-	return hashWrapper{Hash: sha256Pool.New().(hash.Hash), isSHA256: true}
+	return &hashWrapper{Hash: sha256Pool.Get().(hash.Hash), isSHA256: true}
 }
 
 // hashWrapper implements the md5simd.Hasher interface.
@@ -500,7 +525,7 @@ type hashWrapper struct {
 }
 
 // Close will put the hasher back into the pool.
-func (m hashWrapper) Close() {
+func (m *hashWrapper) Close() {
 	if m.isMD5 && m.Hash != nil {
 		m.Reset()
 		md5Pool.Put(m.Hash)
@@ -552,6 +577,11 @@ func IsNetworkOrHostDown(err error, expectTimeouts bool) bool {
 	if expectTimeouts && errors.Is(err, context.DeadlineExceeded) {
 		return false
 	}
+
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+
 	// We need to figure if the error either a timeout
 	// or a non-temporary error.
 	urlErr := &url.Error{}
@@ -581,6 +611,10 @@ func IsNetworkOrHostDown(err error, expectTimeouts bool) bool {
 	case strings.Contains(err.Error(), "connection timed out"):
 		// If err is a net.Dial timeout.
 		return true
+	case strings.Contains(err.Error(), "connection refused"):
+		// If err is connection refused
+		return true
+
 	case strings.Contains(strings.ToLower(err.Error()), "503 service unavailable"):
 		// Denial errors
 		return true

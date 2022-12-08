@@ -14,7 +14,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        go-version: [1.14.x, 1.15.x, 1.16.x]
+        go-version: [1.17.x, 1.18.x]
         os: [ubuntu-latest]
     steps:
       - name: Set up Go ${{ matrix.go-version }} on ${{ matrix.os }}
@@ -36,10 +36,11 @@ jobs:
           MINIO_ACCESS_KEY: minio
           MINIO_SECRET_KEY: minio123
           MINIO_KMS_MASTER_KEY: my-minio-key:6368616e676520746869732070617373776f726420746f206120736563726574
-          GO111MODULE: on
           SSL_CERT_FILE: /tmp/certs-dir/public.crt
+          MINIO_CI_CD: true
         run: |
-          sudo apt-get install devscripts
+          sudo apt update -y
+          sudo apt install devscripts -y
           wget -O /tmp/minio https://dl.minio.io/server/minio/release/linux-amd64/minio
           chmod +x /tmp/minio
           mkdir -p /tmp/certs-dir

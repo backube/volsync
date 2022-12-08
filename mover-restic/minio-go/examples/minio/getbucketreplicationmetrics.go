@@ -1,3 +1,4 @@
+//go:build example
 // +build example
 
 /*
@@ -42,7 +43,6 @@ func main() {
 		Creds:  credentials.NewStaticV4("YOUR-ACCESSKEYID", "YOUR-SECRETACCESSKEY", ""),
 		Secure: true,
 	})
-
 	if err != nil {
 		log.Fatalln(err)
 	}

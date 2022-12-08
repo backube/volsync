@@ -19,6 +19,7 @@ package credentials
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -112,7 +113,7 @@ func (m *IAM) Retrieve() (Value, error) {
 
 				return &WebIdentityToken{Token: string(token)}, nil
 			},
-			roleARN:         os.Getenv("AWS_ROLE_ARN"),
+			RoleARN:         os.Getenv("AWS_ROLE_ARN"),
 			roleSessionName: os.Getenv("AWS_ROLE_SESSION_NAME"),
 		}
 
@@ -254,7 +255,10 @@ func getEcsTaskCredentials(client *http.Client, endpoint string, token string) (
 }
 
 func fetchIMDSToken(client *http.Client, endpoint string) (string, error) {
-	req, err := http.NewRequest(http.MethodPut, endpoint+tokenPath, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, endpoint+tokenPath, nil)
 	if err != nil {
 		return "", err
 	}

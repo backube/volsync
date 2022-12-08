@@ -201,9 +201,9 @@ func (opts CopySrcOptions) validate() (err error) {
 }
 
 // Low level implementation of CopyObject API, supports only upto 5GiB worth of copy.
-func (c Client) copyObjectDo(ctx context.Context, srcBucket, srcObject, destBucket, destObject string,
-	metadata map[string]string, srcOpts CopySrcOptions, dstOpts PutObjectOptions) (ObjectInfo, error) {
-
+func (c *Client) copyObjectDo(ctx context.Context, srcBucket, srcObject, destBucket, destObject string,
+	metadata map[string]string, srcOpts CopySrcOptions, dstOpts PutObjectOptions,
+) (ObjectInfo, error) {
 	// Build headers.
 	headers := make(http.Header)
 
@@ -243,8 +243,10 @@ func (c Client) copyObjectDo(ctx context.Context, srcBucket, srcObject, destBuck
 		customHeader: headers,
 	}
 	if dstOpts.Internal.SourceVersionID != "" {
-		if _, err := uuid.Parse(dstOpts.Internal.SourceVersionID); err != nil {
-			return ObjectInfo{}, errInvalidArgument(err.Error())
+		if dstOpts.Internal.SourceVersionID != nullVersionID {
+			if _, err := uuid.Parse(dstOpts.Internal.SourceVersionID); err != nil {
+				return ObjectInfo{}, errInvalidArgument(err.Error())
+			}
 		}
 		urlValues := make(url.Values)
 		urlValues.Set("versionId", dstOpts.Internal.SourceVersionID)
@@ -282,9 +284,9 @@ func (c Client) copyObjectDo(ctx context.Context, srcBucket, srcObject, destBuck
 	return objInfo, nil
 }
 
-func (c Client) copyObjectPartDo(ctx context.Context, srcBucket, srcObject, destBucket, destObject string, uploadID string,
-	partID int, startOffset int64, length int64, metadata map[string]string) (p CompletePart, err error) {
-
+func (c *Client) copyObjectPartDo(ctx context.Context, srcBucket, srcObject, destBucket, destObject string, uploadID string,
+	partID int, startOffset int64, length int64, metadata map[string]string,
+) (p CompletePart, err error) {
 	headers := make(http.Header)
 
 	// Set source
@@ -335,9 +337,9 @@ func (c Client) copyObjectPartDo(ctx context.Context, srcBucket, srcObject, dest
 // uploadPartCopy - helper function to create a part in a multipart
 // upload via an upload-part-copy request
 // https://docs.aws.amazon.com/AmazonS3/latest/API/mpUploadUploadPartCopy.html
-func (c Client) uploadPartCopy(ctx context.Context, bucket, object, uploadID string, partNumber int,
-	headers http.Header) (p CompletePart, err error) {
-
+func (c *Client) uploadPartCopy(ctx context.Context, bucket, object, uploadID string, partNumber int,
+	headers http.Header,
+) (p CompletePart, err error) {
 	// Build query parameters
 	urlValues := make(url.Values)
 	urlValues.Set("partNumber", strconv.Itoa(partNumber))
@@ -375,7 +377,7 @@ func (c Client) uploadPartCopy(ctx context.Context, bucket, object, uploadID str
 // and concatenates them into a new object using only server-side copying
 // operations. Optionally takes progress reader hook for applications to
 // look at current progress.
-func (c Client) ComposeObject(ctx context.Context, dst CopyDestOptions, srcs ...CopySrcOptions) (UploadInfo, error) {
+func (c *Client) ComposeObject(ctx context.Context, dst CopyDestOptions, srcs ...CopySrcOptions) (UploadInfo, error) {
 	if len(srcs) < 1 || len(srcs) > maxPartsCount {
 		return UploadInfo{}, errInvalidArgument("There must be as least one and up to 10000 source objects.")
 	}
@@ -396,7 +398,7 @@ func (c Client) ComposeObject(ctx context.Context, dst CopyDestOptions, srcs ...
 	var err error
 	for i, src := range srcs {
 		opts := StatObjectOptions{ServerSideEncryption: encrypt.SSE(src.Encryption), VersionID: src.VersionID}
-		srcObjectInfos[i], err = c.statObject(context.Background(), src.Bucket, src.Object, opts)
+		srcObjectInfos[i], err = c.StatObject(context.Background(), src.Bucket, src.Object, opts)
 		if err != nil {
 			return UploadInfo{}, err
 		}
@@ -490,7 +492,7 @@ func (c Client) ComposeObject(ctx context.Context, dst CopyDestOptions, srcs ...
 	objParts := []CompletePart{}
 	partIndex := 1
 	for i, src := range srcs {
-		var h = make(http.Header)
+		h := make(http.Header)
 		src.Marshal(h)
 		if dst.Encryption != nil && dst.Encryption.Type() == encrypt.SSEC {
 			dst.Encryption.Marshal(h)
