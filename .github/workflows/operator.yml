@@ -149,7 +149,10 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           file: ./cover.out
-          fail_ci_if_error: true
+          # This is disabled because codecov is currently (2022-10-28)
+          # unreliable. We should consider re-enabling this at some point in the
+          # future. Until then, coverage stats are best-effort.
+          fail_ci_if_error: false
 
   build-operator:
     name: Build-operator
