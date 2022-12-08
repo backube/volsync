@@ -1,0 +1,22 @@
+---
+# yamllint disable rule:line-length
+
+name: Automatically add issues to project tracking board
+
+on:  # yamllint disable-line rule:truthy
+  issues:
+    types:
+      - opened
+      - transferred
+
+jobs:
+  add-to-project:
+    name: Add issue to project board
+    runs-on: ubuntu-latest
+    steps:
+      # https://github.com/actions/add-to-project
+      - uses: actions/add-to-project@960fbad431afda394cfcf8743445e741acd19e85  # v0.4.0
+        with:
+          project-url: https://github.com/orgs/backube/projects/1
+          # PAT needs repo & project scope
+          github-token: ${{ secrets.PAT_WORKFLOW }}
