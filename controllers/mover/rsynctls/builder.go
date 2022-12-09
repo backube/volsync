@@ -154,7 +154,7 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 
 	return &Mover{
 		client:               client,
-		logger:               logger.WithValues("method", "Rsync"),
+		logger:               logger.WithValues("method", "RsyncTLS"),
 		eventRecorder:        eventRecorder,
 		owner:                destination,
 		vh:                   vh,
