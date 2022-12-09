@@ -16,6 +16,8 @@ if [[ -n "${CUSTOM_CA}" ]]; then
     RESTIC+=(--cacert "${CUSTOM_CA}")
 fi
 
+"${RESTIC[@]}" version
+
 # Force the associated backup host name to be "volsync"
 RESTIC_HOST="volsync"
 # Make restic output progress reports every 10s
