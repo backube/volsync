@@ -23,6 +23,11 @@ rsync:
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
   image: ""
+rsync-tls:
+  repository: quay.io/backube/volsync-mover-rsync-tls
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+  image: ""
 syncthing:
   repository: quay.io/backube/volsync-mover-syncthing
   # Overrides the image tag whose default is the chart appVersion.

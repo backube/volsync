@@ -147,6 +147,9 @@ type ReplicationDestinationSpec struct {
 	// rsync defines the configuration when using Rsync-based replication.
 	//+optional
 	Rsync *ReplicationDestinationRsyncSpec `json:"rsync,omitempty"`
+	// rsyncTLS defines the configuration when using Rsync-based replication over TLS.
+	//+optional
+	RsyncTLS *ReplicationDestinationRsyncTLSSpec `json:"rsyncTLS,omitempty"`
 	// rclone defines the configuration when using Rclone-based replication.
 	//+optional
 	Rclone *ReplicationDestinationRcloneSpec `json:"rclone,omitempty"`
@@ -240,6 +243,8 @@ type ReplicationDestinationStatus struct {
 	LatestImage *corev1.TypedLocalObjectReference `json:"latestImage,omitempty"`
 	// rsync contains status information for Rsync-based replication.
 	Rsync *ReplicationDestinationRsyncStatus `json:"rsync,omitempty"`
+	// rsyncTLS contains status information for Rsync-based replication over TLS.
+	RsyncTLS *ReplicationDestinationRsyncTLSStatus `json:"rsyncTLS,omitempty"`
 	// external contains provider-specific status information. For more details,
 	// please see the documentation of the specific replication provider being
 	// used.

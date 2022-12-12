@@ -12,7 +12,7 @@ if ! TESTS_UNSORTED="$(find ../test-e2e -maxdepth 1 -type f -name 'test_*.yml' -
   exit 1
 fi
 
-TESTS=$(echo "${TESTS_UNSORTED}" | sort)
+TESTS=$(echo "${TESTS_UNSORTED}" | LC_ALL=C sort)
 
 echo "# E2E test list is: "
 echo "${TESTS}"

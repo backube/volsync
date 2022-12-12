@@ -417,6 +417,8 @@ spec:
                 env:
                 - name: RELATED_IMAGE_RSYNC_CONTAINER
                   value: quay.io/backube/volsync-mover-rsync:latest
+                - name: RELATED_IMAGE_RSYNC_TLS_CONTAINER
+                  value: quay.io/backube/volsync-mover-rsync-tls:latest
                 - name: RELATED_IMAGE_RCLONE_CONTAINER
                   value: quay.io/backube/volsync-mover-rclone:latest
                 - name: RELATED_IMAGE_RESTIC_CONTAINER
@@ -529,6 +531,8 @@ spec:
   relatedImages:
   - image: quay.io/backube/volsync-mover-rsync:latest
     name: rsync-container
+  - image: quay.io/backube/volsync-mover-rsync-tls:latest
+    name: rsync-tls-container
   - image: quay.io/backube/volsync-mover-rclone:latest
     name: rclone-container
   - image: quay.io/backube/volsync-mover-restic:latest

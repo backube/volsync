@@ -65,7 +65,7 @@ RSYNCD_CONF
 ## Set up stunnel config
 cat - > "$STUNNEL_CONF" <<STUNNEL_CONF
 ; Global options
-debug = info
+debug = debug
 foreground = no
 output = /dev/stdout
 pid = $STUNNEL_PID_FILE
@@ -74,11 +74,7 @@ syslog = no
 [rsync]
 ciphers = PSK
 PSKsecrets = $PSK_FILE
-; Level 5 is min 512b security, TLS >= 1.2, no SHA1
-securityLevel = 5
-sslVersionMin = TLSv1.2
-
-; Port to listen for incoming connections
+; Port to listen for incoming connections from remote
 accept = :::$STUNNEL_LISTEN_PORT
 ; We are the server
 client = no
@@ -86,6 +82,11 @@ client = no
 exec = /usr/bin/rsync
 execargs = rsync --server --daemon --config=$RSYNCD_CONF .
 STUNNEL_CONF
+
+##############################
+## Print version information
+rsync --version
+stunnel -version "$STUNNEL_CONF"
 
 ##############################
 ## Tail rsync log to stdout so it shows in pod logs

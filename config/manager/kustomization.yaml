@@ -27,6 +27,14 @@ patches:
     - op: add
       path: /spec/template/spec/containers/0/env/-
       value:
+        name: RELATED_IMAGE_RSYNC_TLS_CONTAINER
+        value: quay.io/backube/volsync-mover-rsync-tls:latest
+  target:
+    kind: Deployment
+- patch: |-
+    - op: add
+      path: /spec/template/spec/containers/0/env/-
+      value:
         name: RELATED_IMAGE_RCLONE_CONTAINER
         value: quay.io/backube/volsync-mover-rclone:latest
   target:

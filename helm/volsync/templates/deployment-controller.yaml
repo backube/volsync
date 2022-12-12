@@ -65,6 +65,7 @@ spec:
             - --rclone-container-image={{ include "container-image" (list . .Values.rclone) }}
             - --restic-container-image={{ include "container-image" (list . .Values.restic) }}
             - --rsync-container-image={{ include "container-image" (list . .Values.rsync) }}
+            - --rsync-tls-container-image={{ include "container-image" (list . (index .Values "rsync-tls") ) }}
             - --syncthing-container-image={{ include "container-image" (list . .Values.syncthing) }}
             - --scc-name=volsync-privileged-mover
           command:

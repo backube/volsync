@@ -19,6 +19,7 @@ make docker-build cli
 make -C mover-rclone image
 make -C mover-restic image
 make -C mover-rsync image
+make -C mover-rsync-tls image
 make -C mover-syncthing image
 
 # Load the images into kind
@@ -30,6 +31,7 @@ IMAGES=(
         "quay.io/backube/volsync-mover-rclone"
         "quay.io/backube/volsync-mover-restic"
         "quay.io/backube/volsync-mover-rsync"
+        "quay.io/backube/volsync-mover-rsync-tls"
         "quay.io/backube/volsync-mover-syncthing"
 )
 for i in "${IMAGES[@]}"; do
@@ -47,6 +49,7 @@ helm upgrade --install --create-namespace -n volsync-system \
     --set rclone.tag="${KIND_TAG}" \
     --set restic.tag="${KIND_TAG}" \
     --set rsync.tag="${KIND_TAG}" \
+    --set rsync-tls.tag="${KIND_TAG}" \
     --set syncthing.tag="${KIND_TAG}" \
     --set metrics.disableAuth=true \
     --wait --timeout=300s \

@@ -36,7 +36,7 @@ fi
 
 cat - > "$STUNNEL_CONF" <<STUNNEL_CONF
 ; Global options
-debug = info
+debug = debug
 foreground = no
 output = /dev/stdout
 pid = $STUNNEL_PID_FILE
@@ -45,16 +45,17 @@ syslog = no
 [rsync]
 ciphers = PSK
 PSKsecrets = $PSK_FILE
-; Level 5 is min 512b security, TLS >= 1.2, no SHA1
-securityLevel = 5
-sslVersionMin = TLSv1.2
-
-; Port to listen for incoming connections
+; Port to listen for incoming connection from rsync
 accept = 127.0.0.1:$STUNNEL_LISTEN_PORT
 ; We are the client
 client = yes
 connect = $DESTINATION_ADDRESS:$DESTINATION_PORT
 STUNNEL_CONF
+
+##############################
+## Print version information
+rsync --version
+stunnel -version "$STUNNEL_CONF"
 
 ##############################
 ## Start stunnel to wait for incoming connections
@@ -75,7 +76,7 @@ while [[ $rc -ne 0 && $RETRY -lt $MAX_RETRIES ]]; do
     shopt -s dotglob  # Make * include dotfiles
     if [[ -n "$(ls -A -- ${SOURCE}/*)" ]]; then
         # 1st run preserves as much as possible, but excludes the root directory
-        rsync -aAhHSxz --itemize-changes --info=stats2,misc2 ${SOURCE}/* rsync://127.0.0.1:$STUNNEL_LISTEN_PORT/data
+        rsync -aAhHSxz --exclude=lost+found --itemize-changes --info=stats2,misc2 ${SOURCE}/* rsync://127.0.0.1:$STUNNEL_LISTEN_PORT/data
     else
         echo "Skipping sync of empty source directory"
     fi
@@ -85,7 +86,7 @@ while [[ $rc -ne 0 && $RETRY -lt $MAX_RETRIES ]]; do
     # To delete extra files, must sync at the directory-level, but need to avoid
     # trying to modify the directory itself. This pass will only delete files
     # that exist on the destination but not on the source, not make updates.
-    rsync -rx --ignore-existing --ignore-non-existing --delete --itemize-changes --info=stats2,misc2 ${SOURCE}/ rsync://127.0.0.1:$STUNNEL_LISTEN_PORT/data
+    rsync -rx --exclude=lost+found --ignore-existing --ignore-non-existing --delete --itemize-changes --info=stats2,misc2 ${SOURCE}/ rsync://127.0.0.1:$STUNNEL_LISTEN_PORT/data
     rc_b=$?
 
     rc=$(( rc_a * 100 + rc_b ))

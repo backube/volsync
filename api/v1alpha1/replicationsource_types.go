@@ -227,6 +227,9 @@ type ReplicationSourceSpec struct {
 	// rsync defines the configuration when using Rsync-based replication.
 	//+optional
 	Rsync *ReplicationSourceRsyncSpec `json:"rsync,omitempty"`
+	// rsyncTLS defines the configuration when using Rsync-based replication over TLS.
+	//+optional
+	RsyncTLS *ReplicationSourceRsyncTLSSpec `json:"rsyncTLS,omitempty"`
 	// rclone defines the configuration when using Rclone-based replication.
 	//+optional
 	Rclone *ReplicationSourceRcloneSpec `json:"rclone,omitempty"`
@@ -292,6 +295,8 @@ type ReplicationSourceStatus struct {
 	LastManualSync string `json:"lastManualSync,omitempty"`
 	// rsync contains status information for Rsync-based replication.
 	Rsync *ReplicationSourceRsyncStatus `json:"rsync,omitempty"`
+	// rsyncTLS contains status information for Rsync-based replication over TLS.
+	RsyncTLS *ReplicationSourceRsyncTLSStatus `json:"rsyncTLS,omitempty"`
 	// external contains provider-specific status information. For more details,
 	// please see the documentation of the specific replication provider being
 	// used.
