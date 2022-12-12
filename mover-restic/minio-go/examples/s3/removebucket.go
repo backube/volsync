@@ -1,3 +1,4 @@
+//go:build example
 // +build example
 
 /*
@@ -50,5 +51,4 @@ func main() {
 		log.Fatalln(err)
 	}
 	log.Println("Success")
-
 }

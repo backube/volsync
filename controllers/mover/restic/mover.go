@@ -373,9 +373,17 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 				// location and its password.
 				utils.EnvFromSecret(repo.Name, "RESTIC_REPOSITORY", false),
 				utils.EnvFromSecret(repo.Name, "RESTIC_PASSWORD", false),
+
+				// Optional variables
+				utils.EnvFromSecret(repo.Name, "RESTIC_COMPRESSION", true), // New in v0.14.0
+				utils.EnvFromSecret(repo.Name, "RESTIC_PACK_SIZE", true),   // New in v0.14.0
+
+				//utils.EnvFromSecret(repo.Name, "RESTIC_READ_CONCURRENCY", true), // This is in main, but not yet in v0.14.0
+
 				// Optional variables based on what backend is used for restic
 				utils.EnvFromSecret(repo.Name, "AWS_ACCESS_KEY_ID", true),
 				utils.EnvFromSecret(repo.Name, "AWS_SECRET_ACCESS_KEY", true),
+				utils.EnvFromSecret(repo.Name, "AWS_SESSION_TOKEN", true), // New in v0.14.0
 				utils.EnvFromSecret(repo.Name, "AWS_DEFAULT_REGION", true),
 				utils.EnvFromSecret(repo.Name, "ST_AUTH", true),
 				utils.EnvFromSecret(repo.Name, "ST_USER", true),
@@ -402,6 +410,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 				utils.EnvFromSecret(repo.Name, "B2_ACCOUNT_KEY", true),
 				utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_NAME", true),
 				utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_KEY", true),
+				utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_SAS", true), // New in v0.14.0
 				utils.EnvFromSecret(repo.Name, "GOOGLE_PROJECT_ID", true),
 			},
 			Command: []string{"/entry.sh"},

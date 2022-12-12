@@ -26,6 +26,46 @@ import (
 	"github.com/minio/minio-go/v7/pkg/s3utils"
 )
 
+func TestParseRFC7231Time(t *testing.T) {
+	testCases := []struct {
+		timeStr         string
+		expectedSuccess bool
+	}{
+		{
+			timeStr:         "Sun, 2 Jan 2000 20:34:56 GMT",
+			expectedSuccess: true,
+		},
+		{
+			timeStr:         "Sun, 02 Jan 2000 20:34:56 GMT",
+			expectedSuccess: true,
+		},
+		{
+			timeStr:         "Sun, 2 Jan 00 20:34:56 GMT",
+			expectedSuccess: true,
+		},
+		{
+			timeStr:         "Sun, 02 Jan 00 20:34:56 GMT",
+			expectedSuccess: true,
+		},
+		{
+			timeStr:         "Su, 2 Jan 00 20:34:56 GMT",
+			expectedSuccess: false,
+		},
+	}
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run("", func(t *testing.T) {
+			_, err := parseRFC7231Time(testCase.timeStr)
+			if err != nil && testCase.expectedSuccess {
+				t.Errorf("expected success found failure %v", err)
+			}
+			if err == nil && !testCase.expectedSuccess {
+				t.Errorf("expected failure found success")
+			}
+		})
+	}
+}
+
 // Tests signature redacting function used
 // in filtering on-wire Authorization header.
 func TestRedactSignature(t *testing.T) {
@@ -73,6 +113,12 @@ func TestGetEndpointURL(t *testing.T) {
 		{"192.168.1.1:9000", false, "http://192.168.1.1:9000", nil, true},
 		{"192.168.1.1:9000", true, "https://192.168.1.1:9000", nil, true},
 		{"s3.amazonaws.com:443", true, "https://s3.amazonaws.com:443", nil, true},
+		{"[::1]", false, "http://[::1]", nil, true},
+		{"[::1]", true, "https://[::1]", nil, true},
+		{"[::1]:80", false, "http://[::1]:80", nil, true},
+		{"[::1]:443", true, "https://[::1]:443", nil, true},
+		{"[::1]:9000", false, "http://[::1]:9000", nil, true},
+		{"[::1]:9000", true, "https://[::1]:9000", nil, true},
 		{"13333.123123.-", true, "", errInvalidArgument(fmt.Sprintf("Endpoint: %s does not follow ip address or domain name standards.", "13333.123123.-")), false},
 		{"13333.123123.-", true, "", errInvalidArgument(fmt.Sprintf("Endpoint: %s does not follow ip address or domain name standards.", "13333.123123.-")), false},
 		{"storage.googleapis.com:4000", true, "", errInvalidArgument("Google Cloud Storage endpoint should be 'storage.googleapis.com'."), false},
@@ -113,11 +159,11 @@ func TestIsValidEndpointURL(t *testing.T) {
 		shouldPass bool
 	}{
 		{"", errInvalidArgument("Endpoint url cannot be empty."), false},
-		{"/", nil, true},
 		{"https://s3.amazonaws.com", nil, true},
 		{"https://s3.cn-north-1.amazonaws.com.cn", nil, true},
 		{"https://s3-us-gov-west-1.amazonaws.com", nil, true},
 		{"https://s3-fips-us-gov-west-1.amazonaws.com", nil, true},
+		{"https://s3-fips.us-gov-west-1.amazonaws.com", nil, true},
 		{"https://s3.amazonaws.com/", nil, true},
 		{"https://storage.googleapis.com/", nil, true},
 		{"https://z3.amazonaws.com", nil, true},
@@ -126,6 +172,9 @@ func TestIsValidEndpointURL(t *testing.T) {
 		{"https://amazon.googleapis.com/", errInvalidArgument("Google Cloud Storage endpoint should be 'storage.googleapis.com'."), false},
 		{"https://storage.googleapis.com/bucket/", errInvalidArgument("Endpoint url cannot have fully qualified paths."), false},
 		{"https://s3.amazonaws.com/bucket/object", errInvalidArgument("Endpoint url cannot have fully qualified paths."), false},
+		{"https://.s3server.example.com/", errInvalidArgument("Endpoint: .s3server.example.com does not follow ip address or domain name standards."), false},
+		{"https://s3server.example_/", errInvalidArgument("Endpoint: s3server.example_ does not follow ip address or domain name standards."), false},
+		{"https://_s3server.example.com/", errInvalidArgument("Endpoint: _s3server.example.com does not follow ip address or domain name standards."), false},
 	}
 
 	for i, testCase := range testCases {
@@ -281,7 +330,6 @@ func TestIsValidBucketName(t *testing.T) {
 		}
 
 	}
-
 }
 
 // Tests if header is standard supported header
@@ -306,7 +354,6 @@ func TestIsStandardHeader(t *testing.T) {
 			t.Errorf("Test %d: Expected to pass, but failed", i+1)
 		}
 	}
-
 }
 
 // Tests if header is server encryption header
@@ -358,5 +405,4 @@ func TestIsAmzHeader(t *testing.T) {
 			t.Errorf("Test %d: Expected to pass, but failed", i+1)
 		}
 	}
-
 }

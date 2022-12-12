@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/minio/minio-go/v7/pkg/s3utils"
 )
@@ -36,7 +37,7 @@ import (
 //       fmt.Println(message)
 //   }
 //
-func (c Client) ListBuckets(ctx context.Context) ([]BucketInfo, error) {
+func (c *Client) ListBuckets(ctx context.Context) ([]BucketInfo, error) {
 	// Execute GET on service.
 	resp, err := c.executeMethod(ctx, http.MethodGet, requestMetadata{contentSHA256Hex: emptySHA256Hex})
 	defer closeResponse(resp)
@@ -56,8 +57,8 @@ func (c Client) ListBuckets(ctx context.Context) ([]BucketInfo, error) {
 	return listAllMyBucketsResult.Buckets.Bucket, nil
 }
 
-/// Bucket List Operations.
-func (c Client) listObjectsV2(ctx context.Context, bucketName string, opts ListObjectsOptions) <-chan ObjectInfo {
+// Bucket List Operations.
+func (c *Client) listObjectsV2(ctx context.Context, bucketName string, opts ListObjectsOptions) <-chan ObjectInfo {
 	// Allocate new list objects channel.
 	objectStatCh := make(chan ObjectInfo, 1)
 	// Default listing is delimited at "/"
@@ -153,7 +154,7 @@ func (c Client) listObjectsV2(ctx context.Context, bucketName string, opts ListO
 // ?delimiter - A delimiter is a character you use to group keys.
 // ?start-after - Sets a marker to start listing lexically at this key onwards.
 // ?max-keys - Sets the maximum number of keys returned in the response body.
-func (c Client) listObjectsV2Query(ctx context.Context, bucketName, objectPrefix, continuationToken string, fetchOwner, metadata bool, delimiter string, startAfter string, maxkeys int, headers http.Header) (ListBucketV2Result, error) {
+func (c *Client) listObjectsV2Query(ctx context.Context, bucketName, objectPrefix, continuationToken string, fetchOwner, metadata bool, delimiter string, startAfter string, maxkeys int, headers http.Header) (ListBucketV2Result, error) {
 	// Validate bucket name.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
 		return ListBucketV2Result{}, err
@@ -239,6 +240,7 @@ func (c Client) listObjectsV2Query(ctx context.Context, bucketName, objectPrefix
 		if err != nil {
 			return listBucketResult, err
 		}
+		listBucketResult.Contents[i].LastModified = listBucketResult.Contents[i].LastModified.Truncate(time.Millisecond)
 	}
 
 	for i, obj := range listBucketResult.CommonPrefixes {
@@ -252,7 +254,7 @@ func (c Client) listObjectsV2Query(ctx context.Context, bucketName, objectPrefix
 	return listBucketResult, nil
 }
 
-func (c Client) listObjects(ctx context.Context, bucketName string, opts ListObjectsOptions) <-chan ObjectInfo {
+func (c *Client) listObjects(ctx context.Context, bucketName string, opts ListObjectsOptions) <-chan ObjectInfo {
 	// Allocate new list objects channel.
 	objectStatCh := make(chan ObjectInfo, 1)
 	// Default listing is delimited at "/"
@@ -332,7 +334,7 @@ func (c Client) listObjects(ctx context.Context, bucketName string, opts ListObj
 	return objectStatCh
 }
 
-func (c Client) listObjectVersions(ctx context.Context, bucketName string, opts ListObjectsOptions) <-chan ObjectInfo {
+func (c *Client) listObjectVersions(ctx context.Context, bucketName string, opts ListObjectsOptions) <-chan ObjectInfo {
 	// Allocate new list objects channel.
 	resultCh := make(chan ObjectInfo, 1)
 	// Default listing is delimited at "/"
@@ -384,7 +386,7 @@ func (c Client) listObjectVersions(ctx context.Context, bucketName string, opts 
 				info := ObjectInfo{
 					ETag:           trimEtag(version.ETag),
 					Key:            version.Key,
-					LastModified:   version.LastModified,
+					LastModified:   version.LastModified.Truncate(time.Millisecond),
 					Size:           version.Size,
 					Owner:          version.Owner,
 					StorageClass:   version.StorageClass,
@@ -443,7 +445,7 @@ func (c Client) listObjectVersions(ctx context.Context, bucketName string, opts 
 // ?delimiter - A delimiter is a character you use to group keys.
 // ?prefix - Limits the response to keys that begin with the specified prefix.
 // ?max-keys - Sets the maximum number of keys returned in the response body.
-func (c Client) listObjectVersionsQuery(ctx context.Context, bucketName, prefix, keyMarker, versionIDMarker, delimiter string, maxkeys int, headers http.Header) (ListVersionsResult, error) {
+func (c *Client) listObjectVersionsQuery(ctx context.Context, bucketName, prefix, keyMarker, versionIDMarker, delimiter string, maxkeys int, headers http.Header) (ListVersionsResult, error) {
 	// Validate bucket name.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
 		return ListVersionsResult{}, err
@@ -540,7 +542,7 @@ func (c Client) listObjectVersionsQuery(ctx context.Context, bucketName, prefix,
 // ?delimiter - A delimiter is a character you use to group keys.
 // ?prefix - Limits the response to keys that begin with the specified prefix.
 // ?max-keys - Sets the maximum number of keys returned in the response body.
-func (c Client) listObjectsQuery(ctx context.Context, bucketName, objectPrefix, objectMarker, delimiter string, maxkeys int, headers http.Header) (ListBucketResult, error) {
+func (c *Client) listObjectsQuery(ctx context.Context, bucketName, objectPrefix, objectMarker, delimiter string, maxkeys int, headers http.Header) (ListBucketResult, error) {
 	// Validate bucket name.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
 		return ListBucketResult{}, err
@@ -600,6 +602,7 @@ func (c Client) listObjectsQuery(ctx context.Context, bucketName, objectPrefix, 
 		if err != nil {
 			return listBucketResult, err
 		}
+		listBucketResult.Contents[i].LastModified = listBucketResult.Contents[i].LastModified.Truncate(time.Millisecond)
 	}
 
 	for i, obj := range listBucketResult.CommonPrefixes {
@@ -661,7 +664,7 @@ func (o *ListObjectsOptions) Set(key, value string) {
 //       fmt.Println(object)
 //   }
 //
-func (c Client) ListObjects(ctx context.Context, bucketName string, opts ListObjectsOptions) <-chan ObjectInfo {
+func (c *Client) ListObjects(ctx context.Context, bucketName string, opts ListObjectsOptions) <-chan ObjectInfo {
 	if opts.WithVersions {
 		return c.listObjectVersions(ctx, bucketName, opts)
 	}
@@ -697,12 +700,12 @@ func (c Client) ListObjects(ctx context.Context, bucketName string, opts ListObj
 //   for message := range api.ListIncompleteUploads(context.Background(), "mytestbucket", "starthere", recursive) {
 //       fmt.Println(message)
 //   }
-func (c Client) ListIncompleteUploads(ctx context.Context, bucketName, objectPrefix string, recursive bool) <-chan ObjectMultipartInfo {
+func (c *Client) ListIncompleteUploads(ctx context.Context, bucketName, objectPrefix string, recursive bool) <-chan ObjectMultipartInfo {
 	return c.listIncompleteUploads(ctx, bucketName, objectPrefix, recursive)
 }
 
 // listIncompleteUploads lists all incomplete uploads.
-func (c Client) listIncompleteUploads(ctx context.Context, bucketName, objectPrefix string, recursive bool) <-chan ObjectMultipartInfo {
+func (c *Client) listIncompleteUploads(ctx context.Context, bucketName, objectPrefix string, recursive bool) <-chan ObjectMultipartInfo {
 	// Allocate channel for multipart uploads.
 	objectMultipartStatCh := make(chan ObjectMultipartInfo, 1)
 	// Delimiter is set to "/" by default.
@@ -774,7 +777,6 @@ func (c Client) listIncompleteUploads(ctx context.Context, bucketName, objectPre
 	}(objectMultipartStatCh)
 	// return.
 	return objectMultipartStatCh
-
 }
 
 // listMultipartUploadsQuery - (List Multipart Uploads).
@@ -788,7 +790,7 @@ func (c Client) listIncompleteUploads(ctx context.Context, bucketName, objectPre
 // ?delimiter - A delimiter is a character you use to group keys.
 // ?prefix - Limits the response to keys that begin with the specified prefix.
 // ?max-uploads - Sets the maximum number of multipart uploads returned in the response body.
-func (c Client) listMultipartUploadsQuery(ctx context.Context, bucketName, keyMarker, uploadIDMarker, prefix, delimiter string, maxUploads int) (ListMultipartUploadsResult, error) {
+func (c *Client) listMultipartUploadsQuery(ctx context.Context, bucketName, keyMarker, uploadIDMarker, prefix, delimiter string, maxUploads int) (ListMultipartUploadsResult, error) {
 	// Get resources properly escaped and lined up before using them in http request.
 	urlValues := make(url.Values)
 	// Set uploads.
@@ -867,7 +869,7 @@ func (c Client) listMultipartUploadsQuery(ctx context.Context, bucketName, keyMa
 }
 
 // listObjectParts list all object parts recursively.
-func (c Client) listObjectParts(ctx context.Context, bucketName, objectName, uploadID string) (partsInfo map[int]ObjectPart, err error) {
+func (c *Client) listObjectParts(ctx context.Context, bucketName, objectName, uploadID string) (partsInfo map[int]ObjectPart, err error) {
 	// Part number marker for the next batch of request.
 	var nextPartNumberMarker int
 	partsInfo = make(map[int]ObjectPart)
@@ -896,7 +898,7 @@ func (c Client) listObjectParts(ctx context.Context, bucketName, objectName, upl
 }
 
 // findUploadIDs lists all incomplete uploads and find the uploadIDs of the matching object name.
-func (c Client) findUploadIDs(ctx context.Context, bucketName, objectName string) ([]string, error) {
+func (c *Client) findUploadIDs(ctx context.Context, bucketName, objectName string) ([]string, error) {
 	var uploadIDs []string
 	// Make list incomplete uploads recursive.
 	isRecursive := true
@@ -923,7 +925,7 @@ func (c Client) findUploadIDs(ctx context.Context, bucketName, objectName string
 // ?part-number-marker - Specifies the part after which listing should
 // begin.
 // ?max-parts - Maximum parts to be listed per request.
-func (c Client) listObjectPartsQuery(ctx context.Context, bucketName, objectName, uploadID string, partNumberMarker, maxParts int) (ListObjectPartsResult, error) {
+func (c *Client) listObjectPartsQuery(ctx context.Context, bucketName, objectName, uploadID string, partNumberMarker, maxParts int) (ListObjectPartsResult, error) {
 	// Get resources properly escaped and lined up before using them in http request.
 	urlValues := make(url.Values)
 	// Set part number marker.

@@ -55,6 +55,10 @@ func TestGetRegionFromURL(t *testing.T) {
 			expectedRegion: "us-gov-west-1",
 		},
 		{
+			u:              url.URL{Host: "s3-fips.us-gov-west-1.amazonaws.com"},
+			expectedRegion: "us-gov-west-1",
+		},
+		{
 			u:              url.URL{Host: "s3-us-gov-west-1.amazonaws.com"},
 			expectedRegion: "us-gov-west-1",
 		},
@@ -98,6 +102,30 @@ func TestGetRegionFromURL(t *testing.T) {
 			u: url.URL{
 				Host: "s3.kubernetesfrontendlb-caf78da2b1f7516c.elb.amazonaws.com.cn",
 			},
+		},
+		{
+			u: url.URL{
+				Host: "bucket.vpce-1a2b3c4d-5e6f.s3.us-east-1.vpce.amazonaws.com",
+			},
+			expectedRegion: "us-east-1",
+		},
+		{
+			u: url.URL{
+				Host: "accesspoint.vpce-1a2b3c4d-5e6f.s3.us-east-1.vpce.amazonaws.com",
+			},
+			expectedRegion: "us-east-1",
+		},
+		{
+			u: url.URL{
+				Host: "s3-fips.us-east-1.amazonaws.com",
+			},
+			expectedRegion: "us-east-1",
+		},
+		{
+			u: url.URL{
+				Host: "s3-fips.dualstack.us-west-1.amazonaws.com",
+			},
+			expectedRegion: "us-west-1",
 		},
 	}
 
@@ -161,7 +189,6 @@ func TestIsValidIP(t *testing.T) {
 			t.Errorf("Test %d: Expected isValidIP to be '%v' for input \"%s\", but found it to be '%v' instead", i+1, testCase.result, testCase.ip, result)
 		}
 	}
-
 }
 
 // Tests validate virtual host validator.
@@ -219,6 +246,8 @@ func TestIsAmazonEndpoint(t *testing.T) {
 		{"https://s3-us-west-1.amazonaws.com", true},
 		{"https://s3.us-west-1.amazonaws.com", true},
 		{"https://s3.dualstack.us-west-1.amazonaws.com", true},
+		{"https://bucket.vpce-1a2b3c4d-5e6f.s3.us-east-1.vpce.amazonaws.com", true},
+		{"https://accesspoint.vpce-1a2b3c4d-5e6f.s3.us-east-1.vpce.amazonaws.com", true},
 	}
 
 	for i, testCase := range testCases {
@@ -231,7 +260,6 @@ func TestIsAmazonEndpoint(t *testing.T) {
 			t.Errorf("Test %d: Expected isAmazonEndpoint to be '%v' for input \"%s\", but found it to be '%v' instead", i+1, testCase.result, testCase.url, result)
 		}
 	}
-
 }
 
 // Tests validate Google Cloud end point validator.
@@ -264,7 +292,6 @@ func TestIsGoogleEndpoint(t *testing.T) {
 			t.Errorf("Test %d: Expected isGoogleEndpoint to be '%v' for input \"%s\", but found it to be '%v' instead", i+1, testCase.result, testCase.url, result)
 		}
 	}
-
 }
 
 func TestPercentEncodeSlash(t *testing.T) {
@@ -287,7 +314,6 @@ func TestPercentEncodeSlash(t *testing.T) {
 				i+1, testCase.input, testCase.output,
 				receivedOutput,
 			)
-
 		}
 	}
 }
@@ -467,7 +493,6 @@ func TestIsValidBucketName(t *testing.T) {
 		}
 
 	}
-
 }
 
 // Tests validate the bucket name validator stricter.
@@ -511,5 +536,4 @@ func TestIsValidBucketNameStrict(t *testing.T) {
 		}
 
 	}
-
 }
