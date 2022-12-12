@@ -5,7 +5,7 @@ set -e -o pipefail
 # Possible versions:
 # https://hub.docker.com/r/kindest/node/tags?page=1&ordering=name
 # skopeo list-tags docker://kindest/node
-KUBE_VERSION="${1:-1.25.0}"
+KUBE_VERSION="${1:-1.26.0}"
 
 function log {
   echo "=====  $*  ====="

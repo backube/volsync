@@ -14,7 +14,7 @@ on:  # yamllint disable-line rule:truthy
 
 env:
   GO_VERSION: "1.19"
-  KIND_VERSION: "0.15.0"
+  KIND_VERSION: "0.17.0"
   GO111MODULE: "on"
   OPERATOR_IMAGE: "quay.io/backube/volsync"
   RCLONE_IMAGE: "quay.io/backube/volsync-mover-rclone"
@@ -372,10 +372,11 @@ jobs:
         KUBERNETES_VERSIONS:
           - "1.20.15"  # OCP 4.7
           - "1.21.14"  # OCP 4.8
-          - "1.22.13"  # OCP 4.9
-          - "1.23.10"  # OCP 4.10
-          - "1.24.4"   # OCP 4.11
-          - "1.25.0"
+          - "1.22.15"  # OCP 4.9
+          - "1.23.13"  # OCP 4.10
+          - "1.24.7"   # OCP 4.11
+          - "1.25.3"
+          - "1.26.0"
     env:
       KUBECONFIG: /tmp/kubeconfig
       KUBERNETES_VERSION: ${{ matrix.KUBERNETES_VERSIONS }}
