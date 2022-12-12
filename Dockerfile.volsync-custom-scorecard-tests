@@ -51,15 +51,18 @@ COPY ./test-e2e/. ./test-e2e
 COPY ./hack/ensure-default-csi.sh .
 COPY ./hack/run-minio.sh .
 
+# Copy in auto-retry script
+COPY ./.ci-scripts/retry.sh .
+
 ARG pipenv_version_arg
 ARG helm_version_arg
 ARG kubectl_version_arg
 
 RUN cd test-e2e && \
-    python -m pip install --upgrade pip && \
-    pip install --upgrade pipenv=="${pipenv_version_arg}" && \
-    pipenv sync && \
-    pipenv run ansible-galaxy install -r requirements.yml
+    ../retry.sh python -m pip install --upgrade pip && \
+    ../retry.sh pip install --upgrade pipenv=="${pipenv_version_arg}" && \
+    ../retry.sh pipenv sync && \
+    ../retry.sh pipenv run ansible-galaxy install -r requirements.yml
 
 # Install helm & kubectl
 RUN	curl -sSL "https://get.helm.sh/helm-${helm_version_arg}-linux-amd64.tar.gz" | tar xzf - -C /usr/local/bin/ --strip-components=1 --wildcards '*/helm' && \
