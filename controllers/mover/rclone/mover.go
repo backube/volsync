@@ -246,7 +246,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 				{Name: "MOUNT_PATH", Value: mountPath},
 				{Name: "RCLONE_CONFIG_SECTION", Value: *m.rcloneConfigSection},
 			},
-			Command: []string{"/bin/bash", "-c", "./active.sh"},
+			Command: []string{"/bin/bash", "-c", "/mover-rclone/active.sh"},
 			Image:   m.containerImage,
 			SecurityContext: &corev1.SecurityContext{
 				AllowPrivilegeEscalation: pointer.Bool(false),

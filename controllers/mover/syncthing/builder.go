@@ -42,7 +42,7 @@ type Builder struct {
 var _ mover.Builder = &Builder{}
 
 const (
-	defaultSyncthingContainerImage = "quay.io/backube/volsync-mover-syncthing:latest"
+	defaultSyncthingContainerImage = "quay.io/backube/volsync:latest"
 	syncthingContainerImageFlag    = "syncthing-container-image"
 	syncthingContainerImageEnvVar  = "RELATED_IMAGE_SYNCTHING_CONTAINER"
 )

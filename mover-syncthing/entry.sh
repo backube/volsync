@@ -114,7 +114,7 @@ preflight_check() {
   # populate config directory with config, if none exists
   if ! [[ -f "${SYNCTHING_CONFIG_DIR}/config.xml" ]]; then
     log_msg "populating ${SYNCTHING_CONFIG_DIR} with /config.xml"
-    cp "/config.xml" "${SYNCTHING_CONFIG_DIR}/config.xml"
+    cp "/syncthing-mover/config-template.xml" "${SYNCTHING_CONFIG_DIR}/config.xml"
     preconfigure_folder "${SYNCTHING_CONFIG_DIR}/config.xml"
   else
     log_msg "${SYNCTHING_CONFIG_DIR}/config.xml already exists"

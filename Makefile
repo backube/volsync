@@ -166,7 +166,7 @@ run: manifests generate lint  ## Run a controller from your host.
 
 .PHONY: docker-build
 docker-build:  ## Build docker image with the manager.
-	docker build --build-arg "version_arg=$(BUILD_VERSION)" -t ${IMG} .
+	docker build --build-arg "builddate_arg=$(BUILDDATE)" --build-arg "version_arg=$(BUILD_VERSION)" -t ${IMG} .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.

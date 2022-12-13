@@ -34,7 +34,7 @@ import (
 const (
 	// defaultResticContainerImage is the default container image for the restic
 	// data mover
-	defaultResticContainerImage = "quay.io/backube/volsync-mover-restic:latest"
+	defaultResticContainerImage = "quay.io/backube/volsync:latest"
 	// Command line flag will be checked first
 	// If command line flag not set, the RELATED_IMAGE_ env var will be used
 	resticContainerImageFlag   = "restic-container-image"

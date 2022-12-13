@@ -34,7 +34,7 @@ import (
 const (
 	// defaultRsyncContainerImage is the default container image for the
 	// rsync-tls data mover
-	defaultRsyncTLSContainerImage = "quay.io/backube/volsync-mover-rsync-tls:latest"
+	defaultRsyncTLSContainerImage = "quay.io/backube/volsync:latest"
 	// Command line flag will be checked first
 	// If command line flag not set, the RELATED_IMAGE_ env var will be used
 	rsyncTLSContainerImageFlag   = "rsync-tls-container-image"

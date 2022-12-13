@@ -16,11 +16,6 @@ cd "$scriptdir/.."
 
 # Build the container images
 make docker-build cli
-make -C mover-rclone image
-make -C mover-restic image
-make -C mover-rsync image
-make -C mover-rsync-tls image
-make -C mover-syncthing image
 
 # Load the images into kind
 # We are using a special tag that should never be pushed to a repo so that it's
@@ -28,11 +23,6 @@ make -C mover-syncthing image
 KIND_TAG=local-build
 IMAGES=(
         "quay.io/backube/volsync"
-        "quay.io/backube/volsync-mover-rclone"
-        "quay.io/backube/volsync-mover-restic"
-        "quay.io/backube/volsync-mover-rsync"
-        "quay.io/backube/volsync-mover-rsync-tls"
-        "quay.io/backube/volsync-mover-syncthing"
 )
 for i in "${IMAGES[@]}"; do
     docker tag "${i}:latest" "${i}:${KIND_TAG}"
