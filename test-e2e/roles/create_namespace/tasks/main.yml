@@ -30,6 +30,7 @@
 - name: Save name of first namespace (useful for tests that use 1 namespace)
   ansible.builtin.set_fact:
     namespace: "{{ namespaces[0] }}"
+  when: nsrole_num_namespaces | int == 1
 
 - name: Print out created namespaces
   ansible.builtin.debug:
