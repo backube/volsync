@@ -120,6 +120,14 @@ preflight_check() {
     log_msg "${SYNCTHING_CONFIG_DIR}/config.xml already exists"
   fi
 
+  # Populate data dir with our default .stignore, if none exists
+  if ! [[ -f "${SYNCTHING_DATA_DIR}/.stignore" ]]; then
+    log_msg "populating ${SYNCTHING_DATA_DIR} with /.stignore"
+    cp "/.stignore" "${SYNCTHING_DATA_DIR}/.stignore"
+  else
+    log_msg "${SYNCTHING_DATA_DIR}/.stignore already exists"
+  fi
+
   # ensure the HTTPS certificates
   ensure_https_certificates
 }
