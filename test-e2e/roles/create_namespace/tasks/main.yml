@@ -2,35 +2,35 @@
 
 - name: Get number of namespaces to create (default is 1)
   ansible.builtin.set_fact:
-    num_namespaces: "{{ num_namespaces | default(1) }}"
+    nsrole_num_namespaces: "{{ num_namespaces | default(1) }}"
 
-- name: Build list of namespaces
+- name: Create namespace prefix
   ansible.builtin.set_fact:
-    namespace_name_prefixes: "{{ namespace_name_prefixes | default([]) + ['test-%s-' | format(item)] }}"
-  loop: "{{ range(0, (num_namespaces | int)) | list }}"
+    nsrole_namespace_prefix: "{{ 'test-%s-' | format(1000000 | random) }}"
 
-- name: Create temporary Namespaces
+- name: Create namespace list
+  ansible.builtin.set_fact:
+    namespaces: "{{ range(0, nsrole_num_namespaces|int) | map('regex_replace', '(\\d+)', nsrole_namespace_prefix + '\\1') }}"
+
+- name: Add namespaces to master list
+  ansible.builtin.set_fact:
+    nsrole_all_created_namespaces: "{{ nsrole_all_created_namespaces|default([]) + namespaces }}"
+
+- name: Create Namespaces
   kubernetes.core.k8s:
     state: present
     definition:
       apiVersion: v1
       kind: Namespace
       metadata:
-        generateName: "{{ item }}"
-  register: test_namespaces
-  with_items: "{{ namespace_name_prefixes }}"
+        name: "{{ item }}"
+  with_items: "{{ namespaces }}"
   notify: Delete temporary Namespaces
 
-- name: Save name of test Namespaces
-  ansible.builtin.set_fact:
-    namespaces: "{{ namespaces | default([]) + [item.result.metadata.name] }}"
-  with_items: "{{ test_namespaces.results }}"
-
-# Only set namespace var when 1 namespace is being used
 - name: Save name of first namespace (useful for tests that use 1 namespace)
   ansible.builtin.set_fact:
     namespace: "{{ namespaces[0] }}"
-  when: num_namespaces | int == 1
+  when: nsrole_num_namespaces | int == 1
 
 - name: Print out created namespaces
   ansible.builtin.debug:

@@ -6,4 +6,4 @@
     api_version: v1
     kind: Namespace
     name: "{{ item }}"
-  with_items: "{{ namespaces }}"
+  with_items: "{{ nsrole_all_created_namespaces }}"

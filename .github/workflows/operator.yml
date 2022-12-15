@@ -333,7 +333,7 @@ jobs:
 
       - name: Install kubectl
         run: |
-          curl -LO "https://storage.googleapis.com/kubernetes-release/release/v${KUBERNETES_VERSION}/bin/linux/amd64/kubectl"
+          curl -fsSLO "https://storage.googleapis.com/kubernetes-release/release/v${KUBERNETES_VERSION}/bin/linux/amd64/kubectl"
           sudo install ./kubectl /usr/local/bin/
           kubectl version --short --client
           kubectl version --short --client | grep -q ${KUBERNETES_VERSION}
@@ -341,12 +341,12 @@ jobs:
       - name: Install krew
         # https://krew.sigs.k8s.io/docs/user-guide/setup/install/
         run: |
-          set -x; cd "$(mktemp -d)" && \
-          OS="$(uname | tr '[:upper:]' '[:lower:]')" && \
-          ARCH="$(uname -m | sed -e 's/x86_64/amd64/' -e 's/\(arm\)\(64\)\?.*/\1\2/' -e 's/aarch64$/arm64/')" && \
-          KREW="krew-${OS}_${ARCH}" && \
-          curl -fsSLO "https://github.com/kubernetes-sigs/krew/releases/latest/download/${KREW}.tar.gz" && \
-          tar zxvf "${KREW}.tar.gz" && \
+          cd "$(mktemp -d)"
+          OS="$(uname | tr '[:upper:]' '[:lower:]')"
+          ARCH="$(uname -m | sed -e 's/x86_64/amd64/' -e 's/\(arm\)\(64\)\?.*/\1\2/' -e 's/aarch64$/arm64/')"
+          KREW="krew-${OS}_${ARCH}"
+          curl -fsSLO "https://github.com/kubernetes-sigs/krew/releases/latest/download/${KREW}.tar.gz"
+          tar zxvf "${KREW}.tar.gz"
           ./"${KREW}" install krew
           echo "${KREW_ROOT:-$HOME/.krew}/bin" >> $GITHUB_PATH
 
@@ -394,7 +394,7 @@ jobs:
 
       - name: Install kubectl
         run: |
-          curl -LO "https://storage.googleapis.com/kubernetes-release/release/v${KUBERNETES_VERSION}/bin/linux/amd64/kubectl"
+          curl -fsSLO "https://storage.googleapis.com/kubernetes-release/release/v${KUBERNETES_VERSION}/bin/linux/amd64/kubectl"
           sudo install ./kubectl /usr/local/bin/
           kubectl version --short --client
           kubectl version --short --client | grep -q ${KUBERNETES_VERSION}
@@ -404,7 +404,7 @@ jobs:
 
       - name: Install kind
         run: |
-          curl -L -o kind https://github.com/kubernetes-sigs/kind/releases/download/v${KIND_VERSION}/kind-linux-amd64
+          curl -fsSL -o kind https://github.com/kubernetes-sigs/kind/releases/download/v${KIND_VERSION}/kind-linux-amd64
           sudo install ./kind /usr/local/bin && rm kind
           kind version
           kind version | grep -q ${KIND_VERSION}
