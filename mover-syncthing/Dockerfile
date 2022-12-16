@@ -76,12 +76,12 @@ ENV SYNCTHING_DATA_DIR="/data"
 ENV SYNCTHING_DATA_TRANSFERMODE="sendreceive"
 
 # move default .stignore to the root directory so it can be copied before syncthing boot
-COPY .stignore /.stignore
-RUN chmod a+r /.stignore
+COPY stignore-template /mover-syncthing/stignore-template
+RUN chmod a+r /mover-syncthing/stignore-template
 
 # move the config to the root directory so it can be copied before syncthing boot
-COPY config.xml /config.xml
-RUN chmod a+r /config.xml
+COPY config-template.xml /mover-syncthing/config-template.xml
+RUN chmod a+r /mover-syncthing/config-template.xml
 
 COPY entry.sh \
   /
