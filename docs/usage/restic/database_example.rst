@@ -373,7 +373,7 @@ For ``pvc-b``:
          schedule: "*/30 * * * *"
       restic:
         pruneIntervalDays: 15
-        repository: restic-config-a
+        repository: restic-config-b
         retain:
           hourly: 1
           daily: 1
