@@ -20,7 +20,7 @@ make docker-build cli
 # Load the images into kind
 # We are using a special tag that should never be pushed to a repo so that it's
 # obvious if we try to run a container other than these intended ones.
-KIND_TAG=local-build
+KIND_TAG=local-$(date +%s)
 IMAGES=(
         "quay.io/backube/volsync"
 )
