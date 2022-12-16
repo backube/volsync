@@ -23,6 +23,7 @@ env:
   RSYNC_TLS_IMAGE: "quay.io/backube/volsync-mover-rsync-tls"
   SYNCTHING_IMAGE: "quay.io/backube/volsync-mover-syncthing"
   CUSTOM_SCORECARD_IMAGE: "quay.io/backube/volsync-custom-scorecard-tests"
+  DOCKER_BUILDKIT: "1"
 
 jobs:
   lint:
