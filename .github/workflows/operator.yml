@@ -17,11 +17,6 @@ env:
   KIND_VERSION: "0.17.0"
   GO111MODULE: "on"
   OPERATOR_IMAGE: "quay.io/backube/volsync"
-  RCLONE_IMAGE: "quay.io/backube/volsync-mover-rclone"
-  RESTIC_IMAGE: "quay.io/backube/volsync-mover-restic"
-  RSYNC_IMAGE: "quay.io/backube/volsync-mover-rsync"
-  RSYNC_TLS_IMAGE: "quay.io/backube/volsync-mover-rsync-tls"
-  SYNCTHING_IMAGE: "quay.io/backube/volsync-mover-syncthing"
   CUSTOM_SCORECARD_IMAGE: "quay.io/backube/volsync-custom-scorecard-tests"
   DOCKER_BUILDKIT: "1"
 
@@ -175,106 +170,6 @@ jobs:
           name: volsync-operator
           path: /tmp/image.tar
 
-  build-rclone:
-    name: Build-mover-rclone
-    runs-on: ubuntu-20.04
-
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8
-
-      - name: Build operator container
-        run: make -C mover-rclone image
-
-      - name: Export container image
-        run: docker save -o /tmp/image.tar ${RCLONE_IMAGE}
-
-      - name: Save container as artifact
-        uses: actions/upload-artifact@83fd05a356d7e2593de66fc9913b3002723633cb
-        with:
-          name: volsync-mover-rclone-container
-          path: /tmp/image.tar
-
-  build-restic:
-    name: Build-mover-restic
-    runs-on: ubuntu-20.04
-
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8
-
-      - name: Build operator container
-        run: make -C mover-restic image
-
-      - name: Export container image
-        run: docker save -o /tmp/image.tar ${RESTIC_IMAGE}
-
-      - name: Save container as artifact
-        uses: actions/upload-artifact@83fd05a356d7e2593de66fc9913b3002723633cb
-        with:
-          name: volsync-mover-restic-container
-          path: /tmp/image.tar
-
-  build-rsync:
-    name: Build-mover-rsync
-    runs-on: ubuntu-20.04
-
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8
-
-      - name: Build operator container
-        run: make -C mover-rsync image
-
-      - name: Export container image
-        run: docker save -o /tmp/image.tar ${RSYNC_IMAGE}
-
-      - name: Save container as artifact
-        uses: actions/upload-artifact@83fd05a356d7e2593de66fc9913b3002723633cb
-        with:
-          name: volsync-mover-rsync-container
-          path: /tmp/image.tar
-
-  build-rsync-tls:
-    name: Build-mover-rsync-tls
-    runs-on: ubuntu-20.04
-
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8
-
-      - name: Build operator container
-        run: make -C mover-rsync-tls image
-
-      - name: Export container image
-        run: docker save -o /tmp/image.tar ${RSYNC_TLS_IMAGE}
-
-      - name: Save container as artifact
-        uses: actions/upload-artifact@83fd05a356d7e2593de66fc9913b3002723633cb
-        with:
-          name: volsync-mover-rsync-tls-container
-          path: /tmp/image.tar
-
-  build-syncthing:
-    name: build-mover-syncthing
-    runs-on: ubuntu-20.04
-
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8
-
-      - name: Build operator container
-        run: make -C mover-syncthing image
-
-      - name: Export container image
-        run: docker save -o /tmp/image.tar ${SYNCTHING_IMAGE}
-
-      - name: Save container as artifact
-        uses: actions/upload-artifact@83fd05a356d7e2593de66fc9913b3002723633cb
-        with:
-          name: volsync-mover-syncthing-container
-          path: /tmp/image.tar
-
   build-scorecard:
     name: Build-custom-scorecard-tests
     runs-on: ubuntu-20.04
@@ -362,7 +257,7 @@ jobs:
 
   e2e:
     name: End-to-end
-    needs: [build-operator, build-rclone, build-restic, build-rsync, build-rsync-tls, build-syncthing, kubectl-plugin]
+    needs: [build-operator, kubectl-plugin]
     runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
@@ -434,71 +329,6 @@ jobs:
           docker inspect ${OPERATOR_IMAGE}
           docker tag ${OPERATOR_IMAGE} ${OPERATOR_IMAGE}:ci-build
           kind load docker-image "${OPERATOR_IMAGE}:ci-build"
-
-      - name: Load rclone container artifact
-        uses: actions/download-artifact@9782bd6a9848b53b110e712e20e42d89988822b7
-        with:
-          name: volsync-mover-rclone-container
-          path: /tmp
-
-      - name: Import container image into cluster
-        run: |
-          docker load -i /tmp/image.tar
-          docker inspect ${RCLONE_IMAGE}
-          docker tag ${RCLONE_IMAGE} ${RCLONE_IMAGE}:ci-build
-          kind load docker-image "${RCLONE_IMAGE}:ci-build"
-
-      - name: Load restic container artifact
-        uses: actions/download-artifact@9782bd6a9848b53b110e712e20e42d89988822b7
-        with:
-          name: volsync-mover-restic-container
-          path: /tmp
-
-      - name: Import container image into cluster
-        run: |
-          docker load -i /tmp/image.tar
-          docker inspect ${RESTIC_IMAGE}
-          docker tag ${RESTIC_IMAGE} ${RESTIC_IMAGE}:ci-build
-          kind load docker-image "${RESTIC_IMAGE}:ci-build"
-
-      - name: Load rsync container artifact
-        uses: actions/download-artifact@9782bd6a9848b53b110e712e20e42d89988822b7
-        with:
-          name: volsync-mover-rsync-container
-          path: /tmp
-
-      - name: Import container image into cluster
-        run: |
-          docker load -i /tmp/image.tar
-          docker inspect ${RSYNC_IMAGE}
-          docker tag ${RSYNC_IMAGE} ${RSYNC_IMAGE}:ci-build
-          kind load docker-image "${RSYNC_IMAGE}:ci-build"
-
-      - name: Load rsync-tls container artifact
-        uses: actions/download-artifact@9782bd6a9848b53b110e712e20e42d89988822b7
-        with:
-          name: volsync-mover-rsync-tls-container
-          path: /tmp
-
-      - name: Import container image into cluster
-        run: |
-          docker load -i /tmp/image.tar
-          docker inspect ${RSYNC_TLS_IMAGE}
-          docker tag ${RSYNC_TLS_IMAGE} ${RSYNC_TLS_IMAGE}:ci-build
-          kind load docker-image "${RSYNC_TLS_IMAGE}:ci-build"
-
-      - name: Load syncthing container artifact
-        uses: actions/download-artifact@9782bd6a9848b53b110e712e20e42d89988822b7
-        with:
-          name: volsync-mover-syncthing-container
-          path: /tmp
-
-      - name: Import container image into cluster
-        run: |
-          docker load -i /tmp/image.tar
-          docker inspect ${SYNCTHING_IMAGE}
-          docker tag ${SYNCTHING_IMAGE} ${SYNCTHING_IMAGE}:ci-build
-          kind load docker-image "${SYNCTHING_IMAGE}:ci-build"
 
       - name: Start operator
         run: |
@@ -576,61 +406,6 @@ jobs:
     with:
       artifact-name: volsync-operator
       image-name: quay.io/backube/volsync
-    secrets:
-      registry-username: ${{ secrets.REGISTRY_USERNAME }}
-      registry-password: ${{ secrets.REGISTRY_PASSWORD }}
-
-  push-rclone:
-    name: Push rclone container to registry
-    needs: push-gate
-    uses: ./.github/workflows/registry-push.yml
-    with:
-      artifact-name: volsync-mover-rclone-container
-      image-name: quay.io/backube/volsync-mover-rclone
-    secrets:
-      registry-username: ${{ secrets.REGISTRY_USERNAME }}
-      registry-password: ${{ secrets.REGISTRY_PASSWORD }}
-
-  push-restic:
-    name: Push restic container to registry
-    needs: push-gate
-    uses: ./.github/workflows/registry-push.yml
-    with:
-      artifact-name: volsync-mover-restic-container
-      image-name: quay.io/backube/volsync-mover-restic
-    secrets:
-      registry-username: ${{ secrets.REGISTRY_USERNAME }}
-      registry-password: ${{ secrets.REGISTRY_PASSWORD }}
-
-  push-rsync:
-    name: Push rsync container to registry
-    needs: push-gate
-    uses: ./.github/workflows/registry-push.yml
-    with:
-      artifact-name: volsync-mover-rsync-container
-      image-name: quay.io/backube/volsync-mover-rsync
-    secrets:
-      registry-username: ${{ secrets.REGISTRY_USERNAME }}
-      registry-password: ${{ secrets.REGISTRY_PASSWORD }}
-
-  push-rsync-tls:
-    name: Push rsync-tls container to registry
-    needs: push-gate
-    uses: ./.github/workflows/registry-push.yml
-    with:
-      artifact-name: volsync-mover-rsync-tls-container
-      image-name: quay.io/backube/volsync-mover-rsync-tls
-    secrets:
-      registry-username: ${{ secrets.REGISTRY_USERNAME }}
-      registry-password: ${{ secrets.REGISTRY_PASSWORD }}
-
-  push-syncthing:
-    name: Push syncthing container to registry
-    needs: push-gate
-    uses: ./.github/workflows/registry-push.yml
-    with:
-      artifact-name: volsync-mover-syncthing-container
-      image-name: quay.io/backube/volsync-mover-syncthing
     secrets:
       registry-username: ${{ secrets.REGISTRY_USERNAME }}
       registry-password: ${{ secrets.REGISTRY_PASSWORD }}
