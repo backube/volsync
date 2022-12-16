@@ -55,11 +55,8 @@ serviceAccount:
 
 podAnnotations: {}
 
-podSecurityContext:
-  # fsGroup: 2000
-  runAsNonRoot: true
-  # seccompProfile:
-  #   type: RuntimeDefault
+# Default security context values are in deployment-controller.yaml
+podSecurityContext: {}
 
 securityContext:
   allowPrivilegeEscalation: false

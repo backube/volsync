@@ -27,8 +27,20 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "volsync.serviceAccountName" . }}
+      # The default for podSecurityContext is moved here so that we can probe
+      # the cluster and and adjust the template
       securityContext:
+      {{- if empty .Values.podSecurityContext }}
+        runAsNonRoot: true
+        # When not OpenShift, we need to set the UID
+        {{- if not (.Capabilities.APIVersions.Has "security.openshift.io/v1/SecurityContextConstraints") }}
+        runAsUser: 65534
+        {{- end }}
+        # seccompProfile:
+        #   type: RuntimeDefault
+      {{- else }}
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- end }}
       containers:
         - name: kube-rbac-proxy
           securityContext:
