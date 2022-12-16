@@ -20,9 +20,13 @@
   loop_control:
     loop_var: namespace
 
+- name: Clear list of syncthings
+  set_fact:
+    syncthings: []
+
 - name: Build list of syncthings
   set_fact:
-    syncthings: "{{ syncthings | default([]) + [{ 'Name': 'test-%s' | format(item), 'Namespace': namespaces[item] }] }}"
+    syncthings: "{{ syncthings + [{ 'Name': 'test-%s' | format(item), 'Namespace': namespaces[item] }] }}"
   loop: "{{ range(0, num_syncthings) | list }}"
 
 - name: Create data PVCs
