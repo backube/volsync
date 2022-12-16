@@ -84,13 +84,13 @@ WORKDIR /
 RUN microdnf --refresh update -y && \
     microdnf --nodocs --setopt=install_weak_deps=0 install -y \
         acl             `# rclone - getfacl/setfacl` \
-        openssh         `# manager - ssh key generation` \
+        openssh         `# rsync/ssh - ssh key generation in operator` \
         openssh-clients `# rsync/ssh - ssh client` \
         openssh-server  `# rsync/ssh - ssh server` \
         perl            `# rsync/ssh - rrsync script` \
         stunnel         `# rsync-tls` \
     && microdnf --setopt=install_weak_deps=0 install -y \
-        `# "docs" are needed so rrsync gets installed for ssh variant` \
+        `# docs are needed so rrsync gets installed for ssh variant` \
         rsync           `# rsync/ssh, rsync-tls - rsync, rrsync` \
     && microdnf clean all && \
     rm -rf /var/cache/yum
@@ -145,9 +145,11 @@ COPY /mover-syncthing/config-template.xml \
 RUN chmod a+r /mover-syncthing/config-template.xml
 
 COPY /mover-syncthing/config-template.xml \
+     /mover-syncthing/stignore-template \
      /mover-syncthing/entry.sh \
      /mover-syncthing/
 RUN chmod a+r /mover-syncthing/config-template.xml && \
+    chmod a+r /mover-syncthing/stignore-template && \
     chmod a+rx /mover-syncthing/*.sh
 
 
@@ -169,6 +171,4 @@ LABEL org.opencontainers.image.title="VolSync"
 LABEL org.opencontainers.image.vendor="Backube"
 LABEL org.opencontainers.image.version="${version}"
 
-# uid/gid: nobody/nobody
-USER 65534:65534
 ENTRYPOINT [ "/bin/bash" ]
