@@ -416,15 +416,15 @@ spec:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_RSYNC_CONTAINER
-                  value: quay.io/backube/volsync-mover-rsync:latest
+                  value: quay.io/backube/volsync:latest
                 - name: RELATED_IMAGE_RSYNC_TLS_CONTAINER
-                  value: quay.io/backube/volsync-mover-rsync-tls:latest
+                  value: quay.io/backube/volsync:latest
                 - name: RELATED_IMAGE_RCLONE_CONTAINER
-                  value: quay.io/backube/volsync-mover-rclone:latest
+                  value: quay.io/backube/volsync:latest
                 - name: RELATED_IMAGE_RESTIC_CONTAINER
-                  value: quay.io/backube/volsync-mover-restic:latest
+                  value: quay.io/backube/volsync:latest
                 - name: RELATED_IMAGE_SYNCTHING_CONTAINER
-                  value: quay.io/backube/volsync-mover-syncthing:latest
+                  value: quay.io/backube/volsync:latest
                 image: quay.io/backube/volsync:latest
                 livenessProbe:
                   httpGet:
@@ -529,14 +529,6 @@ spec:
   provider:
     name: Red Hat
   relatedImages:
-  - image: quay.io/backube/volsync-mover-rsync:latest
-    name: rsync-container
-  - image: quay.io/backube/volsync-mover-rsync-tls:latest
-    name: rsync-tls-container
-  - image: quay.io/backube/volsync-mover-rclone:latest
-    name: rclone-container
-  - image: quay.io/backube/volsync-mover-restic:latest
-    name: restic-container
-  - image: quay.io/backube/volsync-mover-syncthing:latest
-    name: syncthing-container
+  - image: quay.io/backube/volsync:latest
+    name: ""
   version: 0.6.0
