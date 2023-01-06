@@ -6,4 +6,10 @@
     api_version: v1
     kind: Namespace
     name: "{{ item }}"
+  register: nsrole_res
+  # The k8s role doesn't properly handle the case where the object is deleted
+  # but it still thinks it exists for some reason. The resulting 404 from the
+  # server isn't handled correctly. Since we're interested in the object not
+  # existing, 404 is actually success for us!
+  failed_when: nsrole_res.error is defined and nsrole_res.error != 404
   with_items: "{{ nsrole_all_created_namespaces }}"
