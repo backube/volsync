@@ -94,6 +94,10 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		return nil, nil
 	}
 
+	if source.Status.LatestMoverStatus == nil {
+		source.Status.LatestMoverStatus = &volsyncv1alpha1.MoverStatus{}
+	}
+
 	vh, err := volumehandler.NewVolumeHandler(
 		volumehandler.WithClient(client),
 		volumehandler.WithRecorder(eventRecorder),
@@ -119,6 +123,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		mainPVCName:          &source.Spec.SourcePVC,
 		privileged:           privileged,
 		moverSecurityContext: source.Spec.Rclone.MoverSecurityContext,
+		latestMoverStatus:    source.Status.LatestMoverStatus,
 	}, nil
 }
 
@@ -128,6 +133,10 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 	// Only build if the CR belongs to us
 	if destination.Spec.Rclone == nil {
 		return nil, nil
+	}
+
+	if destination.Status.LatestMoverStatus == nil {
+		destination.Status.LatestMoverStatus = &volsyncv1alpha1.MoverStatus{}
 	}
 
 	vh, err := volumehandler.NewVolumeHandler(
@@ -155,5 +164,6 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		mainPVCName:          destination.Spec.Rclone.DestinationPVC,
 		privileged:           privileged,
 		moverSecurityContext: destination.Spec.Rclone.MoverSecurityContext,
+		latestMoverStatus:    destination.Status.LatestMoverStatus,
 	}, nil
 }

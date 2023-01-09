@@ -241,6 +241,9 @@ type ReplicationDestinationStatus struct {
 	// image.
 	//+optional
 	LatestImage *corev1.TypedLocalObjectReference `json:"latestImage,omitempty"`
+	// Logs/Summary from latest mover job
+	//+optional
+	LatestMoverStatus *MoverStatus `json:"latestMoverStatus,omitempty"`
 	// rsync contains status information for Rsync-based replication.
 	Rsync *ReplicationDestinationRsyncStatus `json:"rsync,omitempty"`
 	// rsyncTLS contains status information for Rsync-based replication over TLS.

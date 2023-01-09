@@ -99,6 +99,10 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		source.Status.Rsync = &volsyncv1alpha1.ReplicationSourceRsyncStatus{}
 	}
 
+	if source.Status.LatestMoverStatus == nil {
+		source.Status.LatestMoverStatus = &volsyncv1alpha1.MoverStatus{}
+	}
+
 	vh, err := volumehandler.NewVolumeHandler(
 		volumehandler.WithClient(client),
 		volumehandler.WithRecorder(eventRecorder),
@@ -110,20 +114,21 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 	}
 
 	return &Mover{
-		client:         client,
-		logger:         logger.WithValues("method", "Rsync"),
-		eventRecorder:  eventRecorder,
-		owner:          source,
-		vh:             vh,
-		containerImage: rb.getRsyncContainerImage(),
-		sshKeys:        source.Spec.Rsync.SSHKeys,
-		serviceType:    source.Spec.Rsync.ServiceType,
-		address:        source.Spec.Rsync.Address,
-		port:           source.Spec.Rsync.Port,
-		isSource:       true,
-		paused:         source.Spec.Paused,
-		mainPVCName:    &source.Spec.SourcePVC,
-		sourceStatus:   source.Status.Rsync,
+		client:            client,
+		logger:            logger.WithValues("method", "Rsync"),
+		eventRecorder:     eventRecorder,
+		owner:             source,
+		vh:                vh,
+		containerImage:    rb.getRsyncContainerImage(),
+		sshKeys:           source.Spec.Rsync.SSHKeys,
+		serviceType:       source.Spec.Rsync.ServiceType,
+		address:           source.Spec.Rsync.Address,
+		port:              source.Spec.Rsync.Port,
+		isSource:          true,
+		paused:            source.Spec.Paused,
+		mainPVCName:       &source.Spec.SourcePVC,
+		sourceStatus:      source.Status.Rsync,
+		latestMoverStatus: source.Status.LatestMoverStatus,
 	}, nil
 }
 
@@ -140,6 +145,10 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		destination.Status.Rsync = &volsyncv1alpha1.ReplicationDestinationRsyncStatus{}
 	}
 
+	if destination.Status.LatestMoverStatus == nil {
+		destination.Status.LatestMoverStatus = &volsyncv1alpha1.MoverStatus{}
+	}
+
 	vh, err := volumehandler.NewVolumeHandler(
 		volumehandler.WithClient(client),
 		volumehandler.WithRecorder(eventRecorder),
@@ -151,19 +160,20 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 	}
 
 	return &Mover{
-		client:         client,
-		logger:         logger.WithValues("method", "Rsync"),
-		eventRecorder:  eventRecorder,
-		owner:          destination,
-		vh:             vh,
-		containerImage: rb.getRsyncContainerImage(),
-		sshKeys:        destination.Spec.Rsync.SSHKeys,
-		serviceType:    destination.Spec.Rsync.ServiceType,
-		address:        destination.Spec.Rsync.Address,
-		port:           destination.Spec.Rsync.Port,
-		isSource:       false,
-		paused:         destination.Spec.Paused,
-		mainPVCName:    destination.Spec.Rsync.DestinationPVC,
-		destStatus:     destination.Status.Rsync,
+		client:            client,
+		logger:            logger.WithValues("method", "Rsync"),
+		eventRecorder:     eventRecorder,
+		owner:             destination,
+		vh:                vh,
+		containerImage:    rb.getRsyncContainerImage(),
+		sshKeys:           destination.Spec.Rsync.SSHKeys,
+		serviceType:       destination.Spec.Rsync.ServiceType,
+		address:           destination.Spec.Rsync.Address,
+		port:              destination.Spec.Rsync.Port,
+		isSource:          false,
+		paused:            destination.Spec.Paused,
+		mainPVCName:       destination.Spec.Rsync.DestinationPVC,
+		destStatus:        destination.Status.Rsync,
+		latestMoverStatus: destination.Status.LatestMoverStatus,
 	}, nil
 }

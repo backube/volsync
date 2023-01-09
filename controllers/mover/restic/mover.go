@@ -71,6 +71,7 @@ type Mover struct {
 	caSecretKey           string
 	privileged            bool
 	moverSecurityContext  *corev1.PodSecurityContext
+	latestMoverStatus     *volsyncv1alpha1.MoverStatus
 	// Source-only fields
 	pruneInterval *int32
 	retainPolicy  *volsyncv1alpha1.ResticRetainPolicy
@@ -536,6 +537,10 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 	})
 	// If Job had failed, delete it so it can be recreated
 	if job.Status.Failed >= *job.Spec.BackoffLimit {
+		// Update status with mover logs from failed job
+		utils.UpdateMoverStatusForFailedJob(ctx, m.logger, m.latestMoverStatus, job.GetName(), job.GetNamespace(),
+			utils.AllLines)
+
 		logger.Info("deleting job -- backoff limit reached")
 		err = m.client.Delete(ctx, job, client.PropagationPolicy(metav1.DeletePropagationBackground))
 		return nil, err
@@ -556,6 +561,11 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 		m.sourceStatus.LastPruned = &now
 		logger.Info("prune completed", ".Status.Restic.LastPruned", m.sourceStatus.LastPruned)
 	}
+
+	// update status with mover logs from successful job
+	utils.UpdateMoverStatusForSuccessfulJob(ctx, m.logger, m.latestMoverStatus, job.GetName(), job.GetNamespace(),
+		LogLineFilterSuccess)
+
 	// We only continue reconciling if the restic job has completed
 	return job, nil
 }

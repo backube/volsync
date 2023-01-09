@@ -158,6 +158,15 @@ func ensurePrivilegedMoverScc(cfg *rest.Config) {
 	}
 }
 
+func initPodLogsClient(cfg *rest.Config) {
+	_, err := utils.InitPodLogsClient(cfg)
+	if err != nil {
+		setupLog.Error(err, "unable to create client-go clientset for pod logs")
+		os.Exit(1)
+	}
+}
+
+// nolint: funlen
 func main() {
 	err := registerMovers()
 	if err != nil {
@@ -190,6 +199,8 @@ func main() {
 
 	// Before starting controllers - create or patch volsync mover SCC if necessary
 	ensurePrivilegedMoverScc(cfg)
+
+	initPodLogsClient(cfg)
 
 	if err = (&controllers.ReplicationSourceReconciler{
 		Client:        mgr.GetClient(),

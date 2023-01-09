@@ -47,21 +47,22 @@ const (
 
 // Mover is the reconciliation logic for the Rsync-based data mover.
 type Mover struct {
-	client         client.Client
-	logger         logr.Logger
-	eventRecorder  events.EventRecorder
-	owner          client.Object
-	vh             *volumehandler.VolumeHandler
-	containerImage string
-	sshKeys        *string
-	serviceType    *corev1.ServiceType
-	address        *string
-	port           *int32
-	isSource       bool
-	paused         bool
-	mainPVCName    *string
-	sourceStatus   *volsyncv1alpha1.ReplicationSourceRsyncStatus
-	destStatus     *volsyncv1alpha1.ReplicationDestinationRsyncStatus
+	client            client.Client
+	logger            logr.Logger
+	eventRecorder     events.EventRecorder
+	owner             client.Object
+	vh                *volumehandler.VolumeHandler
+	containerImage    string
+	sshKeys           *string
+	serviceType       *corev1.ServiceType
+	address           *string
+	port              *int32
+	isSource          bool
+	paused            bool
+	mainPVCName       *string
+	sourceStatus      *volsyncv1alpha1.ReplicationSourceRsyncStatus
+	destStatus        *volsyncv1alpha1.ReplicationDestinationRsyncStatus
+	latestMoverStatus *volsyncv1alpha1.MoverStatus
 }
 
 var _ mover.Mover = &Mover{}
@@ -459,6 +460,10 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 	})
 	// If Job had failed, delete it so it can be recreated
 	if job.Status.Failed >= *job.Spec.BackoffLimit {
+		// Update status with mover logs from failed job
+		utils.UpdateMoverStatusForFailedJob(ctx, m.logger, m.latestMoverStatus, job.GetName(), job.GetNamespace(),
+			utils.AllLines)
+
 		logger.Info("deleting job -- backoff limit reached")
 		m.eventRecorder.Eventf(m.owner, job, corev1.EventTypeWarning,
 			mover.EvRTransferFailed, mover.EvADeleteMover, "mover Job backoff limit reached")
@@ -487,6 +492,11 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 	}
 
 	logger.Info("job completed")
+
+	// update status with mover logs from successful job
+	utils.UpdateMoverStatusForSuccessfulJob(ctx, m.logger, m.latestMoverStatus, job.GetName(), job.GetNamespace(),
+		LogLineFilterSuccess)
+
 	// We only continue reconciling if the rsync job has completed
 	return job, nil
 }
