@@ -413,7 +413,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 				utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_SAS", true), // New in v0.14.0
 				utils.EnvFromSecret(repo.Name, "GOOGLE_PROJECT_ID", true),
 			},
-			Command: []string{"/entry.sh"},
+			Command: []string{"/mover-restic/entry.sh"},
 			Args:    actions,
 			Image:   m.containerImage,
 			SecurityContext: &corev1.SecurityContext{

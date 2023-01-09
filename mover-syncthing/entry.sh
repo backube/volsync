@@ -114,7 +114,7 @@ preflight_check() {
   # populate config directory with config, if none exists
   if ! [[ -f "${SYNCTHING_CONFIG_DIR}/config.xml" ]]; then
     log_msg "populating ${SYNCTHING_CONFIG_DIR} with /config.xml"
-    cp "/config.xml" "${SYNCTHING_CONFIG_DIR}/config.xml"
+    cp "/mover-syncthing/config-template.xml" "${SYNCTHING_CONFIG_DIR}/config.xml"
     preconfigure_folder "${SYNCTHING_CONFIG_DIR}/config.xml"
   else
     log_msg "${SYNCTHING_CONFIG_DIR}/config.xml already exists"
@@ -123,7 +123,7 @@ preflight_check() {
   # Populate data dir with our default .stignore, if none exists
   if ! [[ -f "${SYNCTHING_DATA_DIR}/.stignore" ]]; then
     log_msg "populating ${SYNCTHING_DATA_DIR} with /.stignore"
-    cp "/.stignore" "${SYNCTHING_DATA_DIR}/.stignore"
+    cp "/mover-syncthing/stignore-template" "${SYNCTHING_DATA_DIR}/.stignore"
   else
     log_msg "${SYNCTHING_DATA_DIR}/.stignore already exists"
   fi

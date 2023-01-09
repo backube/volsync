@@ -20,7 +20,7 @@ patches:
       path: /spec/template/spec/containers/0/env/-
       value:
         name: RELATED_IMAGE_RSYNC_CONTAINER
-        value: quay.io/backube/volsync-mover-rsync:latest
+        value: quay.io/backube/volsync:latest
   target:
     kind: Deployment
 - patch: |-
@@ -28,7 +28,7 @@ patches:
       path: /spec/template/spec/containers/0/env/-
       value:
         name: RELATED_IMAGE_RSYNC_TLS_CONTAINER
-        value: quay.io/backube/volsync-mover-rsync-tls:latest
+        value: quay.io/backube/volsync:latest
   target:
     kind: Deployment
 - patch: |-
@@ -36,7 +36,7 @@ patches:
       path: /spec/template/spec/containers/0/env/-
       value:
         name: RELATED_IMAGE_RCLONE_CONTAINER
-        value: quay.io/backube/volsync-mover-rclone:latest
+        value: quay.io/backube/volsync:latest
   target:
     kind: Deployment
 - patch: |-
@@ -44,7 +44,7 @@ patches:
       path: /spec/template/spec/containers/0/env/-
       value:
         name: RELATED_IMAGE_RESTIC_CONTAINER
-        value: quay.io/backube/volsync-mover-restic:latest
+        value: quay.io/backube/volsync:latest
   target:
     kind: Deployment
 - patch: |-
@@ -52,6 +52,6 @@ patches:
       path: /spec/template/spec/containers/0/env/-
       value:
         name: RELATED_IMAGE_SYNCTHING_CONTAINER
-        value: quay.io/backube/volsync-mover-syncthing:latest
+        value: quay.io/backube/volsync:latest
   target:
     kind: Deployment

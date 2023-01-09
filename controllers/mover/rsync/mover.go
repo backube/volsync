@@ -373,7 +373,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 		readOnlyVolume := false
 
 		containerEnv := []corev1.EnvVar{}
-		containerCmd := []string{"/bin/bash", "-c", "/destination.sh"} // cmd for replicationDestination job
+		containerCmd := []string{"/bin/bash", "-c", "/mover-rsync/destination.sh"} // cmd for replicationDestination job
 		if m.isSource {
 			// Set dest address/port if necessary
 			if m.address != nil {
@@ -384,7 +384,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 				}
 			}
 			// Set container cmd for the replicationSource job
-			containerCmd = []string{"/bin/bash", "-c", "/source.sh"}
+			containerCmd = []string{"/bin/bash", "-c", "/mover-rsync/source.sh"}
 
 			// Set read-only for volume in repl source job spec if the PVC only supports read-only
 			readOnlyVolume = utils.PvcIsReadOnly(dataPVC)

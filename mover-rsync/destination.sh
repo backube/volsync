@@ -7,12 +7,12 @@ echo "VolSync rsync container version: ${version:-unknown}"
 # Allow source's key to access, but restrict what it can do.
 mkdir -p ~/.ssh
 chmod 700 ~/.ssh
-echo "command=\"/destination-command.sh\",restrict $(</keys/source.pub)" > ~/.ssh/authorized_keys
+echo "command=\"/mover-rsync/destination-command.sh\",restrict $(</keys/source.pub)" > ~/.ssh/authorized_keys
 
 # Wait for incoming rsync transfer
 echo "Waiting for connection..."
 rm -f /var/run/nologin
-/usr/sbin/sshd -D -e -q -p 8022
+/usr/sbin/sshd -D -e -p 8022
 
 # When sshd exits, need to return the proper exit code from the rsync operation
 CODE=255

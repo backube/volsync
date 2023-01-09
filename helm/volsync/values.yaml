@@ -9,27 +9,27 @@ image:
   # Directly specifies the SHA hash of the container image to deploy
   image: ""
 rclone:
-  repository: quay.io/backube/volsync-mover-rclone
+  repository: quay.io/backube/volsync
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
   image: ""
 restic:
-  repository: quay.io/backube/volsync-mover-restic
+  repository: quay.io/backube/volsync
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
   image: ""
 rsync:
-  repository: quay.io/backube/volsync-mover-rsync
+  repository: quay.io/backube/volsync
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
   image: ""
 rsync-tls:
-  repository: quay.io/backube/volsync-mover-rsync-tls
+  repository: quay.io/backube/volsync
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
   image: ""
 syncthing:
-  repository: quay.io/backube/volsync-mover-syncthing
+  repository: quay.io/backube/volsync
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
   image: ""
@@ -55,11 +55,8 @@ serviceAccount:
 
 podAnnotations: {}
 
-podSecurityContext:
-  # fsGroup: 2000
-  runAsNonRoot: true
-  # seccompProfile:
-  #   type: RuntimeDefault
+# Default security context values are in deployment-controller.yaml
+podSecurityContext: {}
 
 securityContext:
   allowPrivilegeEscalation: false

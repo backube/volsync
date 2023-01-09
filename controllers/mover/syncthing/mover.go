@@ -56,7 +56,7 @@ const (
 // Directories where files will be loaded into the Syncthing container.
 const (
 	dataDirMountPath   = "/data"
-	configDirMountPath = "/config"
+	configDirMountPath = "/mover-syncthing/config"
 	certDirMountPath   = "/certs"
 )
 
@@ -448,7 +448,7 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 			{
 				Name:    "syncthing",
 				Image:   m.containerImage,
-				Command: []string{"/entry.sh"},
+				Command: []string{"/mover-syncthing/entry.sh"},
 				Args:    []string{"run"},
 				Env: []corev1.EnvVar{
 					{Name: configDirEnv, Value: configDirMountPath},

@@ -34,7 +34,7 @@ import (
 const (
 	// defaultRcloneContainerImage is the default container image for the rclone
 	// data mover
-	defaultRcloneContainerImage = "quay.io/backube/volsync-mover-rclone:latest"
+	defaultRcloneContainerImage = "quay.io/backube/volsync:latest"
 	// Command line flag will be checked first
 	// If command line flag not set, the RELATED_IMAGE_ env var will be used
 	rcloneContainerImageFlag   = "rclone-container-image"

@@ -528,7 +528,7 @@ var _ = Describe("Rclone as a source", func() {
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 					Expect(len(job.Spec.Template.Spec.Containers)).To(Equal(1))
 					Expect(job.Spec.Template.Spec.Containers[0].Command).To(Equal(
-						[]string{"/bin/bash", "-c", "./active.sh"}))
+						[]string{"/bin/bash", "-c", "/mover-rclone/active.sh"}))
 				})
 
 				It("should use the specified container image", func() {

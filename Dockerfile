@@ -1,13 +1,19 @@
-# Build the manager binary
-FROM golang:1.19 as builder
+######################################################################
+# Establish a common builder image for all golang-based images
+FROM golang:1.19 as golang-builder
 USER root
-
 WORKDIR /workspace
-# Copy the Go Modules manifests
+# We don't vendor modules. Enforce that behavior
+ENV GOFLAGS=-mod=readonly
+
+
+######################################################################
+# Build the manager binary
+FROM golang-builder as manager-builder
+
+# Copy the Go Modules manifests & download dependencies
 COPY go.mod go.mod
 COPY go.sum go.sum
-# cache deps before building and copying source so that we don't need to re-download as much
-# and so that source changes don't invalidate our downloaded layer
 RUN go mod download
 
 # Copy the go source
@@ -17,28 +23,152 @@ COPY controllers/ controllers/
 COPY config/openshift config/openshift
 
 # Build
-# We don't vendor modules. Enforce that behavior
-ENV GOFLAGS=-mod=readonly
 ARG version_arg="(unknown)"
 RUN GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o manager -ldflags "-X=main.volsyncVersion=${version_arg}" main.go
 
-# Verify that FIPS crypto libs are accessible
-# Check removed since official images don't support boring crypto
-#RUN nm manager | grep -q goboringcrypto
 
+######################################################################
+# Build rclone
+FROM golang-builder as rclone-builder
+
+ARG RCLONE_VERSION=v1.60.1
+ARG RCLONE_GIT_HASH=ab8be2663fca662398983a9372f5ee1c39cb2862
+
+RUN git clone --depth 1 -b ${RCLONE_VERSION} https://github.com/rclone/rclone.git
+WORKDIR /workspace/rclone
+
+# Make sure the Rclone version tag matches the git hash we're expecting
+RUN /bin/bash -c "[[ $(git rev-list -n 1 HEAD) == ${RCLONE_GIT_HASH} ]]"
+
+# Remove link flag that strips symbols so that we can verify crypto libs
+RUN sed -i 's/--ldflags "-s /--ldflags "/g' Makefile
+RUN make rclone
+
+
+######################################################################
+# Build restic
+FROM golang-builder as restic-builder
+
+COPY /mover-restic/restic ./restic
+COPY /mover-restic/minio-go ./minio-go
+
+WORKDIR /workspace/restic
+
+# Preserve symbols so that we can verify crypto libs
+RUN sed -i 's/preserveSymbols := false/preserveSymbols := true/g' build.go
+RUN go run build.go --enable-cgo
+
+
+######################################################################
+# Build syncthing
+FROM golang-builder as syncthing-builder
+
+ARG SYNCTHING_VERSION="v1.22.2"
+ARG SYNCTHING_GIT_HASH="d16c0652f7ea160b4aed0cdbcb9216573baf0107"
+
+RUN git clone --depth 1 -b ${SYNCTHING_VERSION} https://github.com/syncthing/syncthing.git
+WORKDIR /workspace/syncthing
+
+# Make sure we have the correct Syncthing release
+RUN /bin/bash -c "[[ $(git rev-list -n 1 HEAD) == ${SYNCTHING_GIT_HASH} ]]"
+
+ENV CGO_ENABLED=1
+RUN go run build.go -no-upgrade
+
+
+######################################################################
 # Final container
 FROM registry.access.redhat.com/ubi9-minimal
+WORKDIR /
 
-# Needs openssh in order to generate ssh keys
 RUN microdnf --refresh update -y && \
     microdnf --nodocs --setopt=install_weak_deps=0 install -y \
-        openssh \
+        acl             `# rclone - getfacl/setfacl` \
+        openssh         `# rsync/ssh - ssh key generation in operator` \
+        openssh-clients `# rsync/ssh - ssh client` \
+        openssh-server  `# rsync/ssh - ssh server` \
+        perl            `# rsync/ssh - rrsync script` \
+        stunnel         `# rsync-tls` \
+    && microdnf --setopt=install_weak_deps=0 install -y \
+        `# docs are needed so rrsync gets installed for ssh variant` \
+        rsync           `# rsync/ssh, rsync-tls - rsync, rrsync` \
     && microdnf clean all && \
     rm -rf /var/cache/yum
 
-WORKDIR /
-COPY --from=builder /workspace/manager .
-# uid/gid: nobody/nobody
-USER 65534:65534
+##### VolSync operator
+COPY --from=manager-builder /workspace/manager /manager
 
-ENTRYPOINT ["/manager"]
+##### rclone
+COPY --from=rclone-builder /workspace/rclone/rclone /usr/local/bin/rclone
+COPY /mover-rclone/active.sh \
+     /mover-rclone/
+RUN chmod a+rx /mover-rclone/*.sh
+
+##### restic
+COPY --from=restic-builder /workspace/restic/restic /usr/local/bin/restic
+COPY /mover-restic/entry.sh \
+     /mover-restic/
+RUN chmod a+rx /mover-restic/*.sh
+
+##### rsync (ssh)
+COPY /mover-rsync/source.sh \
+     /mover-rsync/destination.sh \
+     /mover-rsync/destination-command.sh \
+     /mover-rsync/
+RUN chmod a+rx /mover-rsync/*.sh
+
+RUN ln -s /keys/destination /etc/ssh/ssh_host_rsa_key && \
+    ln -s /keys/destination.pub /etc/ssh/ssh_host_rsa_key.pub && \
+    install /usr/share/doc/rsync/support/rrsync /usr/local/bin && \
+    \
+    SSHD_CONFIG="/etc/ssh/sshd_config" && \
+    sed -ir 's|^[#\s]*\(.*/etc/ssh/ssh_host_ecdsa_key\)$|#\1|' "$SSHD_CONFIG" && \
+    sed -ir 's|^[#\s]*\(.*/etc/ssh/ssh_host_ed25519_key\)$|#\1|' "$SSHD_CONFIG" && \
+    sed -ir 's|^[#\s]*\(PasswordAuthentication\)\s.*$|\1 no|' "$SSHD_CONFIG" && \
+    sed -ir 's|^[#\s]*\(GSSAPIAuthentication\)\s.*$|\1 no|' "$SSHD_CONFIG" && \
+    sed -ir 's|^[#\s]*\(AllowTcpForwarding\)\s.*$|\1 no|' "$SSHD_CONFIG" && \
+    sed -ir 's|^[#\s]*\(X11Forwarding\)\s.*$|\1 no|' "$SSHD_CONFIG" && \
+    sed -ir 's|^[#\s]*\(PermitTunnel\)\s.*$|\1 no|' "$SSHD_CONFIG" && \
+    sed -ir 's|^[#\s]*\(PidFile\)\s.*$|\1 /tmp/sshd.pid|' "$SSHD_CONFIG"
+
+##### rsync-tls
+COPY /mover-rsync-tls/client.sh \
+     /mover-rsync-tls/server.sh \
+     /mover-rsync-tls/
+RUN chmod a+rx /mover-rsync-tls/*.sh
+
+##### syncthing
+COPY --from=syncthing-builder /workspace/syncthing/bin/syncthing /usr/local/bin/syncthing
+ENV SYNCTHING_DATA_TRANSFERMODE="sendreceive"
+COPY /mover-syncthing/config-template.xml \
+     /mover-syncthing/
+RUN chmod a+r /mover-syncthing/config-template.xml
+
+COPY /mover-syncthing/config-template.xml \
+     /mover-syncthing/stignore-template \
+     /mover-syncthing/entry.sh \
+     /mover-syncthing/
+RUN chmod a+r /mover-syncthing/config-template.xml && \
+    chmod a+r /mover-syncthing/stignore-template && \
+    chmod a+rx /mover-syncthing/*.sh
+
+
+##### Set build metadata
+ARG builddate_arg="(unknown)"
+ARG version_arg="(unknown)"
+ENV builddate="${builddate_arg}"
+ENV version="${version_arg}"
+
+# https://github.com/opencontainers/image-spec/blob/main/annotations.md
+LABEL org.opencontainers.image.base.name="registry.access.redhat.com/ubi9-minimal"
+LABEL org.opencontainers.image.created="${builddate}"
+LABEL org.opencontainers.image.description="VolSync data replication operator"
+LABEL org.opencontainers.image.documentation="https://volsync.readthedocs.io/"
+LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later"
+LABEL org.opencontainers.image.revision="${version}"
+LABEL org.opencontainers.image.source="https://github.com/backube/volsync"
+LABEL org.opencontainers.image.title="VolSync"
+LABEL org.opencontainers.image.vendor="Backube"
+LABEL org.opencontainers.image.version="${version}"
+
+ENTRYPOINT [ "/bin/bash" ]

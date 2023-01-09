@@ -544,7 +544,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 					Expect(len(job.Spec.Template.Spec.Containers)).To(Equal(1))
 					Expect(job.Spec.Template.Spec.Containers[0].Command).To(Equal(
-						[]string{"/bin/bash", "-c", "/client.sh"}))
+						[]string{"/bin/bash", "-c", "/mover-rsync-tls/client.sh"}))
 				})
 
 				It("should use the specified container image", func() {
@@ -1130,7 +1130,7 @@ var _ = Describe("Rsync as a destination", func() {
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 					Expect(len(job.Spec.Template.Spec.Containers)).To(Equal(1))
 					Expect(job.Spec.Template.Spec.Containers[0].Command).To(Equal(
-						[]string{"/bin/bash", "-c", "/server.sh"}))
+						[]string{"/bin/bash", "-c", "/mover-rsync-tls/server.sh"}))
 				})
 			})
 		})
