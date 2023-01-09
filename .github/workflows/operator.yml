@@ -27,7 +27,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@755da8c3cf115ac066823e79a1e1788f8940201b
+        uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c
 
       - name: Install prereqs
         run: |
@@ -45,7 +45,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@755da8c3cf115ac066823e79a1e1788f8940201b
+        uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c
 
       - name: Install Go
         uses: actions/setup-go@6edd4406fa81c3da01a34fa6f6343087c207a568
@@ -117,7 +117,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@755da8c3cf115ac066823e79a1e1788f8940201b
+        uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c
         with:
           fetch-depth: 0
 
@@ -156,7 +156,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@755da8c3cf115ac066823e79a1e1788f8940201b
+        uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c
 
       - name: Build operator container
         run: make docker-build IMG=${OPERATOR_IMAGE}
@@ -176,7 +176,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@755da8c3cf115ac066823e79a1e1788f8940201b
+        uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c
 
       - name: Install Go
         uses: actions/setup-go@6edd4406fa81c3da01a34fa6f6343087c207a568
@@ -216,7 +216,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@755da8c3cf115ac066823e79a1e1788f8940201b
+        uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c
         with:
           # Fetch whole history so we can properly determine the version string
           # (required by krew validation)
@@ -278,7 +278,7 @@ jobs:
       KUBERNETES_VERSION: ${{ matrix.KUBERNETES_VERSIONS }}
     steps:
       - name: Checkout source
-        uses: actions/checkout@755da8c3cf115ac066823e79a1e1788f8940201b
+        uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c
 
       # We set bash as the default shell (instead of dash) because the kuttl
       # test steps require bash, but the "script" directive executes them as "sh
