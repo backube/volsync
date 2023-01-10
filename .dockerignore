@@ -1,5 +1,7 @@
-.git
-.venv
-bin
-testbin
-test-e2e/.venv
+/.git/
+/.venv/
+/bin/
+/docs/
+/testbin/
+/test-e2e/.collections/
+/test-e2e/.venv/
