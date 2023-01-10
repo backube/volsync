@@ -37,6 +37,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
+	"github.com/backube/volsync/controllers/utils"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -101,6 +102,9 @@ var _ = BeforeSuite(func() {
 
 	// Instantiate direct client for tests (reads directly from API server rather than caching)
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	Expect(err).NotTo(HaveOccurred())
+
+	_, err = utils.InitPodLogsClient(cfg)
 	Expect(err).NotTo(HaveOccurred())
 
 	// Instantiate common rsync builder to use for tests in this test suite

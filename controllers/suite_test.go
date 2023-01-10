@@ -43,6 +43,7 @@ import (
 	"github.com/backube/volsync/controllers/mover/rclone"
 	"github.com/backube/volsync/controllers/mover/restic"
 	"github.com/backube/volsync/controllers/mover/rsync"
+	"github.com/backube/volsync/controllers/utils"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -141,6 +142,9 @@ var _ = BeforeSuite(func() {
 
 	k8sClient = k8sManager.GetClient()
 	Expect(k8sClient).ToNot(BeNil())
+
+	_, err = utils.InitPodLogsClient(cfg)
+	Expect(err).NotTo(HaveOccurred())
 }, 60)
 
 var _ = AfterSuite(func() {
