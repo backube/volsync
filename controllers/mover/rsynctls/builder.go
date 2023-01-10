@@ -99,6 +99,10 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		source.Status.RsyncTLS = &volsyncv1alpha1.ReplicationSourceRsyncTLSStatus{}
 	}
 
+	if source.Status.LatestMoverStatus == nil {
+		source.Status.LatestMoverStatus = &volsyncv1alpha1.MoverStatus{}
+	}
+
 	vh, err := volumehandler.NewVolumeHandler(
 		volumehandler.WithClient(client),
 		volumehandler.WithRecorder(eventRecorder),
@@ -126,6 +130,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		privileged:           privileged,
 		moverSecurityContext: source.Spec.RsyncTLS.MoverSecurityContext,
 		sourceStatus:         source.Status.RsyncTLS,
+		latestMoverStatus:    source.Status.LatestMoverStatus,
 	}, nil
 }
 
@@ -140,6 +145,10 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 	// Make sure there's a place to write status info
 	if destination.Status.RsyncTLS == nil {
 		destination.Status.RsyncTLS = &volsyncv1alpha1.ReplicationDestinationRsyncTLSStatus{}
+	}
+
+	if destination.Status.LatestMoverStatus == nil {
+		destination.Status.LatestMoverStatus = &volsyncv1alpha1.MoverStatus{}
 	}
 
 	vh, err := volumehandler.NewVolumeHandler(
@@ -169,5 +178,6 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		privileged:           privileged,
 		moverSecurityContext: destination.Spec.RsyncTLS.MoverSecurityContext,
 		destStatus:           destination.Status.RsyncTLS,
+		latestMoverStatus:    destination.Status.LatestMoverStatus,
 	}, nil
 }

@@ -32,6 +32,8 @@ import (
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
 
+const MaxLogLines int64 = 100 // Get max 100 lines //TODO: should this be smaller or configurable?
+
 var clientset *kubernetes.Clientset
 
 func InitPodLogsClient(cfg *rest.Config) (*kubernetes.Clientset, error) {
@@ -50,7 +52,7 @@ func getPodLogs(ctx context.Context, logger logr.Logger, podName, podNamespace s
 	lineFilter func(line string) *string) (string, error) {
 	l := logger.WithValues("podName", podName, "podNamespace", podNamespace)
 
-	tailLines := int64(50) // Get max 50 lines //TODO: should this be smaller or configurable?
+	tailLines := MaxLogLines
 
 	podLogOptions := &corev1.PodLogOptions{
 		//Container: containerName,
