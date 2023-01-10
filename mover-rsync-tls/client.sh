@@ -105,6 +105,7 @@ if [[ $rc -eq 0 ]]; then
     echo "Sending shutdown to remote..."
     rsync "$SCRIPT" rsync://127.0.0.1:$STUNNEL_LISTEN_PORT/control/complete
     echo "...done"
+    sleep 5  # Give time for the remote to shut down
 else
     echo "Synchronization failed. rsync returned: $rc"
 fi

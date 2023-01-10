@@ -108,6 +108,8 @@ while [[ ! -e $CONTROL_FILE ]]; do
     sleep 1
 done
 
+sleep 5  # Give time for the rsync connection to finish
+
 ##############################
 ## Terminate stunnel
 echo "Shutting down..."
