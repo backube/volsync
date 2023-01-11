@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
+	"github.com/spf13/viper"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -32,12 +33,36 @@ import (
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
 
-const MaxLogLines int64 = 100 // Get max 100 lines //TODO: should this be smaller or configurable?
+const (
+	// Env var - max lines we will log into the status log
+	// Note: this is actually the amt of lines we will tail from the
+	// mover pod - so really it's the max lines we'll look at (and perhaps
+	// filter before saving to the latestMoverStatus)
+	MoverLogMaxLinesEnvVar        = "MOVER_LOG_MAX_LINES"
+	DefaultMoverLogMaxLines int64 = 100 // Default max lines
+
+	// Env var - Set to "true" to log all lines (up to MOVER_LOG_MAX_LINES) of mover logs
+	MoverLogDebugEnvVar = "MOVER_LOG_DEBUG"
+)
 
 var clientset *kubernetes.Clientset
 
 func InitPodLogsClient(cfg *rest.Config) (*kubernetes.Clientset, error) {
 	var err error
+
+	// Allow env var to override MOVER_LOG_MAX_LINES
+	viper.SetDefault(MoverLogMaxLinesEnvVar, DefaultMoverLogMaxLines)
+	err = viper.BindEnv(MoverLogMaxLinesEnvVar)
+	if err != nil {
+		return nil, err
+	}
+
+	// Allow env var to override MOVER_LOG_DEBUG
+	viper.SetDefault(MoverLogDebugEnvVar, "false")
+	err = viper.BindEnv(MoverLogDebugEnvVar)
+	if err != nil {
+		return nil, err
+	}
 
 	clientset, err = kubernetes.NewForConfig(cfg)
 	if err != nil {
@@ -47,12 +72,19 @@ func InitPodLogsClient(cfg *rest.Config) (*kubernetes.Clientset, error) {
 	return clientset, nil
 }
 
-// TODO: allow a debug mode to capture all logs from mover?
+func GetMoverLogMaxLines() int64 {
+	return viper.GetInt64(MoverLogMaxLinesEnvVar)
+}
+
+func IsMoverLogDebug() bool {
+	return viper.GetBool(MoverLogDebugEnvVar)
+}
+
 func getPodLogs(ctx context.Context, logger logr.Logger, podName, podNamespace string,
 	lineFilter func(line string) *string) (string, error) {
 	l := logger.WithValues("podName", podName, "podNamespace", podNamespace)
 
-	tailLines := MaxLogLines
+	tailLines := GetMoverLogMaxLines()
 
 	podLogOptions := &corev1.PodLogOptions{
 		//Container: containerName,
@@ -73,6 +105,11 @@ func getPodLogs(ctx context.Context, logger logr.Logger, podName, podNamespace s
 
 // Appies lineFilter to each line
 func FilterLogs(reader io.Reader, lineFilter func(line string) *string) (string, error) {
+	if IsMoverLogDebug() {
+		// If in debug mode, log everything
+		lineFilter = AllLines
+	}
+
 	lineScanner := bufio.NewScanner(reader)
 	var allLines strings.Builder
 	for lineScanner.Scan() {

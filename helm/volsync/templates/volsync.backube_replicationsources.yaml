@@ -768,7 +768,7 @@ spec:
                   properties:
                     logs:
                       type: string
-                    moverResult:
+                    result:
                       type: string
                   type: object
                 nextSyncTime:

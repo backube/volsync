@@ -18,6 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package utils_test
 
 import (
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -230,22 +231,44 @@ created new cache in /home/testuser/DEVFEDORA/volsync/RESTICTESTS/CACHE
 === Done ===`
 
 			reader := strings.NewReader(testLog)
-			filteredLines, err := utils.FilterLogs(reader, func(line string) *string {
-				// Return all lines that start with "Created " or "created " or lines that have "=== * ==="
-				var myRegex = regexp.MustCompile(`^\s*([cC]reated)\s.+|^\s*(===)\s.+(===)`)
-
-				if myRegex.MatchString(line) {
-					return &line
-				}
-				return nil
-			})
+			filteredLines, err := utils.FilterLogs(reader, testFilterFunc)
 			Expect(err).NotTo(HaveOccurred())
 
 			logger.Info("Filtered lines are", "filteredLines", filteredLines)
 			Expect(filteredLines).To(Equal(expectedFilteredLog))
 		})
+
+		Context("When MOVER_LOG_DEBUG is true, filterfunc should be ignored (log everything", func() {
+			BeforeEach(func() {
+				// Set env var to true
+				os.Setenv(utils.MoverLogDebugEnvVar, "true")
+			})
+			AfterEach(func() {
+				// Unset the env to set back to default
+				os.Unsetenv(utils.MoverLogDebugEnvVar)
+			})
+
+			It("Should return all lines, ignoring the lineFilter", func() {
+				reader := strings.NewReader(testLog)
+				filteredLines, err := utils.FilterLogs(reader, testFilterFunc)
+				Expect(err).NotTo(HaveOccurred())
+
+				logger.Info("Filtered lines are", "filteredLines", filteredLines)
+				Expect(filteredLines).To(Equal(testLog))
+			})
+		})
 	})
 })
+
+func testFilterFunc(line string) *string {
+	// Return all lines that start with "Created " or "created " or lines that have "=== * ==="
+	var myRegex = regexp.MustCompile(`^\s*([cC]reated)\s.+|^\s*(===)\s.+(===)`)
+
+	if myRegex.MatchString(line) {
+		return &line
+	}
+	return nil
+}
 
 func createTestPodForJob(name, namespace, jobName string, desiredPhase corev1.PodPhase) *corev1.Pod {
 	pod := &corev1.Pod{

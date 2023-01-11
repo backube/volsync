@@ -100,6 +100,6 @@ const (
 )
 
 type MoverStatus struct {
-	Result MoverResult `json:"moverResult,omitempty"`
+	Result MoverResult `json:"result,omitempty"`
 	Logs   string      `json:"logs,omitempty"`
 }
