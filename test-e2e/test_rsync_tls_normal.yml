@@ -137,6 +137,24 @@
               copyMethod: Snapshot
       when: podSecurityContext is not defined
 
+    - name: Check status of replicationsource
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationSource
+        name: source
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastSyncDuration is defined and
+        res.resources[0].status.lastSyncTime is defined and
+        res.resources[0].status.latestMoverStatus is defined and
+        res.resources[0].status.latestMoverStatus.result == "Successful" and
+        res.resources[0].status.latestMoverStatus.logs is search("sent.*bytes.*received.*bytes.*") and
+        res.resources[0].status.latestMoverStatus.logs is search("rsync completed in.*")
+      delay: 1
+      retries: 900
+
     - name: Wait for sync to complete
       kubernetes.core.k8s_info:
         api_version: volsync.backube/v1alpha1
@@ -147,7 +165,9 @@
       until: >
         res.resources | length > 0 and
         res.resources[0].status.latestImage is defined and
-        res.resources[0].status.latestImage.kind == "VolumeSnapshot"
+        res.resources[0].status.latestImage.kind == "VolumeSnapshot" and
+        res.resources[0].status.latestMoverStatus is defined and
+        res.resources[0].status.latestMoverStatus.result == "Successful"
       delay: 1
       retries: 900
 
