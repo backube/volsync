@@ -45,6 +45,8 @@ const (
 	MoverLogDebugEnvVar = "MOVER_LOG_DEBUG"
 )
 
+//+kubebuilder:rbac:groups=core,resources=pods/log,verbs=get;list;watch
+
 var clientset *kubernetes.Clientset
 
 func InitPodLogsClient(cfg *rest.Config) (*kubernetes.Clientset, error) {
