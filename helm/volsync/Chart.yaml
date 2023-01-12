@@ -23,10 +23,12 @@ annotations:  # https://artifacthub.io/docs/topics/annotations/helm/
   artifacthub.io/changes: |
     - kind: added
       description: New rsync-tls mover that uses stunnel instead of sshd for rsync traffic
-    - kind: added
-      description: Chart option "manageCRDs" to control whether the chart installs/upgrades/removes the Volsync CRDs. This is a breaking change that requires manually annotating/labeling the CRDs in order to upgrade from a previous chart release. See the project Changelog for more specific instructions.
+    - kind: changed
+      description: All movers except rsync-ssh run as a normal user (see docs)
+    - kind: changed
+      description: VolSync now uses a single container image for the controller and all movers
     - kind: security
-      description: kube-rbac-proxy upgraded to 0.13.1
+      description: kube-rbac-proxy upgraded to 0.14.0
   artifacthub.io/crds: |
     - kind: ReplicationDestination
       version: v1alpha1
