@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [unreleased]
 
+### Added
+
+- New rsync-tls data mover that will replace the existing rsync-ssh mover
+
+### Changed
+
+- VolSync now uses a single container image for the controller and all movers
+
+### Fixed
+
+- Syncthing should ignore lost+found directory
+
+### Security
+
+- kube-rbac-proxy upgraded to 0.14.0
+- All movers, except rsync-ssh, now run with reduced privileges by default (see docs)
+
+## [0.6.0 (unreleased)]
+
 ### Changed
 
 - :warning: Breaking change :warning: - Helm chart now manages VolSync CRDs
