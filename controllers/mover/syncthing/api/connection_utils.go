@@ -38,11 +38,11 @@ type syncthingAPIConnection struct {
 
 // headers Returns a map containing the necessary headers for Syncthing API requests.
 // When no API Key is provided, an error is returned.
-func (api *syncthingAPIConnection) headers() (map[string]string, error) {
+func (api *syncthingAPIConnection) headers() map[string]string {
 	return map[string]string{
 		"X-API-Key":    api.apiConfig.APIKey,
 		"Content-Type": "application/json",
-	}, nil
+	}
 }
 
 // jsonRequest Makes an HTTPS request to the API at the .
@@ -66,10 +66,7 @@ func (api *syncthingAPIConnection) jsonRequest(
 	}
 
 	// set headers
-	headers, err := api.headers()
-	if err != nil {
-		return nil, err
-	}
+	headers := api.headers()
 	for key, value := range headers {
 		req.Header.Set(key, value)
 	}
