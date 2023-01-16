@@ -164,7 +164,8 @@ func initPodLogsClient(cfg *rest.Config) {
 		setupLog.Error(err, "unable to create client-go clientset for pod logs")
 		os.Exit(1)
 	}
-	setupLog.Info("Mover Status Log", "max lines", utils.GetMoverLogMaxLines(), "debug", utils.IsMoverLogDebug())
+	setupLog.Info("Mover Status Log", "log max bytes", utils.GetMoverLogMaxBytes(),
+		"tail lines", utils.GetMoverLogTailLines(), "debug", utils.IsMoverLogDebug())
 }
 
 // nolint: funlen

@@ -34,12 +34,13 @@ import (
 )
 
 const (
-	// Env var - max lines we will log into the status log
-	// Note: this is actually the amt of lines we will tail from the
-	// mover pod - so really it's the max lines we'll look at (and perhaps
-	// filter before saving to the latestMoverStatus)
-	MoverLogMaxLinesEnvVar        = "MOVER_LOG_MAX_LINES"
-	DefaultMoverLogMaxLines int64 = 100 // Default max lines
+	// Env var - max bytes we will log into the status log
+	MoverLogMaxBytesEnvVar      = "MOVER_LOG_MAX_BYTES"
+	DefaultMoverLogMaxBytes int = 1024
+
+	// Env var - max lines we will tail from a mover pod to process logs
+	MoverLogTailLinesEnvVar        = "MOVER_LOG_TAIL_LINES"
+	DefaultMoverLogTailLines int64 = 100
 
 	// Env var - Set to "true" to log all lines (up to MOVER_LOG_MAX_LINES) of mover logs
 	MoverLogDebugEnvVar = "MOVER_LOG_DEBUG"
@@ -52,9 +53,16 @@ var clientset *kubernetes.Clientset
 func InitPodLogsClient(cfg *rest.Config) (*kubernetes.Clientset, error) {
 	var err error
 
-	// Allow env var to override MOVER_LOG_MAX_LINES
-	viper.SetDefault(MoverLogMaxLinesEnvVar, DefaultMoverLogMaxLines)
-	err = viper.BindEnv(MoverLogMaxLinesEnvVar)
+	// Allow env var to override MOVER_LOG_MAX_BYTES
+	viper.SetDefault(MoverLogMaxBytesEnvVar, DefaultMoverLogMaxBytes)
+	err = viper.BindEnv(MoverLogMaxBytesEnvVar)
+	if err != nil {
+		return nil, err
+	}
+
+	// Allow env var to override MOVER_LOG_TAIL_LINES
+	viper.SetDefault(MoverLogTailLinesEnvVar, DefaultMoverLogTailLines)
+	err = viper.BindEnv(MoverLogTailLinesEnvVar)
 	if err != nil {
 		return nil, err
 	}
@@ -74,8 +82,12 @@ func InitPodLogsClient(cfg *rest.Config) (*kubernetes.Clientset, error) {
 	return clientset, nil
 }
 
-func GetMoverLogMaxLines() int64 {
-	return viper.GetInt64(MoverLogMaxLinesEnvVar)
+func GetMoverLogTailLines() int64 {
+	return viper.GetInt64(MoverLogTailLinesEnvVar)
+}
+
+func GetMoverLogMaxBytes() int {
+	return viper.GetInt(MoverLogMaxBytesEnvVar)
 }
 
 func IsMoverLogDebug() bool {
@@ -86,7 +98,7 @@ func getPodLogs(ctx context.Context, logger logr.Logger, podName, podNamespace s
 	lineFilter func(line string) *string) (string, error) {
 	l := logger.WithValues("podName", podName, "podNamespace", podNamespace)
 
-	tailLines := GetMoverLogMaxLines()
+	tailLines := GetMoverLogTailLines()
 
 	podLogOptions := &corev1.PodLogOptions{
 		//Container: containerName,
@@ -175,7 +187,23 @@ func updateMoverStatusForJob(ctx context.Context, logger logr.Logger, moverStatu
 		l.Error(err, "Error getting logs from pod")
 	}
 
-	moverStatus.Logs = filteredLogs
+	moverStatus.Logs = truncateMoverLog(filteredLogs)
+}
+
+func truncateMoverLog(moverLog string) string {
+	maxBytes := GetMoverLogMaxBytes()
+
+	return TruncateString(moverLog, maxBytes)
+}
+
+func TruncateString(s string, maxBytes int) string {
+	if maxBytes <= 0 {
+		return ""
+	}
+	if len(s) > maxBytes {
+		s = string([]byte(s)[len(s)-maxBytes:])
+	}
+	return s
 }
 
 // Attempts to get the newest successful pod when jobFailed==false

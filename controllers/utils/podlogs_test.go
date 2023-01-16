@@ -260,6 +260,23 @@ created new cache in /home/testuser/DEVFEDORA/volsync/RESTICTESTS/CACHE
 	})
 })
 
+var _ = Describe("Truncate string test", func() {
+	It("Should truncate the beginning of the string", func() {
+		s1 := "this is my test string\nSecond line here" // 39 bytes
+
+		Expect(utils.TruncateString(s1, 0)).To(Equal(""))
+
+		Expect(utils.TruncateString(s1, 1)).To(Equal("e"))
+		Expect(utils.TruncateString(s1, 5)).To(Equal(" here"))
+
+		Expect(utils.TruncateString(s1, 4000)).To(Equal(s1))
+		Expect(utils.TruncateString(s1, 40)).To(Equal(s1))
+		Expect(utils.TruncateString(s1, 39)).To(Equal(s1))
+
+		Expect(utils.TruncateString(s1, 38)).To(Equal("his is my test string\nSecond line here"))
+	})
+})
+
 func testFilterFunc(line string) *string {
 	// Return all lines that start with "Created " or "created " or lines that have "=== * ==="
 	var myRegex = regexp.MustCompile(`^\s*([cC]reated)\s.+|^\s*(===)\s.+(===)`)
