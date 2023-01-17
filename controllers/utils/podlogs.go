@@ -54,6 +54,8 @@ func InitPodLogsClient(cfg *rest.Config) (*kubernetes.Clientset, error) {
 	var err error
 
 	// Allow env var to override MOVER_LOG_MAX_BYTES
+	// MOVER_LOG_MAX_BYTES is the maximum size in bytes of the filtered mover
+	// log that will be saved to the status.latestMoverStatus.
 	viper.SetDefault(MoverLogMaxBytesEnvVar, DefaultMoverLogMaxBytes)
 	err = viper.BindEnv(MoverLogMaxBytesEnvVar)
 	if err != nil {
@@ -61,6 +63,12 @@ func InitPodLogsClient(cfg *rest.Config) (*kubernetes.Clientset, error) {
 	}
 
 	// Allow env var to override MOVER_LOG_TAIL_LINES
+	// Note: this is actually the amt of lines we will tail from the
+	// mover pod - so really it's the max lines we'll look at (and perhaps
+	// filter) before saving to status.latestMoverStatus.
+	// Logs will be filtered according to the mover and then be written to
+	// the mover status.  Depending on the MOVER_LOG_MAX_BYTES setting, the
+	// filtered log may still get truncated before saving to the status.
 	viper.SetDefault(MoverLogTailLinesEnvVar, DefaultMoverLogTailLines)
 	err = viper.BindEnv(MoverLogTailLinesEnvVar)
 	if err != nil {
@@ -68,6 +76,8 @@ func InitPodLogsClient(cfg *rest.Config) (*kubernetes.Clientset, error) {
 	}
 
 	// Allow env var to override MOVER_LOG_DEBUG
+	// Set to "true" to log all lines (up to MOVER_LOG_MAX_BYTES) of mover logs
+	// to status.latestMoverStatus.  This effectively bypasses mover filters.
 	viper.SetDefault(MoverLogDebugEnvVar, "false")
 	err = viper.BindEnv(MoverLogDebugEnvVar)
 	if err != nil {
