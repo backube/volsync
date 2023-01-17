@@ -9,13 +9,14 @@
 include ./version.mk
 
 # Helper software versions
-CONTROLLER_TOOLS_VERSION := v0.9.0
+CONTROLLER_TOOLS_VERSION := v0.9.2
+ENVTEST_K8S_VERSION = 1.24.2
 GOLANGCI_VERSION := v1.50.1
 HELM_VERSION := v3.8.2
-KUSTOMIZE_VERSION := v4.5.4
-OPERATOR_SDK_VERSION := v1.22.0
-PIPENV_VERSION := 2022.8.30
 KUBECTL_VERSION := v1.25.2
+KUSTOMIZE_VERSION := v4.5.4
+OPERATOR_SDK_VERSION := v1.23.0
+PIPENV_VERSION := 2022.8.30
 
 # We don't vendor modules. Enforce that behavior
 export GOFLAGS := -mod=readonly
@@ -63,8 +64,6 @@ endif
 
 # Image URL to use all building/pushing image targets
 IMG ?= quay.io/backube/volsync:latest
-# ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
-ENVTEST_K8S_VERSION = 1.24.1
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -74,7 +73,6 @@ GOBIN=$(shell go env GOBIN)
 endif
 
 # Setting SHELL to bash allows bash commands to be executed by recipes.
-# This is a requirement for 'setup-envtest.sh' in the test target.
 # Options are set to exit when a recipe line exits non-zero or a piped command fails.
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
@@ -223,25 +221,25 @@ $(LOCALBIN):
 CONTROLLER_GEN := $(LOCALBIN)/controller-gen
 controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary.
 $(CONTROLLER_GEN): $(LOCALBIN)
-	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
+	test -s $@ || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
 
 .PHONY: kustomize
 KUSTOMIZE := $(LOCALBIN)/kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
 $(KUSTOMIZE): $(LOCALBIN)
-	GOBIN=$(LOCALBIN) go install sigs.k8s.io/kustomize/kustomize/v4@$(KUSTOMIZE_VERSION)
+	test -s $@ || GOBIN=$(LOCALBIN) go install sigs.k8s.io/kustomize/kustomize/v4@$(KUSTOMIZE_VERSION)
 
 .PHONY: envtest
 ENVTEST := $(LOCALBIN)/setup-envtest
 envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
 $(ENVTEST): $(LOCALBIN)
-	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+	test -s $@ || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
 
 .PHONY: yq
 YQ := $(LOCALBIN)/yq
 yq: $(YQ) ## Download yq locally if necessary.
 $(YQ): $(LOCALBIN)
-	GOBIN=$(LOCALBIN) go install github.com/mikefarah/yq/v4@latest
+	test -s $@ || GOBIN=$(LOCALBIN) go install github.com/mikefarah/yq/v4@latest
 
 .PHONY: bundle
 bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
@@ -334,25 +332,25 @@ endef
 GINKGO := $(LOCALBIN)/ginkgo
 ginkgo: $(GINKGO) ## Download ginkgo
 $(GINKGO): $(LOCALBIN)
-	GOBIN=$(LOCALBIN) go install github.com/onsi/ginkgo/ginkgo@latest
+	test -s $@ || GOBIN=$(LOCALBIN) go install github.com/onsi/ginkgo/ginkgo@latest
 
 .PHONY: golangci-lint
 GOLANGCILINT := $(LOCALBIN)/golangci-lint
 GOLANGCI_URL := https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh
 golangci-lint: $(GOLANGCILINT) ## Download golangci-lint
 $(GOLANGCILINT): $(LOCALBIN)
-	curl -sSfL $(GOLANGCI_URL) | sh -s -- -b $(LOCALBIN) $(GOLANGCI_VERSION)
+	test -s $@ || { curl -sSfL $(GOLANGCI_URL) | sh -s -- -b $(LOCALBIN) $(GOLANGCI_VERSION); }
 
 .PHONY: helm
 HELM := $(LOCALBIN)/helm
 HELM_URL := https://get.helm.sh/helm-$(HELM_VERSION)-$(OS)-$(ARCH).tar.gz
 helm: $(HELM) ## Download helm
 $(HELM): $(LOCALBIN)
-	curl -sSL "$(HELM_URL)" | tar xzf - -C $(LOCALBIN) --strip-components=1 --wildcards '*/helm'
+	test -s $@ || { curl -sSL "$(HELM_URL)" | tar xzf - -C $(LOCALBIN) --strip-components=1 --wildcards '*/helm'; }
 
 .PHONY: operator-sdk
 OPERATOR_SDK := $(LOCALBIN)/operator-sdk
 OPERATOR_SDK_URL := https://github.com/operator-framework/operator-sdk/releases/download/$(OPERATOR_SDK_VERSION)/operator-sdk_$(OS)_$(ARCH)
 operator-sdk: $(OPERATOR_SDK) ## Download operator-sdk
 $(OPERATOR_SDK): $(LOCALBIN)
-	$(call download-tool,$(OPERATOR_SDK),$(OPERATOR_SDK_URL))
+	test -s $@ || $(call download-tool,$(OPERATOR_SDK),$(OPERATOR_SDK_URL))
