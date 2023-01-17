@@ -31,7 +31,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-//+kubebuilder:validation:Required
+// +kubebuilder:validation:Required
 package v1alpha1
 
 import (
@@ -173,7 +173,7 @@ type ReplicationSourceResticSpec struct {
 	CacheAccessModes []corev1.PersistentVolumeAccessMode `json:"cacheAccessModes,omitempty"`
 }
 
-//ReplicationSourceResticStatus defines the field for ReplicationSourceStatus in ReplicationSourceStatus
+// ReplicationSourceResticStatus defines the field for ReplicationSourceStatus in ReplicationSourceStatus
 type ReplicationSourceResticStatus struct {
 	// lastPruned in the object holding the time of last pruned
 	//+optional
@@ -290,13 +290,13 @@ type ReplicationSourceStatus struct {
 }
 
 // ReplicationSource defines the source for a replicated volume
-//+kubebuilder:object:root=true
-//+kubebuilder:resource:scope=Namespaced
-//+kubebuilder:subresource:status
-//+kubebuilder:printcolumn:name="Source",type="string",JSONPath=`.spec.sourcePVC`
-//+kubebuilder:printcolumn:name="Last sync",type="string",format="date-time",JSONPath=`.status.lastSyncTime`
-//+kubebuilder:printcolumn:name="Duration",type="string",JSONPath=`.status.lastSyncDuration`
-//+kubebuilder:printcolumn:name="Next sync",type="string",format="date-time",JSONPath=`.status.nextSyncTime`
+// +kubebuilder:object:root=true
+// +kubebuilder:resource:scope=Namespaced
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Source",type="string",JSONPath=`.spec.sourcePVC`
+// +kubebuilder:printcolumn:name="Last sync",type="string",format="date-time",JSONPath=`.status.lastSyncTime`
+// +kubebuilder:printcolumn:name="Duration",type="string",JSONPath=`.status.lastSyncDuration`
+// +kubebuilder:printcolumn:name="Next sync",type="string",format="date-time",JSONPath=`.status.nextSyncTime`
 type ReplicationSource struct {
 	metav1.TypeMeta `json:",inline"`
 	//+optional
@@ -311,7 +311,7 @@ type ReplicationSource struct {
 }
 
 // ReplicationSourceList contains a list of Source
-//+kubebuilder:object:root=true
+// +kubebuilder:object:root=true
 type ReplicationSourceList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`

@@ -17,7 +17,6 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 package cmd
 
 import (
-	"io/ioutil"
 	"os"
 	"path"
 
@@ -34,7 +33,7 @@ var _ = Describe("Relationships", func() {
 	var dirname string
 	BeforeEach(func() {
 		var err error
-		dirname, err = ioutil.TempDir("", "relation")
+		dirname, err = os.MkdirTemp("", "relation")
 		Expect(err).NotTo(HaveOccurred())
 	})
 	AfterEach(func() {

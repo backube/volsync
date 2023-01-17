@@ -205,9 +205,9 @@ func (m *Mover) updateStatusSSHKeys(sshKeys *string) {
 }
 
 // Will ensure the secret exists or create secrets if necessary
-// - If secrets are created, will expose the appropriate secret in the status (src secret if ReplicationDestination,
-//   dest secret if ReplicationSource)
-// - Returns the name of the secret that should be used in the replication job
+//   - If secrets are created, will expose the appropriate secret in the status (src secret if ReplicationDestination,
+//     dest secret if ReplicationSource)
+//   - Returns the name of the secret that should be used in the replication job
 func (m *Mover) ensureSecrets(ctx context.Context) (*string, error) {
 	// If user provided keys, use those
 	if m.sshKeys != nil {

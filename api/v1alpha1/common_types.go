@@ -35,7 +35,7 @@ package v1alpha1
 
 // CopyMethodType defines the methods for creating point-in-time copies of
 // volumes.
-//+kubebuilder:validation:Enum=Direct;None;Clone;Snapshot
+// +kubebuilder:validation:Enum=Direct;None;Clone;Snapshot
 type CopyMethodType string
 
 const (
