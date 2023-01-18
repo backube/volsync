@@ -988,6 +988,14 @@ spec:
                 - kind
                 - name
                 type: object
+              latestMoverStatus:
+                description: Logs/Summary from latest mover job
+                properties:
+                  logs:
+                    type: string
+                  result:
+                    type: string
+                type: object
               nextSyncTime:
                 description: nextSyncTime is the time when the next volume synchronization
                   is scheduled to start (for schedule-based synchronization).

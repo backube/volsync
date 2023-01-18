@@ -31,6 +31,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers/mover"
 	"github.com/backube/volsync/controllers/utils"
 	"github.com/backube/volsync/controllers/volumehandler"
@@ -58,6 +59,7 @@ type Mover struct {
 	mainPVCName          *string
 	privileged           bool // true if the mover should have elevated privileges
 	moverSecurityContext *corev1.PodSecurityContext
+	latestMoverStatus    *volsyncv1alpha1.MoverStatus
 }
 
 var _ mover.Mover = &Mover{}
@@ -320,6 +322,10 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 	})
 	// If Job had failed, delete it so it can be recreated
 	if job.Status.Failed >= *job.Spec.BackoffLimit {
+		// Update status with mover logs from failed job
+		utils.UpdateMoverStatusForFailedJob(ctx, m.logger, m.latestMoverStatus, job.GetName(), job.GetNamespace(),
+			utils.AllLines)
+
 		logger.Info("deleting job -- backoff limit reached")
 		err = m.client.Delete(ctx, job, client.PropagationPolicy(metav1.DeletePropagationBackground))
 		return nil, err
@@ -334,6 +340,11 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 	}
 
 	logger.Info("job completed")
+
+	// update status with mover logs from successful job
+	utils.UpdateMoverStatusForSuccessfulJob(ctx, m.logger, m.latestMoverStatus, job.GetName(), job.GetNamespace(),
+		LogLineFilterSuccess)
+
 	// We only continue reconciling if the rclone job has completed
 	return job, nil
 }

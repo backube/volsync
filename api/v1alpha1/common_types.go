@@ -91,3 +91,15 @@ type SyncthingPeerStatus struct {
 	// A friendly name to associate the given device.
 	Name string `json:"name,omitempty"`
 }
+
+type MoverResult string
+
+const (
+	MoverResultSuccessful MoverResult = "Successful"
+	MoverResultFailed     MoverResult = "Failed"
+)
+
+type MoverStatus struct {
+	Result MoverResult `json:"result,omitempty"`
+	Logs   string      `json:"logs,omitempty"`
+}

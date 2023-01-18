@@ -293,6 +293,9 @@ type ReplicationSourceStatus struct {
 	// lastManualSync is set to the last spec.trigger.manual when the manual sync is done.
 	//+optional
 	LastManualSync string `json:"lastManualSync,omitempty"`
+	// Logs/Summary from latest mover job
+	//+optional
+	LatestMoverStatus *MoverStatus `json:"latestMoverStatus,omitempty"`
 	// rsync contains status information for Rsync-based replication.
 	Rsync *ReplicationSourceRsyncStatus `json:"rsync,omitempty"`
 	// rsyncTLS contains status information for Rsync-based replication over TLS.

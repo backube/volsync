@@ -99,6 +99,10 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		source.Status.Restic = &volsyncv1alpha1.ReplicationSourceResticStatus{}
 	}
 
+	if source.Status.LatestMoverStatus == nil {
+		source.Status.LatestMoverStatus = &volsyncv1alpha1.MoverStatus{}
+	}
+
 	vh, err := volumehandler.NewVolumeHandler(
 		volumehandler.WithClient(client),
 		volumehandler.WithRecorder(eventRecorder),
@@ -130,6 +134,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		pruneInterval:         source.Spec.Restic.PruneIntervalDays,
 		retainPolicy:          source.Spec.Restic.Retain,
 		sourceStatus:          source.Status.Restic,
+		latestMoverStatus:     source.Status.LatestMoverStatus,
 	}, nil
 }
 
@@ -139,6 +144,10 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 	// Only build if the CR belongs to us
 	if destination.Spec.Restic == nil {
 		return nil, nil
+	}
+
+	if destination.Status.LatestMoverStatus == nil {
+		destination.Status.LatestMoverStatus = &volsyncv1alpha1.MoverStatus{}
 	}
 
 	vh, err := volumehandler.NewVolumeHandler(
@@ -171,5 +180,6 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		moverSecurityContext:  destination.Spec.Restic.MoverSecurityContext,
 		restoreAsOf:           destination.Spec.Restic.RestoreAsOf,
 		previous:              destination.Spec.Restic.Previous,
+		latestMoverStatus:     destination.Status.LatestMoverStatus,
 	}, nil
 }

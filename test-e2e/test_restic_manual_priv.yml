@@ -90,7 +90,12 @@
       until: >
         res.resources | length > 0 and
         res.resources[0].status.lastManualSync is defined and
-        res.resources[0].status.lastManualSync=="once"
+        res.resources[0].status.lastManualSync=="once" and
+        res.resources[0].status.latestMoverStatus is defined and
+        res.resources[0].status.latestMoverStatus.result == "Successful" and
+        res.resources[0].status.latestMoverStatus.logs is search("processed.*files") and
+        res.resources[0].status.latestMoverStatus.logs is search("snapshot.*saved") and
+        res.resources[0].status.latestMoverStatus.logs is search("Restic completed in.*")
       delay: 1
       retries: 900
 
@@ -149,7 +154,11 @@
       until: >
         res.resources | length > 0 and
         res.resources[0].status.lastManualSync is defined and
-        res.resources[0].status.lastManualSync=="restore-once"
+        res.resources[0].status.lastManualSync=="restore-once" and
+        res.resources[0].status.latestMoverStatus is defined and
+        res.resources[0].status.latestMoverStatus.result == "Successful" and
+        res.resources[0].status.latestMoverStatus.logs is search("restoring.*") and
+        res.resources[0].status.latestMoverStatus.logs is search("Restic completed in.*")
       delay: 1
       retries: 300
 

@@ -26,6 +26,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/kubectl/pkg/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -34,6 +35,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
+	"github.com/backube/volsync/controllers/utils"
 )
 
 func TestUtils(t *testing.T) {
@@ -45,6 +47,7 @@ func TestUtils(t *testing.T) {
 }
 
 var k8sClient client.Client
+var k8sClientSet *kubernetes.Clientset
 var testEnv *envtest.Environment
 var cancel context.CancelFunc
 var ctx context.Context
@@ -77,6 +80,9 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	Expect(err).NotTo(HaveOccurred())
+
+	k8sClientSet, err = utils.InitPodLogsClient(cfg)
 	Expect(err).NotTo(HaveOccurred())
 }, 60)
 
