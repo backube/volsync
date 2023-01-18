@@ -1,6 +1,12 @@
 apiVersion: volsync.backube/v1alpha1
 kind: ReplicationSource
 metadata:
+  labels:
+    app.kubernetes.io/name: replicationsource
+    app.kubernetes.io/instance: replicationsource-sample
+    app.kubernetes.io/part-of: volsync
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: volsync
   name: replicationsource-sample
 spec:
   sourcePVC: pvcname

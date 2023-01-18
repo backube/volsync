@@ -1,6 +1,12 @@
 apiVersion: volsync.backube/v1alpha1
 kind: ReplicationDestination
 metadata:
+  labels:
+    app.kubernetes.io/name: replicationdestination
+    app.kubernetes.io/instance: replicationdestination-sample
+    app.kubernetes.io/part-of: volsync
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: volsync
   name: replicationdestination-sample
 spec:
   rsync:

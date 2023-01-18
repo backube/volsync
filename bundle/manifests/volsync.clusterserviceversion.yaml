@@ -8,6 +8,13 @@ metadata:
           "apiVersion": "volsync.backube/v1alpha1",
           "kind": "ReplicationDestination",
           "metadata": {
+            "labels": {
+              "app.kubernetes.io/created-by": "volsync",
+              "app.kubernetes.io/instance": "replicationdestination-sample",
+              "app.kubernetes.io/managed-by": "kustomize",
+              "app.kubernetes.io/name": "replicationdestination",
+              "app.kubernetes.io/part-of": "volsync"
+            },
             "name": "replicationdestination-sample"
           },
           "spec": {
@@ -25,6 +32,13 @@ metadata:
           "apiVersion": "volsync.backube/v1alpha1",
           "kind": "ReplicationSource",
           "metadata": {
+            "labels": {
+              "app.kubernetes.io/created-by": "volsync",
+              "app.kubernetes.io/instance": "replicationsource-sample",
+              "app.kubernetes.io/managed-by": "kustomize",
+              "app.kubernetes.io/name": "replicationsource",
+              "app.kubernetes.io/part-of": "volsync"
+            },
             "name": "replicationsource-sample"
           },
           "spec": {
@@ -42,7 +56,7 @@ metadata:
       ]
     capabilities: Basic Install
     olm.skipRange: '>=0.4.0 <0.6.0'
-    operators.operatorframework.io/builder: operator-sdk-v1.23.0
+    operators.operatorframework.io/builder: operator-sdk-v1.25.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
   name: volsync.v0.6.0
   namespace: placeholder
@@ -375,6 +389,12 @@ spec:
         serviceAccountName: volsync-controller-manager
       deployments:
       - label:
+          app.kubernetes.io/component: manager
+          app.kubernetes.io/created-by: volsync
+          app.kubernetes.io/instance: controller-manager
+          app.kubernetes.io/managed-by: kustomize
+          app.kubernetes.io/name: deployment
+          app.kubernetes.io/part-of: volsync
           control-plane: controller-manager
         name: volsync-controller-manager
         spec:
@@ -390,6 +410,19 @@ spec:
               labels:
                 control-plane: controller-manager
             spec:
+              affinity:
+                nodeAffinity:
+                  requiredDuringSchedulingIgnoredDuringExecution:
+                    nodeSelectorTerms:
+                    - matchExpressions:
+                      - key: kubernetes.io/arch
+                        operator: In
+                        values:
+                        - amd64
+                      - key: kubernetes.io/os
+                        operator: In
+                        values:
+                        - linux
               containers:
               - args:
                 - --secure-listen-address=0.0.0.0:8443

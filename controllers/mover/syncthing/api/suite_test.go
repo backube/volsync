@@ -19,25 +19,12 @@ package api
 import (
 	"testing"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	RunSpecsWithDefaultAndCustomReporters(t,
-		"Syncthing API",
-		nil)
+	RunSpecs(t, "Syncthing API")
 }
-
-var _ = BeforeSuite(func(done Done) {
-
-	By("bootstrapping test environment")
-
-	close(done)
-}, 60)
-
-var _ = AfterSuite(func() {
-	By("tearing down the test environment")
-})

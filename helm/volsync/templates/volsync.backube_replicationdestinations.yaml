@@ -4,7 +4,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.9.2
+    controller-gen.kubebuilder.io/version: v0.10.0
     helm.sh/resource-policy: keep
   creationTimestamp: null
   name: replicationdestinations.volsync.backube
@@ -626,6 +626,7 @@ spec:
                     - kind
                     - name
                   type: object
+                  x-kubernetes-map-type: atomic
                 latestMoverStatus:
                   description: Logs/Summary from latest mover job
                   properties:
@@ -634,7 +635,6 @@ spec:
                     result:
                       type: string
                   type: object
-                  x-kubernetes-map-type: atomic
                 nextSyncTime:
                   description: nextSyncTime is the time when the next volume synchronization is scheduled to start (for schedule-based synchronization).
                   format: date-time
