@@ -99,6 +99,9 @@ help: ## Display this help.
 
 ##@ Development
 
+.PHONY: auto-generated-files
+auto-generated-files: bundle custom-scorecard-tests-generate-config generate manifests ## Update all the automatically generated files
+
 .PHONY: manifests
 manifests: controller-gen yq ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
