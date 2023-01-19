@@ -103,7 +103,7 @@ jobs:
       - name: CSV bundle files check
         run: |
           make bundle
-          diff=$(git diff --color --ignore-space-change bundle)
+          diff=$(git diff --color --ignore-space-change -IcreatedAt bundle)
           if [ -n "$diff" ]; then
             echo "$diff"
             echo "***** CSV bundle files are out-of-date *****"
