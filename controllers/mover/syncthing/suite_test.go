@@ -23,7 +23,7 @@ import (
 	"testing"
 
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/spf13/viper"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -31,7 +31,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
-	"sigs.k8s.io/controller-runtime/pkg/envtest/printer"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
@@ -47,12 +46,10 @@ var cancel context.CancelFunc
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	RunSpecsWithDefaultAndCustomReporters(t,
-		"Syncthing mover",
-		[]Reporter{printer.NewlineReporter{}})
+	RunSpecs(t, "Syncthing mover")
 }
 
-var _ = BeforeSuite(func(done Done) {
+var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter)))
 
 	var ctx context.Context
@@ -107,9 +104,7 @@ var _ = BeforeSuite(func(done Done) {
 	commonBuilderForTestSuite, err = newBuilder(viper.New(), flag.NewFlagSet("testfsetsyncthing", flag.ExitOnError))
 	Expect(err).NotTo(HaveOccurred())
 	Expect(commonBuilderForTestSuite).NotTo(BeNil())
-
-	close(done)
-}, 60)
+})
 
 var _ = AfterSuite(func() {
 	cancel()

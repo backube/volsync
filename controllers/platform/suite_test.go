@@ -23,14 +23,13 @@ import (
 	"testing"
 
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	ocpsecurityv1 "github.com/openshift/api/security/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
-	"sigs.k8s.io/controller-runtime/pkg/envtest/printer"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
@@ -51,12 +50,10 @@ var ctx context.Context
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	RunSpecsWithDefaultAndCustomReporters(t,
-		"platform",
-		[]Reporter{printer.NewlineReporter{}})
+	RunSpecs(t, "platform")
 }
 
-var _ = BeforeSuite(func(done Done) {
+var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter)))
 
 	ctx, cancel = context.WithCancel(context.TODO())
@@ -91,9 +88,7 @@ var _ = BeforeSuite(func(done Done) {
 	// Instantiate direct client for tests (reads directly from API server rather than caching)
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	Expect(err).NotTo(HaveOccurred())
-
-	close(done)
-}, 60)
+})
 
 var _ = AfterSuite(func() {
 	cancel()

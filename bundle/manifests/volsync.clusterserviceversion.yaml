@@ -8,6 +8,13 @@ metadata:
           "apiVersion": "volsync.backube/v1alpha1",
           "kind": "ReplicationDestination",
           "metadata": {
+            "labels": {
+              "app.kubernetes.io/created-by": "volsync",
+              "app.kubernetes.io/instance": "replicationdestination-sample",
+              "app.kubernetes.io/managed-by": "kustomize",
+              "app.kubernetes.io/name": "replicationdestination",
+              "app.kubernetes.io/part-of": "volsync"
+            },
             "name": "replicationdestination-sample"
           },
           "spec": {
@@ -25,6 +32,13 @@ metadata:
           "apiVersion": "volsync.backube/v1alpha1",
           "kind": "ReplicationSource",
           "metadata": {
+            "labels": {
+              "app.kubernetes.io/created-by": "volsync",
+              "app.kubernetes.io/instance": "replicationsource-sample",
+              "app.kubernetes.io/managed-by": "kustomize",
+              "app.kubernetes.io/name": "replicationsource",
+              "app.kubernetes.io/part-of": "volsync"
+            },
             "name": "replicationsource-sample"
           },
           "spec": {
@@ -41,8 +55,9 @@ metadata:
         }
       ]
     capabilities: Basic Install
+    createdAt: "2023-01-19T14:50:52Z"
     olm.skipRange: '>=0.4.0 <0.6.0'
-    operators.operatorframework.io/builder: operator-sdk-v1.22.0
+    operators.operatorframework.io/builder: operator-sdk-v1.26.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
   name: volsync.v0.6.0
   namespace: placeholder
@@ -375,6 +390,12 @@ spec:
         serviceAccountName: volsync-controller-manager
       deployments:
       - label:
+          app.kubernetes.io/component: manager
+          app.kubernetes.io/created-by: volsync
+          app.kubernetes.io/instance: controller-manager
+          app.kubernetes.io/managed-by: kustomize
+          app.kubernetes.io/name: deployment
+          app.kubernetes.io/part-of: volsync
           control-plane: controller-manager
         name: volsync-controller-manager
         spec:

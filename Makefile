@@ -9,13 +9,14 @@
 include ./version.mk
 
 # Helper software versions
-CONTROLLER_TOOLS_VERSION := v0.9.0
+CONTROLLER_TOOLS_VERSION := v0.10.0
+ENVTEST_K8S_VERSION = 1.25.0
 GOLANGCI_VERSION := v1.50.1
 HELM_VERSION := v3.8.2
-KUSTOMIZE_VERSION := v4.5.4
-OPERATOR_SDK_VERSION := v1.22.0
-PIPENV_VERSION := 2022.8.30
 KUBECTL_VERSION := v1.25.2
+KUSTOMIZE_VERSION := v4.5.4
+OPERATOR_SDK_VERSION := v1.26.0
+PIPENV_VERSION := 2022.8.30
 
 # We don't vendor modules. Enforce that behavior
 export GOFLAGS := -mod=readonly
@@ -63,8 +64,6 @@ endif
 
 # Image URL to use all building/pushing image targets
 IMG ?= quay.io/backube/volsync:latest
-# ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
-ENVTEST_K8S_VERSION = 1.24.1
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -74,7 +73,6 @@ GOBIN=$(shell go env GOBIN)
 endif
 
 # Setting SHELL to bash allows bash commands to be executed by recipes.
-# This is a requirement for 'setup-envtest.sh' in the test target.
 # Options are set to exit when a recipe line exits non-zero or a piped command fails.
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
@@ -101,6 +99,9 @@ help: ## Display this help.
 
 ##@ Development
 
+.PHONY: auto-generated-files
+auto-generated-files: bundle custom-scorecard-tests-generate-config generate manifests ## Update all the automatically generated files
+
 .PHONY: manifests
 manifests: controller-gen yq ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
@@ -126,11 +127,11 @@ helm-lint: helm ## Lint Helm chart
 	cd helm && $(HELM) lint volsync
 
 .PHONY: test
-TEST_ARGS ?= -progress -randomizeAllSpecs -randomizeSuites -slowSpecThreshold 30 -p -cover -coverprofile cover.out -outputdir . -skipPackage mover-restic
+TEST_ARGS ?= --randomize-all --randomize-suites -p -cover -coverprofile cover.out --output-dir . --skip-package mover-restic
 TEST_PACKAGES ?= ./...
 test: bundle generate lint envtest helm-lint ginkgo ## Run tests.
 	-rm -f cover.out
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" $(GINKGO) $(TEST_ARGS) $(TEST_PACKAGES)
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GINKGO) $(TEST_ARGS) $(TEST_PACKAGES)
 
 .PHONY: test-e2e-install
 test-e2e-install: ## Install environment for running e2e
@@ -171,6 +172,23 @@ docker-build:  ## Build docker image with the manager.
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
 	docker push ${IMG}
+
+# PLATFORMS defines the target platforms for  the manager image be build to provide support to multiple
+# architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
+# - able to use docker buildx . More info: https://docs.docker.com/build/buildx/
+# - have enable BuildKit, More info: https://docs.docker.com/develop/develop-images/build_enhancements/
+# - be able to push the image for your registry (i.e. if you do not inform a valid value via IMG=<myregistry/image:<tag>> than the export will fail)
+# To properly provided solutions that supports more than one platform you should use this option.
+PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
+.PHONY: docker-buildx
+docker-buildx: test ## Build and push docker image for the manager for cross-platform support
+	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
+	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
+	- docker buildx create --name project-v3-builder
+	docker buildx use project-v3-builder
+	- docker buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross
+	- docker buildx rm project-v3-builder
+	rm Dockerfile.cross
 
 .PHONY: krew-plugin-manifest
 krew-plugin-manifest: yq bin/kubectl-volsync ## Build & package the kubectl plugin & update the krew manifest
@@ -222,26 +240,27 @@ $(LOCALBIN):
 .PHONY: controller-gen
 CONTROLLER_GEN := $(LOCALBIN)/controller-gen
 controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary.
+# -mod=mod is a workaround for a go bug and can probably be removed when we move to go 1.20
 $(CONTROLLER_GEN): $(LOCALBIN)
-	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
+	test -s $@ || GOBIN=$(LOCALBIN) go install -mod=mod sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
 
 .PHONY: kustomize
 KUSTOMIZE := $(LOCALBIN)/kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
 $(KUSTOMIZE): $(LOCALBIN)
-	GOBIN=$(LOCALBIN) go install sigs.k8s.io/kustomize/kustomize/v4@$(KUSTOMIZE_VERSION)
+	test -s $@ || GOBIN=$(LOCALBIN) go install sigs.k8s.io/kustomize/kustomize/v4@$(KUSTOMIZE_VERSION)
 
 .PHONY: envtest
 ENVTEST := $(LOCALBIN)/setup-envtest
 envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
 $(ENVTEST): $(LOCALBIN)
-	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+	test -s $@ || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
 
 .PHONY: yq
 YQ := $(LOCALBIN)/yq
 yq: $(YQ) ## Download yq locally if necessary.
 $(YQ): $(LOCALBIN)
-	GOBIN=$(LOCALBIN) go install github.com/mikefarah/yq/v4@latest
+	test -s $@ || GOBIN=$(LOCALBIN) go install github.com/mikefarah/yq/v4@latest
 
 .PHONY: bundle
 bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
@@ -334,25 +353,25 @@ endef
 GINKGO := $(LOCALBIN)/ginkgo
 ginkgo: $(GINKGO) ## Download ginkgo
 $(GINKGO): $(LOCALBIN)
-	GOBIN=$(LOCALBIN) go install github.com/onsi/ginkgo/ginkgo@latest
+	test -s $@ || GOBIN=$(LOCALBIN) go install github.com/onsi/ginkgo/v2/ginkgo@latest
 
 .PHONY: golangci-lint
 GOLANGCILINT := $(LOCALBIN)/golangci-lint
 GOLANGCI_URL := https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh
 golangci-lint: $(GOLANGCILINT) ## Download golangci-lint
 $(GOLANGCILINT): $(LOCALBIN)
-	curl -sSfL $(GOLANGCI_URL) | sh -s -- -b $(LOCALBIN) $(GOLANGCI_VERSION)
+	test -s $@ || { curl -sSfL $(GOLANGCI_URL) | sh -s -- -b $(LOCALBIN) $(GOLANGCI_VERSION); }
 
 .PHONY: helm
 HELM := $(LOCALBIN)/helm
 HELM_URL := https://get.helm.sh/helm-$(HELM_VERSION)-$(OS)-$(ARCH).tar.gz
 helm: $(HELM) ## Download helm
 $(HELM): $(LOCALBIN)
-	curl -sSL "$(HELM_URL)" | tar xzf - -C $(LOCALBIN) --strip-components=1 --wildcards '*/helm'
+	test -s $@ || { curl -sSL "$(HELM_URL)" | tar xzf - -C $(LOCALBIN) --strip-components=1 --wildcards '*/helm'; }
 
 .PHONY: operator-sdk
 OPERATOR_SDK := $(LOCALBIN)/operator-sdk
 OPERATOR_SDK_URL := https://github.com/operator-framework/operator-sdk/releases/download/$(OPERATOR_SDK_VERSION)/operator-sdk_$(OS)_$(ARCH)
 operator-sdk: $(OPERATOR_SDK) ## Download operator-sdk
 $(OPERATOR_SDK): $(LOCALBIN)
-	$(call download-tool,$(OPERATOR_SDK),$(OPERATOR_SDK_URL))
+	test -s $@ || $(call download-tool,$(OPERATOR_SDK),$(OPERATOR_SDK_URL))

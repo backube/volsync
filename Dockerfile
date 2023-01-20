@@ -5,6 +5,12 @@ USER root
 WORKDIR /workspace
 # We don't vendor modules. Enforce that behavior
 ENV GOFLAGS=-mod=readonly
+ENV GO111MODULE=on
+ENV CGO_ENABLED=0
+ARG TARGETOS
+ARG TARGETARCH
+ENV GOOS=${TARGETOS:-linux}
+ENV GOARCH=${TARGETARCH}
 
 
 ######################################################################
@@ -24,7 +30,7 @@ COPY config/openshift config/openshift
 
 # Build
 ARG version_arg="(unknown)"
-RUN GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o manager -ldflags "-X=main.volsyncVersion=${version_arg}" main.go
+RUN go build -a -o manager -ldflags "-X=main.volsyncVersion=${version_arg}" main.go
 
 
 ######################################################################
@@ -40,8 +46,6 @@ WORKDIR /workspace/rclone
 # Make sure the Rclone version tag matches the git hash we're expecting
 RUN /bin/bash -c "[[ $(git rev-list -n 1 HEAD) == ${RCLONE_GIT_HASH} ]]"
 
-# Remove link flag that strips symbols so that we can verify crypto libs
-RUN sed -i 's/--ldflags "-s /--ldflags "/g' Makefile
 RUN make rclone
 
 
@@ -54,9 +58,7 @@ COPY /mover-restic/minio-go ./minio-go
 
 WORKDIR /workspace/restic
 
-# Preserve symbols so that we can verify crypto libs
-RUN sed -i 's/preserveSymbols := false/preserveSymbols := true/g' build.go
-RUN go run build.go --enable-cgo
+RUN go run build.go
 
 
 ######################################################################
@@ -72,7 +74,6 @@ WORKDIR /workspace/syncthing
 # Make sure we have the correct Syncthing release
 RUN /bin/bash -c "[[ $(git rev-list -n 1 HEAD) == ${SYNCTHING_GIT_HASH} ]]"
 
-ENV CGO_ENABLED=1
 RUN go run build.go -no-upgrade
 
 
