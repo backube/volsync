@@ -27,7 +27,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c
+        uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c  # v3.3.0
 
       - name: Install prereqs
         run: |
@@ -45,10 +45,10 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c
+        uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c  # v3.3.0
 
       - name: Install Go
-        uses: actions/setup-go@6edd4406fa81c3da01a34fa6f6343087c207a568
+        uses: actions/setup-go@6edd4406fa81c3da01a34fa6f6343087c207a568  # v3.5.0
         with:
           go-version: ${{ env.GO_VERSION }}
 
@@ -117,12 +117,12 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c
+        uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c  # v3.3.0
         with:
           fetch-depth: 0
 
       - name: Install Go
-        uses: actions/setup-go@6edd4406fa81c3da01a34fa6f6343087c207a568
+        uses: actions/setup-go@6edd4406fa81c3da01a34fa6f6343087c207a568  # v3.5.0
         with:
           go-version: ${{ env.GO_VERSION }}
 
@@ -141,7 +141,7 @@ jobs:
         run: make test
 
       - name: Upload test coverage
-        uses: codecov/codecov-action@d9f34f8cd5cb3b3eb79b3e4b5dae3a16df499a70
+        uses: codecov/codecov-action@d9f34f8cd5cb3b3eb79b3e4b5dae3a16df499a70  # v3.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           file: ./cover.out
@@ -156,7 +156,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c
+        uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c  # v3.3.0
 
       - name: Build operator container
         run: make docker-build IMG=${OPERATOR_IMAGE}
@@ -165,7 +165,7 @@ jobs:
         run: docker save -o /tmp/image.tar ${OPERATOR_IMAGE}
 
       - name: Save container as artifact
-        uses: actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce
+        uses: actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce  # v3.1.2
         with:
           name: volsync-operator
           path: /tmp/image.tar
@@ -176,10 +176,10 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c
+        uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c  # v3.3.0
 
       - name: Install Go
-        uses: actions/setup-go@6edd4406fa81c3da01a34fa6f6343087c207a568
+        uses: actions/setup-go@6edd4406fa81c3da01a34fa6f6343087c207a568  # v3.5.0
         with:
           go-version: ${{ env.GO_VERSION }}
 
@@ -202,7 +202,7 @@ jobs:
         run: docker save -o /tmp/image.tar ${CUSTOM_SCORECARD_IMAGE}
 
       - name: Save container as artifact
-        uses: actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce
+        uses: actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce  # v3.1.2
         with:
           name: volsync-custom-scorecard-tests-container
           path: /tmp/image.tar
@@ -216,14 +216,14 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c
+        uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c  # v3.3.0
         with:
           # Fetch whole history so we can properly determine the version string
           # (required by krew validation)
           fetch-depth: 0
 
       - name: Install Go
-        uses: actions/setup-go@6edd4406fa81c3da01a34fa6f6343087c207a568
+        uses: actions/setup-go@6edd4406fa81c3da01a34fa6f6343087c207a568  # v3.5.0
         with:
           go-version: ${{ env.GO_VERSION }}
 
@@ -250,7 +250,7 @@ jobs:
         run: make test-krew
 
       - name: Save cli as artifact
-        uses: actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce
+        uses: actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce  # v3.1.2
         with:
           name: kubectl-volsync
           path: bin/kubectl-volsync
@@ -278,7 +278,7 @@ jobs:
       KUBERNETES_VERSION: ${{ matrix.KUBERNETES_VERSIONS }}
     steps:
       - name: Checkout source
-        uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c
+        uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c  # v3.3.0
 
       # We set bash as the default shell (instead of dash) because the kuttl
       # test steps require bash, but the "script" directive executes them as "sh
@@ -318,7 +318,7 @@ jobs:
           MINIO_NAMESPACE=minio-tls MINIO_USE_TLS=1 ./hack/run-minio.sh
 
       - name: Load operator container artifact
-        uses: actions/download-artifact@9bc31d5ccc31df68ecc42ccf4149144866c47d8a
+        uses: actions/download-artifact@9bc31d5ccc31df68ecc42ccf4149144866c47d8a  # v3.0.2
         with:
           name: volsync-operator
           path: /tmp
@@ -343,7 +343,7 @@ jobs:
               volsync-ghaction ./helm/volsync
 
       - name: Load cli artifact
-        uses: actions/download-artifact@9bc31d5ccc31df68ecc42ccf4149144866c47d8a
+        uses: actions/download-artifact@9bc31d5ccc31df68ecc42ccf4149144866c47d8a  # v3.0.2
         with:
           name: kubectl-volsync
           path: bin
@@ -355,7 +355,7 @@ jobs:
         run: kubectl -n minio wait --for=condition=Available --timeout=300s deploy/minio
 
       - name: Setup Python
-        uses: actions/setup-python@d27e3f3d7c64b4bbf8e4abfb9b63b83e846e0435
+        uses: actions/setup-python@d27e3f3d7c64b4bbf8e4abfb9b63b83e846e0435  # v4.5.0
         with:
           python-version: '3.10'
           cache: 'pipenv'
