@@ -10,23 +10,11 @@
   loop_control:
     loop_var: var_check
 
-- name: Find syncthing pods in namespace
-  kubernetes.core.k8s_info:
-    api_version: v1
-    kind: Pod
-    namespace: "{{ st_namespace }}"
-    label_selectors:
-      - "app.kubernetes.io/component=syncthing-mover"
-  register: st_pods
-
 - name: Kill all syncthing pod instances in namespace
   kubernetes.core.k8s:
     state: absent
     api_version: v1
     kind: Pod
-    name: "{{ item.metadata.name }}"
     namespace: "{{ st_namespace }}"
-    wait: true
-    wait_timeout: 600
-  timeout: 600
-  loop: "{{ st_pods.resources }}"
+    label_selectors:
+      - "app.kubernetes.io/component=syncthing-mover"
