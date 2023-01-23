@@ -246,6 +246,153 @@ rsync completed in 1s`
 		})
 	})
 
+	Context("RsyncTLS source mover failure logs", func() {
+		// sample source mover failure log
+		// nolint:lll,misspell
+		sourceFailedLog := `2023.01.20 16:03:15 LOG3[3]: No remote host resolved
+2023.01.20 16:03:15 LOG5[3]: Connection reset: 0 byte(s) sent to TLS, 0 byte(s) sent to socket
+2023.01.20 16:03:15 LOG7[3]: Local descriptor (FD=3) closed
+rsync: [sender] safe_read failed to read 1 bytes: Connection reset by peer (104)
+2023.01.20 16:03:15 LOG7[3]: Service [rsync] finished (0 left)
+rsync error: error in rsync protocol data stream (code 12) at io.c(276) [sender=3.2.3]
+Syncronization failed. Retrying in 4 seconds. Retry 2/5.
+2023.01.20 16:03:19 LOG7[main]: Found 1 ready file descriptor(s)
+2023.01.20 16:03:19 LOG7[main]: FD=4 events=0x2001 revents=0x0
+2023.01.20 16:03:19 LOG7[main]: FD=8 events=0x2001 revents=0x1
+2023.01.20 16:03:19 LOG7[main]: Service [rsync] accepted (FD=3) from 127.0.0.1:45340
+2023.01.20 16:03:19 LOG7[4]: Service [rsync] started
+2023.01.20 16:03:19 LOG7[4]: Setting local socket options (FD=3)
+2023.01.20 16:03:19 LOG7[4]: Option TCP_NODELAY set on local socket
+2023.01.20 16:03:19 LOG5[4]: Service [rsync] accepted connection from 127.0.0.1:45340
+2023.01.20 16:03:19 LOG3[4]: Error resolving "volsync-rsync-dst-busybox-pvc2-gp3-csi.busybox-sample.svc.clusterset.local": Neither nodename nor servname known (EAI_NONAME)
+2023.01.20 16:03:19 LOG3[4]: No remote host resolved
+2023.01.20 16:03:19 LOG5[4]: Connection reset: 0 byte(s) sent to TLS, 0 byte(s) sent to socket
+2023.01.20 16:03:19 LOG7[4]: Local descriptor (FD=3) closed
+2023.01.20 16:03:19 LOG7[4]: Service [rsync] finished (0 left)
+rsync: [sender] safe_read failed to read 1 bytes: Connection reset by peer (104)
+rsync error: error in rsync protocol data stream (code 12) at io.c(276) [sender=3.2.3]
+2023.01.20 16:03:19 LOG7[main]: Found 1 ready file descriptor(s)
+2023.01.20 16:03:19 LOG7[main]: FD=4 events=0x2001 revents=0x0
+2023.01.20 16:03:19 LOG7[main]: FD=8 events=0x2001 revents=0x1
+2023.01.20 16:03:19 LOG7[main]: Service [rsync] accepted (FD=3) from 127.0.0.1:45358
+2023.01.20 16:03:19 LOG7[5]: Service [rsync] started
+2023.01.20 16:03:19 LOG7[5]: Setting local socket options (FD=3)
+2023.01.20 16:03:19 LOG7[5]: Option TCP_NODELAY set on local socket
+2023.01.20 16:03:19 LOG5[5]: Service [rsync] accepted connection from 127.0.0.1:45358
+2023.01.20 16:03:19 LOG3[5]: Error resolving "volsync-rsync-dst-busybox-pvc2-gp3-csi.busybox-sample.svc.clusterset.local": Neither nodename nor servname known (EAI_NONAME)
+2023.01.20 16:03:19 LOG3[5]: No remote host resolved
+2023.01.20 16:03:19 LOG5[5]: Connection reset: 0 byte(s) sent to TLS, 0 byte(s) sent to socket
+2023.01.20 16:03:19 LOG7[5]: Local descriptor (FD=3) closed
+rsync: [sender] safe_read failed to read 1 bytes: Connection reset by peer (104)
+rsync error: error in rsync protocol data stream (code 12) at io.c(276) [sender=3.2.3]
+2023.01.20 16:03:19 LOG7[5]: Service [rsync] finished (0 left)
+Syncronization failed. Retrying in 8 seconds. Retry 3/5.
+2023.01.20 16:03:27 LOG7[main]: Found 1 ready file descriptor(s)
+2023.01.20 16:03:27 LOG7[main]: FD=4 events=0x2001 revents=0x0
+2023.01.20 16:03:27 LOG7[main]: FD=8 events=0x2001 revents=0x1
+2023.01.20 16:03:27 LOG7[main]: Service [rsync] accepted (FD=3) from 127.0.0.1:45366
+2023.01.20 16:03:27 LOG7[6]: Service [rsync] started
+2023.01.20 16:03:27 LOG7[6]: Setting local socket options (FD=3)
+2023.01.20 16:03:27 LOG7[6]: Option TCP_NODELAY set on local socket
+2023.01.20 16:03:27 LOG5[6]: Service [rsync] accepted connection from 127.0.0.1:45366
+2023.01.20 16:03:27 LOG3[6]: Error resolving "volsync-rsync-dst-busybox-pvc2-gp3-csi.busybox-sample.svc.clusterset.local": Neither nodename nor servname known (EAI_NONAME)
+2023.01.20 16:03:27 LOG3[6]: No remote host resolved
+2023.01.20 16:03:27 LOG5[6]: Connection reset: 0 byte(s) sent to TLS, 0 byte(s) sent to socket
+2023.01.20 16:03:27 LOG7[6]: Local descriptor (FD=3) closed
+2023.01.20 16:03:27 LOG7[6]: Service [rsync] finished (0 left)
+rsync: [sender] safe_read failed to read 1 bytes: Connection reset by peer (104)
+rsync error: error in rsync protocol data stream (code 12) at io.c(276) [sender=3.2.3]
+2023.01.20 16:03:27 LOG7[main]: Found 1 ready file descriptor(s)
+2023.01.20 16:03:27 LOG7[main]: FD=4 events=0x2001 revents=0x0
+2023.01.20 16:03:27 LOG7[main]: FD=8 events=0x2001 revents=0x1
+2023.01.20 16:03:27 LOG7[main]: Service [rsync] accepted (FD=3) from 127.0.0.1:45380
+2023.01.20 16:03:27 LOG7[7]: Service [rsync] started
+2023.01.20 16:03:27 LOG7[7]: Setting local socket options (FD=3)
+2023.01.20 16:03:27 LOG7[7]: Option TCP_NODELAY set on local socket
+2023.01.20 16:03:27 LOG5[7]: Service [rsync] accepted connection from 127.0.0.1:45380
+2023.01.20 16:03:27 LOG3[7]: Error resolving "volsync-rsync-dst-busybox-pvc2-gp3-csi.busybox-sample.svc.clusterset.local": Neither nodename nor servname known (EAI_NONAME)
+2023.01.20 16:03:27 LOG3[7]: No remote host resolved
+2023.01.20 16:03:27 LOG5[7]: Connection reset: 0 byte(s) sent to TLS, 0 byte(s) sent to socket
+2023.01.20 16:03:27 LOG7[7]: Local descriptor (FD=3) closed
+rsync: [sender] safe_read failed to read 1 bytes: Connection reset by peer (104)
+2023.01.20 16:03:27 LOG7[7]: Service [rsync] finished (0 left)
+rsync error: error in rsync protocol data stream (code 12) at io.c(276) [sender=3.2.3]
+Syncronization failed. Retrying in 16 seconds. Retry 4/5.
+2023.01.20 16:03:43 LOG7[main]: Found 1 ready file descriptor(s)
+2023.01.20 16:03:43 LOG7[main]: FD=4 events=0x2001 revents=0x0
+2023.01.20 16:03:43 LOG7[main]: FD=8 events=0x2001 revents=0x1
+2023.01.20 16:03:43 LOG7[main]: Service [rsync] accepted (FD=3) from 127.0.0.1:43534
+2023.01.20 16:03:43 LOG7[8]: Service [rsync] started
+2023.01.20 16:03:43 LOG7[8]: Setting local socket options (FD=3)
+2023.01.20 16:03:43 LOG7[8]: Option TCP_NODELAY set on local socket
+2023.01.20 16:03:43 LOG5[8]: Service [rsync] accepted connection from 127.0.0.1:43534
+2023.01.20 16:03:43 LOG3[8]: Error resolving "volsync-rsync-dst-busybox-pvc2-gp3-csi.busybox-sample.svc.clusterset.local": Neither nodename nor servname known (EAI_NONAME)
+2023.01.20 16:03:43 LOG3[8]: No remote host resolved
+2023.01.20 16:03:43 LOG5[8]: Connection reset: 0 byte(s) sent to TLS, 0 byte(s) sent to socket
+2023.01.20 16:03:43 LOG7[8]: Local descriptor (FD=3) closed
+2023.01.20 16:03:43 LOG7[8]: Service [rsync] finished (0 left)
+rsync: [sender] safe_read failed to read 1 bytes: Connection reset by peer (104)
+rsync error: error in rsync protocol data stream (code 12) at io.c(276) [sender=3.2.3]
+2023.01.20 16:03:43 LOG7[main]: Found 1 ready file descriptor(s)
+2023.01.20 16:03:43 LOG7[main]: FD=4 events=0x2001 revents=0x0
+2023.01.20 16:03:43 LOG7[main]: FD=8 events=0x2001 revents=0x1
+2023.01.20 16:03:43 LOG7[main]: Service [rsync] accepted (FD=3) from 127.0.0.1:43544
+2023.01.20 16:03:43 LOG7[9]: Service [rsync] started
+2023.01.20 16:03:43 LOG7[9]: Setting local socket options (FD=3)
+2023.01.20 16:03:43 LOG7[9]: Option TCP_NODELAY set on local socket
+2023.01.20 16:03:43 LOG5[9]: Service [rsync] accepted connection from 127.0.0.1:43544
+2023.01.20 16:03:43 LOG3[9]: Error resolving "volsync-rsync-dst-busybox-pvc2-gp3-csi.busybox-sample.svc.clusterset.local": Neither nodename nor servname known (EAI_NONAME)
+2023.01.20 16:03:43 LOG3[9]: No remote host resolved
+2023.01.20 16:03:43 LOG5[9]: Connection reset: 0 byte(s) sent to TLS, 0 byte(s) sent to socket
+2023.01.20 16:03:43 LOG7[9]: Local descriptor (FD=3) closed
+2023.01.20 16:03:43 LOG7[9]: Service [rsync] finished (0 left)
+rsync: [sender] safe_read failed to read 1 bytes: Connection reset by peer (104)
+rsync error: error in rsync protocol data stream (code 12) at io.c(276) [sender=3.2.3]
+Syncronization failed. Retrying in 32 seconds. Retry 5/5.
+rsync completed in 62s
+Synchronization failed. rsync returned: 1212
+2023.01.20 16:04:15 LOG7[main]: Found 1 ready file descriptor(s)
+2023.01.20 16:04:15 LOG7[main]: FD=4 events=0x2001 revents=0x1
+`
+
+		// nolint:lll,misspell
+		expectedFilteredLog := `rsync: [sender] safe_read failed to read 1 bytes: Connection reset by peer (104)
+rsync error: error in rsync protocol data stream (code 12) at io.c(276) [sender=3.2.3]
+Syncronization failed. Retrying in 4 seconds. Retry 2/5.
+2023.01.20 16:03:19 LOG3[4]: Error resolving "volsync-rsync-dst-busybox-pvc2-gp3-csi.busybox-sample.svc.clusterset.local": Neither nodename nor servname known (EAI_NONAME)
+rsync: [sender] safe_read failed to read 1 bytes: Connection reset by peer (104)
+rsync error: error in rsync protocol data stream (code 12) at io.c(276) [sender=3.2.3]
+2023.01.20 16:03:19 LOG3[5]: Error resolving "volsync-rsync-dst-busybox-pvc2-gp3-csi.busybox-sample.svc.clusterset.local": Neither nodename nor servname known (EAI_NONAME)
+rsync: [sender] safe_read failed to read 1 bytes: Connection reset by peer (104)
+rsync error: error in rsync protocol data stream (code 12) at io.c(276) [sender=3.2.3]
+Syncronization failed. Retrying in 8 seconds. Retry 3/5.
+2023.01.20 16:03:27 LOG3[6]: Error resolving "volsync-rsync-dst-busybox-pvc2-gp3-csi.busybox-sample.svc.clusterset.local": Neither nodename nor servname known (EAI_NONAME)
+rsync: [sender] safe_read failed to read 1 bytes: Connection reset by peer (104)
+rsync error: error in rsync protocol data stream (code 12) at io.c(276) [sender=3.2.3]
+2023.01.20 16:03:27 LOG3[7]: Error resolving "volsync-rsync-dst-busybox-pvc2-gp3-csi.busybox-sample.svc.clusterset.local": Neither nodename nor servname known (EAI_NONAME)
+rsync: [sender] safe_read failed to read 1 bytes: Connection reset by peer (104)
+rsync error: error in rsync protocol data stream (code 12) at io.c(276) [sender=3.2.3]
+Syncronization failed. Retrying in 16 seconds. Retry 4/5.
+2023.01.20 16:03:43 LOG3[8]: Error resolving "volsync-rsync-dst-busybox-pvc2-gp3-csi.busybox-sample.svc.clusterset.local": Neither nodename nor servname known (EAI_NONAME)
+rsync: [sender] safe_read failed to read 1 bytes: Connection reset by peer (104)
+rsync error: error in rsync protocol data stream (code 12) at io.c(276) [sender=3.2.3]
+2023.01.20 16:03:43 LOG3[9]: Error resolving "volsync-rsync-dst-busybox-pvc2-gp3-csi.busybox-sample.svc.clusterset.local": Neither nodename nor servname known (EAI_NONAME)
+rsync: [sender] safe_read failed to read 1 bytes: Connection reset by peer (104)
+rsync error: error in rsync protocol data stream (code 12) at io.c(276) [sender=3.2.3]
+Syncronization failed. Retrying in 32 seconds. Retry 5/5.
+rsync completed in 62s
+Synchronization failed. rsync returned: 1212`
+
+		It("Should filter the logs", func() {
+			reader := strings.NewReader(sourceFailedLog)
+			filteredLines, err := utils.FilterLogs(reader, rsynctls.LogLineFilterFailure)
+			Expect(err).NotTo(HaveOccurred())
+
+			logger.Info("Filtered lines are", "filteredLines", filteredLines)
+			Expect(filteredLines).To(Equal(expectedFilteredLog))
+		})
+	})
+
 	Context("RsyncTLS dest mover logs", func() {
 		// Sample dest log for volsync
 		// nolint:lll

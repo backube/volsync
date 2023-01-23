@@ -21,15 +21,34 @@ import (
 	"regexp"
 )
 
-var rsyncRegex = regexp.MustCompile(
+var rsyncTLSRegex = regexp.MustCompile(
 	`([sS]ent)\s.+([bB]ytes)\s.+([rR]eceived)\s.+([bB]ytes)|` +
 		`([tT]otal size)|` +
 		`^\s*([rR]sync completed in)`)
 
+var rsyncTLSRegexFailures = regexp.MustCompile(
+	`^\s*([rR]sync)|` +
+		`([fF]ail)|` +
+		`([eE]rror)`)
+
 // Filter rsync log lines for a successful move job
 func LogLineFilterSuccess(line string) *string {
-	if rsyncRegex.MatchString(line) {
+	if rsyncTLSRegex.MatchString(line) {
 		return &line
 	}
+	return nil
+}
+
+func LogLineFilterFailure(line string) *string {
+	// Match first against the same stuff we do for success
+	if rsyncTLSRegex.MatchString(line) {
+		return &line
+	}
+
+	// Also match some specific failure lines
+	if rsyncTLSRegexFailures.MatchString(line) {
+		return &line
+	}
+
 	return nil
 }
