@@ -146,6 +146,10 @@
   loop_control:
     loop_var: st_namespace
 
+- name: Pause while pods restart and VolSync updates
+  ansible.builtin.pause:
+    seconds: 30
+
 - name: Wait for instances to reconnect
   include_tasks:
     file: await_connected.yml
