@@ -39,8 +39,9 @@ const (
 	DefaultMoverLogMaxBytes int = 1024
 
 	// Env var - max lines we will tail from a mover pod to process logs
+	// Set to -1 to tail all lines since the mover pod start
 	MoverLogTailLinesEnvVar        = "MOVER_LOG_TAIL_LINES"
-	DefaultMoverLogTailLines int64 = 100
+	DefaultMoverLogTailLines int64 = -1
 
 	// Env var - Set to "true" to log all lines (up to MOVER_LOG_MAX_LINES) of mover logs
 	MoverLogDebugEnvVar = "MOVER_LOG_DEBUG"
@@ -108,12 +109,14 @@ func getPodLogs(ctx context.Context, logger logr.Logger, podName, podNamespace s
 	lineFilter func(line string) *string) (string, error) {
 	l := logger.WithValues("podName", podName, "podNamespace", podNamespace)
 
-	tailLines := GetMoverLogTailLines()
-
 	podLogOptions := &corev1.PodLogOptions{
 		//Container: containerName,
-		Follow:    false,
-		TailLines: &tailLines,
+		Follow: false,
+	}
+
+	tailLines := GetMoverLogTailLines()
+	if tailLines >= 0 {
+		podLogOptions.TailLines = &tailLines
 	}
 
 	request := clientset.CoreV1().Pods(podNamespace).GetLogs(podName, podLogOptions)

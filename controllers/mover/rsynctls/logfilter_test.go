@@ -34,207 +34,353 @@ var _ = Describe("RsyncTLS Filter Logs Tests", func() {
 
 	Context("RsyncTLS source mover logs", func() {
 		// Sample source log for rsync mover
-		sourceLog := `2023.01.10 14:08:54 LOG7[0]: Deallocating application specific data for session connect address
-2023.01.10 14:08:54 LOG7[0]: TLS state (connect): SSLv3/TLS read server hello
-2023.01.10 14:08:54 LOG7[0]: TLS state (connect): TLSv1.3 read encrypted extensions
-2023.01.10 14:08:54 LOG7[0]: TLS state (connect): SSLv3/TLS read finished
-2023.01.10 14:08:54 LOG7[0]: TLS state (connect): SSLv3/TLS write change cipher spec
-2023.01.10 14:08:54 LOG7[0]: TLS state (connect): SSLv3/TLS write finished
-2023.01.10 14:08:54 LOG7[0]:      1 client connect(s) requested
-2023.01.10 14:08:54 LOG7[0]:      1 client connect(s) succeeded
-2023.01.10 14:08:54 LOG7[0]:      0 client renegotiation(s) requested
-2023.01.10 14:08:54 LOG7[0]:      1 session reuse(s)
-2023.01.10 14:08:54 LOG6[0]: TLS connected: previous session reused
-2023.01.10 14:08:54 LOG6[0]: TLSv1.3 ciphersuite: TLS_AES_128_GCM_SHA256 (128-bit encryption)
-2023.01.10 14:08:54 LOG6[0]: Peer temporary key: X25519, 253 bits
-2023.01.10 14:08:54 LOG7[0]: Compression: null, expansion: null
-2023.01.10 14:08:54 LOG6[0]: Session id: 
-2023.01.10 14:08:54 LOG7[0]: TLS state (connect): SSL negotiation finished successfully
-2023.01.10 14:08:54 LOG7[0]: TLS state (connect): SSL negotiation finished successfully
-2023.01.10 14:08:54 LOG7[0]: Initializing application specific data for session authenticated
-2023.01.10 14:08:54 LOG7[0]: Deallocating application specific data for session connect address
-2023.01.10 14:08:54 LOG7[0]: New session callback
-2023.01.10 14:08:54 LOG6[0]: No peer certificate received
-2023.01.10 14:08:54 LOG6[0]: Session id: E98D33F73726E715081340727C7356DCC4274534654E3888C4D94D05985DBF09
-2023.01.10 14:08:54 LOG7[0]: TLS state (connect): SSLv3/TLS read server session ticket
-<f+++++++++ datafile
+		// nolint:lll
+		sourceLog := `
+options                = NO_SSLv2
+options                = NO_SSLv3
+securityLevel          = 2
+sessionCacheSize       = 1000
+sessionCacheTimeout    = 300 seconds
+stack                  = 65536 bytes
+TIMEOUTbusy            = 300 seconds
+TIMEOUTclose           = 60 seconds
+TIMEOUTconnect         = 10 seconds
+TIMEOUTidle            = 43200 seconds
+verify                 = none
+2023.01.25 19:06:29 LOG6[ui]: Initializing inetd mode configuration
+2023.01.25 19:06:29 LOG7[ui]: Clients allowed=512000
+2023.01.25 19:06:29 LOG5[ui]: stunnel 5.62 on x86_64-redhat-linux-gnu platform
+2023.01.25 19:06:29 LOG5[ui]: Compiled/running with OpenSSL 3.0.1 14 Dec 2021
+2023.01.25 19:06:29 LOG5[ui]: Threading:PTHREAD Sockets:POLL,IPv6 TLS:ENGINE,FIPS,OCSP,PSK,SNI
+2023.01.25 19:06:29 LOG7[ui]: errno: (*__errno_location ())
+2023.01.25 19:06:29 LOG6[ui]: Initializing inetd mode configuration
+2023.01.25 19:06:29 LOG5[ui]: Reading configuration from file /tmp/stunnel-client.conf
+2023.01.25 19:06:29 LOG5[ui]: UTF-8 byte order mark not detected
+2023.01.25 19:06:29 LOG5[ui]: FIPS mode disabled
+2023.01.25 19:06:29 LOG6[ui]: Compression enabled: 0 methods
+2023.01.25 19:06:29 LOG7[ui]: No PRNG seeding was required
+2023.01.25 19:06:29 LOG6[ui]: Initializing service [rsync]
+2023.01.25 19:06:29 LOG6[ui]: PSKsecrets line 1: 64-byte hexadecimal key configured for identity "volsync"
+2023.01.25 19:06:29 LOG6[ui]: PSK identities: 1 retrieved
+2023.01.25 19:06:29 LOG6[ui]: Using the default TLS version as specified in OpenSSL crypto policies. Not setting explicitly.
+2023.01.25 19:06:29 LOG6[ui]: Using the default TLS version as specified in OpenSSL crypto policies. Not setting explicitly
+2023.01.25 19:06:29 LOG6[ui]: OpenSSL security level is used: 2
+2023.01.25 19:06:29 LOG7[ui]: Ciphers: PSK
+2023.01.25 19:06:29 LOG7[ui]: TLSv1.3 ciphersuites: TLS_AES_256_GCM_SHA384:TLS_AES_128_GCM_SHA256:TLS_CHACHA20_POLY1305_SHA256
+2023.01.25 19:06:29 LOG7[ui]: TLS options: 0x2100000 (+0x0, -0x0)
+2023.01.25 19:06:29 LOG6[ui]: Session resumption enabled
+2023.01.25 19:06:29 LOG7[ui]: No certificate or private key specified
+2023.01.25 19:06:29 LOG6[ui]: DH initialization skipped: client section
+2023.01.25 19:06:29 LOG7[ui]: ECDH initialization
+2023.01.25 19:06:29 LOG7[ui]: ECDH initialized with curves X25519:P-256:X448:P-521:P-384
+2023.01.25 19:06:29 LOG5[ui]: Configuration successful
+2023.01.25 19:06:29 LOG7[ui]: Deallocating deployed section defaults
+2023.01.25 19:06:29 LOG7[ui]: Binding service [rsync]
+2023.01.25 19:06:29 LOG7[ui]: Listening file descriptor created (FD=8)
+2023.01.25 19:06:29 LOG7[ui]: Setting accept socket options (FD=8)
+2023.01.25 19:06:29 LOG7[ui]: Option SO_REUSEADDR set on accept socket
+2023.01.25 19:06:29 LOG6[ui]: Service [rsync] (FD=8) bound to 127.0.0.1:9000
+Syncing data to 172.32.164.53:8000 ...
+2023.01.25 19:06:29 LOG7[main]: Created pid file /tmp/stunnel-client.pid
+2023.01.25 19:06:29 LOG7[cron]: Cron thread initialized
+2023.01.25 19:06:29 LOG6[cron]: Executing cron jobs
+2023.01.25 19:06:29 LOG6[cron]: Cron jobs completed in 0 seconds
+2023.01.25 19:06:29 LOG7[cron]: Waiting 86400 seconds
+2023.01.25 19:06:29 LOG7[main]: Found 1 ready file descriptor(s)
+2023.01.25 19:06:29 LOG7[main]: FD=4 events=0x2001 revents=0x0
+2023.01.25 19:06:29 LOG7[main]: FD=8 events=0x2001 revents=0x1
+2023.01.25 19:06:29 LOG7[main]: Service [rsync] accepted (FD=3) from 127.0.0.1:43356
+2023.01.25 19:06:29 LOG7[0]: Service [rsync] started
+2023.01.25 19:06:29 LOG7[0]: Setting local socket options (FD=3)
+2023.01.25 19:06:29 LOG7[0]: Option TCP_NODELAY set on local socket
+2023.01.25 19:06:29 LOG5[0]: Service [rsync] accepted connection from 127.0.0.1:43356
+2023.01.25 19:06:29 LOG6[0]: s_connect: connecting 172.32.164.53:8000
+2023.01.25 19:06:29 LOG7[0]: s_connect: s_poll_wait 172.32.164.53:8000: waiting 10 seconds
+2023.01.25 19:06:29 LOG7[0]: FD=6 events=0x2001 revents=0x0
+2023.01.25 19:06:29 LOG7[0]: FD=10 events=0x2005 revents=0x0
+2023.01.25 19:06:29 LOG5[0]: s_connect: connected 172.32.164.53:8000
+2023.01.25 19:06:29 LOG5[0]: Service [rsync] connected remote server from 10.128.0.146:41792
+2023.01.25 19:06:29 LOG7[0]: Setting remote socket options (FD=10)
+2023.01.25 19:06:29 LOG7[0]: Option TCP_NODELAY set on remote socket
+2023.01.25 19:06:29 LOG7[0]: Remote descriptor (FD=10) initialized
+2023.01.25 19:06:29 LOG6[0]: SNI: sending servername: 172.32.164.53
+2023.01.25 19:06:29 LOG6[0]: Peer certificate not required
+2023.01.25 19:06:29 LOG7[0]: TLS state (connect): before SSL initialization
+2023.01.25 19:06:29 LOG7[0]: Initializing application specific data for session authenticated
+2023.01.25 19:06:29 LOG6[0]: PSK client configured for identity "volsync"
+2023.01.25 19:06:29 LOG7[0]: Initializing application specific data for session authenticated
+2023.01.25 19:06:29 LOG7[0]: TLS state (connect): SSLv3/TLS write client hello
+2023.01.25 19:06:29 LOG7[0]: TLS state (connect): SSLv3/TLS write client hello
+2023.01.25 19:06:29 LOG7[0]: Deallocating application specific data for session connect address
+2023.01.25 19:06:29 LOG7[0]: Initializing application specific data for session authenticated
+2023.01.25 19:06:29 LOG7[0]: Deallocating application specific data for session connect address
+2023.01.25 19:06:29 LOG7[0]: TLS state (connect): SSLv3/TLS read server hello
+2023.01.25 19:06:29 LOG7[0]: TLS state (connect): TLSv1.3 read encrypted extensions
+2023.01.25 19:06:29 LOG7[0]: TLS state (connect): SSLv3/TLS read finished
+2023.01.25 19:06:29 LOG7[0]: TLS state (connect): SSLv3/TLS write change cipher spec
+2023.01.25 19:06:29 LOG7[0]: TLS state (connect): SSLv3/TLS write finished
+2023.01.25 19:06:29 LOG7[0]:      1 client connect(s) requested
+2023.01.25 19:06:29 LOG7[0]:      1 client connect(s) succeeded
+2023.01.25 19:06:29 LOG7[0]:      0 client renegotiation(s) requested
+2023.01.25 19:06:29 LOG7[0]:      1 session reuse(s)
+2023.01.25 19:06:29 LOG6[0]: TLS connected: previous session reused
+2023.01.25 19:06:29 LOG6[0]: TLSv1.3 ciphersuite: TLS_AES_128_GCM_SHA256 (128-bit encryption)
+2023.01.25 19:06:29 LOG6[0]: Peer temporary key: X25519, 253 bits
+2023.01.25 19:06:29 LOG7[0]: Compression: null, expansion: null
+2023.01.25 19:06:29 LOG6[0]: Session id: 
+2023.01.25 19:06:29 LOG7[0]: TLS state (connect): SSL negotiation finished successfully
+2023.01.25 19:06:29 LOG7[0]: TLS state (connect): SSL negotiation finished successfully
+2023.01.25 19:06:29 LOG7[0]: Initializing application specific data for session authenticated
+2023.01.25 19:06:29 LOG7[0]: Deallocating application specific data for session connect address
+2023.01.25 19:06:29 LOG7[0]: New session callback
+2023.01.25 19:06:29 LOG6[0]: No peer certificate received
+2023.01.25 19:06:29 LOG6[0]: Session id: 1A6EF48141D94691393B8985DE61EFE1844536FD75604CF275C3BE5B5D1C1577
+2023.01.25 19:06:29 LOG7[0]: TLS state (connect): SSLv3/TLS read server session ticket
+<f..t...... bigfile1
+<f..t...... bigfile2
+<f..t...... bigfile3
+<f+++++++++ file1.txt
+<f+++++++++ file2.txt
+<f+++++++++ outfile1
+<f.st...... outfile2
+.d..t...... lib/
+<f..t...... lib/ld-linux-x86-64.so.2
+<f..t...... lib/libc.so.6
+<f..t...... lib/libm.so.6
+<f..t...... lib/libnss_compat.so.2
+<f..t...... lib/libnss_dns.so.2
+<f..t...... lib/libnss_files.so.2
+<f..t...... lib/libnss_hesiod.so.2
+<f..t...... lib/libpthread.so.0
+<f..t...... lib/libresolv.so.2
+cd+++++++++ var/
+cd+++++++++ var/run/
+cd+++++++++ var/run/secrets/
+cd+++++++++ var/run/secrets/kubernetes.io/
+cd+++++++++ var/run/secrets/kubernetes.io/serviceaccount/
+cL+++++++++ var/run/secrets/kubernetes.io/serviceaccount/..data -> ..2023_01_25_18_49_11.1879626111
+cL+++++++++ var/run/secrets/kubernetes.io/serviceaccount/ca.crt -> ..data/ca.crt
+cL+++++++++ var/run/secrets/kubernetes.io/serviceaccount/namespace -> ..data/namespace
+cL+++++++++ var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt -> ..data/service-ca.crt
+cL+++++++++ var/run/secrets/kubernetes.io/serviceaccount/token -> ..data/token
+cd+++++++++ var/run/secrets/kubernetes.io/serviceaccount/..2023_01_25_18_49_11.1879626111/
+<f+++++++++ var/run/secrets/kubernetes.io/serviceaccount/..2023_01_25_18_49_11.1879626111/ca.crt
+<f+++++++++ var/run/secrets/kubernetes.io/serviceaccount/..2023_01_25_18_49_11.1879626111/namespace
+<f+++++++++ var/run/secrets/kubernetes.io/serviceaccount/..2023_01_25_18_49_11.1879626111/service-ca.crt
+<f+++++++++ var/run/secrets/kubernetes.io/serviceaccount/..2023_01_25_18_49_11.1879626111/token
+cd+++++++++ var/spool/
+cd+++++++++ var/spool/mail/
+cd+++++++++ var/www/
 
-Number of files: 1 (reg: 1)
-Number of created files: 1 (reg: 1)
+Number of files: 35 (reg: 20, dir: 10, link: 5)
+Number of created files: 21 (reg: 7, dir: 9, link: 5)
 Number of deleted files: 0
-Number of regular files transferred: 1
-Total file size: 5 bytes
-Total transferred file size: 5 bytes
-Literal data: 5 bytes
-Matched data: 0 bytes
+Number of regular files transferred: 20
+Total file size: 1.16G bytes
+Total transferred file size: 1.16G bytes
+Literal data: 15.48M bytes
+Matched data: 1.15G bytes
 File list size: 0
-File list generation time: 0.001 seconds
+File list generation time: 0.014 seconds
 File list transfer time: 0.000 seconds
-Total bytes sent: 125
-Total bytes received: 35
+Total bytes sent: 833.81K
+Total bytes received: 397.18K
 
-sent 125 bytes  received 35 bytes  106.67 bytes/sec
-total size is 5  speedup is 0.03
-2023.01.10 14:08:54 LOG6[0]: Read socket closed (readsocket)
-2023.01.10 14:08:54 LOG7[0]: Sending close_notify alert
-2023.01.10 14:08:54 LOG7[0]: TLS alert (write): warning: close notify
-2023.01.10 14:08:54 LOG6[0]: SSL_shutdown successfully sent close_notify alert
-2023.01.10 14:08:54 LOG7[main]: Found 1 ready file descriptor(s)
-2023.01.10 14:08:54 LOG7[main]: FD=4 events=0x2001 revents=0x0
-2023.01.10 14:08:54 LOG7[main]: FD=8 events=0x2001 revents=0x1
-2023.01.10 14:08:54 LOG7[main]: Service [rsync] accepted (FD=11) from 127.0.0.1:55398
-2023.01.10 14:08:54 LOG7[1]: Service [rsync] started
-2023.01.10 14:08:54 LOG7[1]: Setting local socket options (FD=11)
-2023.01.10 14:08:54 LOG7[1]: Option TCP_NODELAY set on local socket
-2023.01.10 14:08:54 LOG5[1]: Service [rsync] accepted connection from 127.0.0.1:55398
-2023.01.10 14:08:54 LOG6[1]: s_connect: connecting 172.32.226.217:8000
-2023.01.10 14:08:54 LOG7[1]: s_connect: s_poll_wait 172.32.226.217:8000: waiting 10 seconds
-2023.01.10 14:08:54 LOG7[1]: FD=6 events=0x2001 revents=0x0
-2023.01.10 14:08:54 LOG7[1]: FD=12 events=0x2005 revents=0x0
-2023.01.10 14:08:54 LOG5[1]: s_connect: connected 172.32.226.217:8000
-2023.01.10 14:08:54 LOG5[1]: Service [rsync] connected remote server from 10.136.0.93:50052
-2023.01.10 14:08:54 LOG7[1]: Setting remote socket options (FD=12)
-2023.01.10 14:08:54 LOG7[1]: Option TCP_NODELAY set on remote socket
-2023.01.10 14:08:54 LOG7[1]: Remote descriptor (FD=12) initialized
-2023.01.10 14:08:54 LOG6[1]: SNI: sending servername: 172.32.226.217
-2023.01.10 14:08:54 LOG6[1]: Peer certificate not required
-2023.01.10 14:08:54 LOG7[1]: TLS state (connect): before SSL initialization
-2023.01.10 14:08:54 LOG6[1]: PSK client configured for identity "volsync"
-2023.01.10 14:08:54 LOG7[1]: Initializing application specific data for session authenticated
-2023.01.10 14:08:54 LOG7[1]: TLS state (connect): SSLv3/TLS write client hello
-2023.01.10 14:08:54 LOG7[1]: TLS state (connect): SSLv3/TLS write client hello
-2023.01.10 14:08:54 LOG7[1]: Deallocating application specific data for session connect address
-2023.01.10 14:08:54 LOG7[1]: TLS state (connect): SSLv3/TLS read server hello
-2023.01.10 14:08:54 LOG7[1]: TLS state (connect): TLSv1.3 read encrypted extensions
-2023.01.10 14:08:54 LOG7[1]: TLS state (connect): SSLv3/TLS read finished
-2023.01.10 14:08:54 LOG7[1]: TLS state (connect): SSLv3/TLS write change cipher spec
-2023.01.10 14:08:54 LOG7[1]: TLS state (connect): SSLv3/TLS write finished
-2023.01.10 14:08:54 LOG7[1]: Remove session callback
-2023.01.10 14:08:54 LOG7[1]:      2 client connect(s) requested
-2023.01.10 14:08:54 LOG7[1]:      2 client connect(s) succeeded
-2023.01.10 14:08:54 LOG7[1]:      0 client renegotiation(s) requested
-2023.01.10 14:08:54 LOG7[1]:      2 session reuse(s)
-2023.01.10 14:08:54 LOG6[1]: TLS connected: previous session reused
-2023.01.10 14:08:54 LOG6[1]: TLSv1.3 ciphersuite: TLS_AES_128_GCM_SHA256 (128-bit encryption)
-2023.01.10 14:08:54 LOG6[1]: Peer temporary key: X25519, 253 bits
-2023.01.10 14:08:54 LOG7[1]: Compression: null, expansion: null
-2023.01.10 14:08:54 LOG6[1]: Session id: E98D33F73726E715081340727C7356DCC4274534654E3888C4D94D05985DBF09
-2023.01.10 14:08:54 LOG7[1]: TLS state (connect): SSL negotiation finished successfully
-2023.01.10 14:08:54 LOG7[1]: TLS state (connect): SSL negotiation finished successfully
-2023.01.10 14:08:54 LOG7[1]: Initializing application specific data for session authenticated
-2023.01.10 14:08:54 LOG7[1]: New session callback
-2023.01.10 14:08:54 LOG6[1]: No peer certificate received
-2023.01.10 14:08:54 LOG6[1]: Session id: 0599D5E335DE950893CA6D42AA44E689E177A65A6A449C78A777FDFB3BCCC101
-2023.01.10 14:08:54 LOG7[1]: TLS state (connect): SSLv3/TLS read server session ticket
-2023.01.10 14:08:54 LOG7[0]: TLS alert (read): warning: close notify
-2023.01.10 14:08:54 LOG6[0]: TLS closed (SSL_read)
-2023.01.10 14:08:54 LOG7[0]: Sent socket write shutdown
-2023.01.10 14:08:54 LOG5[0]: Connection closed: 256 byte(s) sent to TLS, 110 byte(s) sent to socket
-2023.01.10 14:08:54 LOG7[0]: Deallocating application specific data for session connect address
-2023.01.10 14:08:54 LOG7[0]: Remote descriptor (FD=10) closed
-2023.01.10 14:08:54 LOG7[0]: Local descriptor (FD=3) closed
-2023.01.10 14:08:54 LOG7[0]: Service [rsync] finished (1 left)
+sent 833.81K bytes  received 397.18K bytes  30.39K bytes/sec
+total size is 1.16G  speedup is 944.57
+2023.01.25 19:07:09 LOG6[0]: Read socket closed (readsocket)
+2023.01.25 19:07:09 LOG7[0]: Sending close_notify alert
+2023.01.25 19:07:09 LOG7[0]: TLS alert (write): warning: close notify
+2023.01.25 19:07:09 LOG6[0]: SSL_shutdown successfully sent close_notify alert
+2023.01.25 19:07:09 LOG7[main]: Found 1 ready file descriptor(s)
+2023.01.25 19:07:09 LOG7[main]: FD=4 events=0x2001 revents=0x0
+2023.01.25 19:07:09 LOG7[main]: FD=8 events=0x2001 revents=0x1
+2023.01.25 19:07:09 LOG7[main]: Service [rsync] accepted (FD=11) from 127.0.0.1:50214
+2023.01.25 19:07:09 LOG7[1]: Service [rsync] started
+2023.01.25 19:07:09 LOG7[1]: Setting local socket options (FD=11)
+2023.01.25 19:07:09 LOG7[1]: Option TCP_NODELAY set on local socket
+2023.01.25 19:07:09 LOG5[1]: Service [rsync] accepted connection from 127.0.0.1:50214
+2023.01.25 19:07:09 LOG6[1]: s_connect: connecting 172.32.164.53:8000
+2023.01.25 19:07:09 LOG7[1]: s_connect: s_poll_wait 172.32.164.53:8000: waiting 10 seconds
+2023.01.25 19:07:09 LOG7[1]: FD=6 events=0x2001 revents=0x0
+2023.01.25 19:07:09 LOG7[1]: FD=12 events=0x2005 revents=0x0
+2023.01.25 19:07:09 LOG5[1]: s_connect: connected 172.32.164.53:8000
+2023.01.25 19:07:09 LOG5[1]: Service [rsync] connected remote server from 10.128.0.146:52930
+2023.01.25 19:07:09 LOG7[1]: Setting remote socket options (FD=12)
+2023.01.25 19:07:09 LOG7[1]: Option TCP_NODELAY set on remote socket
+2023.01.25 19:07:09 LOG7[1]: Remote descriptor (FD=12) initialized
+2023.01.25 19:07:09 LOG6[1]: SNI: sending servername: 172.32.164.53
+2023.01.25 19:07:09 LOG6[1]: Peer certificate not required
+2023.01.25 19:07:09 LOG7[1]: TLS state (connect): before SSL initialization
+2023.01.25 19:07:09 LOG6[1]: PSK client configured for identity "volsync"
+2023.01.25 19:07:09 LOG7[1]: Initializing application specific data for session authenticated
+2023.01.25 19:07:09 LOG7[1]: TLS state (connect): SSLv3/TLS write client hello
+2023.01.25 19:07:09 LOG7[0]: TLS alert (read): warning: close notify
+2023.01.25 19:07:09 LOG6[0]: TLS closed (SSL_read)
+2023.01.25 19:07:09 LOG7[0]: Sent socket write shutdown
+2023.01.25 19:07:09 LOG5[0]: Connection closed: 833939 byte(s) sent to TLS, 397257 byte(s) sent to socket
+2023.01.25 19:07:09 LOG7[0]: Remote descriptor (FD=10) closed
+2023.01.25 19:07:09 LOG7[0]: Local descriptor (FD=3) closed
+2023.01.25 19:07:09 LOG7[0]: Service [rsync] finished (1 left)
+2023.01.25 19:07:09 LOG7[1]: TLS state (connect): SSLv3/TLS write client hello
+2023.01.25 19:07:09 LOG7[1]: Deallocating application specific data for session connect address
+2023.01.25 19:07:09 LOG7[1]: TLS state (connect): SSLv3/TLS read server hello
+2023.01.25 19:07:09 LOG7[1]: TLS state (connect): TLSv1.3 read encrypted extensions
+2023.01.25 19:07:09 LOG7[1]: TLS state (connect): SSLv3/TLS read finished
+2023.01.25 19:07:09 LOG7[1]: TLS state (connect): SSLv3/TLS write change cipher spec
+2023.01.25 19:07:09 LOG7[1]: TLS state (connect): SSLv3/TLS write finished
+2023.01.25 19:07:09 LOG7[1]: Remove session callback
+2023.01.25 19:07:09 LOG7[1]:      2 client connect(s) requested
+2023.01.25 19:07:09 LOG7[1]:      2 client connect(s) succeeded
+2023.01.25 19:07:09 LOG7[1]:      0 client renegotiation(s) requested
+2023.01.25 19:07:09 LOG7[1]:      2 session reuse(s)
+2023.01.25 19:07:09 LOG6[1]: TLS connected: previous session reused
+2023.01.25 19:07:09 LOG6[1]: TLSv1.3 ciphersuite: TLS_AES_128_GCM_SHA256 (128-bit encryption)
+2023.01.25 19:07:09 LOG6[1]: Peer temporary key: X25519, 253 bits
+2023.01.25 19:07:09 LOG7[1]: Compression: null, expansion: null
+2023.01.25 19:07:09 LOG6[1]: Session id: 1A6EF48141D94691393B8985DE61EFE1844536FD75604CF275C3BE5B5D1C1577
+2023.01.25 19:07:09 LOG7[1]: TLS state (connect): SSL negotiation finished successfully
+2023.01.25 19:07:09 LOG7[1]: TLS state (connect): SSL negotiation finished successfully
+2023.01.25 19:07:09 LOG7[1]: Initializing application specific data for session authenticated
+2023.01.25 19:07:09 LOG7[1]: New session callback
+2023.01.25 19:07:09 LOG6[1]: No peer certificate received
+2023.01.25 19:07:09 LOG7[1]: Deallocating application specific data for session connect address
+2023.01.25 19:07:09 LOG6[1]: Session id: 0B8958920DFBBDA433D176FB78EDB9CE65E3A90E0008F567359F1F22F9812CE9
+2023.01.25 19:07:09 LOG7[1]: TLS state (connect): SSLv3/TLS read server session ticket
+*deleting   bin/blkid
+*deleting   bin/blkdiscard
+*deleting   bin/beep
+*deleting   bin/bc
+*deleting   bin/basename
+*deleting   bin/base64
+*deleting   bin/base32
+*deleting   bin/awk
+*deleting   bin/ash
+*deleting   bin/ascii
+*deleting   bin/arping
+*deleting   bin/arp
+*deleting   bin/arch
+*deleting   bin/ar
+*deleting   bin/adjtimex
+*deleting   bin/adduser
+*deleting   bin/addgroup
+*deleting   bin/add-shell
+*deleting   bin/acpid
+*deleting   bin/[[
+*deleting   bin/[
+*deleting   bin/
 
-Number of files: 2 (reg: 1, dir: 1)
+Number of files: 36 (reg: 20, dir: 11, link: 5)
 Number of created files: 0
-Number of deleted files: 0
+Number of deleted files: 406 (reg: 405, dir: 1)
 Number of regular files transferred: 0
-Total file size: 5 bytes
+Total file size: 1,162,761,244 bytes
 Total transferred file size: 0 bytes
 Literal data: 0 bytes
 Matched data: 0 bytes
 File list size: 0
 File list generation time: 0.001 seconds
 File list transfer time: 0.000 seconds
-Total bytes sent: 82
-Total bytes received: 19
+Total bytes sent: 1,003
+Total bytes received: 5,657
 
-sent 82 bytes  received 19 bytes  202.00 bytes/sec
-total size is 5  speedup is 0.05
-2023.01.10 14:08:54 LOG6[1]: Read socket closed (readsocket)
-2023.01.10 14:08:54 LOG7[1]: Sending close_notify alert
-2023.01.10 14:08:54 LOG7[1]: TLS alert (write): warning: close notify
-2023.01.10 14:08:54 LOG6[1]: SSL_shutdown successfully sent close_notify alert
-rsync completed in 1s
+sent 1,003 bytes  received 5,657 bytes  13,320.00 bytes/sec
+total size is 1,162,761,244  speedup is 174,588.78
+2023.01.25 19:07:10 LOG6[1]: Read socket closed (readsocket)
+2023.01.25 19:07:10 LOG7[1]: Sending close_notify alert
+rsync completed in 41s
+2023.01.25 19:07:10 LOG7[1]: TLS alert (write): warning: close notify
+2023.01.25 19:07:10 LOG6[1]: SSL_shutdown successfully sent close_notify alert
 Sending shutdown to remote...
-2023.01.10 14:08:54 LOG7[main]: Found 1 ready file descriptor(s)
-2023.01.10 14:08:54 LOG7[main]: FD=4 events=0x2001 revents=0x0
-2023.01.10 14:08:54 LOG7[main]: FD=8 events=0x2001 revents=0x1
-2023.01.10 14:08:54 LOG7[main]: Service [rsync] accepted (FD=3) from 127.0.0.1:55406
-2023.01.10 14:08:54 LOG7[2]: Service [rsync] started
-2023.01.10 14:08:54 LOG7[2]: Setting local socket options (FD=3)
-2023.01.10 14:08:54 LOG7[2]: Option TCP_NODELAY set on local socket
-2023.01.10 14:08:54 LOG5[2]: Service [rsync] accepted connection from 127.0.0.1:55406
-2023.01.10 14:08:54 LOG6[2]: s_connect: connecting 172.32.226.217:8000
-2023.01.10 14:08:54 LOG7[2]: s_connect: s_poll_wait 172.32.226.217:8000: waiting 10 seconds
-2023.01.10 14:08:54 LOG7[2]: FD=6 events=0x2001 revents=0x0
-2023.01.10 14:08:54 LOG7[2]: FD=10 events=0x2005 revents=0x0
-2023.01.10 14:08:54 LOG5[2]: s_connect: connected 172.32.226.217:8000
-2023.01.10 14:08:54 LOG5[2]: Service [rsync] connected remote server from 10.136.0.93:50060
-2023.01.10 14:08:54 LOG7[2]: Setting remote socket options (FD=10)
-2023.01.10 14:08:54 LOG7[2]: Option TCP_NODELAY set on remote socket
-2023.01.10 14:08:54 LOG7[2]: Remote descriptor (FD=10) initialized
-2023.01.10 14:08:54 LOG6[2]: SNI: sending servername: 172.32.226.217
-2023.01.10 14:08:54 LOG6[2]: Peer certificate not required
-2023.01.10 14:08:54 LOG7[2]: TLS state (connect): before SSL initialization
-2023.01.10 14:08:54 LOG6[2]: PSK client configured for identity "volsync"
-2023.01.10 14:08:54 LOG7[2]: Initializing application specific data for session authenticated
-2023.01.10 14:08:54 LOG7[2]: TLS state (connect): SSLv3/TLS write client hello
-2023.01.10 14:08:54 LOG7[2]: TLS state (connect): SSLv3/TLS write client hello
-2023.01.10 14:08:54 LOG7[2]: Deallocating application specific data for session connect address
-2023.01.10 14:08:54 LOG7[2]: TLS state (connect): SSLv3/TLS read server hello
-2023.01.10 14:08:54 LOG7[2]: TLS state (connect): TLSv1.3 read encrypted extensions
-2023.01.10 14:08:54 LOG7[2]: TLS state (connect): SSLv3/TLS read finished
-2023.01.10 14:08:54 LOG7[2]: TLS state (connect): SSLv3/TLS write change cipher spec
-2023.01.10 14:08:54 LOG7[2]: TLS state (connect): SSLv3/TLS write finished
-2023.01.10 14:08:54 LOG7[2]: Remove session callback
-2023.01.10 14:08:54 LOG7[2]:      3 client connect(s) requested
-2023.01.10 14:08:54 LOG7[2]:      3 client connect(s) succeeded
-2023.01.10 14:08:54 LOG7[2]:      0 client renegotiation(s) requested
-2023.01.10 14:08:54 LOG7[2]:      3 session reuse(s)
-2023.01.10 14:08:54 LOG6[2]: TLS connected: previous session reused
-2023.01.10 14:08:54 LOG6[2]: TLSv1.3 ciphersuite: TLS_AES_128_GCM_SHA256 (128-bit encryption)
-2023.01.10 14:08:54 LOG6[2]: Peer temporary key: X25519, 253 bits
-2023.01.10 14:08:54 LOG7[2]: Compression: null, expansion: null
-2023.01.10 14:08:54 LOG6[2]: Session id: 0599D5E335DE950893CA6D42AA44E689E177A65A6A449C78A777FDFB3BCCC101
-2023.01.10 14:08:54 LOG7[2]: TLS state (connect): SSL negotiation finished successfully
-2023.01.10 14:08:54 LOG7[2]: TLS state (connect): SSL negotiation finished successfully
-2023.01.10 14:08:54 LOG7[2]: Initializing application specific data for session authenticated
-2023.01.10 14:08:54 LOG7[2]: New session callback
-2023.01.10 14:08:54 LOG6[2]: No peer certificate received
-2023.01.10 14:08:54 LOG6[2]: Session id: 97D67227FD49C836E133187E87BF75645933060D4E9A26F29CB4B1349F32B314
-2023.01.10 14:08:54 LOG7[2]: TLS state (connect): SSLv3/TLS read server session ticket
-2023.01.10 14:08:54 LOG7[1]: TLS alert (read): warning: close notify
-2023.01.10 14:08:54 LOG6[1]: TLS closed (SSL_read)
-2023.01.10 14:08:54 LOG7[1]: Sent socket write shutdown
-2023.01.10 14:08:54 LOG5[1]: Connection closed: 221 byte(s) sent to TLS, 69 byte(s) sent to socket
-2023.01.10 14:08:54 LOG7[1]: Deallocating application specific data for session connect address
-2023.01.10 14:08:54 LOG7[1]: Remote descriptor (FD=12) closed
-2023.01.10 14:08:54 LOG7[1]: Local descriptor (FD=11) closed
-2023.01.10 14:08:54 LOG7[1]: Service [rsync] finished (1 left)
+2023.01.25 19:07:10 LOG7[main]: Found 1 ready file descriptor(s)
+2023.01.25 19:07:10 LOG7[main]: FD=4 events=0x2001 revents=0x0
+2023.01.25 19:07:10 LOG7[main]: FD=8 events=0x2001 revents=0x1
+2023.01.25 19:07:10 LOG7[main]: Service [rsync] accepted (FD=3) from 127.0.0.1:50218
+2023.01.25 19:07:10 LOG7[2]: Service [rsync] started
+2023.01.25 19:07:10 LOG7[2]: Setting local socket options (FD=3)
+2023.01.25 19:07:10 LOG7[2]: Option TCP_NODELAY set on local socket
+2023.01.25 19:07:10 LOG5[2]: Service [rsync] accepted connection from 127.0.0.1:50218
+2023.01.25 19:07:10 LOG6[2]: s_connect: connecting 172.32.164.53:8000
+2023.01.25 19:07:10 LOG7[2]: s_connect: s_poll_wait 172.32.164.53:8000: waiting 10 seconds
+2023.01.25 19:07:10 LOG7[2]: FD=6 events=0x2001 revents=0x0
+2023.01.25 19:07:10 LOG7[2]: FD=10 events=0x2005 revents=0x0
+2023.01.25 19:07:10 LOG5[2]: s_connect: connected 172.32.164.53:8000
+2023.01.25 19:07:10 LOG5[2]: Service [rsync] connected remote server from 10.128.0.146:52936
+2023.01.25 19:07:10 LOG7[2]: Setting remote socket options (FD=10)
+2023.01.25 19:07:10 LOG7[2]: Option TCP_NODELAY set on remote socket
+2023.01.25 19:07:10 LOG7[2]: Remote descriptor (FD=10) initialized
+2023.01.25 19:07:10 LOG6[2]: SNI: sending servername: 172.32.164.53
+2023.01.25 19:07:10 LOG6[2]: Peer certificate not required
+2023.01.25 19:07:10 LOG7[2]: TLS state (connect): before SSL initialization
+2023.01.25 19:07:10 LOG6[2]: PSK client configured for identity "volsync"
+2023.01.25 19:07:10 LOG7[2]: Initializing application specific data for session authenticated
+2023.01.25 19:07:10 LOG7[2]: TLS state (connect): SSLv3/TLS write client hello
+2023.01.25 19:07:10 LOG7[1]: TLS alert (read): warning: close notify
+2023.01.25 19:07:10 LOG6[1]: TLS closed (SSL_read)
+2023.01.25 19:07:10 LOG7[1]: Sent socket write shutdown
+2023.01.25 19:07:10 LOG5[1]: Connection closed: 1142 byte(s) sent to TLS, 5707 byte(s) sent to socket
+2023.01.25 19:07:10 LOG7[1]: Remote descriptor (FD=12) closed
+2023.01.25 19:07:10 LOG7[1]: Local descriptor (FD=11) closed
+2023.01.25 19:07:10 LOG7[1]: Service [rsync] finished (1 left)
+2023.01.25 19:07:10 LOG7[2]: TLS state (connect): SSLv3/TLS write client hello
+2023.01.25 19:07:10 LOG7[2]: Deallocating application specific data for session connect address
+2023.01.25 19:07:10 LOG7[2]: TLS state (connect): SSLv3/TLS read server hello
+2023.01.25 19:07:10 LOG7[2]: TLS state (connect): TLSv1.3 read encrypted extensions
+2023.01.25 19:07:10 LOG7[2]: TLS state (connect): SSLv3/TLS read finished
+2023.01.25 19:07:10 LOG7[2]: TLS state (connect): SSLv3/TLS write change cipher spec
+2023.01.25 19:07:10 LOG7[2]: TLS state (connect): SSLv3/TLS write finished
+2023.01.25 19:07:10 LOG7[2]: Remove session callback
+2023.01.25 19:07:10 LOG7[2]:      3 client connect(s) requested
+2023.01.25 19:07:10 LOG7[2]:      3 client connect(s) succeeded
+2023.01.25 19:07:10 LOG7[2]:      0 client renegotiation(s) requested
+2023.01.25 19:07:10 LOG7[2]:      3 session reuse(s)
+2023.01.25 19:07:10 LOG6[2]: TLS connected: previous session reused
+2023.01.25 19:07:10 LOG6[2]: TLSv1.3 ciphersuite: TLS_AES_128_GCM_SHA256 (128-bit encryption)
+2023.01.25 19:07:10 LOG6[2]: Peer temporary key: X25519, 253 bits
+2023.01.25 19:07:10 LOG7[2]: Compression: null, expansion: null
+2023.01.25 19:07:10 LOG6[2]: Session id: 0B8958920DFBBDA433D176FB78EDB9CE65E3A90E0008F567359F1F22F9812CE9
+2023.01.25 19:07:10 LOG7[2]: TLS state (connect): SSL negotiation finished successfully
+2023.01.25 19:07:10 LOG7[2]: TLS state (connect): SSL negotiation finished successfully
+2023.01.25 19:07:10 LOG7[2]: Initializing application specific data for session authenticated
+2023.01.25 19:07:10 LOG7[2]: New session callback
+2023.01.25 19:07:10 LOG6[2]: No peer certificate received
+2023.01.25 19:07:10 LOG7[2]: Deallocating application specific data for session connect address
+2023.01.25 19:07:10 LOG6[2]: Session id: CF33CF2B9579CBC62C1EA7FD6E9D82CC0D2F2FA77DF464D72E706FD34BBE4210
+2023.01.25 19:07:10 LOG7[2]: TLS state (connect): SSLv3/TLS read server session ticket
 ...done
-2023.01.10 14:08:54 LOG6[2]: Read socket closed (readsocket)
-2023.01.10 14:08:54 LOG7[2]: Sending close_notify alert
-2023.01.10 14:08:54 LOG7[2]: TLS alert (write): warning: close notify
-2023.01.10 14:08:54 LOG6[2]: SSL_shutdown successfully sent close_notify alert
-2023.01.10 14:08:54 LOG7[main]: Found 1 ready file descriptor(s)
-2023.01.10 14:08:54 LOG7[main]: FD=4 events=0x2001 revents=0x1
-2023.01.10 14:08:54 LOG7[main]: FD=8 events=0x2001 revents=0x0
-2023.01.10 14:08:54 LOG7[main]: Dispatching a signal from the signal pipe
-2023.01.10 14:08:54 LOG7[main]: Processing SIGNAL_TERMINATE
-2023.01.10 14:08:54 LOG5[main]: Terminated
-2023.01.10 14:08:54 LOG7[main]: Leak detection table utilization: 107/997, 10.73%
-2023.01.10 14:08:54 LOG7[main]: Removed pid file /tmp/stunnel-client.pid
-2023.01.10 14:08:54 LOG7[main]: Terminating a thread for [rsync]
-2023.01.10 14:08:54 LOG7[main]: Terminating the cron thread
-2023.01.10 14:08:54 LOG6[main]: Terminating 2 service thread(s)`
+2023.01.25 19:07:10 LOG6[2]: Read socket closed (readsocket)
+2023.01.25 19:07:10 LOG7[2]: Sending close_notify alert
+2023.01.25 19:07:10 LOG7[2]: TLS alert (write): warning: close notify
+2023.01.25 19:07:10 LOG6[2]: SSL_shutdown successfully sent close_notify alert
+2023.01.25 19:07:10 LOG7[2]: TLS alert (read): warning: close notify
+2023.01.25 19:07:10 LOG6[2]: TLS closed (SSL_read)
+2023.01.25 19:07:10 LOG7[2]: Sent socket write shutdown
+2023.01.25 19:07:10 LOG5[2]: Connection closed: 3302 byte(s) sent to TLS, 85 byte(s) sent to socket
+2023.01.25 19:07:10 LOG7[2]: Remote descriptor (FD=10) closed
+2023.01.25 19:07:10 LOG7[2]: Local descriptor (FD=3) closed
+2023.01.25 19:07:10 LOG7[2]: Service [rsync] finished (0 left)
+2023.01.25 19:07:15 LOG7[main]: Found 1 ready file descriptor(s)
+2023.01.25 19:07:15 LOG7[main]: FD=4 events=0x2001 revents=0x1
+2023.01.25 19:07:15 LOG7[main]: FD=8 events=0x2001 revents=0x0
+2023.01.25 19:07:15 LOG7[main]: Dispatching a signal from the signal pipe
+2023.01.25 19:07:15 LOG7[main]: Processing SIGNAL_TERMINATE
+2023.01.25 19:07:15 LOG5[main]: Terminated
+2023.01.25 19:07:15 LOG7[main]: Leak detection table utilization: 107/997, 10.73%
+2023.01.25 19:07:15 LOG7[main]: Removed pid file /tmp/stunnel-client.pid
+2023.01.25 19:07:15 LOG7[main]: Terminating the cron thread
+2023.01.25 19:07:15 LOG6[main]: Terminating 1 service thread(s)
+2023.01.25 19:07:15 LOG6[main]: Service threads terminated
+2023.01.25 19:07:15 LOG7[main]: Unbinding service [rsync]
+2023.01.25 19:07:15 LOG7[main]: Service [rsync] closed (FD=8)
+2023.01.25 19:07:15 LOG7[main]: Service [rsync] closed
+`
 
 		// nolint:lll
-		expectedFilteredLog := `sent 125 bytes  received 35 bytes  106.67 bytes/sec
-total size is 5  speedup is 0.03
-sent 82 bytes  received 19 bytes  202.00 bytes/sec
-total size is 5  speedup is 0.05
-rsync completed in 1s`
+		expectedFilteredLog := `sent 833.81K bytes  received 397.18K bytes  30.39K bytes/sec
+total size is 1.16G  speedup is 944.57
+sent 1,003 bytes  received 5,657 bytes  13,320.00 bytes/sec
+total size is 1,162,761,244  speedup is 174,588.78
+rsync completed in 41s`
 
 		It("Should filter the logs", func() {
 			reader := strings.NewReader(sourceLog)

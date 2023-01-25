@@ -277,6 +277,28 @@ var _ = Describe("Truncate string test", func() {
 	})
 })
 
+var _ = Describe("Tail lines env var test", func() {
+	It("Should test the default value for the tail logs env var", func() {
+		tailLinesDefault := utils.GetMoverLogTailLines()
+		Expect(tailLinesDefault).To(Equal(int64(-1)))
+		Expect(tailLinesDefault < 0).To(BeTrue())
+	})
+
+	When("The env var is set to a value", func() {
+		BeforeEach(func() {
+			os.Setenv(utils.MoverLogTailLinesEnvVar, "123")
+		})
+		AfterEach(func() {
+			os.Unsetenv(utils.MoverLogTailLinesEnvVar)
+		})
+
+		It("Should use the value provided and convert to int64", func() {
+			tailLines := utils.GetMoverLogTailLines()
+			Expect(tailLines).To(Equal(int64(123)))
+		})
+	})
+})
+
 func testFilterFunc(line string) *string {
 	// Return all lines that start with "Created " or "created " or lines that have "=== * ==="
 	var myRegex = regexp.MustCompile(`^\s*([cC]reated)\s.+|^\s*(===)\s.+(===)`)
