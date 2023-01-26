@@ -58,13 +58,7 @@ func (d *rsyncSvcDescription) Reconcile(l logr.Logger) error {
 		if d.Service.ObjectMeta.Annotations == nil {
 			d.Service.ObjectMeta.Annotations = map[string]string{}
 		}
-		if d.Annotations == nil {
-			// Set our default annotations
-			d.Service.ObjectMeta.Annotations["service.beta.kubernetes.io/aws-load-balancer-type"] = "nlb"
-		} else {
-			// Use user-supplied annotations - do not replace Annotations entirely in case of system-added annotations
-			updateMap(d.Service.ObjectMeta.Annotations, d.Annotations)
-		}
+		updateAnnotationsOrDefault(d.Service.ObjectMeta.Annotations, d.Annotations)
 
 		if d.Type != nil {
 			d.Service.Spec.Type = *d.Type
@@ -95,6 +89,16 @@ func (d *rsyncSvcDescription) Reconcile(l logr.Logger) error {
 
 	logger.V(1).Info("Service reconciled", "operation", op)
 	return nil
+}
+
+func updateAnnotationsOrDefault(annotations, userSuppliedAnnotations map[string]string) {
+	if userSuppliedAnnotations == nil {
+		// Set our default annotations
+		annotations["service.beta.kubernetes.io/aws-load-balancer-type"] = "nlb"
+	} else {
+		// Use user-supplied annotations - do not replace Annotations entirely in case of system-added annotations
+		updateMap(annotations, userSuppliedAnnotations)
+	}
 }
 
 // Update map1 with any k,v pairs from map2
