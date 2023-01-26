@@ -1039,17 +1039,14 @@ var _ = Describe("Rsync as a destination", func() {
 		//nolint:dupl
 		Context("Service and address are handled properly", func() {
 			When("when no remote address is specified", func() {
-				BeforeEach(func() {
-					rd.Spec.Rsync = &volsyncv1alpha1.ReplicationDestinationRsyncSpec{
-						// No address specified
-					}
-				})
-				It("Creates a Service for incoming connections", func() {
+				var svc *corev1.Service
+				JustBeforeEach(func() {
+					// create the svc
 					result, err := mover.ensureServiceAndPublishAddress(ctx)
 					Expect(err).To(BeNil())
 
 					// Service should now be created - check to see it's been created
-					svc := &corev1.Service{
+					svc = &corev1.Service{
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      "volsync-rsync-dst-" + rd.Name,
 							Namespace: rd.Namespace,
@@ -1069,8 +1066,65 @@ var _ = Describe("Rsync as a destination", func() {
 						err = k8sClient.Get(ctx, client.ObjectKeyFromObject(svc), svc)
 						Expect(err).ToNot(HaveOccurred())
 					}
+				})
 
-					Expect(*rd.Status.Rsync.Address).To(Equal(svc.Spec.ClusterIP))
+				When("spec leaves service defaults", func() {
+					BeforeEach(func() {
+						rd.Spec.Rsync = &volsyncv1alpha1.ReplicationDestinationRsyncSpec{
+							// No address specified
+							// No serviceAnnotations specified
+						}
+					})
+					It("Creates a Service for incoming connections with defaults", func() {
+						Expect(*rd.Status.Rsync.Address).To(Equal(svc.Spec.ClusterIP))
+
+						// Check for default annotation VolSync adds
+						defaultAnnotation, ok := svc.Annotations["service.beta.kubernetes.io/aws-load-balancer-type"]
+						Expect(ok).To(BeTrue())
+						Expect(defaultAnnotation).To(Equal("nlb"))
+
+						// Doublecheck here that the rd should have nil serviceAnnotations set after re-loading
+						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)).NotTo(HaveOccurred())
+						Expect(rd.Spec.Rsync.ServiceAnnotations).To(BeNil())
+					})
+				})
+
+				When("spec has empty serviceAnnotations", func() {
+					BeforeEach(func() {
+						// Empty serviceAnnnotations (i.e. {}) should be treated differently from not specifying serviceAnnotations.
+						// In the empty case we want to override any annotations VolSync might set by default
+						rd.Spec.Rsync = &volsyncv1alpha1.ReplicationDestinationRsyncSpec{
+							ServiceAnnotations: &map[string]string{},
+						}
+					})
+					It("Creates a Service for incoming connections with no volsync annotations", func() {
+						Expect(*rd.Status.Rsync.Address).To(Equal(svc.Spec.ClusterIP))
+
+						Expect(len(svc.Annotations)).To(Equal(0))
+
+						// Doublecheck here that the rd should have empty serviceAnnotations set after re-loading
+						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)).NotTo(HaveOccurred())
+						Expect(rd.Spec.Rsync.ServiceAnnotations).NotTo(BeNil())
+						Expect(*rd.Spec.Rsync.ServiceAnnotations).To(Equal(map[string]string{}))
+					})
+				})
+
+				When("spec has serviceAnnotations", func() {
+					myCustAnnotations := map[string]string{
+						"custom-svc-annotation1": "apples",
+						"custom-svc-annotation2": "oranges",
+					}
+
+					BeforeEach(func() {
+						rd.Spec.Rsync = &volsyncv1alpha1.ReplicationDestinationRsyncSpec{
+							ServiceAnnotations: &myCustAnnotations,
+						}
+					})
+					It("Creates a Service for incoming connections with no volsync annotations", func() {
+						Expect(*rd.Status.Rsync.Address).To(Equal(svc.Spec.ClusterIP))
+
+						Expect(svc.Annotations).To(Equal(myCustAnnotations))
+					})
 				})
 			})
 			When("when a remote address is specified", func() {

@@ -114,21 +114,22 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 	}
 
 	return &Mover{
-		client:            client,
-		logger:            logger.WithValues("method", "Rsync"),
-		eventRecorder:     eventRecorder,
-		owner:             source,
-		vh:                vh,
-		containerImage:    rb.getRsyncContainerImage(),
-		sshKeys:           source.Spec.Rsync.SSHKeys,
-		serviceType:       source.Spec.Rsync.ServiceType,
-		address:           source.Spec.Rsync.Address,
-		port:              source.Spec.Rsync.Port,
-		isSource:          true,
-		paused:            source.Spec.Paused,
-		mainPVCName:       &source.Spec.SourcePVC,
-		sourceStatus:      source.Status.Rsync,
-		latestMoverStatus: source.Status.LatestMoverStatus,
+		client:             client,
+		logger:             logger.WithValues("method", "Rsync"),
+		eventRecorder:      eventRecorder,
+		owner:              source,
+		vh:                 vh,
+		containerImage:     rb.getRsyncContainerImage(),
+		sshKeys:            source.Spec.Rsync.SSHKeys,
+		serviceType:        source.Spec.Rsync.ServiceType,
+		serviceAnnotations: nil,
+		address:            source.Spec.Rsync.Address,
+		port:               source.Spec.Rsync.Port,
+		isSource:           true,
+		paused:             source.Spec.Paused,
+		mainPVCName:        &source.Spec.SourcePVC,
+		sourceStatus:       source.Status.Rsync,
+		latestMoverStatus:  source.Status.LatestMoverStatus,
 	}, nil
 }
 
@@ -159,21 +160,30 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		return nil, err
 	}
 
+	var svcAnnotations map[string]string
+	if destination.Spec.Rsync.ServiceAnnotations != nil {
+		// If nil we will assume VolSync can set defaults
+		// if not nil, we will assume we will use the users settings (and empty map will mean
+		// we do not set any annotations at all on the service)
+		svcAnnotations = *destination.Spec.Rsync.ServiceAnnotations
+	}
+
 	return &Mover{
-		client:            client,
-		logger:            logger.WithValues("method", "Rsync"),
-		eventRecorder:     eventRecorder,
-		owner:             destination,
-		vh:                vh,
-		containerImage:    rb.getRsyncContainerImage(),
-		sshKeys:           destination.Spec.Rsync.SSHKeys,
-		serviceType:       destination.Spec.Rsync.ServiceType,
-		address:           destination.Spec.Rsync.Address,
-		port:              destination.Spec.Rsync.Port,
-		isSource:          false,
-		paused:            destination.Spec.Paused,
-		mainPVCName:       destination.Spec.Rsync.DestinationPVC,
-		destStatus:        destination.Status.Rsync,
-		latestMoverStatus: destination.Status.LatestMoverStatus,
+		client:             client,
+		logger:             logger.WithValues("method", "Rsync"),
+		eventRecorder:      eventRecorder,
+		owner:              destination,
+		vh:                 vh,
+		containerImage:     rb.getRsyncContainerImage(),
+		sshKeys:            destination.Spec.Rsync.SSHKeys,
+		serviceType:        destination.Spec.Rsync.ServiceType,
+		serviceAnnotations: svcAnnotations,
+		address:            destination.Spec.Rsync.Address,
+		port:               destination.Spec.Rsync.Port,
+		isSource:           false,
+		paused:             destination.Spec.Paused,
+		mainPVCName:        destination.Spec.Rsync.DestinationPVC,
+		destStatus:         destination.Status.Rsync,
+		latestMoverStatus:  destination.Status.LatestMoverStatus,
 	}, nil
 }

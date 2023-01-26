@@ -81,6 +81,11 @@ type ReplicationDestinationRsyncTLSSpec struct {
 	// TLS connections.
 	//+optional
 	ServiceType *corev1.ServiceType `json:"serviceType,omitempty"`
+	// serviceAnnotations defines annotations that will be added to the
+	// service created for incoming SSH connections.  If set, these annotations
+	// will be used instead of any VolSync default values.
+	//+optional
+	ServiceAnnotations *map[string]string `json:"serviceAnnotations,omitempty"`
 	// MoverSecurityContext allows specifying the PodSecurityContext that will
 	// be used by the data mover
 	MoverSecurityContext *corev1.PodSecurityContext `json:"moverSecurityContext,omitempty"`

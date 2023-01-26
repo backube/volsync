@@ -95,6 +95,11 @@ type ReplicationDestinationRsyncSpec struct {
 	// SSH connections.
 	//+optional
 	ServiceType *corev1.ServiceType `json:"serviceType,omitempty"`
+	// serviceAnnotations defines annotations that will be added to the
+	// service created for incoming SSH connections.  If set, these annotations
+	// will be used instead of any VolSync default values.
+	//+optional
+	ServiceAnnotations *map[string]string `json:"serviceAnnotations,omitempty"`
 	// address is the remote address to connect to for replication.
 	//+optional
 	Address *string `json:"address,omitempty"`
