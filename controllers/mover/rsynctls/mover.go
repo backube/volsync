@@ -58,6 +58,7 @@ type Mover struct {
 	containerImage       string
 	key                  *string
 	serviceType          *corev1.ServiceType
+	serviceAnnotations   map[string]string
 	address              *string
 	port                 *int32
 	isSource             bool
@@ -134,7 +135,7 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 }
 
 func (m *Mover) ensureServiceAndPublishAddress(ctx context.Context) (bool, error) {
-	if m.address != nil {
+	if m.address != nil || m.isSource {
 		// Connection will be outbound. Don't need a Service
 		return true, nil
 	}
@@ -146,13 +147,14 @@ func (m *Mover) ensureServiceAndPublishAddress(ctx context.Context) (bool, error
 		},
 	}
 	svcDesc := rsyncSvcDescription{
-		Context:  ctx,
-		Client:   m.client,
-		Service:  service,
-		Owner:    m.owner,
-		Type:     m.serviceType,
-		Selector: m.serviceSelector(),
-		Port:     m.port,
+		Context:     ctx,
+		Client:      m.client,
+		Service:     service,
+		Owner:       m.owner,
+		Type:        m.serviceType,
+		Selector:    m.serviceSelector(),
+		Port:        m.port,
+		Annotations: m.serviceAnnotations,
 	}
 	err := svcDesc.Reconcile(m.logger)
 	if err != nil {

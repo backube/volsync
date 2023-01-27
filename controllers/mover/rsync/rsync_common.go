@@ -35,13 +35,14 @@ import (
 )
 
 type rsyncSvcDescription struct {
-	Context  context.Context
-	Client   client.Client
-	Service  *corev1.Service
-	Owner    metav1.Object
-	Type     *corev1.ServiceType
-	Selector map[string]string
-	Port     *int32
+	Context     context.Context
+	Client      client.Client
+	Service     *corev1.Service
+	Owner       metav1.Object
+	Type        *corev1.ServiceType
+	Selector    map[string]string
+	Port        *int32
+	Annotations map[string]string
 }
 
 func (d *rsyncSvcDescription) Reconcile(l logr.Logger) error {
@@ -57,7 +58,7 @@ func (d *rsyncSvcDescription) Reconcile(l logr.Logger) error {
 		if d.Service.ObjectMeta.Annotations == nil {
 			d.Service.ObjectMeta.Annotations = map[string]string{}
 		}
-		d.Service.ObjectMeta.Annotations["service.beta.kubernetes.io/aws-load-balancer-type"] = "nlb"
+		updateAnnotationsOrDefault(d.Service.ObjectMeta.Annotations, d.Annotations)
 
 		if d.Type != nil {
 			d.Service.Spec.Type = *d.Type
@@ -88,6 +89,23 @@ func (d *rsyncSvcDescription) Reconcile(l logr.Logger) error {
 
 	logger.V(1).Info("Service reconciled", "operation", op)
 	return nil
+}
+
+func updateAnnotationsOrDefault(annotations, userSuppliedAnnotations map[string]string) {
+	if userSuppliedAnnotations == nil {
+		// Set our default annotations
+		annotations["service.beta.kubernetes.io/aws-load-balancer-type"] = "nlb"
+	} else {
+		// Use user-supplied annotations - do not replace Annotations entirely in case of system-added annotations
+		updateMap(annotations, userSuppliedAnnotations)
+	}
+}
+
+// Update map1 with any k,v pairs from map2
+func updateMap(map1, map2 map[string]string) {
+	for k, v := range map2 {
+		map1[k] = v
+	}
 }
 
 type rsyncSSHKeys struct {

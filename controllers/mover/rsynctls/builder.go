@@ -122,6 +122,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		containerImage:       rb.getRsyncTLSContainerImage(),
 		key:                  source.Spec.RsyncTLS.KeySecret,
 		serviceType:          nil,
+		serviceAnnotations:   nil,
 		address:              source.Spec.RsyncTLS.Address,
 		port:                 source.Spec.RsyncTLS.Port,
 		isSource:             true,
@@ -161,6 +162,14 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		return nil, err
 	}
 
+	var svcAnnotations map[string]string
+	if destination.Spec.RsyncTLS.ServiceAnnotations != nil {
+		// If nil we will assume VolSync can set defaults
+		// if not nil, we will assume we will use the users settings (and empty map will mean
+		// we do not set any annotations at all on the service)
+		svcAnnotations = *destination.Spec.RsyncTLS.ServiceAnnotations
+	}
+
 	return &Mover{
 		client:               client,
 		logger:               logger.WithValues("method", "RsyncTLS"),
@@ -170,6 +179,7 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		containerImage:       rb.getRsyncTLSContainerImage(),
 		key:                  destination.Spec.RsyncTLS.KeySecret,
 		serviceType:          destination.Spec.RsyncTLS.ServiceType,
+		serviceAnnotations:   svcAnnotations,
 		address:              nil,
 		port:                 nil,
 		isSource:             false,

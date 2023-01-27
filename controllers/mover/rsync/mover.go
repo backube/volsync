@@ -47,22 +47,23 @@ const (
 
 // Mover is the reconciliation logic for the Rsync-based data mover.
 type Mover struct {
-	client            client.Client
-	logger            logr.Logger
-	eventRecorder     events.EventRecorder
-	owner             client.Object
-	vh                *volumehandler.VolumeHandler
-	containerImage    string
-	sshKeys           *string
-	serviceType       *corev1.ServiceType
-	address           *string
-	port              *int32
-	isSource          bool
-	paused            bool
-	mainPVCName       *string
-	sourceStatus      *volsyncv1alpha1.ReplicationSourceRsyncStatus
-	destStatus        *volsyncv1alpha1.ReplicationDestinationRsyncStatus
-	latestMoverStatus *volsyncv1alpha1.MoverStatus
+	client             client.Client
+	logger             logr.Logger
+	eventRecorder      events.EventRecorder
+	owner              client.Object
+	vh                 *volumehandler.VolumeHandler
+	containerImage     string
+	sshKeys            *string
+	serviceType        *corev1.ServiceType
+	serviceAnnotations map[string]string
+	address            *string
+	port               *int32
+	isSource           bool
+	paused             bool
+	mainPVCName        *string
+	sourceStatus       *volsyncv1alpha1.ReplicationSourceRsyncStatus
+	destStatus         *volsyncv1alpha1.ReplicationDestinationRsyncStatus
+	latestMoverStatus  *volsyncv1alpha1.MoverStatus
 }
 
 var _ mover.Mover = &Mover{}
@@ -141,13 +142,14 @@ func (m *Mover) ensureServiceAndPublishAddress(ctx context.Context) (bool, error
 		},
 	}
 	svcDesc := rsyncSvcDescription{
-		Context:  ctx,
-		Client:   m.client,
-		Service:  service,
-		Owner:    m.owner,
-		Type:     m.serviceType,
-		Selector: m.serviceSelector(),
-		Port:     m.port,
+		Context:     ctx,
+		Client:      m.client,
+		Service:     service,
+		Owner:       m.owner,
+		Type:        m.serviceType,
+		Selector:    m.serviceSelector(),
+		Port:        m.port,
+		Annotations: m.serviceAnnotations,
 	}
 	err := svcDesc.Reconcile(m.logger)
 	if err != nil {

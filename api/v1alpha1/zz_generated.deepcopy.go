@@ -256,6 +256,17 @@ func (in *ReplicationDestinationRsyncSpec) DeepCopyInto(out *ReplicationDestinat
 		*out = new(v1.ServiceType)
 		**out = **in
 	}
+	if in.ServiceAnnotations != nil {
+		in, out := &in.ServiceAnnotations, &out.ServiceAnnotations
+		*out = new(map[string]string)
+		if **in != nil {
+			in, out := *in, *out
+			*out = make(map[string]string, len(*in))
+			for key, val := range *in {
+				(*out)[key] = val
+			}
+		}
+	}
 	if in.Address != nil {
 		in, out := &in.Address, &out.Address
 		*out = new(string)
@@ -331,6 +342,17 @@ func (in *ReplicationDestinationRsyncTLSSpec) DeepCopyInto(out *ReplicationDesti
 		in, out := &in.ServiceType, &out.ServiceType
 		*out = new(v1.ServiceType)
 		**out = **in
+	}
+	if in.ServiceAnnotations != nil {
+		in, out := &in.ServiceAnnotations, &out.ServiceAnnotations
+		*out = new(map[string]string)
+		if **in != nil {
+			in, out := *in, *out
+			*out = make(map[string]string, len(*in))
+			for key, val := range *in {
+				(*out)[key] = val
+			}
+		}
 	}
 	if in.MoverSecurityContext != nil {
 		in, out := &in.MoverSecurityContext, &out.MoverSecurityContext

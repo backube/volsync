@@ -607,6 +607,14 @@ spec:
                     maximum: 65535
                     minimum: 0
                     type: integer
+                  serviceAnnotations:
+                    additionalProperties:
+                      type: string
+                    description: serviceAnnotations defines annotations that will
+                      be added to the service created for incoming SSH connections.  If
+                      set, these annotations will be used instead of any VolSync default
+                      values.
+                    type: object
                   serviceType:
                     description: serviceType determines the Service type that will
                       be created for incoming SSH connections.
@@ -843,6 +851,14 @@ spec:
                               takes precedence.
                             type: string
                         type: object
+                    type: object
+                  serviceAnnotations:
+                    additionalProperties:
+                      type: string
+                    description: serviceAnnotations defines annotations that will
+                      be added to the service created for incoming SSH connections.  If
+                      set, these annotations will be used instead of any VolSync default
+                      values.
                     type: object
                   serviceType:
                     description: serviceType determines the Service type that will
