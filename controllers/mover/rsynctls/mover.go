@@ -473,7 +473,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 	if job.Status.Failed >= *job.Spec.BackoffLimit {
 		// Update status with mover logs from failed job
 		utils.UpdateMoverStatusForFailedJob(ctx, m.logger, m.latestMoverStatus, job.GetName(), job.GetNamespace(),
-			utils.AllLines)
+			LogLineFilterFailure)
 
 		logger.Info("deleting job -- backoff limit reached")
 		m.eventRecorder.Eventf(m.owner, job, corev1.EventTypeWarning,
