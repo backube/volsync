@@ -444,29 +444,35 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 		podSpec.ServiceAccountName = sa.Name
 		podSpec.RestartPolicy = corev1.RestartPolicyAlways
 		podSpec.TerminationGracePeriodSeconds = pointer.Int64(10)
+
+		envVars := []corev1.EnvVar{
+			{Name: configDirEnv, Value: configDirMountPath},
+			{Name: dataDirEnv, Value: dataDirMountPath},
+			// tell the mover image where to find the HTTPS certs
+			{Name: certDirEnv, Value: certDirMountPath},
+			{
+				Name: apiKeyEnv,
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: apiSecret.Name,
+						},
+						Key: apiKeyDataKey,
+					},
+				},
+			},
+		}
+
+		// Cluster-wide proxy settings
+		envVars = utils.AppendEnvVarsForClusterWideProxy(envVars)
+
 		podSpec.Containers = []corev1.Container{
 			{
 				Name:    "syncthing",
 				Image:   m.containerImage,
 				Command: []string{"/mover-syncthing/entry.sh"},
 				Args:    []string{"run"},
-				Env: []corev1.EnvVar{
-					{Name: configDirEnv, Value: configDirMountPath},
-					{Name: dataDirEnv, Value: dataDirMountPath},
-					// tell the mover image where to find the HTTPS certs
-					{Name: certDirEnv, Value: certDirMountPath},
-					{
-						Name: apiKeyEnv,
-						ValueFrom: &corev1.EnvVarSource{
-							SecretKeyRef: &corev1.SecretKeySelector{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: apiSecret.Name,
-								},
-								Key: apiKeyDataKey,
-							},
-						},
-					},
-				},
+				Env:     envVars,
 				Ports: []corev1.ContainerPort{
 					{Name: apiPortName, ContainerPort: apiPort},
 					{Name: dataPortName, ContainerPort: dataPort},
@@ -489,6 +495,9 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 				},
 			},
 		}
+
+		// Cluster-wide proxy settings
+		podSpec.Containers[0].Env = utils.AppendEnvVarsForClusterWideProxy(podSpec.Containers[0].Env)
 
 		// security context
 		podSpec.SecurityContext = m.moverSecurityContext

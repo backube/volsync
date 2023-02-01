@@ -20,7 +20,6 @@ package restic
 import (
 	"context"
 	"fmt"
-	"os"
 	"path"
 	"strconv"
 	"time"
@@ -359,65 +358,67 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 		logger.Info("job actions", "actions", actions)
 		podSpec := &job.Spec.Template.Spec
 
+		envVars := []corev1.EnvVar{
+			{Name: "FORGET_OPTIONS", Value: forgetOptions},
+			{Name: "DATA_DIR", Value: mountPath},
+			{Name: "RESTIC_CACHE_DIR", Value: resticCacheMountPath},
+			{Name: "RESTORE_AS_OF", Value: restoreAsOf},
+			{Name: "SELECT_PREVIOUS", Value: previous},
+			// We populate environment variables from the restic repo
+			// Secret. They are taken 1-for-1 from the Secret into env vars.
+			// The allowed variables are defined by restic.
+			// https://restic.readthedocs.io/en/stable/040_backup.html#environment-variables
+			// Mandatory variables are needed to define the repository
+			// location and its password.
+			utils.EnvFromSecret(repo.Name, "RESTIC_REPOSITORY", false),
+			utils.EnvFromSecret(repo.Name, "RESTIC_PASSWORD", false),
+
+			// Optional variables
+			utils.EnvFromSecret(repo.Name, "RESTIC_COMPRESSION", true), // New in v0.14.0
+			utils.EnvFromSecret(repo.Name, "RESTIC_PACK_SIZE", true),   // New in v0.14.0
+
+			//utils.EnvFromSecret(repo.Name, "RESTIC_READ_CONCURRENCY", true), // This is in main, but not yet in v0.14.0
+
+			// Optional variables based on what backend is used for restic
+			utils.EnvFromSecret(repo.Name, "AWS_ACCESS_KEY_ID", true),
+			utils.EnvFromSecret(repo.Name, "AWS_SECRET_ACCESS_KEY", true),
+			utils.EnvFromSecret(repo.Name, "AWS_SESSION_TOKEN", true), // New in v0.14.0
+			utils.EnvFromSecret(repo.Name, "AWS_DEFAULT_REGION", true),
+			utils.EnvFromSecret(repo.Name, "ST_AUTH", true),
+			utils.EnvFromSecret(repo.Name, "ST_USER", true),
+			utils.EnvFromSecret(repo.Name, "ST_KEY", true),
+			utils.EnvFromSecret(repo.Name, "OS_AUTH_URL", true),
+			utils.EnvFromSecret(repo.Name, "OS_REGION_NAME", true),
+			utils.EnvFromSecret(repo.Name, "OS_USERNAME", true),
+			utils.EnvFromSecret(repo.Name, "OS_USER_ID", true),
+			utils.EnvFromSecret(repo.Name, "OS_PASSWORD", true),
+			utils.EnvFromSecret(repo.Name, "OS_TENANT_ID", true),
+			utils.EnvFromSecret(repo.Name, "OS_TENANT_NAME", true),
+			utils.EnvFromSecret(repo.Name, "OS_USER_DOMAIN_NAME", true),
+			utils.EnvFromSecret(repo.Name, "OS_USER_DOMAIN_ID", true),
+			utils.EnvFromSecret(repo.Name, "OS_PROJECT_NAME", true),
+			utils.EnvFromSecret(repo.Name, "OS_PROJECT_DOMAIN_NAME", true),
+			utils.EnvFromSecret(repo.Name, "OS_PROJECT_DOMAIN_ID", true),
+			utils.EnvFromSecret(repo.Name, "OS_TRUST_ID", true),
+			utils.EnvFromSecret(repo.Name, "OS_APPLICATION_CREDENTIAL_ID", true),
+			utils.EnvFromSecret(repo.Name, "OS_APPLICATION_CREDENTIAL_NAME", true),
+			utils.EnvFromSecret(repo.Name, "OS_APPLICATION_CREDENTIAL_SECRET", true),
+			utils.EnvFromSecret(repo.Name, "OS_STORAGE_URL", true),
+			utils.EnvFromSecret(repo.Name, "OS_AUTH_TOKEN", true),
+			utils.EnvFromSecret(repo.Name, "B2_ACCOUNT_ID", true),
+			utils.EnvFromSecret(repo.Name, "B2_ACCOUNT_KEY", true),
+			utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_NAME", true),
+			utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_KEY", true),
+			utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_SAS", true), // New in v0.14.0
+			utils.EnvFromSecret(repo.Name, "GOOGLE_PROJECT_ID", true),
+		}
+
+		// Cluster-wide proxy settings
+		envVars = utils.AppendEnvVarsForClusterWideProxy(envVars)
+
 		podSpec.Containers = []corev1.Container{{
-			Name: "restic",
-			Env: []corev1.EnvVar{
-				{Name: "FORGET_OPTIONS", Value: forgetOptions},
-				{Name: "DATA_DIR", Value: mountPath},
-				{Name: "RESTIC_CACHE_DIR", Value: resticCacheMountPath},
-				{Name: "RESTORE_AS_OF", Value: restoreAsOf},
-				{Name: "SELECT_PREVIOUS", Value: previous},
-				{Name: "HTTP_PROXY", Value: os.Getenv("HTTP_PROXY")},
-				{Name: "HTTPS_PROXY", Value: os.Getenv("HTTPS_PROXY")},
-				{Name: "NO_PROXY", Value: os.Getenv("NO_PROXY")},
-				// We populate environment variables from the restic repo
-				// Secret. They are taken 1-for-1 from the Secret into env vars.
-				// The allowed variables are defined by restic.
-				// https://restic.readthedocs.io/en/stable/040_backup.html#environment-variables
-				// Mandatory variables are needed to define the repository
-				// location and its password.
-				utils.EnvFromSecret(repo.Name, "RESTIC_REPOSITORY", false),
-				utils.EnvFromSecret(repo.Name, "RESTIC_PASSWORD", false),
-
-				// Optional variables
-				utils.EnvFromSecret(repo.Name, "RESTIC_COMPRESSION", true), // New in v0.14.0
-				utils.EnvFromSecret(repo.Name, "RESTIC_PACK_SIZE", true),   // New in v0.14.0
-
-				//utils.EnvFromSecret(repo.Name, "RESTIC_READ_CONCURRENCY", true), // This is in main, but not yet in v0.14.0
-
-				// Optional variables based on what backend is used for restic
-				utils.EnvFromSecret(repo.Name, "AWS_ACCESS_KEY_ID", true),
-				utils.EnvFromSecret(repo.Name, "AWS_SECRET_ACCESS_KEY", true),
-				utils.EnvFromSecret(repo.Name, "AWS_SESSION_TOKEN", true), // New in v0.14.0
-				utils.EnvFromSecret(repo.Name, "AWS_DEFAULT_REGION", true),
-				utils.EnvFromSecret(repo.Name, "ST_AUTH", true),
-				utils.EnvFromSecret(repo.Name, "ST_USER", true),
-				utils.EnvFromSecret(repo.Name, "ST_KEY", true),
-				utils.EnvFromSecret(repo.Name, "OS_AUTH_URL", true),
-				utils.EnvFromSecret(repo.Name, "OS_REGION_NAME", true),
-				utils.EnvFromSecret(repo.Name, "OS_USERNAME", true),
-				utils.EnvFromSecret(repo.Name, "OS_USER_ID", true),
-				utils.EnvFromSecret(repo.Name, "OS_PASSWORD", true),
-				utils.EnvFromSecret(repo.Name, "OS_TENANT_ID", true),
-				utils.EnvFromSecret(repo.Name, "OS_TENANT_NAME", true),
-				utils.EnvFromSecret(repo.Name, "OS_USER_DOMAIN_NAME", true),
-				utils.EnvFromSecret(repo.Name, "OS_USER_DOMAIN_ID", true),
-				utils.EnvFromSecret(repo.Name, "OS_PROJECT_NAME", true),
-				utils.EnvFromSecret(repo.Name, "OS_PROJECT_DOMAIN_NAME", true),
-				utils.EnvFromSecret(repo.Name, "OS_PROJECT_DOMAIN_ID", true),
-				utils.EnvFromSecret(repo.Name, "OS_TRUST_ID", true),
-				utils.EnvFromSecret(repo.Name, "OS_APPLICATION_CREDENTIAL_ID", true),
-				utils.EnvFromSecret(repo.Name, "OS_APPLICATION_CREDENTIAL_NAME", true),
-				utils.EnvFromSecret(repo.Name, "OS_APPLICATION_CREDENTIAL_SECRET", true),
-				utils.EnvFromSecret(repo.Name, "OS_STORAGE_URL", true),
-				utils.EnvFromSecret(repo.Name, "OS_AUTH_TOKEN", true),
-				utils.EnvFromSecret(repo.Name, "B2_ACCOUNT_ID", true),
-				utils.EnvFromSecret(repo.Name, "B2_ACCOUNT_KEY", true),
-				utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_NAME", true),
-				utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_KEY", true),
-				utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_SAS", true), // New in v0.14.0
-				utils.EnvFromSecret(repo.Name, "GOOGLE_PROJECT_ID", true),
-			},
+			Name:    "restic",
+			Env:     envVars,
 			Command: []string{"/mover-restic/entry.sh"},
 			Args:    actions,
 			Image:   m.containerImage,
