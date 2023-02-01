@@ -20,6 +20,7 @@ package restic
 import (
 	"context"
 	"fmt"
+	"os"
 	"path"
 	"strconv"
 	"time"
@@ -366,6 +367,9 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 				{Name: "RESTIC_CACHE_DIR", Value: resticCacheMountPath},
 				{Name: "RESTORE_AS_OF", Value: restoreAsOf},
 				{Name: "SELECT_PREVIOUS", Value: previous},
+				{Name: "HTTP_PROXY", Value: os.Getenv("HTTP_PROXY")},
+				{Name: "HTTPS_PROXY", Value: os.Getenv("HTTPS_PROXY")},
+				{Name: "NO_PROXY", Value: os.Getenv("NO_PROXY")},
 				// We populate environment variables from the restic repo
 				// Secret. They are taken 1-for-1 from the Secret into env vars.
 				// The allowed variables are defined by restic.
