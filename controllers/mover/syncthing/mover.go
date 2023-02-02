@@ -496,9 +496,6 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 			},
 		}
 
-		// Cluster-wide proxy settings
-		podSpec.Containers[0].Env = utils.AppendEnvVarsForClusterWideProxy(podSpec.Containers[0].Env)
-
 		// security context
 		podSpec.SecurityContext = m.moverSecurityContext
 
