@@ -20,6 +20,7 @@ package rclone
 import (
 	"flag"
 	"os"
+	"strings"
 
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
 	. "github.com/onsi/ginkgo/v2"
@@ -562,6 +563,59 @@ var _ = Describe("Rclone as a source", func() {
 
 					// Validate job env vars
 					validateJobEnvVars(job.Spec.Template.Spec.Containers[0].Env, true)
+				})
+
+				Context("Cluster wide proxy settings", func() {
+					When("no proxy env vars are set on the volsync controller", func() {
+						It("shouldn't set any proxy env vars on the mover job", func() {
+							j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret) // Using sPVC as dataPVC (i.e. direct)
+							Expect(e).NotTo(HaveOccurred())
+							Expect(j).To(BeNil()) // hasn't completed
+							nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+							job = &batchv1.Job{}
+							Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+
+							// No proxy env vars should be set by default
+							envVars := job.Spec.Template.Spec.Containers[0].Env
+							for _, envVar := range envVars {
+								Expect(strings.ToLower(envVar.Name)).NotTo(ContainSubstring("proxy"))
+							}
+						})
+					})
+
+					When("proxy env vars are set on the volsync controller", func() {
+						httpProxy := "http://myproxy:1234"
+						httpsProxy := "https://10.10.10.1"
+						noProxy := "*.abc.com, 10.11.11.200"
+						BeforeEach(func() {
+							os.Setenv("HTTP_PROXY", httpProxy)
+							os.Setenv("HTTPS_PROXY", httpsProxy)
+							os.Setenv("NO_PROXY", noProxy)
+						})
+						AfterEach(func() {
+							os.Unsetenv("HTTP_PROXY")
+							os.Unsetenv("HTTPS_PROXY")
+							os.Unsetenv("NO_PROXY")
+						})
+
+						It("should set the corresponding proxy env vars on the mover job", func() {
+							j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret) // Using sPVC as dataPVC (i.e. direct)
+							Expect(e).NotTo(HaveOccurred())
+							Expect(j).To(BeNil()) // hasn't completed
+							nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+							job = &batchv1.Job{}
+							Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+
+							// No proxy env vars should be set by default
+							envVars := job.Spec.Template.Spec.Containers[0].Env
+							Expect(envVars).To(ContainElement(corev1.EnvVar{Name: "HTTPS_PROXY", Value: httpsProxy}))
+							Expect(envVars).To(ContainElement(corev1.EnvVar{Name: "https_proxy", Value: httpsProxy}))
+							Expect(envVars).To(ContainElement(corev1.EnvVar{Name: "HTTP_PROXY", Value: httpProxy}))
+							Expect(envVars).To(ContainElement(corev1.EnvVar{Name: "http_proxy", Value: httpProxy}))
+							Expect(envVars).To(ContainElement(corev1.EnvVar{Name: "NO_PROXY", Value: noProxy}))
+							Expect(envVars).To(ContainElement(corev1.EnvVar{Name: "no_proxy", Value: noProxy}))
+						})
+					})
 				})
 
 				It("Should have correct volume mounts", func() {
