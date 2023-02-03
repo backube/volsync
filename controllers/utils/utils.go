@@ -20,6 +20,7 @@ package utils
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -113,4 +114,26 @@ func PvcIsReadOnly(pvc *corev1.PersistentVolumeClaim) bool {
 
 	// All other access modes support write
 	return false
+}
+
+func AppendEnvVarsForClusterWideProxy(envVars []corev1.EnvVar) []corev1.EnvVar {
+	httpProxy, ok := os.LookupEnv("HTTP_PROXY")
+	if ok {
+		envVars = append(envVars, corev1.EnvVar{Name: "HTTP_PROXY", Value: httpProxy})
+		envVars = append(envVars, corev1.EnvVar{Name: "http_proxy", Value: httpProxy})
+	}
+
+	httpsProxy, ok := os.LookupEnv("HTTPS_PROXY")
+	if ok {
+		envVars = append(envVars, corev1.EnvVar{Name: "HTTPS_PROXY", Value: httpsProxy})
+		envVars = append(envVars, corev1.EnvVar{Name: "https_proxy", Value: httpsProxy})
+	}
+
+	noProxy, ok := os.LookupEnv("NO_PROXY")
+	if ok {
+		envVars = append(envVars, corev1.EnvVar{Name: "NO_PROXY", Value: noProxy})
+		envVars = append(envVars, corev1.EnvVar{Name: "no_proxy", Value: noProxy})
+	}
+
+	return envVars
 }

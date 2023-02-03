@@ -21,7 +21,9 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"net/http/httptest"
+	"os"
 	"strconv"
+	"strings"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	cMover "github.com/backube/volsync/controllers/mover"
@@ -1137,8 +1139,42 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 								Expect(mount.MountPath).To(Equal(certDirMountPath))
 							}
 						}
+
+						// No proxy env vars should be set by default
+						envVars := deployment.Spec.Template.Spec.Containers[0].Env
+						for _, envVar := range envVars {
+							Expect(strings.ToLower(envVar.Name)).NotTo(ContainSubstring("proxy"))
+						}
 					})
 
+					Context("Cluster wide proxy settings", func() {
+						httpProxy := "http://myproxy:1234"
+						httpsProxy := "https://10.10.10.1"
+						noProxy := "*.abc.com, 10.11.11.200"
+						BeforeEach(func() {
+							os.Setenv("HTTP_PROXY", httpProxy)
+							os.Setenv("HTTPS_PROXY", httpsProxy)
+							os.Setenv("NO_PROXY", noProxy)
+						})
+						AfterEach(func() {
+							os.Unsetenv("HTTP_PROXY")
+							os.Unsetenv("HTTPS_PROXY")
+							os.Unsetenv("NO_PROXY")
+						})
+						It("Should inherit cluster wide proxy env vars from the volsync controller", func() {
+							deployment, err := mover.ensureDeployment(ctx, srcPVC, configPVC, sa, apiSecret)
+							Expect(err).NotTo(HaveOccurred())
+							Expect(deployment).NotTo(BeNil())
+
+							envVars := deployment.Spec.Template.Spec.Containers[0].Env
+							Expect(envVars).To(ContainElement(corev1.EnvVar{Name: "HTTPS_PROXY", Value: httpsProxy}))
+							Expect(envVars).To(ContainElement(corev1.EnvVar{Name: "https_proxy", Value: httpsProxy}))
+							Expect(envVars).To(ContainElement(corev1.EnvVar{Name: "HTTP_PROXY", Value: httpProxy}))
+							Expect(envVars).To(ContainElement(corev1.EnvVar{Name: "http_proxy", Value: httpProxy}))
+							Expect(envVars).To(ContainElement(corev1.EnvVar{Name: "NO_PROXY", Value: noProxy}))
+							Expect(envVars).To(ContainElement(corev1.EnvVar{Name: "no_proxy", Value: noProxy}))
+						})
+					})
 					Context("Privileged vs unprivileged mover", func() {
 						It("Should not have a PodSecurityContext by default", func() {
 							deployment, err := mover.ensureDeployment(ctx, srcPVC, configPVC, sa, apiSecret)
