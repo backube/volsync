@@ -1,4 +1,0 @@
-Enhancement: Automatically generate man pages for all restic commands
-
-https://github.com/restic/restic/issues/697
-https://github.com/restic/restic/pull/1147

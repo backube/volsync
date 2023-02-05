@@ -1,5 +1,0 @@
-Bugfix: Make the `cat` command respect the `--no-lock` option
-
-The `cat` command would not respect the `--no-lock` flag. This is now fixed.
-
-https://github.com/restic/restic/issues/2739

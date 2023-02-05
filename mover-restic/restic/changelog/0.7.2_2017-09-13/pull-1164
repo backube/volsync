@@ -1,3 +1,0 @@
-Bugfix: Make the `key remove` command behave as documented
-
-https://github.com/restic/restic/pull/1164

@@ -1,3 +1,0 @@
-package signals
-
-func setupSignals() {}

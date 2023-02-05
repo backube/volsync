@@ -1,7 +1,0 @@
-Enhancement: Speed up querying across indices and scanning existing files
-
-This change increases the whenever a blob (part of a file) is searched for in a
-restic repository.  This will reduce cpu usage some when backing up files already
-backed up by restic.  Cpu usage is further decreased when scanning files.
-
-https://github.com/restic/restic/pull/1549

@@ -1,4 +1,0 @@
-Enhancement: Resolve name conflicts, append a counter
-
-https://github.com/restic/restic/issues/1179
-https://github.com/restic/restic/pull/1209

@@ -1,3 +1,0 @@
-Bugfix: Don't cancel timeout after 30 seconds for self-update
-
-https://github.com/restic/restic/issues/2181

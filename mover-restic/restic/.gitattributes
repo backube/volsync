@@ -1,2 +1,0 @@
-# Workaround for https://github.com/golang/go/issues/52268.
-**/testdata/fuzz/*/* eol=lf

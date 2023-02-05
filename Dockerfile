@@ -53,12 +53,20 @@ RUN make rclone
 # Build restic
 FROM golang-builder as restic-builder
 
-COPY /mover-restic/restic ./restic
-COPY /mover-restic/minio-go ./minio-go
+ARG RESTIC_VERSION="v0.15.1"
+ARG RESTIC_GIT_HASH="7d4b7ad9cb45d6801df96fcf61f876d580416fa5"
 
+RUN git clone --depth 1 -b ${RESTIC_VERSION} https://github.com/restic/restic.git
 WORKDIR /workspace/restic
 
-RUN go run build.go
+# Make sure the restic version tag matches the git hash we're expecting
+RUN /bin/bash -c "[[ $(git rev-list -n 1 HEAD) == ${RESTIC_GIT_HASH} ]]"
+
+# HACK: Apply our patch to restic to enable FIPS mode
+RUN find . -name '*.go' -exec sed -ri 's|github.com/minio/sha256-simd|crypto/sha256|' {} \; && go mod tidy
+
+# The fips tag is required for FIPS mode of the minio-go dependency
+RUN go run build.go -tags fips
 
 
 ######################################################################

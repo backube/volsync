@@ -1,3 +1,0 @@
-Enhancement: Add `--group-by` to `forget` command for flexible grouping
-
-https://github.com/restic/restic/pull/1196
