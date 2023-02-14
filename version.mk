@@ -11,7 +11,7 @@
 #
 VERSION := 0.5.2
 # REPLACES_VERSION should be left empty for the first version in a new channel (See more info in Procedures.md)
-REPLACES_VERSION :=
+REPLACES_VERSION := 0.5.1
 OLM_SKIPRANGE := '>=0.4.0 <$(VERSION)'
 CHANNELS := acm-2.6
 DEFAULT_CHANNEL := stable
