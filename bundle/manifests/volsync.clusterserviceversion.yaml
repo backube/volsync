@@ -508,4 +508,5 @@ spec:
     name: restic-container
   - image: quay.io/backube/volsync-mover-syncthing:latest
     name: syncthing-container
+  replaces: volsync.v0.5.1
   version: 0.5.2
