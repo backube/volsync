@@ -177,7 +177,7 @@ var _ = Describe("A cluster w/ StorageContextConstraints", func() {
 				// config/openshift/mover_scc.yaml is updated)
 				Expect(newScc.AllowHostDirVolumePlugin).To(BeFalse())
 				Expect(newScc.FSGroup.Type).To(Equal(ocpsecurityv1.FSGroupStrategyRunAsAny))
-				Expect(newScc.SELinuxContext.Type).To(Equal(ocpsecurityv1.SELinuxStrategyMustRunAs))
+				Expect(newScc.SELinuxContext.Type).To(Equal(ocpsecurityv1.SELinuxStrategyRunAsAny))
 			})
 		})
 
