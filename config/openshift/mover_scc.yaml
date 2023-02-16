@@ -25,7 +25,7 @@ requiredDropCapabilities: [ALL]
 runAsUser:
   type: RunAsAny  # allow mover to run as root
 seLinuxContext:
-  type: MustRunAs
+  type: RunAsAny
 seccompProfiles:
   - runtime/default
 supplementalGroups:
