@@ -55,6 +55,7 @@ type Mover struct {
 	eventRecorder        events.EventRecorder
 	owner                client.Object
 	vh                   *volumehandler.VolumeHandler
+	saHandler            utils.SAHandler
 	containerImage       string
 	key                  *string
 	serviceType          *corev1.ServiceType
@@ -110,7 +111,7 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 	}
 
 	// Prepare ServiceAccount, role, rolebinding
-	sa, err := m.ensureSA(ctx)
+	sa, err := m.saHandler.Reconcile(ctx, m.logger)
 	if sa == nil || err != nil {
 		return mover.InProgress(), err
 	}
@@ -331,22 +332,6 @@ func (m *Mover) getDestinationPVCName() (bool, string) {
 		return false, newPvcName
 	}
 	return true, *m.mainPVCName
-}
-
-// this is so far is common to rclone & restic
-func (m *Mover) ensureSA(ctx context.Context) (*corev1.ServiceAccount, error) {
-	sa := &corev1.ServiceAccount{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "volsync-" + m.direction() + "-" + m.owner.GetName(),
-			Namespace: m.owner.GetNamespace(),
-		},
-	}
-	saDesc := utils.NewSAHandler(ctx, m.client, m.owner, sa, m.privileged)
-	cont, err := saDesc.Reconcile(m.logger)
-	if cont {
-		return sa, err
-	}
-	return nil, err
 }
 
 //nolint:funlen

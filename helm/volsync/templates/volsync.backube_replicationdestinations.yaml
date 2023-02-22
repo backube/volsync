@@ -175,6 +175,9 @@ spec:
                               type: string
                           type: object
                       type: object
+                    moverServiceAccount:
+                      description: MoverServiceAccount allows specifying the name of the service account that will be used by the data mover. This should only be used by advanced users who want to override the service account normally used by the mover. The service account needs to exist in the same namespace as the ReplicationDestination.
+                      type: string
                     rcloneConfig:
                       description: RcloneConfig is the rclone secret name
                       type: string
@@ -331,6 +334,9 @@ spec:
                               type: string
                           type: object
                       type: object
+                    moverServiceAccount:
+                      description: MoverServiceAccount allows specifying the name of the service account that will be used by the data mover. This should only be used by advanced users who want to override the service account normally used by the mover. The service account needs to exist in the same namespace as the ReplicationDestination.
+                      type: string
                     previous:
                       description: Previous specifies the number of image to skip before selecting one to restore from
                       format: int32
@@ -378,6 +384,9 @@ spec:
                       type: string
                     destinationPVC:
                       description: destinationPVC is a PVC to use as the transfer destination instead of automatically provisioning one. Either this field or both capacity and accessModes must be specified.
+                      type: string
+                    moverServiceAccount:
+                      description: MoverServiceAccount allows specifying the name of the service account that will be used by the data mover. This should only be used by advanced users who want to override the service account normally used by the mover. The service account needs to exist in the same namespace as the ReplicationDestination.
                       type: string
                     path:
                       description: path is the remote path to rsync from. Defaults to "/"
@@ -527,6 +536,9 @@ spec:
                               type: string
                           type: object
                       type: object
+                    moverServiceAccount:
+                      description: MoverServiceAccount allows specifying the name of the service account that will be used by the data mover. This should only be used by advanced users who want to override the service account normally used by the mover. The service account needs to exist in the same namespace as the ReplicationDestination.
+                      type: string
                     serviceAnnotations:
                       additionalProperties:
                         type: string

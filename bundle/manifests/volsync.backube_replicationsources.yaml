@@ -273,6 +273,13 @@ spec:
                             type: string
                         type: object
                     type: object
+                  moverServiceAccount:
+                    description: MoverServiceAccount allows specifying the name of
+                      the service account that will be used by the data mover. This
+                      should only be used by advanced users who want to override the
+                      service account normally used by the mover. The service account
+                      needs to exist in the same namespace as the ReplicationSource.
+                    type: string
                   rcloneConfig:
                     description: RcloneConfig is the rclone secret name
                     type: string
@@ -526,6 +533,13 @@ spec:
                             type: string
                         type: object
                     type: object
+                  moverServiceAccount:
+                    description: MoverServiceAccount allows specifying the name of
+                      the service account that will be used by the data mover. This
+                      should only be used by advanced users who want to override the
+                      service account normally used by the mover. The service account
+                      needs to exist in the same namespace as the ReplicationSource.
+                    type: string
                   pruneIntervalDays:
                     description: PruneIntervalDays define how often to prune the repository
                     format: int32
@@ -607,6 +621,13 @@ spec:
                     - None
                     - Clone
                     - Snapshot
+                    type: string
+                  moverServiceAccount:
+                    description: MoverServiceAccount allows specifying the name of
+                      the service account that will be used by the data mover. This
+                      should only be used by advanced users who want to override the
+                      service account normally used by the mover. The service account
+                      needs to exist in the same namespace as the ReplicationSource.
                     type: string
                   path:
                     description: path is the remote path to rsync to. Defaults to
@@ -853,6 +874,13 @@ spec:
                             type: string
                         type: object
                     type: object
+                  moverServiceAccount:
+                    description: MoverServiceAccount allows specifying the name of
+                      the service account that will be used by the data mover. This
+                      should only be used by advanced users who want to override the
+                      service account normally used by the mover. The service account
+                      needs to exist in the same namespace as the ReplicationSource.
+                    type: string
                   port:
                     description: port is the port to connect to for replication. Defaults
                       to 8000.
@@ -1069,6 +1097,13 @@ spec:
                             type: string
                         type: object
                     type: object
+                  moverServiceAccount:
+                    description: MoverServiceAccount allows specifying the name of
+                      the service account that will be used by the data mover. This
+                      should only be used by advanced users who want to override the
+                      service account normally used by the mover. The service account
+                      needs to exist in the same namespace as the ReplicationSource.
+                    type: string
                   peers:
                     description: List of Syncthing peers to be connected for syncing
                     items:

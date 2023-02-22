@@ -30,6 +30,7 @@ import (
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers/mover"
 	"github.com/backube/volsync/controllers/mover/syncthing/api"
+	"github.com/backube/volsync/controllers/utils"
 )
 
 // syncthingContainerImage is the container image name of the syncthing data mover
@@ -110,12 +111,16 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		serviceType = corev1.ServiceTypeClusterIP
 	}
 
+	saHandler := utils.NewSAHandler(client, source, true, privileged,
+		source.Spec.Syncthing.MoverServiceAccount)
+
 	syncthingLogger := logger.WithValues("method", "Syncthing")
 
 	return &Mover{
 		client:               client,
 		logger:               syncthingLogger,
 		owner:                source,
+		saHandler:            saHandler,
 		eventRecorder:        eventRecorder,
 		configCapacity:       source.Spec.Syncthing.ConfigCapacity,
 		configStorageClass:   source.Spec.Syncthing.ConfigStorageClassName,

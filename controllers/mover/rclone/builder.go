@@ -28,6 +28,7 @@ import (
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers/mover"
+	"github.com/backube/volsync/controllers/utils"
 	"github.com/backube/volsync/controllers/volumehandler"
 )
 
@@ -108,17 +109,23 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		return nil, err
 	}
 
+	isSource := true
+
+	saHandler := utils.NewSAHandler(client, source, isSource, privileged,
+		source.Spec.Rclone.MoverServiceAccount)
+
 	return &Mover{
 		client:               client,
 		logger:               logger.WithValues("method", "Rclone"),
 		eventRecorder:        eventRecorder,
 		owner:                source,
 		vh:                   vh,
+		saHandler:            saHandler,
 		containerImage:       rb.getRcloneContainerImage(),
 		rcloneConfigSection:  source.Spec.Rclone.RcloneConfigSection,
 		rcloneDestPath:       source.Spec.Rclone.RcloneDestPath,
 		rcloneConfig:         source.Spec.Rclone.RcloneConfig,
-		isSource:             true,
+		isSource:             isSource,
 		paused:               source.Spec.Paused,
 		mainPVCName:          &source.Spec.SourcePVC,
 		privileged:           privileged,
@@ -149,17 +156,23 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		return nil, err
 	}
 
+	isSource := false
+
+	saHandler := utils.NewSAHandler(client, destination, isSource, privileged,
+		destination.Spec.Rclone.MoverServiceAccount)
+
 	return &Mover{
 		client:               client,
 		logger:               logger.WithValues("method", "Rclone"),
 		eventRecorder:        eventRecorder,
 		owner:                destination,
 		vh:                   vh,
+		saHandler:            saHandler,
 		containerImage:       rb.getRcloneContainerImage(),
 		rcloneConfigSection:  destination.Spec.Rclone.RcloneConfigSection,
 		rcloneDestPath:       destination.Spec.Rclone.RcloneDestPath,
 		rcloneConfig:         destination.Spec.Rclone.RcloneConfig,
-		isSource:             false,
+		isSource:             isSource,
 		paused:               destination.Spec.Paused,
 		mainPVCName:          destination.Spec.Rclone.DestinationPVC,
 		privileged:           privileged,

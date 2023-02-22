@@ -264,7 +264,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 				Expect(k8sClient.Create(ctx, apiSecret)).To(Succeed())
 
 				// ensure the SA exists
-				sa, err = mover.ensureSA(ctx)
+				sa, err = mover.saHandler.Reconcile(ctx, logger)
 				Expect(sa).NotTo(BeNil())
 				Expect(err).NotTo(HaveOccurred())
 
@@ -835,12 +835,47 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 		Context("service account is created", func() {
 			It("creates a new one", func() {
 				// create the SA
-				sa, err := mover.ensureSA(ctx)
+				sa, err := mover.saHandler.Reconcile(ctx, logger)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(sa).NotTo(BeNil())
 
 				// make sure that the SA exists in-cluster
 				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: sa.Name, Namespace: ns.Name}, sa)).To(Succeed())
+			})
+		})
+
+		Context("A user supplied moverServiceAccount is set in the spec", func() {
+			userSuppliedMoverSvcAccount := "cust-svc-acct"
+			BeforeEach(func() {
+				// Update rsSpec to set our own svc account
+				rs.Spec.Syncthing.MoverServiceAccount = &userSuppliedMoverSvcAccount
+			})
+
+			When("The mover service account does not exist", func() {
+				It("The saHandler should fail to reconcile", func() {
+					sa, err := mover.saHandler.Reconcile(ctx, logger)
+					Expect(sa).To(BeNil())
+					Expect(err).To(HaveOccurred())
+					Expect(err).To(HaveOccurred())
+				})
+			})
+
+			When("The mover service account exists", func() {
+				BeforeEach(func() {
+					// Create the svc account
+					userSvcAccount := &corev1.ServiceAccount{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      userSuppliedMoverSvcAccount,
+							Namespace: ns.Name,
+						},
+					}
+					Expect(k8sClient.Create(ctx, userSvcAccount)).To(Succeed())
+				})
+				It("Should use the supplied service account", func() {
+					sa, err := mover.saHandler.Reconcile(ctx, logger)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(sa.GetName()).To(Equal(userSuppliedMoverSvcAccount))
+				})
 			})
 		})
 
@@ -892,7 +927,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 				Expect(k8sClient.Create(ctx, apiSecret)).To(Succeed())
 
 				// ensure the SA exists
-				sa, err = mover.ensureSA(ctx)
+				sa, err = mover.saHandler.Reconcile(ctx, logger)
 				Expect(sa).NotTo(BeNil())
 				Expect(err).NotTo(HaveOccurred())
 

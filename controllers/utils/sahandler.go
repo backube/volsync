@@ -35,7 +35,11 @@ const DefaultSCCName = "volsync-privileged-mover"
 // SCCName is the name of the SCC to use for the mover Jobs
 var SCCName string
 
-type SAHandler struct {
+type SAHandler interface {
+	Reconcile(ctx context.Context, l logr.Logger) (*corev1.ServiceAccount, error)
+}
+
+type SAHandlerVolSync struct {
 	Context     context.Context
 	Client      client.Client
 	SA          *corev1.ServiceAccount
@@ -45,26 +49,63 @@ type SAHandler struct {
 	roleBinding *rbacv1.RoleBinding
 }
 
-func NewSAHandler(ctx context.Context, c client.Client, owner metav1.Object, sa *corev1.ServiceAccount,
-	privileged bool) SAHandler {
-	return SAHandler{
-		Context:    ctx,
-		Client:     c,
-		SA:         sa,
-		Owner:      owner,
-		Privileged: privileged,
+var _ SAHandler = &SAHandlerVolSync{}
+
+type SAHandlerUserSupplied struct {
+	Client client.Client
+	SA     *corev1.ServiceAccount
+}
+
+var _ SAHandler = &SAHandlerUserSupplied{}
+
+func NewSAHandler(c client.Client, owner metav1.Object, isSource,
+	privileged bool, userSuppliedSA *string) SAHandler {
+	if userSuppliedSA == nil {
+		dir := "src"
+		if !isSource {
+			dir = "dst"
+		}
+		sa := &corev1.ServiceAccount{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "volsync-" + dir + "-" + owner.GetName(),
+				Namespace: owner.GetNamespace(),
+			},
+		}
+		return &SAHandlerVolSync{
+			Client:     c,
+			SA:         sa,
+			Owner:      owner,
+			Privileged: privileged,
+		}
+	}
+
+	// User has supplised a moverSecurityContext - use SAHandlerUserSupplied to ensure it exists
+	sa := &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      *userSuppliedSA,
+			Namespace: owner.GetNamespace(),
+		},
+	}
+	return &SAHandlerUserSupplied{
+		Client: c,
+		SA:     sa,
 	}
 }
 
-func (d *SAHandler) Reconcile(l logr.Logger) (bool, error) {
-	return ReconcileBatch(l,
+func (d *SAHandlerVolSync) Reconcile(ctx context.Context, l logr.Logger) (*corev1.ServiceAccount, error) {
+	d.Context = ctx
+	cont, err := ReconcileBatch(l,
 		d.ensureSA,
 		d.ensureRole,
 		d.ensureRoleBinding,
 	)
+	if cont {
+		return d.SA, err
+	}
+	return nil, err
 }
 
-func (d *SAHandler) ensureSA(l logr.Logger) (bool, error) {
+func (d *SAHandlerVolSync) ensureSA(l logr.Logger) (bool, error) {
 	logger := l.WithValues("ServiceAccount", client.ObjectKeyFromObject(d.SA))
 	op, err := ctrlutil.CreateOrUpdate(d.Context, d.Client, d.SA, func() error {
 		if err := ctrl.SetControllerReference(d.Owner, d.SA, d.Client.Scheme()); err != nil {
@@ -83,7 +124,7 @@ func (d *SAHandler) ensureSA(l logr.Logger) (bool, error) {
 	return true, nil
 }
 
-func (d *SAHandler) ensureRole(l logr.Logger) (bool, error) {
+func (d *SAHandlerVolSync) ensureRole(l logr.Logger) (bool, error) {
 	d.role = &rbacv1.Role{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      d.SA.Name,
@@ -120,7 +161,7 @@ func (d *SAHandler) ensureRole(l logr.Logger) (bool, error) {
 	return true, nil
 }
 
-func (d *SAHandler) ensureRoleBinding(l logr.Logger) (bool, error) {
+func (d *SAHandlerVolSync) ensureRoleBinding(l logr.Logger) (bool, error) {
 	d.roleBinding = &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      d.SA.Name,
@@ -155,4 +196,17 @@ func (d *SAHandler) ensureRoleBinding(l logr.Logger) (bool, error) {
 
 	logger.V(1).Info("RoleBinding reconciled", "operation", op)
 	return true, nil
+}
+
+func (d *SAHandlerUserSupplied) Reconcile(ctx context.Context, l logr.Logger) (*corev1.ServiceAccount, error) {
+	// User supplied SA - just ensure the service account exists
+	logger := l.WithValues("User supplied moverServiceAccount", client.ObjectKeyFromObject(d.SA))
+
+	err := d.Client.Get(ctx, client.ObjectKeyFromObject(d.SA), d.SA)
+	if err != nil {
+		logger.Error(err, "Unable to find user supplied moverServiceAccount")
+		return nil, err
+	}
+
+	return d.SA, nil
 }

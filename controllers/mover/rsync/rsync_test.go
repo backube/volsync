@@ -562,12 +562,71 @@ var _ = Describe("Rsync as a source", func() {
 		})
 
 		Context("ServiceAccount, Role, RoleBinding are handled properly", func() {
-			It("Should create a service account", func() {
-				sa, err := mover.ensureSA(ctx)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(sa).ToNot(BeNil())
+			When("Mover is running privileged", func() {
+				It("Should create a service account", func() {
+					sa, err := mover.saHandler.Reconcile(ctx, logger)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(sa).ToNot(BeNil())
 
-				validateSaRoleAndRoleBinding(sa, ns.GetName())
+					validateSaRoleAndRoleBinding(sa, ns.GetName(), true /* privileged */)
+				})
+			})
+
+			When("Mover is unprivileged", func() {
+				It("Should create a service account with role and role binding (no scc access needed)", func() {
+					// Instantiate a separate rclone mover for this tests using unprivileged
+					m, err := commonBuilderForTestSuite.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs,
+						false /* unprivileged */)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(m).NotTo(BeNil())
+					unprivMover, _ := m.(*Mover)
+					Expect(unprivMover).NotTo(BeNil())
+
+					var sa *corev1.ServiceAccount
+					Eventually(func() bool {
+						sa, err = unprivMover.saHandler.Reconcile(ctx, logger)
+						return sa != nil && err == nil
+					}, timeout, interval).Should(BeTrue())
+					Expect(err).ToNot(HaveOccurred())
+
+					validateSaRoleAndRoleBinding(sa, ns.GetName(), false /* unprivileged */)
+				})
+			})
+
+			//nolint:dupl
+			When("A user supplied moverServiceAccount is set in the spec", func() {
+				userSuppliedMoverSvcAccount := "cust-svc-acct"
+				BeforeEach(func() {
+					// Update rsSpec to set our own svc account
+					rs.Spec.Rsync.MoverServiceAccount = &userSuppliedMoverSvcAccount
+				})
+
+				When("The mover service account does not exist", func() {
+					It("The saHandler should fail to reconcile", func() {
+						sa, err := mover.saHandler.Reconcile(ctx, logger)
+						Expect(sa).To(BeNil())
+						Expect(err).To(HaveOccurred())
+						Expect(err).To(HaveOccurred())
+					})
+				})
+
+				When("The mover service account exists", func() {
+					BeforeEach(func() {
+						// Create the svc account
+						userSvcAccount := &corev1.ServiceAccount{
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      userSuppliedMoverSvcAccount,
+								Namespace: ns.Name,
+							},
+						}
+						Expect(k8sClient.Create(ctx, userSvcAccount)).To(Succeed())
+					})
+					It("Should use the supplied service account", func() {
+						sa, err := mover.saHandler.Reconcile(ctx, logger)
+						Expect(err).ToNot(HaveOccurred())
+						Expect(sa.GetName()).To(Equal(userSuppliedMoverSvcAccount))
+					})
+				})
 			})
 		})
 
@@ -1275,17 +1334,76 @@ var _ = Describe("Rsync as a destination", func() {
 			})
 		})
 
+		//nolint:dupl
 		Context("ServiceAccount, Role, RoleBinding are handled properly", func() {
-			It("Should create a service account", func() {
-				var sa *corev1.ServiceAccount
-				var err error
-				Eventually(func() bool {
-					sa, err = mover.ensureSA(ctx)
-					return sa != nil && err == nil
-				}, timeout, interval).Should(BeTrue())
-				Expect(err).ToNot(HaveOccurred())
+			When("Mover is running privileged", func() {
+				It("Should create a service account with role that allows access to the scc", func() {
+					var sa *corev1.ServiceAccount
+					var err error
+					Eventually(func() bool {
+						sa, err = mover.saHandler.Reconcile(ctx, logger)
+						return sa != nil && err == nil
+					}, timeout, interval).Should(BeTrue())
+					Expect(err).ToNot(HaveOccurred())
 
-				validateSaRoleAndRoleBinding(sa, ns.GetName())
+					validateSaRoleAndRoleBinding(sa, ns.GetName(), true /*privileged*/)
+				})
+			})
+
+			When("Mover is unprivileged", func() {
+				It("Should create a service account with role and role binding (no scc access needed)", func() {
+					// Instantiate a separate rclone mover for this tests using unprivileged
+					m, err := commonBuilderForTestSuite.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd,
+						false /* unprivileged */)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(m).NotTo(BeNil())
+					unprivMover, _ := m.(*Mover)
+					Expect(unprivMover).NotTo(BeNil())
+
+					var sa *corev1.ServiceAccount
+					Eventually(func() bool {
+						sa, err = unprivMover.saHandler.Reconcile(ctx, logger)
+						return sa != nil && err == nil
+					}, timeout, interval).Should(BeTrue())
+					Expect(err).ToNot(HaveOccurred())
+
+					validateSaRoleAndRoleBinding(sa, ns.GetName(), false /* unprivileged */)
+				})
+			})
+
+			When("A user supplied moverServiceAccount is set in the spec", func() {
+				userSuppliedMoverSvcAccount := "cust-svc-acct"
+				BeforeEach(func() {
+					// Update rsSpec to set our own svc account
+					rd.Spec.Rsync.MoverServiceAccount = &userSuppliedMoverSvcAccount
+				})
+
+				When("The mover service account does not exist", func() {
+					It("The saHandler should fail to reconcile", func() {
+						sa, err := mover.saHandler.Reconcile(ctx, logger)
+						Expect(sa).To(BeNil())
+						Expect(err).To(HaveOccurred())
+						Expect(err).To(HaveOccurred())
+					})
+				})
+
+				When("The mover service account exists", func() {
+					BeforeEach(func() {
+						// Create the svc account
+						userSvcAccount := &corev1.ServiceAccount{
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      userSuppliedMoverSvcAccount,
+								Namespace: ns.Name,
+							},
+						}
+						Expect(k8sClient.Create(ctx, userSvcAccount)).To(Succeed())
+					})
+					It("Should use the supplied service account", func() {
+						sa, err := mover.saHandler.Reconcile(ctx, logger)
+						Expect(err).ToNot(HaveOccurred())
+						Expect(sa.GetName()).To(Equal(userSuppliedMoverSvcAccount))
+					})
+				})
 			})
 		})
 		Context("Mover Job is handled properly", func() {
@@ -1468,7 +1586,7 @@ var _ = Describe("Rsync as a destination", func() {
 	})
 })
 
-func validateSaRoleAndRoleBinding(sa *corev1.ServiceAccount, namespace string) {
+func validateSaRoleAndRoleBinding(sa *corev1.ServiceAccount, namespace string, privileged bool) {
 	Expect(sa).ToNot(BeNil())
 
 	// Ensure SA, role & rolebinding were created
@@ -1487,6 +1605,18 @@ func validateSaRoleAndRoleBinding(sa *corev1.ServiceAccount, namespace string) {
 	Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sa), sa)).To(Succeed())
 	Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(role), role)).To(Succeed())
 	Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(roleBinding), roleBinding)).To(Succeed())
+
+	if privileged {
+		// Check to make sure the role grants access to the privileged mover scc
+		Expect(len(role.Rules)).To(Equal(1))
+		rule := role.Rules[0]
+		Expect(rule.APIGroups).To(Equal([]string{"security.openshift.io"}))
+		Expect(rule.Resources).To(Equal([]string{"securitycontextconstraints"}))
+		Expect(rule.ResourceNames).To(Equal([]string{utils.SCCName}))
+		Expect(rule.Verbs).To(Equal([]string{"use"}))
+	} else {
+		Expect(len(role.Rules)).To(Equal(0))
+	}
 }
 
 func validateEnvVar(env []corev1.EnvVar, envVarName, envVarExpectedValue string) {

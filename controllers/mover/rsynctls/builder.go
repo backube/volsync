@@ -28,6 +28,7 @@ import (
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers/mover"
+	"github.com/backube/volsync/controllers/utils"
 	"github.com/backube/volsync/controllers/volumehandler"
 )
 
@@ -113,19 +114,25 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		return nil, err
 	}
 
+	isSource := true
+
+	saHandler := utils.NewSAHandler(client, source, isSource, privileged,
+		source.Spec.RsyncTLS.MoverServiceAccount)
+
 	return &Mover{
 		client:               client,
 		logger:               logger.WithValues("method", "RsyncTLS"),
 		eventRecorder:        eventRecorder,
 		owner:                source,
 		vh:                   vh,
+		saHandler:            saHandler,
 		containerImage:       rb.getRsyncTLSContainerImage(),
 		key:                  source.Spec.RsyncTLS.KeySecret,
 		serviceType:          nil,
 		serviceAnnotations:   nil,
 		address:              source.Spec.RsyncTLS.Address,
 		port:                 source.Spec.RsyncTLS.Port,
-		isSource:             true,
+		isSource:             isSource,
 		paused:               source.Spec.Paused,
 		mainPVCName:          &source.Spec.SourcePVC,
 		privileged:           privileged,
@@ -162,6 +169,11 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		return nil, err
 	}
 
+	isSource := false
+
+	saHandler := utils.NewSAHandler(client, destination, isSource, privileged,
+		destination.Spec.RsyncTLS.MoverServiceAccount)
+
 	var svcAnnotations map[string]string
 	if destination.Spec.RsyncTLS.ServiceAnnotations != nil {
 		// If nil we will assume VolSync can set defaults
@@ -176,13 +188,14 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		eventRecorder:        eventRecorder,
 		owner:                destination,
 		vh:                   vh,
+		saHandler:            saHandler,
 		containerImage:       rb.getRsyncTLSContainerImage(),
 		key:                  destination.Spec.RsyncTLS.KeySecret,
 		serviceType:          destination.Spec.RsyncTLS.ServiceType,
 		serviceAnnotations:   svcAnnotations,
 		address:              nil,
 		port:                 nil,
-		isSource:             false,
+		isSource:             isSource,
 		paused:               destination.Spec.Paused,
 		mainPVCName:          destination.Spec.RsyncTLS.DestinationPVC,
 		privileged:           privileged,

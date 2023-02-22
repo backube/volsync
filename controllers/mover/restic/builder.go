@@ -28,6 +28,7 @@ import (
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers/mover"
+	"github.com/backube/volsync/controllers/utils"
 	"github.com/backube/volsync/controllers/volumehandler"
 )
 
@@ -113,18 +114,24 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		return nil, err
 	}
 
+	isSource := true
+
+	saHandler := utils.NewSAHandler(client, source, isSource, privileged,
+		source.Spec.Restic.MoverServiceAccount)
+
 	return &Mover{
 		client:                client,
 		logger:                logger.WithValues("method", "Restic"),
 		eventRecorder:         eventRecorder,
 		owner:                 source,
 		vh:                    vh,
+		saHandler:             saHandler,
 		containerImage:        rb.getResticContainerImage(),
 		cacheAccessModes:      source.Spec.Restic.CacheAccessModes,
 		cacheCapacity:         source.Spec.Restic.CacheCapacity,
 		cacheStorageClassName: source.Spec.Restic.CacheStorageClassName,
 		repositoryName:        source.Spec.Restic.Repository,
-		isSource:              true,
+		isSource:              isSource,
 		paused:                source.Spec.Paused,
 		mainPVCName:           &source.Spec.SourcePVC,
 		caSecretName:          source.Spec.Restic.CustomCA.SecretName,
@@ -160,18 +167,24 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		return nil, err
 	}
 
+	isSource := false
+
+	saHandler := utils.NewSAHandler(client, destination, isSource, privileged,
+		destination.Spec.Restic.MoverServiceAccount)
+
 	return &Mover{
 		client:                client,
 		logger:                logger.WithValues("method", "Restic"),
 		eventRecorder:         eventRecorder,
 		owner:                 destination,
 		vh:                    vh,
+		saHandler:             saHandler,
 		containerImage:        rb.getResticContainerImage(),
 		cacheAccessModes:      destination.Spec.Restic.CacheAccessModes,
 		cacheCapacity:         destination.Spec.Restic.CacheCapacity,
 		cacheStorageClassName: destination.Spec.Restic.CacheStorageClassName,
 		repositoryName:        destination.Spec.Restic.Repository,
-		isSource:              false,
+		isSource:              isSource,
 		paused:                destination.Spec.Paused,
 		mainPVCName:           destination.Spec.Restic.DestinationPVC,
 		caSecretName:          destination.Spec.Restic.CustomCA.SecretName,
