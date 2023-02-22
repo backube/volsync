@@ -241,7 +241,7 @@ $(ENVTEST): $(LOCALBIN)
 YQ := $(LOCALBIN)/yq
 yq: $(YQ) ## Download yq locally if necessary.
 $(YQ): $(LOCALBIN)
-	GOBIN=$(LOCALBIN) go install github.com/mikefarah/yq/v4@latest
+	GOFLAGS= GOBIN=$(LOCALBIN) go install github.com/mikefarah/yq/v4@latest
 
 .PHONY: bundle
 bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
