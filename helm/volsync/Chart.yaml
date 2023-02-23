@@ -10,6 +10,9 @@ maintainers:
   - name: John Strunk
     email: jstrunk@redhat.com
     url: https://github.com/JohnStrunk
+  - name: Tesshu Flower
+    email: tflower@redhat.com
+    url: https://github.com/tesshuflower
 keywords:
   - backup
   - csi
