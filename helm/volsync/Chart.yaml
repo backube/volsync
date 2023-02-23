@@ -10,6 +10,9 @@ maintainers:
   - name: John Strunk
     email: jstrunk@redhat.com
     url: https://github.com/JohnStrunk
+  - name: Tesshu Flower
+    email: tflower@redhat.com
+    url: https://github.com/tesshuflower
 keywords:
   - backup
   - csi
@@ -40,8 +43,8 @@ annotations:  # https://artifacthub.io/docs/topics/annotations/helm/
   artifacthub.io/operator: "true"
   artifacthub.io/operatorCapabilities: Basic Install
   artifacthub.io/signKey: |
-    fingerprint: 74FC7E7EFD0FF009513CC9E39360133DBD1FF508
-    url: https://keys.openpgp.org/vks/v1/by-fingerprint/74FC7E7EFD0FF009513CC9E39360133DBD1FF508
+    fingerprint: 2C937ADACD4BEF921197F66EDC7556B1903A252B
+    url: https://keys.openpgp.org/vks/v1/by-fingerprint/2C937ADACD4BEF921197F66EDC7556B1903A252B
 
 # We require v1 CSI snapshots (1.20+)
 # Adding "-0" at the end of the version string permits pre-release kube versions
@@ -51,10 +54,10 @@ kubeVersion: "^1.20.0-0"
 # This is the chart version. This version number should be incremented each time
 # you make changes to the chart and its templates, including the app version.
 # Versions are expected to follow Semantic Versioning (https://semver.org/)
-version: "0.5.0"
+version: "0.6.0"
 
 # This is the version number of the application being deployed. This version
 # number should be incremented each time you make changes to the application.
 # Versions are not expected to follow Semantic Versioning. They should reflect
 # the version the application is using. It is recommended to use it with quotes.
-appVersion: "0.5.0"
+appVersion: "0.6.0"
