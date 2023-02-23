@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - New rsync-tls data mover that will replace the existing rsync-ssh mover
+- moverServiceAccount parameter in the spec to allow advanced users to specify
+  their own service account to be used by mover jobs/deploys
 
 ### Changed
 
