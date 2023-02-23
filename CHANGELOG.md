@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [unreleased]
 
+### Added
+
+- New rsync-tls data mover that will replace the existing rsync-ssh mover
+
+### Changed
+
+- VolSync now uses a single container image for the controller and all movers
+
+### Fixed
+
+- Syncthing should ignore lost+found directory
+
+### Security
+
+- kube-rbac-proxy upgraded to 0.14.0
+- All movers, except rsync-ssh, now run with reduced privileges by default (see docs)
+
+## [0.6.0]
+
+### Added
+
+- restic - allow passing in GOOGLE_APPLICATION_CREDENTIALS as a file
+
 ### Changed
 
 - :warning: Breaking change :warning: - Helm chart now manages VolSync CRDs
@@ -36,10 +59,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   customresourcedefinition.apiextensions.k8s.io/replicationsources.volsync.backube annotated
   ```
 
+- VolSync privileged mover SCC installed at startup on OpenShift
 - Syncthing upgraded to 1.22.1
+- Updates to build with golang 1.19
+
+### Fixed
+
+- ReplicationSource fixes for rsync, rclone and restic to enable mounting
+  ROX source PVCs as read-only
 
 ### Security
 
+- rclone mover updated to run with reduced privileges by default
+- restic mover updated to run with reduced privileges by default
+- syncthing mover updated to run with reduced privileges by default
 - kube-rbac-proxy upgraded to 0.13.1
 
 ## [0.5.1]
@@ -164,7 +197,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for rsync & rclone replication
 - Helm chart to deploy operator
 
-[Unreleased]: https://github.com/backube/volsync/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/backube/volsync/compare/release-0.6...HEAD
+[0.6.0]: https://github.com/backube/volsync/compare/release-0.5...v0.6.0
 [0.5.1]: https://github.com/backube/volsync/compare/v0.5.0...release-0.5
 [0.5.0]: https://github.com/backube/volsync/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/backube/volsync/compare/v0.3.0...v0.4.0
