@@ -114,6 +114,12 @@ type ReplicationDestinationRsyncSpec struct {
 	// sshUser is the username for outgoing SSH connections. Defaults to "root".
 	//+optional
 	SSHUser *string `json:"sshUser,omitempty"`
+	// MoverServiceAccount allows specifying the name of the service account
+	// that will be used by the data mover. This should only be used by advanced
+	// users who want to override the service account normally used by the mover.
+	// The service account needs to exist in the same namespace as the ReplicationDestination.
+	//+optional
+	MoverServiceAccount *string `json:"moverServiceAccount,omitempty"`
 }
 
 // ReplicationDestinationRcloneSpec defines the field for rclone in replicationDestination.
@@ -128,6 +134,12 @@ type ReplicationDestinationRcloneSpec struct {
 	// MoverSecurityContext allows specifying the PodSecurityContext that will
 	// be used by the data mover
 	MoverSecurityContext *corev1.PodSecurityContext `json:"moverSecurityContext,omitempty"`
+	// MoverServiceAccount allows specifying the name of the service account
+	// that will be used by the data mover. This should only be used by advanced
+	// users who want to override the service account normally used by the mover.
+	// The service account needs to exist in the same namespace as the ReplicationDestination.
+	//+optional
+	MoverServiceAccount *string `json:"moverServiceAccount,omitempty"`
 }
 
 // ReplicationDestinationExternalSpec defines the configuration when using an
@@ -221,6 +233,12 @@ type ReplicationDestinationResticSpec struct {
 	// MoverSecurityContext allows specifying the PodSecurityContext that will
 	// be used by the data mover
 	MoverSecurityContext *corev1.PodSecurityContext `json:"moverSecurityContext,omitempty"`
+	// MoverServiceAccount allows specifying the name of the service account
+	// that will be used by the data mover. This should only be used by advanced
+	// users who want to override the service account normally used by the mover.
+	// The service account needs to exist in the same namespace as the ReplicationDestination.
+	//+optional
+	MoverServiceAccount *string `json:"moverServiceAccount,omitempty"`
 }
 
 // ReplicationDestinationStatus defines the observed state of ReplicationDestination

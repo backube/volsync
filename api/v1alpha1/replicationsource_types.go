@@ -116,6 +116,12 @@ type ReplicationSourceRsyncSpec struct {
 	// sshUser is the username for outgoing SSH connections. Defaults to "root".
 	//+optional
 	SSHUser *string `json:"sshUser,omitempty"`
+	// MoverServiceAccount allows specifying the name of the service account
+	// that will be used by the data mover. This should only be used by advanced
+	// users who want to override the service account normally used by the mover.
+	// The service account needs to exist in the same namespace as the ReplicationSource.
+	//+optional
+	MoverServiceAccount *string `json:"moverServiceAccount,omitempty"`
 }
 
 // ReplicationSourceRcloneSpec defines the field for rclone in replicationSource.
@@ -130,6 +136,12 @@ type ReplicationSourceRcloneSpec struct {
 	// MoverSecurityContext allows specifying the PodSecurityContext that will
 	// be used by the data mover
 	MoverSecurityContext *corev1.PodSecurityContext `json:"moverSecurityContext,omitempty"`
+	// MoverServiceAccount allows specifying the name of the service account
+	// that will be used by the data mover. This should only be used by advanced
+	// users who want to override the service account normally used by the mover.
+	// The service account needs to exist in the same namespace as the ReplicationSource.
+	//+optional
+	MoverServiceAccount *string `json:"moverServiceAccount,omitempty"`
 }
 
 // ResticRetainPolicy defines the feilds for Restic backup
@@ -186,6 +198,12 @@ type ReplicationSourceResticSpec struct {
 	// MoverSecurityContext allows specifying the PodSecurityContext that will
 	// be used by the data mover
 	MoverSecurityContext *corev1.PodSecurityContext `json:"moverSecurityContext,omitempty"`
+	// MoverServiceAccount allows specifying the name of the service account
+	// that will be used by the data mover. This should only be used by advanced
+	// users who want to override the service account normally used by the mover.
+	// The service account needs to exist in the same namespace as the ReplicationSource.
+	//+optional
+	MoverServiceAccount *string `json:"moverServiceAccount,omitempty"`
 }
 
 // ReplicationSourceResticStatus defines the field for ReplicationSourceStatus in ReplicationSourceStatus
@@ -214,6 +232,12 @@ type ReplicationSourceSyncthingSpec struct {
 	// MoverSecurityContext allows specifying the PodSecurityContext that will
 	// be used by the data mover
 	MoverSecurityContext *corev1.PodSecurityContext `json:"moverSecurityContext,omitempty"`
+	// MoverServiceAccount allows specifying the name of the service account
+	// that will be used by the data mover. This should only be used by advanced
+	// users who want to override the service account normally used by the mover.
+	// The service account needs to exist in the same namespace as the ReplicationSource.
+	//+optional
+	MoverServiceAccount *string `json:"moverServiceAccount,omitempty"`
 }
 
 // ReplicationSourceSpec defines the desired state of ReplicationSource

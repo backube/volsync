@@ -104,6 +104,7 @@ type Mover struct {
 	client               client.Client
 	logger               logr.Logger
 	owner                client.Object
+	saHandler            utils.SAHandler
 	eventRecorder        events.EventRecorder
 	configCapacity       *resource.Quantity
 	configStorageClass   *string
@@ -178,7 +179,7 @@ func (m *Mover) ensureNecessaryResources(ctx context.Context) (*corev1.Service, 
 		return nil, nil, err
 	}
 
-	sa, err := m.ensureSA(ctx)
+	sa, err := m.saHandler.Reconcile(ctx, m.logger)
 	if sa == nil || err != nil {
 		return nil, nil, err
 	}
@@ -368,22 +369,6 @@ func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) 
 	}
 	m.logger.Info("created secret", secret.Name, secret)
 	return secret, nil
-}
-
-// ensureSA Ensures a VolSync ServiceAccount to be used by the operator.
-func (m *Mover) ensureSA(ctx context.Context) (*corev1.ServiceAccount, error) {
-	sa := &corev1.ServiceAccount{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "volsync-src-" + m.owner.GetName(),
-			Namespace: m.owner.GetNamespace(),
-		},
-	}
-	saDesc := utils.NewSAHandler(ctx, m.client, m.owner, sa, m.privileged)
-	cont, err := saDesc.Reconcile(m.logger)
-	if cont {
-		return sa, err
-	}
-	return nil, err
 }
 
 // ensureDeployment Will ensure that a Deployment for the Syncthing mover exists, or it will be created.

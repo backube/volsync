@@ -28,6 +28,7 @@ import (
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers/mover"
+	"github.com/backube/volsync/controllers/utils"
 	"github.com/backube/volsync/controllers/volumehandler"
 )
 
@@ -113,19 +114,25 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		return nil, err
 	}
 
+	isSource := true
+
+	saHandler := utils.NewSAHandler(client, source, isSource, true, /*Rsync runs privileged only*/
+		source.Spec.Rsync.MoverServiceAccount)
+
 	return &Mover{
 		client:             client,
 		logger:             logger.WithValues("method", "Rsync"),
 		eventRecorder:      eventRecorder,
 		owner:              source,
 		vh:                 vh,
+		saHandler:          saHandler,
 		containerImage:     rb.getRsyncContainerImage(),
 		sshKeys:            source.Spec.Rsync.SSHKeys,
 		serviceType:        source.Spec.Rsync.ServiceType,
 		serviceAnnotations: nil,
 		address:            source.Spec.Rsync.Address,
 		port:               source.Spec.Rsync.Port,
-		isSource:           true,
+		isSource:           isSource,
 		paused:             source.Spec.Paused,
 		mainPVCName:        &source.Spec.SourcePVC,
 		sourceStatus:       source.Status.Rsync,
@@ -160,6 +167,11 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		return nil, err
 	}
 
+	isSource := false
+
+	saHandler := utils.NewSAHandler(client, destination, isSource, true, /*Rsync runs privileged only*/
+		destination.Spec.Rsync.MoverServiceAccount)
+
 	var svcAnnotations map[string]string
 	if destination.Spec.Rsync.ServiceAnnotations != nil {
 		// If nil we will assume VolSync can set defaults
@@ -174,13 +186,14 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		eventRecorder:      eventRecorder,
 		owner:              destination,
 		vh:                 vh,
+		saHandler:          saHandler,
 		containerImage:     rb.getRsyncContainerImage(),
 		sshKeys:            destination.Spec.Rsync.SSHKeys,
 		serviceType:        destination.Spec.Rsync.ServiceType,
 		serviceAnnotations: svcAnnotations,
 		address:            destination.Spec.Rsync.Address,
 		port:               destination.Spec.Rsync.Port,
-		isSource:           false,
+		isSource:           isSource,
 		paused:             destination.Spec.Paused,
 		mainPVCName:        destination.Spec.Rsync.DestinationPVC,
 		destStatus:         destination.Status.Rsync,

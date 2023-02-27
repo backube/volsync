@@ -1070,7 +1070,7 @@ var _ = Describe("Restic as a destination", func() {
 		})
 		When("the service account is created", func() {
 			It("exists", func() {
-				sa, err := mover.ensureSA(ctx)
+				sa, err := mover.saHandler.Reconcile(ctx, logger)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(sa).NotTo(BeNil())
 				saName := sa.Name
@@ -1082,6 +1082,41 @@ var _ = Describe("Restic as a destination", func() {
 				Expect(sa2.Name).To(Equal(sa.Name))
 			})
 		})
+		When("A user supplied moverServiceAccount is set in the spec", func() {
+			userSuppliedMoverSvcAccount := "cust-svc-acct"
+			BeforeEach(func() {
+				// Update rsSpec to set our own svc account
+				rd.Spec.Restic.MoverServiceAccount = &userSuppliedMoverSvcAccount
+			})
+
+			When("The mover service account does not exist", func() {
+				It("The saHandler should fail to reconcile", func() {
+					sa, err := mover.saHandler.Reconcile(ctx, logger)
+					Expect(sa).To(BeNil())
+					Expect(err).To(HaveOccurred())
+					Expect(err).To(HaveOccurred())
+				})
+			})
+
+			When("The mover service account exists", func() {
+				BeforeEach(func() {
+					// Create the svc account
+					userSvcAccount := &corev1.ServiceAccount{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      userSuppliedMoverSvcAccount,
+							Namespace: ns.Name,
+						},
+					}
+					Expect(k8sClient.Create(ctx, userSvcAccount)).To(Succeed())
+				})
+				It("Should use the supplied service account", func() {
+					sa, err := mover.saHandler.Reconcile(ctx, logger)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(sa.GetName()).To(Equal(userSuppliedMoverSvcAccount))
+				})
+			})
+		})
+
 		Context("mover Job is handled properly", func() {
 			var jobName string
 			var dPVC *corev1.PersistentVolumeClaim
