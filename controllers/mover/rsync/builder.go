@@ -116,7 +116,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 
 	isSource := true
 
-	saHandler := utils.NewSAHandler(client, source, isSource, privileged,
+	saHandler := utils.NewSAHandler(client, source, isSource, true, /*Rsync runs privileged only*/
 		source.Spec.Rsync.MoverServiceAccount)
 
 	return &Mover{
@@ -169,7 +169,7 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 
 	isSource := false
 
-	saHandler := utils.NewSAHandler(client, destination, isSource, privileged,
+	saHandler := utils.NewSAHandler(client, destination, isSource, true, /*Rsync runs privileged only*/
 		destination.Spec.Rsync.MoverServiceAccount)
 
 	var svcAnnotations map[string]string

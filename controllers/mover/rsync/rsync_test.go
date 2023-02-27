@@ -568,12 +568,17 @@ var _ = Describe("Rsync as a source", func() {
 					Expect(err).ToNot(HaveOccurred())
 					Expect(sa).ToNot(BeNil())
 
-					validateSaRoleAndRoleBinding(sa, ns.GetName(), true /* privileged */)
+					validateSaRoleAndRoleBinding(sa, ns.GetName())
 				})
 			})
 
 			When("Mover is unprivileged", func() {
-				It("Should create a service account with role and role binding (no scc access needed)", func() {
+				// This test is here as the common builder func will instantiate rsync (FromSource/Dest)
+				// with privileged=false if there is no privileged annotation from the namespace, but
+				// rsync is a special case and will always run unprivileged (rsync-tls uses the new behavior
+				// and rsync will eventually get deprecated)
+				It("Should create a service account with role and role binding with access to scc "+
+					"(rsync always runs privileged)", func() {
 					// Instantiate a separate rclone mover for this tests using unprivileged
 					m, err := commonBuilderForTestSuite.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs,
 						false /* unprivileged */)
@@ -589,7 +594,7 @@ var _ = Describe("Rsync as a source", func() {
 					}, timeout, interval).Should(BeTrue())
 					Expect(err).ToNot(HaveOccurred())
 
-					validateSaRoleAndRoleBinding(sa, ns.GetName(), false /* unprivileged */)
+					validateSaRoleAndRoleBinding(sa, ns.GetName())
 				})
 			})
 
@@ -1346,12 +1351,17 @@ var _ = Describe("Rsync as a destination", func() {
 					}, timeout, interval).Should(BeTrue())
 					Expect(err).ToNot(HaveOccurred())
 
-					validateSaRoleAndRoleBinding(sa, ns.GetName(), true /*privileged*/)
+					validateSaRoleAndRoleBinding(sa, ns.GetName())
 				})
 			})
 
 			When("Mover is unprivileged", func() {
-				It("Should create a service account with role and role binding (no scc access needed)", func() {
+				// This test is here as the common builder func will instantiate rsync (FromSource/Dest)
+				// with privileged=false if there is no privileged annotation from the namespace, but
+				// rsync is a special case and will always run unprivileged (rsync-tls uses the new behavior
+				// and rsync will eventually get deprecated)
+				It("Should create a service account with role and role binding with access to scc "+
+					"(rsync always runs privileged)", func() {
 					// Instantiate a separate rclone mover for this tests using unprivileged
 					m, err := commonBuilderForTestSuite.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd,
 						false /* unprivileged */)
@@ -1367,7 +1377,7 @@ var _ = Describe("Rsync as a destination", func() {
 					}, timeout, interval).Should(BeTrue())
 					Expect(err).ToNot(HaveOccurred())
 
-					validateSaRoleAndRoleBinding(sa, ns.GetName(), false /* unprivileged */)
+					validateSaRoleAndRoleBinding(sa, ns.GetName())
 				})
 			})
 
@@ -1586,7 +1596,7 @@ var _ = Describe("Rsync as a destination", func() {
 	})
 })
 
-func validateSaRoleAndRoleBinding(sa *corev1.ServiceAccount, namespace string, privileged bool) {
+func validateSaRoleAndRoleBinding(sa *corev1.ServiceAccount, namespace string) {
 	Expect(sa).ToNot(BeNil())
 
 	// Ensure SA, role & rolebinding were created
@@ -1606,17 +1616,14 @@ func validateSaRoleAndRoleBinding(sa *corev1.ServiceAccount, namespace string, p
 	Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(role), role)).To(Succeed())
 	Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(roleBinding), roleBinding)).To(Succeed())
 
-	if privileged {
-		// Check to make sure the role grants access to the privileged mover scc
-		Expect(len(role.Rules)).To(Equal(1))
-		rule := role.Rules[0]
-		Expect(rule.APIGroups).To(Equal([]string{"security.openshift.io"}))
-		Expect(rule.Resources).To(Equal([]string{"securitycontextconstraints"}))
-		Expect(rule.ResourceNames).To(Equal([]string{utils.SCCName}))
-		Expect(rule.Verbs).To(Equal([]string{"use"}))
-	} else {
-		Expect(len(role.Rules)).To(Equal(0))
-	}
+	// Check to make sure the role grants access to the privileged mover scc
+	// rsync should always run privileged
+	Expect(len(role.Rules)).To(Equal(1))
+	rule := role.Rules[0]
+	Expect(rule.APIGroups).To(Equal([]string{"security.openshift.io"}))
+	Expect(rule.Resources).To(Equal([]string{"securitycontextconstraints"}))
+	Expect(rule.ResourceNames).To(Equal([]string{utils.SCCName}))
+	Expect(rule.Verbs).To(Equal([]string{"use"}))
 }
 
 func validateEnvVar(env []corev1.EnvVar, envVarName, envVarExpectedValue string) {
