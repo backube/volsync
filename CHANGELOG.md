@@ -24,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - kube-rbac-proxy upgraded to 0.14.0
 - All movers, except rsync-ssh, now run with reduced privileges by default (see docs)
 
+## [0.6.1]
+
+### Fixed
+
+- set HTTP_PROXY, HTTPS_PROXY, NO_PROXY env vars on mover pod if they are set on
+  the controller. Allows for cluster-wide proxy usage.
+
 ## [0.6.0]
 
 ### Added
@@ -74,6 +81,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - restic mover updated to run with reduced privileges by default
 - syncthing mover updated to run with reduced privileges by default
 - kube-rbac-proxy upgraded to 0.13.1
+
+## [0.5.2]
+
+### Changed
+
+- Updated release to build on golang 1.19 (except for the syncthing mover)
+- remove deprecated io/ioutil and move to using functions in package os
 
 ## [0.5.1]
 
@@ -198,8 +212,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Helm chart to deploy operator
 
 [Unreleased]: https://github.com/backube/volsync/compare/release-0.6...HEAD
+[0.6.1]: https://github.com/backube/volsync/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/backube/volsync/compare/release-0.5...v0.6.0
-[0.5.1]: https://github.com/backube/volsync/compare/v0.5.0...release-0.5
+[0.5.2]: https://github.com/backube/volsync/compare/v0.5.1...v0.5.2
+[0.5.1]: https://github.com/backube/volsync/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/backube/volsync/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/backube/volsync/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/backube/volsync/compare/v0.2.0...v0.3.0
