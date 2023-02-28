@@ -237,15 +237,20 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 		}
 		job.Spec.Parallelism = &parallelism
 
+		envVars := []corev1.EnvVar{
+			{Name: "RCLONE_CONFIG", Value: "/rclone-config/rclone.conf"},
+			{Name: "RCLONE_DEST_PATH", Value: *m.rcloneDestPath},
+			{Name: "DIRECTION", Value: direction},
+			{Name: "MOUNT_PATH", Value: mountPath},
+			{Name: "RCLONE_CONFIG_SECTION", Value: *m.rcloneConfigSection},
+		}
+
+		// Cluster-wide proxy settings
+		envVars = utils.AppendEnvVarsForClusterWideProxy(envVars)
+
 		job.Spec.Template.Spec.Containers = []corev1.Container{{
-			Name: "rclone",
-			Env: []corev1.EnvVar{
-				{Name: "RCLONE_CONFIG", Value: "/rclone-config/rclone.conf"},
-				{Name: "RCLONE_DEST_PATH", Value: *m.rcloneDestPath},
-				{Name: "DIRECTION", Value: direction},
-				{Name: "MOUNT_PATH", Value: mountPath},
-				{Name: "RCLONE_CONFIG_SECTION", Value: *m.rcloneConfigSection},
-			},
+			Name:    "rclone",
+			Env:     envVars,
 			Command: []string{"/bin/bash", "-c", "./active.sh"},
 			Image:   m.containerImage,
 			SecurityContext: &corev1.SecurityContext{
