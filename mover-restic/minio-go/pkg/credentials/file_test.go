@@ -20,10 +20,14 @@ package credentials
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
 func TestFileAWS(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("\"/bin/cat\": file does not exist")
+	}
 	os.Clearenv()
 
 	creds := NewFileAWSCredentials("credentials.sample", "")
@@ -119,6 +123,27 @@ func TestFileAWS(t *testing.T) {
 	}
 	if !creds.IsExpired() {
 		t.Error("Should be expired if not loaded")
+	}
+
+	os.Clearenv()
+
+	creds = NewFileAWSCredentials("credentials.sample", "with_process")
+	credValues, err = creds.Get()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if credValues.AccessKeyID != "accessKey" {
+		t.Errorf("Expected 'accessKey', got %s'", credValues.AccessKeyID)
+	}
+	if credValues.SecretAccessKey != "secret" {
+		t.Errorf("Expected 'secret', got %s'", credValues.SecretAccessKey)
+	}
+	if credValues.SessionToken != "token" {
+		t.Errorf("Expected 'token', got %s'", credValues.SessionToken)
+	}
+	if creds.IsExpired() {
+		t.Error("Should not be expired")
 	}
 }
 
