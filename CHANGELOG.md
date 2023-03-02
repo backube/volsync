@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - VolSync now uses a single container image for the controller and all movers
 - Rclone upgraded to v1.61.1
+- Syncthing upgraded to v1.23.1
 
 ### Fixed
 
