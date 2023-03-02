@@ -26,10 +26,20 @@ annotations:  # https://artifacthub.io/docs/topics/annotations/helm/
   artifacthub.io/changes: |
     - kind: added
       description: New rsync-tls mover that uses stunnel instead of sshd for rsync traffic
+    - kind: added
+      description: moverServiceAccount parameter in the spec for advanced users
     - kind: changed
       description: All movers except rsync-ssh run as a normal user (see docs)
     - kind: changed
       description: VolSync now uses a single container image for the controller and all movers
+    - kind: changed
+      description: Rclone upgraded to v1.61.1
+    - kind: changed
+      description: Restic upgraded to 0.13.1
+    - kind: changed
+      description: Syncthing upgraded to v1.23.1
+    - kind: fixed
+      description: Syncthing should ignore lost+found directory
     - kind: security
       description: kube-rbac-proxy upgraded to 0.14.0
   artifacthub.io/crds: |
