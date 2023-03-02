@@ -359,7 +359,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 			utils.EnvFromSecret(repo.Name, "RESTIC_COMPRESSION", true), // New in v0.14.0
 			utils.EnvFromSecret(repo.Name, "RESTIC_PACK_SIZE", true),   // New in v0.14.0
 
-			//utils.EnvFromSecret(repo.Name, "RESTIC_READ_CONCURRENCY", true), // This is in main, but not yet in v0.14.0
+			utils.EnvFromSecret(repo.Name, "RESTIC_READ_CONCURRENCY", true), // New in v0.15.0
 
 			// Optional variables based on what backend is used for restic
 			utils.EnvFromSecret(repo.Name, "AWS_ACCESS_KEY_ID", true),
