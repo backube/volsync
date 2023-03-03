@@ -35,7 +35,7 @@ annotations:  # https://artifacthub.io/docs/topics/annotations/helm/
     - kind: changed
       description: Rclone upgraded to v1.61.1
     - kind: changed
-      description: Restic upgraded to 0.13.1
+      description: Restic upgraded to 0.15.1
     - kind: changed
       description: Syncthing upgraded to v1.23.1
     - kind: fixed
