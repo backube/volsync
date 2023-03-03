@@ -62,10 +62,14 @@ When creating a release branch use the format `release-X.Y`. For example
   ```
 
 * Commit the generated changes in custom-scorecard-tests (particularly the
-  config.yaml).
+  config.yaml) in the `release-X.Y` branch.
 * custom-scorecard-tests/config.yaml should also be copied over to the CICD
   midstream repo (volsync-projects) in the appropriate downstream build
   branch.
+
+* In the main branch, edit the [periodic.yml](.github/workflows/periodic.yml)
+  github actions workflow to enable periodic builds for the newly created
+  `release-X.Y` branch.
 
 ## Creating/Updating the operator bundle
 
