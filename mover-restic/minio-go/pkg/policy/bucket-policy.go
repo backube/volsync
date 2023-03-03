@@ -32,9 +32,9 @@ type BucketPolicy string
 // Different types of Policies currently supported for buckets.
 const (
 	BucketPolicyNone      BucketPolicy = "none"
-	BucketPolicyReadOnly               = "readonly"
-	BucketPolicyReadWrite              = "readwrite"
-	BucketPolicyWriteOnly              = "writeonly"
+	BucketPolicyReadOnly  BucketPolicy = "readonly"
+	BucketPolicyReadWrite BucketPolicy = "readwrite"
+	BucketPolicyWriteOnly BucketPolicy = "writeonly"
 )
 
 // IsValidBucketPolicy - returns true if policy is valid and supported, false otherwise.
@@ -429,10 +429,10 @@ func removeStatements(statements []Statement, bucketName string, prefix string) 
 	return out
 }
 
-//  Appends given statement into statement list to have unique statements.
-//  - If statement already exists in statement list, it ignores.
-//  - If statement exists with different conditions, they are merged.
-//  - Else the statement is appended to statement list.
+// Appends given statement into statement list to have unique statements.
+// - If statement already exists in statement list, it ignores.
+// - If statement exists with different conditions, they are merged.
+// - Else the statement is appended to statement list.
 func appendStatement(statements []Statement, statement Statement) []Statement {
 	for i, s := range statements {
 		if s.Actions.Equals(statement.Actions) &&
