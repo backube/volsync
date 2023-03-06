@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # https://github.com/actions/add-to-project
-      - uses: actions/add-to-project@960fbad431afda394cfcf8743445e741acd19e85  # v0.4.0
+      - uses: actions/add-to-project@4756e6330fe1e0a736690d3cfd9f11c9399c2ed4  # v0.4.1
         with:
           project-url: https://github.com/orgs/backube/projects/1
           # PAT needs repo & project scope
