@@ -31,8 +31,8 @@ import (
 var _ = Describe("Volume affinity", func() {
 	logger := zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
 	var ns *corev1.Namespace
-	var rwxPVC, rwoBoth, rwoPending, rwoNone, vsOnly *corev1.PersistentVolumeClaim
-	var runningPod, pendingPod, vsPod *corev1.Pod
+	var rwxPVC, rwoBoth, rwoPending, rwoPendingWithoutNodeName, rwoNone, vsOnly *corev1.PersistentVolumeClaim
+	var runningPod, pendingPod, pendingPodWithoutNodeName, vsPod *corev1.Pod
 
 	makePVC := func(name string, mode corev1.PersistentVolumeAccessMode) *corev1.PersistentVolumeClaim {
 		pvc := &corev1.PersistentVolumeClaim{
@@ -57,8 +57,17 @@ var _ = Describe("Volume affinity", func() {
 		return pvc
 	}
 
-	makePod := func(name string, PVCs []corev1.PersistentVolumeClaim, phase corev1.PodPhase, isVolsync bool) *corev1.Pod {
-		uniqueNodeName := name + "-" + ns.Name + "-node" // Make a unique node name based on the ns & pod name
+	makePod := func(
+		name string,
+		PVCs []corev1.PersistentVolumeClaim,
+		phase corev1.PodPhase,
+		isVolsync bool,
+		hasNodeName bool,
+	) *corev1.Pod {
+		var uniqueNodeName string
+		if hasNodeName {
+			uniqueNodeName = name + "-" + ns.Name + "-node" // Make a unique node name based on the ns & pod name
+		}
 
 		pod := &corev1.Pod{
 			ObjectMeta: metav1.ObjectMeta{
@@ -133,6 +142,8 @@ var _ = Describe("Volume affinity", func() {
 		rwoBoth = makePVC("rwo-both", corev1.ReadWriteOnce)
 		// Used only by pending pod
 		rwoPending = makePVC("rwo-pending", corev1.ReadWriteOnce)
+		// Used only by pending pod without nodename
+		rwoPendingWithoutNodeName = makePVC("rwo-pending-no-nodename", corev1.ReadWriteOnce)
 		// Not used by any pods
 		rwoNone = makePVC("rwo-none", corev1.ReadWriteOnce)
 		// Only used by a VolSync-owned Pod
@@ -142,15 +153,19 @@ var _ = Describe("Volume affinity", func() {
 		runningPod = makePod("running",
 			[]corev1.PersistentVolumeClaim{*rwxPVC, *rwoBoth},
 			corev1.PodRunning,
-			false)
+			false, true)
 		pendingPod = makePod("pending",
 			[]corev1.PersistentVolumeClaim{*rwoBoth, *rwoPending},
 			corev1.PodPending,
-			false)
+			false, true)
+		pendingPodWithoutNodeName = makePod("pending-without-nodename",
+			[]corev1.PersistentVolumeClaim{*rwoPendingWithoutNodeName},
+			corev1.PodPending,
+			false, false)
 		vsPod = makePod("vs",
 			[]corev1.PersistentVolumeClaim{*rwoBoth, *vsOnly},
 			corev1.PodRunning,
-			true)
+			true, true)
 	})
 	AfterEach(func() {
 		Expect(k8sClient.Delete(ctx, ns)).To(Succeed())
@@ -217,6 +232,15 @@ var _ = Describe("Volume affinity", func() {
 					},
 				))
 				Expect(ai.Tolerations).To(Equal(pendingPod.Spec.Tolerations))
+			})
+		})
+
+		When("a PVC is only being used by a Pending pod without nodeName", func() {
+			It("will NOT have an affinity that matches that pod", func() {
+				ai, err := utils.AffinityFromVolume(ctx, k8sClient, logger, rwoPendingWithoutNodeName)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(len(ai.NodeSelector)).To(Equal(0))
+				Expect(ai.Tolerations).To(Equal(pendingPodWithoutNodeName.Spec.Tolerations))
 			})
 		})
 

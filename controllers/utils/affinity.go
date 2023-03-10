@@ -93,6 +93,9 @@ func AffinityFromVolume(ctx context.Context, c client.Client, logger logr.Logger
 
 func getNodeSelectorForNode(ctx context.Context, c client.Client, logger logr.Logger,
 	nodeName string) (map[string]string, error) {
+	if nodeName == "" {
+		return nil, nil
+	}
 	node := &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: nodeName,
