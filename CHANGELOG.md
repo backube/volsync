@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [unreleased]
 
+## [0.7.0]
+
 ### Added
 
 - New rsync-tls data mover that will replace the existing rsync-ssh mover
@@ -216,7 +218,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for rsync & rclone replication
 - Helm chart to deploy operator
 
-[Unreleased]: https://github.com/backube/volsync/compare/release-0.6...HEAD
+[Unreleased]: https://github.com/backube/volsync/compare/release-0.7...HEAD
+[0.7.0]: https://github.com/backube/volsync/compare/release-0.6...v0.7.0
 [0.6.1]: https://github.com/backube/volsync/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/backube/volsync/compare/release-0.5...v0.6.0
 [0.5.2]: https://github.com/backube/volsync/compare/v0.5.1...v0.5.2
