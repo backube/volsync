@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [unreleased]
 
+### Changed
+
+- Modified leader election settings (LeaseDuration, RenewDeadline, RetryPeriod)
+  to match OpenShift recommendations
+
 ## [0.7.0]
 
 ### Added

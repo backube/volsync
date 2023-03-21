@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -179,6 +180,11 @@ func main() {
 	var enableLeaderElection bool
 	addCommandFlags(&probeAddr, &metricsAddr, &enableLeaderElection)
 	printInfo()
+
+	leaseDuration := 137 * time.Second
+	renewDeadline := 107 * time.Second
+	retryPeriod := 26 * time.Second
+
 	cfg := ctrl.GetConfigOrDie()
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:                 scheme,
@@ -193,6 +199,9 @@ func main() {
 		// speeds up voluntary leader transitions as the new leader don't have to wait
 		// LeaseDuration time first.
 		LeaderElectionReleaseOnCancel: true,
+		LeaseDuration:                 &leaseDuration,
+		RenewDeadline:                 &renewDeadline,
+		RetryPeriod:                   &retryPeriod,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
