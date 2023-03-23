@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Modified leader election settings (LeaseDuration, RenewDeadline, RetryPeriod)
   to match OpenShift recommendations
+- Syncthing upgraded to v1.23.2
 
 ## [0.7.0]
 
