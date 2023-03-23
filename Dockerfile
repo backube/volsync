@@ -65,8 +65,8 @@ RUN go run build.go
 # Build syncthing
 FROM golang-builder as syncthing-builder
 
-ARG SYNCTHING_VERSION="v1.23.1"
-ARG SYNCTHING_GIT_HASH="5f1e27bb7fc1108639db530fb012a3e147a65039"
+ARG SYNCTHING_VERSION="v1.23.2"
+ARG SYNCTHING_GIT_HASH="8bbf2ba9ac7048cdc7527c3b6e71b3086448fa3a"
 
 RUN git clone --depth 1 -b ${SYNCTHING_VERSION} https://github.com/syncthing/syncthing.git
 WORKDIR /workspace/syncthing
