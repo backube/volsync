@@ -35,6 +35,7 @@ spec:
         kubectl.kubernetes.io/default-container: manager
       labels:
         control-plane: controller-manager
+        app.kubernetes.io/part-of: volsync
     spec:
       # affinity:
       #   nodeAffinity:

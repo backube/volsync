@@ -18,6 +18,7 @@ spec:
     protocol: TCP
     targetPort: https
   selector:
+    app.kubernetes.io/part-of: volsync
     control-plane: controller-manager
 status:
   loadBalancer: {}
