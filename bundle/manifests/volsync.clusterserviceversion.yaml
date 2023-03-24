@@ -55,7 +55,7 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2023-03-22T17:46:49Z"
+    createdAt: "2023-03-23T18:50:52Z"
     olm.skipRange: '>=0.4.0 <0.8.0'
     operators.operatorframework.io/builder: operator-sdk-v1.26.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
@@ -409,6 +409,7 @@ spec:
               annotations:
                 kubectl.kubernetes.io/default-container: manager
               labels:
+                app.kubernetes.io/part-of: volsync
                 control-plane: controller-manager
             spec:
               containers:
