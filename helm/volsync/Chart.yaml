@@ -24,24 +24,10 @@ annotations:  # https://artifacthub.io/docs/topics/annotations/helm/
   # Changelog for current chart & app version
   # Kinds: added, changed, deprecated, removed, fixed, and security
   artifacthub.io/changes: |
-    - kind: added
-      description: New rsync-tls mover that uses stunnel instead of sshd for rsync traffic
-    - kind: added
-      description: moverServiceAccount parameter in the spec for advanced users
     - kind: changed
-      description: All movers except rsync-ssh run as a normal user (see docs)
+      description: Modified leader election settings (LeaseDuration, RenewDeadline, RetryPeriod)
     - kind: changed
-      description: VolSync now uses a single container image for the controller and all movers
-    - kind: changed
-      description: Rclone upgraded to v1.61.1
-    - kind: changed
-      description: Restic upgraded to 0.15.1
-    - kind: changed
-      description: Syncthing upgraded to v1.23.1
-    - kind: fixed
-      description: Syncthing should ignore lost+found directory
-    - kind: security
-      description: kube-rbac-proxy upgraded to 0.14.0
+      description: Syncthing upgraded to v1.23.2
   artifacthub.io/crds: |
     - kind: ReplicationDestination
       version: v1alpha1
@@ -68,10 +54,10 @@ kubeVersion: "^1.20.0-0"
 # This is the chart version. This version number should be incremented each time
 # you make changes to the chart and its templates, including the app version.
 # Versions are expected to follow Semantic Versioning (https://semver.org/)
-version: "0.7.0"
+version: "0.7.1"
 
 # This is the version number of the application being deployed. This version
 # number should be incremented each time you make changes to the application.
 # Versions are not expected to follow Semantic Versioning. They should reflect
 # the version the application is using. It is recommended to use it with quotes.
-appVersion: "0.7.0"
+appVersion: "0.7.1"
