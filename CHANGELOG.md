@@ -7,11 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [unreleased]
 
+## [0.7.1]
+
 ### Changed
 
 - Modified leader election settings (LeaseDuration, RenewDeadline, RetryPeriod)
   to match OpenShift recommendations
 - Syncthing upgraded to v1.23.2
+
+### Fixed
+
+- Updated the metrics service to use a unique pod selector (VolSync operator
+  deployments only)
 
 ## [0.7.0]
 
@@ -225,6 +232,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Helm chart to deploy operator
 
 [Unreleased]: https://github.com/backube/volsync/compare/release-0.7...HEAD
+[0.7.1]: https://github.com/backube/volsync/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/backube/volsync/compare/release-0.6...v0.7.0
 [0.6.1]: https://github.com/backube/volsync/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/backube/volsync/compare/release-0.5...v0.6.0
