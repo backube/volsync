@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [unreleased]
 
+### Added
+
+- Restic - ReplicationSource/ReplicationDestination can now specify a CustomCA
+  that is from a configmap rather than only from a secret.
+
 ## [0.7.1]
 
 ### Changed

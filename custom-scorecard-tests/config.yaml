@@ -107,11 +107,21 @@ stages:
         mountPath: {}
   - entrypoint:
     - volsync-custom-scorecard-tests
-    - test_restic_with_customca.yml
+    - test_restic_with_customca_configmap.yml
     image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
-      test: test_restic_with_customca.yml
+      test: test_restic_with_customca_configmap.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_restic_with_customca_secret.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_restic_with_customca_secret.yml
     storage:
       spec:
         mountPath: {}

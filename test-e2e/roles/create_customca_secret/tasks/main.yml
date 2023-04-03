@@ -21,7 +21,8 @@
     namespace: "{{ minio_namespace }}"
   register: minio_secret
 
-- name: Create Restic CustomCA
+# For tests that use CustomCA in a configmap
+- name: Create CustomCA secret
   kubernetes.core.k8s:
     state: present
     definition:

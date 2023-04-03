@@ -1,0 +1,35 @@
+---
+
+- name: Check for required variables
+  fail: msg="Variable {{ item }} must be defined to use this role"
+  when: vars[var_check] is undefined
+  with_items:
+    - minio_namespace
+    - namespace
+    - ca_configmap_name
+  loop_control:
+    loop_var: var_check
+
+- include_role:
+    name: get_minio_credentials
+
+- name: Get MinIO CA Secret
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    name: minio-crt
+    namespace: "{{ minio_namespace }}"
+  register: minio_secret
+
+# For tests that use CustomCA in a configmap
+- name: Create CustomCA configmap
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: "{{ ca_configmap_name }}"
+        namespace: "{{ namespace }}"
+      data:
+        ca.crt: "{{ minio_secret.resources[0].data['ca.crt'] }}"

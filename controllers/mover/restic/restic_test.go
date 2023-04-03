@@ -41,6 +41,7 @@ import (
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers/mover"
+	"github.com/backube/volsync/controllers/utils"
 )
 
 var _ = Describe("Restic retain policy", func() {
@@ -1124,7 +1125,8 @@ var _ = Describe("Restic as a destination", func() {
 			var sa *corev1.ServiceAccount
 			var repo *corev1.Secret
 			var job *batchv1.Job
-			var ca *corev1.Secret
+			var caSecret *corev1.Secret
+			var caConfigMap *corev1.ConfigMap
 			BeforeEach(func() {
 				// hardcoded since we don't get access unless the job is
 				// completed
@@ -1173,7 +1175,7 @@ var _ = Describe("Restic as a destination", func() {
 						Namespace: ns.Name,
 					},
 				}
-				ca = &corev1.Secret{
+				caSecret = &corev1.Secret{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "theca",
 						Namespace: ns.Name,
@@ -1182,13 +1184,23 @@ var _ = Describe("Restic as a destination", func() {
 						"key": "value",
 					},
 				}
+				caConfigMap = &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "cmca",
+						Namespace: ns.Name,
+					},
+					Data: map[string]string{
+						"key": "myvalue",
+					},
+				}
 			})
 			JustBeforeEach(func() {
 				Expect(k8sClient.Create(ctx, dPVC)).To(Succeed())
 				Expect(k8sClient.Create(ctx, cache)).To(Succeed())
 				Expect(k8sClient.Create(ctx, sa)).To(Succeed())
 				Expect(k8sClient.Create(ctx, repo)).To(Succeed())
-				Expect(k8sClient.Create(ctx, ca)).To(Succeed())
+				Expect(k8sClient.Create(ctx, caSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, caConfigMap)).To(Succeed())
 			})
 			When("it's the initial sync", func() {
 				It("should have only the restore action", func() {
@@ -1203,36 +1215,86 @@ var _ = Describe("Restic as a destination", func() {
 					Expect(args).To(ConsistOf("restore"))
 				})
 			})
+			When("a custom CA is not supplied", func() {
+				It("Should not attempt to update the podspec in the mover job", func() {
+					var customCA volsyncv1alpha1.CustomCASpec // No CustomCA, not initializing w any values
+					customCAObj, err := utils.ValidateCustomCA(ctx, k8sClient, logger, ns.Name, customCA)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(customCAObj).To(BeNil())
+				})
+			})
 			When("a custom CA is supplied", func() {
-				It("should be mounted in the container", func() {
-					mover.caSecretKey = "key"
-					j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo, ca)
+				var customCASpec volsyncv1alpha1.CustomCASpec
+				JustBeforeEach(func() {
+					mover.customCASpec = customCASpec
+					customCaObj, err := utils.ValidateCustomCA(ctx, k8sClient, logger, ns.Name, mover.customCASpec)
+					Expect(err).NotTo(HaveOccurred())
+
+					// Common checks for customCA (configCA as secret or configmap)
+					j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo, customCaObj)
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+
 					// Location in Env variable
 					Expect(job.Spec.Template.Spec.Containers[0].Env).To(ContainElement(corev1.EnvVar{
 						Name:  "CUSTOM_CA",
 						Value: path.Join(resticCAMountPath, resticCAFilename),
 					}))
-					// Secret added to Pod
-					var volName string
-					for _, v := range job.Spec.Template.Spec.Volumes {
-						if v.Secret != nil && v.Secret.SecretName == ca.Name {
-							volName = v.Name
+				})
+
+				When("a custom CA is supplied as a secret", func() {
+					BeforeEach(func() {
+						customCASpec = volsyncv1alpha1.CustomCASpec{SecretName: caSecret.Name, Key: "key"}
+					})
+					It("should be mounted in the container", func() {
+						// See common checks in JustBeforeEach() above
+
+						// Check that Secret added to Pod as volume
+						var volName string
+						for _, v := range job.Spec.Template.Spec.Volumes {
+							if v.Secret != nil && v.Secret.SecretName == caSecret.Name {
+								volName = v.Name
+							}
 						}
-					}
-					Expect(volName).NotTo(BeEmpty())
-					// Mounted to container
-					var mountPath string
-					for _, v := range job.Spec.Template.Spec.Containers[0].VolumeMounts {
-						if v.Name == volName {
-							mountPath = v.MountPath
+						Expect(volName).NotTo(BeEmpty())
+
+						// Check that secret volume is mounted to container
+						var mountPath string
+						for _, v := range job.Spec.Template.Spec.Containers[0].VolumeMounts {
+							if v.Name == volName {
+								mountPath = v.MountPath
+							}
 						}
-					}
-					Expect(mountPath).To(Equal(resticCAMountPath))
+						Expect(mountPath).To(Equal(resticCAMountPath))
+					})
+				})
+				When("a custom CA is supplied as a ConfigMap", func() {
+					BeforeEach(func() {
+						customCASpec = volsyncv1alpha1.CustomCASpec{ConfigMapName: caConfigMap.Name, Key: "key"}
+					})
+					It("should be mounted in the container", func() {
+						// See common checks in JustBeforeEach() above
+
+						// Check that ConfigMap added to Pod as volume
+						var volName string
+						for _, v := range job.Spec.Template.Spec.Volumes {
+							if v.ConfigMap != nil && v.ConfigMap.Name == caConfigMap.Name {
+								volName = v.Name
+							}
+						}
+						Expect(volName).NotTo(BeEmpty())
+						// Mounted to container
+						var mountPath string
+						for _, v := range job.Spec.Template.Spec.Containers[0].VolumeMounts {
+							if v.Name == volName {
+								mountPath = v.MountPath
+							}
+						}
+						Expect(mountPath).To(Equal(resticCAMountPath))
+					})
 				})
 			})
 			Context("Handling GCS credentials", func() {

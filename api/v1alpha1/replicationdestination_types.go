@@ -199,12 +199,7 @@ type ReplicationDestinationRsyncStatus struct {
 	Port *int32 `json:"port,omitempty"`
 }
 
-type ReplicationDestinationResticCA struct {
-	// The name of a Secret that contains the custom CA certificate
-	SecretName string `json:"secretName,omitempty"`
-	// The key within the Secret containing the CA certificate
-	Key string `json:"key,omitempty"`
-}
+type ReplicationDestinationResticCA CustomCASpec
 
 // ReplicationDestinationResticSpec defines the field for restic in replicationDestination.
 type ReplicationDestinationResticSpec struct {
