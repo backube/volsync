@@ -6,7 +6,7 @@
   vars:
     restic_secret_name: restic-secret-customca
     minio_namespace: minio-tls
-    ca_secret_name: restic-ca-secret
+    ca_configmap_name: restic-ca-configmap
   tasks:
     - include_role:
         name: create_namespace
@@ -17,7 +17,7 @@
         use_tls: true
 
     - include_role:
-        name: create_restic_customca_secret
+        name: create_customca_configmap
 
     - name: Create source PVC
       kubernetes.core.k8s:
@@ -81,7 +81,7 @@
               manual: once
             restic:
               customCA:
-                secretName: "{{ ca_secret_name }}"
+                configMapName: "{{ ca_configmap_name }}"
                 key: "ca.crt"
               pruneIntervalDays: 1
               repository: "{{ restic_secret_name }}"
@@ -118,7 +118,7 @@
               manual: restore-once
             restic:
               customCA:
-                secretName: "{{ ca_secret_name }}"
+                configMapName: "{{ ca_configmap_name }}"
                 key: "ca.crt"
               repository: "{{ restic_secret_name }}"
               destinationPVC: data-dest

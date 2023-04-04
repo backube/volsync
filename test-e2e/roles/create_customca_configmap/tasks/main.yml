@@ -6,7 +6,7 @@
   with_items:
     - minio_namespace
     - namespace
-    - ca_secret_name
+    - ca_configmap_name
   loop_control:
     loop_var: var_check
 
@@ -21,14 +21,15 @@
     namespace: "{{ minio_namespace }}"
   register: minio_secret
 
-- name: Create Restic CustomCA
+# For tests that use CustomCA in a configmap
+- name: Create CustomCA configmap
   kubernetes.core.k8s:
     state: present
     definition:
       apiVersion: v1
-      kind: Secret
+      kind: ConfigMap
       metadata:
-        name: "{{ ca_secret_name }}"
+        name: "{{ ca_configmap_name }}"
         namespace: "{{ namespace }}"
       data:
-        ca.crt: "{{ minio_secret.resources[0].data['ca.crt'] }}"
+        ca.crt: "{{ minio_secret.resources[0].data['ca.crt'] | b64decode }}"

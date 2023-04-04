@@ -29,6 +29,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+//+kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch
+//+kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;watch
+
 // Define the error messages to be returned by VolSync.
 const (
 	ErrUnableToSetControllerRef = "unable to set controller reference"
@@ -73,6 +76,32 @@ func EnvFromSecret(secretName string, field string, optional bool) corev1.EnvVar
 			},
 		},
 	}
+}
+
+func GetAndValidateConfigMap(ctx context.Context, cl client.Client,
+	logger logr.Logger, configMap *corev1.ConfigMap, fields ...string) error {
+	if err := cl.Get(ctx, client.ObjectKeyFromObject(configMap), configMap); err != nil {
+		logger.Error(err, "failed to get ConfigMap with provided name", "ConfigMap", client.ObjectKeyFromObject(configMap))
+		return err
+	}
+	if err := ConfigMapHasFields(configMap, fields...); err != nil {
+		logger.Error(err, "configMap does not contain the proper fields", "Secret", client.ObjectKeyFromObject(configMap))
+		return err
+	}
+	return nil
+}
+
+func ConfigMapHasFields(configMap *corev1.ConfigMap, fields ...string) error {
+	data := configMap.Data
+	if data == nil || len(data) < len(fields) {
+		return fmt.Errorf("configmap should have fields: %v", fields)
+	}
+	for _, k := range fields {
+		if _, found := data[k]; !found {
+			return fmt.Errorf("configmap is missing field: %v", k)
+		}
+	}
+	return nil
 }
 
 func KindAndName(scheme *runtime.Scheme, obj client.Object) string {

@@ -68,8 +68,7 @@ type Mover struct {
 	isSource              bool
 	paused                bool
 	mainPVCName           *string
-	caSecretName          string
-	caSecretKey           string
+	customCASpec          volsyncv1alpha1.CustomCASpec
 	privileged            bool
 	moverSecurityContext  *corev1.PodSecurityContext
 	latestMoverStatus     *volsyncv1alpha1.MoverStatus
@@ -125,15 +124,16 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 		return mover.InProgress(), err
 	}
 
-	// Validate custom CA Secret
-	caSecret, err := m.validateCASecret(ctx)
-	// nil caSecret is ok (indicates we're not using a custom CA)
+	// Validate custom CA if in spec
+	customCAObj, err := utils.ValidateCustomCA(ctx, m.client, m.logger,
+		m.owner.GetNamespace(), m.customCASpec)
+	// nil customCAObj is ok (indicates we're not using a custom CA)
 	if err != nil {
 		return mover.InProgress(), err
 	}
 
 	// Start mover Job
-	job, err := m.ensureJob(ctx, cachePVC, dataPVC, sa, repo, caSecret)
+	job, err := m.ensureJob(ctx, cachePVC, dataPVC, sa, repo, customCAObj)
 	if job == nil || err != nil {
 		return mover.InProgress(), err
 	}
@@ -258,31 +258,10 @@ func (m *Mover) validateRepository(ctx context.Context) (*corev1.Secret, error) 
 	return secret, nil
 }
 
-func (m *Mover) validateCASecret(ctx context.Context) (*corev1.Secret, error) {
-	if m.caSecretName == "" || m.caSecretKey == "" {
-		// Not using a custom CA
-		return nil, nil
-	}
-
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      m.caSecretName,
-			Namespace: m.owner.GetNamespace(),
-		},
-	}
-	logger := m.logger.WithValues("caSecret", client.ObjectKeyFromObject(secret))
-	if err := utils.GetAndValidateSecret(ctx, m.client, logger, secret,
-		m.caSecretKey); err != nil {
-		logger.Error(err, "Restic CA secret does not contain the proper field", "missingField", m.caSecretKey)
-		return nil, err
-	}
-	return secret, nil
-}
-
 //nolint:funlen
 func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolumeClaim,
 	dataPVC *corev1.PersistentVolumeClaim, sa *corev1.ServiceAccount, repo *corev1.Secret,
-	caSecret *corev1.Secret) (*batchv1.Job, error) {
+	customCAObj utils.CustomCAObject) (*batchv1.Job, error) {
 	dir := "src"
 	if !m.isSource {
 		dir = "dst"
@@ -448,7 +427,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 			podSpec.NodeSelector = affinity.NodeSelector
 			podSpec.Tolerations = affinity.Tolerations
 		}
-		if caSecret != nil {
+		if customCAObj != nil {
 			// Tell mover where to find the cert
 			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
 				Name:  "CUSTOM_CA",
@@ -461,15 +440,8 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 					MountPath: resticCAMountPath,
 				})
 			podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
-				Name: "custom-ca",
-				VolumeSource: corev1.VolumeSource{
-					Secret: &corev1.SecretVolumeSource{
-						SecretName: caSecret.Name,
-						Items: []corev1.KeyToPath{
-							{Key: m.caSecretKey, Path: resticCAFilename},
-						},
-					},
-				},
+				Name:         "custom-ca",
+				VolumeSource: customCAObj.GetVolumeSource(resticCAFilename),
 			})
 		}
 		// We handle GOOGLE_APPLICATION_CREDENTIALS specially...

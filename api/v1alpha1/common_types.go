@@ -103,3 +103,16 @@ type MoverStatus struct {
 	Result MoverResult `json:"result,omitempty"`
 	Logs   string      `json:"logs,omitempty"`
 }
+
+type CustomCASpec struct {
+	// The name of a Secret that contains the custom CA certificate
+	// If SecretName is used then ConfigMapName should not be set
+	SecretName string `json:"secretName,omitempty"`
+
+	// The name of a ConfigMap that contains the custom CA certificate
+	// If ConfigMapName is used then SecretName should not be set
+	ConfigMapName string `json:"configMapName,omitempty"`
+
+	// The key within the Secret or ConfigMap containing the CA certificate
+	Key string `json:"key,omitempty"`
+}

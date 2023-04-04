@@ -166,12 +166,7 @@ type ResticRetainPolicy struct {
 	Within *string `json:"within,omitempty"`
 }
 
-type ReplicationSourceResticCA struct {
-	// The name of a Secret that contains the custom CA certificate
-	SecretName string `json:"secretName,omitempty"`
-	// The key within the Secret containing the CA certificate
-	Key string `json:"key,omitempty"`
-}
+type ReplicationSourceResticCA CustomCASpec
 
 // ReplicationSourceResticSpec defines the field for restic in replicationSource.
 type ReplicationSourceResticSpec struct {
