@@ -20,6 +20,7 @@ package rclone
 import (
 	"flag"
 	"os"
+	"path"
 	"strings"
 
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
@@ -551,6 +552,8 @@ var _ = Describe("Rclone as a source", func() {
 			var sa *corev1.ServiceAccount
 			var rcloneConfigSecret *corev1.Secret
 			var job *batchv1.Job
+			var caSecret *corev1.Secret
+			var caConfigMap *corev1.ConfigMap
 			BeforeEach(func() {
 				rs.Spec.Rclone.RcloneConfig = &testRcloneConfig
 				rs.Spec.Rclone.RcloneConfigSection = &testRcloneConfigSection
@@ -572,14 +575,34 @@ var _ = Describe("Rclone as a source", func() {
 						Namespace: ns.Name,
 					},
 				}
+				caSecret = &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "theca",
+						Namespace: ns.Name,
+					},
+					StringData: map[string]string{
+						"key": "value",
+					},
+				}
+				caConfigMap = &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "cmca",
+						Namespace: ns.Name,
+					},
+					Data: map[string]string{
+						"key": "myvalue",
+					},
+				}
 			})
 			JustBeforeEach(func() {
 				Expect(k8sClient.Create(ctx, sa)).To(Succeed())
 				Expect(k8sClient.Create(ctx, rcloneConfigSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, caSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, caConfigMap)).To(Succeed())
 			})
 			When("it's the initial sync", func() {
 				It("should have the command defined properly", func() {
-					j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret) // Using sPVC as dataPVC (i.e. direct)
+					j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret, nil) // Using sPVC as dataPVC (i.e. direct)
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -592,7 +615,7 @@ var _ = Describe("Rclone as a source", func() {
 				})
 
 				It("should use the specified container image", func() {
-					j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret) // Using sPVC as dataPVC (i.e. direct)
+					j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret, nil) // Using sPVC as dataPVC (i.e. direct)
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -603,7 +626,7 @@ var _ = Describe("Rclone as a source", func() {
 				})
 
 				It("should use the specified service account", func() {
-					j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret) // Using sPVC as dataPVC (i.e. direct)
+					j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret, nil) // Using sPVC as dataPVC (i.e. direct)
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -613,7 +636,7 @@ var _ = Describe("Rclone as a source", func() {
 				})
 
 				It("should have the correct env vars", func() {
-					j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret) // Using sPVC as dataPVC (i.e. direct)
+					j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret, nil) // Using sPVC as dataPVC (i.e. direct)
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -624,10 +647,93 @@ var _ = Describe("Rclone as a source", func() {
 					validateJobEnvVars(job.Spec.Template.Spec.Containers[0].Env, true)
 				})
 
+				When("a custom CA is not supplied", func() {
+					It("Should not attempt to update the podspec in the mover job", func() {
+						var customCA volsyncv1alpha1.CustomCASpec // No CustomCA, not initializing w any values
+						customCAObj, err := utils.ValidateCustomCA(ctx, k8sClient, logger, ns.Name, customCA)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(customCAObj).To(BeNil())
+					})
+				})
+				When("a custom CA is supplied", func() {
+					var customCASpec volsyncv1alpha1.CustomCASpec
+					JustBeforeEach(func() {
+						mover.customCASpec = customCASpec
+						customCaObj, err := utils.ValidateCustomCA(ctx, k8sClient, logger, ns.Name, mover.customCASpec)
+						Expect(err).NotTo(HaveOccurred())
+
+						// Common checks for customCA (configCA as secret or configmap)
+						j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret, customCaObj)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(j).To(BeNil()) // hasn't completed
+						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+						job = &batchv1.Job{}
+						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+
+						// Location in Env variable
+						Expect(job.Spec.Template.Spec.Containers[0].Env).To(ContainElement(corev1.EnvVar{
+							Name:  "CUSTOM_CA",
+							Value: path.Join(rcloneCAMountPath, rcloneCAFilename),
+						}))
+					})
+
+					When("a custom CA is supplied as a secret", func() {
+						BeforeEach(func() {
+							customCASpec = volsyncv1alpha1.CustomCASpec{SecretName: caSecret.Name, Key: "key"}
+						})
+						It("should be mounted in the container", func() {
+							// See common checks in JustBeforeEach() above
+
+							// Check that Secret added to Pod as volume
+							var volName string
+							for _, v := range job.Spec.Template.Spec.Volumes {
+								if v.Secret != nil && v.Secret.SecretName == caSecret.Name {
+									volName = v.Name
+								}
+							}
+							Expect(volName).NotTo(BeEmpty())
+
+							// Check that secret volume is mounted to container
+							var mountPath string
+							for _, v := range job.Spec.Template.Spec.Containers[0].VolumeMounts {
+								if v.Name == volName {
+									mountPath = v.MountPath
+								}
+							}
+							Expect(mountPath).To(Equal(rcloneCAMountPath))
+						})
+					})
+					When("a custom CA is supplied as a ConfigMap", func() {
+						BeforeEach(func() {
+							customCASpec = volsyncv1alpha1.CustomCASpec{ConfigMapName: caConfigMap.Name, Key: "key"}
+						})
+						It("should be mounted in the container", func() {
+							// See common checks in JustBeforeEach() above
+
+							// Check that ConfigMap added to Pod as volume
+							var volName string
+							for _, v := range job.Spec.Template.Spec.Volumes {
+								if v.ConfigMap != nil && v.ConfigMap.Name == caConfigMap.Name {
+									volName = v.Name
+								}
+							}
+							Expect(volName).NotTo(BeEmpty())
+							// Mounted to container
+							var mountPath string
+							for _, v := range job.Spec.Template.Spec.Containers[0].VolumeMounts {
+								if v.Name == volName {
+									mountPath = v.MountPath
+								}
+							}
+							Expect(mountPath).To(Equal(rcloneCAMountPath))
+						})
+					})
+				})
+
 				Context("Cluster wide proxy settings", func() {
 					When("no proxy env vars are set on the volsync controller", func() {
 						It("shouldn't set any proxy env vars on the mover job", func() {
-							j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret) // Using sPVC as dataPVC (i.e. direct)
+							j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret, nil) // Using sPVC as dataPVC (i.e. direct)
 							Expect(e).NotTo(HaveOccurred())
 							Expect(j).To(BeNil()) // hasn't completed
 							nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -658,7 +764,7 @@ var _ = Describe("Rclone as a source", func() {
 						})
 
 						It("should set the corresponding proxy env vars on the mover job", func() {
-							j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret) // Using sPVC as dataPVC (i.e. direct)
+							j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret, nil) // Using sPVC as dataPVC (i.e. direct)
 							Expect(e).NotTo(HaveOccurred())
 							Expect(j).To(BeNil()) // hasn't completed
 							nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -678,7 +784,7 @@ var _ = Describe("Rclone as a source", func() {
 				})
 
 				It("Should have correct volume mounts", func() {
-					j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret) // Using sPVC as dataPVC (i.e. direct)
+					j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret, nil) // Using sPVC as dataPVC (i.e. direct)
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -709,7 +815,7 @@ var _ = Describe("Rclone as a source", func() {
 				})
 
 				It("Should have correct volumes", func() {
-					j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret) // Using sPVC as dataPVC (i.e. direct)
+					j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret, nil) // Using sPVC as dataPVC (i.e. direct)
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -766,7 +872,7 @@ var _ = Describe("Rclone as a source", func() {
 						Expect(k8sClient.Create(ctx, roxPVC)).To(Succeed())
 					})
 					It("Mover job should mount the PVC as read-only", func() {
-						j, e := mover.ensureJob(ctx, roxPVC, sa, rcloneConfigSecret) // Using roxPVC as dataPVC (i.e. direct)
+						j, e := mover.ensureJob(ctx, roxPVC, sa, rcloneConfigSecret, nil) // Using roxPVC as dataPVC (i.e. direct)
 						Expect(e).NotTo(HaveOccurred())
 						Expect(j).To(BeNil()) // hasn't completed
 						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -788,7 +894,7 @@ var _ = Describe("Rclone as a source", func() {
 				})
 
 				It("Should have correct labels", func() {
-					j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret) // Using sPVC as dataPVC (i.e. direct)
+					j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret, nil) // Using sPVC as dataPVC (i.e. direct)
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -800,7 +906,7 @@ var _ = Describe("Rclone as a source", func() {
 				})
 
 				It("should support pausing", func() {
-					j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret) // Using sPVC as dataPVC (i.e. direct)
+					j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret, nil) // Using sPVC as dataPVC (i.e. direct)
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -809,14 +915,14 @@ var _ = Describe("Rclone as a source", func() {
 					Expect(*job.Spec.Parallelism).To(Equal(int32(1)))
 
 					mover.paused = true
-					j, e = mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret) // Using sPVC as dataPVC (i.e. direct)
+					j, e = mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret, nil) // Using sPVC as dataPVC (i.e. direct)
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 					Expect(*job.Spec.Parallelism).Should(Equal(int32(0)))
 
 					mover.paused = false
-					j, e = mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret) // Using sPVC as dataPVC (i.e. direct)
+					j, e = mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret, nil) // Using sPVC as dataPVC (i.e. direct)
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
@@ -829,7 +935,7 @@ var _ = Describe("Rclone as a source", func() {
 					mover.containerImage = "my-rclone-mover-image"
 
 					// Initial job creation
-					j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret) // Using sPVC as dataPVC (i.e. direct)
+					j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret, nil) // Using sPVC as dataPVC (i.e. direct)
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 
@@ -849,7 +955,7 @@ var _ = Describe("Rclone as a source", func() {
 					mover.containerImage = myUpdatedImage
 
 					// Mover should get immutable err for updating the image and then delete the job
-					j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret) // Using sPVC as dataPVC (i.e. direct)
+					j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret, nil) // Using sPVC as dataPVC (i.e. direct)
 					Expect(e).To(HaveOccurred())
 					Expect(j).To(BeNil())
 
@@ -861,7 +967,7 @@ var _ = Describe("Rclone as a source", func() {
 					}, job))).To(BeTrue())
 
 					// Run ensureJob again as the reconciler would do - should recreate the job
-					j, e = mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret) // Using sPVC as dataPVC (i.e. direct)
+					j, e = mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret, nil) // Using sPVC as dataPVC (i.e. direct)
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // job hasn't completed
 
@@ -877,7 +983,7 @@ var _ = Describe("Rclone as a source", func() {
 
 			When("the job has failed", func() {
 				It("should be restarted", func() {
-					j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret) // Using sPVC as dataPVC (i.e. direct)
+					j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret, nil) // Using sPVC as dataPVC (i.e. direct)
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -887,14 +993,14 @@ var _ = Describe("Rclone as a source", func() {
 					Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
 
 					// Ensure job should delete the job since backoff limit is reached
-					j, e = mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret) // Using sPVC as dataPVC (i.e. direct)
+					j, e = mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret, nil) // Using sPVC as dataPVC (i.e. direct)
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil())
 					// Job should be deleted
 					Expect(kerrors.IsNotFound(k8sClient.Get(ctx, nsn, job))).To(BeTrue())
 
 					// Reconcile again, job should get recreated on next call to ensureJob
-					j, e = mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret) // Using sPVC as dataPVC (i.e. direct)
+					j, e = mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret, nil) // Using sPVC as dataPVC (i.e. direct)
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // will return nil since job is not completed
 
@@ -1140,7 +1246,7 @@ var _ = Describe("Rclone as a destination", func() {
 			})
 			When("it's the initial sync", func() {
 				It("should have the correct env vars", func() {
-					j, e := mover.ensureJob(ctx, dPVC, sa, rcloneConfigSecret)
+					j, e := mover.ensureJob(ctx, dPVC, sa, rcloneConfigSecret, nil)
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}

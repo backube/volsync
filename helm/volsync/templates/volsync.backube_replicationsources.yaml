@@ -87,6 +87,19 @@ spec:
                         - Clone
                         - Snapshot
                       type: string
+                    customCA:
+                      description: customCA is a custom CA that will be used to verify the remote
+                      properties:
+                        configMapName:
+                          description: The name of a ConfigMap that contains the custom CA certificate If ConfigMapName is used then SecretName should not be set
+                          type: string
+                        key:
+                          description: The key within the Secret or ConfigMap containing the CA certificate
+                          type: string
+                        secretName:
+                          description: The name of a Secret that contains the custom CA certificate If SecretName is used then ConfigMapName should not be set
+                          type: string
+                      type: object
                     moverSecurityContext:
                       description: MoverSecurityContext allows specifying the PodSecurityContext that will be used by the data mover
                       properties:

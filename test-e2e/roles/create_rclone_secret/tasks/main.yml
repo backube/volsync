@@ -13,6 +13,15 @@
 - include_role:
     name: get_minio_credentials
 
+- name: Determine repo URL
+  set_fact:
+    endpoint_url: "http://minio.{{ minio_namespace }}.svc.cluster.local:9000"
+
+- name: Set repo URL to use TLS
+  set_fact:
+    endpoint_url: "https://minio.{{ minio_namespace }}.svc.cluster.local:9000"
+  when: use_tls is defined and use_tls == true
+
 - name: Build rclone.conf contents
   ansible.builtin.set_fact:
     rclone_conf: |
@@ -23,7 +32,7 @@
       access_key_id = {{ minio_access_key }}
       secret_access_key = {{ minio_secret_key }}
       region = us-east-1
-      endpoint = http://minio.{{ minio_namespace }}.svc.cluster.local:9000
+      endpoint = {{ endpoint_url }}
 
 - name: Create rclone secret
   kubernetes.core.k8s:

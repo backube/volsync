@@ -131,6 +131,8 @@ type ReplicationDestinationRcloneSpec struct {
 	RcloneDestPath *string `json:"rcloneDestPath,omitempty"`
 	// RcloneConfig is the rclone secret name
 	RcloneConfig *string `json:"rcloneConfig,omitempty"`
+	// customCA is a custom CA that will be used to verify the remote
+	CustomCA CustomCASpec `json:"customCA,omitempty"`
 	// MoverSecurityContext allows specifying the PodSecurityContext that will
 	// be used by the data mover
 	MoverSecurityContext *corev1.PodSecurityContext `json:"moverSecurityContext,omitempty"`
