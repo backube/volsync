@@ -151,6 +151,10 @@ rcloneConfig
    configuration. The :doc:`content of the Secret<./rclone-secret>` is an
    ``rclone.conf`` file.
 
+customCA
+   This option allows a custom certificate authority to be used when making TLS
+   (https) connections to the remote repository.
+
 ----------------------------------
 
 Destination configuration
@@ -269,4 +273,76 @@ rcloneConfig
    This specifies the secret to be used. The secret contains an ``rclone.conf``
    file with the configuration and credentials for the object target.
 
+customCA
+   This option allows a custom certificate authority to be used when making TLS
+   (https) connections to the remote repository.
+
 For a concrete example, see the :doc:`database synchronization example <database_example>`.
+
+
+Using a custom certificate authority
+====================================
+
+Normally, Rclone will use a default set of certificates to verify the validity
+of remote repositories when making https connections. However, users that deploy
+with a self-signed certificate will need to provide their CA's certificate via
+the ``customCA`` option.
+
+The custom CA certificate needs to be provided in a Secret or ConfigMap to
+VolSync. For example, if the CA certificate is a file in the current directory
+named ``ca.crt``, it can be loaded as a Secret or a ConfigMap.
+
+Example using a customCA loaded as a secret:
+
+.. code-block:: console
+
+   $ kubectl create secret generic tls-secret --from-file=ca.crt=./ca.crt
+   secret/tls-secret created
+
+   $ kubectl describe secret/tls-secret
+   Name:         tls-secret
+   Namespace:    default
+   Labels:       <none>
+   Annotations:  <none>
+
+   Type:  Opaque
+
+   Data
+   ====
+   ca.crt:  1127 bytes
+
+This Secret would then be used in the ReplicationSource and/or
+ReplicationDestination objects:
+
+.. code-block:: yaml
+
+   ---
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: mydata-backup-with-customca
+   spec:
+     # ... fields omitted ...
+     rclone:
+       # ... other fields omitted ...
+       customCA:
+         secretName: tls-secret
+         key: ca.crt
+
+To use a customCA in a ConfigMap, specify ``configMapName`` in the spec instead
+of ``secretName``, for example:
+
+.. code-block:: yaml
+
+   ---
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: mydata-backup-with-customca
+   spec:
+     # ... fields omitted ...
+     rclone:
+       # ... other fields omitted ...
+       customCA:
+         configMapName: tls-configmap-name
+         key: ca.crt
