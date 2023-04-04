@@ -17,11 +17,11 @@ require (
 	github.com/syncthing/syncthing v1.23.2
 	go.uber.org/zap v1.24.0
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/api v0.26.1
-	k8s.io/apiextensions-apiserver v0.26.1
+	k8s.io/api v0.26.3
+	k8s.io/apiextensions-apiserver v0.26.3
 	k8s.io/apimachinery v0.26.3
-	k8s.io/client-go v0.26.1
-	k8s.io/component-base v0.26.1
+	k8s.io/client-go v0.26.3
+	k8s.io/component-base v0.26.3
 	k8s.io/klog/v2 v2.90.1
 	k8s.io/kubectl v0.26.1
 	k8s.io/utils v0.0.0-20230115233650-391b47cb4029
