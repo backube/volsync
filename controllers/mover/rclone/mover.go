@@ -20,6 +20,7 @@ package rclone
 import (
 	"context"
 	"errors"
+	"path"
 
 	"github.com/go-logr/logr"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
@@ -38,9 +39,11 @@ import (
 )
 
 const (
-	mountPath      = "/data"
-	dataVolumeName = "data"
-	rcloneSecret   = "rclone-secret"
+	mountPath         = "/data"
+	dataVolumeName    = "data"
+	rcloneSecret      = "rclone-secret"
+	rcloneCAMountPath = "/customCA"
+	rcloneCAFilename  = "ca.crt"
 )
 
 // Mover is the reconciliation logic for the Rclone-based data mover.
@@ -58,6 +61,7 @@ type Mover struct {
 	isSource             bool
 	paused               bool
 	mainPVCName          *string
+	customCASpec         volsyncv1alpha1.CustomCASpec
 	privileged           bool // true if the mover should have elevated privileges
 	moverSecurityContext *corev1.PodSecurityContext
 	latestMoverStatus    *volsyncv1alpha1.MoverStatus
@@ -106,8 +110,16 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 		return mover.InProgress(), err
 	}
 
+	// Validate custom CA if in spec
+	customCAObj, err := utils.ValidateCustomCA(ctx, m.client, m.logger,
+		m.owner.GetNamespace(), m.customCASpec)
+	// nil customCAObj is ok (indicates we're not using a custom CA)
+	if err != nil {
+		return mover.InProgress(), err
+	}
+
 	// Start mover Job
-	job, err := m.ensureJob(ctx, dataPVC, sa, rcloneConfigSecret)
+	job, err := m.ensureJob(ctx, dataPVC, sa, rcloneConfigSecret, customCAObj)
 	if job == nil || err != nil {
 		return mover.InProgress(), err
 	}
@@ -181,7 +193,8 @@ func (m *Mover) getDestinationPVCName() (bool, string) {
 
 //nolint:funlen
 func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeClaim,
-	sa *corev1.ServiceAccount, rcloneConfigSecret *corev1.Secret) (*batchv1.Job, error) {
+	sa *corev1.ServiceAccount, rcloneConfigSecret *corev1.Secret,
+	customCAObj utils.CustomCAObject) (*batchv1.Job, error) {
 	dir := "dst"
 	direction := "destination"
 
@@ -283,9 +296,28 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 		}
 		logger.V(1).Info("Job has PVC", "PVC", dataPVC, "DS", dataPVC.Spec.DataSource)
 
+		podSpec := &job.Spec.Template.Spec
+
+		if customCAObj != nil {
+			// Tell mover where to find the cert
+			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
+				Name:  "CUSTOM_CA",
+				Value: path.Join(rcloneCAMountPath, rcloneCAFilename),
+			})
+			// Mount the custom CA certificate
+			podSpec.Containers[0].VolumeMounts =
+				append(podSpec.Containers[0].VolumeMounts, corev1.VolumeMount{
+					Name:      "custom-ca",
+					MountPath: rcloneCAMountPath,
+				})
+			podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
+				Name:         "custom-ca",
+				VolumeSource: customCAObj.GetVolumeSource(rcloneCAFilename),
+			})
+		}
+
 		// Adjust the Job based on whether the mover should be running as privileged
 		logger.Info("mover permissions", "privileged-mover", m.privileged)
-		podSpec := &job.Spec.Template.Spec
 		if m.privileged {
 			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
 				Name:  "PRIVILEGED_MOVER",

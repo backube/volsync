@@ -24,6 +24,12 @@ RCLONE_FLAGS_SYNC=(--checksum --one-file-system --create-empty-src-dirs --stats 
 # Flags for the permissions.facl copy
 RCLONE_FLAGS_COPY=(--checksum --one-file-system --create-empty-src-dirs --stats-one-line-date --stats 20s --transfers 10)
 
+if [[ -n "${CUSTOM_CA}" ]]; then
+    echo "Using custom CA."
+    RCLONE_FLAGS_SYNC+=(--ca-cert "${CUSTOM_CA}")
+    RCLONE_FLAGS_COPY+=(--ca-cert "${CUSTOM_CA}")
+fi
+
 START_TIME=$SECONDS
 case "${DIRECTION}" in
 source)

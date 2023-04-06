@@ -178,6 +178,7 @@ func (in *ReplicationDestinationRcloneSpec) DeepCopyInto(out *ReplicationDestina
 		*out = new(string)
 		**out = **in
 	}
+	out.CustomCA = in.CustomCA
 	if in.MoverSecurityContext != nil {
 		in, out := &in.MoverSecurityContext, &out.MoverSecurityContext
 		*out = new(v1.PodSecurityContext)
@@ -711,6 +712,7 @@ func (in *ReplicationSourceRcloneSpec) DeepCopyInto(out *ReplicationSourceRclone
 		*out = new(string)
 		**out = **in
 	}
+	out.CustomCA = in.CustomCA
 	if in.MoverSecurityContext != nil {
 		in, out := &in.MoverSecurityContext, &out.MoverSecurityContext
 		*out = new(v1.PodSecurityContext)

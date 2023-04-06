@@ -285,9 +285,11 @@ of remote repositories when making https connections. However, users that deploy
 with a self-signed certificate will need to provide their CA's certificate via
 the ``customCA`` option.
 
-The custom CA certificate needs to be provided in a Secret to VolSync. For
-example, if the CA certificate is a file in the current directory named
-``ca.crt``, it can be loaded as a Secret:
+The custom CA certificate needs to be provided in a Secret or ConfigMap to
+VolSync. For example, if the CA certificate is a file in the current directory
+named ``ca.crt``, it can be loaded as a Secret or a ConfigMap.
+
+Example using a customCA loaded as a secret:
 
 .. code-block:: console
 
@@ -322,4 +324,22 @@ ReplicationDestination objects:
        # ... other fields omitted ...
        customCA:
          secretName: tls-secret
+         key: ca.crt
+
+To use a customCA in a ConfigMap, specify ``configMapName`` in the spec instead
+of ``secretName``, for example:
+
+.. code-block:: yaml
+
+   ---
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: mydata-backup-with-customca
+   spec:
+     # ... fields omitted ...
+     restic:
+       # ... other fields omitted ...
+       customCA:
+         configMapName: tls-configmap-name
          key: ca.crt
