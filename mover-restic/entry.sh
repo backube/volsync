@@ -80,6 +80,11 @@ function do_forget {
     fi
 }
 
+function do_unlock {
+    echo "=== Starting unlock ==="
+    "${RESTIC[@]}" unlock
+}
+
 function do_prune {
     echo "=== Starting prune ==="
     "${RESTIC[@]}" prune
@@ -248,6 +253,13 @@ done
 START_TIME=$SECONDS
 for op in "$@"; do
     case $op in
+        "backup-with-unlock")
+            check_contents
+            ensure_initialized
+            do_unlock
+            do_backup
+            do_forget
+            ;;
         "backup")
             check_contents
             ensure_initialized

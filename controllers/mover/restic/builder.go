@@ -139,6 +139,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		moverSecurityContext:  source.Spec.Restic.MoverSecurityContext,
 		pruneInterval:         source.Spec.Restic.PruneIntervalDays,
 		retainPolicy:          source.Spec.Restic.Retain,
+		unlock:                source.Spec.Restic.Unlock,
 		sourceStatus:          source.Status.Restic,
 		latestMoverStatus:     source.Status.LatestMoverStatus,
 	}, nil

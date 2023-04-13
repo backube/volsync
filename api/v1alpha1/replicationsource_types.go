@@ -192,6 +192,15 @@ type ReplicationSourceResticSpec struct {
 	// CacheAccessModes can be used to set the accessModes of restic metadata cache volume
 	//+optional
 	CacheAccessModes []corev1.PersistentVolumeAccessMode `json:"cacheAccessModes,omitempty"`
+	// unlock is a string value that schedules an unlock on the restic repository during
+	// the next sync operation.
+	// Once a sync completes then status.restic.lastUnlocked is set to the same string value.
+	// To unlock a repository, set spec.restic.unlock to a known value and then wait for
+	// lastUnlocked to be updated by the operator to the same value,
+	// which means that the sync unlocked the repository by running a restic unlock command and
+	// then ran a backup.
+	// Unlock will not be run again unless spec.restic.unlock is set to a different value.
+	Unlock string `json:"unlock,omitempty"`
 	// MoverSecurityContext allows specifying the PodSecurityContext that will
 	// be used by the data mover
 	MoverSecurityContext *corev1.PodSecurityContext `json:"moverSecurityContext,omitempty"`
@@ -208,6 +217,10 @@ type ReplicationSourceResticStatus struct {
 	// lastPruned in the object holding the time of last pruned
 	//+optional
 	LastPruned *metav1.Time `json:"lastPruned,omitempty"`
+	// lastUnlocked is set to the last spec.restic.unlock when a sync is done that unlocks the
+	// restic repository.
+	//+optional
+	LastUnlocked string `json:"lastUnlocked,omitempty"`
 }
 
 // define the Syncthing field

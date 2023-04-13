@@ -611,6 +611,17 @@ spec:
                     description: storageClassName can be used to override the StorageClass
                       of the PiT image.
                     type: string
+                  unlock:
+                    description: unlock is a string value that schedules an unlock
+                      on the restic repository during the next sync operation. Once
+                      a sync completes then status.restic.lastUnlocked is set to the
+                      same string value. To unlock a repository, set spec.restic.unlock
+                      to a known value and then wait for lastUnlocked to be updated
+                      by the operator to the same value, which means that the sync
+                      unlocked the repository by running a restic unlock command and
+                      then ran a backup. Unlock will not be run again unless spec.restic.unlock
+                      is set to a different value.
+                    type: string
                   volumeSnapshotClassName:
                     description: volumeSnapshotClassName can be used to specify the
                       VSC to be used if copyMethod is Snapshot. If not set, the default
@@ -1302,6 +1313,10 @@ spec:
                     description: lastPruned in the object holding the time of last
                       pruned
                     format: date-time
+                    type: string
+                  lastUnlocked:
+                    description: lastUnlocked is set to the last spec.restic.unlock
+                      when a sync is done that unlocks the restic repository.
                     type: string
                 type: object
               rsync:

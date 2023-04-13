@@ -74,6 +74,7 @@ type Mover struct {
 	latestMoverStatus     *volsyncv1alpha1.MoverStatus
 	// Source-only fields
 	pruneInterval *int32
+	unlock        string
 	retainPolicy  *volsyncv1alpha1.ResticRetainPolicy
 	sourceStatus  *volsyncv1alpha1.ReplicationSourceResticStatus
 	// Destination-only fields
@@ -300,6 +301,12 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 		var actions []string
 		if m.isSource {
 			actions = []string{"backup"}
+
+			if m.shouldUnlock() {
+				// Run restic unlock before backup
+				actions = []string{"backup-with-unlock"}
+			}
+
 			if m.shouldPrune(time.Now()) {
 				actions = append(actions, "prune")
 			}
@@ -515,10 +522,22 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 	}
 
 	logger.Info("job completed")
-	if m.isSource && m.shouldPrune(time.Now()) {
-		now := metav1.Now()
-		m.sourceStatus.LastPruned = &now
-		logger.Info("prune completed", ".Status.Restic.LastPruned", m.sourceStatus.LastPruned)
+
+	if m.isSource {
+		if m.shouldUnlock() {
+			// Make sure status matches unlock after successful job
+			m.sourceStatus.LastUnlocked = m.unlock
+			logger.Info("unlock completed", ".Status.Restic.LastUnlocked", m.sourceStatus.LastUnlocked)
+		} else if m.unlock == "" {
+			// Unset lastUnlocked in status if unlock is no longer set in the spec
+			m.sourceStatus.LastUnlocked = ""
+		}
+
+		if m.shouldPrune(time.Now()) {
+			now := metav1.Now()
+			m.sourceStatus.LastPruned = &now
+			logger.Info("prune completed", ".Status.Restic.LastPruned", m.sourceStatus.LastPruned)
+		}
 	}
 
 	// update status with mover logs from successful job
@@ -540,6 +559,13 @@ func (m *Mover) shouldPrune(current time.Time) bool {
 		lastPruned = m.sourceStatus.LastPruned.Time
 	}
 	return current.After(lastPruned.Add(delta))
+}
+
+func (m *Mover) shouldUnlock() bool {
+	if m.unlock != "" && m.sourceStatus.LastUnlocked != m.unlock {
+		return true
+	}
+	return false
 }
 
 func generateForgetOptions(policy *volsyncv1alpha1.ResticRetainPolicy) string {
