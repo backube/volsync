@@ -304,7 +304,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 
 			if m.shouldUnlock() {
 				// Run restic unlock before backup
-				actions = []string{"backup-with-unlock"}
+				actions = []string{"unlock", "backup"}
 			}
 
 			if m.shouldPrune(time.Now()) {

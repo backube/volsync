@@ -874,7 +874,7 @@ var _ = Describe("Restic as a source", func() {
 						Expect(mover.shouldUnlock()).To(BeTrue())
 						Expect(len(job.Spec.Template.Spec.Containers)).To(BeNumerically(">", 0))
 						args := job.Spec.Template.Spec.Containers[0].Args
-						Expect(args).To(ConsistOf("backup-with-unlock"))
+						Expect(args).To(ConsistOf([]string{"unlock", "backup"}))
 						// Mark completed
 						job.Status.Succeeded = int32(1)
 						Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
@@ -932,7 +932,7 @@ var _ = Describe("Restic as a source", func() {
 						Expect(mover.shouldUnlock()).To(BeTrue())
 						Expect(len(job.Spec.Template.Spec.Containers)).To(BeNumerically(">", 0))
 						args := job.Spec.Template.Spec.Containers[0].Args
-						Expect(args).To(ConsistOf("backup-with-unlock"))
+						Expect(args).To(ConsistOf([]string{"unlock", "backup"}))
 						// Mark completed
 						job.Status.Succeeded = int32(1)
 						Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())

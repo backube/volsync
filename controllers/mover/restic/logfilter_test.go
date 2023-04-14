@@ -33,9 +33,10 @@ var _ = Describe("Restic Filter Logs Tests", func() {
 	logger := zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
 
 	Context("Restic source mover logs", func() {
-		// Sample backup log for restic mover
-		// nolint:lll
-		resticSourceLogSuccessful := `Starting container
+		It("Should filter the logs from a successful replication source (restic backup)", func() {
+			// Sample backup log for restic mover
+			// nolint:lll
+			resticSourceLogSuccessful := `Starting container
 VolSync restic container version: unknown
 backup
 restic 0.14.0 (v0.3.0-952-g444628f-dirty) compiled with go1.19.3 on linux/amd64
@@ -64,70 +65,106 @@ snapshot 0ff74383 saved
 Restic completed in 18s
 === Done ===`
 
-		/*
-		   		anotherRestic := `Starting container
-		   VolSync restic container version: v0.6.0+7888b78
-		   backup
-		   restic 0.14.0 compiled with go1.19.4 on linux/amd64
-		   Testing mandatory env variables
-		   == Checking directory for content ===
-		   == Initialize Dir =======
-		   ID        Time                 Host        Tags        Paths
-		   ------------------------------------------------------------
-		   1d75de4c  2023-01-09 21:45:42  volsync                 /data
-		   ------------------------------------------------------------
-		   1 snapshots
-		   === Starting backup ===
-		   /data /
-		   using parent snapshot 1d75de4c
-		   [0:00] 0 files 0 B, total 1 files 5 B, 0 errors
-
-		   Files:           0 new,     1 changed,     0 unmodified
-		   Dirs:            0 new,     1 changed,     0 unmodified
-		   Added to the repository: 923 B (498 B stored)
-
-		   processed 1 files, 5 B in 0:00
-		   snapshot 114586b7 saved
-		   /
-		   === Starting forget ===
-		   Applying Policy: keep 3 hourly, 2 daily, 1 monthly snapshots
-		   keep 1 snapshots:
-		   ID        Time                 Host        Tags        Reasons           Paths
-		   ------------------------------------------------------------------------------
-		   114586b7  2023-01-09 21:46:02  volsync                 hourly snapshot   /data
-		                                                          daily snapshot
-		                                                          monthly snapshot
-		   ------------------------------------------------------------------------------
-		   1 snapshots
-
-		   remove 1 snapshots:
-		   ID        Time                 Host        Tags        Paths
-		   ------------------------------------------------------------
-		   1d75de4c  2023-01-09 21:45:42  volsync                 /data
-		   ------------------------------------------------------------
-		   1 snapshots
-
-		   [0:00] 100.00%  1 / 1 files deleted
-
-		   Restic completed in 8s
-		   === Done ===`
-		*/
-
-		// nolint:lll
-		expectedFilteredResticSourceLogSuccessful := `repository f5bccd54 opened (repository version 2) successfully, password is correct
+			// nolint:lll
+			expectedFilteredResticSourceLogSuccessful := `repository f5bccd54 opened (repository version 2) successfully, password is correct
 no parent snapshot found, will read all files
 Added to the repository: 12.941 MiB (12.529 MiB stored)
 processed 25 files, 36.658 MiB in 0:12
 snapshot 0ff74383 saved
 Restic completed in 18s`
 
-		It("Should filter the logs from a successful replication source (restic backup)", func() {
 			reader := strings.NewReader(resticSourceLogSuccessful)
 			filteredLines, err := utils.FilterLogs(reader, restic.LogLineFilterSuccess)
 			Expect(err).NotTo(HaveOccurred())
 
 			logger.Info("Logs after filter", "filteredLines", filteredLines)
 			Expect(filteredLines).To(Equal(expectedFilteredResticSourceLogSuccessful))
+		})
+
+		It("Should filter the logs from a replication source (restic backup) that performed an unlock", func() {
+			// Sample backup log for restic mover
+			resticSourceLog := `Starting container
+VolSync restic container version: v0.8.0+a0a0bb8-dirty
+unlock backup
+restic 0.15.1 compiled with go1.19.3 on linux/amd64
+Testing mandatory env variables
+=== Starting unlock ===
+913a91c60431342abb402d7707f50a370c52a911e01abdf4160e5d41a77e5151
+successfully removed 1 locks
+== Checking directory for content ===
+== Initialize Dir =======
+ID        Time                 Host         Tags        Paths
+------------------------------------------------------------------------
+4e825939  2023-04-07 20:17:00  volsync                  /mover-syncthing
+29baa6a9  2023-04-07 21:27:34  volsync                  /mover-syncthing
+f617a68d  2023-04-07 23:55:22  volsync                  /data
+ea83f94a  2023-04-08 00:00:36  volsync                  /data
+b126807d  2023-04-08 01:14:51  ttestrestic              /home
+6cd03c8e  2023-04-08 01:19:27  volsync                  /data
+eaf1a6ed  2023-04-08 02:53:08  volsync                  /data
+------------------------------------------------------------------------
+7 snapshots
+=== Starting backup ===
+/data /
+using parent snapshot eaf1a6ed
+
+Files:           0 new,     4 changed,     0 unmodified
+Dirs:            0 new,     0 changed,     0 unmodified
+Added to the repository: 1.653 KiB (562 B stored)
+
+processed 4 files, 1.494 KiB in 0:00
+snapshot 6b128c1e saved
+/
+=== Starting forget ===
+Applying Policy: keep 3 hourly, 2 daily, 1 monthly snapshots
+keep 2 snapshots:
+ID        Time                 Host        Tags        Reasons           Paths
+-----------------------------------------------------------------------------------------
+4e825939  2023-04-07 20:17:00  volsync                 hourly snapshot   /mover-syncthing
+29baa6a9  2023-04-07 21:27:34  volsync                 hourly snapshot   /mover-syncthing
+                                                       daily snapshot
+                                                       monthly snapshot
+-----------------------------------------------------------------------------------------
+2 snapshots
+
+keep 4 snapshots:
+ID        Time                 Host        Tags        Reasons           Paths
+------------------------------------------------------------------------------
+f617a68d  2023-04-07 23:55:22  volsync                 daily snapshot    /data
+6cd03c8e  2023-04-08 01:19:27  volsync                 hourly snapshot   /data
+eaf1a6ed  2023-04-08 02:53:08  volsync                 hourly snapshot   /data
+6b128c1e  2023-04-08 04:23:11  volsync                 hourly snapshot   /data
+                                                       daily snapshot
+                                                       monthly snapshot
+------------------------------------------------------------------------------
+4 snapshots
+
+remove 1 snapshots:
+ID        Time                 Host        Tags        Paths
+------------------------------------------------------------
+ea83f94a  2023-04-08 00:00:36  volsync                 /data
+------------------------------------------------------------
+1 snapshots
+
+[0:00] 100.00%  1 / 1 files deleted
+
+Restic completed in 4s
+=== Done ===
+`
+
+			expectedFilteredResticSourceLog := `successfully removed 1 locks
+using parent snapshot eaf1a6ed
+Added to the repository: 1.653 KiB (562 B stored)
+processed 4 files, 1.494 KiB in 0:00
+snapshot 6b128c1e saved
+Restic completed in 4s`
+
+			reader := strings.NewReader(resticSourceLog)
+			filteredLines, err := utils.FilterLogs(reader, restic.LogLineFilterSuccess)
+			Expect(err).NotTo(HaveOccurred())
+
+			logger.Info("Logs after filter", "filteredLines", filteredLines)
+			Expect(filteredLines).To(Equal(expectedFilteredResticSourceLog))
 		})
 	})
 
