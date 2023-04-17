@@ -120,6 +120,15 @@ var _ = Describe("Restic unlock", func() {
 		It("shouldUnlock() should return false", func() {
 			Expect(m.shouldUnlock()).To(BeFalse())
 		})
+
+		When("the status has a lastUnlocked value set", func() {
+			// If unlock is not set in the spec, we should not run unlock regardless of what is set in the status.
+			// So checking here to make sure we don't blindly compare spec.restic.unlock with status.restic.lastUnlocked
+			It("shouldUnlock() should still return false", func() {
+				m.sourceStatus.LastUnlocked = "prev-unlock-value"
+				Expect(m.shouldUnlock()).To(BeFalse())
+			})
+		})
 	})
 	When("Unlock set to a value", func() {
 		BeforeEach(func() {
