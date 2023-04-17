@@ -2,7 +2,7 @@
 
 # 0 is unlimited
 MAX_PARALLELISM=${MAX_PARALLELISM:-0}
-BATCHES=${BATCHES:-0}
+BATCHES=${BATCHES:-2}
 
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 cd "$SCRIPT_DIR" || exit 1
