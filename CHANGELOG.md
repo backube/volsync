@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that is from a configmap rather than only from a secret.
 - Rclone - ReplicationSource/ReplicationDestination can now specify a CustomCA
   that is contained in either a configmap or secret.
+- Restic - New option to run a restic unlock before the backup in the next sync.
 
 ## [0.7.1]
 

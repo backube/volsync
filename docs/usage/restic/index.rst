@@ -175,6 +175,16 @@ retain
    When more than the specified number of backups are present in the repository,
    they will be removed via Restic's ``forget`` operation, and the space will be
    reclaimed during the next prune.
+unlock
+  This can be used to perform a ``restic unlock`` before the next backup. This is
+  useful if the repository has a stale lock that prevents backups from being made.
+  To run an unlock set ``unlock`` to a string value. Note that this on its own will
+  not schedule a replication (backup), the next replication will happen according
+  to the trigger spec. Once a replication completes, ``status.restic.lastUnlocked``
+  will be set to the same string value from ``spec.restic.unlock``. Unlock will
+  not be performed again on subsequent replications unless ``spec.restic.unlock``
+  is set to a different value.
+
 
 
 Performing a restore

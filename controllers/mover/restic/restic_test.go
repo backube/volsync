@@ -93,6 +93,69 @@ var _ = Describe("Restic retain policy", func() {
 	})
 })
 
+var _ = Describe("Restic unlock", func() {
+	var m *Mover
+	var owner *corev1.ConfigMap
+	logger := zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
+	var start metav1.Time
+
+	BeforeEach(func() {
+		start = metav1.Now()
+		// The underlying type of owner doesn't matter
+		owner = &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:              "name",
+				Namespace:         "ns",
+				CreationTimestamp: start,
+			},
+		}
+		m = &Mover{
+			logger:       logger,
+			owner:        owner,
+			sourceStatus: &volsyncv1alpha1.ReplicationSourceResticStatus{},
+		}
+	})
+
+	When("Unlock is not set in the spec", func() {
+		It("shouldUnlock() should return false", func() {
+			Expect(m.shouldUnlock()).To(BeFalse())
+		})
+
+		When("the status has a lastUnlocked value set", func() {
+			// If unlock is not set in the spec, we should not run unlock regardless of what is set in the status.
+			// So checking here to make sure we don't blindly compare spec.restic.unlock with status.restic.lastUnlocked
+			It("shouldUnlock() should still return false", func() {
+				m.sourceStatus.LastUnlocked = "prev-unlock-value"
+				Expect(m.shouldUnlock()).To(BeFalse())
+			})
+		})
+	})
+	When("Unlock set to a value", func() {
+		BeforeEach(func() {
+			m.unlock = "unlock-now"
+		})
+		When("No lastUnlock is set in status", func() {
+			It("shouldUnlock() should return true", func() {
+				Expect(m.shouldUnlock()).To(BeTrue())
+			})
+		})
+		When("lastUnlock is set to unlock in status", func() {
+			It("shouldUnlock() should return false", func() {
+				m.sourceStatus.LastUnlocked = m.unlock // Set status to unlock value
+				Expect(m.shouldUnlock()).To(BeFalse())
+			})
+		})
+		When("lastUnlock is set to different value from unlock in status", func() {
+			It("shouldUnlock() should return true", func() {
+				m.sourceStatus.LastUnlocked = "some-new-value"
+				Expect(m.shouldUnlock()).To(BeTrue())
+			})
+		})
+
+	})
+
+})
+
 var _ = Describe("Restic prune policy", func() {
 	var m *Mover
 	var owner *corev1.ConfigMap
@@ -801,6 +864,126 @@ var _ = Describe("Restic as a source", func() {
 						}
 					}
 					Expect(foundDataVolume).To(Equal(true))
+				})
+			})
+
+			// nolint:dupl
+			Context("Unlock tests", func() {
+				When("Unlock is used (spec.restic.unlock", func() {
+					JustBeforeEach(func() {
+						mover.unlock = "unlock-1"
+					})
+					It("should run a backup with unlock", func() {
+						j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(j).To(BeNil()) // hasn't completed
+						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+						job = &batchv1.Job{}
+						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+						Expect(mover.shouldUnlock()).To(BeTrue())
+						Expect(len(job.Spec.Template.Spec.Containers)).To(BeNumerically(">", 0))
+						args := job.Spec.Template.Spec.Containers[0].Args
+						Expect(args).To(ConsistOf([]string{"unlock", "backup"}))
+						// Mark completed
+						job.Status.Succeeded = int32(1)
+						Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
+						j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(j).NotTo(BeNil())
+						Expect(mover.sourceStatus.LastUnlocked).To(Equal("unlock-1"))
+					})
+				})
+
+				When("another sync is run without changing unlock in the spec", func() {
+					JustBeforeEach(func() {
+						// Simulating that unlock-2 has already run (i.e. it's in the status)
+						mover.unlock = "unlock-2"
+						mover.sourceStatus.LastUnlocked = mover.unlock
+					})
+
+					It("should run a backup without running unlock", func() {
+						j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(j).To(BeNil()) // hasn't completed
+						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+						job = &batchv1.Job{}
+						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+						Expect(mover.shouldUnlock()).To(BeFalse())
+						Expect(len(job.Spec.Template.Spec.Containers)).To(BeNumerically(">", 0))
+						args := job.Spec.Template.Spec.Containers[0].Args
+						Expect(args).To(ConsistOf("backup"))
+						// Mark completed
+						job.Status.Succeeded = int32(1)
+						Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
+						j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(j).NotTo(BeNil())
+						// LastUnlocked should still be the previous value
+						Expect(mover.sourceStatus.LastUnlocked).To(Equal("unlock-2"))
+					})
+				})
+
+				When("another sync is run with a new value of unlock in the spec", func() {
+					JustBeforeEach(func() {
+						mover.unlock = "unlock-3" // User has requested new unlock
+
+						// Simulating that unlock-2 has already run (i.e. it's in the status)
+						mover.sourceStatus.LastUnlocked = "unlock-2"
+					})
+
+					It("should run a backup with unlock", func() {
+						j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(j).To(BeNil()) // hasn't completed
+						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+						job = &batchv1.Job{}
+						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+						Expect(mover.shouldUnlock()).To(BeTrue())
+						Expect(len(job.Spec.Template.Spec.Containers)).To(BeNumerically(">", 0))
+						args := job.Spec.Template.Spec.Containers[0].Args
+						Expect(args).To(ConsistOf([]string{"unlock", "backup"}))
+						// Mark completed
+						job.Status.Succeeded = int32(1)
+						Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
+						j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(j).NotTo(BeNil())
+						// LastUnlocked should be updated with the new value
+						Expect(mover.sourceStatus.LastUnlocked).To(Equal("unlock-3"))
+					})
+				})
+
+				When("another sync is run and unlock is cleared from the spec", func() {
+					JustBeforeEach(func() {
+						mover.unlock = "" // User deleted it from the spec
+
+						// Simulating that unlock-1 has previously run
+						mover.sourceStatus.LastUnlocked = "unlock-1"
+					})
+					It("should run a backup without running unlock", func() {
+						mover.unlock = ""
+
+						j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(j).To(BeNil()) // hasn't completed
+						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+						job = &batchv1.Job{}
+						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+						Expect(mover.shouldUnlock()).To(BeFalse())
+						Expect(len(job.Spec.Template.Spec.Containers)).To(BeNumerically(">", 0))
+						args := job.Spec.Template.Spec.Containers[0].Args
+
+						Expect(args).To(ConsistOf("backup")) // No unlock
+						// Mark completed
+						job.Status.Succeeded = int32(1)
+						Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
+						j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(j).NotTo(BeNil())
+
+						// LastUnlocked should be empty now
+						Expect(mover.sourceStatus.LastUnlocked).To(Equal(""))
+					})
 				})
 			})
 

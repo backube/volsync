@@ -80,6 +80,26 @@ function do_forget {
     fi
 }
 
+function do_unlock {
+    echo "=== Starting unlock ==="
+    # Try a restic unlock and capture the rc & output
+    outfile=$(mktemp -q)
+    #if ! "${RESTIC[@]}" unlock --remove-all 2>"$outfile"; then
+    if ! "${RESTIC[@]}" unlock 2>"$outfile"; then
+        output=$(<"$outfile")
+        # Match against error string for uninitialized repo
+        if [[ $output =~ .*(Is there a repository at the following location).* ]]; then
+            # No repo, no need to unlock
+            cat "$outfile"
+            echo "No repo, ignoring unlock error"
+        else
+            cat "$outfile"
+            error 3 "failure unlocking repository"
+        fi
+    fi
+    rm -f "$outfile"
+}
+
 function do_prune {
     echo "=== Starting prune ==="
     "${RESTIC[@]}" prune
@@ -248,6 +268,9 @@ done
 START_TIME=$SECONDS
 for op in "$@"; do
     case $op in
+        "unlock")
+            do_unlock
+            ;;
         "backup")
             check_contents
             ensure_initialized
