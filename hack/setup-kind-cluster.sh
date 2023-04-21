@@ -167,6 +167,25 @@ if [[ $KUBE_MINOR -ge 24 ]]; then  # Kube 1.24 removed snapshot.storage.k8s.io/v
   log "Deploying external snapshotter: ${TAG}"
   kubectl create -k "https://github.com/kubernetes-csi/external-snapshotter/client/config/crd?ref=${TAG}"
   kubectl create -n kube-system -k "https://github.com/kubernetes-csi/external-snapshotter/deploy/kubernetes/snapshot-controller?ref=${TAG}"
+
+  # Deploy validating webhook server for snapshots: https://github.com/kubernetes-csi/external-snapshotter#validating-webhook
+  log "Deploying validating webhook server for volumesnapshots: ${TAG}"
+  EXT_SNAPSHOTTER_BASE="$(mktemp --tmpdir -d external-snapshotter-XXXXXX)"
+  git clone --depth 1 -b "${TAG}" https://github.com/kubernetes-csi/external-snapshotter.git "${EXT_SNAPSHOTTER_BASE}"
+
+  SNAP_WEBHOOK_PATH="${EXT_SNAPSHOTTER_BASE}/deploy/kubernetes/webhook-example"
+  # webhook server need a TLS certificate - run script to generate and deploy secret to cluster (requires openssl)
+  "${SNAP_WEBHOOK_PATH}"/create-cert.sh --service snapshot-validation-service --secret snapshot-validation-secret --namespace kube-system
+  cat "${SNAP_WEBHOOK_PATH}"/admission-configuration-template | "${SNAP_WEBHOOK_PATH}"/patch-ca-bundle.sh > "${SNAP_WEBHOOK_PATH}"/admission-configuration.yaml
+
+  # Update namespace in the example files
+  for yamlfile in "${SNAP_WEBHOOK_PATH}"/*.yaml
+  do
+    sed -i s/'namespace: "default"'/'namespace: "kube-system"'/g "${yamlfile}"
+    sed -i s/'namespace: default'/'namespace: kube-system'/g "${yamlfile}"
+  done
+  kubectl apply -f "${SNAP_WEBHOOK_PATH}"
+  rm -rf "${SNAP_WEBHOOK_PATH}"
 elif [[ $KUBE_MINOR -ge 20 ]]; then  # Kube 1.20 added snapshot.storage.k8s.io/v1
   TAG="v5.0.1"  # https://github.com/kubernetes-csi/external-snapshotter/releases
   log "Deploying external snapshotter: ${TAG}"
