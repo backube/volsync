@@ -176,7 +176,7 @@ if [[ $KUBE_MINOR -ge 24 ]]; then  # Kube 1.24 removed snapshot.storage.k8s.io/v
   SNAP_WEBHOOK_PATH="${EXT_SNAPSHOTTER_BASE}/deploy/kubernetes/webhook-example"
   # webhook server need a TLS certificate - run script to generate and deploy secret to cluster (requires openssl)
   "${SNAP_WEBHOOK_PATH}"/create-cert.sh --service snapshot-validation-service --secret snapshot-validation-secret --namespace kube-system
-  cat "${SNAP_WEBHOOK_PATH}"/admission-configuration-template | "${SNAP_WEBHOOK_PATH}"/patch-ca-bundle.sh > "${SNAP_WEBHOOK_PATH}"/admission-configuration.yaml
+  < "${SNAP_WEBHOOK_PATH}"/admission-configuration-template "${SNAP_WEBHOOK_PATH}"/patch-ca-bundle.sh > "${SNAP_WEBHOOK_PATH}"/admission-configuration.yaml
 
   # Update namespace in the example files
   for yamlfile in "${SNAP_WEBHOOK_PATH}"/*.yaml
