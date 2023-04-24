@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that is contained in either a configmap or secret.
 - Restic - New option to run a restic unlock before the backup in the next sync.
 
+### Changed
+
+- Syncthing upgraded to v1.23.4
+
 ## [0.7.1]
 
 ### Changed
