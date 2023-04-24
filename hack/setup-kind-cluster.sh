@@ -185,7 +185,7 @@ if [[ $KUBE_MINOR -ge 24 ]]; then  # Kube 1.24 removed snapshot.storage.k8s.io/v
     sed -i s/'namespace: default'/'namespace: kube-system'/g "${yamlfile}"
   done
   kubectl apply -f "${SNAP_WEBHOOK_PATH}"
-  rm -rf "${SNAP_WEBHOOK_PATH}"
+  rm -rf "${EXT_SNAPSHOTTER_BASE}"
 elif [[ $KUBE_MINOR -ge 20 ]]; then  # Kube 1.20 added snapshot.storage.k8s.io/v1
   TAG="v5.0.1"  # https://github.com/kubernetes-csi/external-snapshotter/releases
   log "Deploying external snapshotter: ${TAG}"
