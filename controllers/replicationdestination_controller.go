@@ -164,9 +164,6 @@ func (r *ReplicationDestinationReconciler) SetupWithManager(mgr ctrl.Manager) er
 		Owns(&rbacv1.Role{}).
 		Owns(&rbacv1.RoleBinding{}).
 		Owns(&snapv1.VolumeSnapshot{}).
-		WithOptions(controller.Options{
-			MaxConcurrentReconciles: 10,
-		}).
 		Complete(r)
 }
 
