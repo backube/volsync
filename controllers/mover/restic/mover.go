@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"path"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -381,6 +382,9 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 			utils.EnvFromSecret(repo.Name, "GOOGLE_PROJECT_ID", true),
 		}
 
+		// Rclone env vars for restic if they are in the secret
+		envVars = appendRCloneEnvVars(repo, envVars)
+
 		// Cluster-wide proxy settings
 		envVars = utils.AppendEnvVarsForClusterWideProxy(envVars)
 
@@ -599,4 +603,14 @@ func generateForgetOptions(policy *volsyncv1alpha1.ResticRetainPolicy) string {
 		return defaultForget
 	}
 	return forget
+}
+
+// Append k/v from the restic secret if they start with RCLONE_
+func appendRCloneEnvVars(resticSecret *corev1.Secret, envVars []corev1.EnvVar) []corev1.EnvVar {
+	for key := range resticSecret.Data {
+		if strings.HasPrefix(key, "RCLONE_") {
+			envVars = append(envVars, utils.EnvFromSecret(resticSecret.Name, key, true))
+		}
+	}
+	return envVars
 }
