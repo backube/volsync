@@ -10,6 +10,13 @@ if [[ -z "$DESTINATION_ADDRESS" ]]; then
     echo "Remote host must be provided in DESTINATION_ADDRESS"
     exit 1
 fi
+SOURCE="/data"
+BLOCK_SOURCE="/dev/block"
+
+if [[ ! -d $SOURCE ]] && ! test -b $BLOCK_SOURCE; then
+    echo "ERROR: source location not found"
+    exit 1
+fi
 
 mkdir -p ~/.ssh/controlmasters
 chmod 711 ~/.ssh
@@ -68,7 +75,12 @@ set +e
 while [[ ${rc} -ne 0 && ${RETRY} -lt ${MAX_RETRIES} ]]
 do
     RETRY=$((RETRY + 1))
-    rsync -aAhHSxz --delete --itemize-changes --info=stats2,misc2 /data/ "root@${URL_DESTINATION_ADDRESS}":.
+    if test -b $BLOCK_SOURCE; then
+      echo "calling diskrsync $BLOCK_SOURCE root@${URL_DESTINATION_ADDRESS}:/dev/block"
+      diskrsync $BLOCK_SOURCE root@${URL_DESTINATION_ADDRESS}:/dev/block
+    else
+      rsync -aAhHSxz --delete --itemize-changes --info=stats2,misc2 $SOURCE "root@${URL_DESTINATION_ADDRESS}":.
+    fi
     rc=$?
     if [[ ${rc} -ne 0 ]]; then
         echo "Syncronization failed. Retrying in ${DELAY} seconds. Retry ${RETRY}/${MAX_RETRIES}."

@@ -54,6 +54,7 @@ type VolumeHandler struct {
 	capacity                *resource.Quantity
 	storageClassName        *string
 	accessModes             []corev1.PersistentVolumeAccessMode
+	volumeMode              corev1.PersistentVolumeMode
 	volumeSnapshotClassName *string
 }
 
@@ -63,6 +64,11 @@ type VolumeHandler struct {
 // the operation should be retried.
 func (vh *VolumeHandler) EnsurePVCFromSrc(ctx context.Context, log logr.Logger,
 	src *corev1.PersistentVolumeClaim, name string, isTemporary bool) (*corev1.PersistentVolumeClaim, error) {
+	// make sure the volumeMode is set properly
+	vh.volumeMode = corev1.PersistentVolumeFilesystem
+	if src.Spec.VolumeMode != nil {
+		vh.volumeMode = *src.Spec.VolumeMode
+	}
 	switch vh.copyMethod {
 	case volsyncv1alpha1.CopyMethodNone:
 		fallthrough // Same as CopyMethodDirect
@@ -353,6 +359,7 @@ func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,
 			} else {
 				clone.Spec.AccessModes = src.Spec.AccessModes
 			}
+			clone.Spec.VolumeMode = &vh.volumeMode
 			clone.Spec.DataSource = &corev1.TypedLocalObjectReference{
 				APIGroup: nil,
 				Kind:     "PersistentVolumeClaim",
@@ -475,7 +482,7 @@ func (vh *VolumeHandler) pvcFromSnapshot(ctx context.Context, log logr.Logger,
 				pvc.Spec.Resources.Requests = corev1.ResourceList{
 					corev1.ResourceStorage: *vh.capacity,
 				}
-			} else if snap.Status != nil && snap.Status.RestoreSize != nil {
+			} else if snap.Status != nil && snap.Status.RestoreSize != nil && !snap.Status.RestoreSize.IsZero() {
 				pvc.Spec.Resources.Requests = corev1.ResourceList{
 					corev1.ResourceStorage: *snap.Status.RestoreSize,
 				}
@@ -500,6 +507,7 @@ func (vh *VolumeHandler) pvcFromSnapshot(ctx context.Context, log logr.Logger,
 			} else {
 				pvc.Spec.AccessModes = original.Spec.AccessModes
 			}
+			pvc.Spec.VolumeMode = &vh.volumeMode
 			pvc.Spec.DataSource = &corev1.TypedLocalObjectReference{
 				APIGroup: &snapv1.SchemeGroupVersion.Group,
 				Kind:     "VolumeSnapshot",
