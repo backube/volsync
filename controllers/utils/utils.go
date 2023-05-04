@@ -159,6 +159,10 @@ func PvcIsReadOnly(pvc *corev1.PersistentVolumeClaim) bool {
 	return false
 }
 
+func PvcIsBlockMode(pvc *corev1.PersistentVolumeClaim) bool {
+	return pvc.Spec.VolumeMode != nil && *pvc.Spec.VolumeMode == corev1.PersistentVolumeBlock
+}
+
 func AppendEnvVarsForClusterWideProxy(envVars []corev1.EnvVar) []corev1.EnvVar {
 	httpProxy, ok := os.LookupEnv("HTTP_PROXY")
 	if ok {

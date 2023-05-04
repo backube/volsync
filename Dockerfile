@@ -78,6 +78,13 @@ RUN go run build.go -no-upgrade
 
 
 ######################################################################
+# Build diskrsync
+FROM golang-builder as diskrsync-builder
+
+WORKDIR /workspace/diskrsync
+RUN GOPATH=$(pwd) go install github.com/dop251/diskrsync/diskrsync@latest
+
+######################################################################
 # Final container
 FROM registry.access.redhat.com/ubi9-minimal
 WORKDIR /
@@ -154,6 +161,8 @@ RUN chmod a+r /mover-syncthing/config-template.xml && \
     chmod a+r /mover-syncthing/stignore-template && \
     chmod a+rx /mover-syncthing/*.sh
 
+##### diskrsync
+COPY --from=diskrsync-builder /workspace/diskrsync/bin/diskrsync /usr/local/bin/diskrsync
 
 ##### Set build metadata
 ARG builddate_arg="(unknown)"
