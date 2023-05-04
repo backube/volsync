@@ -193,6 +193,10 @@ func IsMarkedDoNotDelete(snapshot *snapv1.VolumeSnapshot) bool {
 	return HasLabel(snapshot, DoNotDeleteLabelKey)
 }
 
+func MarkDoNotDelete(snapshot *snapv1.VolumeSnapshot) bool {
+	return AddLabel(snapshot, DoNotDeleteLabelKey, "true")
+}
+
 func UnMarkForCleanupAndRemoveOwnership(obj metav1.Object, owner client.Object) bool {
 	updated := false
 
@@ -223,11 +227,11 @@ func MarkOldSnapshotForCleanup(ctx context.Context, c client.Client, logger logr
 	// current one)
 
 	// There's no latestImage or type != snapshot
-	if !isSnapshot(latestImage) {
+	if !IsSnapshot(latestImage) {
 		return nil
 	}
 	// No oldImage or type != snapshot
-	if !isSnapshot(oldImage) {
+	if !IsSnapshot(oldImage) {
 		return nil
 	}
 
@@ -268,11 +272,11 @@ func MarkOldSnapshotForCleanup(ctx context.Context, c client.Client, logger logr
 	return nil
 }
 
-func isSnapshot(image *corev1.TypedLocalObjectReference) bool {
+func IsSnapshot(image *corev1.TypedLocalObjectReference) bool {
 	if image == nil {
 		return false
 	}
-	if image.Kind != "VolumeSnapshot" || *image.APIGroup != snapv1.SchemeGroupVersion.Group {
+	if image.Kind != "VolumeSnapshot" || image.APIGroup == nil || *image.APIGroup != snapv1.SchemeGroupVersion.Group {
 		return false
 	}
 	return true

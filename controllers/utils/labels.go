@@ -18,9 +18,9 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package utils
 
 const (
-	volsyncLabelPrefix  = "volsync.backube"
-	cleanupLabelKey     = volsyncLabelPrefix + "/cleanup"
-	DoNotDeleteLabelKey = volsyncLabelPrefix + "/do-not-delete"
+	VolsyncLabelPrefix  = "volsync.backube"
+	cleanupLabelKey     = VolsyncLabelPrefix + "/cleanup"
+	DoNotDeleteLabelKey = VolsyncLabelPrefix + "/do-not-delete"
 	OwnedByLabelKey     = "app.kubernetes.io/created-by"
 	OwnedByLabelValue   = "volsync"
 )
