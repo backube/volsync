@@ -37,7 +37,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers/utils"
@@ -49,11 +52,64 @@ const (
 	annotationPopulatedFrom string = "volsync.backube/populated-from"
 	labelPvcPrime           string = utils.VolsyncLabelPrefix + "/populator-pvc-for"
 
-	reasonPVCPopulatorFinished = "VolSyncPopulatorFinished"
-	reasonPVCPopulatorError    = "VolSyncPopulatorError"
-	reasonPVCCreationSuccess   = "VolSyncPopulatorPVCCreated"
-	reasonPVCCreationError     = "VolSyncPopulatorPVCCreationError"
+	reasonPVCPopulatorFinished            = "VolSyncPopulatorFinished"
+	reasonPVCPopulatorError               = "VolSyncPopulatorError"
+	reasonPVCReplicationDestMissing       = "VolSyncPopulatorReplicationDestinationMissing"
+	reasonPVCReplicationDestNoLatestImage = "VolSyncPopulatorReplicationDestinationNoLatestImage"
+	reasonPVCCreationSuccess              = "VolSyncPopulatorPVCCreated"
+	reasonPVCCreationError                = "VolSyncPopulatorPVCCreationError"
+
+	VolPopPVCToReplicationDestinationIndex string = "volPopPvc.spec.dataSourceRef.Name"
+	VolPopPVCToStorageClassIndex           string = "volPopPvc.spec.storageClassName"
 )
+
+func IndexFieldsForVolumePopulator(ctx context.Context, fieldIndexer client.FieldIndexer) error {
+	// Index on PVCs - used to find pvc referring to (by dataSourceRef) a ReplicationDestination
+	err := fieldIndexer.IndexField(ctx, &corev1.PersistentVolumeClaim{},
+		VolPopPVCToReplicationDestinationIndex, func(o client.Object) []string {
+			var res []string
+			pvc, ok := o.(*corev1.PersistentVolumeClaim)
+			if !ok {
+				// This shouldn't happen
+				return res
+			}
+			if !pvcHasReplicationDestinationDataSourceRef(pvc) {
+				// This pvc is not using a ReplicationDestination as a DataSourceRef, don't add to index
+				return res
+			}
+
+			// just return the raw field value -- the indexer will take care of dealing with namespaces for us
+			res = append(res, pvc.Spec.DataSourceRef.Name)
+
+			return res
+		})
+	if err != nil {
+		return err
+	}
+
+	// Index on PVCs - used to find pvcs (for this volume populator) referring to a storageclass
+	// Will only index PVCs that are using a ReplicationDestination as DataSourceRef
+	return fieldIndexer.IndexField(ctx, &corev1.PersistentVolumeClaim{},
+		VolPopPVCToStorageClassIndex, func(o client.Object) []string {
+			var res []string
+			pvc, ok := o.(*corev1.PersistentVolumeClaim)
+			if !ok {
+				// This shouldn't happen
+				return res
+			}
+			if !pvcHasReplicationDestinationDataSourceRef(pvc) {
+				// This pvc is not using a ReplicationDestination as a DataSourceRef, don't add to index
+				return res
+			}
+
+			// just return the raw field value -- the indexer will take care of dealing with namespaces for us
+			if pvc.Spec.StorageClassName != nil {
+				res = append(res, *pvc.Spec.StorageClassName)
+			}
+
+			return res
+		})
+}
 
 //nolint:lll
 //+kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
@@ -75,7 +131,7 @@ type VolumePopulatorReconciler struct {
 // Reconcile logic is adapted from reference at:
 // https://github.com/kubernetes-csi/lib-volume-populator/blob/master/populator-machinery/controller.go
 //
-//nolint:funlen
+//nolint:funlen,gocyclo //FIXME:
 func (r *VolumePopulatorReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Log.WithValues("pvc", req.NamespacedName)
 
@@ -110,9 +166,9 @@ func (r *VolumePopulatorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			if !errors.IsNotFound(err) {
 				return ctrl.Result{}, err
 			}
-			//c.addNotification(key, "sc", "", storageClassName)
-			//TODO: no requeue will happen unless we also watch storageclasses
-			// We'll get called again later when the storage class exists
+			logger.Error(err, "StorageClass not found, cannot populate volume yet")
+			// Do not return error - will rely on watches to reconcile once storageclass is created
+			// No need for event here - storagecontroller adds warning if storageclass doesn't exist
 			return ctrl.Result{}, nil
 		}
 
@@ -155,7 +211,7 @@ func (r *VolumePopulatorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	// If the PVC is unbound, we need to perform the population
-	if "" == pvc.Spec.VolumeName {
+	if !isPVCBoundToVolume(pvc) {
 		/*
 			// Ensure the PVC has a finalizer on it so we can clean up the stuff we create
 			err = c.ensureFinalizer(ctx, pvc, c.pvcFinalizer, true)
@@ -173,14 +229,23 @@ func (r *VolumePopulatorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			// be ok if replicationdestination is missing - so only error out here if RD doesn't exist
 			rd, err := r.getReplicationDestinationFromDataSourceRef(ctx, logger, pvc)
 			if err != nil {
-				return ctrl.Result{}, err
+				if !errors.IsNotFound(err) {
+					return ctrl.Result{}, err
+				}
+				logger.Error(err, "ReplicationDestination not found, cannot populate volume yet")
+				r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, reasonPVCReplicationDestMissing,
+					"Unable to populate volume: %s", err)
+				// Do not return error - will rely on watches to reconcile once the rd is created
+				return ctrl.Result{}, nil
 			}
 
 			logger = logger.WithValues("replication destination name", rd.GetName(), "namespace", rd.GetNamespace())
 
 			if rd.Status == nil || rd.Status.LatestImage == nil {
 				logger.Info("ReplicationDestination has no latestImage, cannot populate volume yet")
-				//TODO: should we requeue here? Ideally we'd want to wait for updates on the rd
+				r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, reasonPVCReplicationDestNoLatestImage,
+					"Unable to populate volume, waiting for replicationdestination to have latestImage")
+				// We'll get called again later when the replicationdestination is updated (see watches on repldest)
 				return ctrl.Result{}, nil
 			}
 
@@ -224,6 +289,7 @@ func (r *VolumePopulatorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 					annotationSelectedNode: nodeName,
 				}
 			}
+			// Make pvcPrime owned by pvc - will be cleaned up via gc if pvc is deleted
 			if err := ctrl.SetControllerReference(pvc, pvcPrime, r.Client.Scheme()); err != nil {
 				logger.Error(err, utils.ErrUnableToSetControllerRef)
 				return ctrl.Result{}, err
@@ -231,7 +297,6 @@ func (r *VolumePopulatorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			utils.AddLabel(pvcPrime, labelPvcPrime, pvc.GetName()) // Use this filter in predicates in the &Owns() watcher
 			utils.SetOwnedByVolSync(pvcPrime)                      // Set created-by volsync label
 
-			//TODO: update this to ctrlutil.CreateOrUpdate (or possibly use our own CreateOrUpdateDeleteOnImmutableErr)
 			logger.Info("Creating temp populator pvc from snapshot", "volpop pvc name", pvcPrime.GetName())
 			err = r.Client.Create(ctx, pvcPrime)
 			if err != nil {
@@ -262,6 +327,7 @@ func (r *VolumePopulatorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 				return ctrl.Result{}, err
 			}
 			// We'll get called again later when the PV exists
+			// Should get called on pvcPrime being updated when the PV binds
 			return ctrl.Result{}, nil
 		}
 
@@ -343,23 +409,25 @@ func (r *VolumePopulatorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 func (r *VolumePopulatorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		//(using Watches() below instead) For(&corev1.PersistentVolumeClaim{}).
 		Named("volsync-volume-populator").
 		For(&corev1.PersistentVolumeClaim{}, builder.WithPredicates(pvcForVolumePopulatorFilterPredicate())).
 		WithOptions(controller.Options{
-			//MaxConcurrentReconciles: 100,
-			MaxConcurrentReconciles: 1,
+			MaxConcurrentReconciles: 100,
 		}).
 		Owns(&corev1.PersistentVolumeClaim{}, builder.WithPredicates(pvcOwnedByPredicate())).
-		/*
-			Watches(&source.Kind{Type: &volsyncv1alpha1.ReplicationDestination{}},
-				&handler.EnqueueRequestForOwner{OwnerType: &corev1.PersistentVolumeClaim{}, IsController: false}).
-		*/
+		Watches(&source.Kind{Type: &volsyncv1alpha1.ReplicationDestination{}},
+			handler.EnqueueRequestsFromMapFunc(func(o client.Object) []reconcile.Request {
+				return mapFuncReplicationDestinationToVolumePopulatorPVC(mgr.GetClient(), o)
+			}), builder.WithPredicates(replicationDestinationPredicate())).
+		Watches(&source.Kind{Type: &storagev1.StorageClass{}},
+			handler.EnqueueRequestsFromMapFunc(func(o client.Object) []reconcile.Request {
+				return mapFuncStorageClassToVolumePopulatorPVC(mgr.GetClient(), o)
+			}), builder.WithPredicates(storageClassPredicate())).
 		Complete(r)
 }
 
 // Predicate for PVCs with owner (and controller=true) of a PVC - this is to reconcile our temp populator pvc
-// (i.e. pvcPrime).  In case there are other PVCs owned by PVC, predicate will check for our labelPvcPrime to filter
+// (i.e. pvcPrime).  In case there are other PVCs owned by a PVC, predicate will check for our labelPvcPrime to filter
 // those out.
 func pvcOwnedByPredicate() predicate.Predicate {
 	return predicate.Funcs{
@@ -406,6 +474,117 @@ func pvcForVolumePopulatorFilterPredicate() predicate.Predicate {
 			return pvcHasReplicationDestinationDataSourceRef(pvc)
 		},
 	}
+}
+
+func replicationDestinationPredicate() predicate.Predicate {
+	// Only reconcile pvcs for replication destination if replication destination is new or updated (no delete)
+	return predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			return true
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			return false
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return true
+		},
+		GenericFunc: func(e event.GenericEvent) bool {
+			return true
+		},
+	}
+}
+
+func storageClassPredicate() predicate.Predicate {
+	// Only reconcile pvcs for storageclass on storageclass creation
+	return predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			return true
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			return false
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return false
+		},
+		GenericFunc: func(e event.GenericEvent) bool {
+			return false
+		},
+	}
+}
+
+func mapFuncReplicationDestinationToVolumePopulatorPVC(k8sClient client.Client, o client.Object) []reconcile.Request {
+	logger := ctrl.Log.WithName("mapFuncReplicationDestinationToVolumePopulatorPVC")
+
+	replicationDestination, ok := o.(*volsyncv1alpha1.ReplicationDestination)
+	if !ok {
+		return []reconcile.Request{}
+	}
+
+	// Find PVCs that use this ReplicationDestination in their dataSourceRef (using index)
+	pvcList := &corev1.PersistentVolumeClaimList{}
+	err := k8sClient.List(context.TODO(),
+		pvcList,
+		client.MatchingFields{
+			VolPopPVCToReplicationDestinationIndex: replicationDestination.GetName()}, // custom index
+		client.InNamespace(replicationDestination.GetNamespace()))
+	if err != nil {
+		logger.Error(err, "Error looking up pvcs (using index) matching replication destination",
+			"rd name", replicationDestination.GetName(), "namespace", replicationDestination.GetNamespace(),
+			"index name", VolPopPVCToReplicationDestinationIndex)
+		return []reconcile.Request{}
+	}
+
+	// Only enqueue a reconcile request if our PVC for volume populator is not already bound
+	return filterRequestsOnlyUnboundPVCs(pvcList)
+}
+
+func mapFuncStorageClassToVolumePopulatorPVC(k8sClient client.Client, o client.Object) []reconcile.Request {
+	logger := ctrl.Log.WithName("mapFuncStorageClassToVolumePopulatorPVC")
+
+	storageClass, ok := o.(*storagev1.StorageClass)
+	if !ok {
+		return []reconcile.Request{}
+	}
+
+	// Find PVCs that have this storageClassName set in their spec (using index)
+	// Our custom index is only storing PVCs that have a dataSourceRef pointing to a ReplicationDestination
+	pvcList := &corev1.PersistentVolumeClaimList{}
+	err := k8sClient.List(context.TODO(),
+		pvcList,
+		client.MatchingFields{
+			VolPopPVCToStorageClassIndex: storageClass.GetName()}, // custom index
+	)
+	if err != nil {
+		logger.Error(err, "Error looking up pvcs for the VolSync volume populator (using index) matching storageclass",
+			"storageclass name", storageClass.GetName(), "index name", VolPopPVCToStorageClassIndex)
+		return []reconcile.Request{}
+	}
+
+	// Only enqueue a reconcile request if our PVC for volume populator is not already bound
+	return filterRequestsOnlyUnboundPVCs(pvcList)
+}
+
+func filterRequestsOnlyUnboundPVCs(pvcList *corev1.PersistentVolumeClaimList) []reconcile.Request {
+	reqs := []reconcile.Request{}
+
+	for i := range pvcList.Items {
+		pvc := pvcList.Items[i]
+		// Only reconcile pvcs for an RD if the pvc is not already bound to a volume
+		if !isPVCBoundToVolume(&pvc) {
+			reqs = append(reqs, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      pvc.GetName(),
+					Namespace: pvc.GetNamespace(),
+				},
+			})
+		}
+	}
+	return reqs
+}
+
+func isPVCBoundToVolume(pvc *corev1.PersistentVolumeClaim) bool {
+	// If pvc.Spec.VolumeName is set, PVC is bound to a volume already
+	return "" != pvc.Spec.VolumeName
 }
 
 func (r VolumePopulatorReconciler) getReplicationDestinationFromDataSourceRef(ctx context.Context, logger logr.Logger,

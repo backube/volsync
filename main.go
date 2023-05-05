@@ -231,6 +231,12 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "ReplicationDestination")
 		os.Exit(1)
 	}
+
+	// Index fields that are required for the VolumePopulator controller
+	if err := controllers.IndexFieldsForVolumePopulator(context.Background(), mgr.GetFieldIndexer()); err != nil {
+		setupLog.Error(err, "unable to index fields for controller", "controller", "VolumePopulator")
+		os.Exit(1)
+	}
 	if err = (&controllers.VolumePopulatorReconciler{
 		Client:        mgr.GetClient(),
 		Log:           ctrl.Log.WithName("controllers").WithName("VolumePopulator"),

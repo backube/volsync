@@ -131,6 +131,18 @@ var _ = BeforeSuite(func() {
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
+	// Index fields that are required for the VolumePopulator controller
+	err = IndexFieldsForVolumePopulator(context.Background(), k8sManager.GetFieldIndexer())
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&VolumePopulatorReconciler{
+		Client:        k8sManager.GetClient(),
+		Log:           ctrl.Log.WithName("controllers").WithName("VolumePopulator"),
+		Scheme:        k8sManager.GetScheme(),
+		EventRecorder: &record.FakeRecorder{},
+	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
 	go func() {
 		defer GinkgoRecover()
 		err = k8sManager.Start(ctx)
