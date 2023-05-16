@@ -28,6 +28,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	gomegatypes "github.com/onsi/gomega/types"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -182,6 +183,17 @@ func createWithCacheReload(ctx context.Context, c client.Client, obj client.Obje
 		err := c.Get(ctx, client.ObjectKeyFromObject(obj), obj)
 		return err
 	}, getIntervals(intervals...)...).Should(Succeed())
+}
+
+func deleteWithCacheReload(ctx context.Context, c client.Client, obj client.Object, intervals ...interface{}) {
+	err := c.Delete(ctx, obj)
+	Expect(client.IgnoreNotFound(err)).NotTo(HaveOccurred())
+
+	// Make sure the k8sClient cache has been updated with this change before returning
+	Eventually(func() bool {
+		err := c.Get(ctx, client.ObjectKeyFromObject(obj), obj)
+		return kerrors.IsNotFound(err)
+	}, getIntervals(intervals...)...).Should(BeTrue())
 }
 
 func getIntervals(intervals ...interface{}) []interface{} {

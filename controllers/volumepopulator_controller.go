@@ -21,6 +21,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 
 	"github.com/go-logr/logr"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
@@ -29,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -36,6 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -52,12 +55,12 @@ const (
 	annotationPopulatedFrom string = "volsync.backube/populated-from"
 	labelPvcPrime           string = utils.VolsyncLabelPrefix + "/populator-pvc-for"
 
-	reasonPVCPopulatorFinished            = "VolSyncPopulatorFinished"
-	reasonPVCPopulatorError               = "VolSyncPopulatorError"
-	reasonPVCReplicationDestMissing       = "VolSyncPopulatorReplicationDestinationMissing"
-	reasonPVCReplicationDestNoLatestImage = "VolSyncPopulatorReplicationDestinationNoLatestImage"
-	reasonPVCCreationSuccess              = "VolSyncPopulatorPVCCreated"
-	reasonPVCCreationError                = "VolSyncPopulatorPVCCreationError"
+	reasonPVCPopulatorFinished            string = "VolSyncPopulatorFinished"
+	reasonPVCPopulatorError               string = "VolSyncPopulatorError"
+	reasonPVCReplicationDestMissing       string = "VolSyncPopulatorReplicationDestinationMissing"
+	reasonPVCReplicationDestNoLatestImage string = "VolSyncPopulatorReplicationDestinationNoLatestImage"
+	reasonPVCCreationSuccess              string = "VolSyncPopulatorPVCCreated"
+	reasonPVCCreationError                string = "VolSyncPopulatorPVCCreationError"
 
 	VolPopPVCToReplicationDestinationIndex string = "volPopPvc.spec.dataSourceRef.Name"
 	VolPopPVCToStorageClassIndex           string = "volPopPvc.spec.storageClassName"
@@ -131,11 +134,9 @@ type VolumePopulatorReconciler struct {
 // Reconcile logic is adapted from reference at:
 // https://github.com/kubernetes-csi/lib-volume-populator/blob/master/populator-machinery/controller.go
 //
-//nolint:funlen,gocyclo //FIXME:
+//nolint:funlen,gocyclo
 func (r *VolumePopulatorReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Log.WithValues("pvc", req.NamespacedName)
-
-	logger.Info("Reconciling ...") //TODO: remove
 
 	// Get PVC CR instance
 	pvc := &corev1.PersistentVolumeClaim{}
@@ -190,35 +191,16 @@ func (r *VolumePopulatorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		}
 	}
 
-	//TODO: what if no StorageClassName in the pvc.spec?
-
 	// Look for PVC' - this will be a PVC with the dataSourceRef set to the latest snapshot image
 	// from the ReplicationDestination
-	pvcPrimeName := fmt.Sprintf("%s-%s", populatorPvcPrefix, pvc.UID)
-	//c.addNotification(key, "pvc", c.populatorNamespace, pvcPrimeName)
-	pvcPrime := &corev1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      pvcPrimeName,
-			Namespace: pvc.GetNamespace(),
-		},
-	}
-	err := r.Client.Get(ctx, client.ObjectKeyFromObject(pvcPrime), pvcPrime)
+	pvcPrime, err := GetVolumePopulatorPVCPrime(ctx, r.Client, pvc)
 	if err != nil {
-		if !errors.IsNotFound(err) {
-			return ctrl.Result{}, err
-		}
-		pvcPrime = nil // set to nil if no pvcPrime found yet
+		return ctrl.Result{}, err
 	}
 
 	// If the PVC is unbound, we need to perform the population
 	if !isPVCBoundToVolume(pvc) {
 		/*
-			// Ensure the PVC has a finalizer on it so we can clean up the stuff we create
-			err = c.ensureFinalizer(ctx, pvc, c.pvcFinalizer, true)
-			if err != nil {
-				return err
-			}
-
 			// Record start time for populator metric
 			c.metrics.operationStart(pvc.UID)
 		*/
@@ -261,14 +243,14 @@ func (r *VolumePopulatorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 				return ctrl.Result{}, nil
 			}
 
-			_, err = r.validateSnapshotAndMarkDoNotDelete(ctx, logger, latestImage.Name, rd.GetNamespace())
+			_, err = r.validateSnapshotAndLabel(ctx, logger, latestImage.Name, rd.GetNamespace(), pvc)
 			if err != nil {
 				return ctrl.Result{}, err
 			}
 
 			pvcPrime = &corev1.PersistentVolumeClaim{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      pvcPrimeName,
+					Name:      getPVCPrimeName(pvc),
 					Namespace: pvc.GetNamespace(),
 				},
 				Spec: corev1.PersistentVolumeClaimSpec{
@@ -309,6 +291,12 @@ func (r *VolumePopulatorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 				"Populator pvc created from snapshot %s", latestImage.Name)
 		}
 
+		// Make sure any snapshots we've tried to use have owner reference of pvcPrime (for future cleanup)
+		err = r.ensureOwnerReferenceOnSnapshots(ctx, pvc, pvcPrime)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+
 		// Get PV from pvcPrime
 		if pvcPrime.Spec.VolumeName == "" {
 			// No volume yet
@@ -333,7 +321,10 @@ func (r *VolumePopulatorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 		// Examine the claimref for the PV and see if it's bound to the correct PVC
 		claimRef := pv.Spec.ClaimRef
-		if claimRef.Name != pvc.Name || claimRef.Namespace != pvc.Namespace || claimRef.UID != pvc.UID {
+		if claimRef == nil ||
+			claimRef.Name != pvc.Name ||
+			claimRef.Namespace != pvc.Namespace ||
+			claimRef.UID != pvc.UID {
 			// Make new PV with strategic patch values to perform the PV rebind
 			patchPv := &corev1.PersistentVolume{
 				ObjectMeta: metav1.ObjectMeta{
@@ -385,24 +376,9 @@ func (r *VolumePopulatorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	r.EventRecorder.Eventf(pvc, corev1.EventTypeNormal, reasonPVCPopulatorFinished, "Populator finished")
 
 	// Cleanup
-	// If PVC' still exists, delete it
-	if pvcPrime != nil && pvcPrime.GetDeletionTimestamp().IsZero() {
-		logger.Info("Cleanup - deleting temp volume populator PVC", "volpop pvc name", pvcPrime.GetName())
-		if err := r.Client.Delete(ctx, pvcPrime); err != nil {
-			return ctrl.Result{}, err
-		}
+	if err := r.cleanup(ctx, logger, pvc, pvcPrime); err != nil {
+		return ctrl.Result{}, err
 	}
-
-	/*
-		// Make sure the PVC finalizer is gone
-		err = c.ensureFinalizer(ctx, pvc, c.pvcFinalizer, false)
-		if err != nil {
-			return err
-		}
-
-		// Clean up our internal callback maps
-		c.cleanupNotifications(key)
-	*/
 
 	return ctrl.Result{}, nil
 }
@@ -615,9 +591,48 @@ func (r VolumePopulatorReconciler) getReplicationDestinationFromDataSourceRef(ct
 	return replicationDestinationForVolPop, nil
 }
 
-// Validates snapshot exists and adds VolSync "do-not-delete" label to indicate the snapshot should not be cleaned up
-func (r *VolumePopulatorReconciler) validateSnapshotAndMarkDoNotDelete(ctx context.Context, logger logr.Logger,
-	snapshotName, namespace string,
+// Cleanup
+//   - if pvcPrime is not nil, we will assume it exists and needs to be cleaned up
+//   - if any snapshots have our vol pop label for our PVC, remove the label (and possibly do-not-delete if it's the
+//     only one)
+func (r *VolumePopulatorReconciler) cleanup(ctx context.Context, logger logr.Logger,
+	pvc, pvcPrime *corev1.PersistentVolumeClaim) error {
+	snapsForPVC, err := r.listSnapshotsUsedByVolPopForPVC(ctx, pvc)
+	if err != nil {
+		return err
+	}
+	for i := range snapsForPVC {
+		snap := snapsForPVC[i]
+		// Remove our vol pop label
+		updated := utils.RemoveLabel(&snap, getSnapshotInUseLabelKey(pvc))
+
+		// Check if do-not-delete label was added by anyone else and remove our ownerRef if so
+		if utils.IsMarkedDoNotDelete(&snap) && pvcPrime != nil {
+			updated = utils.RemoveOwnerReference(&snap, pvcPrime) || updated
+		}
+
+		if updated {
+			if err := r.Client.Update(ctx, &snap); err != nil {
+				logger.Error(err, "Failed to update labels on snapshot")
+				return err
+			}
+		}
+	}
+
+	// If PVC' still exists, delete it
+	if pvcPrime != nil && pvcPrime.GetDeletionTimestamp().IsZero() {
+		logger.Info("Cleanup - deleting temp volume populator PVC", "volpop pvc name", pvcPrime.GetName())
+		if err := r.Client.Delete(ctx, pvcPrime); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// Validates snapshot exists and adds a label specific to our pvc
+func (r *VolumePopulatorReconciler) validateSnapshotAndLabel(ctx context.Context, logger logr.Logger,
+	snapshotName, namespace string, pvc *corev1.PersistentVolumeClaim,
 ) (*snapv1.VolumeSnapshot, error) {
 	logger = logger.WithValues("snapshot name", snapshotName, "namespace", namespace)
 
@@ -633,19 +648,123 @@ func (r *VolumePopulatorReconciler) validateSnapshotAndMarkDoNotDelete(ctx conte
 		return nil, err
 	}
 
-	// Add label to indicate that VolSync should not delete/cleanup this snapshot
-	needsUpdate := utils.MarkDoNotDelete(snapshot)
-	if needsUpdate {
+	snapInUseLabelKey := getSnapshotInUseLabelKey(pvc)
+	snapInUseLabelVal := pvc.GetName()
+
+	// Add label linking to the original PVC for this volume populator
+	updated := utils.AddLabel(snapshot, snapInUseLabelKey, snapInUseLabelVal)
+
+	if updated {
 		if err := r.Client.Update(ctx, snapshot); err != nil {
-			logger.Error(err, "Failed to mark snapshot do not delete")
+			logger.Error(err, "Failed to label snapshot")
 			return nil, err
 		}
-		logger.Info("Snapshot marked do-not-delete")
 	}
 
-	//TODO: do we also add owner ref or something of the sort? - need to think about cleanup
-
 	return snapshot, nil
+}
+
+func (r *VolumePopulatorReconciler) ensureOwnerReferenceOnSnapshots(ctx context.Context,
+	pvc, pvcPrime *corev1.PersistentVolumeClaim) error {
+	// Make sure all the snapshots we previously labeled have owner ref so they can be garbage collected
+	// if necessary when pvcPrime is removed
+	// Could possibly have multiple snapshots here if we previously marked one as do-not-delete but were not
+	// able to create pvcPrime pointing to it (i.e. ReplicationDestination.status.latestImage was updated in-between)
+	snapshots, err := r.listSnapshotsUsedByVolPopForPVC(ctx, pvc)
+	if err != nil {
+		return err
+	}
+	for i := range snapshots {
+		snapshot := snapshots[i]
+		// Make sure the snapshot is owned by pvcPrime to prevent others (pvcs w/ volume populator using the same
+		// snapshot or replicationdestination) from removing it
+		// Ownership is just there for cleanup later on - if marked do-not-delete then no need for ownership
+		if !utils.IsMarkedDoNotDelete(&snapshot) {
+			err = r.ensureOwnerReferenceOnSnapshot(ctx, &snapshot, pvcPrime)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (r *VolumePopulatorReconciler) listSnapshotsUsedByVolPopForPVC(ctx context.Context,
+	pvc *corev1.PersistentVolumeClaim) ([]snapv1.VolumeSnapshot, error) {
+	snapInUseLabelKey := getSnapshotInUseLabelKey(pvc)
+
+	// Find all snapshots in the namespace with our volume populator label corresponding to this pvc
+	ls, err := labels.Parse(snapInUseLabelKey)
+	if err != nil {
+		return nil, err
+	}
+
+	listOptions := []client.ListOption{
+		client.MatchingLabelsSelector{
+			Selector: ls,
+		},
+		client.InNamespace(pvc.GetNamespace()),
+	}
+	snapList := &snapv1.VolumeSnapshotList{}
+	err = r.Client.List(ctx, snapList, listOptions...)
+	if err != nil {
+		return nil, err
+	}
+
+	return snapList.Items, nil
+}
+
+func (r *VolumePopulatorReconciler) ensureOwnerReferenceOnSnapshot(ctx context.Context, snapshot *snapv1.VolumeSnapshot,
+	owner metav1.Object) error {
+	updated, err := r.addOwnerReference(snapshot, owner)
+	if err != nil {
+		return err
+	}
+	if updated {
+		return r.Client.Update(ctx, snapshot)
+	}
+	// No update required
+	return nil
+}
+
+func (r *VolumePopulatorReconciler) addOwnerReference(obj, owner metav1.Object) (bool, error) {
+	currentOwnerRefs := obj.GetOwnerReferences()
+
+	err := ctrlutil.SetOwnerReference(owner, obj, r.Client.Scheme())
+	if err != nil {
+		return false, fmt.Errorf("%w", err)
+	}
+
+	updated := !reflect.DeepEqual(obj.GetOwnerReferences(), currentOwnerRefs)
+
+	return updated, nil
+}
+
+func getPVCPrimeName(pvc *corev1.PersistentVolumeClaim) string {
+	return fmt.Sprintf("%s-%s", populatorPvcPrefix, pvc.UID)
+}
+
+// Finds PVCPrime - will return nil if PVCPrime is not found
+func GetVolumePopulatorPVCPrime(ctx context.Context, c client.Client,
+	pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error) {
+	pvcPrime := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      getPVCPrimeName(pvc),
+			Namespace: pvc.GetNamespace(),
+		},
+	}
+	err := c.Get(ctx, client.ObjectKeyFromObject(pvcPrime), pvcPrime)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return nil, nil // Return nil if not found, no error
+		}
+		return nil, err
+	}
+	return pvcPrime, nil
+}
+
+func getSnapshotInUseLabelKey(pvc *corev1.PersistentVolumeClaim) string {
+	return fmt.Sprintf("%s%s", utils.SnapInUseByVolumePopulatorLabelPrefix, pvc.UID)
 }
 
 func pvcHasReplicationDestinationDataSourceRef(pvc *corev1.PersistentVolumeClaim) bool {

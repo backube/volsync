@@ -20,17 +20,27 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"time"
 
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
+	"github.com/backube/volsync/controllers/utils"
+)
+
+const (
+	duration4s  = 4 * time.Second
+	duration10s = 10 * time.Second
 )
 
 var _ = Describe("VolumePopulator - helper funcs", func() {
@@ -161,7 +171,7 @@ var _ = Describe("VolumePopulator - Predicates", func() {
 				Expect(pred.Update(event.UpdateEvent{ObjectOld: pvc, ObjectNew: pvcNew})).Should(BeTrue())
 				Expect(pred.Generic(event.GenericEvent{Object: pvc})).Should(BeTrue())
 
-				// Do NOT notify on delete//TODO: should we notify in case we need to cleanup pvcPrime&snapshot?
+				// Do NOT notify on delete
 				Expect(pred.Delete(event.DeleteEvent{Object: pvc})).Should(BeFalse())
 			})
 		})
@@ -217,6 +227,8 @@ var _ = Describe("VolumePopulator - map functions", func() {
 	var namespace *corev1.Namespace
 	var pvcs []*corev1.PersistentVolumeClaim
 
+	pvcCap := resource.MustParse("1Gi")
+
 	BeforeEach(func() {
 		// Each test is run in its own namespace
 		namespace = &corev1.Namespace{
@@ -228,7 +240,6 @@ var _ = Describe("VolumePopulator - map functions", func() {
 		Expect(namespace.Name).NotTo(BeEmpty())
 
 		// PVCs for the tests - create later in JustBeforeEach so tests can modify before creating
-		pvcCap := resource.MustParse("1Gi")
 		pvcs = make([]*corev1.PersistentVolumeClaim, 4)
 		for i := 0; i < 4; i++ {
 			pvcs[i] = &corev1.PersistentVolumeClaim{
@@ -321,18 +332,11 @@ var _ = Describe("VolumePopulator - map functions", func() {
 		var storageClass *storagev1.StorageClass
 
 		BeforeEach(func() {
-			// StorageClass for the tests
-			storageClass = &storagev1.StorageClass{
-				ObjectMeta: metav1.ObjectMeta{
-					GenerateName: "storageclass-for-mapfunc-test-",
-				},
-				Provisioner: "my-provisioner",
-			}
-			createWithCacheReload(ctx, k8sClient, storageClass)
+			storageClass = createTestStorageClassWithCacheReload(ctx, "storageclass-for-mapfunc-test")
 		})
 		AfterEach(func() {
 			// Cleanup
-			Expect(k8sClient.Delete(ctx, storageClass)).To(Succeed())
+			deleteWithCacheReload(ctx, k8sClient, storageClass)
 		})
 
 		Context("When the storageclass is not used by any pvc datasourceref", func() {
@@ -416,6 +420,11 @@ var _ = Describe("VolumePopulator", func() {
 				Name:      "rd-for-volpop",
 				Namespace: namespace.Name,
 			},
+			Spec: volsyncv1alpha1.ReplicationDestinationSpec{
+				// RD using ExternalSpec so will not be reconciled by the rd controller
+				// this test will artificially update the status to simulate updates
+				External: &volsyncv1alpha1.ReplicationDestinationExternalSpec{},
+			},
 		}
 
 		// Scaffold a PVC but don't create so that it can be customized
@@ -432,27 +441,371 @@ var _ = Describe("VolumePopulator", func() {
 		Expect(k8sClient.Delete(ctx, namespace)).To(Succeed())
 	})
 
-	Context("When a PVC is created that does not have a dataSourceRef pointing to a replication destination", func() {
-		JustBeforeEach(func() {
-			// Create the pvc with dataSourceRef that uses a different volume populator
-			//pvc.Spec.DataSourceRef
-		})
-		It("VolumePopulator controller should ignore the PVC", func() {
-			//TODO:
-		})
-	})
+	Context("When a PVC is created that has a dataSourceRef with replicationdestination and a storageClassName", func() {
+		pvcCap := resource.MustParse("2Gi")
 
-	Context("When a PVC is created that has a dataSourceRef pointing to a replication destination", func() {
-		JustBeforeEach(func() {
-			createWithCacheReload(ctx, k8sClient, rd)
-			// Now update the status of the rd to simulate an image
-			rd.Status = &volsyncv1alpha1.ReplicationDestinationStatus{
-				LatestImage: &corev1.TypedLocalObjectReference{
-					APIGroup: &snapv1.SchemeGroupVersion.Group,
+		BeforeEach(func() {
+			// Set PVC spec to use ReplicationDestination as dataSourceRef
+			pvc.Spec = corev1.PersistentVolumeClaimSpec{
+				AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+				Resources: corev1.ResourceRequirements{
+					Requests: corev1.ResourceList{
+						corev1.ResourceStorage: pvcCap,
+					},
+				},
+				DataSourceRef: &corev1.TypedObjectReference{
+					APIGroup: &volsyncv1alpha1.GroupVersion.Group,
+					Kind:     "ReplicationDestination",
+					Name:     rd.GetName(),
 				},
 			}
+		})
 
+		JustBeforeEach(func() {
+			createWithCacheReload(ctx, k8sClient, rd)
 			createWithCacheReload(ctx, k8sClient, pvc)
+		})
+
+		Context("When a storageclassname is specified in the pvc spec", func() {
+			storageClassName := "vp-test-storageclass1"
+
+			BeforeEach(func() {
+				pvc.Spec.StorageClassName = &storageClassName
+			})
+
+			Context("When the storageClass does not exist", func() {
+				It("Should not create pvcPrime (not start populating pvc)", func() {
+					Consistently(func() *corev1.PersistentVolumeClaim {
+						pvcPrime, err := GetVolumePopulatorPVCPrime(ctx, k8sClient, pvc)
+						Expect(err).NotTo(HaveOccurred())
+						return pvcPrime
+					}, duration4s, interval).Should(BeNil())
+				})
+			})
+
+			Context("When the storageClass exists and latestImage snap is set on the RD", func() {
+				var pvcPrime *corev1.PersistentVolumeClaim
+				var snap *snapv1.VolumeSnapshot
+
+				BeforeEach(func() {
+					// Create storageclass
+					createTestStorageClassWithCacheReload(ctx, storageClassName)
+				})
+				AfterEach(func() {
+					// Clean up the storageclass
+					sc := &storagev1.StorageClass{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: storageClassName,
+						},
+					}
+					deleteWithCacheReload(ctx, k8sClient, sc)
+				})
+
+				JustBeforeEach(func() {
+					// Before latestImage is set, no pvcPrime should be created
+					Consistently(func() *corev1.PersistentVolumeClaim {
+						pvcPrime, err := GetVolumePopulatorPVCPrime(ctx, k8sClient, pvc)
+						Expect(err).NotTo(HaveOccurred())
+						return pvcPrime
+					}, duration4s, interval).Should(BeNil())
+
+					// After latestImage appears on RD, pvcPrime should get created
+					// Create volumesnapshot
+					fakePvcForSnapName := "testing-fake-pvc1"
+					snap = &snapv1.VolumeSnapshot{
+						ObjectMeta: metav1.ObjectMeta{
+							GenerateName: "test-snap-vp-testing-",
+							Namespace:    namespace.GetName(),
+						},
+						Spec: snapv1.VolumeSnapshotSpec{
+							Source: snapv1.VolumeSnapshotSource{
+								PersistentVolumeClaimName: &fakePvcForSnapName,
+							},
+						},
+					}
+					createWithCacheReload(ctx, k8sClient, snap)
+
+					Eventually(func() error {
+						// Re-load RD as rd controller may have modified it
+						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)).To(Succeed())
+
+						// Update status to have a latestImage pointint to snapshot
+						rd.Status = &volsyncv1alpha1.ReplicationDestinationStatus{
+							LatestImage: &corev1.TypedLocalObjectReference{
+								APIGroup: &snapv1.SchemeGroupVersion.Group,
+								Kind:     "VolumeSnapshot",
+								Name:     snap.GetName(),
+							},
+						}
+						return k8sClient.Status().Update(ctx, rd)
+					}, maxWait, interval).Should(Succeed())
+
+					Eventually(func() *corev1.PersistentVolumeClaim {
+						var err error
+						pvcPrime, err = GetVolumePopulatorPVCPrime(ctx, k8sClient, pvc)
+						Expect(err).NotTo(HaveOccurred())
+						return pvcPrime
+					}, duration10s, interval).ShouldNot(BeNil())
+
+					// PVCPrime should be owned by the pvc
+					Expect(len(pvcPrime.GetOwnerReferences())).To(Equal(1))
+					Expect(pvcPrime.GetOwnerReferences()[0].UID).To(Equal(pvc.GetUID()))
+					Expect(pvcPrime.GetOwnerReferences()[0].Controller).NotTo(BeNil())
+					Expect(*pvcPrime.GetOwnerReferences()[0].Controller).To(Equal(true))
+
+					// PVCPrime should have the spec set correctly
+					Expect(pvcPrime.Spec.AccessModes).To(Equal(pvc.Spec.AccessModes))
+					Expect(pvcPrime.Spec.Resources).To(Equal(pvc.Spec.Resources))
+					Expect(pvcPrime.Spec.StorageClassName).To(Equal(pvc.Spec.StorageClassName))
+					Expect(pvcPrime.Spec.VolumeMode).To(Equal(pvc.Spec.VolumeMode))
+					Expect(pvcPrime.Spec.DataSourceRef).NotTo(BeNil())
+					Expect(pvcPrime.Spec.DataSourceRef.APIGroup).NotTo(BeNil())
+					Expect(*pvcPrime.Spec.DataSourceRef.APIGroup).To(Equal(snapv1.SchemeGroupVersion.Group))
+					Expect(pvcPrime.Spec.DataSourceRef.Kind).To(Equal("VolumeSnapshot"))
+					Expect(pvcPrime.Spec.DataSourceRef.Name).To(Equal(snap.GetName()))
+
+					Eventually(func() bool {
+						// re-load the snapshot to prevent timing issues, as the controller will need to create
+						// pvcPrime before adding it as an ownerRef on the snapshot
+						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(snap), snap)).To(Succeed())
+
+						// Snapshot should have a label indicating it's in-use by volume populator
+						v, ok := snap.GetLabels()[getSnapshotInUseLabelKey(pvc)]
+						if !ok {
+							return false
+						}
+						if v != pvc.GetName() {
+							return false
+						}
+
+						// Snapshot should get ownerRef pointing to pvcPrime
+						ownerRefs := snap.GetOwnerReferences()
+						if len(ownerRefs) != 1 {
+							return false
+						}
+						if ownerRefs[0].UID != pvcPrime.UID {
+							return false
+						}
+
+						return true
+					}, duration10s, interval).Should(BeTrue())
+				})
+
+				It("pvcPrime should be created", func() {
+					// See checks in BeforeEach() for detailed checks of pvcPrime
+					Expect(pvcPrime).NotTo(BeNil())
+				})
+
+				Context("When pvcPrime gets a PV bound", func() {
+					var pv *corev1.PersistentVolume
+
+					JustBeforeEach(func() {
+						// Outer beforeEach will go through steps which create pvcPrime - now
+						// manually update it to simulate a PV being bound
+
+						// Create PV for the test
+						volMode := corev1.PersistentVolumeFilesystem
+						pv = &corev1.PersistentVolume{
+							ObjectMeta: metav1.ObjectMeta{
+								GenerateName: "pv-for-volpop-",
+							},
+							Spec: corev1.PersistentVolumeSpec{
+								AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+								Capacity: corev1.ResourceList{
+									corev1.ResourceStorage: pvcCap,
+								},
+								VolumeMode: &volMode,
+								//StorageClassName:              "manual",
+								StorageClassName:              storageClassName,
+								PersistentVolumeReclaimPolicy: corev1.PersistentVolumeReclaimDelete,
+								PersistentVolumeSource: corev1.PersistentVolumeSource{
+									CSI: &corev1.CSIPersistentVolumeSource{
+										Driver:       "fakedriver",
+										VolumeHandle: "my-vol-handle",
+									},
+								},
+							},
+						}
+						createWithCacheReload(ctx, k8sClient, pv)
+
+						// Now update pvcPrime to indicate pv is bound to it - volumepopulator controller
+						// should then update the PV to bind it to pvc instead of pvcPrime
+						Eventually(func() error {
+							// re-load pvcPrime
+							Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pvcPrime), pvcPrime)).To(Succeed())
+
+							pvcPrime.Spec.VolumeName = pv.GetName()
+
+							return k8sClient.Update(ctx, pvcPrime)
+						}, duration10s, interval).Should(Succeed())
+					})
+
+					It("Should update the claimRef on the PV to use pvc", func() {
+						Eventually(func() bool {
+							// re-load PV
+							Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pv), pv)).To(Succeed())
+
+							return pv.Spec.ClaimRef != nil &&
+								pv.Spec.ClaimRef.Name == pvc.GetName()
+						}, duration10s, interval).Should(BeTrue())
+
+						Expect(pv.Spec.ClaimRef.Name).To(Equal(pvc.GetName()))
+						Expect(pv.Spec.ClaimRef.Namespace).To(Equal(pvc.GetNamespace()))
+						Expect(pv.Spec.ClaimRef.UID).To(Equal(pvc.GetUID()))
+
+						// re-load pvc just in case here
+						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pvc), pvc)).To(Succeed())
+						Expect(pv.Spec.ClaimRef.ResourceVersion).To(Equal(pvc.GetResourceVersion()))
+
+						// Make sure pvcPrime isn't cleaned up yet
+						Consistently(func() *corev1.PersistentVolumeClaim {
+							pvcPrimeReloaded, err := GetVolumePopulatorPVCPrime(ctx, k8sClient, pvc)
+							Expect(err).NotTo(HaveOccurred())
+							return pvcPrimeReloaded
+						}, duration4s, interval).ShouldNot(BeNil())
+					})
+
+					Context("When pvcPrime loses claim (bind controller rebinds the PV to pvc from pvcPrime)", func() {
+						type snapCleanupTest struct {
+							hasDoNotDeleteLabel           bool
+							ownedByReplicationDestination bool
+						}
+						testSnapWithDoNotDelete := map[string]snapCleanupTest{
+							"has do-not-delete label":                  {hasDoNotDeleteLabel: true, ownedByReplicationDestination: false},
+							"does not have do-not-delete label":        {hasDoNotDeleteLabel: false, ownedByReplicationDestination: false},
+							"is still owned by replicationdestination": {hasDoNotDeleteLabel: false, ownedByReplicationDestination: true},
+						}
+						for i := range testSnapWithDoNotDelete {
+							Context(fmt.Sprintf("When snapshot %s", i), func() {
+								snapHasDoNotDelete := testSnapWithDoNotDelete[i].hasDoNotDeleteLabel
+								snapOwnedByRD := testSnapWithDoNotDelete[i].ownedByReplicationDestination
+
+								It("Should cleanup pvcPrime (and volumesnapshot if necessary)", func() {
+									var snapOwnerRefCountBefore int
+									if snapHasDoNotDelete {
+										// Put a do-not-delete label on the snapshot before we do the bind process
+										// to test the cleanup (volume populator should not cleanup if this label is present)
+										Eventually(func() error {
+											Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(snap), snap)).To(Succeed())
+											utils.MarkDoNotDelete(snap)
+											return k8sClient.Update(ctx, snap)
+										}, duration10s, interval).Should(Succeed())
+									}
+
+									if snapOwnedByRD {
+										Eventually(func() error {
+											Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(snap), snap)).To(Succeed())
+											if err := ctrl.SetControllerReference(rd, snap, k8sClient.Scheme()); err != nil {
+												return err
+											}
+											return k8sClient.Update(ctx, snap)
+										}, duration10s, interval).Should(Succeed())
+									}
+
+									snapOwnerRefCountBefore = len(snap.GetOwnerReferences())
+									expectedSnapOwnerRefCountBefore := 1
+									if snapOwnedByRD {
+										expectedSnapOwnerRefCountBefore++
+									}
+									Expect(snapOwnerRefCountBefore).To(Equal(expectedSnapOwnerRefCountBefore))
+
+									// Update pvcPrime spec to simulate the status update indicating claim lost
+									Eventually(func() error {
+										// re-load pvcPrime
+										Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pvcPrime), pvcPrime)).To(Succeed())
+										pvcPrime.Status.Phase = corev1.ClaimLost
+										return k8sClient.Status().Update(ctx, pvcPrime)
+									}, duration10s, interval).Should(Succeed())
+
+									// Update pv to indicate it's bound to a PV
+									Eventually(func() error {
+										Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pvc), pvc)).To(Succeed())
+										pvc.Spec.VolumeName = pv.GetName()
+										return k8sClient.Status().Update(ctx, pvc)
+									}, duration10s, interval).Should(Succeed())
+
+									// Now wait for the controller to reconcile and cleanup pvcPrime
+									Eventually(func() bool {
+										err := k8sClient.Get(ctx, client.ObjectKeyFromObject(pvcPrime), pvcPrime)
+										// Note pvcs won't actually get deleted in envtest because of finalizer
+										// return success if it's marked for deletion
+										return (err != nil && kerrors.IsNotFound(err)) || !pvcPrime.GetDeletionTimestamp().IsZero()
+									}, duration10s, interval).Should(BeTrue())
+
+									// volumesnapshot should be left behind or garbage collected depending on
+									// whether it is marked as do-not-delete or if owned by a replicationdestination
+									Eventually(func() error {
+										// Also check that the volumesnapshot was updated properly
+										Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(snap), snap)).To(Succeed())
+
+										// GC would normally happen, but envtest will leave it behind
+										ownerRefs := snap.GetOwnerReferences()
+
+										foundPvcPrimeOwnerRef := false
+										for _, ref := range ownerRefs {
+											if ref.UID == pvcPrime.UID {
+												foundPvcPrimeOwnerRef = true
+											}
+										}
+
+										if snapHasDoNotDelete {
+											// Owner ref should be removed
+											if len(ownerRefs) != (snapOwnerRefCountBefore - 1) {
+												return fmt.Errorf("ownerRefs should have been removed. "+
+													"snapOwnerRefCountBefore: %d, ownerRefs: %+v",
+													snapOwnerRefCountBefore, ownerRefs)
+											}
+											if foundPvcPrimeOwnerRef {
+												return fmt.Errorf("ownerRefs for pvcPrime still exists. ownerRefs: %+v",
+													ownerRefs)
+											}
+										} else if snapOwnedByRD {
+											// Note in a real env, after pvcPrime is deleted, GC will remove
+											// the owner ref on the snapshot that points to pvcPrime - however in
+											// envtest GC doesn't run
+										} else {
+											// Check that the owner ref is still there - this means GC will cleanup
+											// in real env
+											if len(ownerRefs) != snapOwnerRefCountBefore {
+												return fmt.Errorf("ownerRefs expected not to have changed. "+
+													"snapOwnerRefCountBefore: %d, ownerRefs: %+v",
+													snapOwnerRefCountBefore, ownerRefs)
+											}
+											if !foundPvcPrimeOwnerRef {
+												return fmt.Errorf("ownerRef for pvcPrime was removed. ownerRefs: %+v",
+													ownerRefs)
+											}
+										}
+
+										// Snap label should be removed in all cases
+										_, ok := snap.GetLabels()[getSnapshotInUseLabelKey(pvc)]
+										if ok {
+											return fmt.Errorf("snapshot still has volume populator in-use label. "+
+												"snapshot labels: %+v", snap.GetLabels())
+										}
+										return nil
+									}, duration10s, interval).Should(Succeed())
+								})
+							})
+						}
+					})
+				})
+			})
 		})
 	})
 })
+
+func createTestStorageClassWithCacheReload(ctx context.Context, storageClassName string) *storagev1.StorageClass {
+	storageClass := &storagev1.StorageClass{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: storageClassName,
+		},
+		Provisioner: "my-provisioner",
+		Parameters: map[string]string{
+			"type": "testtype",
+		},
+	}
+	createWithCacheReload(ctx, k8sClient, storageClass)
+
+	return storageClass
+}

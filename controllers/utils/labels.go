@@ -23,6 +23,8 @@ const (
 	DoNotDeleteLabelKey = VolsyncLabelPrefix + "/do-not-delete"
 	OwnedByLabelKey     = "app.kubernetes.io/created-by"
 	OwnedByLabelValue   = "volsync"
+
+	SnapInUseByVolumePopulatorLabelPrefix = VolsyncLabelPrefix + "/volpop-pvc-"
 )
 
 type Labelable interface {
