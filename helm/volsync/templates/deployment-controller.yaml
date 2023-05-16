@@ -54,6 +54,7 @@ spec:
             - --secure-listen-address=0.0.0.0:8443
             - --upstream=http://127.0.0.1:8080/
             - --logtostderr=true
+            - "--tls-min-version=VersionTLS13"
             - --v=0
             {{- if .Values.metrics.disableAuth }}
             - --ignore-paths=/metrics
