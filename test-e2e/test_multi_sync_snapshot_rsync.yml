@@ -80,6 +80,27 @@
               address: "{{ res.resources[0].status.rsync.address }}"
               copyMethod: Snapshot
 
+    # Using volume populator - no need to wait for RD to be done yet before creating the pvc
+    - name: Convert latestImage to PVC Using VolumePopulator
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: data-dest-1
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            dataSourceRef:
+              kind: ReplicationDestination
+              apiGroup: volsync.backube
+              name: test
+            resources:
+              requests:
+                storage: 1Gi
+
     - name: Wait for sync to complete
       kubernetes.core.k8s_info:
         api_version: volsync.backube/v1alpha1
@@ -97,26 +118,6 @@
     - name: Save name of first snapshot
       ansible.builtin.set_fact:
         first_snap: "{{ res.resources[0].status.latestImage.name }}"
-
-    - name: Convert latestImage to PVC
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          apiVersion: v1
-          kind: PersistentVolumeClaim
-          metadata:
-            name: data-dest-1
-            namespace: "{{ namespace }}"
-          spec:
-            accessModes:
-              - ReadWriteOnce
-            dataSource:
-              kind: VolumeSnapshot
-              apiGroup: snapshot.storage.k8s.io
-              name: "{{ first_snap }}"
-            resources:
-              requests:
-                storage: 1Gi
 
     - name: Verify contents of PVC
       include_role:
@@ -165,6 +166,7 @@
       ansible.builtin.set_fact:
         second_snap: "{{ res.resources[0].status.latestImage.name }}"
 
+    # This time create the pvc after RD is finished to make sure we get the latest
     - name: Convert latestImage to PVC
       kubernetes.core.k8s:
         state: present
@@ -177,10 +179,10 @@
           spec:
             accessModes:
               - ReadWriteOnce
-            dataSource:
-              kind: VolumeSnapshot
-              apiGroup: snapshot.storage.k8s.io
-              name: "{{ second_snap }}"
+            dataSourceRef:
+              kind: ReplicationDestination
+              apiGroup: volsync.backube
+              name: test
             resources:
               requests:
                 storage: 1Gi
