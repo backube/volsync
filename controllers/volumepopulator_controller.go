@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/go-logr/logr"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
@@ -34,6 +35,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/component-helpers/storage/volume"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -174,7 +176,7 @@ func (r *VolumePopulatorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		}
 
 		if err := checkIntreeStorageClass(pvc, storageClass); err != nil {
-			logger.Info("Ignoring PVC")
+			logger.Error(err, "Ignoring PVC")
 			return ctrl.Result{}, nil
 		}
 
@@ -200,11 +202,6 @@ func (r *VolumePopulatorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	// If the PVC is unbound, we need to perform the population
 	if !isPVCBoundToVolume(pvc) {
-		/*
-			// Record start time for populator metric
-			c.metrics.operationStart(pvc.UID)
-		*/
-
 		if pvcPrime == nil {
 			// pvcPrime doesn't exist yet
 			// Check for existence of ReplicationDestination here - if PVC' was already there, then it may
@@ -366,11 +363,6 @@ func (r *VolumePopulatorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			return ctrl.Result{}, nil
 		}
 	}
-
-	/*
-		// Record start time for populator metric
-		c.metrics.recordMetrics(pvc.UID, "success")
-	*/
 
 	// *** At this point the volume population is done and we're just cleaning up ***
 	r.EventRecorder.Eventf(pvc, corev1.EventTypeNormal, reasonPVCPopulatorFinished, "Populator finished")
@@ -780,22 +772,18 @@ func pvcHasReplicationDestinationDataSourceRef(pvc *corev1.PersistentVolumeClaim
 }
 
 func checkIntreeStorageClass(pvc *corev1.PersistentVolumeClaim, sc *storagev1.StorageClass) error {
-	//FIXME: determine if this is necessary
-	return nil
-	/*
-		if !strings.HasPrefix(sc.Provisioner, "kubernetes.io/") {
-			// This is not an in-tree StorageClass
+	if !strings.HasPrefix(sc.Provisioner, "kubernetes.io/") {
+		// This is not an in-tree StorageClass
+		return nil
+	}
+
+	if pvc.Annotations != nil {
+		if migrated := pvc.Annotations[volume.AnnMigratedTo]; migrated != "" {
+			// The PVC is migrated to CSI
 			return nil
 		}
+	}
 
-		if pvc.Annotations != nil {
-			if migrated := pvc.Annotations[volume.AnnMigratedTo]; migrated != "" {
-				// The PVC is migrated to CSI
-				return nil
-			}
-		}
-
-		// The SC is in-tree & PVC is not migrated
-		return fmt.Errorf("in-tree volume volume plugin %q cannot use volume populator", sc.Provisioner)
-	*/
+	// The SC is in-tree & PVC is not migrated
+	return fmt.Errorf("in-tree volume volume plugin %q cannot use volume populator", sc.Provisioner)
 }

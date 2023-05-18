@@ -28,6 +28,8 @@ require (
 	sigs.k8s.io/controller-runtime v0.14.4
 )
 
+require k8s.io/component-helpers v0.26.3
+
 require (
 	github.com/AudriusButkevicius/pfilter v0.0.11 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
