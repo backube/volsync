@@ -3,6 +3,7 @@
   tags:
     - e2e
     - rclone
+    - volumepopulator
   vars:
     rclone_secret_name: rclone-secret
   tasks:

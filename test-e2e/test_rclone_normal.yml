@@ -4,6 +4,7 @@
     - e2e
     - rclone
     - unprivileged
+    - volumepopulator
   vars:
     rclone_secret_name: rclone-secret
   tasks:

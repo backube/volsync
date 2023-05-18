@@ -4,6 +4,7 @@
     - e2e
     - rsync_tls
     - unprivileged
+    - volumepopulator
   tasks:
     - name: Create namespace
       include_role:

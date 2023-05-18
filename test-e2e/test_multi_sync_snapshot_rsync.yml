@@ -3,6 +3,7 @@
   tags:
     - e2e
     - rsync
+    - volumepopulator
   tasks:
     - include_role:
         name: create_namespace
