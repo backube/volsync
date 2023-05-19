@@ -36,6 +36,18 @@
             }
           }, recursive=True) }}
 
+# AnyVolumeDataSource feature gate enabled by default in 1.24 and above
+- name: Determine if volume populator is supported
+  ansible.builtin.set_fact:
+    cluster_info: >
+      {{ cluster_info | combine({
+        'volumepopulator_supported': cluster_info.version.server.kubernetes.minor | int >= 24
+      }, recursive=True) }}
+
+- name: Print volumepopulator_supported
+  ansible.builtin.debug:
+    var: cluster_info.volumepopulator_supported
+
 # - name: Print cluster information
 #   ansible.builtin.debug:
 #     var: cluster_info

@@ -4,10 +4,10 @@
 # Restic doesn't specifically need volumepopulator as usually you could use
 # Direct mode on the dest side to restore your backup to a pvc directly.
 # However there could be cases where a user wants to create the pvc and
-# replicationdestination at the same time - using volume populator could be useful
-# as the pvc will not be available until the data is restored (rather than the pvc
-# being pre-created and then later data is restored when the replicationdestination
-# is complete).
+# replicationdestination at the same time - using volume populator could be
+# useful as the pvc will not be available until the data is restored (rather
+# than the pvc being pre-created and then later data is restored when the
+#  replicationdestination is complete).
 #
 - hosts: localhost
   tags:
@@ -18,541 +18,555 @@
     restic_secret_name: restic-secret
   tasks:
     - include_role:
-        name: create_namespace
+        name: gather_cluster_info
 
-    - include_role:
-        name: create_restic_secret
-      vars:
-        minio_namespace: minio
+    # Needed since the when statement is checked for every task in the
+    # block below - some sub-tasks run gather_cluster_info again which
+    # can cause cluster_info.volumepopulator_supported to be undefined for
+    # a time
+    - name: Save volumepopulator_supported var
+      ansible.builtin.set_fact:
+        volumepopulator_supported: "{{ cluster_info.volumepopulator_supported }}"
 
-    - name: Create source PVC
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          kind: PersistentVolumeClaim
-          apiVersion: v1
-          metadata:
-            name: data-source
-            namespace: "{{ namespace }}"
-          spec:
-            accessModes:
-              - ReadWriteOnce
-            resources:
-              requests:
-                storage: 1Gi
+    - when: volumepopulator_supported
+      name: multi-step volumepopulator test
+      block:
+        - include_role:
+            name: create_namespace
 
-    - name: Write data into the source PVC
-      include_role:
-        name: write_to_pvc
-      vars:
-        data: 'data'
-        path: '/datafile'
-        pvc_name: 'data-source'
+        - include_role:
+            name: create_restic_secret
+          vars:
+            minio_namespace: minio
 
-    - name: Backup data from source volume with manual trigger
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          apiVersion: volsync.backube/v1alpha1
-          kind: ReplicationSource
-          metadata:
+        - name: Create source PVC
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              kind: PersistentVolumeClaim
+              apiVersion: v1
+              metadata:
+                name: data-source
+                namespace: "{{ namespace }}"
+              spec:
+                accessModes:
+                  - ReadWriteOnce
+                resources:
+                  requests:
+                    storage: 1Gi
+
+        - name: Write data into the source PVC
+          include_role:
+            name: write_to_pvc
+          vars:
+            data: 'data'
+            path: '/datafile'
+            pvc_name: 'data-source'
+
+        - name: Backup data from source volume with manual trigger
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: volsync.backube/v1alpha1
+              kind: ReplicationSource
+              metadata:
+                name: source
+                namespace: "{{ namespace }}"
+              spec:
+                sourcePVC: data-source
+                trigger:
+                  manual: once
+                restic:
+                  pruneIntervalDays: 1
+                  repository: "{{ restic_secret_name }}"
+                  retain:
+                    hourly: 3
+                    daily: 2
+                    monthly: 1
+                  copyMethod: Snapshot
+                  cacheCapacity: 1Gi
+
+        - name: Wait for sync to MinIO to complete
+          kubernetes.core.k8s_info:
+            api_version: volsync.backube/v1alpha1
+            kind: ReplicationSource
             name: source
             namespace: "{{ namespace }}"
-          spec:
-            sourcePVC: data-source
-            trigger:
-              manual: once
-            restic:
-              pruneIntervalDays: 1
-              repository: "{{ restic_secret_name }}"
-              retain:
-                hourly: 3
-                daily: 2
-                monthly: 1
-              copyMethod: Snapshot
-              cacheCapacity: 1Gi
+          register: res
+          until: >
+            res.resources | length > 0 and
+            res.resources[0].status.lastManualSync is defined and
+            res.resources[0].status.lastManualSync=="once"
+          delay: 1
+          retries: 900
 
-    - name: Wait for sync to MinIO to complete
-      kubernetes.core.k8s_info:
-        api_version: volsync.backube/v1alpha1
-        kind: ReplicationSource
-        name: source
-        namespace: "{{ namespace }}"
-      register: res
-      until: >
-        res.resources | length > 0 and
-        res.resources[0].status.lastManualSync is defined and
-        res.resources[0].status.lastManualSync=="once"
-      delay: 1
-      retries: 900
+        # Create dest PVC (restore volume) even before the ReplicationDestination
+        # exists. Volume populator should populate this once the
+        # replicationDestination exists and latestImage is set
+        - name: Create dest PVC (restore volume)
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              kind: PersistentVolumeClaim
+              apiVersion: v1
+              metadata:
+                name: data-dest1
+                namespace: "{{ namespace }}"
+              spec:
+                accessModes:
+                  - ReadWriteOnce
+                dataSourceRef:
+                  kind: ReplicationDestination
+                  apiGroup: volsync.backube
+                  name: restore
+                resources:
+                  requests:
+                    storage: 1Gi
 
-    # Create dest PVC (restore volume) even before the ReplicationDestination
-    # exists. Volume populator should populate this once the replicationDestination
-    # exists and latestImage is set
-    - name: Create dest PVC (restore volume)
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          kind: PersistentVolumeClaim
-          apiVersion: v1
-          metadata:
-            name: data-dest1
-            namespace: "{{ namespace }}"
-          spec:
-            accessModes:
-              - ReadWriteOnce
-            dataSourceRef:
+        - name: Restore data from long time ago
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: volsync.backube/v1alpha1
               kind: ReplicationDestination
-              apiGroup: volsync.backube
-              name: restore
-            resources:
-              requests:
-                storage: 1Gi
+              metadata:
+                name: restore
+                namespace: "{{ namespace }}"
+              spec:
+                trigger:
+                  manual: restore-once
+                restic:
+                  repository: "{{ restic_secret_name }}"
+                  copyMethod: Snapshot
+                  capacity: 1Gi
+                  accessModes:
+                    - ReadWriteOnce
+                  cacheCapacity: 1Gi
+                  restoreAsOf: 1980-08-10T23:59:59-04:00
 
-    - name: Restore data from long time ago
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          apiVersion: volsync.backube/v1alpha1
-          kind: ReplicationDestination
-          metadata:
+        - name: Wait for first restore to complete
+          kubernetes.core.k8s_info:
+            api_version: volsync.backube/v1alpha1
+            kind: ReplicationDestination
             name: restore
             namespace: "{{ namespace }}"
-          spec:
-            trigger:
-              manual: restore-once
-            restic:
-              repository: "{{ restic_secret_name }}"
-              copyMethod: Snapshot
-              capacity: 1Gi
-              accessModes:
-                - ReadWriteOnce
-              cacheCapacity: 1Gi
-              restoreAsOf: 1980-08-10T23:59:59-04:00
+          register: res
+          until: >
+            res.resources | length > 0 and
+            res.resources[0].status.lastManualSync is defined and
+            res.resources[0].status.lastManualSync=="restore-once" and
+            res.resources[0].status.latestImage is defined
+          delay: 1
+          retries: 300
 
-    - name: Wait for first restore to complete
-      kubernetes.core.k8s_info:
-        api_version: volsync.backube/v1alpha1
-        kind: ReplicationDestination
-        name: restore
-        namespace: "{{ namespace }}"
-      register: res
-      until: >
-        res.resources | length > 0 and
-        res.resources[0].status.lastManualSync is defined and
-        res.resources[0].status.lastManualSync=="restore-once" and
-        res.resources[0].status.latestImage is defined
-      delay: 1
-      retries: 300
+        - name: Save name of first snapshot
+          ansible.builtin.set_fact:
+            snapshot1_name: "{{ res.resources[0].status.latestImage.name }}"
 
-    - name: Save name of first snapshot
-      ansible.builtin.set_fact:
-        snapshot1_name: "{{ res.resources[0].status.latestImage.name }}"
+        - name: Verify contents of PVC do not match
+          include_role:
+            name: compare_pvc_data
+          vars:
+            pvc1_name: data-source
+            pvc2_name: data-dest1
+            should_fail: true
+            timeout: 900
 
-    - name: Verify contents of PVC do not match
-      include_role:
-        name: compare_pvc_data
-      vars:
-        pvc1_name: data-source
-        pvc2_name: data-dest1
-        should_fail: true
-        timeout: 900
+        # Snap1 should not be cleaned up, it's still used by replicationdestination
+        # as the latestImage
+        - name: Verify first snapshot still exists
+          kubernetes.core.k8s:
+            state: present
+            api_version: snapshot.storage.k8s.io/v1
+            kind: VolumeSnapshot
+            name: "{{ snapshot1_name }}"
+            namespace: "{{ namespace }}"
 
-    # Snap1 should not be cleaned up, it's still used by replicationdestination
-    # as the latestImage
-    - name: Verify first snapshot still exists
-      kubernetes.core.k8s:
-        state: present
-        api_version: snapshot.storage.k8s.io/v1
-        kind: VolumeSnapshot
-        name: "{{ snapshot1_name }}"
-        namespace: "{{ namespace }}"
+        - name: Get current timestamp from shell
+          ansible.builtin.shell: |
+            set -e -o pipefail
 
-    - name: Get current timestamp from shell
-      ansible.builtin.shell: |
-        set -e -o pipefail
+            CURRENT_TIME=$(date --rfc-3339=seconds)
+            # split the time string by space so we can convert it to proper k8s date-time format
+            read -r -a TIME_ARRAY <<< "${CURRENT_TIME}"
+            DATE_TIME_STRING="${TIME_ARRAY[0]}T${TIME_ARRAY[1]}"
+            # save the timestamp so it can be recalled later
+            echo "${DATE_TIME_STRING}"
+          register: current_timestamp_shell
 
-        CURRENT_TIME=$(date --rfc-3339=seconds)
-        # split the time string by space so we can convert it to proper k8s date-time format
-        read -r -a TIME_ARRAY <<< "${CURRENT_TIME}"
-        DATE_TIME_STRING="${TIME_ARRAY[0]}T${TIME_ARRAY[1]}"
-        # save the timestamp so it can be recalled later
-        echo "${DATE_TIME_STRING}"
-      register: current_timestamp_shell
+        - name: Save current timestamp
+          ansible.builtin.set_fact:
+            current_timestamp: "{{ current_timestamp_shell.stdout }}"
 
-    - name: Save current timestamp
-      ansible.builtin.set_fact:
-        current_timestamp: "{{ current_timestamp_shell.stdout }}"
+        - name: Restore data from the current restoreasof time
+          kubernetes.core.k8s:
+            state: patched
+            definition:
+              apiVersion: volsync.backube/v1alpha1
+              kind: ReplicationDestination
+              metadata:
+                name: restore
+                namespace: "{{ namespace }}"
+              spec:
+                trigger:
+                  manual: restore-once-now
+                restic:
+                  restoreAsOf: "{{ current_timestamp }}"
 
-    - name: Restore data from the current restoreasof time
-      kubernetes.core.k8s:
-        state: patched
-        definition:
-          apiVersion: volsync.backube/v1alpha1
-          kind: ReplicationDestination
-          metadata:
+        - name: Wait for restore with current restoreasof time to complete
+          kubernetes.core.k8s_info:
+            api_version: volsync.backube/v1alpha1
+            kind: ReplicationDestination
             name: restore
             namespace: "{{ namespace }}"
-          spec:
-            trigger:
-              manual: restore-once-now
-            restic:
-              restoreAsOf: "{{ current_timestamp }}"
+          register: res
+          until: >
+            res.resources | length > 0 and
+            res.resources[0].status.lastManualSync is defined and
+            res.resources[0].status.lastManualSync=="restore-once-now" and
+            res.resources[0].status.latestImage is defined
+          delay: 1
+          retries: 300
 
-    - name: Wait for restore with current restoreasof time to complete
-      kubernetes.core.k8s_info:
-        api_version: volsync.backube/v1alpha1
-        kind: ReplicationDestination
-        name: restore
-        namespace: "{{ namespace }}"
-      register: res
-      until: >
-        res.resources | length > 0 and
-        res.resources[0].status.lastManualSync is defined and
-        res.resources[0].status.lastManualSync=="restore-once-now" and
-        res.resources[0].status.latestImage is defined
-      delay: 1
-      retries: 300
+        - name: Save name of second snapshot
+          ansible.builtin.set_fact:
+            snapshot2_name: "{{ res.resources[0].status.latestImage.name }}"
 
-    - name: Save name of second snapshot
-      ansible.builtin.set_fact:
-        snapshot2_name: "{{ res.resources[0].status.latestImage.name }}"
+        - name: Check latestImage updated
+          ansible.builtin.fail:
+            msg: latestImage snapshot name not updated after sync completion
+          when: snapshot1_name == snapshot2_name
 
-    - name: Check latestImage updated
-      ansible.builtin.fail:
-        msg: latestImage snapshot name not updated after sync completion
-      when: snapshot1_name == snapshot2_name
+        # First snapshot should get deleted since rd has new latestImage
+        # and the volumepopulator pvc data-dest1 has been populated so it no
+        # longer should be holding onto the snapshot
+        - name: Ensure first snapshot was deleted
+          kubernetes.core.k8s_info:
+            api_version: snapshot.storage.k8s.io/v1
+            kind: VolumeSnapshot
+            name: "{{ snapshot1_name }}"
+            namespace: "{{ namespace }}"
+          register: res
+          until: res.resources | length == 0
+          delay: 1
+          retries: 60
 
-    # First snapshot should get deleted since rd has new latestImage
-    # and the volumepopulator pvc data-dest1 has been populated so it no
-    # longer should be holding onto the snapshot
-    - name: Ensure first snapshot was deleted
-      kubernetes.core.k8s_info:
-        api_version: snapshot.storage.k8s.io/v1
-        kind: VolumeSnapshot
-        name: "{{ snapshot1_name }}"
-        namespace: "{{ namespace }}"
-      register: res
-      until: res.resources | length == 0
-      delay: 1
-      retries: 60
+        - name: Verify second snapshot exists
+          kubernetes.core.k8s:
+            state: present
+            api_version: snapshot.storage.k8s.io/v1
+            kind: VolumeSnapshot
+            name: "{{ snapshot2_name }}"
+            namespace: "{{ namespace }}"
 
-    - name: Verify second snapshot exists
-      kubernetes.core.k8s:
-        state: present
-        api_version: snapshot.storage.k8s.io/v1
-        kind: VolumeSnapshot
-        name: "{{ snapshot2_name }}"
-        namespace: "{{ namespace }}"
+        # Use volume populator to restore the latest to a different pvc
+        - name: Create dest PVC from new snapshot (restore volume)
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              kind: PersistentVolumeClaim
+              apiVersion: v1
+              metadata:
+                name: data-dest2
+                namespace: "{{ namespace }}"
+              spec:
+                accessModes:
+                  - ReadWriteOnce
+                dataSourceRef:
+                  kind: ReplicationDestination
+                  apiGroup: volsync.backube
+                  name: restore
+                resources:
+                  requests:
+                    storage: 1Gi
 
-    # Use volume populator to restore the latest to a different pvc
-    - name: Create dest PVC from new snapshot (restore volume)
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          kind: PersistentVolumeClaim
-          apiVersion: v1
-          metadata:
+        - name: Verify contents of PVC now match
+          include_role:
+            name: compare_pvc_data
+          vars:
+            pvc1_name: data-source
+            pvc2_name: data-dest2
+            timeout: 900
+
+        # Now remove our data-dest2 (2nd restore pvc)
+        # data-dest2 should be done with 2nd snapshot since it has been
+        # populated, but test by removing the pvc just in case.
+        # Since the replicationdestination is stil using the 2nd snapshot
+        # it should not get cleaned up after the pvc is deleted
+        - name: Remove second restore pvc
+          kubernetes.core.k8s:
+            state: absent
+            api_version: v1
+            kind: PersistentVolumeClaim
             name: data-dest2
             namespace: "{{ namespace }}"
-          spec:
-            accessModes:
-              - ReadWriteOnce
-            dataSourceRef:
-              kind: ReplicationDestination
-              apiGroup: volsync.backube
-              name: restore
-            resources:
-              requests:
-                storage: 1Gi
 
-    - name: Verify contents of PVC now match
-      include_role:
-        name: compare_pvc_data
-      vars:
-        pvc1_name: data-source
-        pvc2_name: data-dest2
-        timeout: 900
+        - name: Verify second snapshot still exists
+          kubernetes.core.k8s:
+            state: present
+            api_version: snapshot.storage.k8s.io/v1
+            kind: VolumeSnapshot
+            name: "{{ snapshot2_name }}"
+            namespace: "{{ namespace }}"
 
-    # Now remove our data-dest2 (2nd restore pvc)
-    # data-dest2 should be done with 2nd snapshot since it has been
-    # populated, but test by removing the pvc just in case.
-    # Since the replicationdestination is stil using the 2nd snapshot
-    # it should not get cleaned up after the pvc is deleted
-    - name: Remove second restore pvc
-      kubernetes.core.k8s:
-        state: absent
-        api_version: v1
-        kind: PersistentVolumeClaim
-        name: data-dest2
-        namespace: "{{ namespace }}"
+        - name: Write new data into the source PVC
+          include_role:
+            name: write_to_pvc
+          vars:
+            data: 'newdata'
+            path: '/datafile'
+            pvc_name: 'data-source'
 
-    - name: Verify second snapshot still exists
-      kubernetes.core.k8s:
-        state: present
-        api_version: snapshot.storage.k8s.io/v1
-        kind: VolumeSnapshot
-        name: "{{ snapshot2_name }}"
-        namespace: "{{ namespace }}"
+        - name: Backup data from source volume again with manual trigger
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: volsync.backube/v1alpha1
+              kind: ReplicationSource
+              metadata:
+                name: source
+                namespace: "{{ namespace }}"
+              spec:
+                sourcePVC: data-source
+                trigger:
+                  manual: once-again
+                restic:
+                  pruneIntervalDays: 1
+                  repository: "{{ restic_secret_name }}"
+                  retain:
+                    hourly: 3
+                    daily: 2
+                    monthly: 1
+                  copyMethod: Snapshot
+                  cacheCapacity: 1Gi
 
-    - name: Write new data into the source PVC
-      include_role:
-        name: write_to_pvc
-      vars:
-        data: 'newdata'
-        path: '/datafile'
-        pvc_name: 'data-source'
-
-    - name: Backup data from source volume again with manual trigger
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          apiVersion: volsync.backube/v1alpha1
-          kind: ReplicationSource
-          metadata:
+        - name: Wait for sync to MinIO to complete again
+          kubernetes.core.k8s_info:
+            api_version: volsync.backube/v1alpha1
+            kind: ReplicationSource
             name: source
             namespace: "{{ namespace }}"
-          spec:
-            sourcePVC: data-source
-            trigger:
-              manual: once-again
-            restic:
-              pruneIntervalDays: 1
-              repository: "{{ restic_secret_name }}"
-              retain:
-                hourly: 3
-                daily: 2
-                monthly: 1
-              copyMethod: Snapshot
-              cacheCapacity: 1Gi
+          register: res
+          until: >
+            res.resources | length > 0 and
+            res.resources[0].status.lastManualSync is defined and
+            res.resources[0].status.lastManualSync=="once-again"
+          delay: 1
+          retries: 300
 
-    - name: Wait for sync to MinIO to complete again
-      kubernetes.core.k8s_info:
-        api_version: volsync.backube/v1alpha1
-        kind: ReplicationSource
-        name: source
-        namespace: "{{ namespace }}"
-      register: res
-      until: >
-        res.resources | length > 0 and
-        res.resources[0].status.lastManualSync is defined and
-        res.resources[0].status.lastManualSync=="once-again"
-      delay: 1
-      retries: 300
+        - name: Restore data from previous restoreasof time
+          kubernetes.core.k8s:
+            state: patched
+            definition:
+              apiVersion: volsync.backube/v1alpha1
+              kind: ReplicationDestination
+              metadata:
+                name: restore
+                namespace: "{{ namespace }}"
+              spec:
+                trigger:
+                  manual: restore-once-previous
+                restic:
+                  restoreAsOf: "{{ current_timestamp }}"
 
-    - name: Restore data from previous restoreasof time
-      kubernetes.core.k8s:
-        state: patched
-        definition:
-          apiVersion: volsync.backube/v1alpha1
-          kind: ReplicationDestination
-          metadata:
+        - name: Wait for restore with previous restoreasof time to complete
+          kubernetes.core.k8s_info:
+            api_version: volsync.backube/v1alpha1
+            kind: ReplicationDestination
             name: restore
             namespace: "{{ namespace }}"
-          spec:
-            trigger:
-              manual: restore-once-previous
-            restic:
-              restoreAsOf: "{{ current_timestamp }}"
+          register: res
+          until: >
+            res.resources | length > 0 and
+            res.resources[0].status.lastManualSync is defined and
+            res.resources[0].status.lastManualSync=="restore-once-previous" and
+            res.resources[0].status.latestImage is defined
+          delay: 1
+          retries: 300
 
-    - name: Wait for restore with previous restoreasof time to complete
-      kubernetes.core.k8s_info:
-        api_version: volsync.backube/v1alpha1
-        kind: ReplicationDestination
-        name: restore
-        namespace: "{{ namespace }}"
-      register: res
-      until: >
-        res.resources | length > 0 and
-        res.resources[0].status.lastManualSync is defined and
-        res.resources[0].status.lastManualSync=="restore-once-previous" and
-        res.resources[0].status.latestImage is defined
-      delay: 1
-      retries: 300
+        - name: Save name of third snapshot
+          ansible.builtin.set_fact:
+            snapshot3_name: "{{ res.resources[0].status.latestImage.name }}"
 
-    - name: Save name of third snapshot
-      ansible.builtin.set_fact:
-        snapshot3_name: "{{ res.resources[0].status.latestImage.name }}"
+        - name: Check latestImage updated
+          ansible.builtin.fail:
+            msg: latestImage snapshot name not updated after sync completion
+          when: snapshot2_name == snapshot3_name
 
-    - name: Check latestImage updated
-      ansible.builtin.fail:
-        msg: latestImage snapshot name not updated after sync completion
-      when: snapshot2_name == snapshot3_name
+        # At this point the 2nd snapshot should be deleted since the only owner
+        # left was the replicationdestination and its latestImage has been updated
+        - name: Ensure second snapshot was deleted
+          kubernetes.core.k8s_info:
+            api_version: snapshot.storage.k8s.io/v1
+            kind: VolumeSnapshot
+            name: "{{ snapshot2_name }}"
+            namespace: "{{ namespace }}"
+          register: res
+          until: res.resources | length == 0
+          delay: 1
+          retries: 60
 
-    # At this point the 2nd snapshot should be deleted since the only owner
-    # left was the replicationdestination and its latestImage has been updated
-    - name: Ensure second snapshot was deleted
-      kubernetes.core.k8s_info:
-        api_version: snapshot.storage.k8s.io/v1
-        kind: VolumeSnapshot
-        name: "{{ snapshot2_name }}"
-        namespace: "{{ namespace }}"
-      register: res
-      until: res.resources | length == 0
-      delay: 1
-      retries: 60
+        # Use volume populator to restore from previous restoreasof time to a 3rd pvc
+        - name: Create dest PVC from 3rd snapshot (restore volume)
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              kind: PersistentVolumeClaim
+              apiVersion: v1
+              metadata:
+                name: data-dest3
+                namespace: "{{ namespace }}"
+              spec:
+                accessModes:
+                  - ReadWriteOnce
+                dataSourceRef:
+                  kind: ReplicationDestination
+                  apiGroup: volsync.backube
+                  name: restore
+                resources:
+                  requests:
+                    storage: 1Gi
 
-    # Use volume populator to restore from previous restoreasof time to a 3rd pvc
-    - name: Create dest PVC from 3rd snapshot (restore volume)
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          kind: PersistentVolumeClaim
-          apiVersion: v1
-          metadata:
+        - name: Verify restored contents of PVC do not match current
+          include_role:
+            name: compare_pvc_data
+          vars:
+            pvc1_name: data-source
+            pvc2_name: data-dest3
+            should_fail: true
+            timeout: 900
+
+        - name: Mark third snapshot as do-not-delete
+          kubernetes.core.k8s:
+            state: patched
+            definition:
+              api_version: snapshot.storage.k8s.io/v1
+              kind: VolumeSnapshot
+              metadata:
+                name: "{{ snapshot3_name }}"
+                namespace: "{{ namespace }}"
+                labels:
+                  volsync.backube/do-not-delete: "saveme"
+
+        - name: Get updated current timestamp from shell
+          ansible.builtin.shell: |
+            set -e -o pipefail
+
+            CURRENT_TIME=$(date --rfc-3339=seconds)
+            # split the time string by space so we can convert it to proper k8s date-time format
+            read -r -a TIME_ARRAY <<< "${CURRENT_TIME}"
+            DATE_TIME_STRING="${TIME_ARRAY[0]}T${TIME_ARRAY[1]}"
+            # save the timestamp so it can be recalled later
+            echo "${DATE_TIME_STRING}"
+          register: updated_current_timestamp_shell
+
+        - name: Save updated current timestamp
+          ansible.builtin.set_fact:
+            updated_current_timestamp: "{{ updated_current_timestamp_shell.stdout }}"
+
+        - name: Restore data from the updated current restoreasof time
+          kubernetes.core.k8s:
+            state: patched
+            definition:
+              apiVersion: volsync.backube/v1alpha1
+              kind: ReplicationDestination
+              metadata:
+                name: restore
+                namespace: "{{ namespace }}"
+              spec:
+                trigger:
+                  manual: restore-once-final
+                restic:
+                  restoreAsOf: "{{ updated_current_timestamp }}"
+
+        - name: Wait for restore with updated current restoreasof time to complete
+          kubernetes.core.k8s_info:
+            api_version: volsync.backube/v1alpha1
+            kind: ReplicationDestination
+            name: restore
+            namespace: "{{ namespace }}"
+          register: res
+          until: >
+            res.resources | length > 0 and
+            res.resources[0].status.lastManualSync is defined and
+            res.resources[0].status.lastManualSync=="restore-once-final" and
+            res.resources[0].status.latestImage is defined
+          delay: 1
+          retries: 300
+
+        - name: Save name of fourth snapshot
+          ansible.builtin.set_fact:
+            snapshot4_name: "{{ res.resources[0].status.latestImage.name }}"
+
+        - name: Check latestImage updated
+          ansible.builtin.fail:
+            msg: latestImage snapshot name not updated after sync completion
+          when: snapshot3_name == snapshot4_name
+
+        # Use volume populator to restore with updated time to a 4th pvc
+        - name: Create dest PVC from 4th snapshot (restore volume)
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              kind: PersistentVolumeClaim
+              apiVersion: v1
+              metadata:
+                name: data-dest4
+                namespace: "{{ namespace }}"
+              spec:
+                accessModes:
+                  - ReadWriteOnce
+                dataSourceRef:
+                  kind: ReplicationDestination
+                  apiGroup: volsync.backube
+                  name: restore
+                resources:
+                  requests:
+                    storage: 1Gi
+
+        - name: Verify restored contents of PVC now match
+          include_role:
+            name: compare_pvc_data
+          vars:
+            pvc1_name: data-source
+            pvc2_name: data-dest4
+            timeout: 900
+
+        # Cleanup testing
+        - name: Remove third restore pvc
+          kubernetes.core.k8s:
+            state: absent
+            api_version: v1
+            kind: PersistentVolumeClaim
             name: data-dest3
             namespace: "{{ namespace }}"
-          spec:
-            accessModes:
-              - ReadWriteOnce
-            dataSourceRef:
-              kind: ReplicationDestination
-              apiGroup: volsync.backube
-              name: restore
-            resources:
-              requests:
-                storage: 1Gi
 
-    - name: Verify restored contents of PVC do not match current
-      include_role:
-        name: compare_pvc_data
-      vars:
-        pvc1_name: data-source
-        pvc2_name: data-dest3
-        should_fail: true
-        timeout: 900
-
-    - name: Mark third snapshot as do-not-delete
-      kubernetes.core.k8s:
-        state: patched
-        definition:
-          api_version: snapshot.storage.k8s.io/v1
-          kind: VolumeSnapshot
-          metadata:
-            name: "{{ snapshot3_name }}"
-            namespace: "{{ namespace }}"
-            labels:
-              volsync.backube/do-not-delete: "saveme"
-
-    - name: Get updated current timestamp from shell
-      ansible.builtin.shell: |
-        set -e -o pipefail
-
-        CURRENT_TIME=$(date --rfc-3339=seconds)
-        # split the time string by space so we can convert it to proper k8s date-time format
-        read -r -a TIME_ARRAY <<< "${CURRENT_TIME}"
-        DATE_TIME_STRING="${TIME_ARRAY[0]}T${TIME_ARRAY[1]}"
-        # save the timestamp so it can be recalled later
-        echo "${DATE_TIME_STRING}"
-      register: updated_current_timestamp_shell
-
-    - name: Save updated current timestamp
-      ansible.builtin.set_fact:
-        updated_current_timestamp: "{{ updated_current_timestamp_shell.stdout }}"
-
-    - name: Restore data from the updated current restoreasof time
-      kubernetes.core.k8s:
-        state: patched
-        definition:
-          apiVersion: volsync.backube/v1alpha1
-          kind: ReplicationDestination
-          metadata:
+        - name: Remove the replicationdestination
+          kubernetes.core.k8s:
+            state: absent
+            api_version: volsync.backube/v1alpha1
+            kind: ReplicationDestination
             name: restore
             namespace: "{{ namespace }}"
-          spec:
-            trigger:
-              manual: restore-once-final
-            restic:
-              restoreAsOf: "{{ updated_current_timestamp }}"
 
-    - name: Wait for restore with updated current restoreasof time to complete
-      kubernetes.core.k8s_info:
-        api_version: volsync.backube/v1alpha1
-        kind: ReplicationDestination
-        name: restore
-        namespace: "{{ namespace }}"
-      register: res
-      until: >
-        res.resources | length > 0 and
-        res.resources[0].status.lastManualSync is defined and
-        res.resources[0].status.lastManualSync=="restore-once-final" and
-        res.resources[0].status.latestImage is defined
-      delay: 1
-      retries: 300
-
-    - name: Save name of fourth snapshot
-      ansible.builtin.set_fact:
-        snapshot4_name: "{{ res.resources[0].status.latestImage.name }}"
-
-    - name: Check latestImage updated
-      ansible.builtin.fail:
-        msg: latestImage snapshot name not updated after sync completion
-      when: snapshot3_name == snapshot4_name
-
-    # Use volume populator to restore with updated time to a 4th pvc
-    - name: Create dest PVC from 4th snapshot (restore volume)
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          kind: PersistentVolumeClaim
-          apiVersion: v1
-          metadata:
-            name: data-dest4
+        # Fourth snapshot should be cleaned up since both replicationdestination
+        # and data-dest4 (since pvc got provisioned) are done with it
+        - name: Ensure fourth snapshot was deleted
+          kubernetes.core.k8s_info:
+            api_version: snapshot.storage.k8s.io/v1
+            kind: VolumeSnapshot
+            name: "{{ snapshot4_name }}"
             namespace: "{{ namespace }}"
-          spec:
-            accessModes:
-              - ReadWriteOnce
-            dataSourceRef:
-              kind: ReplicationDestination
-              apiGroup: volsync.backube
-              name: restore
-            resources:
-              requests:
-                storage: 1Gi
+          register: res
+          until: res.resources | length == 0
+          delay: 1
+          retries: 60
 
-    - name: Verify restored contents of PVC now match
-      include_role:
-        name: compare_pvc_data
-      vars:
-        pvc1_name: data-source
-        pvc2_name: data-dest4
-        timeout: 900
-
-    # Cleanup testing
-    - name: Remove third restore pvc
-      kubernetes.core.k8s:
-        state: absent
-        api_version: v1
-        kind: PersistentVolumeClaim
-        name: data-dest3
-        namespace: "{{ namespace }}"
-
-    - name: Remove the replicationdestination
-      kubernetes.core.k8s:
-        state: absent
-        api_version: volsync.backube/v1alpha1
-        kind: ReplicationDestination
-        name: restore
-        namespace: "{{ namespace }}"
-
-    # Fourth snapshot should be cleaned up since both replicationdestination
-    # and data-dest4 (since pvc got provisioned) are done with it
-    - name: Ensure fourth snapshot was deleted
-      kubernetes.core.k8s_info:
-        api_version: snapshot.storage.k8s.io/v1
-        kind: VolumeSnapshot
-        name: "{{ snapshot4_name }}"
-        namespace: "{{ namespace }}"
-      register: res
-      until: res.resources | length == 0
-      delay: 1
-      retries: 60
-
-    # Third snapshot should remain because of do-not-delete label
-    - name: Verify third snapshot still exists (has do-not-delete label)
-      kubernetes.core.k8s:
-        state: present
-        api_version: snapshot.storage.k8s.io/v1
-        kind: VolumeSnapshot
-        name: "{{ snapshot3_name }}"
-        namespace: "{{ namespace }}"
+        # Third snapshot should remain because of do-not-delete label
+        - name: Verify third snapshot still exists (has do-not-delete label)
+          kubernetes.core.k8s:
+            state: present
+            api_version: snapshot.storage.k8s.io/v1
+            kind: VolumeSnapshot
+            name: "{{ snapshot3_name }}"
+            namespace: "{{ namespace }}"

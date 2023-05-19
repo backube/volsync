@@ -8,6 +8,9 @@
     - include_role:
         name: create_namespace
 
+    - include_role:
+        name: gather_cluster_info
+
     - name: Create ReplicationDestination
       kubernetes.core.k8s:
         state: present
@@ -81,7 +84,8 @@
               address: "{{ res.resources[0].status.rsync.address }}"
               copyMethod: Snapshot
 
-    # Using volume populator - no need to wait for RD to be done yet before creating the pvc
+    # Using volume populator - no need to wait for RD to be done before
+    # creating the pvc
     - name: Convert latestImage to PVC Using VolumePopulator
       kubernetes.core.k8s:
         state: present
@@ -101,6 +105,7 @@
             resources:
               requests:
                 storage: 1Gi
+      when: cluster_info.volumepopulator_supported
 
     - name: Wait for sync to complete
       kubernetes.core.k8s_info:
@@ -119,6 +124,28 @@
     - name: Save name of first snapshot
       ansible.builtin.set_fact:
         first_snap: "{{ res.resources[0].status.latestImage.name }}"
+
+    # If not using volume populator
+    - name: Convert latestImage to PVC
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: data-dest-1
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            dataSource:
+              kind: VolumeSnapshot
+              apiGroup: snapshot.storage.k8s.io
+              name: "{{ first_snap }}"
+            resources:
+              requests:
+                storage: 1Gi
+      when: not cluster_info.volumepopulator_supported
 
     - name: Verify contents of PVC
       include_role:
@@ -167,8 +194,8 @@
       ansible.builtin.set_fact:
         second_snap: "{{ res.resources[0].status.latestImage.name }}"
 
-    # This time create the pvc after RD is finished to make sure we get the latest
-    - name: Convert latestImage to PVC
+    # create the pvc after RD is finished to make sure we get the latest
+    - name: Convert latestImage to PVC using VolumePopulator
       kubernetes.core.k8s:
         state: present
         definition:
@@ -187,6 +214,28 @@
             resources:
               requests:
                 storage: 1Gi
+      when: cluster_info.volumepopulator_supported
+
+    - name: Convert latestImage to PVC
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: data-dest-2
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            dataSource:
+              kind: VolumeSnapshot
+              apiGroup: snapshot.storage.k8s.io
+              name: "{{ second_snap }}"
+            resources:
+              requests:
+                storage: 1Gi
+      when: not cluster_info.volumepopulator_supported
 
     - name: Verify contents of PVC
       include_role:
