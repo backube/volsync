@@ -224,7 +224,7 @@
       when: snapshot1_name == snapshot2_name
 
     # First snapshot should get deleted since rd has new latestImage
-    # and the volumepopulator pvc data-dest1 has been populated so it no 
+    # and the volumepopulator pvc data-dest1 has been populated so it no
     # longer should be holding onto the snapshot
     - name: Ensure first snapshot was deleted
       kubernetes.core.k8s_info:

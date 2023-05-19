@@ -332,7 +332,7 @@ var _ = Describe("VolumePopulator - map functions", func() {
 		var storageClass *storagev1.StorageClass
 
 		BeforeEach(func() {
-			storageClass = createTestStorageClassWithCacheReload(ctx, "storageclass-for-mapfunc-test")
+			storageClass = createTestStorageClassWithCacheReload(ctx, "sc-for-mapfunc-test-", true)
 		})
 		AfterEach(func() {
 			// Cleanup
@@ -489,7 +489,7 @@ var _ = Describe("VolumePopulator", func() {
 
 				BeforeEach(func() {
 					// Create storageclass
-					createTestStorageClassWithCacheReload(ctx, storageClassName)
+					createTestStorageClassWithCacheReload(ctx, storageClassName, false)
 				})
 				AfterEach(func() {
 					// Clean up the storageclass
@@ -795,15 +795,20 @@ var _ = Describe("VolumePopulator", func() {
 	})
 })
 
-func createTestStorageClassWithCacheReload(ctx context.Context, storageClassName string) *storagev1.StorageClass {
+func createTestStorageClassWithCacheReload(ctx context.Context,
+	storageClassName string, generateName bool) *storagev1.StorageClass {
+	scObjMeta := metav1.ObjectMeta{
+		Name: storageClassName,
+	}
+	if generateName {
+		scObjMeta = metav1.ObjectMeta{
+			GenerateName: storageClassName,
+		}
+	}
 	storageClass := &storagev1.StorageClass{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: storageClassName,
-		},
+		ObjectMeta:  scObjMeta,
 		Provisioner: "my-provisioner",
-		Parameters: map[string]string{
-			"type": "testtype",
-		},
+		Parameters:  map[string]string{"type": "testtype"},
 	}
 	createWithCacheReload(ctx, k8sClient, storageClass)
 
