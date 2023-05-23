@@ -118,6 +118,7 @@ func IndexFieldsForVolumePopulator(ctx context.Context, fieldIndexer client.Fiel
 
 //nolint:lll
 //+kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=core,resources=persistentvolumeclaims/finalizers,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,resources=persistentvolumes,verbs=get;list;watch;patch
 //+kubebuilder:rbac:groups=volsync.backube,resources=replicationdestinations,verbs=get;list;watch
 //+kubebuilder:rbac:groups=storage.k8s.io,resources=storageclasses,verbs=get;list;watch
