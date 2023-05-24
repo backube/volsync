@@ -545,7 +545,7 @@ var _ = Describe("VolumePopulator", func() {
 						pvcPrime, err = GetVolumePopulatorPVCPrime(ctx, k8sClient, pvc)
 						Expect(err).NotTo(HaveOccurred())
 						return pvcPrime
-					}, duration10s, interval).ShouldNot(BeNil())
+					}, maxWait, interval).ShouldNot(BeNil())
 
 					// PVCPrime should be owned by the pvc
 					Expect(len(pvcPrime.GetOwnerReferences())).To(Equal(1))
@@ -588,7 +588,7 @@ var _ = Describe("VolumePopulator", func() {
 						}
 
 						return true
-					}, duration10s, interval).Should(BeTrue())
+					}, maxWait, interval).Should(BeTrue())
 				})
 
 				It("pvcPrime should be created", func() {
@@ -730,7 +730,7 @@ var _ = Describe("VolumePopulator", func() {
 										// Note pvcs won't actually get deleted in envtest because of finalizer
 										// return success if it's marked for deletion
 										return (err != nil && kerrors.IsNotFound(err)) || !pvcPrime.GetDeletionTimestamp().IsZero()
-									}, duration10s, interval).Should(BeTrue())
+									}, maxWait, interval).Should(BeTrue())
 
 									// volumesnapshot should be left behind or garbage collected depending on
 									// whether it is marked as do-not-delete or if owned by a replicationdestination
@@ -784,7 +784,7 @@ var _ = Describe("VolumePopulator", func() {
 												"snapshot labels: %+v", snap.GetLabels())
 										}
 										return nil
-									}, duration10s, interval).Should(Succeed())
+									}, maxWait, interval).Should(Succeed())
 								})
 							})
 						}
