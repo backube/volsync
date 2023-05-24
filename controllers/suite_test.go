@@ -25,6 +25,7 @@ import (
 	"time"
 
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
+	volumepopulatorv1beta1 "github.com/kubernetes-csi/volume-data-source-validator/client/apis/volumepopulator/v1beta1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	gomegatypes "github.com/onsi/gomega/types"
@@ -59,8 +60,10 @@ const (
 
 var cfg *rest.Config
 var k8sClient client.Client
+var k8sDirectClient client.Client
 var testEnv *envtest.Environment
 var cancel context.CancelFunc
+var ctx context.Context
 
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -71,7 +74,6 @@ func TestAPIs(t *testing.T) {
 var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 
-	var ctx context.Context
 	ctx, cancel = context.WithCancel(context.TODO())
 
 	By("bootstrapping test environment")
@@ -94,6 +96,9 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	err = snapv1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = volumepopulatorv1beta1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	//+kubebuilder:scaffold:scheme
@@ -152,6 +157,10 @@ var _ = BeforeSuite(func() {
 
 	k8sClient = k8sManager.GetClient()
 	Expect(k8sClient).ToNot(BeNil())
+
+	// Instantiate direct client for tests (reads directly from API server rather than caching)
+	k8sDirectClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	Expect(err).NotTo(HaveOccurred())
 
 	_, err = utils.InitPodLogsClient(cfg)
 	Expect(err).NotTo(HaveOccurred())

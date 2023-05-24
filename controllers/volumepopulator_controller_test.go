@@ -20,19 +20,24 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
+	volumepopulatorv1beta1 "github.com/kubernetes-csi/volume-data-source-validator/client/apis/volumepopulator/v1beta1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/yaml"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers/utils"
@@ -223,7 +228,6 @@ var _ = Describe("VolumePopulator - Predicates", func() {
 })
 
 var _ = Describe("VolumePopulator - map functions", func() {
-	var ctx = context.Background()
 	var namespace *corev1.Namespace
 	var pvcs []*corev1.PersistentVolumeClaim
 
@@ -397,8 +401,101 @@ var _ = Describe("VolumePopulator - map functions", func() {
 	})
 })
 
+var _ = Describe("VolumePopulator - VolumePopulator CRD detection & ensuring CR functions", func() {
+	logger := zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
+
+	Context("When the VolumePopulator CRD is not present", func() {
+		It("should not be detected", func() {
+			isPresent, err := isVolumePopulatorCRDPresent(ctx, k8sClient)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(isPresent).To(BeFalse())
+		})
+	})
+
+	Context("When the VolumePopulator CRD is present", func() {
+		// Use direct client for these tests - so we can delete CRD and not worry about the cache
+		// Using cached client means after deleting the CRD we can still do a list on the deleted resource without err
+		var volumePopulatorCRD *apiextensionsv1.CustomResourceDefinition
+		BeforeEach(func() {
+			//nolint:lll
+			// https://raw.githubusercontent.com/kubernetes-csi/volume-data-source-validator/v1.3.0/client/config/crd/populator.storage.k8s.io_volumepopulators.yaml
+			bytes, err := os.ReadFile("test/populator.storage.k8s.io_volumepopulators.yaml")
+			// Make sure we successfully read the file
+			Expect(err).NotTo(HaveOccurred())
+			Expect(len(bytes)).To(BeNumerically(">", 0))
+			volumePopulatorCRD = &apiextensionsv1.CustomResourceDefinition{}
+			err = yaml.Unmarshal(bytes, volumePopulatorCRD)
+			Expect(err).NotTo(HaveOccurred())
+			// Parsed yaml correctly
+			Expect(volumePopulatorCRD.Name).To(Equal("volumepopulators.populator.storage.k8s.io"))
+			Expect(k8sDirectClient.Create(ctx, volumePopulatorCRD)).NotTo(HaveOccurred())
+			Eventually(func() bool {
+				// Getting sccs list should return empty list (no error)
+				vpList := volumepopulatorv1beta1.VolumePopulatorList{}
+				err := k8sDirectClient.List(ctx, &vpList)
+				if err != nil {
+					return false
+				}
+				return len(vpList.Items) == 0
+			}, 5*time.Second).Should(BeTrue())
+		})
+		AfterEach(func() {
+			Expect(k8sDirectClient.Delete(ctx, volumePopulatorCRD)).To(Succeed())
+			Eventually(func() bool {
+				// CRD can take a while to cleanup and leak into subsequent tests that run in the same process, wait
+				// to ensure it's gone
+				reloadErr := k8sDirectClient.Get(ctx, client.ObjectKeyFromObject(volumePopulatorCRD), volumePopulatorCRD)
+				if !kerrors.IsNotFound(reloadErr) {
+					return false // SCC CRD is still there, keep trying
+				}
+
+				// Doublecheck sccs gone
+				vpList := volumepopulatorv1beta1.VolumePopulatorList{}
+				getVPListErr := k8sDirectClient.List(ctx, &vpList)
+				return kerrors.IsNotFound(getVPListErr)
+			}, 60*time.Second, 250*time.Millisecond).Should(BeTrue())
+		})
+
+		It("should be detected", func() {
+			isPresent, err := isVolumePopulatorCRDPresent(ctx, k8sDirectClient)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(isPresent).To(BeTrue())
+		})
+
+		Context("When the Volsync VolumePopulator CR does not exist", func() {
+			var vpCR *volumepopulatorv1beta1.VolumePopulator
+
+			BeforeEach(func() {
+				// Run func to ensure the CR gets created
+				Expect(EnsureVolSyncVolumePopulatorCR(ctx, k8sDirectClient, logger)).To(Succeed())
+
+				Eventually(func() error {
+					vpCR = &volumepopulatorv1beta1.VolumePopulator{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: VolPopCRName,
+						},
+					}
+					return k8sDirectClient.Get(ctx, client.ObjectKeyFromObject(vpCR), vpCR)
+				}, maxWait, interval).Should(Succeed())
+			})
+
+			It("EnsureVolSyncVolumePopulatorCR should create it", func() {
+				Expect(vpCR.GetName()).To(Equal(VolPopCRName))
+				Expect(vpCR.SourceKind.Group).To(Equal("volsync.backube"))
+				Expect(vpCR.SourceKind.Kind).To(Equal("ReplicationDestination"))
+			})
+
+			Context("When the Volsync VolumePopulator CR already exists", func() {
+				It("EnsureVolSyncVolumePopulatorCR should create it", func() {
+					// Run func again, should still succeed
+					Expect(EnsureVolSyncVolumePopulatorCR(ctx, k8sDirectClient, logger)).To(Succeed())
+				})
+			})
+		})
+	})
+})
+
 var _ = Describe("VolumePopulator", func() {
-	var ctx = context.Background()
 	var namespace *corev1.Namespace
 	var rd *volsyncv1alpha1.ReplicationDestination
 	var pvc *corev1.PersistentVolumeClaim

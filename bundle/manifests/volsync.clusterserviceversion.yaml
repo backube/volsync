@@ -55,7 +55,7 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2023-05-23T19:57:51Z"
+    createdAt: "2023-05-24T21:09:11Z"
     olm.skipRange: '>=0.4.0 <0.8.0'
     operators.operatorframework.io/builder: operator-sdk-v1.26.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
@@ -284,6 +284,14 @@ spec:
           - create
           - patch
           - update
+        - apiGroups:
+          - populator.storage.k8s.io
+          resources:
+          - volumepopulators
+          verbs:
+          - get
+          - list
+          - watch
         - apiGroups:
           - rbac.authorization.k8s.io
           resources:

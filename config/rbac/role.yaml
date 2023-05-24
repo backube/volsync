@@ -158,6 +158,14 @@ rules:
   - patch
   - update
 - apiGroups:
+  - populator.storage.k8s.io
+  resources:
+  - volumepopulators
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - rbac.authorization.k8s.io
   resources:
   - rolebindings

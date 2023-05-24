@@ -2,7 +2,6 @@
 package controllers
 
 import (
-	"context"
 	"strings"
 	"time"
 
@@ -23,7 +22,6 @@ import (
 )
 
 var _ = Describe("ReplicationDestination", func() {
-	var ctx = context.Background()
 	var namespace *corev1.Namespace
 	var rd *volsyncv1alpha1.ReplicationDestination
 

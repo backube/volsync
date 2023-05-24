@@ -26,10 +26,12 @@ import (
 
 	"github.com/go-logr/logr"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
+	volumepopulatorv1beta1 "github.com/kubernetes-csi/volume-data-source-validator/client/apis/volumepopulator/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -66,6 +68,8 @@ const (
 
 	VolPopPVCToReplicationDestinationIndex string = "volPopPvc.spec.dataSourceRef.Name"
 	VolPopPVCToStorageClassIndex           string = "volPopPvc.spec.storageClassName"
+
+	VolPopCRName string = "volsync-replicationdestination"
 )
 
 func IndexFieldsForVolumePopulator(ctx context.Context, fieldIndexer client.FieldIndexer) error {
@@ -116,12 +120,68 @@ func IndexFieldsForVolumePopulator(ctx context.Context, fieldIndexer client.Fiel
 		})
 }
 
+func EnsureVolSyncVolumePopulatorCR(ctx context.Context, k8sClient client.Client, logger logr.Logger) error {
+	logger = logger.WithValues("VolPopCRName", VolPopCRName)
+
+	ok, err := isVolumePopulatorCRDPresent(ctx, k8sClient)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		logger.Info("VolumePopulator Kind is not present, " +
+			"not creating a VolumePopulator CR")
+		return nil // VolumePopulator kind is not present, nothing to do
+	}
+
+	volSyncVP := &volumepopulatorv1beta1.VolumePopulator{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: VolPopCRName,
+		},
+	}
+	op, err := ctrlutil.CreateOrUpdate(ctx, k8sClient, volSyncVP, func() error {
+		volSyncVP.SourceKind = metav1.GroupKind{
+			Group: volsyncv1alpha1.GroupVersion.Group,
+			Kind:  "ReplicationDestination",
+		}
+		// Add VolSync label
+		utils.SetOwnedByVolSync(volSyncVP)
+
+		return nil
+	})
+	if err != nil {
+		logger.Error(err, "Ensuring VolumePopulator failed")
+		return err
+	}
+
+	if op == ctrlutil.OperationResultCreated {
+		logger.Info("Created VolumePopulatorCR")
+	}
+
+	logger.Info("Ensuring VolumePopulator CR complete")
+	return nil
+}
+
+func isVolumePopulatorCRDPresent(ctx context.Context, k8sClient client.Client) (bool, error) {
+	vpList := volumepopulatorv1beta1.VolumePopulatorList{}
+	err := k8sClient.List(ctx, &vpList)
+	if err != nil {
+		if apimeta.IsNoMatchError(err) || kerrors.IsNotFound(err) {
+			// VolumePopulator Kind is not present
+			return false, nil
+		}
+		// Some other error querying for VolumePopulators
+		return false, err
+	}
+	return true, nil
+}
+
 //nolint:lll
 //+kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,resources=persistentvolumeclaims/finalizers,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,resources=persistentvolumes,verbs=get;list;watch;patch
 //+kubebuilder:rbac:groups=volsync.backube,resources=replicationdestinations,verbs=get;list;watch
 //+kubebuilder:rbac:groups=storage.k8s.io,resources=storageclasses,verbs=get;list;watch
+//+kubebuilder:rbac:groups=populator.storage.k8s.io,resources=volumepopulators,verbs=get;list;watch
 
 // VolumePopulatorReconciler reconciles PVCs that use a dataSourceRef that refers to a
 // ReplicationDestination object.

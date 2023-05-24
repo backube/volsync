@@ -62,7 +62,7 @@ var _ = Describe("A cluster w/ StorageContextConstraints", func() {
 	var priv *ocpsecurityv1.SecurityContextConstraints
 	BeforeEach(func() {
 		// https://github.com/openshift/api/blob/master/security/v1/0000_03_security-openshift_01_scc.crd.yaml
-		bytes, err := os.ReadFile("scc-crd.yml")
+		bytes, err := os.ReadFile("../test/scc-crd.yml")
 		// Make sure we successfully read the file
 		Expect(err).NotTo(HaveOccurred())
 		Expect(len(bytes)).To(BeNumerically(">", 0))

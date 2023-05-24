@@ -33,6 +33,7 @@ import (
 	_ "embed"
 
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
+	volumepopulatorv1beta1 "github.com/kubernetes-csi/volume-data-source-validator/client/apis/volumepopulator/v1beta1"
 	ocpsecurityv1 "github.com/openshift/api/security/v1"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -73,6 +74,7 @@ func init() {
 	utilruntime.Must(snapv1.AddToScheme(scheme))
 	utilruntime.Must(volsyncv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(ocpsecurityv1.AddToScheme(scheme))
+	utilruntime.Must(volumepopulatorv1beta1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
@@ -143,18 +145,24 @@ func addCommandFlags(probeAddr *string, metricsAddr *string, enableLeaderElectio
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 }
 
-func ensurePrivilegedMoverScc(cfg *rest.Config) {
-	setupLog.Info("Privileged Mover SCC", "scc-name", utils.SCCName)
+func ensureRequiredCRs(cfg *rest.Config) {
 	setupClient, err := client.New(cfg, client.Options{Scheme: scheme})
 	if err != nil {
 		setupLog.Error(err, "error creating client")
 		os.Exit(1)
 	}
 
+	setupLog.Info("Privileged Mover SCC", "scc-name", utils.SCCName)
 	err = platform.EnsureVolSyncMoverSCCIfOpenShift(context.Background(), setupClient, setupLog,
 		utils.SCCName, volsyncMoverSCCYamlRaw)
 	if err != nil {
 		setupLog.Error(err, "unable to reconcile volsync mover scc", "scc-name", utils.SCCName)
+		os.Exit(1)
+	}
+
+	err = controllers.EnsureVolSyncVolumePopulatorCR(context.Background(), setupClient, setupLog)
+	if err != nil {
+		setupLog.Error(err, "unable to reconcile VolumePopulator CR")
 		os.Exit(1)
 	}
 }
@@ -208,8 +216,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Before starting controllers - create or patch volsync mover SCC if necessary
-	ensurePrivilegedMoverScc(cfg)
+	// Before starting controllers - create or patch volsync mover SCC and VolumePopulator CR if necessary
+	ensureRequiredCRs(cfg)
 
 	initPodLogsClient(cfg)
 

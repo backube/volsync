@@ -380,6 +380,7 @@ func (rr *replicationRelationship) awaitDestAddrKeys(ctx context.Context, c clie
 	rdName types.NamespacedName) (*volsyncv1alpha1.ReplicationDestination, error) {
 	klog.Infof("waiting for keys & address of destination to be available")
 	rd := volsyncv1alpha1.ReplicationDestination{}
+	//nolint:staticcheck //FIXME: see https://github.com/kubernetes/apimachinery/issues/153
 	err := wait.PollImmediate(5*time.Second, defaultRsyncKeyTimeout, func() (bool, error) {
 		if err := c.Get(ctx, rdName, &rd); err != nil {
 			return false, err

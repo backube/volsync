@@ -93,6 +93,7 @@ func (rs *replicationSync) waitForSync(ctx context.Context, srcClient client.Cli
 		Name:      rs.rel.data.Source.RSName,
 		Namespace: rs.rel.data.Source.Namespace,
 	}
+	//nolint:staticcheck //FIXME: see https://github.com/kubernetes/apimachinery/issues/153
 	err := wait.PollImmediate(5*time.Second, defaultVolumeSyncTimeout, func() (bool, error) {
 		if err := srcClient.Get(ctx, rsName, &rsrc); err != nil {
 			return false, err

@@ -3,7 +3,6 @@
 package controllers
 
 import (
-	"context"
 	"fmt"
 	"strconv"
 
@@ -21,7 +20,6 @@ import (
 )
 
 var _ = Describe("ReplicationSource", func() {
-	var ctx = context.Background()
 	var namespace *corev1.Namespace
 	var rs *volsyncv1alpha1.ReplicationSource
 	var srcPVC *corev1.PersistentVolumeClaim
