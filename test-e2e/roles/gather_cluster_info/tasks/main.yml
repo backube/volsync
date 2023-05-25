@@ -48,6 +48,18 @@
   ansible.builtin.debug:
     var: cluster_info.volumepopulator_supported
 
+- name: Determine if VolumePopulator api/crd is available
+  ansible.builtin.set_fact:
+    cluster_info: >
+      {{ cluster_info | combine({
+        'volumepopulator_api_available': cluster_info.apis["populator.storage.k8s.io/v1beta1"] is defined and
+          cluster_info.apis["populator.storage.k8s.io/v1beta1"]["VolumePopulator"] is defined
+      }, recursive=True) }}
+
+- name: Print volumepopulator_api_available
+  ansible.builtin.debug:
+    var: cluster_info.volumepopulator_api_available
+
 # - name: Print cluster information
 #   ansible.builtin.debug:
 #     var: cluster_info

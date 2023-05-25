@@ -20,6 +20,20 @@
     - include_role:
         name: gather_cluster_info
 
+    # Check if VolSync has created a VolumePopulator CR - but only if
+    # the api is available.
+    - when: cluster_info.volumepopulator_api_available
+      name: Check for VolSync replicationdestination VolumePopulator CR
+      kubernetes.core.k8s_info:
+        api_version: populator.storage.k8s.io/v1beta1
+        kind: VolumePopulator
+        name: volsync-replicationdestination
+      register: res
+      failed_when: >
+          res.resources | length == 0 or
+          res.resources[0].sourceKind.Group != "volsync.backube" or
+          res.resources[0].sourceKind.Kind != "ReplicationDestination"
+
     # Needed since the when statement is checked for every task in the
     # block below - some sub-tasks run gather_cluster_info again which
     # can cause cluster_info.volumepopulator_supported to be undefined for
@@ -175,12 +189,13 @@
         # Snap1 should not be cleaned up, it's still used by replicationdestination
         # as the latestImage
         - name: Verify first snapshot still exists
-          kubernetes.core.k8s:
-            state: present
+          kubernetes.core.k8s_info:
             api_version: snapshot.storage.k8s.io/v1
             kind: VolumeSnapshot
             name: "{{ snapshot1_name }}"
             namespace: "{{ namespace }}"
+          register: res
+          failed_when: res.resources | length == 0
 
         - name: Get current timestamp from shell
           ansible.builtin.shell: |
@@ -252,12 +267,13 @@
           retries: 60
 
         - name: Verify second snapshot exists
-          kubernetes.core.k8s:
-            state: present
+          kubernetes.core.k8s_info:
             api_version: snapshot.storage.k8s.io/v1
             kind: VolumeSnapshot
             name: "{{ snapshot2_name }}"
             namespace: "{{ namespace }}"
+          register: res
+          failed_when: res.resources | length == 0
 
         # Use volume populator to restore the latest to a different pvc
         - name: Create dest PVC from new snapshot (restore volume)
@@ -302,12 +318,13 @@
             namespace: "{{ namespace }}"
 
         - name: Verify second snapshot still exists
-          kubernetes.core.k8s:
-            state: present
+          kubernetes.core.k8s_info:
             api_version: snapshot.storage.k8s.io/v1
             kind: VolumeSnapshot
             name: "{{ snapshot2_name }}"
             namespace: "{{ namespace }}"
+          register: res
+          failed_when: res.resources | length == 0
 
         - name: Write new data into the source PVC
           include_role:
@@ -564,9 +581,10 @@
 
         # Third snapshot should remain because of do-not-delete label
         - name: Verify third snapshot still exists (has do-not-delete label)
-          kubernetes.core.k8s:
-            state: present
+          kubernetes.core.k8s_info:
             api_version: snapshot.storage.k8s.io/v1
             kind: VolumeSnapshot
             name: "{{ snapshot3_name }}"
             namespace: "{{ namespace }}"
+          register: res
+          failed_when: res.resources | length == 0
