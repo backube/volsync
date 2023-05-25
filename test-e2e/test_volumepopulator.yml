@@ -31,8 +31,8 @@
       register: res
       failed_when: >
           res.resources | length == 0 or
-          res.resources[0].sourceKind.Group != "volsync.backube" or
-          res.resources[0].sourceKind.Kind != "ReplicationDestination"
+          res.resources[0].sourceKind.group != "volsync.backube" or
+          res.resources[0].sourceKind.kind != "ReplicationDestination"
 
     # Needed since the when statement is checked for every task in the
     # block below - some sub-tasks run gather_cluster_info again which

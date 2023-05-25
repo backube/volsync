@@ -181,7 +181,7 @@ func isVolumePopulatorCRDPresent(ctx context.Context, k8sClient client.Client) (
 //+kubebuilder:rbac:groups=core,resources=persistentvolumes,verbs=get;list;watch;patch
 //+kubebuilder:rbac:groups=volsync.backube,resources=replicationdestinations,verbs=get;list;watch
 //+kubebuilder:rbac:groups=storage.k8s.io,resources=storageclasses,verbs=get;list;watch
-//+kubebuilder:rbac:groups=populator.storage.k8s.io,resources=volumepopulators,verbs=get;list;watch
+//+kubebuilder:rbac:groups=populator.storage.k8s.io,resources=volumepopulators,verbs=get;list;watch;create;update;patch
 
 // VolumePopulatorReconciler reconciles PVCs that use a dataSourceRef that refers to a
 // ReplicationDestination object.
