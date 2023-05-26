@@ -194,10 +194,17 @@ type VolumePopulatorReconciler struct {
 	EventRecorder record.EventRecorder
 }
 
+type vpResult struct {
+	res ctrl.Result
+	err error
+}
+
+func (vpr *vpResult) result() (ctrl.Result, error) {
+	return vpr.res, vpr.err
+}
+
 // Reconcile logic is adapted from reference at:
 // https://github.com/kubernetes-csi/lib-volume-populator/blob/master/populator-machinery/controller.go
-//
-//nolint:funlen,gocyclo
 func (r *VolumePopulatorReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Log.WithValues("pvc", req.NamespacedName)
 
@@ -215,47 +222,24 @@ func (r *VolumePopulatorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, nil
 	}
 
-	var waitForFirstConsumer bool
-	var nodeName string
-	if pvc.Spec.StorageClassName != nil {
-		storageClassName := *pvc.Spec.StorageClassName
+	res, err := r.reconcilePVC(ctx, logger, pvc)
+	if err != nil {
+		logger.Error(err, "error reconciling PVC")
+	}
+	return res, err
+}
 
-		storageClass := &storagev1.StorageClass{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: storageClassName,
-			},
-		}
-		err := r.Client.Get(ctx, client.ObjectKeyFromObject(storageClass), storageClass)
-		if err != nil {
-			if !errors.IsNotFound(err) {
-				return ctrl.Result{}, err
-			}
-			logger.Error(err, "StorageClass not found, cannot populate volume yet")
-			// Do not return error - will rely on watches to reconcile once storageclass is created
-			// No need for event here - storagecontroller adds warning if storageclass doesn't exist
-			return ctrl.Result{}, nil
-		}
-
-		if err := checkIntreeStorageClass(pvc, storageClass); err != nil {
-			logger.Error(err, "Ignoring PVC")
-			return ctrl.Result{}, nil
-		}
-
-		if storageClass.VolumeBindingMode != nil &&
-			storagev1.VolumeBindingWaitForFirstConsumer == *storageClass.VolumeBindingMode {
-			waitForFirstConsumer = true
-			nodeName = pvc.Annotations[annotationSelectedNode]
-			if nodeName == "" {
-				// Wait for the PVC to get a node name before continuing
-				logger.Info("VolumeBindingMode is WaitForFirstConsumer, need to wait for nodeName annotation",
-					"annotation name", annotationSelectedNode)
-				return ctrl.Result{}, nil
-			}
-		}
+//nolint:funlen
+func (r *VolumePopulatorReconciler) reconcilePVC(ctx context.Context, logger logr.Logger,
+	pvc *corev1.PersistentVolumeClaim) (ctrl.Result, error) {
+	waitForFirstConsumer, nodeName, scResult := r.checkStorageClass(ctx, logger, pvc)
+	if scResult != nil {
+		return scResult.result()
 	}
 
 	// Look for PVC' - this will be a PVC with the dataSourceRef set to the latest snapshot image
 	// from the ReplicationDestination
+	// pvcPrime will be nil if not found
 	pvcPrime, err := GetVolumePopulatorPVCPrime(ctx, r.Client, pvc)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -263,90 +247,9 @@ func (r *VolumePopulatorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	// If the PVC is unbound, we need to perform the population
 	if !isPVCBoundToVolume(pvc) {
-		if pvcPrime == nil {
-			// pvcPrime doesn't exist yet
-			// Check for existence of ReplicationDestination here - if PVC' was already there, then it may
-			// be ok if replicationdestination is missing - so only error out here if RD doesn't exist
-			rd, err := r.getReplicationDestinationFromDataSourceRef(ctx, logger, pvc)
-			if err != nil {
-				if !errors.IsNotFound(err) {
-					return ctrl.Result{}, err
-				}
-				logger.Error(err, "ReplicationDestination not found, cannot populate volume yet")
-				r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, reasonPVCReplicationDestMissing,
-					"Unable to populate volume: %s", err)
-				// Do not return error - will rely on watches to reconcile once the rd is created
-				return ctrl.Result{}, nil
-			}
-
-			logger = logger.WithValues("replication destination name", rd.GetName(), "namespace", rd.GetNamespace())
-
-			if rd.Status == nil || rd.Status.LatestImage == nil {
-				logger.Info("ReplicationDestination has no latestImage, cannot populate volume yet")
-				r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, reasonPVCReplicationDestNoLatestImage,
-					"Unable to populate volume, waiting for replicationdestination to have latestImage")
-				// We'll get called again later when the replicationdestination is updated (see watches on repldest)
-				return ctrl.Result{}, nil
-			}
-
-			latestImage := rd.Status.LatestImage
-
-			if !utils.IsSnapshot(latestImage) {
-				// This means the replicationdestination is using "Direct" (aka "None") CopyMethod
-				dataSourceRefErr := fmt.Errorf("ReplicationDestination latestImage is not a volumesnapshot")
-				logger.Error(dataSourceRefErr, "Unable to populate volume")
-				r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, reasonPVCPopulatorError,
-					"Unable to populate volume: %s", dataSourceRefErr)
-				// Do not return error here - no use retrying
-				return ctrl.Result{}, nil
-			}
-
-			_, err = r.validateSnapshotAndLabel(ctx, logger, latestImage.Name, rd.GetNamespace(), pvc)
-			if err != nil {
-				return ctrl.Result{}, err
-			}
-
-			pvcPrime = &corev1.PersistentVolumeClaim{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      getPVCPrimeName(pvc),
-					Namespace: pvc.GetNamespace(),
-				},
-				Spec: corev1.PersistentVolumeClaimSpec{
-					AccessModes:      pvc.Spec.AccessModes,
-					Resources:        pvc.Spec.Resources,
-					StorageClassName: pvc.Spec.StorageClassName,
-					VolumeMode:       pvc.Spec.VolumeMode,
-					DataSourceRef: &corev1.TypedObjectReference{
-						APIGroup: latestImage.APIGroup,
-						Kind:     latestImage.Kind,
-						Name:     latestImage.Name,
-						//Namespace: &rd.GetNamespace(), // Future, if we support cross-namespace
-					},
-				},
-			}
-			if waitForFirstConsumer {
-				pvcPrime.Annotations = map[string]string{
-					annotationSelectedNode: nodeName,
-				}
-			}
-			// Make pvcPrime owned by pvc - will be cleaned up via gc if pvc is deleted
-			if err := ctrl.SetControllerReference(pvc, pvcPrime, r.Client.Scheme()); err != nil {
-				logger.Error(err, utils.ErrUnableToSetControllerRef)
-				return ctrl.Result{}, err
-			}
-			utils.AddLabel(pvcPrime, labelPvcPrime, pvc.GetName()) // Use this filter in predicates in the &Owns() watcher
-			utils.SetOwnedByVolSync(pvcPrime)                      // Set created-by volsync label
-
-			logger.Info("Creating temp populator pvc from snapshot", "volpop pvc name", pvcPrime.GetName())
-			err = r.Client.Create(ctx, pvcPrime)
-			if err != nil {
-				r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, reasonPVCCreationError,
-					"Failed to create populator PVC: %s", err)
-				return ctrl.Result{}, err
-			}
-
-			r.EventRecorder.Eventf(pvc, corev1.EventTypeNormal, reasonPVCCreationSuccess,
-				"Populator pvc created from snapshot %s", latestImage.Name)
+		pvcPrime, primeResult := r.reconcilePVCPrime(ctx, logger, pvc, pvcPrime, waitForFirstConsumer, nodeName)
+		if primeResult != nil {
+			return primeResult.result()
 		}
 
 		// Make sure any snapshots we've tried to use have owner reference of pvcPrime (for future cleanup)
@@ -355,65 +258,9 @@ func (r *VolumePopulatorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			return ctrl.Result{}, err
 		}
 
-		// Get PV from pvcPrime
-		if pvcPrime.Spec.VolumeName == "" {
-			// No volume yet
-			logger.Info("temp volume populator pvc has no PV yet", "volpop pvc name", pvcPrime.GetName())
-			return ctrl.Result{}, nil
-		}
-		pv := &corev1.PersistentVolume{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: pvcPrime.Spec.VolumeName,
-			},
-		}
-		//c.addNotification(key, "pv", "", pvcPrime.Spec.VolumeName)
-		err = r.Client.Get(ctx, client.ObjectKeyFromObject(pv), pv)
-		if err != nil {
-			if !errors.IsNotFound(err) {
-				return ctrl.Result{}, err
-			}
-			// We'll get called again later when the PV exists
-			// Should get called on pvcPrime being updated when the PV binds
-			return ctrl.Result{}, nil
-		}
-
-		// Examine the claimref for the PV and see if it's bound to the correct PVC
-		claimRef := pv.Spec.ClaimRef
-		if claimRef == nil ||
-			claimRef.Name != pvc.Name ||
-			claimRef.Namespace != pvc.Namespace ||
-			claimRef.UID != pvc.UID {
-			// Make new PV with strategic patch values to perform the PV rebind
-			patchPv := &corev1.PersistentVolume{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: pv.Name,
-					Annotations: map[string]string{
-						annotationPopulatedFrom: pvc.Namespace + "/" + pvcPrime.Spec.DataSourceRef.Name,
-					},
-				},
-				Spec: corev1.PersistentVolumeSpec{
-					ClaimRef: &corev1.ObjectReference{
-						Namespace:       pvc.Namespace,
-						Name:            pvc.Name,
-						UID:             pvc.UID,
-						ResourceVersion: pvc.ResourceVersion,
-					},
-				},
-			}
-			var patchData []byte
-			patchData, err = json.Marshal(patchPv)
-			if err != nil {
-				return ctrl.Result{}, err
-			}
-			logger.Info("Patching PV claim", "pv name", pv.Name)
-			err = r.Client.Patch(ctx, pv, client.RawPatch(types.StrategicMergePatchType, patchData))
-			if err != nil {
-				logger.Error(err, "error patching PV claim")
-				return ctrl.Result{}, err
-			}
-
-			// Don't start cleaning up yet -- we need the bind controller to acknowledge the switch
-			return ctrl.Result{}, nil
+		rbResult := r.rebindPVClaim(ctx, logger, pvc, pvcPrime)
+		if rbResult != nil {
+			return rbResult.result()
 		}
 	}
 
@@ -434,6 +281,204 @@ func (r *VolumePopulatorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *VolumePopulatorReconciler) checkStorageClass(ctx context.Context, logger logr.Logger,
+	pvc *corev1.PersistentVolumeClaim) (bool, string, *vpResult) {
+	var waitForFirstConsumer bool
+	var nodeName string
+	if pvc.Spec.StorageClassName != nil {
+		storageClassName := *pvc.Spec.StorageClassName
+
+		storageClass := &storagev1.StorageClass{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: storageClassName,
+			},
+		}
+		err := r.Client.Get(ctx, client.ObjectKeyFromObject(storageClass), storageClass)
+		if err != nil {
+			if !errors.IsNotFound(err) {
+				return false, "", &vpResult{ctrl.Result{}, err}
+			}
+			logger.Error(err, "StorageClass not found, cannot populate volume yet")
+			// Do not return error - will rely on watches to reconcile once storageclass is created
+			// No need for event here - storagecontroller adds warning if storageclass doesn't exist
+			return false, "", &vpResult{ctrl.Result{}, nil}
+		}
+
+		if err := checkIntreeStorageClass(pvc, storageClass); err != nil {
+			logger.Error(err, "Ignoring PVC")
+			return false, "", &vpResult{ctrl.Result{}, nil}
+		}
+
+		if storageClass.VolumeBindingMode != nil &&
+			storagev1.VolumeBindingWaitForFirstConsumer == *storageClass.VolumeBindingMode {
+			waitForFirstConsumer = true
+			nodeName = pvc.Annotations[annotationSelectedNode]
+			if nodeName == "" {
+				// Wait for the PVC to get a node name before continuing
+				logger.Info("VolumeBindingMode is WaitForFirstConsumer, need to wait for nodeName annotation",
+					"annotation name", annotationSelectedNode)
+				return false, "", &vpResult{ctrl.Result{}, nil}
+			}
+		}
+	}
+	return waitForFirstConsumer, nodeName, nil
+}
+
+//nolint:funlen
+func (r *VolumePopulatorReconciler) reconcilePVCPrime(ctx context.Context, logger logr.Logger,
+	pvc, pvcPrime *corev1.PersistentVolumeClaim,
+	waitForFirstConsumer bool, nodeName string) (*corev1.PersistentVolumeClaim, *vpResult) {
+	if pvcPrime == nil {
+		// pvcPrime doesn't exist yet
+		// Check for existence of ReplicationDestination here - if PVC' was already there, then it may
+		// be ok if replicationdestination is missing - so only error out here if RD doesn't exist
+		rd, err := r.getReplicationDestinationFromDataSourceRef(ctx, logger, pvc)
+		if err != nil {
+			if !errors.IsNotFound(err) {
+				return nil, &vpResult{ctrl.Result{}, err}
+			}
+			logger.Error(err, "ReplicationDestination not found, cannot populate volume yet")
+			r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, reasonPVCReplicationDestMissing,
+				"Unable to populate volume: %s", err)
+			// Do not return error - will rely on watches to reconcile once the rd is created
+			return nil, &vpResult{ctrl.Result{}, nil}
+		}
+
+		logger = logger.WithValues("replication destination name", rd.GetName(), "namespace", rd.GetNamespace())
+
+		if rd.Status == nil || rd.Status.LatestImage == nil {
+			logger.Info("ReplicationDestination has no latestImage, cannot populate volume yet")
+			r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, reasonPVCReplicationDestNoLatestImage,
+				"Unable to populate volume, waiting for replicationdestination to have latestImage")
+			// We'll get called again later when the replicationdestination is updated (see watches on repldest)
+			return nil, &vpResult{ctrl.Result{}, nil}
+		}
+
+		latestImage := rd.Status.LatestImage
+
+		if !utils.IsSnapshot(latestImage) {
+			// This means the replicationdestination is using "Direct" (aka "None") CopyMethod
+			dataSourceRefErr := fmt.Errorf("ReplicationDestination latestImage is not a volumesnapshot")
+			logger.Error(dataSourceRefErr, "Unable to populate volume")
+			r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, reasonPVCPopulatorError,
+				"Unable to populate volume: %s", dataSourceRefErr)
+			// Do not return error here - no use retrying
+			return nil, &vpResult{ctrl.Result{}, nil}
+		}
+
+		_, err = r.validateSnapshotAndLabel(ctx, logger, latestImage.Name, rd.GetNamespace(), pvc)
+		if err != nil {
+			return nil, &vpResult{ctrl.Result{}, err}
+		}
+
+		pvcPrime = &corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      getPVCPrimeName(pvc),
+				Namespace: pvc.GetNamespace(),
+			},
+			Spec: corev1.PersistentVolumeClaimSpec{
+				AccessModes:      pvc.Spec.AccessModes,
+				Resources:        pvc.Spec.Resources,
+				StorageClassName: pvc.Spec.StorageClassName,
+				VolumeMode:       pvc.Spec.VolumeMode,
+				DataSourceRef: &corev1.TypedObjectReference{
+					APIGroup: latestImage.APIGroup,
+					Kind:     latestImage.Kind,
+					Name:     latestImage.Name,
+					//Namespace: &rd.GetNamespace(), // Future, if we support cross-namespace
+				},
+			},
+		}
+		if waitForFirstConsumer {
+			pvcPrime.Annotations = map[string]string{
+				annotationSelectedNode: nodeName,
+			}
+		}
+		// Make pvcPrime owned by pvc - will be cleaned up via gc if pvc is deleted
+		if err := ctrl.SetControllerReference(pvc, pvcPrime, r.Client.Scheme()); err != nil {
+			logger.Error(err, utils.ErrUnableToSetControllerRef)
+			return nil, &vpResult{ctrl.Result{}, err}
+		}
+		utils.AddLabel(pvcPrime, labelPvcPrime, pvc.GetName()) // Use this filter in predicates in the &Owns() watcher
+		utils.SetOwnedByVolSync(pvcPrime)                      // Set created-by volsync label
+
+		logger.Info("Creating temp populator pvc from snapshot", "volpop pvc name", pvcPrime.GetName())
+		err = r.Client.Create(ctx, pvcPrime)
+		if err != nil {
+			r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, reasonPVCCreationError,
+				"Failed to create populator PVC: %s", err)
+			return nil, &vpResult{ctrl.Result{}, err}
+		}
+
+		r.EventRecorder.Eventf(pvc, corev1.EventTypeNormal, reasonPVCCreationSuccess,
+			"Populator pvc created from snapshot %s", latestImage.Name)
+	}
+
+	return pvcPrime, nil
+}
+
+func (r *VolumePopulatorReconciler) rebindPVClaim(ctx context.Context, logger logr.Logger,
+	pvc, pvcPrime *corev1.PersistentVolumeClaim) *vpResult {
+	// Get PV from pvcPrime
+	if pvcPrime.Spec.VolumeName == "" {
+		// No volume yet
+		return &vpResult{ctrl.Result{}, nil}
+	}
+	pv := &corev1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: pvcPrime.Spec.VolumeName,
+		},
+	}
+	err := r.Client.Get(ctx, client.ObjectKeyFromObject(pv), pv)
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			return &vpResult{ctrl.Result{}, err}
+		}
+		// We'll get called again later when the PV exists
+		// Should get reconciled on pvcPrime being updated when the PV binds
+		return &vpResult{ctrl.Result{}, nil}
+	}
+
+	// Examine the claimref for the PV and see if it's bound to the correct PVC
+	claimRef := pv.Spec.ClaimRef
+	if claimRef == nil ||
+		claimRef.Name != pvc.Name ||
+		claimRef.Namespace != pvc.Namespace ||
+		claimRef.UID != pvc.UID {
+		// Make new PV with strategic patch values to perform the PV rebind
+		patchPv := &corev1.PersistentVolume{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: pv.Name,
+				Annotations: map[string]string{
+					annotationPopulatedFrom: pvc.Namespace + "/" + pvcPrime.Spec.DataSourceRef.Name,
+				},
+			},
+			Spec: corev1.PersistentVolumeSpec{
+				ClaimRef: &corev1.ObjectReference{
+					Namespace:       pvc.Namespace,
+					Name:            pvc.Name,
+					UID:             pvc.UID,
+					ResourceVersion: pvc.ResourceVersion,
+				},
+			},
+		}
+		patchData, err := json.Marshal(patchPv)
+		if err != nil {
+			return &vpResult{ctrl.Result{}, err}
+		}
+		logger.Info("Patching PV claim", "pv name", pv.Name)
+		err = r.Client.Patch(ctx, pv, client.RawPatch(types.StrategicMergePatchType, patchData))
+		if err != nil {
+			return &vpResult{ctrl.Result{}, err}
+		}
+
+		// Don't start cleaning up yet -- we need the bind controller to acknowledge the switch
+		return &vpResult{ctrl.Result{}, nil}
+	}
+
+	return nil // No claimRef yet on PV or PV has already been bound to pvc
 }
 
 func (r *VolumePopulatorReconciler) SetupWithManager(mgr ctrl.Manager) error {
