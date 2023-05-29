@@ -1480,6 +1480,37 @@ var _ = Describe("Restic as a destination", func() {
 					})
 				})
 			})
+			When("RCLONE_ env vars are in the restic secret", func() {
+				BeforeEach(func() {
+					repo.StringData = map[string]string{
+						"RESTIC_REPOSITORY":                "myreponame",
+						"RESTIC_PASSWORD":                  "abc123",
+						"RCLONE_CONFIG_NAS_MD5SUM_COMMAND": "md5",
+						"RCLONE_CONFIG_NAS_PORT":           "9999",
+						"RCLONE_CONFIG_NAS_PASS":           "naspass",
+					}
+				})
+
+				It("Should set the env vars in the mover job pod", func() {
+					j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo, nil)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil()) // hasn't completed
+					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+					job = &batchv1.Job{}
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+
+					env := job.Spec.Template.Spec.Containers[0].Env
+
+					// RESTIC_REPOSITORY and _PASSWORD are mandatory
+					verifyEnvVarFromSecret(env, "RESTIC_REPOSITORY", repo.GetName(), false)
+					verifyEnvVarFromSecret(env, "RESTIC_PASSWORD", repo.GetName(), false)
+
+					// RCLONE env vars should be optional
+					verifyEnvVarFromSecret(env, "RCLONE_CONFIG_NAS_MD5SUM_COMMAND", repo.GetName(), true)
+					verifyEnvVarFromSecret(env, "RCLONE_CONFIG_NAS_PORT", repo.GetName(), true)
+					verifyEnvVarFromSecret(env, "RCLONE_CONFIG_NAS_PASS", repo.GetName(), true)
+				})
+			})
 			Context("Handling GCS credentials", func() {
 				When("no credentials are provided", func() {
 					It("shouldn't mount the Secret", func() {
@@ -1602,3 +1633,18 @@ var _ = Describe("Restic as a destination", func() {
 		})
 	})
 })
+
+func verifyEnvVarFromSecret(env []corev1.EnvVar, envVarName string, secretName string, optional bool) {
+	Expect(env).To(ContainElement(corev1.EnvVar{
+		Name: envVarName,
+		ValueFrom: &corev1.EnvVarSource{
+			SecretKeyRef: &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: secretName,
+				},
+				Key:      envVarName,
+				Optional: &optional,
+			},
+		},
+	}))
+}
