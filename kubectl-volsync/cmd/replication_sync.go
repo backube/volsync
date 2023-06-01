@@ -93,21 +93,21 @@ func (rs *replicationSync) waitForSync(ctx context.Context, srcClient client.Cli
 		Name:      rs.rel.data.Source.RSName,
 		Namespace: rs.rel.data.Source.Namespace,
 	}
-	//nolint:staticcheck //FIXME: see https://github.com/kubernetes/apimachinery/issues/153
-	err := wait.PollImmediate(5*time.Second, defaultVolumeSyncTimeout, func() (bool, error) {
-		if err := srcClient.Get(ctx, rsName, &rsrc); err != nil {
-			return false, err
-		}
-		if rsrc.Spec.Trigger == nil || rsrc.Spec.Trigger.Manual == "" {
-			return false, fmt.Errorf("internal error: manual trigger not specified")
-		}
-		if rsrc.Status == nil {
-			return false, nil
-		}
-		if rsrc.Status.LastManualSync != rsrc.Spec.Trigger.Manual {
-			return false, nil
-		}
-		return true, nil
-	})
+	err := wait.PollUntilContextTimeout(ctx, 5*time.Second, defaultVolumeSyncTimeout, true, /*immediate*/
+		func(ctx context.Context) (bool, error) {
+			if err := srcClient.Get(ctx, rsName, &rsrc); err != nil {
+				return false, err
+			}
+			if rsrc.Spec.Trigger == nil || rsrc.Spec.Trigger.Manual == "" {
+				return false, fmt.Errorf("internal error: manual trigger not specified")
+			}
+			if rsrc.Status == nil {
+				return false, nil
+			}
+			if rsrc.Status.LastManualSync != rsrc.Spec.Trigger.Manual {
+				return false, nil
+			}
+			return true, nil
+		})
 	return err
 }

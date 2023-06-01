@@ -380,22 +380,22 @@ func (rr *replicationRelationship) awaitDestAddrKeys(ctx context.Context, c clie
 	rdName types.NamespacedName) (*volsyncv1alpha1.ReplicationDestination, error) {
 	klog.Infof("waiting for keys & address of destination to be available")
 	rd := volsyncv1alpha1.ReplicationDestination{}
-	//nolint:staticcheck //FIXME: see https://github.com/kubernetes/apimachinery/issues/153
-	err := wait.PollImmediate(5*time.Second, defaultRsyncKeyTimeout, func() (bool, error) {
-		if err := c.Get(ctx, rdName, &rd); err != nil {
-			return false, err
-		}
-		if rd.Status == nil || rd.Status.Rsync == nil {
-			return false, nil
-		}
-		if rd.Status.Rsync.Address == nil {
-			return false, nil
-		}
-		if rd.Status.Rsync.SSHKeys == nil {
-			return false, nil
-		}
-		return true, nil
-	})
+	err := wait.PollUntilContextTimeout(ctx, 5*time.Second, defaultRsyncKeyTimeout, true, /*immediate*/
+		func(ctx context.Context) (bool, error) {
+			if err := c.Get(ctx, rdName, &rd); err != nil {
+				return false, err
+			}
+			if rd.Status == nil || rd.Status.Rsync == nil {
+				return false, nil
+			}
+			if rd.Status.Rsync.Address == nil {
+				return false, nil
+			}
+			if rd.Status.Rsync.SSHKeys == nil {
+				return false, nil
+			}
+			return true, nil
+		})
 	if err != nil {
 		return nil, err
 	}
