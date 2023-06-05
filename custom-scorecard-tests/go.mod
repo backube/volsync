@@ -2,7 +2,7 @@ module main
 
 go 1.19
 
-require github.com/operator-framework/api v0.17.5
+require github.com/operator-framework/api v0.17.6
 
 require (
 	github.com/blang/semver/v4 v4.0.0 // indirect
