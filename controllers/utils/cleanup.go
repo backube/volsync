@@ -152,11 +152,7 @@ func RelinquishOwnedSnapshotsWithDoNotDeleteLabel(ctx context.Context, c client.
 	}
 
 	_, err = relinquishSnapshotsWithDoNotDeleteLabel(ctx, c, logger, owner, snapList)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
 
 // Returns a list of remaining VolumeSnapshots that were not relinquished
