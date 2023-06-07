@@ -138,7 +138,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	// Index fields that are required for the VolumePopulator controller
-	err = IndexFieldsForVolumePopulator(context.Background(), k8sManager.GetFieldIndexer())
+	err = IndexFieldsForVolumePopulator(ctx, k8sManager.GetFieldIndexer())
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&VolumePopulatorReconciler{
