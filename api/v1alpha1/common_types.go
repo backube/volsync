@@ -62,6 +62,16 @@ const (
 	SynchronizingReasonError   string = "Error"
 )
 
+// Volume Populator Events
+const (
+	EvVolPopPVCPopulatorFinished            string = "VolSyncPopulatorFinished"
+	EvVolPopPVCPopulatorError               string = "VolSyncPopulatorError"
+	EvVolPopPVCReplicationDestMissing       string = "VolSyncPopulatorReplicationDestinationMissing"
+	EvVolPopPVCReplicationDestNoLatestImage string = "VolSyncPopulatorReplicationDestinationNoLatestImage"
+	EvVolPopPVCCreationSuccess              string = "VolSyncPopulatorPVCCreated"
+	EvVolPopPVCCreationError                string = "VolSyncPopulatorPVCCreationError"
+)
+
 // SyncthingPeer Defines the necessary information needed by VolSync
 // to configure a given peer with the running Syncthing instance.
 type SyncthingPeer struct {

@@ -59,13 +59,6 @@ const (
 	annotationPopulatedFrom string = "volsync.backube/populated-from"
 	labelPvcPrime           string = utils.VolsyncLabelPrefix + "/populator-pvc-for"
 
-	reasonPVCPopulatorFinished            string = "VolSyncPopulatorFinished"
-	reasonPVCPopulatorError               string = "VolSyncPopulatorError"
-	reasonPVCReplicationDestMissing       string = "VolSyncPopulatorReplicationDestinationMissing"
-	reasonPVCReplicationDestNoLatestImage string = "VolSyncPopulatorReplicationDestinationNoLatestImage"
-	reasonPVCCreationSuccess              string = "VolSyncPopulatorPVCCreated"
-	reasonPVCCreationError                string = "VolSyncPopulatorPVCCreationError"
-
 	VolPopPVCToReplicationDestinationIndex string = "volPopPvc.spec.dataSourceRef.Name"
 	VolPopPVCToStorageClassIndex           string = "volPopPvc.spec.storageClassName"
 
@@ -276,7 +269,7 @@ func (r *VolumePopulatorReconciler) reconcilePVC(ctx context.Context, logger log
 	}
 
 	// *** At this point the volume population is done and we're just cleaning up ***
-	r.EventRecorder.Eventf(pvc, corev1.EventTypeNormal, reasonPVCPopulatorFinished, "Populator finished")
+	r.EventRecorder.Eventf(pvc, corev1.EventTypeNormal, volsyncv1alpha1.EvVolPopPVCPopulatorFinished, "Populator finished")
 
 	// Cleanup
 	if err := r.cleanup(ctx, logger, pvc, pvcPrime); err != nil {
@@ -343,7 +336,7 @@ func (r *VolumePopulatorReconciler) reconcilePVCPrime(ctx context.Context, logge
 				return nil, &vpResult{ctrl.Result{}, err}
 			}
 			logger.Error(err, "ReplicationDestination not found, cannot populate volume yet")
-			r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, reasonPVCReplicationDestMissing,
+			r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, volsyncv1alpha1.EvVolPopPVCReplicationDestMissing,
 				"Unable to populate volume: %s", err)
 			// Do not return error - will rely on watches to reconcile once the rd is created
 			return nil, &vpResult{ctrl.Result{}, nil}
@@ -353,7 +346,7 @@ func (r *VolumePopulatorReconciler) reconcilePVCPrime(ctx context.Context, logge
 
 		if rd.Status == nil || rd.Status.LatestImage == nil {
 			logger.Info("ReplicationDestination has no latestImage, cannot populate volume yet")
-			r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, reasonPVCReplicationDestNoLatestImage,
+			r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, volsyncv1alpha1.EvVolPopPVCReplicationDestNoLatestImage,
 				"Unable to populate volume, waiting for replicationdestination to have latestImage")
 			// We'll get called again later when the replicationdestination is updated (see watches on repldest)
 			return nil, &vpResult{ctrl.Result{}, nil}
@@ -365,7 +358,7 @@ func (r *VolumePopulatorReconciler) reconcilePVCPrime(ctx context.Context, logge
 			// This means the replicationdestination is using "Direct" (aka "None") CopyMethod
 			dataSourceRefErr := fmt.Errorf("ReplicationDestination latestImage is not a volumesnapshot")
 			logger.Error(dataSourceRefErr, "Unable to populate volume")
-			r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, reasonPVCPopulatorError,
+			r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, volsyncv1alpha1.EvVolPopPVCPopulatorError,
 				"Unable to populate volume: %s", dataSourceRefErr)
 			// Do not return error here - no use retrying
 			return nil, &vpResult{ctrl.Result{}, nil}
@@ -410,12 +403,12 @@ func (r *VolumePopulatorReconciler) reconcilePVCPrime(ctx context.Context, logge
 		logger.Info("Creating temp populator pvc from snapshot", "volpop pvc name", pvcPrime.GetName())
 		err = r.Client.Create(ctx, pvcPrime)
 		if err != nil {
-			r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, reasonPVCCreationError,
+			r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, volsyncv1alpha1.EvVolPopPVCCreationError,
 				"Failed to create populator PVC: %s", err)
 			return nil, &vpResult{ctrl.Result{}, err}
 		}
 
-		r.EventRecorder.Eventf(pvc, corev1.EventTypeNormal, reasonPVCCreationSuccess,
+		r.EventRecorder.Eventf(pvc, corev1.EventTypeNormal, volsyncv1alpha1.EvVolPopPVCCreationSuccess,
 			"Populator pvc created from snapshot %s", latestImage.Name)
 	}
 
