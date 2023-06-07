@@ -145,13 +145,15 @@ func addCommandFlags(probeAddr *string, metricsAddr *string, enableLeaderElectio
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 }
 
-func ensureRequiredCRs(cfg *rest.Config) {
+// Prereq CRs we want to always be present in certain environments but do not want to reconcile often (just at startup)
+func ensureCRs(cfg *rest.Config) {
 	setupClient, err := client.New(cfg, client.Options{Scheme: scheme})
 	if err != nil {
 		setupLog.Error(err, "error creating client")
 		os.Exit(1)
 	}
 
+	// Privileged mover SCC required in OpenShift envs
 	setupLog.Info("Privileged Mover SCC", "scc-name", utils.SCCName)
 	err = platform.EnsureVolSyncMoverSCCIfOpenShift(context.Background(), setupClient, setupLog,
 		utils.SCCName, volsyncMoverSCCYamlRaw)
@@ -160,7 +162,8 @@ func ensureRequiredCRs(cfg *rest.Config) {
 		os.Exit(1)
 	}
 
-	err = controllers.EnsureVolSyncVolumePopulatorCR(context.Background(), setupClient, setupLog)
+	// VolumePopulator CR should be registered if the VolumePopulator CRD is present
+	err = controllers.EnsureVolSyncVolumePopulatorCRIfCRDPresent(context.Background(), setupClient, setupLog)
 	if err != nil {
 		setupLog.Error(err, "unable to reconcile VolumePopulator CR")
 		os.Exit(1)
@@ -217,7 +220,7 @@ func main() {
 	}
 
 	// Before starting controllers - create or patch volsync mover SCC and VolumePopulator CR if necessary
-	ensureRequiredCRs(cfg)
+	ensureCRs(cfg)
 
 	initPodLogsClient(cfg)
 

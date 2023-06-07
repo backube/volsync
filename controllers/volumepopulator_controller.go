@@ -120,7 +120,10 @@ func IndexFieldsForVolumePopulator(ctx context.Context, fieldIndexer client.Fiel
 		})
 }
 
-func EnsureVolSyncVolumePopulatorCR(ctx context.Context, k8sClient client.Client, logger logr.Logger) error {
+// If the VolumePopulator CRD is present (i.e. the VolumePopulator API is available), then make sure we have
+// VolumePopulator CR to register VolSync ReplicationDestination as a valid VolumePopulator
+func EnsureVolSyncVolumePopulatorCRIfCRDPresent(ctx context.Context,
+	k8sClient client.Client, logger logr.Logger) error {
 	logger = logger.WithValues("VolPopCRName", VolPopCRName)
 
 	ok, err := isVolumePopulatorCRDPresent(ctx, k8sClient)
@@ -690,9 +693,9 @@ func (r VolumePopulatorReconciler) getReplicationDestinationFromDataSourceRef(ct
 }
 
 // Cleanup
+//   - if any snapshots have our vol pop label for our PVC, remove the label
+//   - if do-not-delete label is on the snapshot, remove our ownerref so we will not cause GC of the snap to happen
 //   - if pvcPrime is not nil, we will assume it exists and needs to be cleaned up
-//   - if any snapshots have our vol pop label for our PVC, remove the label (and possibly do-not-delete if it's the
-//     only one)
 func (r *VolumePopulatorReconciler) cleanup(ctx context.Context, logger logr.Logger,
 	pvc, pvcPrime *corev1.PersistentVolumeClaim) error {
 	snapsForPVC, err := r.listSnapshotsUsedByVolPopForPVC(ctx, pvc)

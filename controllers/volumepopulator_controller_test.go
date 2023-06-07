@@ -467,7 +467,7 @@ var _ = Describe("VolumePopulator - VolumePopulator CRD detection & ensuring CR 
 
 			BeforeEach(func() {
 				// Run func to ensure the CR gets created
-				Expect(EnsureVolSyncVolumePopulatorCR(ctx, k8sDirectClient, logger)).To(Succeed())
+				Expect(EnsureVolSyncVolumePopulatorCRIfCRDPresent(ctx, k8sDirectClient, logger)).To(Succeed())
 
 				Eventually(func() error {
 					vpCR = &volumepopulatorv1beta1.VolumePopulator{
@@ -488,7 +488,7 @@ var _ = Describe("VolumePopulator - VolumePopulator CRD detection & ensuring CR 
 			Context("When the Volsync VolumePopulator CR already exists", func() {
 				It("EnsureVolSyncVolumePopulatorCR should create it", func() {
 					// Run func again, should still succeed
-					Expect(EnsureVolSyncVolumePopulatorCR(ctx, k8sDirectClient, logger)).To(Succeed())
+					Expect(EnsureVolSyncVolumePopulatorCRIfCRDPresent(ctx, k8sDirectClient, logger)).To(Succeed())
 				})
 			})
 		})
