@@ -187,12 +187,6 @@ if [[ $KUBE_MINOR -ge 24 ]]; then  # Kube 1.24 removed snapshot.storage.k8s.io/v
   kubectl apply -f "${SNAP_WEBHOOK_PATH}"
   rm -rf "${EXT_SNAPSHOTTER_BASE}"
 
-  # Install the volume-data-source-validator (For validating PVC dataRefSource against known VolumePopulators)
-  VDSV_TAG="v1.3.0" # https://github.com/kubernetes-csi/volume-data-source-validator/releases
-  log "Deploying volume data source validator: ${TAG}"
-  kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/volume-data-source-validator/${VDSV_TAG}/client/config/crd/populator.storage.k8s.io_volumepopulators.yaml"
-  kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/volume-data-source-validator/${VDSV_TAG}/deploy/kubernetes/rbac-data-source-validator.yaml"
-  kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/volume-data-source-validator/${VDSV_TAG}/deploy/kubernetes/setup-data-source-validator.yaml"
 elif [[ $KUBE_MINOR -ge 20 ]]; then  # Kube 1.20 added snapshot.storage.k8s.io/v1
   TAG="v5.0.1"  # https://github.com/kubernetes-csi/external-snapshotter/releases
   log "Deploying external snapshotter: ${TAG}"
@@ -207,6 +201,15 @@ elif [[ $KUBE_MINOR -ge 17 ]]; then  # Kube 1.17 switched snapshot.storage.k8s.i
 
   kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/${TAG}/deploy/kubernetes/snapshot-controller/rbac-snapshot-controller.yaml"
   kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/${TAG}/deploy/kubernetes/snapshot-controller/setup-snapshot-controller.yaml"
+fi
+
+if [[ $KUBE_MINOR -ge 24 ]]; then # Volume Populators should work (AnyVolumeDataSource feature gate enabled by default)
+  # Install the volume-data-source-validator (For validating PVC dataRefSource against known VolumePopulators)
+  VDSV_TAG="v1.3.0" # https://github.com/kubernetes-csi/volume-data-source-validator/releases
+  log "Deploying volume data source validator: ${VDSV_TAG}"
+  kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/volume-data-source-validator/${VDSV_TAG}/client/config/crd/populator.storage.k8s.io_volumepopulators.yaml"
+  kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/volume-data-source-validator/${VDSV_TAG}/deploy/kubernetes/rbac-data-source-validator.yaml"
+  kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/volume-data-source-validator/${VDSV_TAG}/deploy/kubernetes/setup-data-source-validator.yaml"
 fi
 
 # Kube 1.13 requires CSIDriver & CSINodeInfo CRDs
