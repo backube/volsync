@@ -21,9 +21,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/reference"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -36,6 +39,17 @@ import (
 const (
 	ErrUnableToSetControllerRef = "unable to set controller reference"
 )
+
+// Check if error is due to the CRD not being present (API kind/group not available)
+// This has changed recently in controller-runtime v0.15.0, see:
+// https://github.com/kubernetes-sigs/controller-runtime/pull/2116
+func IsCRDNotPresentError(err error) bool {
+	if apimeta.IsNoMatchError(err) || kerrors.IsNotFound(err) ||
+		strings.Contains(err.Error(), "failed to get API group resources") {
+		return true
+	}
+	return false
+}
 
 func GetAndValidateSecret(ctx context.Context, cl client.Client,
 	logger logr.Logger, secret *corev1.Secret, fields ...string) error {

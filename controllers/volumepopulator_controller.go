@@ -31,7 +31,6 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
-	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -47,7 +46,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers/utils"
@@ -161,7 +159,7 @@ func isVolumePopulatorCRDPresent(ctx context.Context, k8sClient client.Client) (
 	vpList := volumepopulatorv1beta1.VolumePopulatorList{}
 	err := k8sClient.List(ctx, &vpList)
 	if err != nil {
-		if apimeta.IsNoMatchError(err) || kerrors.IsNotFound(err) {
+		if utils.IsCRDNotPresentError(err) {
 			// VolumePopulator Kind is not present
 			return false, nil
 		}
@@ -485,13 +483,13 @@ func (r *VolumePopulatorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			MaxConcurrentReconciles: 100,
 		}).
 		Owns(&corev1.PersistentVolumeClaim{}, builder.WithPredicates(pvcOwnedByPredicate())).
-		Watches(&source.Kind{Type: &volsyncv1alpha1.ReplicationDestination{}},
-			handler.EnqueueRequestsFromMapFunc(func(o client.Object) []reconcile.Request {
-				return mapFuncReplicationDestinationToVolumePopulatorPVC(mgr.GetClient(), o)
+		Watches(&volsyncv1alpha1.ReplicationDestination{},
+			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, o client.Object) []reconcile.Request {
+				return mapFuncReplicationDestinationToVolumePopulatorPVC(ctx, mgr.GetClient(), o)
 			}), builder.WithPredicates(replicationDestinationPredicate())).
-		Watches(&source.Kind{Type: &storagev1.StorageClass{}},
-			handler.EnqueueRequestsFromMapFunc(func(o client.Object) []reconcile.Request {
-				return mapFuncStorageClassToVolumePopulatorPVC(mgr.GetClient(), o)
+		Watches(&storagev1.StorageClass{},
+			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, o client.Object) []reconcile.Request {
+				return mapFuncStorageClassToVolumePopulatorPVC(ctx, mgr.GetClient(), o)
 			}), builder.WithPredicates(storageClassPredicate())).
 		Complete(r)
 }
@@ -582,7 +580,8 @@ func storageClassPredicate() predicate.Predicate {
 	}
 }
 
-func mapFuncReplicationDestinationToVolumePopulatorPVC(k8sClient client.Client, o client.Object) []reconcile.Request {
+func mapFuncReplicationDestinationToVolumePopulatorPVC(ctx context.Context, k8sClient client.Client,
+	o client.Object) []reconcile.Request {
 	logger := ctrl.Log.WithName("mapFuncReplicationDestinationToVolumePopulatorPVC")
 
 	replicationDestination, ok := o.(*volsyncv1alpha1.ReplicationDestination)
@@ -592,8 +591,7 @@ func mapFuncReplicationDestinationToVolumePopulatorPVC(k8sClient client.Client, 
 
 	// Find PVCs that use this ReplicationDestination in their dataSourceRef (using index)
 	pvcList := &corev1.PersistentVolumeClaimList{}
-	err := k8sClient.List(context.TODO(),
-		pvcList,
+	err := k8sClient.List(ctx, pvcList,
 		client.MatchingFields{
 			VolPopPVCToReplicationDestinationIndex: replicationDestination.GetName()}, // custom index
 		client.InNamespace(replicationDestination.GetNamespace()))
@@ -608,7 +606,8 @@ func mapFuncReplicationDestinationToVolumePopulatorPVC(k8sClient client.Client, 
 	return filterRequestsOnlyUnboundPVCs(pvcList)
 }
 
-func mapFuncStorageClassToVolumePopulatorPVC(k8sClient client.Client, o client.Object) []reconcile.Request {
+func mapFuncStorageClassToVolumePopulatorPVC(ctx context.Context, k8sClient client.Client,
+	o client.Object) []reconcile.Request {
 	logger := ctrl.Log.WithName("mapFuncStorageClassToVolumePopulatorPVC")
 
 	storageClass, ok := o.(*storagev1.StorageClass)
@@ -619,8 +618,7 @@ func mapFuncStorageClassToVolumePopulatorPVC(k8sClient client.Client, o client.O
 	// Find PVCs that have this storageClassName set in their spec (using index)
 	// Our custom index is only storing PVCs that have a dataSourceRef pointing to a ReplicationDestination
 	pvcList := &corev1.PersistentVolumeClaimList{}
-	err := k8sClient.List(context.TODO(),
-		pvcList,
+	err := k8sClient.List(ctx, pvcList,
 		client.MatchingFields{
 			VolPopPVCToStorageClassIndex: storageClass.GetName()}, // custom index
 	)
