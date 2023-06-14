@@ -19,6 +19,7 @@ package utils
 
 import (
 	"context"
+	"strings"
 
 	"github.com/go-logr/logr"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
@@ -104,12 +105,26 @@ func CleanupSnapshotsWithLabelCheck(ctx context.Context, c client.Client,
 	for i := range snapsForCleanup {
 		snapForCleanup := &snapsForCleanup[i]
 
-		// Use a delete precondition to avoid timing issues.
-		// If the object was modified (for example by someone adding a new label) in-between us loading it and
-		// performing the delete, the should throw an error as the resourceVersion will not match
-		err := c.Delete(ctx, snapForCleanup, client.Preconditions{ResourceVersion: &snapForCleanup.ResourceVersion})
-		if err != nil {
-			return err
+		if snapInUseByOther(snapForCleanup, owner) {
+			// If the snapshot has any other owner reference or used by vol populator pvc
+			// while provisioning, then do not delete just remove our own owner reference
+			updated := RemoveOwnerReference(snapForCleanup, owner)
+			if updated {
+				err := c.Update(ctx, snapForCleanup)
+				if err != nil {
+					logger.Error(err, "error removing ownerRef from snapshot",
+						"name", snapForCleanup.GetName(), "namespace", snapForCleanup.GetNamespace())
+					return err
+				}
+			}
+		} else {
+			// Use a delete precondition to avoid timing issues.
+			// If the object was modified (for example by someone adding a new label) in-between us loading it and
+			// performing the delete, the should throw an error as the resourceVersion will not match
+			err := c.Delete(ctx, snapForCleanup, client.Preconditions{ResourceVersion: &snapForCleanup.ResourceVersion})
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -137,7 +152,6 @@ func RelinquishOwnedSnapshotsWithDoNotDeleteLabel(ctx context.Context, c client.
 	}
 
 	_, err = relinquishSnapshotsWithDoNotDeleteLabel(ctx, c, logger, owner, snapList)
-
 	return err
 }
 
@@ -152,7 +166,7 @@ func relinquishSnapshotsWithDoNotDeleteLabel(ctx context.Context, c client.Clien
 	for i := range snapList.Items {
 		snapshot := snapList.Items[i]
 
-		ownershipRemoved, err := RemoveSnapshotOwnershipIfRequestedAndUpdate(ctx, c, logger,
+		ownershipRemoved, err := RemoveSnapOwnershipAndLabelsIfRequestedAndUpdate(ctx, c, logger,
 			owner, &snapshot)
 		if err != nil {
 			snapRelinquishErr = err // Will return the latest error at the end but keep processing the snaps
@@ -166,7 +180,7 @@ func relinquishSnapshotsWithDoNotDeleteLabel(ctx context.Context, c client.Clien
 	return remainingSnapshots, snapRelinquishErr
 }
 
-func RemoveSnapshotOwnershipIfRequestedAndUpdate(ctx context.Context, c client.Client, logger logr.Logger,
+func RemoveSnapOwnershipAndLabelsIfRequestedAndUpdate(ctx context.Context, c client.Client, logger logr.Logger,
 	owner client.Object, snapshot *snapv1.VolumeSnapshot) (bool, error) {
 	ownershipRemoved := false
 
@@ -193,6 +207,10 @@ func IsMarkedDoNotDelete(snapshot *snapv1.VolumeSnapshot) bool {
 	return HasLabel(snapshot, DoNotDeleteLabelKey)
 }
 
+func MarkDoNotDelete(snapshot *snapv1.VolumeSnapshot) bool {
+	return AddLabel(snapshot, DoNotDeleteLabelKey, "true")
+}
+
 func UnMarkForCleanupAndRemoveOwnership(obj metav1.Object, owner client.Object) bool {
 	updated := false
 
@@ -201,6 +219,11 @@ func UnMarkForCleanupAndRemoveOwnership(obj metav1.Object, owner client.Object) 
 	updated = RemoveOwnedByVolSync(obj) || updated
 
 	// Remove ReplicationDestination owner reference if present
+	return RemoveOwnerReference(obj, owner) || updated
+}
+
+func RemoveOwnerReference(obj metav1.Object, owner client.Object) bool {
+	updated := false
 	updatedOwnerRefs := []metav1.OwnerReference{}
 	for _, ownerRef := range obj.GetOwnerReferences() {
 		if ownerRef.UID == owner.GetUID() {
@@ -217,17 +240,42 @@ func UnMarkForCleanupAndRemoveOwnership(obj metav1.Object, owner client.Object) 
 	return updated
 }
 
+func snapInUseByOther(snapshot *snapv1.VolumeSnapshot, owner client.Object) bool {
+	return hasOtherOwnerRef(snapshot, owner) || snapInUseByVolumePopulatorPVC(snapshot)
+}
+
+func snapInUseByVolumePopulatorPVC(snapshot *snapv1.VolumeSnapshot) bool {
+	// Volume Populator will put on a label with a specific prefix on a snapshot while
+	// it's populating the PVC from that snapshot - this indicates at least one pvc for
+	// the volume populator is actively using this snapshot
+	for _, labelKey := range snapshot.GetLabels() {
+		if strings.HasPrefix(labelKey, SnapInUseByVolumePopulatorLabelPrefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasOtherOwnerRef(obj metav1.Object, owner client.Object) bool {
+	for _, ownerRef := range obj.GetOwnerReferences() {
+		if ownerRef.UID != owner.GetUID() {
+			return true
+		}
+	}
+	return false
+}
+
 func MarkOldSnapshotForCleanup(ctx context.Context, c client.Client, logger logr.Logger,
 	owner metav1.Object, oldImage, latestImage *corev1.TypedLocalObjectReference) error {
 	// Make sure we only delete an old snapshot (it's a snapshot, but not the
 	// current one)
 
 	// There's no latestImage or type != snapshot
-	if !isSnapshot(latestImage) {
+	if !IsSnapshot(latestImage) {
 		return nil
 	}
 	// No oldImage or type != snapshot
-	if !isSnapshot(oldImage) {
+	if !IsSnapshot(oldImage) {
 		return nil
 	}
 
@@ -268,11 +316,11 @@ func MarkOldSnapshotForCleanup(ctx context.Context, c client.Client, logger logr
 	return nil
 }
 
-func isSnapshot(image *corev1.TypedLocalObjectReference) bool {
+func IsSnapshot(image *corev1.TypedLocalObjectReference) bool {
 	if image == nil {
 		return false
 	}
-	if image.Kind != "VolumeSnapshot" || *image.APIGroup != snapv1.SchemeGroupVersion.Group {
+	if image.Kind != "VolumeSnapshot" || image.APIGroup == nil || *image.APIGroup != snapv1.SchemeGroupVersion.Group {
 		return false
 	}
 	return true

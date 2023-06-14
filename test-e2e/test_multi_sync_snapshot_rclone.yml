@@ -3,11 +3,15 @@
   tags:
     - e2e
     - rclone
+    - volumepopulator
   vars:
     rclone_secret_name: rclone-secret
   tasks:
     - include_role:
         name: create_namespace
+
+    - include_role:
+        name: gather_cluster_info
 
     - include_role:
         name: create_rclone_secret
@@ -91,6 +95,29 @@
               accessModes: [ReadWriteOnce]
               capacity: 1Gi
 
+    # Using volume populator - no need to wait for RD to be done before
+    # creating the pvc
+    - name: Convert latestImage to PVC Using VolumePopulator
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: data-dest-1
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            dataSourceRef:
+              kind: ReplicationDestination
+              apiGroup: volsync.backube
+              name: destination
+            resources:
+              requests:
+                storage: 1Gi
+      when: cluster_info.volumepopulator_supported
+
     - name: Wait for sync from MinIO to complete
       kubernetes.core.k8s_info:
         api_version: volsync.backube/v1alpha1
@@ -109,6 +136,7 @@
       ansible.builtin.set_fact:
         first_snap: "{{ res.resources[0].status.latestImage.name }}"
 
+    # If not using volume populator
     - name: Convert latestImage to PVC
       kubernetes.core.k8s:
         state: present
@@ -128,6 +156,7 @@
             resources:
               requests:
                 storage: 1Gi
+      when: not cluster_info.volumepopulator_supported
 
     - name: Verify contents of PVC
       include_role:
@@ -203,6 +232,28 @@
       ansible.builtin.set_fact:
         second_snap: "{{ res.resources[0].status.latestImage.name }}"
 
+    # create the pvc after RD is finished to make sure we get the latest
+    - name: Convert latestImage to PVC using VolumePopulator
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: data-dest-2
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            dataSourceRef:
+              kind: ReplicationDestination
+              apiGroup: volsync.backube
+              name: destination
+            resources:
+              requests:
+                storage: 1Gi
+      when: cluster_info.volumepopulator_supported
+
     - name: Convert latestImage to PVC
       kubernetes.core.k8s:
         state: present
@@ -222,6 +273,7 @@
             resources:
               requests:
                 storage: 1Gi
+      when: not cluster_info.volumepopulator_supported
 
     - name: Verify contents of PVC
       include_role:

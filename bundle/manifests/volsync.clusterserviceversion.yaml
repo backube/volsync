@@ -55,7 +55,7 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2023-05-10T13:22:54Z"
+    createdAt: "2023-05-25T16:05:05Z"
     olm.skipRange: '>=0.4.0 <0.8.0'
     operators.operatorframework.io/builder: operator-sdk-v1.26.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
@@ -206,6 +206,27 @@ spec:
         - apiGroups:
           - ""
           resources:
+          - persistentvolumeclaims/finalizers
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - ""
+          resources:
+          - persistentvolumes
+          verbs:
+          - get
+          - list
+          - patch
+          - watch
+        - apiGroups:
+          - ""
+          resources:
           - pods
           verbs:
           - get
@@ -264,6 +285,17 @@ spec:
           - patch
           - update
         - apiGroups:
+          - populator.storage.k8s.io
+          resources:
+          - volumepopulators
+          verbs:
+          - create
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
           - rbac.authorization.k8s.io
           resources:
           - rolebindings
@@ -318,6 +350,14 @@ spec:
           - list
           - patch
           - update
+          - watch
+        - apiGroups:
+          - storage.k8s.io
+          resources:
+          - storageclasses
+          verbs:
+          - get
+          - list
           - watch
         - apiGroups:
           - volsync.backube

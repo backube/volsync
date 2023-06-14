@@ -25,9 +25,11 @@ import (
 	"time"
 
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
+	volumepopulatorv1beta1 "github.com/kubernetes-csi/volume-data-source-validator/client/apis/volumepopulator/v1beta1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	gomegatypes "github.com/onsi/gomega/types"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -58,8 +60,10 @@ const (
 
 var cfg *rest.Config
 var k8sClient client.Client
+var k8sDirectClient client.Client
 var testEnv *envtest.Environment
 var cancel context.CancelFunc
+var ctx context.Context
 
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -70,7 +74,6 @@ func TestAPIs(t *testing.T) {
 var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 
-	var ctx context.Context
 	ctx, cancel = context.WithCancel(context.TODO())
 
 	By("bootstrapping test environment")
@@ -93,6 +96,9 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	err = snapv1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = volumepopulatorv1beta1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	//+kubebuilder:scaffold:scheme
@@ -131,6 +137,18 @@ var _ = BeforeSuite(func() {
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
+	// Index fields that are required for the VolumePopulator controller
+	err = IndexFieldsForVolumePopulator(ctx, k8sManager.GetFieldIndexer())
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&VolumePopulatorReconciler{
+		Client:        k8sManager.GetClient(),
+		Log:           ctrl.Log.WithName("controllers").WithName("VolumePopulator"),
+		Scheme:        k8sManager.GetScheme(),
+		EventRecorder: &record.FakeRecorder{},
+	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
 	go func() {
 		defer GinkgoRecover()
 		err = k8sManager.Start(ctx)
@@ -139,6 +157,10 @@ var _ = BeforeSuite(func() {
 
 	k8sClient = k8sManager.GetClient()
 	Expect(k8sClient).ToNot(BeNil())
+
+	// Instantiate direct client for tests (reads directly from API server rather than caching)
+	k8sDirectClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	Expect(err).NotTo(HaveOccurred())
 
 	_, err = utils.InitPodLogsClient(cfg)
 	Expect(err).NotTo(HaveOccurred())
@@ -170,6 +192,17 @@ func createWithCacheReload(ctx context.Context, c client.Client, obj client.Obje
 		err := c.Get(ctx, client.ObjectKeyFromObject(obj), obj)
 		return err
 	}, getIntervals(intervals...)...).Should(Succeed())
+}
+
+func deleteWithCacheReload(ctx context.Context, c client.Client, obj client.Object, intervals ...interface{}) {
+	err := c.Delete(ctx, obj)
+	Expect(client.IgnoreNotFound(err)).NotTo(HaveOccurred())
+
+	// Make sure the k8sClient cache has been updated with this change before returning
+	Eventually(func() bool {
+		err := c.Get(ctx, client.ObjectKeyFromObject(obj), obj)
+		return kerrors.IsNotFound(err)
+	}, getIntervals(intervals...)...).Should(BeTrue())
 }
 
 func getIntervals(intervals ...interface{}) []interface{} {

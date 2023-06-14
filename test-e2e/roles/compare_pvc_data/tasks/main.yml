@@ -92,3 +92,5 @@
     kind: Job
     name: "{{ res.result.metadata.name }}"
     namespace: "{{ namespace }}"
+    delete_options:
+      propagationPolicy: "Background"

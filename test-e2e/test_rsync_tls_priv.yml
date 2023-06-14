@@ -4,10 +4,14 @@
     - e2e
     - rsync_tls
     - privileged
+    - volumepopulator
   tasks:
     - name: Create namespace
       include_role:
         name: create_namespace
+
+    - include_role:
+        name: gather_cluster_info
 
     - name: Enable privileged movers
       include_role:
@@ -120,6 +124,27 @@
       delay: 1
       retries: 900
 
+    - name: Convert latestImage to PVC using VolumePopulator
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: data-dest
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            dataSourceRef:
+              kind: ReplicationDestination
+              apiGroup: volsync.backube
+              name: test
+            resources:
+              requests:
+                storage: 1Gi
+      when: cluster_info.volumepopulator_supported
+
     - name: Convert latestImage to PVC
       kubernetes.core.k8s:
         state: present
@@ -139,6 +164,7 @@
             resources:
               requests:
                 storage: 1Gi
+      when: not cluster_info.volumepopulator_supported
 
     - name: Verify contents of PVC
       include_role:

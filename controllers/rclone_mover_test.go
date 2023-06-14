@@ -1,7 +1,6 @@
 package controllers
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -23,7 +22,6 @@ import (
 
 //nolint:dupl
 var _ = Describe("ReplicationDestination [rclone]", func() {
-	var ctx = context.Background()
 	var namespace *corev1.Namespace
 	var rd *volsyncv1alpha1.ReplicationDestination
 	var rcloneSecret *corev1.Secret
@@ -632,7 +630,6 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 	var srcPVC *corev1.PersistentVolumeClaim
 	var job *batchv1.Job
 	var rcloneSecret *corev1.Secret
-	var ctx = context.Background()
 	var srcPVCCapacity = resource.MustParse("7Gi")
 	var configSection = "foo"
 	var destPath = "bar"

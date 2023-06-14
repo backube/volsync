@@ -33,6 +33,7 @@ import (
 	_ "embed"
 
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
+	volumepopulatorv1beta1 "github.com/kubernetes-csi/volume-data-source-validator/client/apis/volumepopulator/v1beta1"
 	ocpsecurityv1 "github.com/openshift/api/security/v1"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -73,6 +74,7 @@ func init() {
 	utilruntime.Must(snapv1.AddToScheme(scheme))
 	utilruntime.Must(volsyncv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(ocpsecurityv1.AddToScheme(scheme))
+	utilruntime.Must(volumepopulatorv1beta1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
@@ -143,18 +145,27 @@ func addCommandFlags(probeAddr *string, metricsAddr *string, enableLeaderElectio
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 }
 
-func ensurePrivilegedMoverScc(cfg *rest.Config) {
-	setupLog.Info("Privileged Mover SCC", "scc-name", utils.SCCName)
+// Prereq CRs we want to always be present in certain environments but do not want to reconcile often (just at startup)
+func ensureCRs(cfg *rest.Config) {
 	setupClient, err := client.New(cfg, client.Options{Scheme: scheme})
 	if err != nil {
 		setupLog.Error(err, "error creating client")
 		os.Exit(1)
 	}
 
+	// Privileged mover SCC required in OpenShift envs
+	setupLog.Info("Privileged Mover SCC", "scc-name", utils.SCCName)
 	err = platform.EnsureVolSyncMoverSCCIfOpenShift(context.Background(), setupClient, setupLog,
 		utils.SCCName, volsyncMoverSCCYamlRaw)
 	if err != nil {
 		setupLog.Error(err, "unable to reconcile volsync mover scc", "scc-name", utils.SCCName)
+		os.Exit(1)
+	}
+
+	// VolumePopulator CR should be registered if the VolumePopulator CRD is present
+	err = controllers.EnsureVolSyncVolumePopulatorCRIfCRDPresent(context.Background(), setupClient, setupLog)
+	if err != nil {
+		setupLog.Error(err, "unable to reconcile VolumePopulator CR")
 		os.Exit(1)
 	}
 }
@@ -208,8 +219,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Before starting controllers - create or patch volsync mover SCC if necessary
-	ensurePrivilegedMoverScc(cfg)
+	// Before starting controllers - create or patch volsync mover SCC and VolumePopulator CR if necessary
+	ensureCRs(cfg)
 
 	initPodLogsClient(cfg)
 
@@ -229,6 +240,21 @@ func main() {
 		EventRecorder: mgr.GetEventRecorderFor("volsync-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ReplicationDestination")
+		os.Exit(1)
+	}
+
+	// Index fields that are required for the VolumePopulator controller
+	if err := controllers.IndexFieldsForVolumePopulator(context.Background(), mgr.GetFieldIndexer()); err != nil {
+		setupLog.Error(err, "unable to index fields for controller", "controller", "VolumePopulator")
+		os.Exit(1)
+	}
+	if err = (&controllers.VolumePopulatorReconciler{
+		Client:        mgr.GetClient(),
+		Log:           ctrl.Log.WithName("controllers").WithName("VolumePopulator"),
+		Scheme:        mgr.GetScheme(),
+		EventRecorder: mgr.GetEventRecorderFor("volsync-controller"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "VolumePopulator")
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder

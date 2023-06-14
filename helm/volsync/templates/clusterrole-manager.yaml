@@ -79,6 +79,27 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - persistentvolumeclaims/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumes
+  verbs:
+  - get
+  - list
+  - patch
+  - watch
+- apiGroups:
+  - ""
+  resources:
   - pods
   verbs:
   - get
@@ -137,6 +158,17 @@ rules:
   - patch
   - update
 - apiGroups:
+  - populator.storage.k8s.io
+  resources:
+  - volumepopulators
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
   - rbac.authorization.k8s.io
   resources:
   - rolebindings
@@ -191,6 +223,14 @@ rules:
   - list
   - patch
   - update
+  - watch
+- apiGroups:
+  - storage.k8s.io
+  resources:
+  - storageclasses
+  verbs:
+  - get
+  - list
   - watch
 - apiGroups:
   - volsync.backube
