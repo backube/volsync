@@ -19,8 +19,7 @@ package mover
 
 import "time"
 
-// This file contains a common set of Event "reasons" and "actions" for use by
-// the mover implementations when publishing events.
+// This file contains timeout constants used for generating events.
 
 const (
 	// SnapshotBindTimeout is the amount of time we should wait before warning
@@ -33,25 +32,4 @@ const (
 	// ServiceAddressTimeout is the time we should wait before warning that a
 	// Service has not been assigned an address
 	ServiceAddressTimeout = 15 * time.Second
-)
-
-// Event "reason" strings: Why are we sending an event?
-const (
-	EvRTransferStarted = "TransferStarted"
-	EvRTransferFailed  = "TransferFailed" // Warning
-	EvRSnapCreated     = "VolumeSnapshotCreated"
-	EvRSnapNotBound    = "VolumeSnapshotNotBound" // Warning
-	EvRPVCCreated      = "PersistentVolumeClaimCreated"
-	EvRPVCNotBound     = "PersistentVolumeClaimNotBound" // Warning
-	EvRSvcAddress      = "ServiceAddressAssigned"
-	EvRSvcNoAddress    = "NoServiceAddressAssigned" // Warning
-)
-
-// Event "action" strings: Things the controller "does"
-const (
-	EvANone        = "" // No action
-	EvACreateMover = "CreateMover"
-	EvADeleteMover = "DeleteMover"
-	EvACreatePVC   = "CreatePersistentVolumeClaim"
-	EvACreateSnap  = "CreateVolumeSnapshot"
 )
