@@ -144,28 +144,28 @@ func (mrd *migrationRelationshipDestination) waitForRDStatus(ctx context.Context
 		err error
 	)
 	klog.Infof("waiting for keys & address of destination to be available")
-	//nolint:staticcheck //FIXME: see https://github.com/kubernetes/apimachinery/issues/153
-	err = wait.PollImmediate(5*time.Second, defaultRsyncKeyTimeout, func() (bool, error) {
-		rd, err = mrd.getDestination(ctx, client)
-		if err != nil {
-			return false, err
-		}
-		if rd.Status == nil || rd.Status.Rsync == nil {
-			return false, nil
-		}
-		if rd.Status.Rsync.Address == nil {
-			klog.V(2).Infof("Waiting for MigrationDestination %s RSync address to populate", rd.Name)
-			return false, nil
-		}
+	err = wait.PollUntilContextTimeout(ctx, 5*time.Second, defaultRsyncKeyTimeout, true, /*immediate*/
+		func(ctx context.Context) (bool, error) {
+			rd, err = mrd.getDestination(ctx, client)
+			if err != nil {
+				return false, err
+			}
+			if rd.Status == nil || rd.Status.Rsync == nil {
+				return false, nil
+			}
+			if rd.Status.Rsync.Address == nil {
+				klog.V(2).Infof("Waiting for MigrationDestination %s RSync address to populate", rd.Name)
+				return false, nil
+			}
 
-		if rd.Status.Rsync.SSHKeys == nil {
-			klog.V(2).Infof("Waiting for MigrationDestination %s RSync sshkeys to populate", rd.Name)
-			return false, nil
-		}
+			if rd.Status.Rsync.SSHKeys == nil {
+				klog.V(2).Infof("Waiting for MigrationDestination %s RSync sshkeys to populate", rd.Name)
+				return false, nil
+			}
 
-		klog.V(2).Infof("Found MigrationDestination RSync Address: %s", *rd.Status.Rsync.Address)
-		return true, nil
-	})
+			klog.V(2).Infof("Found MigrationDestination RSync Address: %s", *rd.Status.Rsync.Address)
+			return true, nil
+		})
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch rd status: %w,", err)
 	}

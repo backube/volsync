@@ -291,7 +291,7 @@ var _ = Describe("VolumePopulator - map functions", func() {
 
 		Context("When the replicationDestination is not used by any pvc datasourceref", func() {
 			It("mapFunc should not return any reconcile requests", func() {
-				requests := mapFuncReplicationDestinationToVolumePopulatorPVC(k8sClient, replicationDestination)
+				requests := mapFuncReplicationDestinationToVolumePopulatorPVC(ctx, k8sClient, replicationDestination)
 				Expect(len(requests)).To(BeZero())
 			})
 		})
@@ -309,7 +309,7 @@ var _ = Describe("VolumePopulator - map functions", func() {
 				pvcs[2].Spec.DataSourceRef = rdDataSourceRef
 			})
 			It("mapFunc should return a reconcile request for each PVC that references the ReplicationDestination", func() {
-				requests := mapFuncReplicationDestinationToVolumePopulatorPVC(k8sClient, replicationDestination)
+				requests := mapFuncReplicationDestinationToVolumePopulatorPVC(ctx, k8sClient, replicationDestination)
 				Expect(len(requests)).To(Equal(2))
 				for _, req := range requests {
 					Expect(req.Namespace).To(Equal(namespace.GetName()))
@@ -323,7 +323,7 @@ var _ = Describe("VolumePopulator - map functions", func() {
 					pvcs[0].Spec.VolumeName = "pvc-fakefakefake"
 				})
 				It("mapFunc should return a reconcile req only unbound PVCs that reference the ReplicationDestination", func() {
-					requests := mapFuncReplicationDestinationToVolumePopulatorPVC(k8sClient, replicationDestination)
+					requests := mapFuncReplicationDestinationToVolumePopulatorPVC(ctx, k8sClient, replicationDestination)
 					Expect(len(requests)).To(Equal(1))
 					Expect(requests[0].Namespace).To(Equal(namespace.GetName()))
 					Expect(requests[0].Name).To(Equal(pvcs[2].GetName()))
@@ -345,7 +345,7 @@ var _ = Describe("VolumePopulator - map functions", func() {
 
 		Context("When the storageclass is not used by any pvc datasourceref", func() {
 			It("mapFunc should not return any reconcile requests", func() {
-				requests := mapFuncStorageClassToVolumePopulatorPVC(k8sClient, storageClass)
+				requests := mapFuncStorageClassToVolumePopulatorPVC(ctx, k8sClient, storageClass)
 				Expect(len(requests)).To(BeZero())
 			})
 		})
@@ -359,7 +359,7 @@ var _ = Describe("VolumePopulator - map functions", func() {
 			It("mapFunc should not return any reconcile requests", func() {
 				// Should not return any since the index func filters out pvcs that don't have a ReplicationDestination
 				// in the dataSourceRef
-				requests := mapFuncStorageClassToVolumePopulatorPVC(k8sClient, storageClass)
+				requests := mapFuncStorageClassToVolumePopulatorPVC(ctx, k8sClient, storageClass)
 				Expect(len(requests)).To(BeZero())
 			})
 
@@ -375,7 +375,7 @@ var _ = Describe("VolumePopulator - map functions", func() {
 				})
 
 				It("mapFunc should return a reconcile req for each PVC using the storageclass", func() {
-					requests := mapFuncStorageClassToVolumePopulatorPVC(k8sClient, storageClass)
+					requests := mapFuncStorageClassToVolumePopulatorPVC(ctx, k8sClient, storageClass)
 					Expect(len(requests)).To(Equal(2))
 					for _, req := range requests {
 						Expect(req.Namespace).To(Equal(namespace.GetName()))
@@ -390,7 +390,7 @@ var _ = Describe("VolumePopulator - map functions", func() {
 					})
 
 					It("mapFunc should return a reconcile request for only unbound PVCs", func() {
-						requests := mapFuncStorageClassToVolumePopulatorPVC(k8sClient, storageClass)
+						requests := mapFuncStorageClassToVolumePopulatorPVC(ctx, k8sClient, storageClass)
 						Expect(len(requests)).To(Equal(1))
 						Expect(requests[0].Namespace).To(Equal(namespace.GetName()))
 						Expect(requests[0].Name).To(Equal(pvcs[2].GetName()))

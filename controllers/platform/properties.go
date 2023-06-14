@@ -24,7 +24,6 @@ import (
 	"github.com/go-logr/logr"
 	ocpsecurityv1 "github.com/openshift/api/security/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
-	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/types"
@@ -123,7 +122,7 @@ func isOpenShift(ctx context.Context, c client.Client, l logr.Logger) (bool, err
 	if len(SCCs.Items) > 0 {
 		return true, nil
 	}
-	if err == nil || apimeta.IsNoMatchError(err) || kerrors.IsNotFound(err) {
+	if err == nil || utils.IsCRDNotPresentError(err) {
 		return false, nil
 	}
 	l.Error(err, "error while looking for SCCs")
