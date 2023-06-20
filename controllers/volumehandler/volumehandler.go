@@ -191,7 +191,7 @@ func (vh *VolumeHandler) EnsureNewPVC(ctx context.Context, log logr.Logger,
 	logger.V(1).Info("PVC reconciled", "operation", op)
 	if op == ctrlutil.OperationResultCreated {
 		vh.eventRecorder.Eventf(vh.owner, pvc, corev1.EventTypeNormal,
-			mover.EvRPVCCreated, mover.EvACreatePVC,
+			volsyncv1alpha1.EvRPVCCreated, volsyncv1alpha1.EvACreatePVC,
 			"created %s to receive incoming data",
 			utils.KindAndName(vh.client.Scheme(), pvc))
 	}
@@ -199,7 +199,7 @@ func (vh *VolumeHandler) EnsureNewPVC(ctx context.Context, log logr.Logger,
 		!pvc.CreationTimestamp.IsZero() &&
 		pvc.CreationTimestamp.Add(mover.PVCBindTimeout).Before(time.Now()) {
 		vh.eventRecorder.Eventf(vh.owner, pvc, corev1.EventTypeWarning,
-			mover.EvRPVCNotBound, "",
+			volsyncv1alpha1.EvRPVCNotBound, "",
 			"waiting for %s to bind; check StorageClass name and CSI driver capabilities",
 			utils.KindAndName(vh.client.Scheme(), pvc))
 	}
@@ -269,7 +269,7 @@ func (vh *VolumeHandler) ensureImageSnapshot(ctx context.Context, log logr.Logge
 	logger.V(1).Info("Snapshot reconciled", "operation", op)
 	if op == ctrlutil.OperationResultCreated {
 		vh.eventRecorder.Eventf(vh.owner, snap, corev1.EventTypeNormal,
-			mover.EvRSnapCreated, mover.EvACreateSnap, "created %s from %s",
+			volsyncv1alpha1.EvRSnapCreated, volsyncv1alpha1.EvACreateSnap, "created %s from %s",
 			utils.KindAndName(vh.client.Scheme(), snap), utils.KindAndName(vh.client.Scheme(), src))
 	}
 
@@ -280,7 +280,7 @@ func (vh *VolumeHandler) ensureImageSnapshot(ctx context.Context, log logr.Logge
 	if snap.Status == nil || snap.Status.BoundVolumeSnapshotContentName == nil {
 		if snap.CreationTimestamp.Add(mover.SnapshotBindTimeout).Before(time.Now()) {
 			vh.eventRecorder.Eventf(vh.owner, snap, corev1.EventTypeWarning,
-				mover.EvRSnapNotBound, mover.EvANone,
+				volsyncv1alpha1.EvRSnapNotBound, volsyncv1alpha1.EvANone,
 				"waiting for %s to bind; check VolumeSnapshotClass name and ensure CSI driver supports volume snapshots",
 				utils.KindAndName(vh.client.Scheme(), snap))
 		}
@@ -372,7 +372,7 @@ func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,
 	logger.V(1).Info("clone reconciled", "operation", op)
 	if op == ctrlutil.OperationResultCreated {
 		vh.eventRecorder.Eventf(vh.owner, clone, corev1.EventTypeNormal,
-			mover.EvRPVCCreated, mover.EvACreatePVC,
+			volsyncv1alpha1.EvRPVCCreated, volsyncv1alpha1.EvACreatePVC,
 			"created %s as a clone of %s",
 			utils.KindAndName(vh.client.Scheme(), clone), utils.KindAndName(vh.client.Scheme(), src))
 	}
@@ -380,7 +380,7 @@ func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,
 		clone.CreationTimestamp.Add(mover.PVCBindTimeout).Before(time.Now()) &&
 		clone.Status.Phase != corev1.ClaimBound {
 		vh.eventRecorder.Eventf(vh.owner, clone, corev1.EventTypeWarning,
-			mover.EvRPVCNotBound, "",
+			volsyncv1alpha1.EvRPVCNotBound, "",
 			"waiting for %s to bind; check StorageClass name and ensure CSI driver supports volume cloning",
 			utils.KindAndName(vh.client.Scheme(), clone))
 	}
@@ -423,7 +423,7 @@ func (vh *VolumeHandler) ensureSnapshot(ctx context.Context, log logr.Logger,
 	}
 	if op == ctrlutil.OperationResultCreated {
 		vh.eventRecorder.Eventf(vh.owner, snap, corev1.EventTypeNormal,
-			mover.EvRSnapCreated, mover.EvACreateSnap,
+			volsyncv1alpha1.EvRSnapCreated, volsyncv1alpha1.EvACreateSnap,
 			"created %s from %s",
 			utils.KindAndName(vh.client.Scheme(), snap), utils.KindAndName(vh.client.Scheme(), src))
 	}
@@ -431,7 +431,7 @@ func (vh *VolumeHandler) ensureSnapshot(ctx context.Context, log logr.Logger,
 		logger.V(1).Info("waiting for snapshot to be bound")
 		if snap.CreationTimestamp.Add(mover.SnapshotBindTimeout).Before(time.Now()) {
 			vh.eventRecorder.Eventf(vh.owner, snap, corev1.EventTypeWarning,
-				mover.EvRSnapNotBound, mover.EvANone,
+				volsyncv1alpha1.EvRSnapNotBound, volsyncv1alpha1.EvANone,
 				"waiting for %s to bind; check VolumeSnapshotClass name and ensure CSI driver supports volume snapshots",
 				utils.KindAndName(vh.client.Scheme(), snap))
 		}
@@ -514,14 +514,14 @@ func (vh *VolumeHandler) pvcFromSnapshot(ctx context.Context, log logr.Logger,
 	}
 	if op == ctrlutil.OperationResultCreated {
 		vh.eventRecorder.Eventf(vh.owner, pvc, corev1.EventTypeNormal,
-			mover.EvRPVCCreated, mover.EvACreatePVC, "created %s from %s",
+			volsyncv1alpha1.EvRPVCCreated, volsyncv1alpha1.EvACreatePVC, "created %s from %s",
 			utils.KindAndName(vh.client.Scheme(), pvc), utils.KindAndName(vh.client.Scheme(), snap))
 	}
 	if pvc.Status.Phase != corev1.ClaimBound &&
 		!pvc.CreationTimestamp.IsZero() &&
 		pvc.CreationTimestamp.Add(mover.PVCBindTimeout).Before(time.Now()) {
 		vh.eventRecorder.Eventf(vh.owner, pvc, corev1.EventTypeWarning,
-			mover.EvRPVCNotBound, "",
+			volsyncv1alpha1.EvRPVCNotBound, "",
 			"waiting for %s to bind; check StorageClass name and CSI driver capabilities",
 			utils.KindAndName(vh.client.Scheme(), pvc))
 	}

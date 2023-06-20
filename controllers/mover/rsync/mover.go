@@ -167,7 +167,7 @@ func (m *Mover) publishSvcAddress(service *corev1.Service) (bool, error) {
 		m.updateStatusAddress(nil)
 		if service.CreationTimestamp.Add(mover.ServiceAddressTimeout).Before(time.Now()) {
 			m.eventRecorder.Eventf(m.owner, service, corev1.EventTypeWarning,
-				mover.EvRSvcNoAddress, mover.EvANone,
+				volsyncv1alpha1.EvRSvcNoAddress, volsyncv1alpha1.EvANone,
 				"waiting for an address to be assigned to %s; ensure the proper serviceType was specified",
 				utils.KindAndName(m.client.Scheme(), service))
 		}
@@ -196,7 +196,7 @@ func (m *Mover) updateStatusAddress(address *string) {
 	}
 	if publishEvent && address != nil {
 		m.eventRecorder.Eventf(m.owner, nil, corev1.EventTypeNormal,
-			mover.EvRSvcAddress, mover.EvANone,
+			volsyncv1alpha1.EvRSvcAddress, volsyncv1alpha1.EvANone,
 			"listening on address %s for incoming connections", *address)
 	}
 }
@@ -453,7 +453,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 
 		logger.Info("deleting job -- backoff limit reached")
 		m.eventRecorder.Eventf(m.owner, job, corev1.EventTypeWarning,
-			mover.EvRTransferFailed, mover.EvADeleteMover, "mover Job backoff limit reached")
+			volsyncv1alpha1.EvRTransferFailed, volsyncv1alpha1.EvADeleteMover, "mover Job backoff limit reached")
 		err = m.client.Delete(ctx, job, client.PropagationPolicy(metav1.DeletePropagationBackground))
 		return nil, err
 	}
@@ -469,7 +469,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 			dir = "transmit"
 		}
 		m.eventRecorder.Eventf(m.owner, job, corev1.EventTypeNormal,
-			mover.EvRTransferStarted, mover.EvACreateMover, "starting %s to %s data",
+			volsyncv1alpha1.EvRTransferStarted, volsyncv1alpha1.EvACreateMover, "starting %s to %s data",
 			utils.KindAndName(m.client.Scheme(), job), dir)
 	}
 
