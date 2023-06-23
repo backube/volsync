@@ -33,6 +33,7 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -284,7 +285,10 @@ var _ = Describe("VolumePopulator - map functions", func() {
 					Name:      "rd-for-mapfunc-test",
 					Namespace: namespace.GetName(),
 				},
-				Spec: volsyncv1alpha1.ReplicationDestinationSpec{},
+				Spec: volsyncv1alpha1.ReplicationDestinationSpec{
+					// RD using ExternalSpec so will not be reconciled by the rd controller
+					External: &volsyncv1alpha1.ReplicationDestinationExternalSpec{},
+				},
 			}
 			createWithCacheReload(ctx, k8sClient, replicationDestination)
 		})
@@ -496,6 +500,7 @@ var _ = Describe("VolumePopulator - VolumePopulator CRD detection & ensuring CR 
 })
 
 var _ = Describe("VolumePopulator", func() {
+	logger := zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
 	var namespace *corev1.Namespace
 	var rd *volsyncv1alpha1.ReplicationDestination
 	var pvc *corev1.PersistentVolumeClaim
@@ -564,9 +569,10 @@ var _ = Describe("VolumePopulator", func() {
 		})
 
 		Context("When a storageclassname is specified in the pvc spec", func() {
-			storageClassName := "vp-test-storageclass1"
+			var storageClassName string
 
 			BeforeEach(func() {
+				storageClassName = "vp-test-storageclass-" + utilrand.String(5)
 				pvc.Spec.StorageClassName = &storageClassName
 			})
 
@@ -661,31 +667,26 @@ var _ = Describe("VolumePopulator", func() {
 					Expect(pvcPrime.Spec.DataSourceRef.Kind).To(Equal("VolumeSnapshot"))
 					Expect(pvcPrime.Spec.DataSourceRef.Name).To(Equal(snap.GetName()))
 
-					Eventually(func() bool {
+					Eventually(func() error {
 						// re-load the snapshot to prevent timing issues, as the controller will need to create
 						// pvcPrime before adding it as an ownerRef on the snapshot
-						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(snap), snap)).To(Succeed())
+						err := k8sClient.Get(ctx, client.ObjectKeyFromObject(snap), snap)
+						if err != nil {
+							return err
+						}
 
 						// Snapshot should have a label indicating it's in-use by volume populator
 						v, ok := snap.GetLabels()[getSnapshotInUseLabelKey(pvc)]
 						if !ok {
-							return false
+							return fmt.Errorf("Snapshot missing volumepopulator in-use label")
 						}
 						if v != pvc.GetName() {
-							return false
+							return fmt.Errorf("Snapshot volume populator in-use label does not match the pvc."+
+								" pvc label value is: %s", v)
 						}
 
-						// Snapshot should get ownerRef pointing to pvcPrime
-						ownerRefs := snap.GetOwnerReferences()
-						if len(ownerRefs) != 1 {
-							return false
-						}
-						if ownerRefs[0].UID != pvcPrime.UID {
-							return false
-						}
-
-						return true
-					}, maxWait, interval).Should(BeTrue())
+						return nil
+					}, maxWait, interval).Should(Succeed())
 				})
 
 				It("pvcPrime should be created", func() {
@@ -735,6 +736,37 @@ var _ = Describe("VolumePopulator", func() {
 
 							return k8sClient.Update(ctx, pvcPrime)
 						}, duration10s, interval).Should(Succeed())
+					})
+
+					It("The snapshot should have correct owner reference of pvcPrime", func() {
+						// This test was originally done before the pvcPrime gets bound
+						// but moving here - we can have a timing issue during test where
+						// the cache is not updated in time for ensureOwnerReferenceOnSnapshots()
+						// to see the snapshot with our "volsync.backube/volpop-pvc-xxxx" (in-use) label
+						// It also may not get reconciled again in the test env since no one is updating
+						// pvcPrime - doing so here means pvcPrime is updated due to the PV being bound and
+						// a reconcile should get triggered.
+						Eventually(func() error {
+							// re-load the snapshot to prevent timing issues, as the controller will need to create
+							// pvcPrime before adding it as an ownerRef on the snapshot
+							err := k8sClient.Get(ctx, client.ObjectKeyFromObject(snap), snap)
+							if err != nil {
+								return err
+							}
+							// Snapshot should get ownerRef pointing to pvcPrime
+							ownerRefs := snap.GetOwnerReferences()
+							if len(ownerRefs) != 1 {
+								oRefErr := fmt.Errorf("Snapshot owner references incorrect - len(ownerRefs): %d", len(ownerRefs))
+								logger.Error(oRefErr, "Snapshot missing owner ref", "snap", *snap)
+								return oRefErr
+							}
+							if ownerRefs[0].UID != pvcPrime.UID {
+								return fmt.Errorf("Snapshot ownerRef UID: %s does not match pvcPrime.UID: %s",
+									ownerRefs[0].UID, pvcPrime.UID)
+							}
+
+							return nil
+						}, maxWait, interval).Should(Succeed())
 					})
 
 					It("Should update the claimRef on the PV to use pvc", func() {
