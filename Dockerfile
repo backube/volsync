@@ -6,7 +6,7 @@ WORKDIR /workspace
 # We don't vendor modules. Enforce that behavior
 ENV GOFLAGS=-mod=readonly
 ENV GO111MODULE=on
-ENV CGO_ENABLED=0
+ENV CGO_ENABLED=1
 ARG TARGETOS
 ARG TARGETARCH
 ENV GOOS=${TARGETOS:-linux}
@@ -58,7 +58,7 @@ COPY /mover-restic/minio-go ./minio-go
 
 WORKDIR /workspace/restic
 
-RUN go run build.go
+RUN go run build.go --enable-cgo
 
 
 ######################################################################
