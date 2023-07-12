@@ -33,16 +33,16 @@ specifies the target for the replicated data.
 
 VolSync uses multiple replication methods to replicate data:
 
-- Rclone-based replication for 1:many data distribution:  
+- Rclone-based replication for 1:many data distribution:
   Data is replicated from the source to an intermediate cloud storage
   service, which is [supported by Rclone](https://rclone.org/#providers).
   The destinations retrieve the data from the intermediate location.
-- Restic-based backup of PVC contents:  
+- Restic-based backup of PVC contents:
   Data in a PVC is backed up by using the [restic](https://restic.net/)
   program. This method works well when the deployment configuration of
   the application is already source-controlled, and only the
   preservation of its persistent state is needed.
-- Rsync-based replication for one-to-one data replication:  
+- Rsync-based replication for one-to-one data replication:
   Data is replicated directly to a remote location. The replication uses
   the [Rsync](https://rsync.samba.org/) utility over an ssh connection
   to securely and efficiently transfer data.
@@ -61,7 +61,7 @@ VolSync uses multiple replication methods to replicate data:
 ## Installation
 
 VolSync is a cluster-level operator. A single instance of the operator will
-provide replication capabilities to all namespaces in the cluster.  
+provide replication capabilities to all namespaces in the cluster.
 **Running more than one instance of VolSync at a time is not supported.**
 
 ```console
@@ -88,6 +88,8 @@ on the command line or via a custom `values.yaml` file.
 
 - `manageCRDs`: true
   - Whether the chart should install/upgrade the VolSync CRDs
+- `timeZone`: `Etc/UTC`
+  - Allows setting the time zone for the operator pod
 - `replicaCount`: `1`
   - The number of replicas of the operator to run. Only one is active at a time,
     controlled via leader election.

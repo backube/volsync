@@ -90,6 +90,7 @@ RUN microdnf --refresh update -y && \
         openssh-server  `# rsync/ssh - ssh server` \
         perl            `# rsync/ssh - rrsync script` \
         stunnel         `# rsync-tls` \
+        tzdata          `# operator` \
     && microdnf --setopt=install_weak_deps=0 install -y \
         `# docs are needed so rrsync gets installed for ssh variant` \
         rsync           `# rsync/ssh, rsync-tls - rsync, rrsync` \

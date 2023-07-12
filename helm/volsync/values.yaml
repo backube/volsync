@@ -36,6 +36,8 @@ syncthing:
 
 manageCRDs: true
 
+timeZone: Etc/UTC
+
 metrics:
   # Disable auth checks when scraping metrics (allow anyone to scrape)
   disableAuth: false

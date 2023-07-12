@@ -83,6 +83,9 @@ spec:
             - --scc-name=volsync-privileged-mover
           command:
             - /manager
+          env:
+            - name: TZ
+              value: {{ .Values.timeZone | quote }}
           image: "{{ include "container-image" (list . .Values.image) }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           livenessProbe:
