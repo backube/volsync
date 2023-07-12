@@ -162,14 +162,14 @@ function reverse_array() {
 }
 
 ################################################################
-# Selects the first restic snapshot available for the 
-# given constraints. If RESTORE_AS_OF is defined, then 
+# Selects the first restic snapshot available for the
+# given constraints. If RESTORE_AS_OF is defined, then
 # only snapshots that were created prior to it are considered.
-# If SELECT_PREVIOUS is defined, then the n-th snapshot 
-# is selected under the matching criteria. 
-# If a snapshot satisfying the conditions is found, then its ID 
+# If SELECT_PREVIOUS is defined, then the n-th snapshot
+# is selected under the matching criteria.
+# If a snapshot satisfying the conditions is found, then its ID
 # is returned.
-# 
+#
 # Globals:
 #   SELECT_PREVIOUS
 #   RESTORE_AS_OF
@@ -186,7 +186,7 @@ function select_restic_snapshot_to_restore() {
     local snapshot_id
     local snapshot_ts
     local trimmed_timestamp
-    local snapshot_epoch 
+    local snapshot_epoch
 
     # go through the timestamps received from restic
     IFS=$'\n'
@@ -200,7 +200,7 @@ function select_restic_snapshot_to_restore() {
         epochs_to_snapshots[${snapshot_epoch}]="${snapshot_id}"
     done
 
-    # reverse sorted epochs so the most recent epoch is first 
+    # reverse sorted epochs so the most recent epoch is first
     reverse_array epochs
 
     local -i offset=0
@@ -208,7 +208,7 @@ function select_restic_snapshot_to_restore() {
     if [[ -n ${RESTORE_AS_OF} ]]; then
         # move to the position of the satisfying epoch
         target_epoch=$(get_epoch_from_timestamp "${RESTORE_AS_OF}")
-        while ((offset < ${#epochs[@]})); do 
+        while ((offset < ${#epochs[@]})); do
             if ((${epochs[${offset}]} <= target_epoch)); then
                 break
             fi
@@ -230,7 +230,7 @@ function select_restic_snapshot_to_restore() {
 
 
 #######################################
-# Restores from a selected snapshot if 
+# Restores from a selected snapshot if
 # RESTORE_AS_OF is provided, otherwise
 # restores from the latest restic snapshot
 # Globals:
@@ -245,7 +245,7 @@ function do_restore {
     # restore from specific snapshot specified by timestamp, or latest
     local snapshot_id
     snapshot_id=$(select_restic_snapshot_to_restore)
-    if [[ -z ${snapshot_id} ]]; then 
+    if [[ -z ${snapshot_id} ]]; then
         echo "No eligible snapshots found"
     else
     pushd "${DATA_DIR}"
@@ -282,6 +282,7 @@ for op in "$@"; do
             ;;
         "restore")
             do_restore
+            sync
             ;;
         *)
             error 2 "unknown operation: $op"
@@ -289,7 +290,6 @@ for op in "$@"; do
     esac
 done
 echo "Restic completed in $(( SECONDS - START_TIME ))s"
-sync
 echo "=== Done ==="
 # sleep forever so that the containers logs can be inspected
 # sleep 9999999
