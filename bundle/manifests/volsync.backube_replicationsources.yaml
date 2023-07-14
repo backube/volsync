@@ -587,6 +587,9 @@ spec:
                           kept hourly
                         format: int32
                         type: integer
+                      last:
+                        description: Last defines the number of snapshots to be kept
+                        type: string
                       monthly:
                         description: Monthly defines the number of snapshots to be
                           kept monthly

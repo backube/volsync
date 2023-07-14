@@ -599,6 +599,9 @@ func generateForgetOptions(policy *volsyncv1alpha1.ResticRetainPolicy) string {
 	if policy.Within != nil {
 		forget += fmt.Sprintf(" --keep-within %s", *policy.Within)
 	}
+	if policy.Last != nil {
+		forget += fmt.Sprintf(" --keep-last %s", *policy.Last)
+	}
 
 	if len(forget) == 0 { // Retain policy was present, but empty
 		return defaultForget

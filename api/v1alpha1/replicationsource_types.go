@@ -166,6 +166,9 @@ type ResticRetainPolicy struct {
 	// Within defines the number of snapshots to be kept Within the given time period
 	//+optional
 	Within *string `json:"within,omitempty"`
+	// Last defines the number of snapshots to be kept
+	//+optional
+	Last *string `json:"last,omitempty"`
 }
 
 type ReplicationSourceResticCA CustomCASpec
