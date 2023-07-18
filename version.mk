@@ -9,9 +9,9 @@
 #
 # Bundle Version being built right now and channels to use
 #
-VERSION := 0.6.2
+VERSION := 0.6.3
 # REPLACES_VERSION should be left empty for the first version in a new channel (See more info in Procedures.md)
-REPLACES_VERSION := 0.6.1
+REPLACES_VERSION := 0.6.2
 OLM_SKIPRANGE := '>=0.4.0 <$(VERSION)'
 CHANNELS := acm-2.7
 DEFAULT_CHANNEL := stable
