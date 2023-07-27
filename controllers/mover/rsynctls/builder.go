@@ -119,6 +119,8 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 	saHandler := utils.NewSAHandler(client, source, isSource, privileged,
 		source.Spec.RsyncTLS.MoverServiceAccount)
 
+	isImmediate := source.Spec.Immediate == nil
+
 	return &Mover{
 		client:               client,
 		logger:               logger.WithValues("method", "RsyncTLS"),
@@ -139,6 +141,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		moverSecurityContext: source.Spec.RsyncTLS.MoverSecurityContext,
 		sourceStatus:         source.Status.RsyncTLS,
 		latestMoverStatus:    source.Status.LatestMoverStatus,
+		isImmediate:          isImmediate,
 	}, nil
 }
 

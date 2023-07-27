@@ -119,6 +119,7 @@ type Mover struct {
 	apiConfig            api.APIConfig
 	privileged           bool
 	moverSecurityContext *corev1.PodSecurityContext
+	isImmediate          bool
 }
 
 var _ mover.Mover = &Mover{}

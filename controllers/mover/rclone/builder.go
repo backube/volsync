@@ -114,6 +114,8 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 	saHandler := utils.NewSAHandler(client, source, isSource, privileged,
 		source.Spec.Rclone.MoverServiceAccount)
 
+	isImmediate := source.Spec.Immediate == nil
+
 	return &Mover{
 		client:               client,
 		logger:               logger.WithValues("method", "Rclone"),
@@ -132,6 +134,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		privileged:           privileged,
 		moverSecurityContext: source.Spec.Rclone.MoverSecurityContext,
 		latestMoverStatus:    source.Status.LatestMoverStatus,
+		isImmediate:          isImmediate,
 	}, nil
 }
 

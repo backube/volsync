@@ -283,6 +283,9 @@ type ReplicationSourceSpec struct {
 	// paused can be used to temporarily stop replication. Defaults to "false".
 	//+optional
 	Paused bool `json:"paused,omitempty"`
+	// immediate can be used to stop replication when a new ReplicationSource is created. Defaults to "true".
+	//+optional
+	Immediate *bool `json:"immediate,omitempty"`
 }
 
 type ReplicationSourceRsyncStatus struct {

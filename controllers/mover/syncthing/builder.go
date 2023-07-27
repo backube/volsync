@@ -135,6 +135,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		apiConfig:            api.APIConfig{},
 		privileged:           privileged,
 		moverSecurityContext: source.Spec.Syncthing.MoverSecurityContext,
+		isImmediate:          true,
 		// defer setting the VolumeHandler
 	}, nil
 }

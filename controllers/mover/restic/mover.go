@@ -79,6 +79,7 @@ type Mover struct {
 	unlock        string
 	retainPolicy  *volsyncv1alpha1.ResticRetainPolicy
 	sourceStatus  *volsyncv1alpha1.ReplicationSourceResticStatus
+	isImmediate   bool
 	// Destination-only fields
 	previous    *int32
 	restoreAsOf *string
@@ -291,6 +292,9 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 		job.Spec.BackoffLimit = &backoffLimit
 		parallelism := int32(1)
 		if m.paused {
+			parallelism = int32(0)
+		}
+		if !m.isImmediate && m.latestMoverStatus == nil {
 			parallelism = int32(0)
 		}
 		job.Spec.Parallelism = &parallelism

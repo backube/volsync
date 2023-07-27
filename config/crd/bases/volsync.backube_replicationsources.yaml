@@ -67,6 +67,10 @@ spec:
                       provider. The name should be of the form: domain.com/provider.'
                     type: string
                 type: object
+              immediate:
+                description: immediate can be used to stop replication when a new
+                  ReplicationSource is created. Defaults to "true".
+                type: boolean
               paused:
                 description: paused can be used to temporarily stop replication. Defaults
                   to "false".

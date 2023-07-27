@@ -65,6 +65,7 @@ type Mover struct {
 	privileged           bool // true if the mover should have elevated privileges
 	moverSecurityContext *corev1.PodSecurityContext
 	latestMoverStatus    *volsyncv1alpha1.MoverStatus
+	isImmediate          bool
 }
 
 var _ mover.Mover = &Mover{}
@@ -229,6 +230,9 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 
 		parallelism := int32(1)
 		if m.paused {
+			parallelism = int32(0)
+		}
+		if !m.isImmediate && m.latestMoverStatus == nil {
 			parallelism = int32(0)
 		}
 		job.Spec.Parallelism = &parallelism

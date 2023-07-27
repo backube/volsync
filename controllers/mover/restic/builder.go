@@ -119,6 +119,8 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 	saHandler := utils.NewSAHandler(client, source, isSource, privileged,
 		source.Spec.Restic.MoverServiceAccount)
 
+	isImmediate := source.Spec.Immediate == nil
+
 	return &Mover{
 		client:                client,
 		logger:                logger.WithValues("method", "Restic"),
@@ -142,6 +144,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		unlock:                source.Spec.Restic.Unlock,
 		sourceStatus:          source.Status.Restic,
 		latestMoverStatus:     source.Status.LatestMoverStatus,
+		isImmediate:           isImmediate,
 	}, nil
 }
 
