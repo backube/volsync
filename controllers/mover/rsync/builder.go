@@ -119,7 +119,10 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 	saHandler := utils.NewSAHandler(client, source, isSource, true, /*Rsync runs privileged only*/
 		source.Spec.Rsync.MoverServiceAccount)
 
-	isImmediate := source.Spec.Immediate == nil
+	isImmediate := true
+	if source.Spec.Immediate != nil {
+		isImmediate = *source.Spec.Immediate
+	}
 
 	return &Mover{
 		client:             client,
