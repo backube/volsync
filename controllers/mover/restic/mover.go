@@ -294,7 +294,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 		if m.paused {
 			parallelism = int32(0)
 		}
-		if !m.isImmediate && m.latestMoverStatus == nil {
+		if !m.isImmediate && m.latestMoverStatus.Result == "" {
 			parallelism = int32(0)
 		}
 		job.Spec.Parallelism = &parallelism
