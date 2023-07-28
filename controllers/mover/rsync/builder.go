@@ -87,6 +87,7 @@ func (rb *Builder) getRsyncContainerImage() string {
 	return rb.viper.GetString(rsyncContainerImageFlag)
 }
 
+// nolint: funlen
 func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 	eventRecorder events.EventRecorder,
 	source *volsyncv1alpha1.ReplicationSource, privileged bool) (mover.Mover, error) {
