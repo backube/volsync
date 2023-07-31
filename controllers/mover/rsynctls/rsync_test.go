@@ -253,7 +253,6 @@ var _ = Describe("RsyncTLS as a source", func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, sPVC)).To(Succeed())
-
 		// Scaffold ReplicationSource
 		rs = &volsyncv1alpha1.ReplicationSource{
 			ObjectMeta: metav1.ObjectMeta{
@@ -585,6 +584,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 			var sa *corev1.ServiceAccount
 			var tlsKeySecret *corev1.Secret
 			var job *batchv1.Job
+			var sBlockPVC *corev1.PersistentVolumeClaim
 			BeforeEach(func() {
 				// hardcoded since we don't get access unless the job is
 				// completed
@@ -607,6 +607,27 @@ var _ = Describe("RsyncTLS as a source", func() {
 				}
 			})
 			JustBeforeEach(func() {
+				blockVolumeMode := corev1.PersistentVolumeBlock
+				sc := "spvcsc"
+				sBlockPVC = &corev1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "blocks",
+						Namespace: ns.Name,
+					},
+					Spec: corev1.PersistentVolumeClaimSpec{
+						AccessModes: []corev1.PersistentVolumeAccessMode{
+							corev1.ReadWriteOnce,
+						},
+						VolumeMode: &blockVolumeMode,
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								"storage": resource.MustParse("7Gi"),
+							},
+						},
+						StorageClassName: &sc,
+					},
+				}
+				Expect(k8sClient.Create(ctx, sBlockPVC)).To(Succeed())
 				Expect(k8sClient.Create(ctx, sa)).To(Succeed())
 				Expect(k8sClient.Create(ctx, tlsKeySecret)).To(Succeed())
 			})
@@ -644,6 +665,14 @@ var _ = Describe("RsyncTLS as a source", func() {
 					Expect(job.Spec.Template.Spec.ServiceAccountName).To(Equal(sa.Name))
 				})
 
+				getSPVC := func() *corev1.PersistentVolumeClaim {
+					return sPVC
+				}
+
+				getBlockPVC := func() *corev1.PersistentVolumeClaim {
+					return sBlockPVC
+				}
+
 				It("Should have correct volume mounts", func() {
 					j, e := mover.ensureJob(ctx, sPVC, sa, tlsKeySecret.GetName()) // Using sPVC as dataPVC (i.e. direct)
 					Expect(e).NotTo(HaveOccurred())
@@ -675,8 +704,10 @@ var _ = Describe("RsyncTLS as a source", func() {
 					Expect(foundTmpMount).To(BeTrue())
 				})
 
-				It("Should have correct volumes", func() {
-					j, e := mover.ensureJob(ctx, sPVC, sa, tlsKeySecret.GetName()) // Using sPVC as dataPVC (i.e. direct)
+				DescribeTable("Should have correct volumes", func(getPVC func() *corev1.PersistentVolumeClaim) {
+					pvc := getPVC()
+					Expect(pvc).ToNot(BeNil())
+					j, e := mover.ensureJob(ctx, pvc, sa, tlsKeySecret.GetName()) // Using pvc as dataPVC (i.e. direct)
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -684,7 +715,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
 					volumes := job.Spec.Template.Spec.Volumes
-					Expect(len(volumes)).To(Equal(3))
+					Expect(volumes).To(HaveLen(3))
 					foundDataVolume := false
 					foundTLSSecretVolume := false
 					foundTmpVolume := false
@@ -692,7 +723,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 						if vol.Name == dataVolumeName {
 							foundDataVolume = true
 							Expect(vol.VolumeSource.PersistentVolumeClaim).ToNot(BeNil())
-							Expect(vol.VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(sPVC.GetName()))
+							Expect(vol.VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(pvc.GetName()))
 							Expect(vol.VolumeSource.PersistentVolumeClaim.ReadOnly).To(Equal(false))
 						} else if vol.Name == "keys" {
 							foundTLSSecretVolume = true
@@ -706,6 +737,52 @@ var _ = Describe("RsyncTLS as a source", func() {
 					Expect(foundDataVolume).To(BeTrue())
 					Expect(foundTLSSecretVolume).To(BeTrue())
 					Expect(foundTmpVolume).To(BeTrue())
+				},
+					Entry("Filesystem volume", getSPVC),
+					Entry("Block volume", getBlockPVC),
+				)
+
+				When("The source PVC has volumeMode: block", func() {
+					It("Should have correct volume mounts, and device mount", func() {
+						j, e := mover.ensureJob(ctx, sBlockPVC, sa, tlsKeySecret.GetName()) // Using sBlockPVC as dataPVC (i.e. direct)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(j).To(BeNil()) // hasn't completed
+						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+						job = &batchv1.Job{}
+						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+
+						c := job.Spec.Template.Spec.Containers[0]
+						// Validate job volume mounts
+						Expect(c.VolumeMounts).To(HaveLen(2))
+						foundDataVolumeMount := false
+						foundTLSSecretVolumeMount := false
+						foundTmpMount := false
+						for _, volMount := range c.VolumeMounts {
+							if volMount.Name == dataVolumeName {
+								foundDataVolumeMount = true
+								Expect(volMount.MountPath).To(Equal(mountPath))
+							} else if volMount.Name == "keys" {
+								foundTLSSecretVolumeMount = true
+								Expect(volMount.MountPath).To(Equal("/keys"))
+							} else if volMount.Name == "tempdir" {
+								foundTmpMount = true
+								Expect(volMount.MountPath).To(Equal("/tmp"))
+							}
+						}
+						Expect(foundDataVolumeMount).To(BeFalse())
+						Expect(foundTLSSecretVolumeMount).To(BeTrue())
+						Expect(foundTmpMount).To(BeTrue())
+
+						Expect(c.VolumeDevices).To(HaveLen(1))
+						foundDataVolumeDevice := false
+						for _, volDevice := range c.VolumeDevices {
+							if volDevice.Name == dataVolumeName {
+								foundDataVolumeDevice = true
+								Expect(volDevice.DevicePath).To(Equal("/dev/block"))
+							}
+						}
+						Expect(foundDataVolumeDevice).To(BeTrue())
+					})
 				})
 
 				When("The source PVC is ROX", func() {
@@ -983,25 +1060,49 @@ var _ = Describe("Rsync as a destination", func() {
 					Expect(pvc.Labels).ToNot(HaveKey("volsync.backube/cleanup"))
 				})
 			})
+
+			createPVCSpec := func(volumeMode corev1.PersistentVolumeMode) *corev1.PersistentVolumeClaim {
+				return &corev1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "dest",
+						Namespace: ns.Name,
+					},
+					Spec: corev1.PersistentVolumeClaimSpec{
+						AccessModes: []corev1.PersistentVolumeAccessMode{
+							corev1.ReadWriteOnce,
+						},
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								"storage": resource.MustParse("1Gi"),
+							},
+						},
+						VolumeMode: &volumeMode,
+					},
+				}
+			}
 			When("a destination volume is supplied", func() {
 				var dPVC *corev1.PersistentVolumeClaim
 				BeforeEach(func() {
-					dPVC = &corev1.PersistentVolumeClaim{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "dest",
-							Namespace: ns.Name,
-						},
-						Spec: corev1.PersistentVolumeClaimSpec{
-							AccessModes: []corev1.PersistentVolumeAccessMode{
-								corev1.ReadWriteOnce,
-							},
-							Resources: corev1.ResourceRequirements{
-								Requests: corev1.ResourceList{
-									"storage": resource.MustParse("1Gi"),
-								},
-							},
-						},
-					}
+					dPVC = createPVCSpec(corev1.PersistentVolumeFilesystem)
+					Expect(k8sClient.Create(ctx, dPVC)).To(Succeed())
+					rd.Spec.RsyncTLS.DestinationPVC = &dPVC.Name
+				})
+				It("is used directly", func() {
+					pvc, e := mover.ensureDestinationPVC(ctx)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(pvc).NotTo(BeNil())
+					Expect(pvc.Name).To(Equal(dPVC.Name))
+					// It's not owned by the CR
+					Expect(pvc.OwnerReferences).To(BeEmpty())
+					// It won't be cleaned up at the end of the transfer
+					Expect(pvc.Labels).NotTo(HaveKey("volsync.backube/cleanup"))
+				})
+			})
+
+			When("a block destination volume is supplied", func() {
+				var dPVC *corev1.PersistentVolumeClaim
+				BeforeEach(func() {
+					dPVC = createPVCSpec(corev1.PersistentVolumeBlock)
 					Expect(k8sClient.Create(ctx, dPVC)).To(Succeed())
 					rd.Spec.RsyncTLS.DestinationPVC = &dPVC.Name
 				})
