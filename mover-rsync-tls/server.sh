@@ -19,25 +19,32 @@ if [[ ! -r $PSK_FILE ]]; then
     exit 1
 fi
 
-if [[ ! -d /data ]]; then
-    echo "ERROR: PVC not mounted at /data"
+TARGET="/data"
+BLOCK_TARGET="/dev/block"
+
+if [[ ! -d $TARGET ]] && ! test -b $BLOCK_TARGET; then
+    echo "ERROR: target location not found"
     exit 1
 fi
 
-mkdir -p "$(dirname "$CONTROL_FILE")"
+if [[ -d $TARGET ]]; then
+    ##############################
+    ## Filesystem volume, use rsync
 
-##############################
-## Set up rsync config
+    mkdir -p "$(dirname "$CONTROL_FILE")"
 
-if [[ $PRIVILEGED_MOVER -ne 0 ]]; then
-    RSYNC_UID="uid = 0"
-    RSYNC_GID="gid = *"
-else
-    RSYNC_UID=""
-    RSYNC_GID=""
-fi
+    ##############################
+    ## Set up rsync config
 
-cat - > "$RSYNCD_CONF" <<RSYNCD_CONF
+    if [[ $PRIVILEGED_MOVER -ne 0 ]]; then
+        RSYNC_UID="uid = 0"
+        RSYNC_GID="gid = *"
+    else
+        RSYNC_UID=""
+        RSYNC_GID=""
+    fi
+
+    cat - > "$RSYNCD_CONF" <<RSYNCD_CONF
 pid = $RSYNC_PID_FILE
 address = 127.0.0.1
 log file = $RSYNC_LOG
@@ -54,16 +61,16 @@ $RSYNC_GID
 
 [data]
 comment = PVC data
-path = /data
+path = $TARGET
 
 [control]
 comment = Control files for signaling
 path = $(dirname $CONTROL_FILE)
 RSYNCD_CONF
 
-##############################
-## Set up stunnel config
-cat - > "$STUNNEL_CONF" <<STUNNEL_CONF
+    ##############################
+    ## Set up stunnel config
+    cat - > "$STUNNEL_CONF" <<STUNNEL_CONF
 ; Global options
 debug = debug
 foreground = no
@@ -83,21 +90,52 @@ exec = /usr/bin/rsync
 execargs = rsync --server --daemon --config=$RSYNCD_CONF .
 STUNNEL_CONF
 
-##############################
-## Print version information
-rsync --version
-stunnel -version "$STUNNEL_CONF"
+    ##############################
+    ## Print version information
+    rsync --version
+    stunnel -version "$STUNNEL_CONF"
 
-##############################
-## Tail rsync log to stdout so it shows in pod logs
-touch "$RSYNC_LOG"
-tail -f "$RSYNC_LOG" &
-TAIL_PID="$!"
+    ##############################
+    ## Tail rsync log to stdout so it shows in pod logs
+    touch "$RSYNC_LOG"
+    tail -f "$RSYNC_LOG" &
+    TAIL_PID="$!"
+
+    rm -f "$CONTROL_FILE"
+fi
+
+if test -b $BLOCK_TARGET; then
+    ##############################
+    ## block volume, use diskrsync-tcp
+
+    ##############################
+    ## Set up stunnel config
+    cat - > "$STUNNEL_CONF" <<STUNNEL_CONF
+; Global options
+debug = debug
+foreground = no
+output = /dev/stdout
+pid = $STUNNEL_PID_FILE
+syslog = no
+
+[diskrsync]
+ciphers = PSK
+PSKsecrets = $PSK_FILE
+; Port to listen for incoming connections from remote
+accept = :::$STUNNEL_LISTEN_PORT
+; We are the server
+client = no
+connect = 8888
+#exec = /diskrsync-tcp
+#execargs = diskrsync-tcp $BLOCK_TARGET --target --port 8888 --control-file $CONTROL_FILE
+STUNNEL_CONF
+fi
+
+/diskrsync-tcp $BLOCK_TARGET --target --port 8888 --control-file $CONTROL_FILE&
 
 ##############################
 ## Start stunnel to wait for incoming connections
 echo "Starting stunnel..."
-rm -f "$CONTROL_FILE"
 stunnel "$STUNNEL_CONF"
 
 ##############################
@@ -114,7 +152,9 @@ sleep 5  # Give time for the rsync connection to finish
 ## Terminate stunnel
 echo "Shutting down..."
 kill -TERM "$(<"$STUNNEL_PID_FILE")"
-kill -TERM "$TAIL_PID"
+if [[ -d $TARGET ]]; then
+    kill -TERM "$TAIL_PID"
+fi
 wait
 
 sync

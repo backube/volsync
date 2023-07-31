@@ -44,6 +44,7 @@ import (
 
 const (
 	mountPath        = "/data"
+	devicePath       = "/dev/block"
 	dataVolumeName   = "data"
 	tlsContainerPort = 8000
 )
@@ -366,6 +367,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 		job.Spec.Parallelism = &parallelism
 
 		readOnlyVolume := false
+		blockVolume := utils.PvcIsBlockMode(dataPVC)
 
 		containerEnv := []corev1.EnvVar{}
 		containerCmd := []string{"/bin/bash", "-c", "/mover-rsync-tls/server.sh"} // cmd for replicationDestination job
@@ -398,12 +400,19 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 				Privileged:             pointer.Bool(false),
 				ReadOnlyRootFilesystem: pointer.Bool(true),
 			},
-			VolumeMounts: []corev1.VolumeMount{
-				{Name: dataVolumeName, MountPath: mountPath},
-				{Name: "keys", MountPath: "/keys"},
-				{Name: "tempdir", MountPath: "/tmp"},
-			},
 		}}
+		volumeMounts := []corev1.VolumeMount{}
+		if !blockVolume {
+			volumeMounts = append(volumeMounts, corev1.VolumeMount{Name: dataVolumeName, MountPath: mountPath})
+		}
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{Name: "keys", MountPath: "/keys"},
+			corev1.VolumeMount{Name: "tempdir", MountPath: "/tmp"})
+		job.Spec.Template.Spec.Containers[0].VolumeMounts = volumeMounts
+		if blockVolume {
+			job.Spec.Template.Spec.Containers[0].VolumeDevices = []corev1.VolumeDevice{
+				{Name: dataVolumeName, DevicePath: devicePath},
+			}
+		}
 		podSpec.RestartPolicy = corev1.RestartPolicyNever
 		podSpec.SecurityContext = m.moverSecurityContext
 		podSpec.ServiceAccountName = sa.Name
