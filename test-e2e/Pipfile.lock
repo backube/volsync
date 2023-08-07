@@ -32,11 +32,11 @@
         },
         "ansible-parallel": {
             "hashes": [
-                "sha256:62b1b332a2c3e4fb4e84c19f5ae6d5b2d7691c033d520c379cebd652af21ff93",
-                "sha256:6453e2b8e5951c05d66f163aad3027f91d7b9a4da7db0eb9d065bcd3a2e9f71a"
+                "sha256:17c11398285d0711880d0ac8584ee16b25d2e80a5274b6aafa7facf99ae5853b",
+                "sha256:9eb6c201d7163afdfb886f6c2c69bf01bdfbbc6c463bae748a1c59bc4590c84f"
             ],
             "index": "pypi",
-            "version": "==2023.3.13"
+            "version": "==2023.7.26"
         },
         "cachetools": {
             "hashes": [
@@ -230,7 +230,7 @@
                 "sha256:ce785cf81a7bdade534297ef9e490ddff800d956625020ab2ec2780a556c313e",
                 "sha256:d0d651aa754ef58d75cec6edfbd21259d93810b73f6ec246436a21b7841908de"
             ],
-            "index": "pypi",
+            "markers": "python_version >= '3.7'",
             "version": "==41.0.3"
         },
         "google-auth": {
