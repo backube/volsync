@@ -1,0 +1,55 @@
+---
+
+- name: Check for required variables
+  fail: msg="Variable {{ var_check }} must be defined to use this role"
+  when: vars[var_check] is undefined
+  with_items:
+    - data
+    - pvc_name
+    - namespace
+  loop_control:
+    loop_var: var_check
+
+- name: Create Job
+  kubernetes.core.k8s:
+    state: present
+    template: job.yml.j2
+  register: res
+
+- block:
+    - name: Wait for Job to complete
+      kubernetes.core.k8s_info:
+        api_version: batch/v1
+        kind: Job
+        name: "{{ res.result.metadata.name }}"
+        namespace: "{{ namespace }}"
+      register: res2
+      until: >
+        res2.resources | length > 0 and
+        res2.resources[0].status.succeeded is defined and
+        res2.resources[0].status.succeeded==1
+      delay: 1
+      retries: "{{ timeout | default(300) }}"
+
+  always:
+    - name: Retrieve logs from Job
+      kubernetes.core.k8s_log:
+        api_version: batch/v1
+        kind: Job
+        name: "{{ res.result.metadata.name }}"
+        namespace: "{{ namespace }}"
+      register: log
+
+    - name: Dump Job log
+      debug:
+        var: log.log_lines
+
+- name: Delete Job
+  kubernetes.core.k8s:
+    state: absent
+    api_version: batch/v1
+    kind: Job
+    name: "{{ res.result.metadata.name }}"
+    namespace: "{{ namespace }}"
+    delete_options:
+      propagationPolicy: "Background"

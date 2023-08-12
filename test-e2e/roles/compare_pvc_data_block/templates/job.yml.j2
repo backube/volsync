@@ -1,0 +1,67 @@
+---
+
+kind: Job
+apiVersion: batch/v1
+metadata:
+  generateName: compare-pvcs-
+  namespace: "{{ namespace }}"
+spec:
+  completions: 1
+  parallelism: 1
+  backoffLimit: 0
+  template:
+    spec:
+      containers:
+        - name: busybox
+          image: gcr.io/distroless/static:debug
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e -o pipefail
+
+              id
+
+              # Read 50 512-byte blocks from both PVCs
+              dd if=/dev/block1 bs=512 count=50 of=/tmp/pvc1
+              dd if=/dev/block2 bs=512 count=50 of=/tmp/pvc2
+
+              echo "Validating block contents: PVC1 -> PVC2"
+              sha256sum -b /tmp/pvc1 | \
+                sed 's|pvc1|pvc2|g' | \
+                sha256sum -c
+
+              echo "Validating contents: PVC2 -> PVC1"
+              sha256sum -b /tmp/pvc2 | \
+                sed 's|pvc2|pvc1|g' | \
+                sha256sum -c
+
+              echo "... file contents matched"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: tmp
+              mountPath: "/tmp"
+          volumeDevices:
+            - name: pvc1
+              devicePath: "/dev/block1"
+            - name: pvc2
+              devicePath: "/dev/block2"
+      restartPolicy: Never
+{% if podSecurityContext is defined %}
+      securityContext: {{ podSecurityContext }}
+{% endif %}
+      terminationGracePeriodSeconds: 2
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+        - name: pvc1
+          persistentVolumeClaim:
+            claimName: "{{ pvc1_name }}"
+        - name: pvc2
+          persistentVolumeClaim:
+            claimName: "{{ pvc2_name }}"

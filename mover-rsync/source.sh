@@ -18,6 +18,12 @@ if [[ ! -d $SOURCE ]] && ! test -b $BLOCK_SOURCE; then
     exit 1
 fi
 
+VOLUME_MODE="filesystem"
+if test -b $BLOCK_SOURCE; then
+    VOLUME_MODE=block
+fi
+echo "Source PVC volumeMode is $VOLUME_MODE"
+
 mkdir -p ~/.ssh/controlmasters
 chmod 711 ~/.ssh
 

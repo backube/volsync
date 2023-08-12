@@ -1,0 +1,47 @@
+---
+
+kind: Job
+apiVersion: batch/v1
+metadata:
+  generateName: writer-
+  namespace: "{{ namespace }}"
+spec:
+  completions: 1
+  parallelism: 1
+  backoffLimit: 6
+  template:
+    spec:
+      containers:
+        - name: busybox
+          image: gcr.io/distroless/static:debug
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -x -e -o pipefail
+
+              id
+
+              ls -al /dev/block
+
+              # Using blocksize 512, writing 2 blocks - all zeros, start 48 blocks in
+              # write data (will not write anything more than 2x512 bytes)
+              echo '{{ data }}' | dd bs=512 count=2 seek=48 of=/dev/block
+              sync
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeDevices:
+            - name: pvc
+              devicePath: "/dev/block"
+      restartPolicy: Never
+{% if podSecurityContext is defined %}
+      securityContext: {{ podSecurityContext }}
+{% endif %}
+      terminationGracePeriodSeconds: 2
+      volumes:
+        - name: pvc
+          persistentVolumeClaim:
+            claimName: "{{ pvc_name }}"

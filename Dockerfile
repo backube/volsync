@@ -82,7 +82,7 @@ RUN go run build.go -no-upgrade
 FROM golang-builder AS diskrsync-builder
 
 WORKDIR /workspace/diskrsync
-RUN GOPATH=$(pwd) go install github.com/dop251/diskrsync/diskrsync@latest
+RUN GOPATH=$(pwd) go install github.com/dop251/diskrsync/diskrsync@v1.3.0
 
 ######################################################################
 # Build diskrsync-tcp binary
