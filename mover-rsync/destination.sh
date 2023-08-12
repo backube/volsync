@@ -9,6 +9,12 @@ mkdir -p ~/.ssh
 chmod 700 ~/.ssh
 echo "command=\"/mover-rsync/destination-command.sh\",restrict $(</keys/source.pub)" > ~/.ssh/authorized_keys
 
+VOLUME_MODE="filesystem"
+if test -b /dev/block; then
+    VOLUME_MODE=block
+fi
+echo "Destination PVC volumeMode is $VOLUME_MODE"
+
 # Wait for incoming rsync transfer
 echo "Waiting for connection..."
 rm -f /var/run/nologin

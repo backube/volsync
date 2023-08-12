@@ -30,6 +30,7 @@ fi
 if [[ -d $TARGET ]]; then
     ##############################
     ## Filesystem volume, use rsync
+    echo "Destination PVC volumeMode is filesystem"
 
     mkdir -p "$(dirname "$CONTROL_FILE")"
 
@@ -107,6 +108,7 @@ fi
 if test -b $BLOCK_TARGET; then
     ##############################
     ## block volume, use diskrsync-tcp
+    echo "Destination PVC volumeMode is block"
 
     ##############################
     ## Set up stunnel config
@@ -129,9 +131,9 @@ connect = 8888
 #exec = /diskrsync-tcp
 #execargs = diskrsync-tcp $BLOCK_TARGET --target --port 8888 --control-file $CONTROL_FILE
 STUNNEL_CONF
-fi
 
-/diskrsync-tcp $BLOCK_TARGET --target --port 8888 --control-file $CONTROL_FILE&
+  /diskrsync-tcp $BLOCK_TARGET --target --port 8888 --control-file $CONTROL_FILE&
+fi
 
 ##############################
 ## Start stunnel to wait for incoming connections
