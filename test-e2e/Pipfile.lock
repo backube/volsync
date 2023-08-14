@@ -230,7 +230,7 @@
                 "sha256:ce785cf81a7bdade534297ef9e490ddff800d956625020ab2ec2780a556c313e",
                 "sha256:d0d651aa754ef58d75cec6edfbd21259d93810b73f6ec246436a21b7841908de"
             ],
-            "index": "pypi",
+            "markers": "python_version >= '3.7'",
             "version": "==41.0.3"
         },
         "google-auth": {
@@ -291,11 +291,11 @@
         },
         "kubernetes": {
             "hashes": [
-                "sha256:5854b0c508e8d217ca205591384ab58389abdae608576f9c9afc35a3c76a366c",
-                "sha256:e3db6800abf7e36c38d2629b5cb6b74d10988ee0cba6fba45595a7cbe60c0042"
+                "sha256:0f9376329c85cf07615ed6886bf9bf21eb1cbfc05e14ec7b0f74ed8153cd2815",
+                "sha256:d479931c6f37561dbfdf28fc5f46384b1cb8b28f9db344ed4a232ce91990825a"
             ],
             "index": "pypi",
-            "version": "==26.1.0"
+            "version": "==27.2.0"
         },
         "markupsafe": {
             "hashes": [
@@ -476,14 +476,6 @@
             ],
             "markers": "python_version >= '3.6' and python_version < '4'",
             "version": "==4.9"
-        },
-        "setuptools": {
-            "hashes": [
-                "sha256:11e52c67415a381d10d6b462ced9cfb97066179f0e871399e006c4ab101fc85f",
-                "sha256:baf1fdb41c6da4cd2eae722e135500da913332ab3f2f5c7d33af9b492acb5235"
-            ],
-            "markers": "python_version >= '3.7'",
-            "version": "==68.0.0"
         },
         "six": {
             "hashes": [
