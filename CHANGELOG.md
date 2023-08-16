@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Syncthing upgraded to v1.23.5
+- Syncthing upgraded to v1.23.7
 - Restic upgraded to v0.15.2
 - Rclone upgraded to v1.63.1
 
