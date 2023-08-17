@@ -242,9 +242,13 @@ Once the restore is complete, the ``.status.lastManualSync`` field will match
 To verify restore, deploy the MySQL database to the ``dest`` namespace which will use the data that has
 been restored from sourcePVC backup.
 
+Create the Deployment, Service, and Secret.
+
 .. code-block:: console
 
-   $ kubectl create -n dest -f examples/destination-database/
+   $ kubectl create -n dest -f examples/destination-database/mysql-secret.yaml
+   $ kubectl create -n dest -f examples/destination-database/mysql-deployment.yaml
+   $ kubectl create -n dest -f examples/destination-database/mysql-service.yaml
 
 Validate that the mysql pod is running within the environment.
 

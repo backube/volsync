@@ -6,10 +6,10 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  dataSource:
-    kind: VolumeSnapshot
-    apiGroup: snapshot.storage.k8s.io
-    name: snapshotToReplace
+  dataSourceRef:
+    kind: ReplicationDestination
+    apiGroup: volsync.backube
+    name: database-destination  # Name of the ReplicationDestination
   resources:
     requests:
       storage: 2Gi

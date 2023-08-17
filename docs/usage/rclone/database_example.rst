@@ -88,20 +88,14 @@ destination side. At the end of the each successful iteration, the ``Replication
 updated with the latest snapshot image.
 
 Now deploy the MySQL database to the ``dest`` namespace which will use the data that has been replicated.
-First we need to identify the latest snapshot from the ``ReplicationDestination`` object. Record the values of
-the latest snapshot as it will be used to create a pvc. Then create the Deployment, Service, PVC,
-and Secret.
 
-Ensure that the next synchronization cycle does not start while the following
-steps are being completed or VolSync may replace the existing snapshot with a
-new one before the database starts.
+The PVC uses the VolSync volume populator feature and sets the ReplicationDestination
+as its dataSourceRef. This will populate the PVC with the latest snapshot contents from the ReplicationDestination.
+
+Create the Deployment, Service, PVC, and Secret.
 
 .. code:: console
 
-   # Get the latest snapshot name
-   $ kubectl get replicationdestination database-destination -n dest --template={{.status.latestImage.name}}
-   # Substitute that name into the database PVC template
-   $ sed -i 's/snapshotToReplace/volsync-dest-database-destination-20201203174504/g' examples/destination-database/mysql-pvc.yaml
    # Start the database
    $ kubectl create -n dest -f examples/destination-database/
 

@@ -21,7 +21,7 @@ ReplicationDestination resource.
     enabled by default as of v1.24.
 
 When replicating or restoring a PVC via a ReplicationDestination using a VolumeSnapshot,
-the end result is a VolumeSnapshot that contains the latestImage from the last successful syncrhonization.
+the end result is a VolumeSnapshot that contains the latestImage from the last successful synchronization.
 Previously to create a PVC with the synchronized data, you needed to create a PVC with a dataSourceRef that points to
 the VolumeSnapshot created by the ReplicationDestination.
 The VolSync volume populator means you can instead point the dataSourceRef of a PVC to the VolSync
@@ -72,9 +72,8 @@ Here's an example of a ReplicationDestination.
         kind: VolumeSnapshot
         name: volsync-rclone-replicationdestination-dest-20230813072935
 
-Now a PVC can be created that uses this ReplicationDestination.
-
-Here's an example PVC that will populate the volume from the snapshot created by the ReplicationDestination.
+Now a PVC can be created that uses this ReplicationDestination. This PVC will be populated with the contents of the
+VolumeSnapshot indicated in the ``status.latestImage`` of the ReplicationDestination.
 
 .. code-block:: yaml
     :caption: PVC object

@@ -113,14 +113,14 @@ lines:
 
    Status:
      Conditions:
-       Last Transition Time:  2020-12-03T16:07:35Z
+       Last Transition Time:  2023-08-03T16:07:35Z
        Message:               Reconcile complete
        Reason:                ReconcileComplete
        Status:                True
        Type:                  Reconciled
      Last Sync Duration:      4.511334577s
-     Last Sync Time:          2020-12-03T16:09:04Z
-     Next Sync Time:          2020-12-03T16:10:00Z
+     Last Sync Time:          2023-08-03T16:09:04Z
+     Next Sync Time:          2023-08-03T16:10:00Z
 
 We will modify the source database by creating an additional database in the
 mysql pod running in the source namespace.
@@ -151,18 +151,22 @@ the destination.
 Now the mysql database will be deployed to the destination namespace which will use the
 data that has been replicated.
 
-First we need to identify the latest snapshot from the ReplicationDestination
-object. Record the values of the latest snapshot as it will be used to create a
-pvc. Then create the Deployment, Service, PVC, and Secret. Ensure that the above
-steps are completed before a new replication cycle starts or the latest snapshot
-may be replaced before it can be used.
+First we need to wait for the next synchronization iteration to complete so the
+changes made above to add a new database will be replicated to the destination.
 
 .. code:: console
 
-   $ kubectl get replicationdestination database-destination -n dest --template={{.status.latestImage.name}}
-   volsync-dest-database-destination-20201203174504
+   $ kubectl get replicationdestination database-destination -n dest --template={{.status.lastSyncTime}}
+   2023-08-03T16:29:01Z
 
-   $ sed -i 's/snapshotToReplace/volsync-dest-database-destination-20201203174504/g' examples/destination-database/mysql-pvc.yaml
+When the above has been updated to a newer time as in the example above, then we can proceed to create the
+Deployment, Service, PVC, and Secret.
+
+The PVC uses the VolSync volume populator feature and sets the ReplicationDestination
+as its dataSourceRef. This will populate the PVC with the latest snapshot contents from the ReplicationDestination.
+
+.. code:: console
+
    $ kubectl create -n dest -f examples/destination-database/
 
 Validate that the mysql pod is running within the environment.
