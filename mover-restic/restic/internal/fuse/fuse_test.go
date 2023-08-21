@@ -73,7 +73,7 @@ func TestFuseFile(t *testing.T) {
 
 	timestamp, err := time.Parse(time.RFC3339, "2017-01-24T10:42:56+01:00")
 	rtest.OK(t, err)
-	restic.TestCreateSnapshot(t, repo, timestamp, 2, 0.1)
+	restic.TestCreateSnapshot(t, repo, timestamp, 2)
 
 	sn := loadFirstSnapshot(t, repo)
 	tree := loadTree(t, repo, *sn.Tree)
@@ -180,7 +180,7 @@ func TestFuseDir(t *testing.T) {
 // Test top-level directories for their UID and GID.
 func TestTopUIDGID(t *testing.T) {
 	repo := repository.TestRepository(t)
-	restic.TestCreateSnapshot(t, repo, time.Unix(1460289341, 207401672), 0, 0)
+	restic.TestCreateSnapshot(t, repo, time.Unix(1460289341, 207401672), 0)
 
 	testTopUIDGID(t, Config{}, repo, uint32(os.Getuid()), uint32(os.Getgid()))
 	testTopUIDGID(t, Config{OwnerIsRoot: true}, repo, 0, 0)
@@ -269,6 +269,31 @@ func TestInodeFromNode(t *testing.T) {
 	inoAbb := inodeFromNode(inoAb, abb)
 	rtest.Assert(t, inoA != inoAb, "inode(a/b) = inode(a)")
 	rtest.Assert(t, inoA != inoAbb, "inode(a/b/b) = inode(a)")
+}
+
+func TestLink(t *testing.T) {
+	node := &restic.Node{Name: "foo.txt", Type: "symlink", Links: 1, LinkTarget: "dst", ExtendedAttributes: []restic.ExtendedAttribute{
+		{Name: "foo", Value: []byte("bar")},
+	}}
+
+	lnk, err := newLink(&Root{}, 42, node)
+	rtest.OK(t, err)
+	target, err := lnk.Readlink(context.TODO(), nil)
+	rtest.OK(t, err)
+	rtest.Equals(t, node.LinkTarget, target)
+
+	exp := &fuse.ListxattrResponse{}
+	exp.Append("foo")
+	resp := &fuse.ListxattrResponse{}
+	rtest.OK(t, lnk.Listxattr(context.TODO(), &fuse.ListxattrRequest{}, resp))
+	rtest.Equals(t, exp.Xattr, resp.Xattr)
+
+	getResp := &fuse.GetxattrResponse{}
+	rtest.OK(t, lnk.Getxattr(context.TODO(), &fuse.GetxattrRequest{Name: "foo"}, getResp))
+	rtest.Equals(t, node.ExtendedAttributes[0].Value, getResp.Xattr)
+
+	err = lnk.Getxattr(context.TODO(), &fuse.GetxattrRequest{Name: "invalid"}, nil)
+	rtest.Assert(t, err != nil, "missing error on reading invalid xattr")
 }
 
 var sink uint64

@@ -90,7 +90,7 @@ command and enter the same password twice:
    data from a CIFS share is not recommended due to compatibility issues in
    older Linux kernels. Either use another backend or set the environment
    variable `GODEBUG` to `asyncpreemptoff=1`. Refer to GitHub issue
-   `#2659 <https://github.com/restic/restic/issues/2659>`_ for further explanations.
+   :issue:`2659` for further explanations.
 
 SFTP
 ****
@@ -273,7 +273,7 @@ For an S3-compatible server that is not Amazon (like Minio, see below),
 or is only available via HTTP, you can specify the URL to the server
 like this: ``s3:http://server:port/bucket_name``.
           
-.. note:: restic expects `path-style URLs <https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingBucket.html#access-bucket-intro>`__
+.. note:: restic expects `path-style URLs <https://docs.aws.amazon.com/AmazonS3/latest/userguide/access-bucket-intro.html>`__
           like for example ``s3.us-west-2.amazonaws.com/bucket_name``.
           Virtual-hosted–style URLs like ``bucket_name.s3.us-west-2.amazonaws.com``,
           where the bucket name is part of the hostname are not supported. These must
@@ -290,12 +290,11 @@ like this: ``s3:http://server:port/bucket_name``.
 Minio Server
 ************
 
-`Minio <https://www.minio.io>`__ is an Open Source Object Storage,
+`Minio <https://min.io/>`__ is an Open Source Object Storage,
 written in Go and compatible with Amazon S3 API.
 
--  Download and Install `Minio
-   Server <https://minio.io/downloads/#minio-server>`__.
--  You can also refer to https://docs.minio.io for step by step guidance
+-  Download and Install `Minio Download <https://min.io/download#/linux>`__.
+-  You can also refer to `Minio Docs <https://min.io/docs/minio/linux/>`__ for step by step guidance
    on installation and getting started on Minio Client and Minio Server.
 
 You must first setup the following environment variables with the
@@ -350,7 +349,7 @@ this command.
 Alibaba Cloud (Aliyun) Object Storage System (OSS)
 **************************************************
 
-`Alibaba OSS <https://www.alibabacloud.com/product/oss/>`__ is an
+`Alibaba OSS <https://www.alibabacloud.com/product/object-storage-service>`__ is an
 encrypted, secure, cost-effective, and easy-to-use object storage
 service that enables you to store, back up, and archive large amounts
 of data in the cloud.
@@ -358,7 +357,7 @@ of data in the cloud.
 Alibaba OSS is S3 compatible so it can be used as a storage provider
 for a restic repository with a couple of extra parameters.
 
--  Determine the correct `Alibaba OSS region endpoint <https://www.alibabacloud.com/help/doc-detail/31837.htm>`__ - this will be something like ``oss-eu-west-1.aliyuncs.com``
+-  Determine the correct `Alibaba OSS region endpoint <https://www.alibabacloud.com/help/en/object-storage-service/latest/regions-and-endpoints>`__ - this will be something like ``oss-eu-west-1.aliyuncs.com``
 -  You'll need the region name too - this will be something like ``oss-eu-west-1``
 
 You must first setup the following environment variables with the
@@ -441,7 +440,7 @@ the naming convention of those variables follows the official Python Swift clien
 
 
 Restic should be compatible with an `OpenStack RC file
-<https://docs.openstack.org/user-guide/common/cli-set-environment-variables-using-openstack-rc.html>`__
+<https://docs.openstack.org/ocata/admin-guide/common/cli-set-environment-variables-using-openstack-rc.html>`__
 in most cases.
 
 Once environment variables are set up, a new repository can be created. The
@@ -524,19 +523,30 @@ Microsoft Azure Blob Storage
 ****************************
 
 You can also store backups on Microsoft Azure Blob Storage. Export the Azure
-Blob Storage account name and key as follows:
+Blob Storage account name:
 
 .. code-block:: console
 
     $ export AZURE_ACCOUNT_NAME=<ACCOUNT_NAME>
+
+For authentication export one of the following variables:
+
+.. code-block:: console
+
+    # For storage account key
     $ export AZURE_ACCOUNT_KEY=<SECRET_KEY>
+    # For SAS
+    $ export AZURE_ACCOUNT_SAS=<SAS_TOKEN>
 
-or
+Alternatively, if run on Azure, restic will automatically uses service accounts configured
+via the standard environment variables or Workload / Managed Identities.
+
+Restic will by default use Azure's global domain ``core.windows.net`` as endpoint suffix.
+You can specify other suffixes as follows:
 
 .. code-block:: console
 
-    $ export AZURE_ACCOUNT_NAME=<ACCOUNT_NAME>
-    $ export AZURE_ACCOUNT_SAS=<SAS_TOKEN>
+    $ export AZURE_ENDPOINT_SUFFIX=<ENDPOINT_SUFFIX>
 
 Afterwards you can initialize a repository in a container called ``foo`` in the
 root path like this:
@@ -614,9 +624,11 @@ The number of concurrent connections to the GCS service can be set with the
 ``-o gs.connections=10`` switch. By default, at most five parallel connections are
 established.
 
-.. _service account: https://cloud.google.com/iam/docs/service-accounts
-.. _create a service account key: https://cloud.google.com/iam/docs/creating-managing-service-account-keys#iam-service-account-keys-create-console
-.. _default authentication material: https://cloud.google.com/docs/authentication/production
+The region, where a bucket should be created, can be specified with the ``-o gs.region=us`` switch. By default, the region is set to ``us``.
+
+.. _service account: https://cloud.google.com/iam/docs/service-account-overview
+.. _create a service account key: https://cloud.google.com/iam/docs/keys-create-delete
+.. _default authentication material: https://cloud.google.com/docs/authentication#service-accounts
 
 .. _other-services:
 
@@ -748,7 +760,7 @@ Password prompt on Windows
 
 At the moment, restic only supports the default Windows console
 interaction. If you use emulation environments like
-`MSYS2 <https://msys2.github.io/>`__ or
+`MSYS2 <https://www.msys2.org/>`__ or
 `Cygwin <https://www.cygwin.com/>`__, which use terminals like
 ``Mintty`` or ``rxvt``, you may get a password error.
 

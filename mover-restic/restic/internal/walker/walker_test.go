@@ -14,7 +14,9 @@ import (
 type TestTree map[string]interface{}
 
 // TestNode is used to test the walker.
-type TestFile struct{}
+type TestFile struct {
+	Size uint64
+}
 
 func BuildTreeMap(tree TestTree) (m TreeMap, root restic.ID) {
 	m = TreeMap{}
@@ -37,6 +39,7 @@ func buildTreeMap(tree TestTree, m TreeMap) restic.ID {
 			err := tb.AddNode(&restic.Node{
 				Name: name,
 				Type: "file",
+				Size: elem.Size,
 			})
 			if err != nil {
 				panic(err)
@@ -73,7 +76,7 @@ func buildTreeMap(tree TestTree, m TreeMap) restic.ID {
 // TreeMap returns the trees from the map on LoadTree.
 type TreeMap map[restic.ID][]byte
 
-func (t TreeMap) LoadBlob(ctx context.Context, tpe restic.BlobType, id restic.ID, buf []byte) ([]byte, error) {
+func (t TreeMap) LoadBlob(_ context.Context, tpe restic.BlobType, id restic.ID, _ []byte) ([]byte, error) {
 	if tpe != restic.TreeBlob {
 		return nil, errors.New("can only load trees")
 	}

@@ -36,7 +36,7 @@ type SnapshotOptions struct {
 	Compact bool
 	Last    bool // This option should be removed in favour of Latest.
 	Latest  int
-	GroupBy string
+	GroupBy restic.SnapshotGroupByOptions
 }
 
 var snapshotOptions SnapshotOptions
@@ -54,7 +54,7 @@ func init() {
 		panic(err)
 	}
 	f.IntVar(&snapshotOptions.Latest, "latest", 0, "only show the last `n` snapshots for each host and path")
-	f.StringVarP(&snapshotOptions.GroupBy, "group-by", "g", "", "`group` snapshots by host, paths and/or tags, separated by comma")
+	f.VarP(&snapshotOptions.GroupBy, "group-by", "g", "`group` snapshots by host, paths and/or tags, separated by comma")
 }
 
 func runSnapshots(ctx context.Context, opts SnapshotOptions, gopts GlobalOptions, args []string) error {
@@ -65,7 +65,7 @@ func runSnapshots(ctx context.Context, opts SnapshotOptions, gopts GlobalOptions
 
 	if !gopts.NoLock {
 		var lock *restic.Lock
-		lock, ctx, err = lockRepo(ctx, repo)
+		lock, ctx, err = lockRepo(ctx, repo, gopts.RetryLock, gopts.JSON)
 		defer unlockRepo(lock)
 		if err != nil {
 			return err
@@ -94,7 +94,7 @@ func runSnapshots(ctx context.Context, opts SnapshotOptions, gopts GlobalOptions
 	}
 
 	if gopts.JSON {
-		err := printSnapshotGroupJSON(gopts.stdout, snapshotGroups, grouped)
+		err := printSnapshotGroupJSON(globalOptions.stdout, snapshotGroups, grouped)
 		if err != nil {
 			Warnf("error printing snapshots: %v\n", err)
 		}
@@ -103,13 +103,13 @@ func runSnapshots(ctx context.Context, opts SnapshotOptions, gopts GlobalOptions
 
 	for k, list := range snapshotGroups {
 		if grouped {
-			err := PrintSnapshotGroupHeader(gopts.stdout, k)
+			err := PrintSnapshotGroupHeader(globalOptions.stdout, k)
 			if err != nil {
 				Warnf("error printing snapshots: %v\n", err)
 				return nil
 			}
 		}
-		PrintSnapshots(gopts.stdout, list, nil, opts.Compact)
+		PrintSnapshots(globalOptions.stdout, list, nil, opts.Compact)
 	}
 
 	return nil

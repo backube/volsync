@@ -12,7 +12,7 @@ type saver struct {
 	fn func(restic.FileType, []byte) (restic.ID, error)
 }
 
-func (s saver) SaveUnpacked(ctx context.Context, t restic.FileType, buf []byte) (restic.ID, error) {
+func (s saver) SaveUnpacked(_ context.Context, t restic.FileType, buf []byte) (restic.ID, error) {
 	return s.fn(t, buf)
 }
 
@@ -21,11 +21,11 @@ func (s saver) Connections() uint {
 }
 
 type loader struct {
-	fn func(restic.FileType, restic.ID, []byte) ([]byte, error)
+	fn func(restic.FileType, restic.ID) ([]byte, error)
 }
 
-func (l loader) LoadUnpacked(ctx context.Context, t restic.FileType, id restic.ID, buf []byte) (data []byte, err error) {
-	return l.fn(t, id, buf)
+func (l loader) LoadUnpacked(_ context.Context, t restic.FileType, id restic.ID) (data []byte, err error) {
+	return l.fn(t, id)
 }
 
 func (l loader) Connections() uint {
@@ -49,7 +49,7 @@ func TestConfig(t *testing.T) {
 	err = restic.SaveConfig(context.TODO(), saver{save}, cfg1)
 	rtest.OK(t, err)
 
-	load := func(tpe restic.FileType, id restic.ID, in []byte) ([]byte, error) {
+	load := func(tpe restic.FileType, id restic.ID) ([]byte, error) {
 		rtest.Assert(t, tpe == restic.ConfigFile,
 			"wrong backend type: got %v, wanted %v",
 			tpe, restic.ConfigFile)

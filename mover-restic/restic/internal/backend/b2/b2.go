@@ -11,12 +11,11 @@ import (
 
 	"github.com/restic/restic/internal/backend"
 	"github.com/restic/restic/internal/backend/layout"
-	"github.com/restic/restic/internal/backend/sema"
+	"github.com/restic/restic/internal/backend/location"
 	"github.com/restic/restic/internal/debug"
 	"github.com/restic/restic/internal/errors"
 	"github.com/restic/restic/internal/restic"
 
-	"github.com/cenkalti/backoff/v4"
 	"github.com/kurin/blazer/b2"
 	"github.com/kurin/blazer/base"
 )
@@ -28,7 +27,6 @@ type b2Backend struct {
 	cfg          Config
 	listMaxItems int
 	layout.Layout
-	sem sema.Semaphore
 
 	canDelete bool
 }
@@ -38,6 +36,10 @@ const defaultListMaxItems = 10 * 1000
 
 // ensure statically that *b2Backend implements restic.Backend.
 var _ restic.Backend = &b2Backend{}
+
+func NewFactory() location.Factory {
+	return location.NewHTTPBackendFactory("b2", ParseConfig, location.NoPassword, Create, Open)
+}
 
 type sniffingRoundTripper struct {
 	sync.Mutex
@@ -56,6 +58,13 @@ func (s *sniffingRoundTripper) RoundTrip(req *http.Request) (*http.Response, err
 }
 
 func newClient(ctx context.Context, cfg Config, rt http.RoundTripper) (*b2.Client, error) {
+	if cfg.AccountID == "" {
+		return nil, errors.Fatalf("unable to open B2 backend: Account ID ($B2_ACCOUNT_ID) is empty")
+	}
+	if cfg.Key.String() == "" {
+		return nil, errors.Fatalf("unable to open B2 backend: Key ($B2_ACCOUNT_KEY) is empty")
+	}
+
 	sniffer := &sniffingRoundTripper{RoundTripper: rt}
 	opts := []b2.ClientOption{b2.Transport(sniffer)}
 
@@ -92,11 +101,6 @@ func Open(ctx context.Context, cfg Config, rt http.RoundTripper) (restic.Backend
 		return nil, errors.Wrap(err, "Bucket")
 	}
 
-	sem, err := sema.New(cfg.Connections)
-	if err != nil {
-		return nil, err
-	}
-
 	be := &b2Backend{
 		client: client,
 		bucket: bucket,
@@ -106,7 +110,6 @@ func Open(ctx context.Context, cfg Config, rt http.RoundTripper) (restic.Backend
 			Path: cfg.Prefix,
 		},
 		listMaxItems: defaultListMaxItems,
-		sem:          sem,
 		canDelete:    true,
 	}
 
@@ -134,11 +137,6 @@ func Create(ctx context.Context, cfg Config, rt http.RoundTripper) (restic.Backe
 		return nil, errors.Wrap(err, "NewBucket")
 	}
 
-	sem, err := sema.New(cfg.Connections)
-	if err != nil {
-		return nil, err
-	}
-
 	be := &b2Backend{
 		client: client,
 		bucket: bucket,
@@ -148,18 +146,7 @@ func Create(ctx context.Context, cfg Config, rt http.RoundTripper) (restic.Backe
 			Path: cfg.Prefix,
 		},
 		listMaxItems: defaultListMaxItems,
-		sem:          sem,
 	}
-
-	_, err = be.Stat(ctx, restic.Handle{Type: restic.ConfigFile})
-	if err != nil && !be.IsNotExist(err) {
-		return nil, err
-	}
-
-	if err == nil {
-		return nil, errors.New("config already exists")
-	}
-
 	return be, nil
 }
 
@@ -202,33 +189,18 @@ func (be *b2Backend) IsNotExist(err error) bool {
 // Load runs fn with a reader that yields the contents of the file at h at the
 // given offset.
 func (be *b2Backend) Load(ctx context.Context, h restic.Handle, length int, offset int64, fn func(rd io.Reader) error) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	return backend.DefaultLoad(ctx, h, length, offset, be.openReader, fn)
 }
 
 func (be *b2Backend) openReader(ctx context.Context, h restic.Handle, length int, offset int64) (io.ReadCloser, error) {
-	debug.Log("Load %v, length %v, offset %v from %v", h, length, offset, be.Filename(h))
-	if err := h.Valid(); err != nil {
-		return nil, backoff.Permanent(err)
-	}
-
-	if offset < 0 {
-		return nil, errors.New("offset is negative")
-	}
-
-	if length < 0 {
-		return nil, errors.Errorf("invalid length %d", length)
-	}
-
-	ctx, cancel := context.WithCancel(ctx)
-
-	be.sem.GetToken()
-
 	name := be.Layout.Filename(h)
 	obj := be.bucket.Object(name)
 
 	if offset == 0 && length == 0 {
-		rd := obj.NewReader(ctx)
-		return be.sem.ReleaseTokenOnClose(rd, cancel), nil
+		return obj.NewReader(ctx), nil
 	}
 
 	// pass a negative length to NewRangeReader so that the remainder of the
@@ -237,8 +209,7 @@ func (be *b2Backend) openReader(ctx context.Context, h restic.Handle, length int
 		length = -1
 	}
 
-	rd := obj.NewRangeReader(ctx, offset, int64(length))
-	return be.sem.ReleaseTokenOnClose(rd, cancel), nil
+	return obj.NewRangeReader(ctx, offset, int64(length)), nil
 }
 
 // Save stores data in the backend at the handle.
@@ -246,21 +217,12 @@ func (be *b2Backend) Save(ctx context.Context, h restic.Handle, rd restic.Rewind
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	if err := h.Valid(); err != nil {
-		return backoff.Permanent(err)
-	}
-
-	be.sem.GetToken()
-	defer be.sem.ReleaseToken()
-
 	name := be.Filename(h)
-	debug.Log("Save %v, name %v", h, name)
 	obj := be.bucket.Object(name)
 
 	// b2 always requires sha1 checksums for uploaded file parts
 	w := obj.NewWriter(ctx)
 	n, err := io.Copy(w, rd)
-	debug.Log("  saved %d bytes, err %v", n, err)
 
 	if err != nil {
 		_ = w.Close()
@@ -276,16 +238,10 @@ func (be *b2Backend) Save(ctx context.Context, h restic.Handle, rd restic.Rewind
 
 // Stat returns information about a blob.
 func (be *b2Backend) Stat(ctx context.Context, h restic.Handle) (bi restic.FileInfo, err error) {
-	debug.Log("Stat %v", h)
-
-	be.sem.GetToken()
-	defer be.sem.ReleaseToken()
-
 	name := be.Filename(h)
 	obj := be.bucket.Object(name)
 	info, err := obj.Attrs(ctx)
 	if err != nil {
-		debug.Log("Attrs() err %v", err)
 		return restic.FileInfo{}, errors.Wrap(err, "Stat")
 	}
 	return restic.FileInfo{Size: info.Size, Name: h.Name}, nil
@@ -293,11 +249,6 @@ func (be *b2Backend) Stat(ctx context.Context, h restic.Handle) (bi restic.FileI
 
 // Remove removes the blob with the given name and type.
 func (be *b2Backend) Remove(ctx context.Context, h restic.Handle) error {
-	debug.Log("Remove %v", h)
-
-	be.sem.GetToken()
-	defer be.sem.ReleaseToken()
-
 	// the retry backend will also repeat the remove method up to 10 times
 	for i := 0; i < 3; i++ {
 		obj := be.bucket.Object(be.Filename(h))
@@ -332,22 +283,13 @@ func (be *b2Backend) Remove(ctx context.Context, h restic.Handle) error {
 	return errors.New("failed to delete all file versions")
 }
 
-type semLocker struct {
-	sema.Semaphore
-}
-
-func (sm *semLocker) Lock()   { sm.GetToken() }
-func (sm *semLocker) Unlock() { sm.ReleaseToken() }
-
 // List returns a channel that yields all names of blobs of type t.
 func (be *b2Backend) List(ctx context.Context, t restic.FileType, fn func(restic.FileInfo) error) error {
-	debug.Log("List %v", t)
-
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	prefix, _ := be.Basedir(t)
-	iter := be.bucket.List(ctx, b2.ListPrefix(prefix), b2.ListPageSize(be.listMaxItems), b2.ListLocker(&semLocker{be.sem}))
+	iter := be.bucket.List(ctx, b2.ListPrefix(prefix), b2.ListPageSize(be.listMaxItems))
 
 	for iter.Next() {
 		obj := iter.Object()
@@ -366,42 +308,12 @@ func (be *b2Backend) List(ctx context.Context, t restic.FileType, fn func(restic
 			return err
 		}
 	}
-	if err := iter.Err(); err != nil {
-		debug.Log("List: %v", err)
-		return err
-	}
-	return nil
-}
-
-// Remove keys for a specified backend type.
-func (be *b2Backend) removeKeys(ctx context.Context, t restic.FileType) error {
-	debug.Log("removeKeys %v", t)
-	return be.List(ctx, t, func(fi restic.FileInfo) error {
-		return be.Remove(ctx, restic.Handle{Type: t, Name: fi.Name})
-	})
+	return iter.Err()
 }
 
 // Delete removes all restic keys in the bucket. It will not remove the bucket itself.
 func (be *b2Backend) Delete(ctx context.Context) error {
-	alltypes := []restic.FileType{
-		restic.PackFile,
-		restic.KeyFile,
-		restic.LockFile,
-		restic.SnapshotFile,
-		restic.IndexFile}
-
-	for _, t := range alltypes {
-		err := be.removeKeys(ctx, t)
-		if err != nil {
-			return nil
-		}
-	}
-	err := be.Remove(ctx, restic.Handle{Type: restic.ConfigFile})
-	if err != nil && be.IsNotExist(err) {
-		err = nil
-	}
-
-	return err
+	return backend.DefaultDelete(ctx, be)
 }
 
 // Close does nothing

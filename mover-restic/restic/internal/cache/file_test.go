@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/restic/restic/internal/errors"
+	"github.com/restic/restic/internal/fs"
 	"github.com/restic/restic/internal/restic"
 	"github.com/restic/restic/internal/test"
 
@@ -265,4 +266,20 @@ func TestFileSaveConcurrent(t *testing.T) {
 	test.OK(t, g.Wait())
 	saved := load(t, c, h)
 	test.Equals(t, data, saved)
+}
+
+func TestFileSaveAfterDamage(t *testing.T) {
+	c := TestNewCache(t)
+	test.OK(t, fs.RemoveAll(c.path))
+
+	// save a few bytes of data in the cache
+	data := test.Random(123456789, 42)
+	id := restic.Hash(data)
+	h := restic.Handle{
+		Type: restic.PackFile,
+		Name: id.String(),
+	}
+	if err := c.Save(h, bytes.NewReader(data)); err == nil {
+		t.Fatal("Missing error when saving to deleted cache directory")
+	}
 }

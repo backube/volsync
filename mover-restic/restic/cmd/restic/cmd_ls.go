@@ -50,7 +50,8 @@ Exit status is 0 if the command was successful, and non-zero if there was any er
 type LsOptions struct {
 	ListLong bool
 	restic.SnapshotFilter
-	Recursive bool
+	Recursive     bool
+	HumanReadable bool
 }
 
 var lsOptions LsOptions
@@ -62,6 +63,7 @@ func init() {
 	initSingleSnapshotFilter(flags, &lsOptions.SnapshotFilter)
 	flags.BoolVarP(&lsOptions.ListLong, "long", "l", false, "use a long listing format showing size and mode")
 	flags.BoolVar(&lsOptions.Recursive, "recursive", false, "include files in subfolders of the listed directories")
+	flags.BoolVar(&lsOptions.HumanReadable, "human-readable", false, "print sizes in human readable format")
 }
 
 type lsSnapshot struct {
@@ -181,7 +183,7 @@ func runLs(ctx context.Context, opts LsOptions, gopts GlobalOptions, args []stri
 	)
 
 	if gopts.JSON {
-		enc := json.NewEncoder(gopts.stdout)
+		enc := json.NewEncoder(globalOptions.stdout)
 
 		printSnapshot = func(sn *restic.Snapshot) {
 			err := enc.Encode(lsSnapshot{
@@ -206,15 +208,20 @@ func runLs(ctx context.Context, opts LsOptions, gopts GlobalOptions, args []stri
 			Verbosef("snapshot %s of %v filtered by %v at %s):\n", sn.ID().Str(), sn.Paths, dirs, sn.Time)
 		}
 		printNode = func(path string, node *restic.Node) {
-			Printf("%s\n", formatNode(path, node, lsOptions.ListLong))
+			Printf("%s\n", formatNode(path, node, lsOptions.ListLong, lsOptions.HumanReadable))
 		}
 	}
 
-	sn, err := (&restic.SnapshotFilter{
+	sn, subfolder, err := (&restic.SnapshotFilter{
 		Hosts: opts.Hosts,
 		Paths: opts.Paths,
 		Tags:  opts.Tags,
 	}).FindLatest(ctx, snapshotLister, repo, args[0])
+	if err != nil {
+		return err
+	}
+
+	sn.Tree, err = restic.FindTreeDirectory(ctx, repo, sn.Tree, subfolder)
 	if err != nil {
 		return err
 	}

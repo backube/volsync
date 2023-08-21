@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"runtime"
 	"testing"
 	"time"
 
@@ -323,16 +324,27 @@ func BenchmarkMasterIndexEach(b *testing.B) {
 	}
 }
 
+func BenchmarkMasterIndexGC(b *testing.B) {
+	mIdx, _ := createRandomMasterIndex(b, rand.New(rand.NewSource(0)), 100, 10000)
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		runtime.GC()
+	}
+	runtime.KeepAlive(mIdx)
+}
+
 var (
 	snapshotTime = time.Unix(1470492820, 207401672)
 	depth        = 3
 )
 
-func createFilledRepo(t testing.TB, snapshots int, dup float32, version uint) restic.Repository {
+func createFilledRepo(t testing.TB, snapshots int, version uint) restic.Repository {
 	repo := repository.TestRepositoryWithVersion(t, version)
 
-	for i := 0; i < 3; i++ {
-		restic.TestCreateSnapshot(t, repo, snapshotTime.Add(time.Duration(i)*time.Second), depth, dup)
+	for i := 0; i < snapshots; i++ {
+		restic.TestCreateSnapshot(t, repo, snapshotTime.Add(time.Duration(i)*time.Second), depth)
 	}
 	return repo
 }
@@ -342,7 +354,7 @@ func TestIndexSave(t *testing.T) {
 }
 
 func testIndexSave(t *testing.T, version uint) {
-	repo := createFilledRepo(t, 3, 0, version)
+	repo := createFilledRepo(t, 3, version)
 
 	err := repo.LoadIndex(context.TODO())
 	if err != nil {

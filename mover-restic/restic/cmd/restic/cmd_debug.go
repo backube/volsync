@@ -156,7 +156,7 @@ func runDebugDump(ctx context.Context, gopts GlobalOptions, args []string) error
 
 	if !gopts.NoLock {
 		var lock *restic.Lock
-		lock, ctx, err = lockRepo(ctx, repo)
+		lock, ctx, err = lockRepo(ctx, repo, gopts.RetryLock, gopts.JSON)
 		defer unlockRepo(lock)
 		if err != nil {
 			return err
@@ -167,20 +167,20 @@ func runDebugDump(ctx context.Context, gopts GlobalOptions, args []string) error
 
 	switch tpe {
 	case "indexes":
-		return dumpIndexes(ctx, repo, gopts.stdout)
+		return dumpIndexes(ctx, repo, globalOptions.stdout)
 	case "snapshots":
-		return debugPrintSnapshots(ctx, repo, gopts.stdout)
+		return debugPrintSnapshots(ctx, repo, globalOptions.stdout)
 	case "packs":
-		return printPacks(ctx, repo, gopts.stdout)
+		return printPacks(ctx, repo, globalOptions.stdout)
 	case "all":
 		Printf("snapshots:\n")
-		err := debugPrintSnapshots(ctx, repo, gopts.stdout)
+		err := debugPrintSnapshots(ctx, repo, globalOptions.stdout)
 		if err != nil {
 			return err
 		}
 
 		Printf("\nindexes:\n")
-		err = dumpIndexes(ctx, repo, gopts.stdout)
+		err = dumpIndexes(ctx, repo, globalOptions.stdout)
 		if err != nil {
 			return err
 		}
@@ -462,7 +462,7 @@ func runDebugExamine(ctx context.Context, gopts GlobalOptions, args []string) er
 
 	if !gopts.NoLock {
 		var lock *restic.Lock
-		lock, ctx, err = lockRepo(ctx, repo)
+		lock, ctx, err = lockRepo(ctx, repo, gopts.RetryLock, gopts.JSON)
 		defer unlockRepo(lock)
 		if err != nil {
 			return err

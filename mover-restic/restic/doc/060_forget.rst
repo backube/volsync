@@ -205,6 +205,7 @@ The ``forget`` command accepts the following policy options:
     natural time boundaries and *not* relative to when you run ``forget``. Weeks
     are Monday 00:00 to Sunday 23:59, days 00:00 to 23:59, hours :00 to :59, etc.
     They also only count hours/days/weeks/etc which have one or more snapshots.
+    A value of ``-1`` will be interpreted as "forever", i.e. "keep all".
 
 .. note:: All duration related options (``--keep-{within,-*}``) ignore snapshots
     with a timestamp in the future (relative to when the ``forget`` command is
@@ -219,6 +220,8 @@ paths and tags. The policy is then applied to each group of snapshots individual
 This is a safety feature to prevent accidental removal of unrelated backup sets. To
 disable grouping and apply the policy to all snapshots regardless of their host,
 paths and tags, use ``--group-by ''`` (that is, an empty value to ``--group-by``).
+Note that one would normally set the ``--group-by`` option for the ``backup``
+command to the same value.
 
 Additionally, you can restrict the policy to only process snapshots which have a
 particular hostname with the ``--host`` parameter, or tags with the ``--tag``
@@ -469,7 +472,7 @@ space. However, a **failed** ``prune`` run can cause the repository to become
 **temporarily unusable**. Therefore, make sure that you have a stable connection to the
 repository storage, before running this command. In case the command fails, it may become
 necessary to manually remove all files from the `index/` folder of the repository and
-run `rebuild-index` afterwards.
+run `repair index` afterwards.
 
 To prevent accidental usages of the ``--unsafe-recover-no-free-space`` option it is
 necessary to first run ``prune --unsafe-recover-no-free-space SOME-ID`` and then replace

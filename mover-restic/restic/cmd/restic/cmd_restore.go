@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/restic/restic/internal/debug"
@@ -10,6 +11,9 @@ import (
 	"github.com/restic/restic/internal/filter"
 	"github.com/restic/restic/internal/restic"
 	"github.com/restic/restic/internal/restorer"
+	"github.com/restic/restic/internal/ui"
+	restoreui "github.com/restic/restic/internal/ui/restore"
+	"github.com/restic/restic/internal/ui/termstatus"
 
 	"github.com/spf13/cobra"
 )
@@ -31,7 +35,31 @@ Exit status is 0 if the command was successful, and non-zero if there was any er
 `,
 	DisableAutoGenTag: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runRestore(cmd.Context(), restoreOptions, globalOptions, args)
+		ctx := cmd.Context()
+		var wg sync.WaitGroup
+		cancelCtx, cancel := context.WithCancel(ctx)
+		defer func() {
+			// shutdown termstatus
+			cancel()
+			wg.Wait()
+		}()
+
+		term := termstatus.New(globalOptions.stdout, globalOptions.stderr, globalOptions.Quiet)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			term.Run(cancelCtx)
+		}()
+
+		// allow usage of warnf / verbosef
+		prevStdout, prevStderr := globalOptions.stdout, globalOptions.stderr
+		defer func() {
+			globalOptions.stdout, globalOptions.stderr = prevStdout, prevStderr
+		}()
+		stdioWrapper := ui.NewStdioWrapper(term)
+		globalOptions.stdout, globalOptions.stderr = stdioWrapper.Stdout(), stdioWrapper.Stderr()
+
+		return runRestore(ctx, restoreOptions, globalOptions, term, args)
 	},
 }
 
@@ -64,7 +92,9 @@ func init() {
 	flags.BoolVar(&restoreOptions.Verify, "verify", false, "verify restored files content")
 }
 
-func runRestore(ctx context.Context, opts RestoreOptions, gopts GlobalOptions, args []string) error {
+func runRestore(ctx context.Context, opts RestoreOptions, gopts GlobalOptions,
+	term *termstatus.Terminal, args []string) error {
+
 	hasExcludes := len(opts.Exclude) > 0 || len(opts.InsensitiveExclude) > 0
 	hasIncludes := len(opts.Include) > 0 || len(opts.InsensitiveInclude) > 0
 
@@ -124,14 +154,14 @@ func runRestore(ctx context.Context, opts RestoreOptions, gopts GlobalOptions, a
 
 	if !gopts.NoLock {
 		var lock *restic.Lock
-		lock, ctx, err = lockRepo(ctx, repo)
+		lock, ctx, err = lockRepo(ctx, repo, gopts.RetryLock, gopts.JSON)
 		defer unlockRepo(lock)
 		if err != nil {
 			return err
 		}
 	}
 
-	sn, err := (&restic.SnapshotFilter{
+	sn, subfolder, err := (&restic.SnapshotFilter{
 		Hosts: opts.Hosts,
 		Paths: opts.Paths,
 		Tags:  opts.Tags,
@@ -145,11 +175,25 @@ func runRestore(ctx context.Context, opts RestoreOptions, gopts GlobalOptions, a
 		return err
 	}
 
-	res := restorer.NewRestorer(ctx, repo, sn, opts.Sparse)
+	sn.Tree, err = restic.FindTreeDirectory(ctx, repo, sn.Tree, subfolder)
+	if err != nil {
+		return err
+	}
+
+	msg := ui.NewMessage(term, gopts.verbosity)
+	var printer restoreui.ProgressPrinter
+	if gopts.JSON {
+		printer = restoreui.NewJSONProgress(term)
+	} else {
+		printer = restoreui.NewTextProgress(term)
+	}
+
+	progress := restoreui.NewProgress(printer, calculateProgressInterval(!gopts.Quiet, gopts.JSON))
+	res := restorer.NewRestorer(repo, sn, opts.Sparse, progress)
 
 	totalErrors := 0
 	res.Error = func(location string, err error) error {
-		Warnf("ignoring error for %s: %s\n", location, err)
+		msg.E("ignoring error for %s: %s\n", location, err)
 		totalErrors++
 		return nil
 	}
@@ -159,12 +203,12 @@ func runRestore(ctx context.Context, opts RestoreOptions, gopts GlobalOptions, a
 	selectExcludeFilter := func(item string, dstpath string, node *restic.Node) (selectedForRestore bool, childMayBeSelected bool) {
 		matched, err := filter.List(excludePatterns, item)
 		if err != nil {
-			Warnf("error for exclude pattern: %v", err)
+			msg.E("error for exclude pattern: %v", err)
 		}
 
 		matchedInsensitive, err := filter.List(insensitiveExcludePatterns, strings.ToLower(item))
 		if err != nil {
-			Warnf("error for iexclude pattern: %v", err)
+			msg.E("error for iexclude pattern: %v", err)
 		}
 
 		// An exclude filter is basically a 'wildcard but foo',
@@ -182,12 +226,12 @@ func runRestore(ctx context.Context, opts RestoreOptions, gopts GlobalOptions, a
 	selectIncludeFilter := func(item string, dstpath string, node *restic.Node) (selectedForRestore bool, childMayBeSelected bool) {
 		matched, childMayMatch, err := filter.ListWithChild(includePatterns, item)
 		if err != nil {
-			Warnf("error for include pattern: %v", err)
+			msg.E("error for include pattern: %v", err)
 		}
 
 		matchedInsensitive, childMayMatchInsensitive, err := filter.ListWithChild(insensitiveIncludePatterns, strings.ToLower(item))
 		if err != nil {
-			Warnf("error for iexclude pattern: %v", err)
+			msg.E("error for iexclude pattern: %v", err)
 		}
 
 		selectedForRestore = matched || matchedInsensitive
@@ -202,19 +246,25 @@ func runRestore(ctx context.Context, opts RestoreOptions, gopts GlobalOptions, a
 		res.SelectFilter = selectIncludeFilter
 	}
 
-	Verbosef("restoring %s to %s\n", res.Snapshot(), opts.Target)
+	if !gopts.JSON {
+		msg.P("restoring %s to %s\n", res.Snapshot(), opts.Target)
+	}
 
 	err = res.RestoreTo(ctx, opts.Target)
 	if err != nil {
 		return err
 	}
 
+	progress.Finish()
+
 	if totalErrors > 0 {
 		return errors.Fatalf("There were %d errors\n", totalErrors)
 	}
 
 	if opts.Verify {
-		Verbosef("verifying files in %s\n", opts.Target)
+		if !gopts.JSON {
+			msg.P("verifying files in %s\n", opts.Target)
+		}
 		var count int
 		t0 := time.Now()
 		count, err = res.VerifyFiles(ctx, opts.Target)
@@ -224,8 +274,11 @@ func runRestore(ctx context.Context, opts RestoreOptions, gopts GlobalOptions, a
 		if totalErrors > 0 {
 			return errors.Fatalf("There were %d errors\n", totalErrors)
 		}
-		Verbosef("finished verifying %d files in %s (took %s)\n", count, opts.Target,
-			time.Since(t0).Round(time.Millisecond))
+
+		if !gopts.JSON {
+			msg.P("finished verifying %d files in %s (took %s)\n", count, opts.Target,
+				time.Since(t0).Round(time.Millisecond))
+		}
 	}
 
 	return nil

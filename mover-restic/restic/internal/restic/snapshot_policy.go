@@ -31,23 +31,22 @@ func (e ExpirePolicy) String() (s string) {
 	var keeps []string
 	var keepw []string
 
-	if e.Last > 0 {
-		keeps = append(keeps, fmt.Sprintf("%d latest", e.Last))
-	}
-	if e.Hourly > 0 {
-		keeps = append(keeps, fmt.Sprintf("%d hourly", e.Hourly))
-	}
-	if e.Daily > 0 {
-		keeps = append(keeps, fmt.Sprintf("%d daily", e.Daily))
-	}
-	if e.Weekly > 0 {
-		keeps = append(keeps, fmt.Sprintf("%d weekly", e.Weekly))
-	}
-	if e.Monthly > 0 {
-		keeps = append(keeps, fmt.Sprintf("%d monthly", e.Monthly))
-	}
-	if e.Yearly > 0 {
-		keeps = append(keeps, fmt.Sprintf("%d yearly", e.Yearly))
+	for _, opt := range []struct {
+		count int
+		descr string
+	}{
+		{e.Last, "latest"},
+		{e.Hourly, "hourly"},
+		{e.Daily, "daily"},
+		{e.Weekly, "weekly"},
+		{e.Monthly, "monthly"},
+		{e.Yearly, "yearly"},
+	} {
+		if opt.count > 0 {
+			keeps = append(keeps, fmt.Sprintf("%d %s", opt.count, opt.descr))
+		} else if opt.count == -1 {
+			keeps = append(keeps, fmt.Sprintf("all %s", opt.descr))
+		}
 	}
 
 	if !e.WithinHourly.Zero() {
@@ -100,13 +99,7 @@ func (e ExpirePolicy) String() (s string) {
 	return s
 }
 
-// Sum returns the maximum number of snapshots to be kept according to this
-// policy.
-func (e ExpirePolicy) Sum() int {
-	return e.Last + e.Hourly + e.Daily + e.Weekly + e.Monthly + e.Yearly
-}
-
-// Empty returns true iff no policy has been configured (all values zero).
+// Empty returns true if no policy has been configured (all values zero).
 func (e ExpirePolicy) Empty() bool {
 	if len(e.Tags) != 0 {
 		return false
@@ -143,7 +136,7 @@ func y(d time.Time, _ int) int {
 }
 
 // always returns a unique number for d.
-func always(d time.Time, nr int) int {
+func always(_ time.Time, nr int) int {
 	return nr
 }
 
@@ -190,6 +183,7 @@ type KeepReason struct {
 // according to the policy p. list is sorted in the process. reasons contains
 // the reasons to keep each snapshot, it is in the same order as keep.
 func ApplyPolicy(list Snapshots, p ExpirePolicy) (keep, remove Snapshots, reasons []KeepReason) {
+	// sort newest snapshots first
 	sort.Stable(list)
 
 	if p.Empty() {
@@ -260,13 +254,18 @@ func ApplyPolicy(list Snapshots, p ExpirePolicy) (keep, remove Snapshots, reason
 
 		// Now update the other buckets and see if they have some counts left.
 		for i, b := range buckets {
-			if b.Count > 0 {
+			// -1 means "keep all"
+			if b.Count > 0 || b.Count == -1 {
 				val := b.bucker(cur.Time, nr)
-				if val != b.Last {
+				// also keep the oldest snapshot if the bucket has some counts left. This maximizes the
+				// the history length kept while some counts are left.
+				if val != b.Last || nr == len(list)-1 {
 					debug.Log("keep %v %v, bucker %v, val %v\n", cur.Time, cur.id.Str(), i, val)
 					keepSnap = true
 					buckets[i].Last = val
-					buckets[i].Count--
+					if buckets[i].Count > 0 {
+						buckets[i].Count--
+					}
 					keepSnapReasons = append(keepSnapReasons, b.reason)
 				}
 			}
@@ -279,7 +278,7 @@ func ApplyPolicy(list Snapshots, p ExpirePolicy) (keep, remove Snapshots, reason
 
 				if cur.Time.After(t) {
 					val := b.bucker(cur.Time, nr)
-					if val != b.Last {
+					if val != b.Last || nr == len(list)-1 {
 						debug.Log("keep %v, time %v, ID %v, bucker %v, val %v %v\n", b.reason, cur.Time, cur.id.Str(), i, val, b.Last)
 						keepSnap = true
 						bucketsWithin[i].Last = val

@@ -89,6 +89,7 @@ type BackupOptions struct {
 	excludePatternOptions
 
 	Parent            string
+	GroupBy           restic.SnapshotGroupByOptions
 	Force             bool
 	ExcludeOtherFS    bool
 	ExcludeIfPresent  []string
@@ -120,7 +121,9 @@ func init() {
 	cmdRoot.AddCommand(cmdBackup)
 
 	f := cmdBackup.Flags()
-	f.StringVar(&backupOptions.Parent, "parent", "", "use this parent `snapshot` (default: last snapshot in the repository that has the same target files/directories, and is not newer than the snapshot time)")
+	f.StringVar(&backupOptions.Parent, "parent", "", "use this parent `snapshot` (default: latest snapshot in the group determined by --group-by and not newer than the timestamp determined by --time)")
+	backupOptions.GroupBy = restic.SnapshotGroupByOptions{Host: true, Path: true}
+	f.VarP(&backupOptions.GroupBy, "group-by", "g", "`group` snapshots by host, paths and/or tags, separated by comma (disable grouping with '')")
 	f.BoolVarP(&backupOptions.Force, "force", "f", false, `force re-reading the target files/directories (overrides the "parent" flag)`)
 
 	initExcludePatternOptions(f, &backupOptions.excludePatternOptions)
@@ -305,7 +308,7 @@ func (opts BackupOptions) Check(gopts GlobalOptions, args []string) error {
 
 // collectRejectByNameFuncs returns a list of all functions which may reject data
 // from being saved in a snapshot based on path only
-func collectRejectByNameFuncs(opts BackupOptions, repo *repository.Repository, targets []string) (fs []RejectByNameFunc, err error) {
+func collectRejectByNameFuncs(opts BackupOptions, repo *repository.Repository) (fs []RejectByNameFunc, err error) {
 	// exclude restic cache
 	if repo.Cache != nil {
 		f, err := rejectResticCache(repo)
@@ -340,7 +343,7 @@ func collectRejectByNameFuncs(opts BackupOptions, repo *repository.Repository, t
 
 // collectRejectFuncs returns a list of all functions which may reject data
 // from being saved in a snapshot based on path and file info
-func collectRejectFuncs(opts BackupOptions, repo *repository.Repository, targets []string) (fs []RejectFunc, err error) {
+func collectRejectFuncs(opts BackupOptions, targets []string) (fs []RejectFunc, err error) {
 	// allowed devices
 	if opts.ExcludeOtherFS && !opts.Stdin {
 		f, err := rejectByDevice(targets)
@@ -439,13 +442,18 @@ func findParentSnapshot(ctx context.Context, repo restic.Repository, opts Backup
 	if snName == "" {
 		snName = "latest"
 	}
-	f := restic.SnapshotFilter{
-		Hosts:          []string{opts.Host},
-		Paths:          targets,
-		TimestampLimit: timeStampLimit,
+	f := restic.SnapshotFilter{TimestampLimit: timeStampLimit}
+	if opts.GroupBy.Host {
+		f.Hosts = []string{opts.Host}
+	}
+	if opts.GroupBy.Path {
+		f.Paths = targets
+	}
+	if opts.GroupBy.Tag {
+		f.Tags = []restic.TagList{opts.Tags.Flatten()}
 	}
 
-	sn, err := f.FindLatest(ctx, repo.Backend(), repo, snName)
+	sn, _, err := f.FindLatest(ctx, repo.Backend(), repo, snName)
 	// Snapshot not found is ok if no explicit parent was set
 	if opts.Parent == "" && errors.Is(err, restic.ErrNoSnapshotFound) {
 		err = nil
@@ -498,20 +506,23 @@ func runBackup(ctx context.Context, opts BackupOptions, gopts GlobalOptions, ter
 	if !gopts.JSON {
 		progressPrinter.V("lock repository")
 	}
-	lock, ctx, err := lockRepo(ctx, repo)
-	defer unlockRepo(lock)
-	if err != nil {
-		return err
+	if !opts.DryRun {
+		var lock *restic.Lock
+		lock, ctx, err = lockRepo(ctx, repo, gopts.RetryLock, gopts.JSON)
+		defer unlockRepo(lock)
+		if err != nil {
+			return err
+		}
 	}
 
 	// rejectByNameFuncs collect functions that can reject items from the backup based on path only
-	rejectByNameFuncs, err := collectRejectByNameFuncs(opts, repo, targets)
+	rejectByNameFuncs, err := collectRejectByNameFuncs(opts, repo)
 	if err != nil {
 		return err
 	}
 
 	// rejectFuncs collect functions that can reject items from the backup based on path and file info
-	rejectFuncs, err := collectRejectFuncs(opts, repo, targets)
+	rejectFuncs, err := collectRejectFuncs(opts, targets)
 	if err != nil {
 		return err
 	}
@@ -637,6 +648,7 @@ func runBackup(ctx context.Context, opts BackupOptions, gopts GlobalOptions, ter
 		Time:           timeStamp,
 		Hostname:       opts.Host,
 		ParentSnapshot: parentSnapshot,
+		ProgramVersion: "restic " + version,
 	}
 
 	if !gopts.JSON {

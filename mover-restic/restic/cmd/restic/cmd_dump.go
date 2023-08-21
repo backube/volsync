@@ -132,14 +132,14 @@ func runDump(ctx context.Context, opts DumpOptions, gopts GlobalOptions, args []
 
 	if !gopts.NoLock {
 		var lock *restic.Lock
-		lock, ctx, err = lockRepo(ctx, repo)
+		lock, ctx, err = lockRepo(ctx, repo, gopts.RetryLock, gopts.JSON)
 		defer unlockRepo(lock)
 		if err != nil {
 			return err
 		}
 	}
 
-	sn, err := (&restic.SnapshotFilter{
+	sn, subfolder, err := (&restic.SnapshotFilter{
 		Hosts: opts.Hosts,
 		Paths: opts.Paths,
 		Tags:  opts.Tags,
@@ -149,6 +149,11 @@ func runDump(ctx context.Context, opts DumpOptions, gopts GlobalOptions, args []
 	}
 
 	err = repo.LoadIndex(ctx)
+	if err != nil {
+		return err
+	}
+
+	sn.Tree, err = restic.FindTreeDirectory(ctx, repo, sn.Tree, subfolder)
 	if err != nil {
 		return err
 	}

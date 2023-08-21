@@ -58,6 +58,19 @@ Please be aware that the debug log file will contain potentially sensitive
 things like file and directory names, so please either redact it before
 uploading it somewhere or post only the parts that are really relevant.
 
+If restic gets stuck, please also include a stacktrace in the description.
+On non-Windows systems, you can send a SIGQUIT signal to restic or press
+`Ctrl-\` to achieve the same result. This causes restic to print a stacktrace
+and then exit immediatelly. This will not damage your repository, however,
+it might be necessary to manually clean up stale lock files using
+`restic unlock`.
+
+On Windows, please set the environment variable `RESTIC_DEBUG_STACKTRACE_SIGINT`
+to `true` and press `Ctrl-C` to create a stacktrace.
+
+If you think restic uses too much memory or a too large cache directory, then
+please include the output of `restic stats --mode debug`.
+
 
 Development Environment
 =======================
@@ -78,9 +91,39 @@ Then use the `go` tool to build restic:
     $ ./restic version
     restic 0.14.0-dev (compiled manually) compiled with go1.19 on linux/amd64
 
+To create a debug build use:
+
+    $ go build -tags debug ./cmd/restic
+
 You can run all tests with the following command:
 
     $ go test ./...
+
+
+Performance and Memory Usage Issues
+===================================
+
+Debug builds of restic support the `--block-profile`, `--cpu-profile`,
+`--mem-profile`, and `--trace-profile` options which collect performance data
+that later on can be analyzed using the go tools:
+
+    $ restic --cpu-profile . [...]
+    $ go tool pprof -http localhost:12345 cpu.pprof
+
+To analyze a trace profile use `go tool trace -http=localhost:12345 trace.out`.
+
+As the memory usage of restic changes over time, it may be useful to capture a
+snapshot of the current heap. This is possible using then `--listen-profile`
+option. Then while restic runs you can query and afterwards analyze the heap statistics.
+
+    $ restic --listen-profile localhost:12345 [...]
+    $ curl http://localhost:12345/debug/pprof/heap -o heap.pprof
+    $ go tool pprof -http localhost:12345 heap.pprof
+
+Further useful tools are setting the environment variable `GODEBUG=gctrace=1`,
+which provides information about garbage collector runs. For a graphical variant
+combine this with gcvis.
+
 
 Providing Patches
 =================

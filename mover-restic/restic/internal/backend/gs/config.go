@@ -1,11 +1,13 @@
 package gs
 
 import (
+	"os"
 	"path"
 	"strings"
 
 	"github.com/restic/restic/internal/errors"
 	"github.com/restic/restic/internal/options"
+	"github.com/restic/restic/internal/restic"
 )
 
 // Config contains all configuration necessary to connect to a Google Cloud Storage
@@ -16,13 +18,15 @@ type Config struct {
 	Bucket    string
 	Prefix    string
 
-	Connections uint `option:"connections" help:"set a limit for the number of concurrent connections (default: 5)"`
+	Connections uint   `option:"connections" help:"set a limit for the number of concurrent connections (default: 5)"`
+	Region      string `option:"region" help:"region to create the bucket in (default: us)"`
 }
 
 // NewConfig returns a new Config with the default values filled in.
 func NewConfig() Config {
 	return Config{
 		Connections: 5,
+		Region:      "us",
 	}
 }
 
@@ -32,7 +36,7 @@ func init() {
 
 // ParseConfig parses the string s and extracts the gcs config. The
 // supported configuration format is gs:bucketName:/[prefix].
-func ParseConfig(s string) (interface{}, error) {
+func ParseConfig(s string) (*Config, error) {
 	if !strings.HasPrefix(s, "gs:") {
 		return nil, errors.New("gs: invalid format")
 	}
@@ -52,5 +56,14 @@ func ParseConfig(s string) (interface{}, error) {
 	cfg := NewConfig()
 	cfg.Bucket = bucket
 	cfg.Prefix = prefix
-	return cfg, nil
+	return &cfg, nil
+}
+
+var _ restic.ApplyEnvironmenter = &Config{}
+
+// ApplyEnvironment saves values from the environment to the config.
+func (cfg *Config) ApplyEnvironment(prefix string) {
+	if cfg.ProjectID == "" {
+		cfg.ProjectID = os.Getenv(prefix + "GOOGLE_PROJECT_ID")
+	}
 }

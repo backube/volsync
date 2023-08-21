@@ -1,8 +1,6 @@
 package backup
 
 import (
-	"bytes"
-	"encoding/json"
 	"sort"
 	"time"
 
@@ -32,21 +30,12 @@ func NewJSONProgress(term *termstatus.Terminal, verbosity uint) *JSONProgress {
 	}
 }
 
-func toJSONString(status interface{}) string {
-	buf := new(bytes.Buffer)
-	err := json.NewEncoder(buf).Encode(status)
-	if err != nil {
-		panic(err)
-	}
-	return buf.String()
-}
-
 func (b *JSONProgress) print(status interface{}) {
-	b.term.Print(toJSONString(status))
+	b.term.Print(ui.ToJSONString(status))
 }
 
 func (b *JSONProgress) error(status interface{}) {
-	b.term.Error(toJSONString(status))
+	b.term.Error(ui.ToJSONString(status))
 }
 
 // Update updates the status lines.
@@ -99,7 +88,7 @@ func (b *JSONProgress) Error(item string, err error) error {
 
 // CompleteItem is the status callback function for the archiver when a
 // file/dir has been saved successfully.
-func (b *JSONProgress) CompleteItem(messageType, item string, previous, current *restic.Node, s archiver.ItemStats, d time.Duration) {
+func (b *JSONProgress) CompleteItem(messageType, item string, s archiver.ItemStats, d time.Duration) {
 	if b.v < 2 {
 		return
 	}
@@ -161,10 +150,10 @@ func (b *JSONProgress) CompleteItem(messageType, item string, previous, current 
 }
 
 // ReportTotal sets the total stats up to now
-func (b *JSONProgress) ReportTotal(item string, start time.Time, s archiver.ScanStats) {
+func (b *JSONProgress) ReportTotal(start time.Time, s archiver.ScanStats) {
 	if b.v >= 2 {
 		b.print(verboseUpdate{
-			MessageType: "status",
+			MessageType: "verbose_status",
 			Action:      "scan_finished",
 			Duration:    time.Since(start).Seconds(),
 			DataSize:    s.Bytes,

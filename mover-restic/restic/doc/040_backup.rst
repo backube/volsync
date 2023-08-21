@@ -139,12 +139,23 @@ File change detection
 *********************
 
 When restic encounters a file that has already been backed up, whether in the
-current backup or a previous one, it makes sure the file's contents are only
+current backup or a previous one, it makes sure the file's content is only
 stored once in the repository. To do so, it normally has to scan the entire
-contents of every file. Because this can be very expensive, restic also uses a
+content of the file. Because this can be very expensive, restic also uses a
 change detection rule based on file metadata to determine whether a file is
 likely unchanged since a previous backup. If it is, the file is not scanned
 again.
+
+The previous backup snapshot, called "parent" snaphot in restic terminology,
+is determined as follows. By default restic groups snapshots by hostname and
+backup paths, and then selects the latest snapshot in the group that matches
+the current backup. You can change the selection criteria using the
+``--group-by`` option, which defaults to ``host,paths``. To select the latest
+snapshot with the same paths independent of the hostname, use ``paths``. Or,
+to only consider the hostname and tags, use ``host,tags``. Alternatively, it
+is possible to manually specify a specific parent snapshot using the
+``--parent`` option. Finally, note that one would normally set the
+``--group-by`` option for the ``forget`` command to the same value.
 
 Change detection is only performed for regular files (not special files,
 symlinks or directories) that have the exact same path as they did in a
@@ -205,6 +216,7 @@ Combined with ``--verbose``, you can see a list of changes:
     Would be added to the repository: 25.551 MiB
 
 .. _backup-excluding-files:
+
 Excluding Files
 ***************
 
@@ -213,7 +225,7 @@ the exclude options are:
 
 -  ``--exclude`` Specified one or more times to exclude one or more items
 -  ``--iexclude`` Same as ``--exclude`` but ignores the case of paths
--  ``--exclude-caches`` Specified once to exclude folders containing `this special file <https://bford.info/cachedir/>`__
+-  ``--exclude-caches`` Specified once to exclude a folder's content if it contains `the special CACHEDIR.TAG file <https://bford.info/cachedir/>`__, but keep ``CACHEDIR.TAG``.
 -  ``--exclude-file`` Specified one or more times to exclude items listed in a given file
 -  ``--iexclude-file`` Same as ``exclude-file`` but ignores cases like in ``--iexclude``
 -  ``--exclude-if-present foo`` Specified one or more times to exclude a folder's content if it contains a file called ``foo`` (optionally having a given header, no wildcards for the file name supported)
@@ -242,14 +254,14 @@ This instructs restic to exclude files matching the following criteria:
  * All files matching ``*.go`` (second line in ``excludes.txt``)
  * All files and sub-directories named ``bar`` which reside somewhere below a directory called ``foo`` (fourth line in ``excludes.txt``)
 
-Patterns use `filepath.Glob <https://golang.org/pkg/path/filepath/#Glob>`__ internally,
-see `filepath.Match <https://golang.org/pkg/path/filepath/#Match>`__ for
-syntax. Patterns are tested against the full path of a file/dir to be saved,
+Patterns use the syntax of the Go function
+`filepath.Match <https://pkg.go.dev/path/filepath#Match>`__
+and are tested against the full path of a file/dir to be saved,
 even if restic is passed a relative path to save. Empty lines and lines
 starting with a ``#`` are ignored.
 
 Environment variables in exclude files are expanded with `os.ExpandEnv
-<https://golang.org/pkg/os/#ExpandEnv>`__, so ``/home/$USER/foo`` will be
+<https://pkg.go.dev/os#ExpandEnv>`__, so ``/home/$USER/foo`` will be
 expanded to ``/home/bob/foo`` for the user ``bob``. To get a literal dollar
 sign, write ``$$`` to the file - this has to be done even when there's no
 matching environment variable for the word following a single ``$``. Note
@@ -369,7 +381,7 @@ contains one *pattern* per line. The file must be encoded as UTF-8, or UTF-16
 with a byte-order mark. Leading and trailing whitespace is removed from the
 patterns. Empty lines and lines starting with a ``#`` are ignored and each
 pattern is expanded when read, such that special characters in it are expanded
-using the Go function `filepath.Glob <https://golang.org/pkg/path/filepath/#Glob>`__
+using the Go function `filepath.Glob <https://pkg.go.dev/path/filepath#Glob>`__
 - please see its documentation for the syntax you can use in the patterns.
 
 The argument passed to ``--files-from-verbatim`` must be the name of a text file
@@ -438,6 +450,15 @@ and displays a small statistic, just pass the command two snapshot IDs:
     Tree Blobs:      2 new,     1 removed
       Added:   16.403 MiB
       Removed: 16.402 MiB
+
+To only compare files in specific subfolders, you can use the ``<snapshot>:<subfolder>``
+syntax, where ``snapshot`` is the ID of a snapshot (or the string ``latest``) and ``subfolder``
+is a path within the snapshot. For example, to only compare files in the ``/restic``
+folder, you could use the following command:
+
+.. code-block:: console
+
+    $ restic -r /srv/restic-repo diff 5845b002:/restic 2ab627a6:/restic
 
 
 Backing up special items and metadata
@@ -521,8 +542,11 @@ Restic does not have a built-in way of scheduling backups, as it's a tool
 that runs when executed rather than a daemon. There are plenty of different
 ways to schedule backup runs on various different platforms, e.g. systemd
 and cron on Linux/BSD and Task Scheduler in Windows, depending on one's
-needs and requirements. When scheduling restic to run recurringly, please
-make sure to detect already running instances before starting the backup.
+needs and requirements. If you don't want to implement your own scheduling,
+you can use `resticprofile <https://github.com/creativeprojects/resticprofile/#resticprofile>`__.
+
+When scheduling restic to run recurringly, please make sure to detect already
+running instances before starting the backup.
 
 Space requirements
 ******************
@@ -552,6 +576,8 @@ environment variables. The following lists these environment variables:
     RESTIC_PASSWORD                     The actual password for the repository
     RESTIC_PASSWORD_COMMAND             Command printing the password for the repository to stdout
     RESTIC_KEY_HINT                     ID of key to try decrypting first, before other keys
+    RESTIC_CACERT                       Location(s) of certificate file(s), comma separated if multiple (replaces --cacert)
+    RESTIC_TLS_CLIENT_CERT              Location of TLS client certificate and private key (replaces --tls-client-cert)
     RESTIC_CACHE_DIR                    Location of the cache directory
     RESTIC_COMPRESSION                  Compression mode (only available for repository format version 2)
     RESTIC_PROGRESS_FPS                 Frames per second by which the progress bar is updated
@@ -599,6 +625,7 @@ environment variables. The following lists these environment variables:
     AZURE_ACCOUNT_NAME                  Account name for Azure
     AZURE_ACCOUNT_KEY                   Account key for Azure
     AZURE_ACCOUNT_SAS                   Shared access signatures (SAS) for Azure
+    AZURE_ENDPOINT_SUFFIX               Endpoint suffix for Azure Storage (default: core.windows.net)
 
     GOOGLE_PROJECT_ID                   Project ID for Google Cloud Storage
     GOOGLE_APPLICATION_CREDENTIALS      Application Credentials for Google Cloud Storage (e.g. $HOME/.config/gs-secret-restic-key.json)

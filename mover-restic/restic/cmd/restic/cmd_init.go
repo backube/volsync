@@ -50,6 +50,10 @@ func init() {
 }
 
 func runInit(ctx context.Context, opts InitOptions, gopts GlobalOptions, args []string) error {
+	if len(args) > 0 {
+		return errors.Fatal("the init command expects no arguments, only options - please see `restic help init` for usage and flags")
+	}
+
 	var version uint
 	if opts.RepositoryVersion == "latest" || opts.RepositoryVersion == "" {
 		version = restic.MaxRepoVersion
@@ -83,9 +87,9 @@ func runInit(ctx context.Context, opts InitOptions, gopts GlobalOptions, args []
 		return err
 	}
 
-	be, err := create(ctx, repo, gopts.extended)
+	be, err := create(ctx, repo, gopts, gopts.extended)
 	if err != nil {
-		return errors.Fatalf("create repository at %s failed: %v\n", location.StripPassword(gopts.Repo), err)
+		return errors.Fatalf("create repository at %s failed: %v\n", location.StripPassword(gopts.backends, gopts.Repo), err)
 	}
 
 	s, err := repository.New(be, repository.Options{
@@ -93,16 +97,21 @@ func runInit(ctx context.Context, opts InitOptions, gopts GlobalOptions, args []
 		PackSize:    gopts.PackSize * 1024 * 1024,
 	})
 	if err != nil {
-		return err
+		return errors.Fatal(err.Error())
 	}
 
 	err = s.Init(ctx, version, gopts.password, chunkerPolynomial)
 	if err != nil {
-		return errors.Fatalf("create key in repository at %s failed: %v\n", location.StripPassword(gopts.Repo), err)
+		return errors.Fatalf("create key in repository at %s failed: %v\n", location.StripPassword(gopts.backends, gopts.Repo), err)
 	}
 
 	if !gopts.JSON {
-		Verbosef("created restic repository %v at %s\n", s.Config().ID[:10], location.StripPassword(gopts.Repo))
+		Verbosef("created restic repository %v at %s", s.Config().ID[:10], location.StripPassword(gopts.backends, gopts.Repo))
+		if opts.CopyChunkerParameters && chunkerPolynomial != nil {
+			Verbosef(" with chunker parameters copied from secondary repository\n")
+		} else {
+			Verbosef("\n")
+		}
 		Verbosef("\n")
 		Verbosef("Please note that knowledge of your password is required to access\n")
 		Verbosef("the repository. Losing your password means that your data is\n")
@@ -112,9 +121,9 @@ func runInit(ctx context.Context, opts InitOptions, gopts GlobalOptions, args []
 		status := initSuccess{
 			MessageType: "initialized",
 			ID:          s.Config().ID,
-			Repository:  location.StripPassword(gopts.Repo),
+			Repository:  location.StripPassword(gopts.backends, gopts.Repo),
 		}
-		return json.NewEncoder(gopts.stdout).Encode(status)
+		return json.NewEncoder(globalOptions.stdout).Encode(status)
 	}
 
 	return nil

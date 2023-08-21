@@ -10,7 +10,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/restic/restic/internal/backend"
@@ -20,10 +19,12 @@ import (
 	"github.com/restic/restic/internal/backend/limiter"
 	"github.com/restic/restic/internal/backend/local"
 	"github.com/restic/restic/internal/backend/location"
+	"github.com/restic/restic/internal/backend/logger"
 	"github.com/restic/restic/internal/backend/rclone"
 	"github.com/restic/restic/internal/backend/rest"
 	"github.com/restic/restic/internal/backend/retry"
 	"github.com/restic/restic/internal/backend/s3"
+	"github.com/restic/restic/internal/backend/sema"
 	"github.com/restic/restic/internal/backend/sftp"
 	"github.com/restic/restic/internal/backend/swift"
 	"github.com/restic/restic/internal/cache"
@@ -42,7 +43,7 @@ import (
 	"golang.org/x/term"
 )
 
-var version = "0.15.2"
+var version = "0.16.0"
 
 // TimeFormat is the format used for all timestamps printed by restic.
 const TimeFormat = "2006-01-02 15:04:05"
@@ -59,6 +60,7 @@ type GlobalOptions struct {
 	Quiet           bool
 	Verbose         int
 	NoLock          bool
+	RetryLock       time.Duration
 	JSON            bool
 	CacheDir        string
 	NoCache         bool
@@ -73,6 +75,7 @@ type GlobalOptions struct {
 	stdout   io.Writer
 	stderr   io.Writer
 
+	backends                              *location.Registry
 	backendTestHook, backendInnerTestHook backendWrapper
 
 	// verbosity is set as follows:
@@ -96,6 +99,18 @@ var isReadingPassword bool
 var internalGlobalCtx context.Context
 
 func init() {
+	backends := location.NewRegistry()
+	backends.Register(azure.NewFactory())
+	backends.Register(b2.NewFactory())
+	backends.Register(gs.NewFactory())
+	backends.Register(local.NewFactory())
+	backends.Register(rclone.NewFactory())
+	backends.Register(rest.NewFactory())
+	backends.Register(s3.NewFactory())
+	backends.Register(sftp.NewFactory())
+	backends.Register(swift.NewFactory())
+	globalOptions.backends = backends
+
 	var cancel context.CancelFunc
 	internalGlobalCtx, cancel = context.WithCancel(context.Background())
 	AddCleanupHandler(func(code int) (int, error) {
@@ -115,14 +130,15 @@ func init() {
 	// use empty paremeter name as `-v, --verbose n` instead of the correct `--verbose=n` is confusing
 	f.CountVarP(&globalOptions.Verbose, "verbose", "v", "be verbose (specify multiple times or a level using --verbose=n``, max level/times is 2)")
 	f.BoolVar(&globalOptions.NoLock, "no-lock", false, "do not lock the repository, this allows some operations on read-only repositories")
+	f.DurationVar(&globalOptions.RetryLock, "retry-lock", 0, "retry to lock the repository if it is already locked, takes a value like 5m or 2h (default: no retries)")
 	f.BoolVarP(&globalOptions.JSON, "json", "", false, "set output mode to JSON for commands that support it")
 	f.StringVar(&globalOptions.CacheDir, "cache-dir", "", "set the cache `directory`. (default: use system default cache directory)")
 	f.BoolVar(&globalOptions.NoCache, "no-cache", false, "do not use a local cache")
-	f.StringSliceVar(&globalOptions.RootCertFilenames, "cacert", nil, "`file` to load root certificates from (default: use system certificates)")
-	f.StringVar(&globalOptions.TLSClientCertKeyFilename, "tls-client-cert", "", "path to a `file` containing PEM encoded TLS client certificate and private key")
+	f.StringSliceVar(&globalOptions.RootCertFilenames, "cacert", nil, "`file` to load root certificates from (default: use system certificates or $RESTIC_CACERT)")
+	f.StringVar(&globalOptions.TLSClientCertKeyFilename, "tls-client-cert", "", "path to a `file` containing PEM encoded TLS client certificate and private key (default: $RESTIC_TLS_CLIENT_CERT)")
 	f.BoolVar(&globalOptions.InsecureTLS, "insecure-tls", false, "skip TLS certificate verification when connecting to the repository (insecure)")
 	f.BoolVar(&globalOptions.CleanupCache, "cleanup-cache", false, "auto remove old cache directories")
-	f.Var(&globalOptions.Compression, "compression", "compression mode (only available for repository format version 2), one of (auto|off|max)")
+	f.Var(&globalOptions.Compression, "compression", "compression mode (only available for repository format version 2), one of (auto|off|max) (default: $RESTIC_COMPRESSION)")
 	f.IntVar(&globalOptions.Limits.UploadKb, "limit-upload", 0, "limits uploads to a maximum `rate` in KiB/s. (default: unlimited)")
 	f.IntVar(&globalOptions.Limits.DownloadKb, "limit-download", 0, "limits downloads to a maximum `rate` in KiB/s. (default: unlimited)")
 	f.UintVar(&globalOptions.PackSize, "pack-size", 0, "set target pack `size` in MiB, created pack files may be larger (default: $RESTIC_PACK_SIZE)")
@@ -135,6 +151,10 @@ func init() {
 	globalOptions.PasswordFile = os.Getenv("RESTIC_PASSWORD_FILE")
 	globalOptions.KeyHint = os.Getenv("RESTIC_KEY_HINT")
 	globalOptions.PasswordCommand = os.Getenv("RESTIC_PASSWORD_COMMAND")
+	if os.Getenv("RESTIC_CACERT") != "" {
+		globalOptions.RootCertFilenames = strings.Split(os.Getenv("RESTIC_CACERT"), ",")
+	}
+	globalOptions.TLSClientCertKeyFilename = os.Getenv("RESTIC_TLS_CLIENT_CERT")
 	comp := os.Getenv("RESTIC_COMPRESSION")
 	if comp != "" {
 		// ignore error as there's no good way to handle it
@@ -145,21 +165,6 @@ func init() {
 	globalOptions.PackSize = uint(targetPackSize)
 
 	restoreTerminal()
-}
-
-// checkErrno returns nil when err is set to syscall.Errno(0), since this is no
-// error condition.
-func checkErrno(err error) error {
-	e, ok := err.(syscall.Errno)
-	if !ok {
-		return err
-	}
-
-	if e == 0 {
-		return nil
-	}
-
-	return err
 }
 
 func stdinIsTerminal() bool {
@@ -210,7 +215,7 @@ func restoreTerminal() {
 		if !isReadingPassword {
 			return code, nil
 		}
-		err := checkErrno(term.Restore(fd, state))
+		err := term.Restore(fd, state)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "unable to restore terminal state: %v\n", err)
 		}
@@ -280,6 +285,7 @@ func Warnf(format string, args ...interface{}) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "unable to write to stderr: %v\n", err)
 	}
+	debug.Log(format, args...)
 }
 
 // resolvePassword determines the password to be used for opening the repository.
@@ -451,7 +457,7 @@ func OpenRepository(ctx context.Context, opts GlobalOptions) (*repository.Reposi
 		PackSize:    opts.PackSize * 1024 * 1024,
 	})
 	if err != nil {
-		return nil, err
+		return nil, errors.Fatal(err.Error())
 	}
 
 	passwordTriesLeft := 1
@@ -546,153 +552,25 @@ func OpenRepository(ctx context.Context, opts GlobalOptions) (*repository.Reposi
 }
 
 func parseConfig(loc location.Location, opts options.Options) (interface{}, error) {
-	// only apply options for a particular backend here
-	opts = opts.Extract(loc.Scheme)
-
-	switch loc.Scheme {
-	case "local":
-		cfg := loc.Config.(local.Config)
-		if err := opts.Apply(loc.Scheme, &cfg); err != nil {
-			return nil, err
-		}
-
-		debug.Log("opening local repository at %#v", cfg)
-		return cfg, nil
-
-	case "sftp":
-		cfg := loc.Config.(sftp.Config)
-		if err := opts.Apply(loc.Scheme, &cfg); err != nil {
-			return nil, err
-		}
-
-		debug.Log("opening sftp repository at %#v", cfg)
-		return cfg, nil
-
-	case "s3":
-		cfg := loc.Config.(s3.Config)
-		if cfg.KeyID == "" {
-			cfg.KeyID = os.Getenv("AWS_ACCESS_KEY_ID")
-		}
-
-		if cfg.Secret.String() == "" {
-			cfg.Secret = options.NewSecretString(os.Getenv("AWS_SECRET_ACCESS_KEY"))
-		}
-
-		if cfg.KeyID == "" && cfg.Secret.String() != "" {
-			return nil, errors.Fatalf("unable to open S3 backend: Key ID ($AWS_ACCESS_KEY_ID) is empty")
-		} else if cfg.KeyID != "" && cfg.Secret.String() == "" {
-			return nil, errors.Fatalf("unable to open S3 backend: Secret ($AWS_SECRET_ACCESS_KEY) is empty")
-		}
-
-		if cfg.Region == "" {
-			cfg.Region = os.Getenv("AWS_DEFAULT_REGION")
-		}
-
-		if err := opts.Apply(loc.Scheme, &cfg); err != nil {
-			return nil, err
-		}
-
-		debug.Log("opening s3 repository at %#v", cfg)
-		return cfg, nil
-
-	case "gs":
-		cfg := loc.Config.(gs.Config)
-		if cfg.ProjectID == "" {
-			cfg.ProjectID = os.Getenv("GOOGLE_PROJECT_ID")
-		}
-
-		if err := opts.Apply(loc.Scheme, &cfg); err != nil {
-			return nil, err
-		}
-
-		debug.Log("opening gs repository at %#v", cfg)
-		return cfg, nil
-
-	case "azure":
-		cfg := loc.Config.(azure.Config)
-		if cfg.AccountName == "" {
-			cfg.AccountName = os.Getenv("AZURE_ACCOUNT_NAME")
-		}
-
-		if cfg.AccountKey.String() == "" {
-			cfg.AccountKey = options.NewSecretString(os.Getenv("AZURE_ACCOUNT_KEY"))
-		}
-
-		if cfg.AccountSAS.String() == "" {
-			cfg.AccountSAS = options.NewSecretString(os.Getenv("AZURE_ACCOUNT_SAS"))
-		}
-
-		if err := opts.Apply(loc.Scheme, &cfg); err != nil {
-			return nil, err
-		}
-
-		debug.Log("opening gs repository at %#v", cfg)
-		return cfg, nil
-
-	case "swift":
-		cfg := loc.Config.(swift.Config)
-
-		if err := swift.ApplyEnvironment("", &cfg); err != nil {
-			return nil, err
-		}
-
-		if err := opts.Apply(loc.Scheme, &cfg); err != nil {
-			return nil, err
-		}
-
-		debug.Log("opening swift repository at %#v", cfg)
-		return cfg, nil
-
-	case "b2":
-		cfg := loc.Config.(b2.Config)
-
-		if cfg.AccountID == "" {
-			cfg.AccountID = os.Getenv("B2_ACCOUNT_ID")
-		}
-
-		if cfg.AccountID == "" {
-			return nil, errors.Fatalf("unable to open B2 backend: Account ID ($B2_ACCOUNT_ID) is empty")
-		}
-
-		if cfg.Key.String() == "" {
-			cfg.Key = options.NewSecretString(os.Getenv("B2_ACCOUNT_KEY"))
-		}
-
-		if cfg.Key.String() == "" {
-			return nil, errors.Fatalf("unable to open B2 backend: Key ($B2_ACCOUNT_KEY) is empty")
-		}
-
-		if err := opts.Apply(loc.Scheme, &cfg); err != nil {
-			return nil, err
-		}
-
-		debug.Log("opening b2 repository at %#v", cfg)
-		return cfg, nil
-	case "rest":
-		cfg := loc.Config.(rest.Config)
-		if err := opts.Apply(loc.Scheme, &cfg); err != nil {
-			return nil, err
-		}
-
-		debug.Log("opening rest repository at %#v", cfg)
-		return cfg, nil
-	case "rclone":
-		cfg := loc.Config.(rclone.Config)
-		if err := opts.Apply(loc.Scheme, &cfg); err != nil {
-			return nil, err
-		}
-
-		debug.Log("opening rest repository at %#v", cfg)
-		return cfg, nil
+	cfg := loc.Config
+	if cfg, ok := cfg.(restic.ApplyEnvironmenter); ok {
+		cfg.ApplyEnvironment("")
 	}
 
-	return nil, errors.Fatalf("invalid backend: %q", loc.Scheme)
+	// only apply options for a particular backend here
+	opts = opts.Extract(loc.Scheme)
+	if err := opts.Apply(loc.Scheme, cfg); err != nil {
+		return nil, err
+	}
+
+	debug.Log("opening %v repository at %#v", loc.Scheme, cfg)
+	return cfg, nil
 }
 
 // Open the backend specified by a location config.
 func open(ctx context.Context, s string, gopts GlobalOptions, opts options.Options) (restic.Backend, error) {
-	debug.Log("parsing location %v", location.StripPassword(s))
-	loc, err := location.Parse(s)
+	debug.Log("parsing location %v", location.StripPassword(gopts.backends, s))
+	loc, err := location.Parse(gopts.backends, s)
 	if err != nil {
 		return nil, errors.Fatalf("parsing repository location failed: %v", err)
 	}
@@ -706,40 +584,25 @@ func open(ctx context.Context, s string, gopts GlobalOptions, opts options.Optio
 
 	rt, err := backend.Transport(globalOptions.TransportOptions)
 	if err != nil {
-		return nil, err
+		return nil, errors.Fatal(err.Error())
 	}
 
 	// wrap the transport so that the throughput via HTTP is limited
 	lim := limiter.NewStaticLimiter(gopts.Limits)
 	rt = lim.Transport(rt)
 
-	switch loc.Scheme {
-	case "local":
-		be, err = local.Open(ctx, cfg.(local.Config))
-	case "sftp":
-		be, err = sftp.Open(ctx, cfg.(sftp.Config))
-	case "s3":
-		be, err = s3.Open(ctx, cfg.(s3.Config), rt)
-	case "gs":
-		be, err = gs.Open(cfg.(gs.Config), rt)
-	case "azure":
-		be, err = azure.Open(ctx, cfg.(azure.Config), rt)
-	case "swift":
-		be, err = swift.Open(ctx, cfg.(swift.Config), rt)
-	case "b2":
-		be, err = b2.Open(ctx, cfg.(b2.Config), rt)
-	case "rest":
-		be, err = rest.Open(cfg.(rest.Config), rt)
-	case "rclone":
-		be, err = rclone.Open(cfg.(rclone.Config), lim)
-
-	default:
+	factory := gopts.backends.Lookup(loc.Scheme)
+	if factory == nil {
 		return nil, errors.Fatalf("invalid backend: %q", loc.Scheme)
 	}
 
+	be, err = factory.Open(ctx, cfg, rt, lim)
 	if err != nil {
-		return nil, errors.Fatalf("unable to open repository at %v: %v", location.StripPassword(s), err)
+		return nil, errors.Fatalf("unable to open repository at %v: %v", location.StripPassword(gopts.backends, s), err)
 	}
+
+	// wrap with debug logging and connection limiting
+	be = logger.New(sema.NewBackend(be))
 
 	// wrap backend if a test specified an inner hook
 	if gopts.backendInnerTestHook != nil {
@@ -749,15 +612,10 @@ func open(ctx context.Context, s string, gopts GlobalOptions, opts options.Optio
 		}
 	}
 
-	if loc.Scheme == "local" || loc.Scheme == "sftp" {
-		// wrap the backend in a LimitBackend so that the throughput is limited
-		be = limiter.LimitBackend(be, lim)
-	}
-
 	// check if config is there
 	fi, err := be.Stat(ctx, restic.Handle{Type: restic.ConfigFile})
 	if err != nil {
-		return nil, errors.Fatalf("unable to open config file: %v\nIs there a repository at the following location?\n%v", err, location.StripPassword(s))
+		return nil, errors.Fatalf("unable to open config file: %v\nIs there a repository at the following location?\n%v", err, location.StripPassword(gopts.backends, s))
 	}
 
 	if fi.Size == 0 {
@@ -768,9 +626,9 @@ func open(ctx context.Context, s string, gopts GlobalOptions, opts options.Optio
 }
 
 // Create the backend specified by URI.
-func create(ctx context.Context, s string, opts options.Options) (restic.Backend, error) {
-	debug.Log("parsing location %v", s)
-	loc, err := location.Parse(s)
+func create(ctx context.Context, s string, gopts GlobalOptions, opts options.Options) (restic.Backend, error) {
+	debug.Log("parsing location %v", location.StripPassword(gopts.backends, s))
+	loc, err := location.Parse(gopts.backends, s)
 	if err != nil {
 		return nil, err
 	}
@@ -782,30 +640,18 @@ func create(ctx context.Context, s string, opts options.Options) (restic.Backend
 
 	rt, err := backend.Transport(globalOptions.TransportOptions)
 	if err != nil {
+		return nil, errors.Fatal(err.Error())
+	}
+
+	factory := gopts.backends.Lookup(loc.Scheme)
+	if factory == nil {
+		return nil, errors.Fatalf("invalid backend: %q", loc.Scheme)
+	}
+
+	be, err := factory.Create(ctx, cfg, rt, nil)
+	if err != nil {
 		return nil, err
 	}
 
-	switch loc.Scheme {
-	case "local":
-		return local.Create(ctx, cfg.(local.Config))
-	case "sftp":
-		return sftp.Create(ctx, cfg.(sftp.Config))
-	case "s3":
-		return s3.Create(ctx, cfg.(s3.Config), rt)
-	case "gs":
-		return gs.Create(cfg.(gs.Config), rt)
-	case "azure":
-		return azure.Create(ctx, cfg.(azure.Config), rt)
-	case "swift":
-		return swift.Open(ctx, cfg.(swift.Config), rt)
-	case "b2":
-		return b2.Create(ctx, cfg.(b2.Config), rt)
-	case "rest":
-		return rest.Create(ctx, cfg.(rest.Config), rt)
-	case "rclone":
-		return rclone.Create(ctx, cfg.(rclone.Config))
-	}
-
-	debug.Log("invalid repository scheme: %v", s)
-	return nil, errors.Fatalf("invalid scheme %q", loc.Scheme)
+	return logger.New(sema.NewBackend(be)), nil
 }
