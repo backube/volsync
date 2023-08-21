@@ -13,11 +13,24 @@ A MySQL database will be used as the example application.
 Creating source PVC to be backed up
 -----------------------------------
 
-Create a namespace called ``source``, and deploy the source MySQL database.
+Create a namespace called ``source``
 
 .. code-block:: console
 
    $ kubectl create ns source
+   $ kubectl annotate namespace source volsync.backube/privileged-movers="true"
+
+.. note::
+    The second command to annotate the namespace is used to enable the restic data mover to run in privileged mode.
+    This is because this simple example runs MySQL as root. For your own applications, you can run unprivileged by
+    setting the ``moverSecurityContext`` in your ReplicationSource/ReplicationDestination to match that of your
+    application in which case the namespace annotation will not be required. See the
+    :doc:`permission model documentation </usage/permissionmodel>` for more details.
+
+Deploy the source MySQL database.
+
+.. code:: console
+
    $ kubectl -n source create -f examples/source-database/
 
 Verify the database is running:
@@ -205,6 +218,7 @@ To restore from the backup, create a destination, deploy ``restic-config`` and
 .. code-block:: console
 
    $ kubectl create ns dest
+   $ kubectl annotate namespace dest volsync.backube/privileged-movers="true"
    $ kubectl -n dest create -f examples/restic/source-restic/
 
 To start the restore, create a empty PVC for the data:

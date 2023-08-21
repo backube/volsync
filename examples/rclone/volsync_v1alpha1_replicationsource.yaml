@@ -9,7 +9,7 @@ spec:
   trigger:
     schedule: "*/10 * * * *"
   rclone:
-    rcloneConfigSection: "aws-s3-bucket"
+    rcloneConfigSection: "rclone-bucket"
     rcloneDestPath: "volsync-test-bucket/mysql-pv-claim"
     rcloneConfig: "rclone-secret"
     copyMethod: Snapshot

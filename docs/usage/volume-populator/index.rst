@@ -5,8 +5,6 @@ ReplicationDestination Volume Populator
 .. toctree::
    :hidden:
 
-   volumepopulator_example
-
 .. sidebar:: Contents
 
    .. contents:: ReplicationDestination Volume Populator
