@@ -17,6 +17,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -124,7 +125,7 @@ func connectToTarget(sourceFile, targetAddress string, port int, opts *options, 
 	// Try to open as an spgz file
 	sf, err := spgz.NewFromFile(f, os.O_RDONLY)
 	if err != nil {
-		if err != spgz.ErrInvalidFormat {
+		if !errors.Is(err, spgz.ErrInvalidFormat) {
 			return err
 		}
 		logger.Info("Not an spgz file")
@@ -165,6 +166,7 @@ func connectToTarget(sourceFile, targetAddress string, port int, opts *options, 
 	return err
 }
 
+//nolint:funlen
 func startServer(targetFile string, port int, opts *options, logger logr.Logger) error {
 	var w spgz.SparseFile
 	useReadBuffer := false
@@ -189,9 +191,10 @@ func startServer(targetFile string, port int, opts *options, logger logr.Logger)
 	} else if !opts.noCompress {
 		sf, err := spgz.NewFromFileSize(f, os.O_RDWR|os.O_CREATE, diskrsync.DefTargetBlockSize)
 		if err != nil {
-			if err != spgz.ErrInvalidFormat {
-				if err == spgz.ErrPunchHoleNotSupported {
-					err = fmt.Errorf("target does not support compression. Try with -no-compress option (error was '%v')", err)
+			if !errors.Is(err, spgz.ErrInvalidFormat) {
+				if errors.Is(err, spgz.ErrPunchHoleNotSupported) {
+					err = fmt.Errorf(
+						"target does not support compression. Try with -no-compress option (error was '%w')", err)
 				}
 				return err
 			}

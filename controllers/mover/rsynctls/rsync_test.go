@@ -218,6 +218,7 @@ var _ = Describe("Rsync ignores other movers", func() {
 	})
 })
 
+//nolint:goconst
 var _ = Describe("RsyncTLS as a source", func() {
 	var ns *corev1.Namespace
 	logger := zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
