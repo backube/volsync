@@ -83,7 +83,7 @@ do
     RETRY=$((RETRY + 1))
     if test -b $BLOCK_SOURCE; then
       echo "calling diskrsync $BLOCK_SOURCE root@${URL_DESTINATION_ADDRESS}:/dev/block"
-      diskrsync $BLOCK_SOURCE root@${URL_DESTINATION_ADDRESS}:/dev/block
+      diskrsync $BLOCK_SOURCE "root@${URL_DESTINATION_ADDRESS}":/dev/block
     else
       rsync -aAhHSxz --delete --itemize-changes --info=stats2,misc2 $SOURCE "root@${URL_DESTINATION_ADDRESS}":.
     fi
