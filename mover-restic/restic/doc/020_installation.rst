@@ -40,7 +40,7 @@ package from the official community repos, e.g. using ``apk``:
 Arch Linux
 ==========
 
-On `Arch Linux <https://www.archlinux.org/>`__, there is a package called ``restic``
+On `Arch Linux <https://archlinux.org/>`__, there is a package called ``restic``
 installed from the official community repos, e.g. with ``pacman -S``:
 
 .. code-block:: console
@@ -93,7 +93,7 @@ You may also install it using `MacPorts <https://www.macports.org/>`__:
 Nix & NixOS
 ===========
 
-If you are using `Nix <https://nixos.org/nix/>`__ or `NixOS <https://nixos.org/>`__
+If you are using `Nix / NixOS <https://nixos.org>`__
 there is a package available named ``restic``.
 It can be installed using ``nix-env``:
 
@@ -265,13 +265,24 @@ binary, you can get it with `docker pull` like this:
 
     $ docker pull restic/restic
 
+The container is also available on the GitHub Container Registry:
+
+.. code-block:: console
+
+    $ docker pull ghcr.io/restic/restic
+
+Restic relies on the hostname for various operations. Make sure to set a static
+hostname using `--hostname` when creating a Docker container, otherwise Docker
+will assign a random hostname each time.
+
 From Source
 ***********
 
 restic is written in the Go programming language and you need at least
-Go version 1.18. Building restic may also work with older versions of Go,
+Go version 1.18. Building for Solaris requires at least Go version 1.20.
+Building restic may also work with older versions of Go,
 but that's not supported. See the `Getting
-started <https://golang.org/doc/install>`__ guide of the Go project for
+started <https://go.dev/doc/install>`__ guide of the Go project for
 instructions how to install Go.
 
 In order to build restic from source, execute the following steps:

@@ -74,8 +74,8 @@ func New(wr io.Writer, errWriter io.Writer, disableStatus bool) *Terminal {
 		// only use the fancy status code when we're running on a real terminal.
 		t.canUpdateStatus = true
 		t.fd = d.Fd()
-		t.clearCurrentLine = clearCurrentLine(wr, t.fd)
-		t.moveCursorUp = moveCursorUp(wr, t.fd)
+		t.clearCurrentLine = clearCurrentLine(t.fd)
+		t.moveCursorUp = moveCursorUp(t.fd)
 	}
 
 	return t
@@ -303,26 +303,50 @@ func Truncate(s string, w int) string {
 		return s
 	}
 
-	for i, r := range s {
+	for i := uint(0); i < uint(len(s)); {
+		utfsize := uint(1) // UTF-8 encoding size of first rune in s.
 		w--
-		if r > unicode.MaxASCII && wideRune(r) {
-			w--
+
+		if s[i] > unicode.MaxASCII {
+			var wide bool
+			if wide, utfsize = wideRune(s[i:]); wide {
+				w--
+			}
 		}
 
 		if w < 0 {
 			return s[:i]
 		}
+		i += utfsize
 	}
 
 	return s
 }
 
-// Guess whether r would occupy two terminal cells instead of one.
-// This cannot be determined exactly without knowing the terminal font,
-// so we treat all ambigous runes as full-width, i.e., two cells.
-func wideRune(r rune) bool {
-	kind := width.LookupRune(r).Kind()
-	return kind != width.Neutral && kind != width.EastAsianNarrow
+// Guess whether the first rune in s would occupy two terminal cells
+// instead of one. This cannot be determined exactly without knowing
+// the terminal font, so we treat all ambigous runes as full-width,
+// i.e., two cells.
+func wideRune(s string) (wide bool, utfsize uint) {
+	prop, size := width.LookupString(s)
+	kind := prop.Kind()
+	wide = kind != width.Neutral && kind != width.EastAsianNarrow
+	return wide, uint(size)
+}
+
+func sanitizeLines(lines []string, width int) []string {
+	// Sanitize lines and truncate them if they're too long.
+	for i, line := range lines {
+		line = Quote(line)
+		if width > 0 {
+			line = Truncate(line, width-2)
+		}
+		if i < len(lines)-1 { // Last line gets no line break.
+			line += "\n"
+		}
+		lines[i] = line
+	}
+	return lines
 }
 
 // SetStatus updates the status lines.
@@ -343,16 +367,7 @@ func (t *Terminal) SetStatus(lines []string) {
 		}
 	}
 
-	// Sanitize lines and truncate them if they're too long.
-	for i, line := range lines {
-		line = Quote(line)
-		if width > 0 {
-			line = Truncate(line, width-2)
-		}
-		if i < len(lines)-1 { // Last line gets no line break.
-			lines[i] = line + "\n"
-		}
-	}
+	sanitizeLines(lines, width)
 
 	select {
 	case t.status <- status{lines: lines}:

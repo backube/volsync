@@ -2,8 +2,9 @@ package rest
 
 import (
 	"net/url"
-	"reflect"
 	"testing"
+
+	"github.com/restic/restic/internal/backend/test"
 )
 
 func parseURL(s string) *url.URL {
@@ -15,20 +16,17 @@ func parseURL(s string) *url.URL {
 	return u
 }
 
-var configTests = []struct {
-	s   string
-	cfg Config
-}{
+var configTests = []test.ConfigTestData[Config]{
 	{
-		s: "rest:http://localhost:1234",
-		cfg: Config{
+		S: "rest:http://localhost:1234",
+		Cfg: Config{
 			URL:         parseURL("http://localhost:1234/"),
 			Connections: 5,
 		},
 	},
 	{
-		s: "rest:http://localhost:1234/",
-		cfg: Config{
+		S: "rest:http://localhost:1234/",
+		Cfg: Config{
 			URL:         parseURL("http://localhost:1234/"),
 			Connections: 5,
 		},
@@ -36,16 +34,72 @@ var configTests = []struct {
 }
 
 func TestParseConfig(t *testing.T) {
-	for _, test := range configTests {
-		t.Run("", func(t *testing.T) {
-			cfg, err := ParseConfig(test.s)
-			if err != nil {
-				t.Fatalf("%s failed: %v", test.s, err)
-			}
+	test.ParseConfigTester(t, ParseConfig, configTests)
+}
 
-			if !reflect.DeepEqual(cfg, test.cfg) {
-				t.Fatalf("\ninput: %s\n wrong config, want:\n  %v\ngot:\n  %v",
-					test.s, test.cfg, cfg)
+var passwordTests = []struct {
+	input    string
+	expected string
+}{
+	{
+		"rest:",
+		"rest:/",
+	},
+	{
+		"rest:localhost/",
+		"rest:localhost/",
+	},
+	{
+		"rest::123/",
+		"rest::123/",
+	},
+	{
+		"rest:http://",
+		"rest:http://",
+	},
+	{
+		"rest:http://hostname.foo:1234/",
+		"rest:http://hostname.foo:1234/",
+	},
+	{
+		"rest:http://user@hostname.foo:1234/",
+		"rest:http://user@hostname.foo:1234/",
+	},
+	{
+		"rest:http://user:@hostname.foo:1234/",
+		"rest:http://user:***@hostname.foo:1234/",
+	},
+	{
+		"rest:http://user:p@hostname.foo:1234/",
+		"rest:http://user:***@hostname.foo:1234/",
+	},
+	{
+		"rest:http://user:pppppaaafhhfuuwiiehhthhghhdkjaoowpprooghjjjdhhwuuhgjsjhhfdjhruuhsjsdhhfhshhsppwufhhsjjsjs@hostname.foo:1234/",
+		"rest:http://user:***@hostname.foo:1234/",
+	},
+	{
+		"rest:http://user:password@hostname",
+		"rest:http://user:***@hostname/",
+	},
+	{
+		"rest:http://user:password@:123",
+		"rest:http://user:***@:123/",
+	},
+	{
+		"rest:http://user:password@",
+		"rest:http://user:***@/",
+	},
+}
+
+func TestStripPassword(t *testing.T) {
+	// Make sure that the factory uses the correct method
+	StripPassword := NewFactory().StripPassword
+
+	for i, test := range passwordTests {
+		t.Run(test.input, func(t *testing.T) {
+			result := StripPassword(test.input)
+			if result != test.expected {
+				t.Errorf("test %d: expected '%s' but got '%s'", i, test.expected, result)
 			}
 		})
 	}

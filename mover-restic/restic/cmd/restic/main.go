@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"runtime"
+	godebug "runtime/debug"
 
 	"github.com/restic/restic/internal/debug"
 	"github.com/restic/restic/internal/options"
@@ -24,6 +25,8 @@ var cmdRoot = &cobra.Command{
 	Long: `
 restic is a backup program which allows saving multiple revisions of files and
 directories in an encrypted repository stored on different backends.
+
+The full documentation can be found at https://restic.readthedocs.io/ .
 `,
 	SilenceErrors:     true,
 	SilenceUsage:      true,
@@ -63,11 +66,7 @@ directories in an encrypted repository stored on different backends.
 
 		// run the debug functions for all subcommands (if build tag "debug" is
 		// enabled)
-		if err := runDebug(); err != nil {
-			return err
-		}
-
-		return nil
+		return runDebug()
 	},
 }
 
@@ -85,7 +84,16 @@ func needsPassword(cmd string) bool {
 
 var logBuffer = bytes.NewBuffer(nil)
 
+func tweakGoGC() {
+	// lower GOGC from 100 to 50, unless it was manually overwritten by the user
+	oldValue := godebug.SetGCPercent(50)
+	if oldValue != 100 {
+		godebug.SetGCPercent(oldValue)
+	}
+}
+
 func main() {
+	tweakGoGC()
 	// install custom global logger into a buffer, if an error occurs
 	// we can show the logs
 	log.SetOutput(logBuffer)

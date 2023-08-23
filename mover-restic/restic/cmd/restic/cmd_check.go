@@ -16,6 +16,7 @@ import (
 	"github.com/restic/restic/internal/errors"
 	"github.com/restic/restic/internal/fs"
 	"github.com/restic/restic/internal/restic"
+	"github.com/restic/restic/internal/ui"
 )
 
 var cmdCheck = &cobra.Command{
@@ -65,7 +66,7 @@ func init() {
 		// MarkDeprecated only returns an error when the flag is not found
 		panic(err)
 	}
-	f.BoolVar(&checkOptions.WithCache, "with-cache", false, "use the cache")
+	f.BoolVar(&checkOptions.WithCache, "with-cache", false, "use existing cache, only read uncached data from repository")
 }
 
 func checkFlags(opts CheckOptions) error {
@@ -97,7 +98,7 @@ func checkFlags(opts CheckOptions) error {
 			}
 
 		} else {
-			fileSize, err := parseSizeStr(opts.ReadDataSubset)
+			fileSize, err := ui.ParseBytes(opts.ReadDataSubset)
 			if err != nil {
 				return argumentError
 			}
@@ -211,7 +212,7 @@ func runCheck(ctx context.Context, opts CheckOptions, gopts GlobalOptions, args 
 	if !gopts.NoLock {
 		Verbosef("create exclusive lock for repository\n")
 		var lock *restic.Lock
-		lock, ctx, err = lockRepoExclusive(ctx, repo)
+		lock, ctx, err = lockRepoExclusive(ctx, repo, gopts.RetryLock, gopts.JSON)
 		defer unlockRepo(lock)
 		if err != nil {
 			return err
@@ -245,7 +246,7 @@ func runCheck(ctx context.Context, opts CheckOptions, gopts GlobalOptions, args 
 	}
 
 	if suggestIndexRebuild {
-		Printf("Duplicate packs/old indexes are non-critical, you can run `restic rebuild-index' to correct this.\n")
+		Printf("Duplicate packs/old indexes are non-critical, you can run `restic repair index' to correct this.\n")
 	}
 	if mixedFound {
 		Printf("Mixed packs with tree and data blobs are non-critical, you can run `restic prune` to correct this.\n")
@@ -363,7 +364,7 @@ func runCheck(ctx context.Context, opts CheckOptions, gopts GlobalOptions, args 
 			if repoSize == 0 {
 				return errors.Fatal("Cannot read from a repository having size 0")
 			}
-			subsetSize, _ := parseSizeStr(opts.ReadDataSubset)
+			subsetSize, _ := ui.ParseBytes(opts.ReadDataSubset)
 			if subsetSize > repoSize {
 				subsetSize = repoSize
 			}

@@ -1,31 +1,30 @@
 package test
 
 import (
+	"context"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/restic/restic/internal/backend"
+	"github.com/restic/restic/internal/backend/location"
+	"github.com/restic/restic/internal/errors"
 	"github.com/restic/restic/internal/restic"
 	"github.com/restic/restic/internal/test"
 )
 
 // Suite implements a test suite for restic backends.
-type Suite struct {
+type Suite[C any] struct {
 	// Config should be used to configure the backend.
-	Config interface{}
+	Config *C
 
 	// NewConfig returns a config for a new temporary backend that will be used in tests.
-	NewConfig func() (interface{}, error)
+	NewConfig func() (*C, error)
 
-	// CreateFn is a function that creates a temporary repository for the tests.
-	Create func(cfg interface{}) (restic.Backend, error)
-
-	// OpenFn is a function that opens a previously created temporary repository.
-	Open func(cfg interface{}) (restic.Backend, error)
-
-	// CleanupFn removes data created during the tests.
-	Cleanup func(cfg interface{}) error
+	// Factory contains a factory that can be used to create or open a repository for the tests.
+	Factory location.Factory
 
 	// MinimalData instructs the tests to not use excessive data.
 	MinimalData bool
@@ -40,7 +39,7 @@ type Suite struct {
 }
 
 // RunTests executes all defined tests as subtests of t.
-func (s *Suite) RunTests(t *testing.T) {
+func (s *Suite[C]) RunTests(t *testing.T) {
 	var err error
 	s.Config, err = s.NewConfig()
 	if err != nil {
@@ -60,11 +59,7 @@ func (s *Suite) RunTests(t *testing.T) {
 		return
 	}
 
-	if s.Cleanup != nil {
-		if err = s.Cleanup(s.Config); err != nil {
-			t.Fatal(err)
-		}
-	}
+	s.cleanup(t)
 }
 
 type testFunction struct {
@@ -72,7 +67,7 @@ type testFunction struct {
 	Fn   func(*testing.T)
 }
 
-func (s *Suite) testFuncs(t testing.TB) (funcs []testFunction) {
+func (s *Suite[C]) testFuncs(t testing.TB) (funcs []testFunction) {
 	tpe := reflect.TypeOf(s)
 	v := reflect.ValueOf(s)
 
@@ -107,7 +102,7 @@ type benchmarkFunction struct {
 	Fn   func(*testing.B)
 }
 
-func (s *Suite) benchmarkFuncs(t testing.TB) (funcs []benchmarkFunction) {
+func (s *Suite[C]) benchmarkFuncs(t testing.TB) (funcs []benchmarkFunction) {
 	tpe := reflect.TypeOf(s)
 	v := reflect.ValueOf(s)
 
@@ -138,7 +133,7 @@ func (s *Suite) benchmarkFuncs(t testing.TB) (funcs []benchmarkFunction) {
 }
 
 // RunBenchmarks executes all defined benchmarks as subtests of b.
-func (s *Suite) RunBenchmarks(b *testing.B) {
+func (s *Suite[C]) RunBenchmarks(b *testing.B) {
 	var err error
 	s.Config, err = s.NewConfig()
 	if err != nil {
@@ -158,28 +153,62 @@ func (s *Suite) RunBenchmarks(b *testing.B) {
 		return
 	}
 
-	if err = s.Cleanup(s.Config); err != nil {
-		b.Fatal(err)
-	}
+	s.cleanup(b)
 }
 
-func (s *Suite) create(t testing.TB) restic.Backend {
-	be, err := s.Create(s.Config)
+func (s *Suite[C]) createOrError() (restic.Backend, error) {
+	tr, err := backend.Transport(backend.TransportOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("cannot create transport for tests: %v", err)
+	}
+
+	be, err := s.Factory.Create(context.TODO(), s.Config, tr, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = be.Stat(context.TODO(), restic.Handle{Type: restic.ConfigFile})
+	if err != nil && !be.IsNotExist(err) {
+		return nil, err
+	}
+
+	if err == nil {
+		return nil, errors.New("config already exists")
+	}
+
+	return be, nil
+}
+
+func (s *Suite[C]) create(t testing.TB) restic.Backend {
+	be, err := s.createOrError()
 	if err != nil {
 		t.Fatal(err)
 	}
 	return be
 }
 
-func (s *Suite) open(t testing.TB) restic.Backend {
-	be, err := s.Open(s.Config)
+func (s *Suite[C]) open(t testing.TB) restic.Backend {
+	tr, err := backend.Transport(backend.TransportOptions{})
+	if err != nil {
+		t.Fatalf("cannot create transport for tests: %v", err)
+	}
+
+	be, err := s.Factory.Open(context.TODO(), s.Config, tr, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return be
 }
 
-func (s *Suite) close(t testing.TB, be restic.Backend) {
+func (s *Suite[C]) cleanup(t testing.TB) {
+	be := s.open(t)
+	if err := be.Delete(context.TODO()); err != nil {
+		t.Fatal(err)
+	}
+	s.close(t, be)
+}
+
+func (s *Suite[C]) close(t testing.TB, be restic.Backend) {
 	err := be.Close()
 	if err != nil {
 		t.Fatal(err)

@@ -51,6 +51,7 @@ type FindOptions struct {
 	PackID, ShowPackID bool
 	CaseInsensitive    bool
 	ListLong           bool
+	HumanReadable      bool
 	restic.SnapshotFilter
 }
 
@@ -69,6 +70,7 @@ func init() {
 	f.BoolVar(&findOptions.ShowPackID, "show-pack-id", false, "display the pack-ID the blobs belong to (with --blob or --tree)")
 	f.BoolVarP(&findOptions.CaseInsensitive, "ignore-case", "i", false, "ignore case for pattern")
 	f.BoolVarP(&findOptions.ListLong, "long", "l", false, "use a long listing format showing size and mode")
+	f.BoolVar(&findOptions.HumanReadable, "human-readable", false, "print sizes in human readable format")
 
 	initMultiSnapshotFilter(f, &findOptions.SnapshotFilter, true)
 }
@@ -104,12 +106,13 @@ func parseTime(str string) (time.Time, error) {
 }
 
 type statefulOutput struct {
-	ListLong bool
-	JSON     bool
-	inuse    bool
-	newsn    *restic.Snapshot
-	oldsn    *restic.Snapshot
-	hits     int
+	ListLong      bool
+	HumanReadable bool
+	JSON          bool
+	inuse         bool
+	newsn         *restic.Snapshot
+	oldsn         *restic.Snapshot
+	hits          int
 }
 
 func (s *statefulOutput) PrintPatternJSON(path string, node *restic.Node) {
@@ -164,7 +167,7 @@ func (s *statefulOutput) PrintPatternNormal(path string, node *restic.Node) {
 		s.oldsn = s.newsn
 		Verbosef("Found matching entries in snapshot %s from %s\n", s.oldsn.ID().Str(), s.oldsn.Time.Local().Format(TimeFormat))
 	}
-	Println(formatNode(path, node, s.ListLong))
+	Println(formatNode(path, node, s.ListLong, s.HumanReadable))
 }
 
 func (s *statefulOutput) PrintPattern(path string, node *restic.Node) {
@@ -501,7 +504,7 @@ func (f *Finder) indexPacksToBlobs(ctx context.Context, packIDs map[string]struc
 	return packIDs
 }
 
-func (f *Finder) findObjectPack(ctx context.Context, id string, t restic.BlobType) {
+func (f *Finder) findObjectPack(id string, t restic.BlobType) {
 	idx := f.repo.Index()
 
 	rid, err := restic.ParseID(id)
@@ -524,13 +527,13 @@ func (f *Finder) findObjectPack(ctx context.Context, id string, t restic.BlobTyp
 	}
 }
 
-func (f *Finder) findObjectsPacks(ctx context.Context) {
+func (f *Finder) findObjectsPacks() {
 	for i := range f.blobIDs {
-		f.findObjectPack(ctx, i, restic.DataBlob)
+		f.findObjectPack(i, restic.DataBlob)
 	}
 
 	for i := range f.treeIDs {
-		f.findObjectPack(ctx, i, restic.TreeBlob)
+		f.findObjectPack(i, restic.TreeBlob)
 	}
 }
 
@@ -575,7 +578,7 @@ func runFind(ctx context.Context, opts FindOptions, gopts GlobalOptions, args []
 
 	if !gopts.NoLock {
 		var lock *restic.Lock
-		lock, ctx, err = lockRepo(ctx, repo)
+		lock, ctx, err = lockRepo(ctx, repo, gopts.RetryLock, gopts.JSON)
 		defer unlockRepo(lock)
 		if err != nil {
 			return err
@@ -594,7 +597,7 @@ func runFind(ctx context.Context, opts FindOptions, gopts GlobalOptions, args []
 	f := &Finder{
 		repo:        repo,
 		pat:         pat,
-		out:         statefulOutput{ListLong: opts.ListLong, JSON: globalOptions.JSON},
+		out:         statefulOutput{ListLong: opts.ListLong, HumanReadable: opts.HumanReadable, JSON: gopts.JSON},
 		ignoreTrees: restic.NewIDSet(),
 	}
 
@@ -618,7 +621,16 @@ func runFind(ctx context.Context, opts FindOptions, gopts GlobalOptions, args []
 		}
 	}
 
+	var filteredSnapshots []*restic.Snapshot
 	for sn := range FindFilteredSnapshots(ctx, snapshotLister, repo, &opts.SnapshotFilter, opts.Snapshots) {
+		filteredSnapshots = append(filteredSnapshots, sn)
+	}
+
+	sort.Slice(filteredSnapshots, func(i, j int) bool {
+		return filteredSnapshots[i].Time.Before(filteredSnapshots[j].Time)
+	})
+
+	for _, sn := range filteredSnapshots {
 		if f.blobIDs != nil || f.treeIDs != nil {
 			if err = f.findIDs(ctx, sn); err != nil && err.Error() != "OK" {
 				return err
@@ -632,7 +644,7 @@ func runFind(ctx context.Context, opts FindOptions, gopts GlobalOptions, args []
 	f.out.Finish()
 
 	if opts.ShowPackID && (f.blobIDs != nil || f.treeIDs != nil) {
-		f.findObjectsPacks(ctx)
+		f.findObjectsPacks()
 	}
 
 	return nil

@@ -207,7 +207,7 @@ func (arch *Archiver) wrapLoadTreeError(id restic.ID, err error) error {
 	if arch.Repo.Index().Has(restic.BlobHandle{ID: id, Type: restic.TreeBlob}) {
 		err = errors.Errorf("tree %v could not be loaded; the repository could be damaged: %v", id, err)
 	} else {
-		err = errors.Errorf("tree %v is not known; the repository could be damaged, run `rebuild-index` to try to repair it", id)
+		err = errors.Errorf("tree %v is not known; the repository could be damaged, run `repair index` to try to repair it", id)
 	}
 	return err
 }
@@ -680,6 +680,7 @@ type SnapshotOptions struct {
 	Excludes       []string
 	Time           time.Time
 	ParentSnapshot *restic.Snapshot
+	ProgramVersion string
 }
 
 // loadParentTree loads a tree referenced by snapshot id. If id is null, nil is returned.
@@ -796,6 +797,7 @@ func (arch *Archiver) Snapshot(ctx context.Context, targets []string, opts Snaps
 		return nil, restic.ID{}, err
 	}
 
+	sn.ProgramVersion = opts.ProgramVersion
 	sn.Excludes = opts.Excludes
 	if opts.ParentSnapshot != nil {
 		sn.Parent = opts.ParentSnapshot.ID()

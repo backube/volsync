@@ -1,4 +1,4 @@
-FROM golang:1.19-alpine AS builder
+FROM golang:1.20-alpine AS builder
 
 WORKDIR /go/src/github.com/restic/restic
 
@@ -11,7 +11,7 @@ RUN go run build.go
 
 FROM alpine:latest AS restic
 
-RUN apk add --update --no-cache ca-certificates fuse openssh-client tzdata
+RUN apk add --update --no-cache ca-certificates fuse openssh-client tzdata jq
 
 COPY --from=builder /go/src/github.com/restic/restic/restic /usr/bin
 
