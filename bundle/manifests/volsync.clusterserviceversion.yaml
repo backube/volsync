@@ -41,10 +41,10 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    olm.skipRange: '>=0.4.0 <0.5.4'
+    olm.skipRange: '>=0.4.0 <0.5.5'
     operators.operatorframework.io/builder: operator-sdk-v1.22.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
-  name: volsync.v0.5.4
+  name: volsync.v0.5.5
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -508,5 +508,5 @@ spec:
     name: restic-container
   - image: quay.io/backube/volsync-mover-syncthing:latest
     name: syncthing-container
-  replaces: volsync.v0.5.3
-  version: 0.5.4
+  replaces: volsync.v0.5.4
+  version: 0.5.5
