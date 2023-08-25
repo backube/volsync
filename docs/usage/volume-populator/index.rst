@@ -10,8 +10,7 @@ ReplicationDestination Volume Populator
    .. contents:: ReplicationDestination Volume Populator
       :local:
 
-VolSync includes a Volume Populator controller to allow creation of PVCs that use a dataSourceRef that refers to a
-ReplicationDestination resource.
+When a PVC is created that directly references a ReplicationDestination object, VolSync's Volume Populator controller will automatically fill the PVC with the most recent replicated data, alleviating the need to manually specify the name of the Snapshot.
 
 .. note::
     The VolumePopulator feature of VolSync is available with kubernetes v1.22 and
