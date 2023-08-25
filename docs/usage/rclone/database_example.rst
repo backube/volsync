@@ -9,6 +9,19 @@ First, create the source namespace and deploy the source MySQL database.
 .. code:: console
 
    $ kubectl create ns source
+   $ kubectl annotate namespace source volsync.backube/privileged-movers="true"
+
+.. note::
+    The second command to annotate the namespace is used to enable the rclone data mover to run in privileged mode.
+    This is because this simple example runs MySQL as root. For your own applications, you can run unprivileged by
+    setting the ``moverSecurityContext`` in your ReplicationSource/ReplicationDestination to match that of your
+    application in which case the namespace annotation will not be required. See the
+    :doc:`permission model documentation </usage/permissionmodel>` for more details.
+
+Deploy the source MySQL database.
+
+.. code:: console
+
    $ kubectl create -f examples/source-database/ -n source
 
 Verify the database is running.
@@ -40,6 +53,30 @@ Add a new database.
    > create database synced;
    > exit
    $ exit
+
+
+Now edit ``examples/rclone/rclone.conf`` with your rclone configuration, or you can deploy minio as object-storage to use
+with the examples.
+
+To start minio in your cluster, run:
+
+.. code:: console
+
+   $ hack/run-minio.sh
+
+If using minio then you can edit ``examples/rclone/rclone.conf`` to match the following:
+
+.. code-block:: none
+    :caption: rclone.conf for use with local minio
+
+    [rclone-bucket]
+    type = s3
+    provider = Minio
+    env_auth = false
+    access_key_id = access
+    secret_access_key = password
+    region = us-east-1
+    endpoint = http://minio.minio.svc.cluster.local:9000
 
 Now, deploy the ``rclone-secret`` followed by ``ReplicationSource`` configuration.
 
@@ -78,6 +115,7 @@ on the destination.
 .. code:: console
 
    $ kubectl create ns dest
+   $ kubectl annotate namespace dest volsync.backube/privileged-movers="true"
    $ kubectl create secret generic rclone-secret --from-file=rclone.conf=./examples/rclone/rclone.conf -n dest
    $ kubectl create -f examples/rclone/volsync_v1alpha1_replicationdestination.yaml -n dest
 
@@ -88,20 +126,14 @@ destination side. At the end of the each successful iteration, the ``Replication
 updated with the latest snapshot image.
 
 Now deploy the MySQL database to the ``dest`` namespace which will use the data that has been replicated.
-First we need to identify the latest snapshot from the ``ReplicationDestination`` object. Record the values of
-the latest snapshot as it will be used to create a pvc. Then create the Deployment, Service, PVC,
-and Secret.
 
-Ensure that the next synchronization cycle does not start while the following
-steps are being completed or VolSync may replace the existing snapshot with a
-new one before the database starts.
+The PVC uses the VolSync volume populator feature and sets the ReplicationDestination
+as its dataSourceRef. This will populate the PVC with the latest snapshot contents from the ReplicationDestination.
+
+Create the Deployment, Service, PVC, and Secret.
 
 .. code:: console
 
-   # Get the latest snapshot name
-   $ kubectl get replicationdestination database-destination -n dest --template={{.status.latestImage.name}}
-   # Substitute that name into the database PVC template
-   $ sed -i 's/snapshotToReplace/volsync-dest-database-destination-20201203174504/g' examples/destination-database/mysql-pvc.yaml
    # Start the database
    $ kubectl create -n dest -f examples/destination-database/
 

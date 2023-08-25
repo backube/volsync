@@ -14,6 +14,7 @@ Usage
    rsync-tls/index
    syncthing/index
    cli/index
+   volume-populator/index
 
 There are four different replication methods built into VolSync. Choose the method that best fits your use-case:
 
@@ -54,3 +55,8 @@ Metrics
 VolSync :doc:`exposes a number of metrics <metrics/index>` that permit monitoring
 the status of replication relationships via Prometheus.
 
+Volume Populator
+================
+
+VolSync provides a :doc:`Volume Populator <volume-populator/index>` to allow creation of PVCs that reference a
+ReplicationDestination as a dataSourceRef.
