@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -314,3 +315,35 @@ var _ = Context("Issue 290: Synchronizing condition error doesn't clear", func()
 		Expect(c.Reason).To(Equal(volsyncv1alpha1.SynchronizingReasonSync))
 	})
 })
+
+var _ = DescribeTable("Crontab parsing and validation",
+	func(cronspec string, isValid bool) {
+		// cronspecValidation is the regex used to validate crontab entries it
+		// needs to be kept in sync with the regex in
+		// api/v1alpha1/replicationdestination_types.go and
+		// api/v1alpha1/replicationsource_types.go
+		//
+		// For interactive testing of cronspecs, see:
+		// https://regex101.com/r/AXEJLy/2
+		// nolint:lll
+		var cronspecValidation = regexp.MustCompile(`^(@(annually|yearly|monthly|weekly|daily|hourly))|((((\d+,)*\d+|(\d+(\/|-)\d+)|\*(\/\d+)?)\s?){5})$`)
+		_, err := getSchedule(cronspec)
+		if isValid { // needs to pass regex validation and be parsable by cron library
+			Expect(cronspecValidation.MatchString(cronspec)).To(BeTrue())
+			Expect(err).NotTo(HaveOccurred())
+		} else { // should regex validation and return an error from cron library
+			Expect(cronspecValidation.MatchString(cronspec)).To(BeFalse())
+			Expect(err).To(HaveOccurred())
+		}
+	},
+	Entry("Midnight Jan 1", "0 0 1 1 *", true),
+	Entry("Every 5 minutes (slash notation)", "*/5 * * * *", true),
+	Entry("Hourly (@ notation)", "@hourly", true),
+	Entry("1st of month Mar-May (range notation)", "0 0 1 3-5 *", true),
+	Entry("9am, 5pm (comma notation)", "0 9,17 * * *", true),
+	Entry("Junk string", "something", false),
+	Entry("Empty string", "", false),
+	Entry("Every 3 hours (slash notation)", "19 */3 * * * ", true),
+	Entry("All numbers", "6 5 4 3 2", true),
+	Entry("Hour range (9am - 5pm)", "0 9-17 * * *", true),
+)

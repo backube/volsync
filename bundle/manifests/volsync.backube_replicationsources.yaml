@@ -1184,8 +1184,8 @@ spec:
                   schedule:
                     description: schedule is a cronspec (https://en.wikipedia.org/wiki/Cron#Overview)
                       that can be used to schedule replication to occur at regular,
-                      time-based intervals.
-                    pattern: ^(\d+|\*)(/\d+)?(\s+(\d+|\*)(/\d+)?){4}$
+                      time-based intervals. nolint:lll
+                    pattern: ^(@(annually|yearly|monthly|weekly|daily|hourly))|((((\d+,)*\d+|(\d+(\/|-)\d+)|\*(\/\d+)?)\s?){5})$
                     type: string
                 type: object
             type: object
