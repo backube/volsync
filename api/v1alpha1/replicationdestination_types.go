@@ -46,7 +46,8 @@ type ReplicationDestinationTriggerSpec struct {
 	// schedule is a cronspec (https://en.wikipedia.org/wiki/Cron#Overview) that
 	// can be used to schedule replication to occur at regular, time-based
 	// intervals.
-	//+kubebuilder:validation:Pattern=`^(\d+|\*)(/\d+)?(\s+(\d+|\*)(/\d+)?){4}$`
+	// nolint:lll
+	//+kubebuilder:validation:Pattern=`^(@(annually|yearly|monthly|weekly|daily|hourly))|((((\d+,)*\d+|(\d+(\/|-)\d+)|\*(\/\d+)?)\s?){5})$`
 	//+optional
 	Schedule *string `json:"schedule,omitempty"`
 	// manual is a string value that schedules a manual trigger.
