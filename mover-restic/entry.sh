@@ -152,8 +152,8 @@ function reverse_array() {
     while ((left < right)); do
         # triangle swap
         local -i temp="${_arr[$left]}"
-        _arr[$left]="${_arr[$right]}"
-        _arr[$right]="$temp"
+        _arr[left]="${_arr[$right]}"
+        _arr[right]="$temp"
 
         # increment indices
         ((left++))
