@@ -72,6 +72,26 @@ preconfigure_folder() {
 }
 
 #####################################################
+# Generates the server certificate in the config
+# directory but only if the cert does not exist.
+# Arguments:
+# 	None
+# Globals:
+# 	SYNCTHING_CONFIG_DIR
+# Returns:
+# 	None
+#####################################################
+ensure_server_certificates() {
+  if ! [[ -f "${SYNCTHING_CONFIG_DIR}/cert.pem" ]]; then
+    # use openssl to generate a new server cert
+    log_msg "Generating server certs in ${SYNCTHING_CONFIG_DIR}/cert.pem"
+    openssl req -x509 -newkey rsa:4096 -keyout "${SYNCTHING_CONFIG_DIR}/key.pem" -out "${SYNCTHING_CONFIG_DIR}/cert.pem" -sha256 -days 3650 -nodes -subj "/CN=syncthing" -addext "extendedKeyUsage = serverAuth, clientAuth"
+  fi
+
+  return 0
+}
+
+#####################################################
 # Copies the HTTPS certificates from the
 # predefined certificate directory
 # to the config directory.
@@ -127,6 +147,9 @@ preflight_check() {
   else
     log_msg "${SYNCTHING_DATA_DIR}/.stignore already exists"
   fi
+
+  # ensure server certificates
+  ensure_server_certificates
 
   # ensure the HTTPS certificates
   ensure_https_certificates
