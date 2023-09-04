@@ -16,7 +16,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.16.0
 	github.com/syncthing/syncthing v1.23.7
-	go.uber.org/zap v1.24.0
+	go.uber.org/zap v1.25.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.28.1
 	k8s.io/apiextensions-apiserver v0.28.1
@@ -103,7 +103,6 @@ require (
 	github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d // indirect
 	github.com/thejerf/suture/v4 v4.0.2 // indirect
 	github.com/yusufpapurcu/wmi v1.2.3 // indirect
-	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.11.0 // indirect
 	golang.org/x/exp v0.0.0-20230711023510-fffb14384f22 // indirect
