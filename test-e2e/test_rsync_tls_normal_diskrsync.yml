@@ -21,8 +21,8 @@
         podSecurityContext:
           fsGroup: 5678
           runAsGroup: 5678
-          #fsGroup: 6
-          #runAsGroup: 6
+          # fsGroup: 6
+          # runAsGroup: 6
           runAsNonRoot: true
           runAsUser: 1234
           seccompProfile:
