@@ -3,16 +3,6 @@
   value:
   - entrypoint:
     - volsync-custom-scorecard-tests
-    - test_mem_usage.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
-    labels:
-      suite: volsync-e2e
-      test: test_mem_usage.yml
-    storage:
-      spec:
-        mountPath: {}
-  - entrypoint:
-    - volsync-custom-scorecard-tests
     - test_multi_sync_snapshot_rclone.yml
     image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
