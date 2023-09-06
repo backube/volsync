@@ -85,7 +85,7 @@ do
       echo "calling diskrsync $BLOCK_SOURCE root@${URL_DESTINATION_ADDRESS}:/dev/block"
       diskrsync $BLOCK_SOURCE "root@${URL_DESTINATION_ADDRESS}":/dev/block
     else
-      rsync -aAhHSxz --delete --itemize-changes --info=stats2,misc2 $SOURCE "root@${URL_DESTINATION_ADDRESS}":.
+      rsync -aAhHSxz --delete --itemize-changes --info=stats2,misc2 $SOURCE/ "root@${URL_DESTINATION_ADDRESS}":.
     fi
     rc=$?
     if [[ ${rc} -ne 0 ]]; then
