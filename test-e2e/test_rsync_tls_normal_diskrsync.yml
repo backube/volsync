@@ -16,232 +16,241 @@
       include_role:
         name: gather_cluster_info
 
-    - name: Define podSecurityContext
+    # These can be run in kind if enough loop devices are available
+    # but only running on openshift by default
+    - name: Determine if we should run diskrsync (rsync block volume) tests
       ansible.builtin.set_fact:
-        podSecurityContext:
-          fsGroup: 5678
-          runAsGroup: 5678
-          # fsGroup: 6
-          # runAsGroup: 6
-          runAsNonRoot: true
-          runAsUser: 1234
-          seccompProfile:
-            type: RuntimeDefault
-      when: not cluster_info.is_openshift
+        run_diskrsync_tests: "{{ cluster_info.is_openshift }}"
 
-    - name: Create dest block PVC
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          kind: PersistentVolumeClaim
-          apiVersion: v1
-          metadata:
-            name: data-dest-temp
-            namespace: "{{ namespace }}"
-          spec:
-            volumeMode: Block
-            accessModes:
-              - ReadWriteOnce
-            resources:
-              requests:
-                storage: 1Gi
+    - when: run_diskrsync_tests
+      name: diskrsync (block volume) tests
+      block:
+        - name: Define podSecurityContext
+          ansible.builtin.set_fact:
+            podSecurityContext:
+              fsGroup: 5678
+              runAsGroup: 5678
+              # fsGroup: 6
+              # runAsGroup: 6
+              runAsNonRoot: true
+              runAsUser: 1234
+              seccompProfile:
+                type: RuntimeDefault
+          when: not cluster_info.is_openshift
 
-    - name: Create ReplicationDestination (w/ mSC)
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          apiVersion: volsync.backube/v1alpha1
-          kind: ReplicationDestination
-          metadata:
-            name: test
-            namespace: "{{ namespace }}"
-          spec:
-            rsyncTLS:
-              destinationPVC: data-dest-temp
-              copyMethod: Snapshot
-              capacity: 1Gi
-              accessModes:
-                - ReadWriteOnce
-              moverSecurityContext: "{{ podSecurityContext }}"
-      when: podSecurityContext is defined
+        - name: Create dest block PVC
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              kind: PersistentVolumeClaim
+              apiVersion: v1
+              metadata:
+                name: data-dest-temp
+                namespace: "{{ namespace }}"
+              spec:
+                volumeMode: Block
+                accessModes:
+                  - ReadWriteOnce
+                resources:
+                  requests:
+                    storage: 1Gi
 
-    - name: Create ReplicationDestination (w/o mSC)
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          apiVersion: volsync.backube/v1alpha1
-          kind: ReplicationDestination
-          metadata:
-            name: test
-            namespace: "{{ namespace }}"
-          spec:
-            rsyncTLS:
-              destinationPVC: data-dest-temp
-              copyMethod: Snapshot
-              capacity: 1Gi
-              accessModes:
-                - ReadWriteOnce
-      when: podSecurityContext is not defined
-
-    - name: Create source block PVC
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          kind: PersistentVolumeClaim
-          apiVersion: v1
-          metadata:
-            name: data-source
-            namespace: "{{ namespace }}"
-          spec:
-            volumeMode: Block
-            accessModes:
-              - ReadWriteOnce
-            resources:
-              requests:
-                storage: 1Gi
-
-    - name: Write data into the source block PVC
-      include_role:
-        name: write_to_pvc_block
-      vars:
-        data: 'data'
-        pvc_name: 'data-source'
-
-    - name: Wait for key and address to be ready
-      kubernetes.core.k8s_info:
-        api_version: volsync.backube/v1alpha1
-        kind: ReplicationDestination
-        name: test
-        namespace: "{{ namespace }}"
-      register: res
-      until: >
-        res.resources | length > 0 and
-        res.resources[0].status.rsyncTLS is defined and
-        res.resources[0].status.rsyncTLS.keySecret is defined and
-        res.resources[0].status.rsyncTLS.address is defined
-      delay: 1
-      retries: 300
-
-    - name: Create ReplicationSource (w/ mSC)
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          apiVersion: volsync.backube/v1alpha1
-          kind: ReplicationSource
-          metadata:
-            name: source
-            namespace: "{{ namespace }}"
-          spec:
-            sourcePVC: data-source
-            trigger:
-              schedule: "0 0 1 1 *"
-            rsyncTLS:
-              keySecret: "{{ res.resources[0].status.rsyncTLS.keySecret }}"
-              address: "{{ res.resources[0].status.rsyncTLS.address }}"
-              copyMethod: Snapshot
-              moverSecurityContext: "{{ podSecurityContext }}"
-      when: podSecurityContext is defined
-
-    - name: Create ReplicationSource (w/o mSC)
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          apiVersion: volsync.backube/v1alpha1
-          kind: ReplicationSource
-          metadata:
-            name: source
-            namespace: "{{ namespace }}"
-          spec:
-            sourcePVC: data-source
-            trigger:
-              schedule: "0 0 1 1 *"
-            rsyncTLS:
-              keySecret: "{{ res.resources[0].status.rsyncTLS.keySecret }}"
-              address: "{{ res.resources[0].status.rsyncTLS.address }}"
-              copyMethod: Snapshot
-      when: podSecurityContext is not defined
-
-    - name: Check status of replicationsource
-      kubernetes.core.k8s_info:
-        api_version: volsync.backube/v1alpha1
-        kind: ReplicationSource
-        name: source
-        namespace: "{{ namespace }}"
-      register: res
-      until: >
-        res.resources | length > 0 and
-        res.resources[0].status.lastSyncDuration is defined and
-        res.resources[0].status.lastSyncTime is defined and
-        res.resources[0].status.latestMoverStatus is defined and
-        res.resources[0].status.latestMoverStatus.result == "Successful" and
-        res.resources[0].status.latestMoverStatus.logs is search("diskrsync completed in.*")
-      delay: 1
-      retries: 900
-
-    - name: Wait for sync to complete
-      kubernetes.core.k8s_info:
-        api_version: volsync.backube/v1alpha1
-        kind: ReplicationDestination
-        name: test
-        namespace: "{{ namespace }}"
-      register: res
-      until: >
-        res.resources | length > 0 and
-        res.resources[0].status.latestImage is defined and
-        res.resources[0].status.latestImage.kind == "VolumeSnapshot" and
-        res.resources[0].status.latestMoverStatus is defined and
-        res.resources[0].status.latestMoverStatus.result == "Successful"
-      delay: 1
-      retries: 900
-
-    - name: Convert latestImage to block PVC using VolumePopulator
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          apiVersion: v1
-          kind: PersistentVolumeClaim
-          metadata:
-            name: data-dest
-            namespace: "{{ namespace }}"
-          spec:
-            volumeMode: Block
-            accessModes:
-              - ReadWriteOnce
-            dataSourceRef:
+        - name: Create ReplicationDestination (w/ mSC)
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: volsync.backube/v1alpha1
               kind: ReplicationDestination
-              apiGroup: volsync.backube
-              name: test
-            resources:
-              requests:
-                storage: 1Gi
-      when: cluster_info.volumepopulator_supported
+              metadata:
+                name: test
+                namespace: "{{ namespace }}"
+              spec:
+                rsyncTLS:
+                  destinationPVC: data-dest-temp
+                  copyMethod: Snapshot
+                  capacity: 1Gi
+                  accessModes:
+                    - ReadWriteOnce
+                  moverSecurityContext: "{{ podSecurityContext }}"
+          when: podSecurityContext is defined
 
-    - name: Convert latestImage to block PVC
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          apiVersion: v1
-          kind: PersistentVolumeClaim
-          metadata:
-            name: data-dest
+        - name: Create ReplicationDestination (w/o mSC)
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: volsync.backube/v1alpha1
+              kind: ReplicationDestination
+              metadata:
+                name: test
+                namespace: "{{ namespace }}"
+              spec:
+                rsyncTLS:
+                  destinationPVC: data-dest-temp
+                  copyMethod: Snapshot
+                  capacity: 1Gi
+                  accessModes:
+                    - ReadWriteOnce
+          when: podSecurityContext is not defined
+
+        - name: Create source block PVC
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              kind: PersistentVolumeClaim
+              apiVersion: v1
+              metadata:
+                name: data-source
+                namespace: "{{ namespace }}"
+              spec:
+                volumeMode: Block
+                accessModes:
+                  - ReadWriteOnce
+                resources:
+                  requests:
+                    storage: 1Gi
+
+        - name: Write data into the source block PVC
+          include_role:
+            name: write_to_pvc_block
+          vars:
+            data: 'data'
+            pvc_name: 'data-source'
+
+        - name: Wait for key and address to be ready
+          kubernetes.core.k8s_info:
+            api_version: volsync.backube/v1alpha1
+            kind: ReplicationDestination
+            name: test
             namespace: "{{ namespace }}"
-          spec:
-            volumeMode: Block
-            accessModes:
-              - ReadWriteOnce
-            dataSource:
-              kind: VolumeSnapshot
-              apiGroup: snapshot.storage.k8s.io
-              name: "{{ res.resources[0].status.latestImage.name }}"
-            resources:
-              requests:
-                storage: 1Gi
-      when: not cluster_info.volumepopulator_supported
+          register: res
+          until: >
+            res.resources | length > 0 and
+            res.resources[0].status.rsyncTLS is defined and
+            res.resources[0].status.rsyncTLS.keySecret is defined and
+            res.resources[0].status.rsyncTLS.address is defined
+          delay: 1
+          retries: 300
 
-    - name: Verify contents of block PVC
-      include_role:
-        name: compare_pvc_data_block
-      vars:
-        pvc1_name: data-source
-        pvc2_name: data-dest
-        timeout: 900
+        - name: Create ReplicationSource (w/ mSC)
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: volsync.backube/v1alpha1
+              kind: ReplicationSource
+              metadata:
+                name: source
+                namespace: "{{ namespace }}"
+              spec:
+                sourcePVC: data-source
+                trigger:
+                  schedule: "0 0 1 1 *"
+                rsyncTLS:
+                  keySecret: "{{ res.resources[0].status.rsyncTLS.keySecret }}"
+                  address: "{{ res.resources[0].status.rsyncTLS.address }}"
+                  copyMethod: Snapshot
+                  moverSecurityContext: "{{ podSecurityContext }}"
+          when: podSecurityContext is defined
+
+        - name: Create ReplicationSource (w/o mSC)
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: volsync.backube/v1alpha1
+              kind: ReplicationSource
+              metadata:
+                name: source
+                namespace: "{{ namespace }}"
+              spec:
+                sourcePVC: data-source
+                trigger:
+                  schedule: "0 0 1 1 *"
+                rsyncTLS:
+                  keySecret: "{{ res.resources[0].status.rsyncTLS.keySecret }}"
+                  address: "{{ res.resources[0].status.rsyncTLS.address }}"
+                  copyMethod: Snapshot
+          when: podSecurityContext is not defined
+
+        - name: Check status of replicationsource
+          kubernetes.core.k8s_info:
+            api_version: volsync.backube/v1alpha1
+            kind: ReplicationSource
+            name: source
+            namespace: "{{ namespace }}"
+          register: res
+          until: >
+            res.resources | length > 0 and
+            res.resources[0].status.lastSyncDuration is defined and
+            res.resources[0].status.lastSyncTime is defined and
+            res.resources[0].status.latestMoverStatus is defined and
+            res.resources[0].status.latestMoverStatus.result == "Successful" and
+            res.resources[0].status.latestMoverStatus.logs is search("diskrsync completed in.*")
+          delay: 1
+          retries: 900
+
+        - name: Wait for sync to complete
+          kubernetes.core.k8s_info:
+            api_version: volsync.backube/v1alpha1
+            kind: ReplicationDestination
+            name: test
+            namespace: "{{ namespace }}"
+          register: res
+          until: >
+            res.resources | length > 0 and
+            res.resources[0].status.latestImage is defined and
+            res.resources[0].status.latestImage.kind == "VolumeSnapshot" and
+            res.resources[0].status.latestMoverStatus is defined and
+            res.resources[0].status.latestMoverStatus.result == "Successful"
+          delay: 1
+          retries: 900
+
+        - name: Convert latestImage to block PVC using VolumePopulator
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: v1
+              kind: PersistentVolumeClaim
+              metadata:
+                name: data-dest
+                namespace: "{{ namespace }}"
+              spec:
+                volumeMode: Block
+                accessModes:
+                  - ReadWriteOnce
+                dataSourceRef:
+                  kind: ReplicationDestination
+                  apiGroup: volsync.backube
+                  name: test
+                resources:
+                  requests:
+                    storage: 1Gi
+          when: cluster_info.volumepopulator_supported
+
+        - name: Convert latestImage to block PVC
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: v1
+              kind: PersistentVolumeClaim
+              metadata:
+                name: data-dest
+                namespace: "{{ namespace }}"
+              spec:
+                volumeMode: Block
+                accessModes:
+                  - ReadWriteOnce
+                dataSource:
+                  kind: VolumeSnapshot
+                  apiGroup: snapshot.storage.k8s.io
+                  name: "{{ res.resources[0].status.latestImage.name }}"
+                resources:
+                  requests:
+                    storage: 1Gi
+          when: not cluster_info.volumepopulator_supported
+
+        - name: Verify contents of block PVC
+          include_role:
+            name: compare_pvc_data_block
+          vars:
+            pvc1_name: data-source
+            pvc2_name: data-dest
+            timeout: 900
