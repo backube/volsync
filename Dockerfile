@@ -37,8 +37,8 @@ RUN go build -a -o manager -ldflags "-X=main.volsyncVersion=${version_arg}" main
 # Build rclone
 FROM golang-builder as rclone-builder
 
-ARG RCLONE_VERSION=v1.63.1
-ARG RCLONE_GIT_HASH=bd1fbcae12f795f498c7ace6af9d9cc218102094
+ARG RCLONE_VERSION=v1.64.0
+ARG RCLONE_GIT_HASH=77f7bb08afff911b669a5285c4106932acbe9af9
 
 RUN git clone --depth 1 -b ${RCLONE_VERSION} https://github.com/rclone/rclone.git
 WORKDIR /workspace/rclone
