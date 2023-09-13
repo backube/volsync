@@ -1,0 +1,4 @@
+---
+
+dependencies:
+  - role: gather_cluster_info

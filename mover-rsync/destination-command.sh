@@ -16,14 +16,20 @@ function do_shutdown {
 }
 
 function do_rsync {
-    # rsync changes are restricted to the /data directory of the container
+    # rsync changes are restricted to the target directory/block device of the container
     LANG=C rrsync /data
+}
+
+function do_diskrsync {
+    diskrsync --target /dev/block
 }
 
 #-- These are the only commands allowed to be executed by the source side:
 # Source can initiate an rsync
 if [[ "$SSH_ORIGINAL_COMMAND" =~ ^rsync( ) ]]; then
     do_rsync
+elif [[ "$SSH_ORIGINAL_COMMAND" =~ ^diskrsync( ) ]]; then
+    do_diskrsync
 # Source can tell us (destination) to shutdown & pass a numeric result code
 elif [[ "$SSH_ORIGINAL_COMMAND" =~ ^shutdown( )+([0-9]+)$ ]]; then
     do_shutdown "${BASH_REMATCH[2]}"

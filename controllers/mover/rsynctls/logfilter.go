@@ -24,10 +24,11 @@ import (
 var rsyncTLSRegex = regexp.MustCompile(
 	`([sS]ent)\s.+([bB]ytes)\s.+([rR]eceived)\s.+([bB]ytes)|` +
 		`([tT]otal size)|` +
-		`^\s*([rR]sync completed in)`)
+		`([rR]sync completed in)`)
 
 var rsyncTLSRegexFailures = regexp.MustCompile(
 	`^\s*([rR]sync)|` +
+		`^\s*(disk[rR]sync)|` +
 		`([fF]ail)|` +
 		`([eE]rror)`)
 

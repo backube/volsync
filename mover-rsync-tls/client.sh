@@ -12,7 +12,8 @@ STUNNEL_CONF=/tmp/stunnel-client.conf
 STUNNEL_PID_FILE=/tmp/stunnel-client.pid
 PSK_FILE=/keys/psk.txt
 STUNNEL_LISTEN_PORT=9000
-SOURCE=/data
+SOURCE="/data"
+BLOCK_SOURCE="/dev/block"
 
 SCRIPT="$(realpath "$0")"
 SCRIPT_DIR="$(dirname "$SCRIPT")"
@@ -29,13 +30,15 @@ if [[ ! -r $PSK_FILE ]]; then
     exit 1
 fi
 
-if [[ ! -d "$SOURCE" ]]; then
-    echo "ERROR: PVC not mounted at $SOURCE"
+if [[ ! -d $SOURCE ]] && ! test -b $BLOCK_SOURCE; then
+    echo "ERROR: source location not found"
     exit 1
 fi
 
+if ! test -b $BLOCK_SOURCE; then
+    echo "Source PVC volumeMode is filesystem"
 
-cat - > "$STUNNEL_CONF" <<STUNNEL_CONF
+    cat - > "$STUNNEL_CONF" <<STUNNEL_CONF
 ; Global options
 debug = debug
 foreground = no
@@ -56,6 +59,27 @@ STUNNEL_CONF
 ##############################
 ## Print version information
 rsync --version
+else
+    echo "Source PVC volumeMode is block"
+
+    cat - > "$STUNNEL_CONF" <<STUNNEL_CONF
+; Global options
+debug = debug
+foreground = no
+output = /dev/stdout
+pid = $STUNNEL_PID_FILE
+syslog = no
+
+[diskrsync]
+ciphers = PSK
+PSKsecrets = $PSK_FILE
+; Port to listen for incoming connection from diskrsync
+accept = 127.0.0.1:$STUNNEL_LISTEN_PORT
+; We are the client
+client = yes
+connect = $DESTINATION_ADDRESS:$DESTINATION_PORT
+STUNNEL_CONF
+fi
 stunnel -version "$STUNNEL_CONF"
 
 ##############################
@@ -74,23 +98,28 @@ set +e  # Don't exit on command failure
 echo "Syncing data to ${DESTINATION_ADDRESS}:${DESTINATION_PORT} ..."
 while [[ $rc -ne 0 && $RETRY -lt $MAX_RETRIES ]]; do
     RETRY=$(( RETRY + 1 ))
-    shopt -s dotglob  # Make * include dotfiles
-    if [[ -n "$(ls -A -- ${SOURCE}/*)" ]]; then
-        # 1st run preserves as much as possible, but excludes the root directory
-        rsync -aAhHSxz --exclude=lost+found --itemize-changes --info=stats2,misc2 ${SOURCE}/* rsync://127.0.0.1:$STUNNEL_LISTEN_PORT/data
+    if test -b $BLOCK_SOURCE; then
+      echo "calling diskrsync-tcp $BLOCK_SOURCE --source --target-address 127.0.0.1 --port $STUNNEL_LISTEN_PORT"
+      /diskrsync-tcp $BLOCK_SOURCE --source --target-address 127.0.0.1 --port $STUNNEL_LISTEN_PORT
+      rc=$?
     else
-        echo "Skipping sync of empty source directory"
+        shopt -s dotglob  # Make * include dotfiles
+        if [[ -n "$(ls -A -- ${SOURCE}/*)" ]]; then
+            # 1st run preserves as much as possible, but excludes the root directory
+            rsync -aAhHSxz --exclude=lost+found --itemize-changes --info=stats2,misc2 ${SOURCE}/* rsync://127.0.0.1:$STUNNEL_LISTEN_PORT/data
+        else
+            echo "Skipping sync of empty source directory"
+        fi
+        rc_a=$?
+        shopt -u dotglob  # Back to default * behavior
+
+        # To delete extra files, must sync at the directory-level, but need to avoid
+        # trying to modify the directory itself. This pass will only delete files
+        # that exist on the destination but not on the source, not make updates.
+        rsync -rx --exclude=lost+found --ignore-existing --ignore-non-existing --delete --itemize-changes --info=stats2,misc2 ${SOURCE}/ rsync://127.0.0.1:$STUNNEL_LISTEN_PORT/data
+        rc_b=$?
+        rc=$(( rc_a * 100 + rc_b ))
     fi
-    rc_a=$?
-    shopt -u dotglob  # Back to default * behavior
-
-    # To delete extra files, must sync at the directory-level, but need to avoid
-    # trying to modify the directory itself. This pass will only delete files
-    # that exist on the destination but not on the source, not make updates.
-    rsync -rx --exclude=lost+found --ignore-existing --ignore-non-existing --delete --itemize-changes --info=stats2,misc2 ${SOURCE}/ rsync://127.0.0.1:$STUNNEL_LISTEN_PORT/data
-    rc_b=$?
-
-    rc=$(( rc_a * 100 + rc_b ))
     if [[ $rc -ne 0 ]]; then
         echo "Syncronization failed. Retrying in $DELAY seconds. Retry ${RETRY}/${MAX_RETRIES}."
         sleep $DELAY
@@ -99,16 +128,20 @@ while [[ $rc -ne 0 && $RETRY -lt $MAX_RETRIES ]]; do
 done
 set -e  # Exit on command failure
 
-echo "rsync completed in $(( SECONDS - START_TIME ))s"
-
-if [[ $rc -eq 0 ]]; then
-    # Tell server to shutdown. Actual file contents don't matter
-    echo "Sending shutdown to remote..."
-    rsync "$SCRIPT" rsync://127.0.0.1:$STUNNEL_LISTEN_PORT/control/complete
-    echo "...done"
-    sleep 5  # Give time for the remote to shut down
+if test -b $BLOCK_SOURCE; then
+    echo "diskrsync completed in $(( SECONDS - START_TIME ))s"
 else
-    echo "Synchronization failed. rsync returned: $rc"
+    echo "rsync completed in $(( SECONDS - START_TIME ))s"
+
+    if [[ $rc -eq 0 ]]; then
+        # Tell server to shutdown. Actual file contents don't matter
+        echo "Sending shutdown to remote..."
+        rsync "$SCRIPT" rsync://127.0.0.1:$STUNNEL_LISTEN_PORT/control/complete
+        echo "...done"
+        sleep 5  # Give time for the remote to shut down
+    else
+        echo "Synchronization failed. rsync returned: $rc"
+    fi
 fi
 
 exit $rc

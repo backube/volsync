@@ -78,6 +78,29 @@ RUN go run build.go -no-upgrade
 
 
 ######################################################################
+# Install diskrsync binary
+FROM golang-builder AS diskrsync-builder
+
+WORKDIR /workspace/diskrsync
+RUN GOPATH=$(pwd) go install github.com/dop251/diskrsync/diskrsync@v1.3.0
+
+######################################################################
+# Build diskrsync-tcp binary
+FROM golang-builder AS diskrsync-tcp-builder
+
+# Copy the Go Modules manifests & download dependencies
+COPY go.mod go.mod
+COPY go.sum go.sum
+RUN go mod download
+
+# Copy the go source
+COPY diskrsync-tcp/ diskrsync-tcp/
+
+# Build
+ARG version_arg="(unknown)"
+RUN go build -a -o diskrsync-tcp/diskrsync-tcp -ldflags "-X=main.volsyncVersion=${version_arg}" diskrsync-tcp/main.go
+
+######################################################################
 # Final container
 FROM registry.access.redhat.com/ubi9-minimal
 WORKDIR /
@@ -154,6 +177,11 @@ RUN chmod a+r /mover-syncthing/config-template.xml && \
     chmod a+r /mover-syncthing/stignore-template && \
     chmod a+rx /mover-syncthing/*.sh
 
+##### diskrsync
+COPY --from=diskrsync-builder /workspace/diskrsync/bin/diskrsync /usr/local/bin/diskrsync
+
+##### diskrsync
+COPY --from=diskrsync-tcp-builder /workspace/diskrsync-tcp/diskrsync-tcp diskrsync-tcp
 
 ##### Set build metadata
 ARG builddate_arg="(unknown)"

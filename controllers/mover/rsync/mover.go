@@ -42,6 +42,7 @@ import (
 
 const (
 	mountPath      = "/data"
+	devicePath     = "/dev/block"
 	dataVolumeName = "data"
 )
 
@@ -359,6 +360,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 		job.Spec.Parallelism = &parallelism
 
 		readOnlyVolume := false
+		blockVolume := utils.PvcIsBlockMode(dataPVC)
 
 		containerEnv := []corev1.EnvVar{}
 		containerCmd := []string{"/bin/bash", "-c", "/mover-rsync/destination.sh"} // cmd for replicationDestination job
@@ -371,6 +373,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 					containerEnv = append(containerEnv, corev1.EnvVar{Name: "DESTINATION_PORT", Value: connectPort})
 				}
 			}
+
 			// Set container cmd for the replicationSource job
 			containerCmd = []string{"/bin/bash", "-c", "/mover-rsync/source.sh"}
 
@@ -400,13 +403,20 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 				ReadOnlyRootFilesystem: pointer.Bool(true),
 				RunAsUser:              pointer.Int64(0),
 			},
-			VolumeMounts: []corev1.VolumeMount{
-				{Name: dataVolumeName, MountPath: mountPath},
-				{Name: "keys", MountPath: "/keys"},
-				{Name: "tempsshdir", MountPath: "/root/.ssh"},
-				{Name: "tempdir", MountPath: "/tmp"},
-			},
 		}}
+		volumeMounts := []corev1.VolumeMount{}
+		if !blockVolume {
+			volumeMounts = append(volumeMounts, corev1.VolumeMount{Name: dataVolumeName, MountPath: mountPath})
+		}
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{Name: "keys", MountPath: "/keys"},
+			corev1.VolumeMount{Name: "tempsshdir", MountPath: "/root/.ssh"},
+			corev1.VolumeMount{Name: "tempdir", MountPath: "/tmp"})
+		job.Spec.Template.Spec.Containers[0].VolumeMounts = volumeMounts
+		if blockVolume {
+			job.Spec.Template.Spec.Containers[0].VolumeDevices = []corev1.VolumeDevice{
+				{Name: dataVolumeName, DevicePath: devicePath},
+			}
+		}
 		job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
 		job.Spec.Template.Spec.ServiceAccountName = sa.Name
 		job.Spec.Template.Spec.Volumes = []corev1.Volume{
