@@ -14,7 +14,7 @@ ENVTEST_K8S_VERSION = 1.26.0
 GOLANGCI_VERSION := v1.51.0
 HELM_VERSION := v3.8.2
 KUBECTL_VERSION := v1.26.0
-KUSTOMIZE_VERSION := v4.5.4
+KUSTOMIZE_VERSION := v5.1.1
 OPERATOR_SDK_VERSION := v1.31.0
 PIPENV_VERSION := 2022.8.30
 
@@ -239,16 +239,24 @@ $(LOCALBIN):
 
 .PHONY: controller-gen
 CONTROLLER_GEN := $(LOCALBIN)/controller-gen
-controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary.
-# -mod=mod is a workaround for a go bug and can probably be removed when we move to go 1.20
+controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary. If wrong version is installed, it will be overwritten.
 $(CONTROLLER_GEN): $(LOCALBIN)
-	test -s $@ || GOBIN=$(LOCALBIN) go install -mod=mod sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
+	@if test -x $(CONTROLLER_GEN) && ! $(CONTROLLER_GEN) --version | grep -q $(CONTROLLER_TOOLS_VERSION); then \
+		echo "$(CONTROLLER_GEN) version is not expected $(CONTROLLER_TOOLS_VERSION). Removing it before installing."; \
+		rm -f $(CONTROLLER_GEN); \
+	fi
+	test -s $(CONTROLLER_GEN) || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
 
 .PHONY: kustomize
 KUSTOMIZE := $(LOCALBIN)/kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
 $(KUSTOMIZE): $(LOCALBIN)
-	test -s $@ || GOBIN=$(LOCALBIN) go install sigs.k8s.io/kustomize/kustomize/v4@$(KUSTOMIZE_VERSION)
+## kustomize version not working correctly (prints out devel or undefined), so skip version test for now
+##@if test -x $(KUSTOMIZE) && ! $(KUSTOMIZE) version | grep -q $(KUSTOMIZE_VERSION); then \
+##	echo "$(KUSTOMIZE) version is not expected $(KUSTOMIZE_VERSION). Removing it before installing."; \
+##	rm -f $(KUSTOMIZE); \
+##fi
+	test -s $(KUSTOMIZE) || GOBIN=$(LOCALBIN) go install sigs.k8s.io/kustomize/kustomize/v5@$(KUSTOMIZE_VERSION)
 
 .PHONY: envtest
 ENVTEST := $(LOCALBIN)/setup-envtest
