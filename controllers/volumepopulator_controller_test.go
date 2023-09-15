@@ -736,6 +736,31 @@ var _ = Describe("VolumePopulator", func() {
 
 							return k8sClient.Update(ctx, pvcPrime)
 						}, duration10s, interval).Should(Succeed())
+
+						// Make sure the vol pop controller has updated the claimRef on the PV created for pvcPrime
+						// to rebind it to the original pvc (rebindPVC step)
+						Eventually(func() bool {
+							// re-load PV
+							Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pv), pv)).To(Succeed())
+
+							return pv.Spec.ClaimRef != nil &&
+								pv.Spec.ClaimRef.Name == pvc.GetName()
+						}, duration10s, interval).Should(BeTrue())
+
+						Expect(pv.Spec.ClaimRef.Name).To(Equal(pvc.GetName()))
+						Expect(pv.Spec.ClaimRef.Namespace).To(Equal(pvc.GetNamespace()))
+						Expect(pv.Spec.ClaimRef.UID).To(Equal(pvc.GetUID()))
+
+						// re-load pvc just in case here
+						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pvc), pvc)).To(Succeed())
+						Expect(pv.Spec.ClaimRef.ResourceVersion).To(Equal(pvc.GetResourceVersion()))
+
+						// Make sure pvcPrime isn't cleaned up yet
+						Consistently(func() *corev1.PersistentVolumeClaim {
+							pvcPrimeReloaded, err := GetVolumePopulatorPVCPrime(ctx, k8sClient, pvc)
+							Expect(err).NotTo(HaveOccurred())
+							return pvcPrimeReloaded
+						}, duration4s, interval).ShouldNot(BeNil())
 					})
 
 					It("The snapshot should have correct owner reference of pvcPrime", func() {
@@ -767,31 +792,6 @@ var _ = Describe("VolumePopulator", func() {
 
 							return nil
 						}, maxWait, interval).Should(Succeed())
-					})
-
-					It("Should update the claimRef on the PV to use pvc", func() {
-						Eventually(func() bool {
-							// re-load PV
-							Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pv), pv)).To(Succeed())
-
-							return pv.Spec.ClaimRef != nil &&
-								pv.Spec.ClaimRef.Name == pvc.GetName()
-						}, duration10s, interval).Should(BeTrue())
-
-						Expect(pv.Spec.ClaimRef.Name).To(Equal(pvc.GetName()))
-						Expect(pv.Spec.ClaimRef.Namespace).To(Equal(pvc.GetNamespace()))
-						Expect(pv.Spec.ClaimRef.UID).To(Equal(pvc.GetUID()))
-
-						// re-load pvc just in case here
-						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pvc), pvc)).To(Succeed())
-						Expect(pv.Spec.ClaimRef.ResourceVersion).To(Equal(pvc.GetResourceVersion()))
-
-						// Make sure pvcPrime isn't cleaned up yet
-						Consistently(func() *corev1.PersistentVolumeClaim {
-							pvcPrimeReloaded, err := GetVolumePopulatorPVCPrime(ctx, k8sClient, pvc)
-							Expect(err).NotTo(HaveOccurred())
-							return pvcPrimeReloaded
-						}, duration4s, interval).ShouldNot(BeNil())
 					})
 
 					Context("When pvcPrime loses claim (bind controller rebinds the PV to pvc from pvcPrime)", func() {
