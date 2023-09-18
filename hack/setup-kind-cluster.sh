@@ -163,6 +163,7 @@ rm -f "${KIND_CONFIG_FILE}"
 
 # Kube >= 1.17, we need to deploy the snapshot controller
 if [[ $KUBE_MINOR -ge 24 ]]; then  # Kube 1.24 removed snapshot.storage.k8s.io/v1beta1
+  # renovate: datasource=github-releases depName=kubernetes-csi/external-snapshotter versioning=semver-coerced
   TAG="v6.2.1"  # https://github.com/kubernetes-csi/external-snapshotter/releases
   log "Deploying external snapshotter: ${TAG}"
   kubectl create -k "https://github.com/kubernetes-csi/external-snapshotter/client/config/crd?ref=${TAG}"
@@ -205,11 +206,12 @@ fi
 
 if [[ $KUBE_MINOR -ge 24 ]]; then # Volume Populators should work (AnyVolumeDataSource feature gate enabled by default)
   # Install the volume-data-source-validator (For validating PVC dataRefSource against known VolumePopulators)
-  VDSV_TAG="v1.3.0" # https://github.com/kubernetes-csi/volume-data-source-validator/releases
-  log "Deploying volume data source validator: ${VDSV_TAG}"
-  kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/volume-data-source-validator/${VDSV_TAG}/client/config/crd/populator.storage.k8s.io_volumepopulators.yaml"
-  kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/volume-data-source-validator/${VDSV_TAG}/deploy/kubernetes/rbac-data-source-validator.yaml"
-  kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/volume-data-source-validator/${VDSV_TAG}/deploy/kubernetes/setup-data-source-validator.yaml"
+  # renovate: datasource=github-releases depName=kubernetes-csi/volume-data-source-validator versioning=semver-coerced
+  TAG="v1.3.0" # https://github.com/kubernetes-csi/volume-data-source-validator/releases
+  log "Deploying volume data source validator: ${TAG}"
+  kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/volume-data-source-validator/${TAG}/client/config/crd/populator.storage.k8s.io_volumepopulators.yaml"
+  kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/volume-data-source-validator/${TAG}/deploy/kubernetes/rbac-data-source-validator.yaml"
+  kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/volume-data-source-validator/${TAG}/deploy/kubernetes/setup-data-source-validator.yaml"
 fi
 
 # Kube 1.13 requires CSIDriver & CSINodeInfo CRDs
@@ -223,44 +225,45 @@ fi
 HP_BASE="$(mktemp --tmpdir -d csi-driver-host-path-XXXXXX)"
 case "$KUBE_MINOR" in
   13)
-    HOSTPATH_BRANCH="v1.1.0"
+    TAG="v1.1.0"
     DEPLOY_SCRIPT="deploy-hostpath.sh"
     ;;
   14)
-    HOSTPATH_BRANCH="v1.2.0"
+    TAG="v1.2.0"
     DEPLOY_SCRIPT="deploy-hostpath.sh"
     ;;
   15)
-    HOSTPATH_BRANCH="v1.3.0"
+    TAG="v1.3.0"
     DEPLOY_SCRIPT="deploy-hostpath.sh"
     ;;
   16|17)
-    HOSTPATH_BRANCH="v1.4.0"
+    TAG="v1.4.0"
     DEPLOY_SCRIPT="deploy.sh"
     ;;
   18)
-    HOSTPATH_BRANCH="v1.7.2"
+    TAG="v1.7.2"
     DEPLOY_SCRIPT="deploy.sh"
     ;;
   19|20)
-    HOSTPATH_BRANCH="v1.7.3"
+    TAG="v1.7.3"
     DEPLOY_SCRIPT="deploy.sh"
     ;;
   21)
-    HOSTPATH_BRANCH="v1.9.0"
+    TAG="v1.9.0"
     DEPLOY_SCRIPT="deploy.sh"
     ;;
   22|23)
-    HOSTPATH_BRANCH="v1.10.0"
+    TAG="v1.10.0"
     DEPLOY_SCRIPT="deploy.sh"
     ;;
   *)
-    HOSTPATH_BRANCH="v1.11.0"
+    # renovate: datasource=github-releases depName=kubernetes-csi/csi-driver-host-path versioning=semver-coerced
+    TAG="v1.11.0"
     DEPLOY_SCRIPT="deploy.sh"
     ;;
 esac
-log "Deploying CSI hostpath driver: ${HOSTPATH_BRANCH}"
-git clone --depth 1 -b "$HOSTPATH_BRANCH" https://github.com/kubernetes-csi/csi-driver-host-path.git "$HP_BASE"
+log "Deploying CSI hostpath driver: ${TAG}"
+git clone --depth 1 -b "$TAG" https://github.com/kubernetes-csi/csi-driver-host-path.git "$HP_BASE"
 
 DEPLOY_PATH="${HP_BASE}/deploy/kubernetes-1.${KUBE_MINOR}/"
 # For versions not yet supported, use the latest

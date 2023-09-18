@@ -1,0 +1,223 @@
+{
+  // JSON5 spec: https://json5.org/
+  // Renovate docs: https://docs.renovatebot.com/configuration-options/
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",            // Use recommended settings
+    ":enablePreCommit",              // Enable pre-commit hook updates
+    ":gitSignOff",                   // Sign off commits
+    "helpers:pinGitHubActionDigests" // Pin GitHub action digests
+  ],
+  "ignorePaths": [
+    ".venv/**",          // Ignore Python virtualenv (docs)
+    "docs/_build/**",    // Ignore docs build directory
+    "test-e2e/.venv/**", // Ignore Python virtualenv (e2e tests)
+    "mover-restic/**"    // Don't update mover-restic since we vendor it
+  ],
+  "labels": ["dependencies"],  // Add "dependencies" label to PRs
+  "lockFileMaintenance": {"enabled": true},  // Update Pipfile.lock
+  "packageRules": [
+    {
+      // Update golang tag in dockerfile & golang version in workflows in a
+      // single PR"
+      "groupName": "golang version",
+      "groupSlug": "golang",
+      "matchDepNames": [
+        "^golang$"
+      ]
+    },
+    {
+      // Disable some docker image updates
+      "matchDatasources": ["docker"],
+      "matchPackageNames": [
+        "controller", // Ignore the fake "controller" docker image name
+        "quay.io/backube/volsync", // Don't pin our own image
+        "quay.io/operator-framework/scorecard-test" // Ignore OSDK scorecard image
+      ],
+      "enabled": false
+    },
+    {
+      // This is an existing group, and we're adding a new package to it so that
+      // they all get upgraded together in a single PR
+      "groupName": "kubernetes packages",
+      "groupSlug": "kubernetes-go",
+      "matchDatasources": [
+        "go"
+      ],
+      "matchPackagePrefixes": [
+        "k8s.io/component-helpers"
+      ]
+    },
+    {
+      // Renovate's packages update too frequently, so we only schedule updates
+      // once a week to keep the noise down
+      "matchPackageNames": ["renovatebot/pre-commit-hooks"],
+      "schedule": ["before 9am on monday"]
+    }
+  ],
+  "postUpdateOptions": [
+    "gomodTidy"   // Run `go mod tidy` after updating dependencies
+  ],
+  "regexManagers": [
+    {
+      "customType": "regex",
+      "description": "controller-tools version updates",
+      "fileMatch": [
+        "^.github/(?:workflows|actions)/.+\\.ya?ml$",
+        "(^|/)Makefile$"
+      ],
+      "matchStrings": [
+        "CONTROLLER_TOOLS_VERSION\\s*:=?\\s*\"?(?<currentValue>.+?)\"?\\n"
+      ],
+      "depNameTemplate": "kubernetes-sigs/controller-tools",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "description": "golang version updates (major/minor only)",
+      "fileMatch": [
+        "^.github/(?:workflows|actions)/.+\\.ya?ml$",
+        "(^|/)Makefile$"
+      ],
+      "matchStrings": [
+        "GO_VERSION\\s*:=?\\s*\"?(?<currentValue>.+?)\"?\\n"
+      ],
+      "depNameTemplate": "golang",
+      "datasourceTemplate": "golang-version",
+      // Template discards the patch portion of the version number
+      "extractVersionTemplate": "^(?<version>.*)\\.\\d+$",
+      "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
+      "description": "golangci-lint version updates",
+      "fileMatch": [
+        "^.github/(?:workflows|actions)/.+\\.ya?ml$",
+        "(^|/)Makefile$"
+      ],
+      "matchStrings": [
+        "GOLANGCI_VERSION\\s*:=?\\s*\"?(?<currentValue>.+?)\"?\\n"
+      ],
+      "depNameTemplate": "golangci/golangci-lint",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "description": "Helm version updates",
+      "fileMatch": [
+        "^.github/(?:workflows|actions)/.+\\.ya?ml$",
+        "(^|/)Makefile$"
+      ],
+      "matchStrings": [
+        "HELM_VERSION\\s*:=?\\s*\"?(?<currentValue>.+?)\"?\\n"
+      ],
+      "depNameTemplate": "helm/helm",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "description": "Docker image updates in yamls",
+      "fileMatch": [
+        "^config/.+\\.ya?ml$"
+      ],
+      "matchStrings": [
+        "image:\\s*\"?(?<depName>.*?):(?<currentValue>.*?)(?:@(?<currentDigest>sha256:[a-f0-9]+))?\"?\\s"
+      ],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "KinD version updates",
+      "fileMatch": [
+        "^.github/(?:workflows|actions)/.+\\.ya?ml$",
+        "(^|/)Makefile$"
+      ],
+      "matchStrings": [
+        "KIND_VERSION\\s*:=?\\s*\"?(?<currentValue>.+?)\"?\\n"
+      ],
+      "depNameTemplate": "kubernetes-sigs/kind",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$"
+    },
+    {
+      "customType": "regex",
+      "description": "kubectl version updates",
+      "fileMatch": [
+        "(^|/)Makefile$"
+      ],
+      "matchStrings": [
+        "KUBECTL_VERSION\\s*:=?\\s*\"?v(?<currentValue>.+?)\"?\\n"
+      ],
+      "depNameTemplate": "kubernetes/kubectl",
+      "datasourceTemplate": "github-tags",
+      "extractVersionTemplate": "^kubernetes-(?<version>.*)$"
+    },
+    {
+      "customType": "regex",
+      "description": "kustomize version updates",
+      "fileMatch": [
+        "^.github/(?:workflows|actions)/.+\\.ya?ml$",
+        "(^|/)Makefile$"
+      ],
+      "matchStrings": [
+        "KUSTOMIZE_VERSION\\s*:=?\\s*\"?(?<currentValue>.+?)\"?\\n"
+      ],
+      "depNameTemplate": "kubernetes-sigs/kustomize",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^kustomize/(?<version>.*)$"
+    },
+    {
+      "customType": "regex",
+      "description": "Pipenv version updates",
+      "fileMatch": [
+        "(^|/)Makefile$"
+      ],
+      "matchStrings": [
+        "PIPENV_VERSION \\s*:=?\\s*\"?(?<currentValue>.+?)\"?\\n"
+      ],
+      "depNameTemplate": "pipenv",
+      "datasourceTemplate": "pypi"
+    },
+    {
+      "customType": "regex",
+      "description": "RClone version updates in the Dockerfile",
+      "fileMatch": [
+        "^Dockerfile$"
+      ],
+      "matchStrings": [
+        "RCLONE_VERSION\\s*=\\s*\"?(?<currentValue>.+?)\"?\\n.*RCLONE_GIT_HASH\\s*=\\s*\"?(?<currentDigest>.+?)\"?\\n"
+      ],
+      "depNameTemplate": "rclone/rclone",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "description": "Syncthing version updates in the Dockerfile",
+      "fileMatch": [
+        "^Dockerfile$"
+      ],
+      "matchStrings": [
+        "SYNCTHING_VERSION\\s*=\\s*\"?(?<currentValue>.+?)\"?\\n.*SYNCTHING_GIT_HASH\\s*=\\s*\"?(?<currentDigest>.+?)\"?\\n"
+      ],
+      "depNameTemplate": "syncthing/syncthing",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "description": "Update tags for repos in hack/setup-kind-cluster.sh",
+      "fileMatch": [
+        "^hack/setup-kind-cluster.sh$"
+      ],
+      "matchStrings": [
+        // This allows adding a comment to the above files to have renovate
+        // upgrade variables matching "TAG=..."
+        "# renovate: datasource=(?<datasource>[a-z-.]+?) depName=(?<depName>[^\\s]+?)(?: (?:lookupName|packageName)=(?<packageName>[^\\s]+?))?(?: versioning=(?<versioning>[a-z-0-9]+?))?\\s+TAG\\s*=\\s*[\"']?(?<currentValue>.+?)[\"']?\\s"
+      ]
+    }
+  ],
+  "schedule": [
+    "* 3-6 * * 1-5"  // Run between 3am and 6am on weekdays
+  ],
+  "semanticCommits": "disabled",
+  "timezone": "America/New_York"
+}
