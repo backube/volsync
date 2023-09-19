@@ -59,7 +59,7 @@ Replication flow
                      | Mover  +----------=------->+ Mover  |
                      |        |                   |        |
                      \--------/                   \--------/
-    
+
 
                 Primary site                                        Secondary site
 

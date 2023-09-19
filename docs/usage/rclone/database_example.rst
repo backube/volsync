@@ -36,7 +36,7 @@ Add a new database.
 
 .. code:: console
 
-   $ kubectl exec --stdin --tty -n source `kubectl get pods -n source | grep mysql | awk '{print $1}'` -- /bin/bash
+   $ kubectl exec --stdin --tty -n source $(kubectl get pods -n source | grep mysql | awk '{print $1}') -- /bin/bash
    $ mysql -u root -p$MYSQL_ROOT_PASSWORD
    > show databases;
    +--------------------+
@@ -105,7 +105,7 @@ lines:
     Type:                  Reconciled
   Next Sync Time:          2021-01-18T22:00:00Z
 
-At ``Next Sync Time`` VolSync will create the next Rclone data mover job. 
+At ``Next Sync Time`` VolSync will create the next Rclone data mover job.
 
 -----------------------------------------
 
@@ -150,7 +150,7 @@ exists.
 
 .. code:: console
 
-   $ kubectl exec --stdin --tty -n dest `kubectl get pods -n dest | grep mysql | awk '{print $1}'` -- /bin/bash
+   $ kubectl exec --stdin --tty -n dest $(kubectl get pods -n dest | grep mysql | awk '{print $1}') -- /bin/bash
    $ mysql -u root -p$MYSQL_ROOT_PASSWORD
    > show databases;
    +--------------------+

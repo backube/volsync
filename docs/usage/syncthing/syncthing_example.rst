@@ -5,7 +5,7 @@ Syncthing Dokuwiki Example
 
 .. note::
   This tutorial requires the usage of LoadBalancer to expose applications
-  from within the cluster. If you are running a KIND cluster, please 
+  from within the cluster. If you are running a KIND cluster, please
   follow this guide to install metallb if you haven't already: https://kind.sigs.k8s.io/docs/user/loadbalancer/
 
 
@@ -24,7 +24,7 @@ Ensure that we can access the dokuwiki application by obtaining the external IP 
 
 
 .. code-block:: console
-  
+
   $ kubectl get service -n dokuwiki-east dokuwiki-service
   NAME               TYPE           CLUSTER-IP      EXTERNAL-IP      PORT(S)          AGE
   dokuwiki-service   LoadBalancer   10.96.231.229   172.18.255.200   5196:30113/TCP   16m
@@ -41,11 +41,11 @@ Once opened, you should see a page like this:
 
 
 Now let's populate our DokuWiki with its first page, and what better subject to
-talk about then the Syncthing data mover? 
+talk about then the Syncthing data mover?
 
 Create a new page on the DokuWiki website with the following contents:
 
-.. code-block:: 
+.. code-block::
 
   Syncthing is a data mover that allows you to synchronize your data across multiple devices.
   It's an awesome tool that you should try out if you haven't already.
@@ -61,9 +61,9 @@ Now let's create a Syncthing-based ReplicationSource to synchronize the data wit
 Let's retrieve our ReplicationSource's Syncthing information once it becomes available:
 
 .. code-block:: console
-  
+
   $ kubectl get replicationsource -n dokuwiki-east sync-dokuwiki \
-    -o jsonpath='{.status.syncthing}' -w 
+    -o jsonpath='{.status.syncthing}' -w
   {"ID":"TMBYRB4-EIINYAW-ZFBX4LV-7FE37NT-BLQPSKB-P2BFIPW-QW6ST3C-PSU7UQD","address":"tcp://10.96.217.239:22000"}
 
 
@@ -114,7 +114,7 @@ You should see empty pages for both ``dokuwiki-west`` and ``dokuwiki-central``.
 Let's change this by creating Syncthing-based ReplicationSources in each of these namespaces,
 and configuring them to use ``dokuwiki-east`` as their introducer node.
 
-Using the information that we obtained from the ReplicationSource in ``dokuwiki-east`` earlier, 
+Using the information that we obtained from the ReplicationSource in ``dokuwiki-east`` earlier,
 create a ReplicationSource with the following contents and apply it in each namespace:
 
 .. code-block:: bash
@@ -231,7 +231,7 @@ We can also see that ``dokuwiki-central`` was introduced and connected to ``doku
   ]
 
 
-Now, let's get the external IPs to the ``dokuwiki-west`` and ``dokuwiki-central`` applications and 
+Now, let's get the external IPs to the ``dokuwiki-west`` and ``dokuwiki-central`` applications and
 view them in our browser:
 
 .. code-block:: shell
@@ -258,7 +258,7 @@ And here's how it looks in the ``dokuwiki-west`` namespace:
   :width: 100%
   :alt: DokuWiki in ``dokuwiki-west`` namespace synced with Syncthing
 
-Now let's create a new page from the ``dokuwiki-west`` namespace, 
+Now let's create a new page from the ``dokuwiki-west`` namespace,
 click on the URL bar at the and append ``/dokuwiki-west`` to the end of the URL, like this:
 
 .. image:: images/dokuwiki-west-urlbar.png
@@ -267,7 +267,7 @@ click on the URL bar at the and append ``/dokuwiki-west`` to the end of the URL,
   :alt: URL bar appending ``/dokuwiki-west`` to the current DokuWiki URL
 
 This should present us with a new page containing the message: "this topic does not exist yet."
-Well let's change that: click on the "Create this page" button and fill it with 
+Well let's change that: click on the "Create this page" button and fill it with
 the content of your choosing.
 In our case, we're going to make a page for our ``dokuwiki-west`` namespace.
 

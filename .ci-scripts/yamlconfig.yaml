@@ -11,6 +11,9 @@ ignore: |
   hack/crds/*
   helm/volsync/**
 rules:
+  comments:  # renovate-bot dosen't put 2 spaces before the version number
+    ignore: |
+      .github/workflows/*
   indentation:
     indent-sequences: consistent
   line-length:

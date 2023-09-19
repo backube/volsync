@@ -61,21 +61,21 @@ Manual
 
 Manual trigger is used for running one replication and wait for it to complete. This is useful to control the replication schedule from an external automation (for example using quiesce for live migration).
 
-To use the manual trigger choose a string value and set it in ``spec.trigger.manual`` 
-which will start a replication. Once replication completes, ``status.lastManualSync`` 
-will be set to the same string value. As long as these two values are the same 
+To use the manual trigger choose a string value and set it in ``spec.trigger.manual``
+which will start a replication. Once replication completes, ``status.lastManualSync``
+will be set to the same string value. As long as these two values are the same
 there will be no trigger, and the replication will remain paused,
 until further updates to the trigger spec.
 
-After setting the manual trigger in spec, the user should watch for ``status.lastManualSync`` 
+After setting the manual trigger in spec, the user should watch for ``status.lastManualSync``
 and wait for it to have the expected value, which means that the manual trigger completed.
 If needed, the user can then continue to update ``spec.trigger.manual`` to a new value
 in order to trigger another replication.
 
-Something to keep in mind when using manual trigger - the update of ``spec.trigger.manual`` by itself 
-does not interrupt a running replication, and ``status.lastManualSync`` will simply be set to the value 
-from the spec when the current replication completes. This means that to make sure we know when the 
-replication started, and that it includes the latest data, it is recommended to wait until 
+Something to keep in mind when using manual trigger - the update of ``spec.trigger.manual`` by itself
+does not interrupt a running replication, and ``status.lastManualSync`` will simply be set to the value
+from the spec when the current replication completes. This means that to make sure we know when the
+replication started, and that it includes the latest data, it is recommended to wait until
 ``status.lastManualSync`` equals to ``spec.trigger.manual`` before setting to a new value.
 
 In this case ``status.nextSyncTime`` will not be set, but ``status.lastSyncTime`` will be set at the end of every replication.
@@ -121,4 +121,3 @@ Here is an example of how to use manual trigger to run two replications:
 
    # after second trigger is done we delete the replication...
    kubectl delete replicationsources $SOURCE
-

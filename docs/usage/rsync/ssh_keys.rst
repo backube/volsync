@@ -35,7 +35,7 @@ Two key pairs need to be generated. The first SSH key will called ``destination`
    | .o. o...        |
    +----[SHA256]-----+
 
-The second SSH key will be called `source`:
+The second SSH key will be called ``source``:
 
 .. code::
 
@@ -44,7 +44,7 @@ The second SSH key will be called `source`:
    Your identification has been saved in source
    Your public key has been saved in source.pub
    The key fingerprint is:
-   SHA256:NEQNMNsgR43Y3c2dWMyit70JagmbCLNRfakWhWORENU 
+   SHA256:NEQNMNsgR43Y3c2dWMyit70JagmbCLNRfakWhWORENU
    The key's randomart image is:
    +---[RSA 4096]----+
    |    .+OX*O o *.. |

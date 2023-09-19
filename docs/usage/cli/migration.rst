@@ -56,7 +56,7 @@ PVC. Otherwise, it will use the existing PVC.
     I0302 12:50:42.498947  168200 request.go:665] Waited for 1.007067079s due to client-side throttling, not priority and fairness, request: GET:https://api.ci-ln-72rwmxb-72292.origin-ci-int-gce.dev.rhcloud.com:6443/apis/project.openshift.io/v1?timeout=32s
     I0302 12:50:43.925309  168200 migration_create.go:329] pvc: "mydata" not found, creating the same
     I0302 12:50:43.974092  168200 migration_create.go:267] Namespace: "destination" is found, proceeding with the same
-    I0302 12:50:44.021410  168200 migration_create.go:314] Created Destination PVC: "mydata" in NameSpace: "destination" and Cluster: "" 
+    I0302 12:50:44.021410  168200 migration_create.go:314] Created Destination PVC: "mydata" in NameSpace: "destination" and Cluster: ""
     I0302 12:50:44.073745  168200 migration_create.go:357] Created ReplicationDestination: "destination-mydata-migration-dest" in Namespace: "destination" and Cluster: ""
 
     $ kubectl get -n destination pvc/mydata
@@ -181,4 +181,3 @@ We can now start a pod attached to the PVC and view the data:
 
     $ kubectl -n destination exec -it pod/busybox -- du -sh /mnt
     655.4M	/mnt
-

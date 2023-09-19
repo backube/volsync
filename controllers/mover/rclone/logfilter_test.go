@@ -65,7 +65,7 @@ getfacl: Removing leading '/' from absolute path names
 2023/01/09 20:00:52 DEBUG : S3 bucket rclone-test-0-zx42b: copied 1 directories
 2023/01/09 20:00:52 DEBUG : Waiting for deletions to finish
 2023/01/09 20:00:52 INFO  : permissions.facl: Deleted
-2023/01/09 20:00:52 INFO  : 
+2023/01/09 20:00:52 INFO  :
 Transferred:         699.051 KiB / 699.051 KiB, 100%, 0 B/s, ETA -
 Checks:                 6 / 6, 100%
 Deleted:                1 (files), 0 (dirs)
@@ -137,7 +137,7 @@ Rclone completed in 5s`
 2023/01/09 20:04:56 DEBUG : TESTDIR1/file1: Unchanged skipping
 2023/01/09 20:04:56 DEBUG : Local file system at /data: Waiting for transfers to finish
 2023/01/09 20:04:56 DEBUG : Waiting for deletions to finish
-2023/01/09 20:04:56 INFO  : 
+2023/01/09 20:04:56 INFO  :
 Transferred:         699.051 KiB / 699.051 KiB, 100%, 0 B/s, ETA -
 Checks:                 5 / 5, 100%
 Transferred:            1 / 1, 100%

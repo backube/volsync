@@ -127,7 +127,7 @@ Syncing data to 172.32.164.53:8000 ...
 2023.01.25 19:06:29 LOG6[0]: TLSv1.3 ciphersuite: TLS_AES_128_GCM_SHA256 (128-bit encryption)
 2023.01.25 19:06:29 LOG6[0]: Peer temporary key: X25519, 253 bits
 2023.01.25 19:06:29 LOG7[0]: Compression: null, expansion: null
-2023.01.25 19:06:29 LOG6[0]: Session id: 
+2023.01.25 19:06:29 LOG6[0]: Session id:
 2023.01.25 19:06:29 LOG7[0]: TLS state (connect): SSL negotiation finished successfully
 2023.01.25 19:06:29 LOG7[0]: TLS state (connect): SSL negotiation finished successfully
 2023.01.25 19:06:29 LOG7[0]: Initializing application specific data for session authenticated
@@ -564,13 +564,13 @@ Initializing inetd mode configuration
 stunnel 5.62 on x86_64-redhat-linux-gnu platform
 Compiled/running with OpenSSL 3.0.1 14 Dec 2021
 Threading:PTHREAD Sockets:POLL,IPv6 TLS:ENGINE,FIPS,OCSP,PSK,SNI
- 
+
 Global options:
 fips                   = no
 RNDbytes               = 1024
 RNDfile                = /dev/urandom
 RNDoverwrite           = yes
- 
+
 Service-level options:
 ciphers                = FIPS (with "fips = yes")
 ciphers                = PROFILE=SYSTEM (with "fips = no")

@@ -1,0 +1,60 @@
+---
+# yamllint disable rule:line-length
+
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+
+# Install in your local dev environment
+# > pip install --upgrade --user pre-commit
+# Enable the hooks for this repo
+# > pre-commit install
+
+# Exclude the vendored sources from all checks since we don't control them
+exclude: |
+  (?x)^(
+    mover-restic/minio-go/.*|
+    mover-restic/restic/.*
+  )$
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: "v4.4.0"
+    hooks:
+      - id: check-added-large-files  # Prevents giant files from being committed
+      - id: check-json               # Check that JSON files are valid
+      - id: check-merge-conflict     # Check for files that contain merge conflict strings
+      - id: check-symlinks           # Ensure symlinks have a valid target
+      - id: check-toml               # Ensure toml files are valid
+      - id: check-xml                # Check that XML files are valid
+      - id: end-of-file-fixer        # Ensures that a file is either empty, or ends with one newline
+      - id: fix-byte-order-marker    # Forbid utf-8 byte order marker
+      - id: trailing-whitespace      # Trims trailing whitespace
+        args: [--markdown-linebreak-ext=md]
+
+  - repo: https://github.com/pre-commit/pygrep-hooks
+    rev: "v1.10.0"
+    hooks:
+      - id: rst-backticks
+      - id: rst-directive-colons
+      - id: rst-inline-touching-normal
+
+  - repo: https://github.com/adrienverge/yamllint
+    rev: "v1.32.0"
+    hooks:
+      - id: yamllint
+        args: ["--strict", "-c", ".ci-scripts/yamlconfig.yaml"]
+
+  - repo: https://github.com/jumanjihouse/pre-commit-hooks
+    rev: "3.0.0"
+    hooks:
+      - id: shellcheck
+
+  - repo: https://github.com/markdownlint/markdownlint
+    rev: "v0.12.0"
+    hooks:
+      - id: markdownlint
+        args: ["--style", ".ci-scripts/mdl-style.rb"]
+
+  - repo: https://github.com/renovatebot/pre-commit-hooks
+    rev: "36.78.7"
+    hooks:
+      - id: renovate-config-validator
