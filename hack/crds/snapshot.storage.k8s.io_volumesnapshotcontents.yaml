@@ -98,7 +98,7 @@ spec:
                 - required: ["volumeHandle"]
               sourceVolumeMode:
                 description: SourceVolumeMode is the mode of the volume whose snapshot
-                  is taken. Can be either “Filesystem” or “Block”. If not specified, 
+                  is taken. Can be either “Filesystem” or “Block”. If not specified,
                   it indicates the source volume's mode is unknown.
                 type: string
               volumeSnapshotClassName:

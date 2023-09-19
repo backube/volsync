@@ -74,7 +74,7 @@ An example source configuration is shown below:
       # The VSC to use if the copy method is Snapshot (default if omitted)
       volumeSnapshotClassName: my-vsc-name
 
-Since the ``copyMethod`` specified above is ``Snapshot``, the Rclone data mover creates a ``VolumeSnapshot`` 
+Since the ``copyMethod`` specified above is ``Snapshot``, the Rclone data mover creates a ``VolumeSnapshot``
 of the source pvc ``mysql-pv-claim``. Then it converts this snapshot back into a PVC.
 If ``copyMethod: Clone`` were used, the temporary, point-in-time copy would be
 created by cloning the source PVC to a new PVC directly. This is more efficient,

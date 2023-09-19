@@ -29,11 +29,11 @@ Syncthing also includes an introducer feature which allows one device to be conn
 This can be used to create a hub-and-spoke model for replication, or any other kind of network.
 
 When a ReplicationSource is created and configured to sync a PVC with other peers, all of the connected peers will maintain their
-own Volume containing the synced data. To detect file changes, Syncthing employs two methods: a filesystem watcher, which notifies 
+own Volume containing the synced data. To detect file changes, Syncthing employs two methods: a filesystem watcher, which notifies
 Syncthing of any changes to the local filesystem, and a full filesystem scan which occurs routinely at a specified interval (default is an hour).
 Since Syncthing is an "always-on" synchronization system, ReplicationSources will report their synchronization status as always being 'in-progress'.
 
-VolSync uses a custom-built Syncthing mover which disables the use of relay servers and global announce, and relying instead on 
+VolSync uses a custom-built Syncthing mover which disables the use of relay servers and global announce, and relying instead on
 being provided with the addresses of other Syncthing peers directly.
 
 
@@ -69,7 +69,7 @@ Here's an example of a Syncthing-based ReplicationSource.
           introducer: false
 
 The above ReplicationSource tells VolSync that it should use the Syncthing replication method in order
-to sync the ``todo-database`` volume. 
+to sync the ``todo-database`` volume.
 
 A service type of ``ClusterIP`` is used to expose the Syncthing data port, allowing us to connect with other peers within the cluster.
 In order for Syncthing to connect to peers outside of the cluster, you will need to either use
@@ -117,7 +117,7 @@ configVolumeAccessModes
 Source Status
 -------------
 
-Once the ReplicationSource has been deployed and Syncthing has properly configured itself, 
+Once the ReplicationSource has been deployed and Syncthing has properly configured itself,
 it will populate the ``.status.syncthing`` field with information about your Syncthing node.
 
 Here's an example of a ReplicationSource with a status:
@@ -229,7 +229,7 @@ For Example, suppose we have the following two ReplicationSources:
   metadata:
     name: alice-rs
   spec:
-    sourcePVC: alice-data 
+    sourcePVC: alice-data
     syncthing:
       serviceType: ClusterIP
       peers:
@@ -255,7 +255,7 @@ For Example, suppose we have the following two ReplicationSources:
 
 
 Here, ``alice-rs`` is being configured by ``bob-rs`` to act as an introducer for any nodes that are currently connected to the shared PVC.
-At the moment, there are only ``N=2`` Syncthing nodes in the entire cluster. 
+At the moment, there are only ``N=2`` Syncthing nodes in the entire cluster.
 
 
 Adding More Spokes
@@ -264,7 +264,7 @@ Adding More Spokes
 Now, let's suppose that we want to connect Charlie to everyone in the current cluster,
 but without having to append his address and ID to the two other existing nodes.
 
-In order to do this, we will need to update Alice's ``peers`` to include Charlie's Syncthing ID and address, 
+In order to do this, we will need to update Alice's ``peers`` to include Charlie's Syncthing ID and address,
 as well as update Charlie's ``peers`` to include Alice with ``introducer: true`` set.
 
 .. code-block:: yaml
@@ -275,7 +275,7 @@ as well as update Charlie's ``peers`` to include Alice with ``introducer: true``
   metadata:
     name: alice-rs
   spec:
-    sourcePVC: alice-data 
+    sourcePVC: alice-data
     syncthing:
       serviceType: ClusterIP
       peers:
@@ -317,7 +317,7 @@ Removing Spokes
 
 In order to remove a spoke from the cluster, simply remove it from the Hub's ``peers`` list.
 
-For example, if Alice wants to remove Charlie, all she needs to do is remove the entry corresponding to his ID, and 
+For example, if Alice wants to remove Charlie, all she needs to do is remove the entry corresponding to his ID, and
 the rest of the Syncthing cluster will automatically remove him from their connections.
 
 
@@ -330,7 +330,7 @@ the rest of the Syncthing cluster will automatically remove him from their conne
   metadata:
     name: alice-rs
   spec:
-    sourcePVC: alice-data 
+    sourcePVC: alice-data
     syncthing:
       serviceType: ClusterIP
       peers:
@@ -369,7 +369,7 @@ Cyclic introducers
 ------------------
 
 Syncthing introducers also contain a mechanism to automatically re-add introduced nodes if they were disconnected
-for whatever reason. This means that if you configure two nodes as each other's introducer, you will never 
+for whatever reason. This means that if you configure two nodes as each other's introducer, you will never
 be able to disconnect them as they'll continue to re-add each other until the end of time.
 
 
@@ -380,9 +380,9 @@ Communicating With Syncthing
 Unlike the other data movers, Syncthing never stops running. This changes our approach of controlling it to
 having Syncthing always be running, and communicating with it through it's REST API.
 
-Syncthing has a REST API which handles connections through HTTPS. In order to do this securely, 
+Syncthing has a REST API which handles connections through HTTPS. In order to do this securely,
 VolSync provisions a self-signed certificate and key for the Syncthing REST API, passing the generated
-certificate and key to Syncthing on first launch, and adding the Public Key PEM to VolSync's root CA bundle. 
+certificate and key to Syncthing on first launch, and adding the Public Key PEM to VolSync's root CA bundle.
 
 You can provide a custom HTTPS key/certificate pair by overriding the Secret which VolSync uses to store its
 communication credentials for Syncthing.
@@ -416,5 +416,4 @@ would require you to name the ReplicationSource "my-replication-source".
 
 .. note::
   This Secret must be created **before** creating the ReplicationSource.
-  Otherwise, Syncthing will generate its own set of credentials and ignore yours.  
-
+  Otherwise, Syncthing will generate its own set of credentials and ignore yours.

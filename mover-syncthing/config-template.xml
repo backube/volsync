@@ -1,13 +1,13 @@
 <configuration version="35">
-    <folder 
-        id="syncthing-folder-id" 
-        label="synced volume" 
-        path="SYNCTHING_DATA_DIR" 
-        type="SYNCTHING_DATA_TRANSFERMODE" 
-        rescanIntervalS="3600" 
-        fsWatcherEnabled="true" 
-        fsWatcherDelayS="10" 
-        ignorePerms="false" 
+    <folder
+        id="syncthing-folder-id"
+        label="synced volume"
+        path="SYNCTHING_DATA_DIR"
+        type="SYNCTHING_DATA_TRANSFERMODE"
+        rescanIntervalS="3600"
+        fsWatcherEnabled="true"
+        fsWatcherDelayS="10"
+        ignorePerms="false"
         autoNormalize="true"
     >
         <filesystemType>basic</filesystemType>

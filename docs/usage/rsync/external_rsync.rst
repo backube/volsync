@@ -18,4 +18,3 @@ synchronization of data into a Kubernetes PVC, please see:
 
 - :doc:`CLI/kubectl plugin installation<../cli/index>`
 - :doc:`VolSync migration command<../cli/migration>`
-

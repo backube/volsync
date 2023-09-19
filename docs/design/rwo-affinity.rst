@@ -92,8 +92,8 @@ The application's Pod(s) can be rescheduled for a number of reasons, and VolSync
 must be able to adapt in order to avoid interfering with the application. To
 this end, it is necessary to periodically re-scan the Pods and adjust the mover
 placement appropriately. These changes follow the logic documented above,
-potentially adding, removing, or changing the `.spec.nodeName` field in the Job
-template.
+potentially adding, removing, or changing the ``.spec.nodeName`` field in the
+Job template.
 
 Limitations
 ===========
