@@ -61,7 +61,7 @@ func init() {
 	replicationCmd.AddCommand(replicationSyncCmd)
 }
 
-func newReplicationSync(cmd *cobra.Command) (*replicationSync, error) {
+func newReplicationSync(_ *cobra.Command) (*replicationSync, error) {
 	return &replicationSync{}, nil
 }
 

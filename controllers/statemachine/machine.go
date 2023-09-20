@@ -91,6 +91,8 @@ func getTrigger(r ReplicationMachine) triggerType {
 	}
 }
 
+// ctrl.Result is always empty, but leave it as a return param to be consistent with other funcs
+// nolint:unparam
 func doInitialState(_ context.Context, r ReplicationMachine, l logr.Logger) (ctrl.Result, error) {
 	err := transitionToSynchronizing(r, l)
 	// We don't need to explicitly re-queue because the transition will
