@@ -140,8 +140,8 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 }
 
 // FromDestination Doesn't implement Syncthing, so nil is returned in both cases.
-func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
-	eventRecorder events.EventRecorder,
-	destination *volsyncv1alpha1.ReplicationDestination, privileged bool) (mover.Mover, error) {
+func (rb *Builder) FromDestination(_ client.Client, _ logr.Logger,
+	_ events.EventRecorder,
+	_ *volsyncv1alpha1.ReplicationDestination, _ bool) (mover.Mover, error) {
 	return nil, nil
 }

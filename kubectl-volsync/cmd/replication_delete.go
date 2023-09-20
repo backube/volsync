@@ -59,7 +59,7 @@ func init() {
 	replicationCmd.AddCommand(replicationDeleteCmd)
 }
 
-func newReplicationDelete(cmd *cobra.Command) (*replicationDelete, error) {
+func newReplicationDelete(_ *cobra.Command) (*replicationDelete, error) {
 	rdel := &replicationDelete{}
 	return rdel, nil
 }
