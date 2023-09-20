@@ -265,7 +265,7 @@ var _ = Describe("Syncthing struct methods", func() {
 				Expect(len(syncthing.Configuration.Folders)).NotTo(BeZero())
 				Expect(len(syncthing.Configuration.Folders[0].Devices)).To(BeZero())
 				// devices have not been shared yet so expect to find nothing
-				syncthing.ShareFoldersWithDevices(syncthing.Configuration.Devices)
+				syncthing.ShareFoldersWithDevices()
 				Expect(len(syncthing.Configuration.Folders[0].Devices)).
 					To(Equal(len(syncthing.Configuration.Devices)))
 

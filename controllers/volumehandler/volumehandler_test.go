@@ -102,12 +102,12 @@ var _ = Describe("Volumehandler", func() {
 				Expect(vh).ToNot(BeNil())
 
 				pvcName := "thepvc"
-				new, err := vh.EnsureNewPVC(context.TODO(), logger, pvcName)
+				newPVC, err := vh.EnsureNewPVC(context.TODO(), logger, pvcName)
 				Expect(err).ToNot(HaveOccurred())
-				Expect(new).ToNot(BeNil())
-				Expect(*new.Spec.StorageClassName).To(Equal(customSC))
-				Expect(*(new.Spec.Resources.Requests.Storage())).To(Equal((capacity)))
-				Expect(new.Name).To(Equal(pvcName))
+				Expect(newPVC).ToNot(BeNil())
+				Expect(*newPVC.Spec.StorageClassName).To(Equal(customSC))
+				Expect(*(newPVC.Spec.Resources.Requests.Storage())).To(Equal((capacity)))
+				Expect(newPVC.Name).To(Equal(pvcName))
 			})
 		})
 
@@ -316,14 +316,14 @@ var _ = Describe("Volumehandler", func() {
 
 				When("The src PVC does NOT have status.capacity set", func() {
 					It("creates a temporary PVC from a source falling back to using src pvc requested size", func() {
-						new, err := vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc", true)
+						newPVC, err := vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc", true)
 						Expect(err).ToNot(HaveOccurred())
-						Expect(new).ToNot(BeNil())
-						Expect(new.Name).To(Equal("newpvc"))
+						Expect(newPVC).ToNot(BeNil())
+						Expect(newPVC.Name).To(Equal("newpvc"))
 						// The clone should look just like the source
-						Expect(new.Spec.StorageClassName).To(Equal(src.Spec.StorageClassName))
-						Expect(*new.Spec.Resources.Requests.Storage()).To(Equal(pvcRequestedSize))
-						Expect(new.Spec.AccessModes).To(Equal(src.Spec.AccessModes))
+						Expect(newPVC.Spec.StorageClassName).To(Equal(src.Spec.StorageClassName))
+						Expect(*newPVC.Spec.Resources.Requests.Storage()).To(Equal(pvcRequestedSize))
+						Expect(newPVC.Spec.AccessModes).To(Equal(src.Spec.AccessModes))
 					})
 				})
 
@@ -335,14 +335,14 @@ var _ = Describe("Volumehandler", func() {
 					})
 
 					It("creates a temporary PVC from a source using src pvc capacity", func() {
-						new, err := vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc", true)
+						newPVC, err := vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc", true)
 						Expect(err).ToNot(HaveOccurred())
-						Expect(new).ToNot(BeNil())
-						Expect(new.Name).To(Equal("newpvc"))
+						Expect(newPVC).ToNot(BeNil())
+						Expect(newPVC.Name).To(Equal("newpvc"))
 						// The clone should look just like the source
-						Expect(new.Spec.StorageClassName).To(Equal(src.Spec.StorageClassName))
-						Expect(*new.Spec.Resources.Requests.Storage()).To(Equal(pvcCapacity))
-						Expect(new.Spec.AccessModes).To(Equal(src.Spec.AccessModes))
+						Expect(newPVC.Spec.StorageClassName).To(Equal(src.Spec.StorageClassName))
+						Expect(*newPVC.Spec.Resources.Requests.Storage()).To(Equal(pvcCapacity))
+						Expect(newPVC.Spec.AccessModes).To(Equal(src.Spec.AccessModes))
 					})
 				})
 			})
@@ -364,14 +364,14 @@ var _ = Describe("Volumehandler", func() {
 					Expect(err).NotTo(HaveOccurred())
 					Expect(vh).ToNot(BeNil())
 
-					new, err := vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc", true)
+					newPVC, err := vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc", true)
 					Expect(err).ToNot(HaveOccurred())
-					Expect(new).ToNot(BeNil())
-					Expect(new.Name).To(Equal("newpvc"))
+					Expect(newPVC).ToNot(BeNil())
+					Expect(newPVC.Name).To(Equal("newpvc"))
 					// The clone should look just like the source
-					Expect(*new.Spec.StorageClassName).To(Equal(newSC))
-					Expect(*new.Spec.Resources.Requests.Storage()).To(Equal(newCap))
-					Expect(new.Spec.AccessModes).To(Equal(newAccessModes))
+					Expect(*newPVC.Spec.StorageClassName).To(Equal(newSC))
+					Expect(*newPVC.Spec.Resources.Requests.Storage()).To(Equal(newCap))
+					Expect(newPVC.Spec.AccessModes).To(Equal(newAccessModes))
 
 				})
 			})
@@ -397,9 +397,9 @@ var _ = Describe("Volumehandler", func() {
 					Expect(vh).ToNot(BeNil())
 
 					// 1st try will not succeed since snapshot is not bound
-					new, err := vh.EnsurePVCFromSrc(ctx, logger, src, newPvcName, true)
+					newPVC, err := vh.EnsurePVCFromSrc(ctx, logger, src, newPvcName, true)
 					Expect(err).ToNot(HaveOccurred())
-					Expect(new).To(BeNil())
+					Expect(newPVC).To(BeNil())
 
 					// Grab the snap and make it look bound
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(src), src)).To(Succeed())
@@ -416,8 +416,8 @@ var _ = Describe("Volumehandler", func() {
 				When("The snapshot is bound but readyToUse is not set", func() {
 					// ReadyToUse is not set in the status, so it will be ignored by volumehandler
 					It("Should ignore readyToUse and create the PVC", func() {
-						new, err := vh.EnsurePVCFromSrc(ctx, logger, src, newPvcName, true)
-						Expect(new).NotTo(BeNil())
+						newPVC, err := vh.EnsurePVCFromSrc(ctx, logger, src, newPvcName, true)
+						Expect(newPVC).NotTo(BeNil())
 						Expect(err).NotTo(HaveOccurred())
 					})
 				})
@@ -432,8 +432,8 @@ var _ = Describe("Volumehandler", func() {
 
 					It("Does not create a PVC when the snapshot is not ready", func() {
 						// Retry EnsurePVCFromSRC (first attempt is in the BeforeEach()) expecting success
-						new, err := vh.EnsurePVCFromSrc(ctx, logger, src, newPvcName, true)
-						Expect(new).To(BeNil())
+						newPVC, err := vh.EnsurePVCFromSrc(ctx, logger, src, newPvcName, true)
+						Expect(newPVC).To(BeNil())
 						Expect(err).NotTo(HaveOccurred())
 					})
 				})
@@ -449,14 +449,14 @@ var _ = Describe("Volumehandler", func() {
 					When("Snapshot status.restoreSize is not set and no status.capacity on PVC", func() {
 						It("creates a snapshot and temporary PVC from a source using the request size from the src pvc", func() {
 							// Retry EnsurePVCFromSRC (first attempt is in the BeforeEach()) expecting success
-							new, err := vh.EnsurePVCFromSrc(ctx, logger, src, newPvcName, true)
+							newPVC, err := vh.EnsurePVCFromSrc(ctx, logger, src, newPvcName, true)
 							Expect(err).NotTo(HaveOccurred())
-							Expect(new).ToNot(BeNil())
-							Expect(new.Name).To(Equal(newPvcName))
+							Expect(newPVC).ToNot(BeNil())
+							Expect(newPVC.Name).To(Equal(newPvcName))
 							// The PVC from snapshot should look just like the source
-							Expect(new.Spec.StorageClassName).To(Equal(src.Spec.StorageClassName))
-							Expect(*new.Spec.Resources.Requests.Storage()).To(Equal(pvcRequestedSize))
-							Expect(new.Spec.AccessModes).To(Equal(src.Spec.AccessModes))
+							Expect(newPVC.Spec.StorageClassName).To(Equal(src.Spec.StorageClassName))
+							Expect(*newPVC.Spec.Resources.Requests.Storage()).To(Equal(pvcRequestedSize))
+							Expect(newPVC.Spec.AccessModes).To(Equal(src.Spec.AccessModes))
 						})
 					})
 
@@ -469,15 +469,15 @@ var _ = Describe("Volumehandler", func() {
 
 						It("creates a snapshot and temporary PVC from a source using the capacity from the src pvc", func() {
 							// Retry EnsurePVCFromSRC (first attempt is in the BeforeEach()) expecting success
-							new, err := vh.EnsurePVCFromSrc(ctx, logger, src, newPvcName, true)
+							newPVC, err := vh.EnsurePVCFromSrc(ctx, logger, src, newPvcName, true)
 							Expect(err).NotTo(HaveOccurred())
-							Expect(new).ToNot(BeNil())
-							Expect(new.Name).To(Equal(newPvcName))
+							Expect(newPVC).ToNot(BeNil())
+							Expect(newPVC.Name).To(Equal(newPvcName))
 							// The PVC from snapshot should look just like the source,
 							// using capacity from src PVC to determine the storage size, not the requested storage size
-							Expect(new.Spec.StorageClassName).To(Equal(src.Spec.StorageClassName))
-							Expect(*new.Spec.Resources.Requests.Storage()).To(Equal(pvcCapacity))
-							Expect(new.Spec.AccessModes).To(Equal(src.Spec.AccessModes))
+							Expect(newPVC.Spec.StorageClassName).To(Equal(src.Spec.StorageClassName))
+							Expect(*newPVC.Spec.Resources.Requests.Storage()).To(Equal(pvcCapacity))
+							Expect(newPVC.Spec.AccessModes).To(Equal(src.Spec.AccessModes))
 						})
 					})
 
@@ -496,15 +496,15 @@ var _ = Describe("Volumehandler", func() {
 
 						It("creates a snapshot and temporary PVC from a source using the capacity from the src pvc", func() {
 							// Retry EnsurePVCFromSRC (first attempt is in the BeforeEach()) expecting success
-							new, err := vh.EnsurePVCFromSrc(ctx, logger, src, newPvcName, true)
+							newPVC, err := vh.EnsurePVCFromSrc(ctx, logger, src, newPvcName, true)
 							Expect(err).NotTo(HaveOccurred())
-							Expect(new).ToNot(BeNil())
-							Expect(new.Name).To(Equal(newPvcName))
+							Expect(newPVC).ToNot(BeNil())
+							Expect(newPVC.Name).To(Equal(newPvcName))
 							// The PVC from snapshot should look just like the source,
 							// using restoreSize from the snapshot to determine the storage size
-							Expect(new.Spec.StorageClassName).To(Equal(src.Spec.StorageClassName))
-							Expect(*new.Spec.Resources.Requests.Storage()).To(Equal(snapshotRestoreSize))
-							Expect(new.Spec.AccessModes).To(Equal(src.Spec.AccessModes))
+							Expect(newPVC.Spec.StorageClassName).To(Equal(src.Spec.StorageClassName))
+							Expect(*newPVC.Spec.Resources.Requests.Storage()).To(Equal(snapshotRestoreSize))
+							Expect(newPVC.Spec.AccessModes).To(Equal(src.Spec.AccessModes))
 						})
 					})
 				})
@@ -530,9 +530,9 @@ var _ = Describe("Volumehandler", func() {
 					Expect(vh).ToNot(BeNil())
 
 					// 1st try will not succeed since snapshot is not bound
-					new, err := vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc", true)
+					newPVC, err := vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc", true)
 					Expect(err).ToNot(HaveOccurred())
-					Expect(new).To(BeNil())
+					Expect(newPVC).To(BeNil())
 
 					// Grab the snap and make it look bound
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(src), src)).To(Succeed())
@@ -546,14 +546,14 @@ var _ = Describe("Volumehandler", func() {
 					Expect(*snap.Spec.VolumeSnapshotClassName).To(Equal(newVSC))
 
 					// Retry expecting success
-					new, err = vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc", true)
+					newPVC, err = vh.EnsurePVCFromSrc(ctx, logger, src, "newpvc", true)
 					Expect(err).ToNot(HaveOccurred())
-					Expect(new).ToNot(BeNil())
-					Expect(new.Name).To(Equal("newpvc"))
+					Expect(newPVC).ToNot(BeNil())
+					Expect(newPVC.Name).To(Equal("newpvc"))
 					// The clone should look just like the source
-					Expect(*new.Spec.StorageClassName).To(Equal(newSC))
-					Expect(*new.Spec.Resources.Requests.Storage()).To(Equal(newCap))
-					Expect(new.Spec.AccessModes).To(Equal(newAccessModes))
+					Expect(*newPVC.Spec.StorageClassName).To(Equal(newSC))
+					Expect(*newPVC.Spec.Resources.Requests.Storage()).To(Equal(newCap))
+					Expect(newPVC.Spec.AccessModes).To(Equal(newAccessModes))
 				})
 			})
 		})

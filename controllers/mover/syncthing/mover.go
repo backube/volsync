@@ -231,10 +231,7 @@ func (m *Mover) interactWithSyncthing(dataService *corev1.Service, apiSecret *co
 		return err
 	}
 
-	if err = m.ensureStatusIsUpdated(dataService, syncthingState); err != nil {
-		return err
-	}
-	return nil
+	return m.ensureStatusIsUpdated(dataService, syncthingState)
 }
 
 // ensureConfigPVC Ensures that there is a PVC persisting Syncthing's config data.
@@ -245,8 +242,8 @@ func (m *Mover) ensureConfigPVC(
 	// default capacity if none was specified
 	var capacity *resource.Quantity = m.configCapacity
 	if capacity == nil {
-		cap := resource.MustParse(configCapacity)
-		capacity = &cap
+		capDefault := resource.MustParse(configCapacity)
+		capacity = &capDefault
 	}
 
 	options := volsyncv1alpha1.ReplicationSourceVolumeOptions{

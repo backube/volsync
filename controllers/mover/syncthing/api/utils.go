@@ -39,12 +39,12 @@ func (s *Syncthing) GetDeviceFromID(id string) (*config.DeviceConfiguration, boo
 // MyID Is a convenience method which returns the current Syncthing device's ID.
 func (s *Syncthing) MyID() string { return s.SystemStatus.MyID }
 
-// ShareFoldersWithDevices Will set all of the given devices to be shared with the
+// ShareFoldersWithDevices Will set all of the devices in s.Configuration.Devices to be shared with the
 // currently tracked folders.
 //
 // This method does not currently take into account any encryption password set
 // on the folder by the device.
-func (s *Syncthing) ShareFoldersWithDevices(devices []config.DeviceConfiguration) {
+func (s *Syncthing) ShareFoldersWithDevices() {
 	// share the current folder(s) with the new devices
 	var newFolders = []config.FolderConfiguration{}
 	for _, folder := range s.Configuration.Folders {

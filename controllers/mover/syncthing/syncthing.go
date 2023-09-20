@@ -55,7 +55,7 @@ func updateSyncthingDevices(peerList []v1alpha1.SyncthingPeer,
 		newDevices = append(newDevices, stDeviceToAdd)
 	}
 	syncthing.Configuration.Devices = newDevices
-	syncthing.ShareFoldersWithDevices(newDevices)
+	syncthing.ShareFoldersWithDevices()
 	return nil
 }
 
