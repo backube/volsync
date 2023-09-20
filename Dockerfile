@@ -81,8 +81,17 @@ RUN go run build.go -no-upgrade
 # Install diskrsync binary
 FROM golang-builder AS diskrsync-builder
 
+ARG DISKRSYNC_VERSION="v1.3.0"
+ARG DISKRSYNC_GIT_HASH="507805c4378495fc2267b77f6eab3d6bb318c86c"
+
+RUN git clone --depth 1 -b ${DISKRSYNC_VERSION} https://github.com/dop251/diskrsync.git
 WORKDIR /workspace/diskrsync
-RUN GOPATH=$(pwd) go install github.com/dop251/diskrsync/diskrsync@v1.3.0
+
+# Make sure we have the correct diskrsync release
+RUN /bin/bash -c "[[ $(git rev-list -n 1 HEAD) == ${DISKRSYNC_GIT_HASH} ]]"
+
+RUN go build -a -o bin/diskrsync ./diskrsync
+
 
 ######################################################################
 # Build diskrsync-tcp binary
@@ -180,8 +189,8 @@ RUN chmod a+r /mover-syncthing/config-template.xml && \
 ##### diskrsync
 COPY --from=diskrsync-builder /workspace/diskrsync/bin/diskrsync /usr/local/bin/diskrsync
 
-##### diskrsync
-COPY --from=diskrsync-tcp-builder /workspace/diskrsync-tcp/diskrsync-tcp diskrsync-tcp
+##### diskrsync-tcp
+COPY --from=diskrsync-tcp-builder /workspace/diskrsync-tcp/diskrsync-tcp /diskrsync-tcp
 
 ##### Set build metadata
 ARG builddate_arg="(unknown)"
