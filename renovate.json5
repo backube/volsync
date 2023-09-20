@@ -49,6 +49,15 @@
       ]
     },
     {
+      // Group diskrsync and spgz dependent library Docker and go updates
+      // together in a single PR
+      "groupName": "diskrsync version",
+      "groupSlug": "diskrsync",
+      "matchPackagePrefixes": [
+        "github.com/dop251/"
+      ],
+    },
+    {
       // Renovate's packages update too frequently, so we only schedule updates
       // once a week to keep the noise down
       "matchPackageNames": ["renovatebot/pre-commit-hooks"],
@@ -200,6 +209,18 @@
         "SYNCTHING_VERSION\\s*=\\s*\"?(?<currentValue>.+?)\"?\\n.*SYNCTHING_GIT_HASH\\s*=\\s*\"?(?<currentDigest>.+?)\"?\\n"
       ],
       "depNameTemplate": "syncthing/syncthing",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "description": "diskrsync version updates in the Dockerfile",
+      "fileMatch": [
+        "^Dockerfile$"
+      ],
+      "matchStrings": [
+        "DISKRSYNC_VERSION\\s*=\\s*\"?(?<currentValue>.+?)\"?\\n.*DISKRSYNC_GIT_HASH\\s*=\\s*\"?(?<currentDigest>.+?)\"?\\n"
+      ],
+      "depNameTemplate": "dop251/diskrsync",
       "datasourceTemplate": "github-releases"
     },
     {
