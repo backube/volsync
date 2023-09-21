@@ -43,7 +43,7 @@ const (
 
 // Volume Populator Event "reason" strings
 const (
-	EvRVolPopPVCPopulatorFinished            = "VolSyncPopulatorFinished"
+	EvRVolPopPVCPopulatorFinished            = "VolSyncPopulatorFinished" // #nosec G101 - gosec thinks this is a cred
 	EvRVolPopPVCPopulatorError               = "VolSyncPopulatorError"
 	EvVolPopPVCReplicationDestMissing        = "VolSyncPopulatorReplicationDestinationMissing"
 	EvRVolPopPVCReplicationDestNoLatestImage = "VolSyncPopulatorReplicationDestinationNoLatestImage"

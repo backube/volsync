@@ -1205,22 +1205,22 @@ var _ = Describe("Restic as a destination", func() {
 			Expect(mover).NotTo(BeNil())
 		})
 		When("no destination volume is supplied", func() {
-			var cap resource.Quantity
+			var destVolCap resource.Quantity
 			var am corev1.PersistentVolumeAccessMode
 			BeforeEach(func() {
 				am = corev1.ReadWriteMany
 				rd.Spec.Restic.AccessModes = []corev1.PersistentVolumeAccessMode{
 					am,
 				}
-				cap = resource.MustParse("6Gi")
-				rd.Spec.Restic.Capacity = &cap
+				destVolCap = resource.MustParse("6Gi")
+				rd.Spec.Restic.Capacity = &destVolCap
 			})
 			It("creates a temporary PVC", func() {
 				pvc, e := mover.ensureDestinationPVC(ctx)
 				Expect(e).NotTo(HaveOccurred())
 				Expect(pvc).NotTo(BeNil())
 				Expect(pvc.Spec.AccessModes).To(ConsistOf(am))
-				Expect(*pvc.Spec.Resources.Requests.Storage()).To(Equal(cap))
+				Expect(*pvc.Spec.Resources.Requests.Storage()).To(Equal(destVolCap))
 			})
 		})
 		When("a destination volume is supplied", func() {

@@ -888,11 +888,11 @@ var _ = Describe("VolumePopulator", func() {
 												return fmt.Errorf("ownerRefs for pvcPrime still exists. ownerRefs: %+v",
 													ownerRefs)
 											}
-										} else if snapOwnedByRD {
+										} else if !snapOwnedByRD {
 											// Note in a real env, after pvcPrime is deleted, GC will remove
 											// the owner ref on the snapshot that points to pvcPrime - however in
 											// envtest GC doesn't run
-										} else {
+
 											// Check that the owner ref is still there - this means GC will cleanup
 											// in real env
 											if len(ownerRefs) != snapOwnerRefCountBefore {

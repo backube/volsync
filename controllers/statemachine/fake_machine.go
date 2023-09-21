@@ -71,9 +71,9 @@ func (f *fakeMachine) Conditions() *[]metav1.Condition        { return &f.Cond }
 func (f *fakeMachine) SetOutOfSync(oos bool)                  { f.OOSync = oos }
 func (f *fakeMachine) IncMissedIntervals()                    { f.MissedIntervals++ }
 func (f *fakeMachine) ObserveSyncDuration(t time.Duration)    { f.DurationObservation = t }
-func (f *fakeMachine) Synchronize(ctx context.Context) (mover.Result, error) {
+func (f *fakeMachine) Synchronize(_ context.Context) (mover.Result, error) {
 	return f.SyncResult, f.SyncErr
 }
-func (f *fakeMachine) Cleanup(ctx context.Context) (mover.Result, error) {
+func (f *fakeMachine) Cleanup(_ context.Context) (mover.Result, error) {
 	return f.CleanupResult, f.CleanupError
 }

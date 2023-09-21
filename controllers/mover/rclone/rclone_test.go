@@ -1062,22 +1062,22 @@ var _ = Describe("Rclone as a destination", func() {
 
 		Context("Dest volume is handled properly", func() {
 			When("no destination volume is supplied", func() {
-				var cap resource.Quantity
+				var destVolCap resource.Quantity
 				var am corev1.PersistentVolumeAccessMode
 				BeforeEach(func() {
 					am = corev1.ReadWriteMany
 					rd.Spec.Rclone.AccessModes = []corev1.PersistentVolumeAccessMode{
 						am,
 					}
-					cap = resource.MustParse("6Gi")
-					rd.Spec.Rclone.Capacity = &cap
+					destVolCap = resource.MustParse("6Gi")
+					rd.Spec.Rclone.Capacity = &destVolCap
 				})
 				It("creates a temporary PVC", func() {
 					pvc, e := mover.ensureDestinationPVC(ctx)
 					Expect(e).NotTo(HaveOccurred())
 					Expect(pvc).NotTo(BeNil())
 					Expect(pvc.Spec.AccessModes).To(ConsistOf(am))
-					Expect(*pvc.Spec.Resources.Requests.Storage()).To(Equal(cap))
+					Expect(*pvc.Spec.Resources.Requests.Storage()).To(Equal(destVolCap))
 					// It should NOT be marked for cleaned up
 					Expect(pvc.Labels).ToNot(HaveKey("volsync.backube/cleanup"))
 				})

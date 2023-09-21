@@ -30,7 +30,7 @@ import (
 )
 
 // DefaultSCCName is the default name of the volsync security context constraint
-const DefaultSCCName = "volsync-privileged-mover"
+const DefaultSCCName = "volsync-privileged-mover" // #nosec G101 - gosec thinks this is a credential
 
 // SCCName is the name of the SCC to use for the mover Jobs
 var SCCName string
