@@ -51,11 +51,15 @@
     {
       // Group diskrsync and spgz dependent library Docker and go updates
       // together in a single PR
-      "groupName": "diskrsync version",
+      "groupName": "diskrsync packages",
       "groupSlug": "diskrsync",
-      "matchPackagePrefixes": [
-        "github.com/dop251/"
-      ],
+      "matchPackagePatterns": [
+        // Using the "packagePatterns" option so that we can match both the go
+        // packages (w/o the "github.com/" prefix) and the other references that
+        // do have it.
+        "dop251/diskrsync",
+        "dop251/spgz"
+      ]
     },
     {
       // Renovate's packages update too frequently, so we only schedule updates
