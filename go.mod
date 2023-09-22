@@ -31,7 +31,7 @@ require (
 	sigs.k8s.io/controller-runtime v0.16.2
 )
 
-require github.com/dop251/spgz v1.2.0
+require github.com/dop251/spgz v1.2.1
 
 require (
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
