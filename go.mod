@@ -4,6 +4,7 @@ go 1.20
 
 require (
 	github.com/dop251/diskrsync v1.3.0
+	github.com/dop251/spgz v1.2.0
 	github.com/go-logr/logr v1.2.4
 	github.com/google/uuid v1.3.1
 	github.com/kubernetes-csi/external-snapshotter/client/v6 v6.2.0
@@ -30,8 +31,6 @@ require (
 	k8s.io/utils v0.0.0-20230406110748-d93618cff8a2
 	sigs.k8s.io/controller-runtime v0.16.2
 )
-
-require github.com/dop251/spgz v1.2.0
 
 require (
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
