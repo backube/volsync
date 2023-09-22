@@ -55,7 +55,7 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2023-09-13T13:45:35Z"
+    createdAt: "2023-09-22T11:08:08Z"
     olm.skipRange: '>=0.4.0 <0.8.0'
     operators.operatorframework.io/builder: operator-sdk-v1.31.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
@@ -467,7 +467,7 @@ spec:
                 - --logtostderr=true
                 - --tls-min-version=VersionTLS12
                 - --v=0
-                image: quay.io/brancz/kube-rbac-proxy:v0.14.0
+                image: quay.io/brancz/kube-rbac-proxy:v0.14.3
                 name: kube-rbac-proxy
                 ports:
                 - containerPort: 8443
