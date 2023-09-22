@@ -35,6 +35,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
+var volsyncVersion = "0.0.0"
+
 type options struct {
 	noCompress bool
 	verbose    bool
@@ -71,6 +73,9 @@ func main() {
 
 	pflag.Parse()
 	logger := zap.New(zap.UseFlagOptions(&zapopts))
+
+	logger.Info(fmt.Sprintf("diskrsync-tls (for VolSync) Version: %s", volsyncVersion))
+
 	if *sourceMode && !*targetMode {
 		if targetAddress == nil || *targetAddress == "" {
 			fmt.Fprintf(os.Stderr, "target-address must be specified with source flag\n")
