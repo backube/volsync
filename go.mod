@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	github.com/dop251/diskrsync v1.3.0
-	github.com/dop251/spgz v1.2.0
+	github.com/dop251/spgz v1.2.1
 	github.com/go-logr/logr v1.2.4
 	github.com/google/uuid v1.3.1
 	github.com/kubernetes-csi/external-snapshotter/client/v6 v6.2.0
