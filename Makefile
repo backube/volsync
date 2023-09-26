@@ -17,6 +17,7 @@ KUBECTL_VERSION := v1.26.0
 KUSTOMIZE_VERSION := v5.1.1
 OPERATOR_SDK_VERSION := v1.31.0
 PIPENV_VERSION := 2023.9.8
+YQ_VERSION := v4.34.2
 
 # We don't vendor modules. Enforce that behavior
 export GOFLAGS := -mod=readonly
@@ -268,7 +269,7 @@ $(ENVTEST): $(LOCALBIN)
 YQ := $(LOCALBIN)/yq
 yq: $(YQ) ## Download yq locally if necessary.
 $(YQ): $(LOCALBIN)
-	test -s $@ || GOFLAGS= GOBIN=$(LOCALBIN) go install github.com/mikefarah/yq/v4@v4.34.2
+	test -s $@ || GOFLAGS= GOBIN=$(LOCALBIN) go install github.com/mikefarah/yq/v4@$(YQ_VERSION)
 
 .PHONY: bundle
 bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
