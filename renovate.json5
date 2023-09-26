@@ -193,6 +193,18 @@
     },
     {
       "customType": "regex",
+      "description": "yq version updates",
+      "fileMatch": [
+        "(^|/)Makefile$"
+      ],
+      "matchStrings": [
+        "YQ_VERSION\\s*:=?\\s*\"?(?<currentValue>.+?)\"?\\n"
+      ],
+      "depNameTemplate": "mikefarah/yq",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
       "description": "RClone version updates in the Dockerfile",
       "fileMatch": [
         "^Dockerfile$"
