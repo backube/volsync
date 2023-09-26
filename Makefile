@@ -135,8 +135,9 @@ test: bundle generate lint envtest helm-lint ginkgo ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GINKGO) $(TEST_ARGS) $(TEST_PACKAGES)
 
 .PHONY: test-e2e-install
+PIP_INSTALL_ARGS ?= --user
 test-e2e-install: ## Install environment for running e2e
-	./.ci-scripts/retry.sh pip install --user --upgrade pipenv==$(PIPENV_VERSION)
+	./.ci-scripts/retry.sh pip install $(PIP_INSTALL_ARGS) --upgrade pipenv==$(PIPENV_VERSION)
 	cd test-e2e && ../.ci-scripts/retry.sh pipenv install --deploy --no-site-packages -v
 	cd test-e2e && ../.ci-scripts/retry.sh pipenv run ansible-galaxy install -r requirements.yml
 
