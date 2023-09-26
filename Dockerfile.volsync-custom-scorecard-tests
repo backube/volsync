@@ -24,16 +24,18 @@ WORKDIR /workspace-cli
 RUN GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o bin/kubectl-volsync -ldflags "-X=github.com/backube/volsync/kubectl-volsync/cmd.volsyncVersion=${version_arg}" ./kubectl-volsync/main.go
 
 # Build final container
-FROM registry.access.redhat.com/ubi9-minimal
+FROM registry.access.redhat.com/ubi9/python-311
 
-RUN microdnf --refresh update -y && \
-    microdnf --nodocs --setopt=install_weak_deps=0 install -y \
+USER root
+
+RUN dnf --refresh update -y && \
+    dnf --nodocs --setopt=install_weak_deps=0 install -y \
       bash \
       python \
       python3-pip \
       tar \
       gzip \
-    && microdnf clean all
+    && dnf clean all
 
 ENV HOME=/opt/volsync-custom-scorecard-tests \
     USER_NAME=volsync-custom-scorecard-tests \
