@@ -11,7 +11,8 @@ kubernetes = ">=12.0.0"
 pyyaml = ">=3.11"
 jmespath = "*"
 jinja2 = "*"
-importlib-resources = {version = ">=5.0, <5.1", markers="python_version < '3.10'"}
+# Required due to Python 3.9 in ubi9
+importlib-resources = {version = "*", markers="python_version < '3.10'"}
 
 [dev-packages]
 #[requires]
