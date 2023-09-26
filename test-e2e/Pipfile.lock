@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "2670c9af53e50b42ec322dc94d254557250a689ce94951987d605b7b533e5947"
+            "sha256": "20a60703d7d66e9df9951d7782b3d32579b4ee7e8c1e133adef2f3f2e2369ab3"
         },
         "pipfile-spec": 6,
         "requires": {},
@@ -201,7 +201,7 @@
                 "sha256:f779d3ad205f108d14e99bb3859aa7dd8e9c68874617c72354d7ecaec2a054ac",
                 "sha256:f87f746ee241d30d6ed93969de31e5ffd09a2961a051e60ae6bddde9ec3583aa"
             ],
-            "markers": "python_version >= '3.7'",
+            "markers": "python_full_version >= '3.7.0'",
             "version": "==3.2.0"
         },
         "cryptography": {
@@ -230,7 +230,7 @@
                 "sha256:e40211b4923ba5a6dc9769eab704bdb3fbb58d56c5b336d30996c24fcf12aadb",
                 "sha256:efc8ad4e6fc4f1752ebfb58aefece8b4e3c4cae940b0994d43649bdfce8d0d4f"
             ],
-            "index": "pypi",
+            "markers": "python_version >= '3.7'",
             "version": "==41.0.4"
         },
         "google-auth": {
@@ -248,14 +248,6 @@
             ],
             "markers": "python_version >= '3.5'",
             "version": "==3.4"
-        },
-        "importlib-resources": {
-            "hashes": [
-                "sha256:2238159eb743bd85304a16e0536048b3e991c531d1cd51c4a834d1ccf2829057",
-                "sha256:4df460394562b4581bb4e4087ad9447bd433148fba44241754ec3152499f1d1b"
-            ],
-            "markers": "python_version < '3.10'",
-            "version": "==5.0.7"
         },
         "jinja2": {
             "hashes": [
@@ -291,11 +283,11 @@
         },
         "kubernetes": {
             "hashes": [
-                "sha256:0f9376329c85cf07615ed6886bf9bf21eb1cbfc05e14ec7b0f74ed8153cd2815",
-                "sha256:d479931c6f37561dbfdf28fc5f46384b1cb8b28f9db344ed4a232ce91990825a"
+                "sha256:10f56f8160dcb73647f15fafda268e7f60cf7dbc9f8e46d52fcd46d3beb0c18d",
+                "sha256:1468069a573430fb1cb5ad22876868f57977930f80a6749405da31cd6086a7e9"
             ],
             "index": "pypi",
-            "version": "==27.2.0"
+            "version": "==28.1.0"
         },
         "markupsafe": {
             "hashes": [
