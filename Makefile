@@ -17,7 +17,7 @@ KUBECTL_VERSION := v1.26.0
 KUSTOMIZE_VERSION := v5.1.1
 OPERATOR_SDK_VERSION := v1.31.0
 PIPENV_VERSION := 2023.9.8
-YQ_VERSION := v4.34.2
+YQ_VERSION := v4.35.2
 
 # We don't vendor modules. Enforce that behavior
 export GOFLAGS := -mod=readonly
