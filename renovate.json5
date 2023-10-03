@@ -62,6 +62,17 @@
       ]
     },
     {
+      // Group syncthing updates together in a single PR
+      "groupName": "syncthing packages",
+      "groupSlug": "syncthing",
+      "matchPackagePatterns": [
+        // Using the "packagePatterns" option so that we can match both the go
+        // packages (w/o the "github.com/" prefix) and the other references that
+        // do have it.
+        "syncthing/syncthing"
+      ]
+    },
+    {
       // Renovate's packages update too frequently, so we only schedule updates
       // once a week to keep the noise down
       "matchPackageNames": ["renovatebot/pre-commit-hooks"],
