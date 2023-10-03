@@ -303,8 +303,8 @@ jobs:
         run: |
           curl -fsSLO "https://storage.googleapis.com/kubernetes-release/release/v${KUBERNETES_VERSION}/bin/linux/amd64/kubectl"
           sudo install ./kubectl /usr/local/bin/
-          kubectl version --short --client
-          kubectl version --short --client | grep -q ${KUBERNETES_VERSION}
+          kubectl version --client
+          kubectl version --client | grep -q ${KUBERNETES_VERSION}
 
       - name: Install helm
         run: make helm
