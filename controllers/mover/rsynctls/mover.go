@@ -31,7 +31,7 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -393,12 +393,12 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 			Command: containerCmd,
 			Image:   m.containerImage,
 			SecurityContext: &corev1.SecurityContext{
-				AllowPrivilegeEscalation: pointer.Bool(false),
+				AllowPrivilegeEscalation: ptr.To(false),
 				Capabilities: &corev1.Capabilities{
 					Drop: []corev1.Capability{"ALL"},
 				},
-				Privileged:             pointer.Bool(false),
-				ReadOnlyRootFilesystem: pointer.Bool(true),
+				Privileged:             ptr.To(false),
+				ReadOnlyRootFilesystem: ptr.To(true),
 			},
 		}}
 		volumeMounts := []corev1.VolumeMount{}
@@ -426,7 +426,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 			{Name: "keys", VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
 					SecretName:  rsyncSecretName,
-					DefaultMode: pointer.Int32(0600),
+					DefaultMode: ptr.To[int32](0600),
 				}},
 			},
 			{Name: "tempdir", VolumeSource: corev1.VolumeSource{
@@ -455,7 +455,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 				"FOWNER",       // Set permission bits & times
 				"SETGID",       // Set process GID/supplemental groups
 			}
-			podSpec.Containers[0].SecurityContext.RunAsUser = pointer.Int64(0)
+			podSpec.Containers[0].SecurityContext.RunAsUser = ptr.To[int64](0)
 		} else {
 			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
 				Name:  "PRIVILEGED_MOVER",

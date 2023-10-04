@@ -36,7 +36,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
@@ -782,8 +782,8 @@ var _ = Describe("Restic as a source", func() {
 				When("A moverSecurityContext is provided", func() {
 					BeforeEach(func() {
 						rs.Spec.Restic.MoverSecurityContext = &corev1.PodSecurityContext{
-							RunAsUser: pointer.Int64(7),
-							FSGroup:   pointer.Int64(8),
+							RunAsUser: ptr.To[int64](7),
+							FSGroup:   ptr.To[int64](8),
 						}
 					})
 					It("Should appear in the mover Job", func() {

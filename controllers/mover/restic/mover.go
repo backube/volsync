@@ -33,7 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -396,12 +396,12 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 			Args:    actions,
 			Image:   m.containerImage,
 			SecurityContext: &corev1.SecurityContext{
-				AllowPrivilegeEscalation: pointer.Bool(false),
+				AllowPrivilegeEscalation: ptr.To(false),
 				Capabilities: &corev1.Capabilities{
 					Drop: []corev1.Capability{"ALL"},
 				},
-				Privileged:             pointer.Bool(false),
-				ReadOnlyRootFilesystem: pointer.Bool(true),
+				Privileged:             ptr.To(false),
+				ReadOnlyRootFilesystem: ptr.To(true),
 			},
 			VolumeMounts: []corev1.VolumeMount{
 				{Name: dataVolumeName, MountPath: mountPath},
@@ -497,7 +497,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 				"CHOWN",        // chown files
 				"FOWNER",       // Set permission bits & times
 			}
-			podSpec.Containers[0].SecurityContext.RunAsUser = pointer.Int64(0)
+			podSpec.Containers[0].SecurityContext.RunAsUser = ptr.To[int64](0)
 		} else {
 			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
 				Name:  "PRIVILEGED_MOVER",

@@ -26,7 +26,7 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -95,7 +95,7 @@ var _ = Describe("Cleanup", func() {
 			},
 			Spec: snapv1.VolumeSnapshotSpec{
 				Source: snapv1.VolumeSnapshotSource{
-					PersistentVolumeClaimName: pointer.String("dummy"),
+					PersistentVolumeClaimName: ptr.To("dummy"),
 				},
 			},
 		}
@@ -110,7 +110,7 @@ var _ = Describe("Cleanup", func() {
 			},
 			Spec: snapv1.VolumeSnapshotSpec{
 				Source: snapv1.VolumeSnapshotSource{
-					PersistentVolumeClaimName: pointer.String("dummy"),
+					PersistentVolumeClaimName: ptr.To("dummy"),
 				},
 			},
 		}
@@ -128,7 +128,7 @@ var _ = Describe("Cleanup", func() {
 			},
 			Spec: snapv1.VolumeSnapshotSpec{
 				Source: snapv1.VolumeSnapshotSource{
-					PersistentVolumeClaimName: pointer.String("dummy"),
+					PersistentVolumeClaimName: ptr.To("dummy"),
 				},
 			},
 		}
