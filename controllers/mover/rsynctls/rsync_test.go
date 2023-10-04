@@ -36,7 +36,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
@@ -1467,7 +1467,7 @@ var _ = Describe("Rsync as a destination", func() {
 					},
 					Spec: snapv1.VolumeSnapshotSpec{
 						Source: snapv1.VolumeSnapshotSource{
-							PersistentVolumeClaimName: pointer.String("dummy"),
+							PersistentVolumeClaimName: ptr.To("dummy"),
 						},
 					},
 				}
@@ -1480,7 +1480,7 @@ var _ = Describe("Rsync as a destination", func() {
 					},
 					Spec: snapv1.VolumeSnapshotSpec{
 						Source: snapv1.VolumeSnapshotSource{
-							PersistentVolumeClaimName: pointer.String("dummy2"),
+							PersistentVolumeClaimName: ptr.To("dummy2"),
 						},
 					},
 				}

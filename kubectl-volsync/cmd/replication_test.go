@@ -28,7 +28,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -68,9 +68,9 @@ var _ = Describe("Replication relationships can create/save/load", func() {
 				ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
 					CopyMethod:              volsyncv1alpha1.CopyMethodClone,
 					Capacity:                &caps,
-					StorageClassName:        pointer.String("scn"),
+					StorageClassName:        ptr.To("scn"),
 					AccessModes:             []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-					VolumeSnapshotClassName: pointer.String("vscn"),
+					VolumeSnapshotClassName: ptr.To("vscn"),
 				},
 			},
 		}
@@ -83,12 +83,12 @@ var _ = Describe("Replication relationships can create/save/load", func() {
 				ReplicationDestinationVolumeOptions: volsyncv1alpha1.ReplicationDestinationVolumeOptions{
 					CopyMethod:              volsyncv1alpha1.CopyMethodSnapshot,
 					Capacity:                &capd,
-					StorageClassName:        pointer.String("scn2"),
+					StorageClassName:        ptr.To("scn2"),
 					AccessModes:             []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany},
-					VolumeSnapshotClassName: pointer.String("vscn2"),
-					DestinationPVC:          pointer.String("dpvc"),
+					VolumeSnapshotClassName: ptr.To("vscn2"),
+					DestinationPVC:          ptr.To("dpvc"),
 				},
-				ServiceType: (*corev1.ServiceType)(pointer.String(string(corev1.ServiceTypeClusterIP))),
+				ServiceType: (*corev1.ServiceType)(ptr.To(string(corev1.ServiceTypeClusterIP))),
 			},
 		}
 		Expect(rr.Save()).To(Succeed())
@@ -310,7 +310,7 @@ var _ = Describe("Replication relationships", func() {
 								corev1.ResourceStorage: resource.MustParse("45Gi"),
 							},
 						},
-						StorageClassName: pointer.String("thesc"),
+						StorageClassName: ptr.To("thesc"),
 					},
 				}
 				Expect(k8sClient.Create(ctx, existingPVC)).To(Succeed())

@@ -28,7 +28,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -386,7 +386,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 			Command: containerCmd,
 			Image:   m.containerImage,
 			SecurityContext: &corev1.SecurityContext{
-				AllowPrivilegeEscalation: pointer.Bool(false),
+				AllowPrivilegeEscalation: ptr.To(false),
 				Capabilities: &corev1.Capabilities{
 					Add: []corev1.Capability{
 						"AUDIT_WRITE",  // sshd
@@ -399,9 +399,9 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 					},
 					Drop: []corev1.Capability{"ALL"},
 				},
-				Privileged:             pointer.Bool(false),
-				ReadOnlyRootFilesystem: pointer.Bool(true),
-				RunAsUser:              pointer.Int64(0),
+				Privileged:             ptr.To(false),
+				ReadOnlyRootFilesystem: ptr.To(true),
+				RunAsUser:              ptr.To[int64](0),
 			},
 		}}
 		volumeMounts := []corev1.VolumeMount{}
@@ -429,7 +429,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 			{Name: "keys", VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
 					SecretName:  rsyncSecretName,
-					DefaultMode: pointer.Int32(0600),
+					DefaultMode: ptr.To[int32](0600),
 				}},
 			},
 			{Name: "tempsshdir", VolumeSource: corev1.VolumeSource{

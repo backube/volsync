@@ -39,7 +39,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
@@ -1226,8 +1226,8 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 						When("A moverSecurityContext is provided", func() {
 							BeforeEach(func() {
 								rs.Spec.Syncthing.MoverSecurityContext = &corev1.PodSecurityContext{
-									RunAsUser: pointer.Int64(7),
-									FSGroup:   pointer.Int64(8),
+									RunAsUser: ptr.To[int64](7),
+									FSGroup:   ptr.To[int64](8),
 								}
 							})
 							It("Should appear in the mover Job", func() {
