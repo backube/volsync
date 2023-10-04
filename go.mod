@@ -11,7 +11,7 @@ require (
 	github.com/kubernetes-csi/volume-data-source-validator/client v0.0.0-20230911161012-c2e130d28434
 	github.com/onsi/ginkgo/v2 v2.12.1
 	github.com/onsi/gomega v1.28.0
-	github.com/openshift/api v0.0.0-20230414143018-3367bc7e6ac7 // release-4.13
+	github.com/openshift/api v0.0.0-20231003083825-c3f7566f6ef6 // release-4.13
 	github.com/prometheus/client_golang v1.17.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/cobra v1.7.0
