@@ -62,6 +62,13 @@
       ]
     },
     {
+      // Ignore openshift/api updates since we don't have a way to automatically
+      // update from the release branches and they don't tag releases
+      "matchDatasources": ["go"],
+      "matchPackageNames": ["github.com/openshift/api"],
+      "enabled": false
+    },
+    {
       // Group syncthing updates together in a single PR
       "groupName": "syncthing packages",
       "groupSlug": "syncthing",
