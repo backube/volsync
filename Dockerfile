@@ -78,7 +78,7 @@ RUN go run build.go -no-upgrade
 
 
 ######################################################################
-# Install diskrsync binary
+# Build diskrsync binary
 FROM golang-builder AS diskrsync-builder
 
 ARG DISKRSYNC_VERSION="v1.3.0"
