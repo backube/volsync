@@ -126,7 +126,6 @@ func (s *statefulOutput) PrintPatternJSON(path string, node *restic.Node) {
 
 		// Make the following attributes disappear
 		Name               byte `json:"name,omitempty"`
-		Inode              byte `json:"inode,omitempty"`
 		ExtendedAttributes byte `json:"extended_attributes,omitempty"`
 		Device             byte `json:"device,omitempty"`
 		Content            byte `json:"content,omitempty"`
@@ -589,8 +588,8 @@ func runFind(ctx context.Context, opts FindOptions, gopts GlobalOptions, args []
 	if err != nil {
 		return err
 	}
-
-	if err = repo.LoadIndex(ctx); err != nil {
+	bar := newIndexProgress(gopts.Quiet, gopts.JSON)
+	if err = repo.LoadIndex(ctx, bar); err != nil {
 		return err
 	}
 

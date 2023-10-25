@@ -43,9 +43,10 @@ func TestMasterIndex(t *testing.T) {
 	blob12a := restic.PackedBlob{
 		PackID: restic.NewRandomID(),
 		Blob: restic.Blob{
-			BlobHandle: bhInIdx12,
-			Length:     uint(crypto.CiphertextLength(123)),
-			Offset:     110,
+			BlobHandle:         bhInIdx12,
+			Length:             uint(crypto.CiphertextLength(123)),
+			Offset:             110,
+			UncompressedLength: 80,
 		},
 	}
 
@@ -116,7 +117,7 @@ func TestMasterIndex(t *testing.T) {
 
 	size, found = mIdx.LookupSize(bhInIdx12)
 	rtest.Equals(t, true, found)
-	rtest.Equals(t, uint(123), size)
+	rtest.Equals(t, uint(80), size)
 
 	// test not in index
 	found = mIdx.Has(restic.BlobHandle{ID: restic.NewRandomID(), Type: restic.TreeBlob})
@@ -356,7 +357,7 @@ func TestIndexSave(t *testing.T) {
 func testIndexSave(t *testing.T, version uint) {
 	repo := createFilledRepo(t, 3, version)
 
-	err := repo.LoadIndex(context.TODO())
+	err := repo.LoadIndex(context.TODO(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -381,7 +382,7 @@ func testIndexSave(t *testing.T, version uint) {
 		t.Error(err)
 	}
 
-	hints, errs := checker.LoadIndex(context.TODO())
+	hints, errs := checker.LoadIndex(context.TODO(), nil)
 	for _, h := range hints {
 		t.Logf("hint: %v\n", h)
 	}
