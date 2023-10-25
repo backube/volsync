@@ -90,6 +90,16 @@ func (err *ErrOldIndexFormat) Error() string {
 	return fmt.Sprintf("index %v has old format", err.ID)
 }
 
+// ErrPackData is returned if errors are discovered while verifying a packfile
+type ErrPackData struct {
+	PackID restic.ID
+	errs   []error
+}
+
+func (e *ErrPackData) Error() string {
+	return fmt.Sprintf("pack %v contains %v errors: %v", e.PackID, len(e.errs), e.errs)
+}
+
 func (c *Checker) LoadSnapshots(ctx context.Context) error {
 	var err error
 	c.snapshots, err = backend.MemorizeList(ctx, c.repo.Backend(), restic.SnapshotFile)
@@ -113,12 +123,41 @@ func computePackTypes(ctx context.Context, idx restic.MasterIndex) map[restic.ID
 }
 
 // LoadIndex loads all index files.
-func (c *Checker) LoadIndex(ctx context.Context) (hints []error, errs []error) {
+func (c *Checker) LoadIndex(ctx context.Context, p *progress.Counter) (hints []error, errs []error) {
 	debug.Log("Start")
 
+	indexList, err := backend.MemorizeList(ctx, c.repo.Backend(), restic.IndexFile)
+	if err != nil {
+		// abort if an error occurs while listing the indexes
+		return hints, append(errs, err)
+	}
+
+	if p != nil {
+		var numIndexFiles uint64
+		err := indexList.List(ctx, restic.IndexFile, func(fi restic.FileInfo) error {
+			_, err := restic.ParseID(fi.Name)
+			if err != nil {
+				debug.Log("unable to parse %v as an ID", fi.Name)
+				return nil
+			}
+
+			numIndexFiles++
+			return nil
+		})
+		if err != nil {
+			return hints, append(errs, err)
+		}
+		p.SetMax(numIndexFiles)
+		defer p.Done()
+	}
+
 	packToIndex := make(map[restic.ID]restic.IDSet)
-	err := index.ForAllIndexes(ctx, c.repo, func(id restic.ID, index *index.Index, oldFormat bool, err error) error {
+	err = index.ForAllIndexes(ctx, indexList, c.repo, func(id restic.ID, index *index.Index, oldFormat bool, err error) error {
 		debug.Log("process index %v, err %v", id, err)
+
+		if p != nil {
+			p.Add(1)
+		}
 
 		if oldFormat {
 			debug.Log("index %v has old format", id)
@@ -606,7 +645,7 @@ func checkPack(ctx context.Context, r restic.Repository, id restic.ID, blobs []r
 	}
 
 	if len(errs) > 0 {
-		return errors.Errorf("pack %v contains %v errors: %v", id, len(errs), errs)
+		return &ErrPackData{PackID: id, errs: errs}
 	}
 
 	return nil

@@ -145,7 +145,7 @@ Verbose status provides details about the progress, including details about back
 Summary
 ^^^^^^^
 
-Summary is the last output line in a successful backup. 
+Summary is the last output line in a successful backup.
 
 +---------------------------+---------------------------------------------------------+
 | ``message_type``          | Always "summary"                                        |
@@ -276,6 +276,8 @@ Match object
 | ``user``        | Name of owner                                |
 +-----------------+----------------------------------------------+
 | ``group``       | Name of group                                |
++-----------------+----------------------------------------------+
+| ``inode``       | Inode number                                 |
 +-----------------+----------------------------------------------+
 | ``mode``        | UNIX file mode, shorthand of ``permissions`` |
 +-----------------+----------------------------------------------+
@@ -470,6 +472,8 @@ node
 +-----------------+--------------------------+
 | ``ctime``       | Node creation time       |
 +-----------------+--------------------------+
+| ``inode``       | Inode number of node     |
++-----------------+--------------------------+
 
 
 restore
@@ -485,7 +489,7 @@ Status
 +----------------------+------------------------------------------------------------+
 |``seconds_elapsed``   | Time since restore started                                 |
 +----------------------+------------------------------------------------------------+
-|``percent_done``      | Percentage of data backed up (bytes_restored/total_bytes)  |
+|``percent_done``      | Percentage of data restored (bytes_restored/total_bytes)   |
 +----------------------+------------------------------------------------------------+
 |``total_files``       | Total number of files detected                             |
 +----------------------+------------------------------------------------------------+

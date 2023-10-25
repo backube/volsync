@@ -16,7 +16,7 @@ import (
 )
 
 var cmdDiff = &cobra.Command{
-	Use:   "diff [flags] snapshot-ID snapshot-ID",
+	Use:   "diff [flags] snapshotID snapshotID",
 	Short: "Show differences between two snapshots",
 	Long: `
 The "diff" command shows differences from the first to the second snapshot. The
@@ -28,6 +28,10 @@ directory:
 * U  The metadata (access mode, timestamps, ...) for the item was updated
 * M  The file's content was modified
 * T  The type was changed, e.g. a file was made a symlink
+
+To only compare files in specific subfolders, you can use the
+"<snapshotID>:<subfolder>" syntax, where "subfolder" is a path within the
+snapshot.
 
 EXIT STATUS
 ===========
@@ -359,8 +363,8 @@ func runDiff(ctx context.Context, opts DiffOptions, gopts GlobalOptions, args []
 	if !gopts.JSON {
 		Verbosef("comparing snapshot %v to %v:\n\n", sn1.ID().Str(), sn2.ID().Str())
 	}
-
-	if err = repo.LoadIndex(ctx); err != nil {
+	bar := newIndexProgress(gopts.Quiet, gopts.JSON)
+	if err = repo.LoadIndex(ctx, bar); err != nil {
 		return err
 	}
 

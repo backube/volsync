@@ -87,6 +87,7 @@ func lsNodeJSON(enc *json.Encoder, path string, node *restic.Node) error {
 		ModTime     time.Time   `json:"mtime,omitempty"`
 		AccessTime  time.Time   `json:"atime,omitempty"`
 		ChangeTime  time.Time   `json:"ctime,omitempty"`
+		Inode       uint64      `json:"inode,omitempty"`
 		StructType  string      `json:"struct_type"` // "node"
 
 		size uint64 // Target for Size pointer.
@@ -102,6 +103,7 @@ func lsNodeJSON(enc *json.Encoder, path string, node *restic.Node) error {
 		ModTime:     node.ModTime,
 		AccessTime:  node.AccessTime,
 		ChangeTime:  node.ChangeTime,
+		Inode:       node.Inode,
 		StructType:  "node",
 	}
 	// Always print size for regular files, even when empty,
@@ -173,7 +175,8 @@ func runLs(ctx context.Context, opts LsOptions, gopts GlobalOptions, args []stri
 		return err
 	}
 
-	if err = repo.LoadIndex(ctx); err != nil {
+	bar := newIndexProgress(gopts.Quiet, gopts.JSON)
+	if err = repo.LoadIndex(ctx, bar); err != nil {
 		return err
 	}
 
