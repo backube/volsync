@@ -119,10 +119,10 @@ user's home directory.
 Also, if the SFTP server is enforcing domain-confined users, you can
 specify the user this way: ``user@domain@host``.
 
-.. note:: Please be aware that sftp servers do not expand the tilde character
+.. note:: Please be aware that SFTP servers do not expand the tilde character
           (``~``) normally used as an alias for a user's home directory. If you
           want to specify a path relative to the user's home directory, pass a
-          relative path to the sftp backend.
+          relative path to the SFTP backend.
 
 If you need to specify a port number or IPv6 address, you'll need to use
 URL syntax. E.g., the repository ``/srv/restic-repo`` on ``[::1]`` (localhost)
@@ -172,9 +172,11 @@ Then use it in the backend specification:
 
 Last, if you'd like to use an entirely different program to create the
 SFTP connection, you can specify the command to be run with the option
-``-o sftp.command="foobar"``.
+``-o sftp.command="foobar"``. Alternatively, ``-o sftp.args`` allows
+setting the arguments passed to the default SSH command (ignored when
+``sftp.command`` is set)
 
-.. note:: Please be aware that sftp servers close connections when no data is
+.. note:: Please be aware that SFTP servers close connections when no data is
           received by the client. This can happen when restic is processing huge
           amounts of unchanged data. To avoid this issue add the following lines 
           to the client's .ssh/config file:
@@ -208,6 +210,14 @@ are some more examples:
     $ restic -r rest:https://host:8000/ init
     $ restic -r rest:https://user:pass@host:8000/ init
     $ restic -r rest:https://user:pass@host:8000/my_backup_repo/ init
+
+The server username and password can be specified using environment
+variables as well:
+
+.. code-block:: console
+
+    $ export RESTIC_REST_USERNAME=<MY_REST_SERVER_USERNAME>
+    $ export RESTIC_REST_PASSWORD=<MY_REST_SERVER_PASSWORD>
 
 If you use TLS, restic will use the system's CA certificates to verify the
 server certificate. When the verification fails, restic refuses to proceed and
