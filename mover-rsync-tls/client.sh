@@ -44,6 +44,10 @@ debug = debug
 foreground = no
 output = /dev/stdout
 pid = $STUNNEL_PID_FILE
+socket = l:SO_KEEPALIVE=1
+socket = l:TCP_KEEPIDLE=180
+socket = r:SO_KEEPALIVE=1
+socket = r:TCP_KEEPIDLE=180
 syslog = no
 
 [rsync]
@@ -68,6 +72,10 @@ debug = debug
 foreground = no
 output = /dev/stdout
 pid = $STUNNEL_PID_FILE
+socket = l:SO_KEEPALIVE=1
+socket = l:TCP_KEEPIDLE=180
+socket = r:SO_KEEPALIVE=1
+socket = r:TCP_KEEPIDLE=180
 syslog = no
 
 [diskrsync]
