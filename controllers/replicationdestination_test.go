@@ -21,6 +21,8 @@ import (
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
 
+const rsyncDstPrefix = "volsync-rsync-dst-"
+
 var _ = Describe("ReplicationDestination", func() {
 	var namespace *corev1.Namespace
 	var rd *volsyncv1alpha1.ReplicationDestination
@@ -109,7 +111,7 @@ var _ = Describe("ReplicationDestination", func() {
 		It("is used as the target PVC", func() {
 			job := &batchv1.Job{}
 			Eventually(func() error {
-				return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-dst-" + rd.Name, Namespace: rd.Namespace}, job)
+				return k8sClient.Get(ctx, types.NamespacedName{Name: rsyncDstPrefix + rd.Name, Namespace: rd.Namespace}, job)
 			}, maxWait, interval).Should(Succeed())
 			volumes := job.Spec.Template.Spec.Volumes
 			found := false
@@ -164,7 +166,7 @@ var _ = Describe("ReplicationDestination", func() {
 		It("creates a ClusterIP service by default", func() {
 			svc := &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "volsync-rsync-dst-" + rd.Name,
+					Name:      rsyncDstPrefix + rd.Name,
 					Namespace: rd.Namespace,
 				},
 			}
@@ -198,7 +200,7 @@ var _ = Describe("ReplicationDestination", func() {
 			It("a LoadBalancer service is created", func() {
 				svc := &corev1.Service{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "volsync-rsync-dst-" + rd.Name,
+						Name:      rsyncDstPrefix + rd.Name,
 						Namespace: rd.Namespace,
 					},
 				}
@@ -225,7 +227,7 @@ var _ = Describe("ReplicationDestination", func() {
 		It("creates a PVC", func() {
 			job := &batchv1.Job{}
 			Eventually(func() error {
-				return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-dst-" + rd.Name, Namespace: rd.Namespace}, job)
+				return k8sClient.Get(ctx, types.NamespacedName{Name: rsyncDstPrefix + rd.Name, Namespace: rd.Namespace}, job)
 			}, maxWait, interval).Should(Succeed())
 			var pvcName string
 			volumes := job.Spec.Template.Spec.Volumes
@@ -251,7 +253,7 @@ var _ = Describe("ReplicationDestination", func() {
 			It("is used in the PVC", func() {
 				job := &batchv1.Job{}
 				Eventually(func() error {
-					return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-dst-" + rd.Name, Namespace: rd.Namespace}, job)
+					return k8sClient.Get(ctx, types.NamespacedName{Name: rsyncDstPrefix + rd.Name, Namespace: rd.Namespace}, job)
 				}, maxWait, interval).Should(Succeed())
 				var pvcName string
 				volumes := job.Spec.Template.Spec.Volumes
@@ -275,7 +277,7 @@ var _ = Describe("ReplicationDestination", func() {
 			It("is used to define parallelism", func() {
 				job := &batchv1.Job{}
 				Eventually(func() error {
-					return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-dst-" + rd.Name, Namespace: rd.Namespace}, job)
+					return k8sClient.Get(ctx, types.NamespacedName{Name: rsyncDstPrefix + rd.Name, Namespace: rd.Namespace}, job)
 				}, maxWait, interval).Should(Succeed())
 				Expect(*job.Spec.Parallelism).To(Equal(parallelism))
 			})
@@ -325,7 +327,7 @@ var _ = Describe("ReplicationDestination", func() {
 			It("they are used by the sync Job", func() {
 				job := &batchv1.Job{}
 				Eventually(func() error {
-					return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-dst-" + rd.Name, Namespace: rd.Namespace}, job)
+					return k8sClient.Get(ctx, types.NamespacedName{Name: rsyncDstPrefix + rd.Name, Namespace: rd.Namespace}, job)
 				}, maxWait, interval).Should(Succeed())
 				volumes := job.Spec.Template.Spec.Volumes
 				found := false
@@ -354,7 +356,7 @@ var _ = Describe("ReplicationDestination", func() {
 		JustBeforeEach(func() {
 			job = &batchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "volsync-rsync-dst-" + rd.Name,
+					Name:      rsyncDstPrefix + rd.Name,
 					Namespace: rd.Namespace,
 				},
 			}

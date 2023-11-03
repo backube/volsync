@@ -231,7 +231,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 				// create necessary elements
 				configPVC = &corev1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "volsync-" + mover.owner.GetName(),
+						Name:      cMover.VolSyncPrefix + mover.owner.GetName(),
 						Namespace: ns.Name,
 					},
 					Spec: corev1.PersistentVolumeClaimSpec{
@@ -250,7 +250,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 				// create the apiSecret
 				apiSecret = &corev1.Secret{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "volsync-" + mover.owner.GetName(),
+						Name:      cMover.VolSyncPrefix + mover.owner.GetName(),
 						Namespace: ns.Name,
 					},
 					Data: map[string][]byte{
@@ -432,7 +432,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					// create a config PVC
 					configPVC = &corev1.PersistentVolumeClaim{
 						ObjectMeta: metav1.ObjectMeta{
-							Name:      "volsync-" + mover.owner.GetName() + "-config",
+							Name:      cMover.VolSyncPrefix + mover.owner.GetName() + "-config",
 							Namespace: ns.Name,
 						},
 						Spec: corev1.PersistentVolumeClaimSpec{
@@ -503,7 +503,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					// create the secret
 					apiKeys = &corev1.Secret{
 						ObjectMeta: metav1.ObjectMeta{
-							Name:      "volsync-" + mover.owner.GetName(),
+							Name:      cMover.VolSyncPrefix + mover.owner.GetName(),
 							Namespace: ns.Name,
 						},
 						Data: map[string][]byte{
@@ -581,7 +581,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 
 					apiKeys := &corev1.Secret{
 						ObjectMeta: metav1.ObjectMeta{
-							Name:      "volsync-" + mover.owner.GetName(),
+							Name:      cMover.VolSyncPrefix + mover.owner.GetName(),
 							Namespace: ns.Name,
 						},
 						Data: map[string][]byte{
@@ -634,7 +634,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					// create apikeys secret here so we can use it in the tests
 					apiKeys = &corev1.Secret{
 						ObjectMeta: metav1.ObjectMeta{
-							Name:      "volsync-" + mover.owner.GetName(),
+							Name:      cMover.VolSyncPrefix + mover.owner.GetName(),
 							Namespace: ns.Name,
 						},
 						Data: map[string][]byte{
@@ -778,7 +778,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 						// create a data service that Syncthing will use in status updating
 						fakeDataSVC := corev1.Service{
 							ObjectMeta: metav1.ObjectMeta{
-								Name:      "volsync-" + mover.owner.GetName() + "-data",
+								Name:      cMover.VolSyncPrefix + mover.owner.GetName() + "-data",
 								Namespace: ns.Namespace,
 							},
 							Spec: corev1.ServiceSpec{
@@ -894,7 +894,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 				// create necessary elements
 				configPVC = &corev1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "volsync-" + mover.owner.GetName(),
+						Name:      cMover.VolSyncPrefix + mover.owner.GetName(),
 						Namespace: ns.Name,
 					},
 					Spec: corev1.PersistentVolumeClaimSpec{
@@ -913,7 +913,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 				// create the apiSecret
 				apiSecret = &corev1.Secret{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "volsync-" + mover.owner.GetName(),
+						Name:      cMover.VolSyncPrefix + mover.owner.GetName(),
 						Namespace: ns.Name,
 					},
 					Data: map[string][]byte{
@@ -967,7 +967,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					// create the data service
 					dataService = &corev1.Service{
 						ObjectMeta: metav1.ObjectMeta{
-							Name:      "volsync-" + mover.owner.GetName() + "-data",
+							Name:      cMover.VolSyncPrefix + mover.owner.GetName() + "-data",
 							Namespace: ns.Name,
 						},
 						Spec: corev1.ServiceSpec{

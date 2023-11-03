@@ -169,7 +169,7 @@ func (m *Mover) ensureSourcePVC(ctx context.Context) (*corev1.PersistentVolumeCl
 		m.logger.Error(err, "unable to get source PVC", "PVC", client.ObjectKeyFromObject(srcPVC))
 		return nil, err
 	}
-	dataName := "volsync-" + m.owner.GetName() + "-src"
+	dataName := mover.VolSyncPrefix + m.owner.GetName() + "-src"
 	return m.vh.EnsurePVCFromSrc(ctx, m.logger, srcPVC, dataName, true)
 }
 
@@ -185,7 +185,7 @@ func (m *Mover) ensureDestinationPVC(ctx context.Context) (*corev1.PersistentVol
 
 func (m *Mover) getDestinationPVCName() (bool, string) {
 	if m.mainPVCName == nil {
-		newPvcName := "volsync-" + m.owner.GetName() + "-dest"
+		newPvcName := mover.VolSyncPrefix + m.owner.GetName() + "-dest"
 		return false, newPvcName
 	}
 	return true, *m.mainPVCName
@@ -209,7 +209,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "volsync-rclone-" + dir + "-" + m.owner.GetName(),
+			Name:      mover.VolSyncPrefix + "rclone-" + dir + "-" + m.owner.GetName(),
 			Namespace: m.owner.GetNamespace(),
 		},
 	}

@@ -20,6 +20,8 @@ import (
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
 
+const rCloneDstJobPrefix = "volsync-rclone-dst-"
+
 //nolint:dupl
 var _ = Describe("ReplicationDestination [rclone]", func() {
 	var namespace *corev1.Namespace
@@ -82,7 +84,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 		// setup a minimal job
 		job = &batchv1.Job{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "volsync-rclone-dst-" + rd.Name,
+				Name:      rCloneDstJobPrefix + rd.Name,
 				Namespace: rd.Namespace,
 			},
 		}
@@ -211,7 +213,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 							It("Job has parallelism disabled", func() {
 								job := &batchv1.Job{
 									ObjectMeta: metav1.ObjectMeta{
-										Name:      "volsync-rclone-dst-" + rd.Name,
+										Name:      rCloneDstJobPrefix + rd.Name,
 										Namespace: rd.Namespace,
 									},
 								}
@@ -571,7 +573,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 				// setup a minimal job
 				job = &batchv1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "volsync-rclone-dst-" + rd.Name,
+						Name:      rCloneDstJobPrefix + rd.Name,
 						Namespace: rd.Namespace,
 					},
 				}
