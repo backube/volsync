@@ -95,8 +95,6 @@ const (
 const (
 	// configCapacity Sets the size of the config volume used by the Syncthing container.
 	configCapacity = "1Gi"
-	// resourcePrefix Prefixes every name for resources created by the VolSync controller.
-	resourcePrefix = "volsync-"
 )
 
 // Mover is the reconciliation logic for the Restic-based data mover.
@@ -277,7 +275,7 @@ func (m *Mover) ensureConfigPVC(
 	}
 
 	// Allocate the config volume
-	configName := resourcePrefix + m.owner.GetName() + "-config"
+	configName := mover.VolSyncPrefix + m.owner.GetName() + "-config"
 	m.logger.Info("allocating config volume", "PVC", configName)
 	return configVh.EnsureNewPVC(ctx, m.logger, configName)
 }
@@ -310,7 +308,7 @@ func (m *Mover) serviceSelector() map[string]string {
 
 // ensureSecretAPIKey Ensures ensures that the PVC for API secrets either exists or it will create it.
 func (m *Mover) ensureSecretAPIKey(ctx context.Context) (*corev1.Secret, error) {
-	secretName := resourcePrefix + m.owner.GetName()
+	secretName := mover.VolSyncPrefix + m.owner.GetName()
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
@@ -377,7 +375,7 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 	// same thing as ensureJob, except this creates a deployment instead of a job
 	var numReplicas int32 = 1
 
-	deploymentName := resourcePrefix + m.owner.GetName()
+	deploymentName := mover.VolSyncPrefix + m.owner.GetName()
 
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -589,7 +587,7 @@ func (m *Mover) ensureAPIService(ctx context.Context, deployment *appsv1.Deploym
 // ensureDataService Ensures that a service exposing the Syncthing data is present, else it will be created.
 // This service allows Syncthing to share data with the rest of the world.
 func (m *Mover) ensureDataService(ctx context.Context, deployment *appsv1.Deployment) (*corev1.Service, error) {
-	serviceName := resourcePrefix + m.owner.GetName() + "-data"
+	serviceName := mover.VolSyncPrefix + m.owner.GetName() + "-data" //nolint:goconst // goconst thinks -data is used 3x
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      serviceName,
@@ -808,7 +806,7 @@ func (m *Mover) getConnectedPeers(syncthing *api.Syncthing) []volsyncv1alpha1.Sy
 
 // getAPIServiceName Returns the name of the API service exposing the Syncthing API.
 func (m *Mover) getAPIServiceName() string {
-	serviceName := resourcePrefix + m.owner.GetName() + "-api"
+	serviceName := mover.VolSyncPrefix + m.owner.GetName() + "-api"
 	return serviceName
 }
 

@@ -19,6 +19,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const rsyncSrcPrefix = "volsync-rsync-src-"
+
 var _ = Describe("ReplicationSource", func() {
 	var namespace *corev1.Namespace
 	var rs *volsyncv1alpha1.ReplicationSource
@@ -120,7 +122,7 @@ var _ = Describe("ReplicationSource", func() {
 			It("uses the source PVC as the sync source", func() {
 				job := &batchv1.Job{}
 				Eventually(func() error {
-					return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
+					return k8sClient.Get(ctx, types.NamespacedName{Name: rsyncSrcPrefix + rs.Name, Namespace: rs.Namespace}, job)
 				}, maxWait, interval).Should(Succeed())
 				volumes := job.Spec.Template.Spec.Volumes
 				found := false
@@ -147,7 +149,7 @@ var _ = Describe("ReplicationSource", func() {
 		It("creates a clone of the source PVC as the sync source", func() {
 			job := &batchv1.Job{}
 			Eventually(func() error {
-				return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
+				return k8sClient.Get(ctx, types.NamespacedName{Name: rsyncSrcPrefix + rs.Name, Namespace: rs.Namespace}, job)
 			}, maxWait, interval).Should(Succeed())
 			volumes := job.Spec.Template.Spec.Volumes
 			pvc := &corev1.PersistentVolumeClaim{}
@@ -178,7 +180,7 @@ var _ = Describe("ReplicationSource", func() {
 			It("cloned PVC has overridden values", func() {
 				job := &batchv1.Job{}
 				Eventually(func() error {
-					return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
+					return k8sClient.Get(ctx, types.NamespacedName{Name: rsyncSrcPrefix + rs.Name, Namespace: rs.Namespace}, job)
 				}, maxWait, interval).Should(Succeed())
 				volumes := job.Spec.Template.Spec.Volumes
 				pvc := &corev1.PersistentVolumeClaim{}
@@ -217,7 +219,7 @@ var _ = Describe("ReplicationSource", func() {
 			// Job, so we need to fake the binding
 			snap := &snapv1.VolumeSnapshot{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "volsync-rsync-src-" + rs.Name,
+					Name:      rsyncSrcPrefix + rs.Name,
 					Namespace: rs.Namespace,
 				},
 			}
@@ -232,7 +234,7 @@ var _ = Describe("ReplicationSource", func() {
 			// Continue checking
 			job := &batchv1.Job{}
 			Eventually(func() error {
-				return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
+				return k8sClient.Get(ctx, types.NamespacedName{Name: rsyncSrcPrefix + rs.Name, Namespace: rs.Namespace}, job)
 			}, maxWait, interval).Should(Succeed())
 			volumes := job.Spec.Template.Spec.Volumes
 			pvc := &corev1.PersistentVolumeClaim{}
@@ -272,7 +274,7 @@ var _ = Describe("ReplicationSource", func() {
 
 				job = &batchv1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "volsync-rsync-src-" + rs.Name,
+						Name:      rsyncSrcPrefix + rs.Name,
 						Namespace: rs.Namespace,
 					},
 				}
@@ -402,7 +404,7 @@ var _ = Describe("ReplicationSource", func() {
 				// Continue checking
 				job := &batchv1.Job{}
 				Eventually(func() error {
-					return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
+					return k8sClient.Get(ctx, types.NamespacedName{Name: rsyncSrcPrefix + rs.Name, Namespace: rs.Namespace}, job)
 				}, maxWait, interval).Should(Succeed())
 				volumes := job.Spec.Template.Spec.Volumes
 				pvc := &corev1.PersistentVolumeClaim{}
@@ -437,7 +439,7 @@ var _ = Describe("ReplicationSource", func() {
 		It("the job will create but will not run", func() {
 			job := &batchv1.Job{}
 			Eventually(func() error {
-				return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
+				return k8sClient.Get(ctx, types.NamespacedName{Name: rsyncSrcPrefix + rs.Name, Namespace: rs.Namespace}, job)
 			}, maxWait, interval).Should(Succeed())
 			Expect(*job.Spec.Parallelism).To(Equal(parallelism))
 		})
@@ -454,7 +456,7 @@ var _ = Describe("ReplicationSource", func() {
 		It("Creates a Service for incoming connections", func() {
 			svc := &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "volsync-rsync-src-" + rs.Name,
+					Name:      rsyncSrcPrefix + rs.Name,
 					Namespace: rs.Namespace,
 				},
 			}
@@ -475,7 +477,7 @@ var _ = Describe("ReplicationSource", func() {
 		It("No environment variables are set for address or port", func() {
 			job := &batchv1.Job{}
 			Eventually(func() error {
-				return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
+				return k8sClient.Get(ctx, types.NamespacedName{Name: rsyncSrcPrefix + rs.Name, Namespace: rs.Namespace}, job)
 			}, maxWait, interval).Should(Succeed())
 			env := job.Spec.Template.Spec.Containers[0].Env
 			foundPort := false
@@ -507,7 +509,7 @@ var _ = Describe("ReplicationSource", func() {
 		It("No Service is created", func() {
 			svc := &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "volsync-rsync-src-" + rs.Name,
+					Name:      rsyncSrcPrefix + rs.Name,
 					Namespace: rs.Namespace,
 				},
 			}
@@ -518,7 +520,7 @@ var _ = Describe("ReplicationSource", func() {
 		It("an environment variable is created for address", func() {
 			job := &batchv1.Job{}
 			Eventually(func() error {
-				return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
+				return k8sClient.Get(ctx, types.NamespacedName{Name: rsyncSrcPrefix + rs.Name, Namespace: rs.Namespace}, job)
 			}, maxWait, interval).Should(Succeed())
 			env := job.Spec.Template.Spec.Containers[0].Env
 			foundPort := false
@@ -552,7 +554,7 @@ var _ = Describe("ReplicationSource", func() {
 		It("an environment variable is created for port & address", func() {
 			job := &batchv1.Job{}
 			Eventually(func() error {
-				return k8sClient.Get(ctx, types.NamespacedName{Name: "volsync-rsync-src-" + rs.Name, Namespace: rs.Namespace}, job)
+				return k8sClient.Get(ctx, types.NamespacedName{Name: rsyncSrcPrefix + rs.Name, Namespace: rs.Namespace}, job)
 			}, maxWait, interval).Should(Succeed())
 			env := job.Spec.Template.Spec.Containers[0].Env
 			remotePortStr := strconv.Itoa(int(remotePort))
@@ -629,7 +631,7 @@ var _ = Describe("ReplicationSource", func() {
 			job := &batchv1.Job{}
 			Eventually(func() error {
 				return k8sClient.Get(ctx, types.NamespacedName{
-					Name:      "volsync-rsync-src-" + rs.Name,
+					Name:      rsyncSrcPrefix + rs.Name,
 					Namespace: rs.Namespace,
 				}, job)
 			}, maxWait, interval).Should(Succeed())

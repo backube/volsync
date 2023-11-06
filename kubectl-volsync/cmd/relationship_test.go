@@ -56,7 +56,7 @@ var _ = Describe("Relationships", func() {
 			Expect(rel).ToNot(BeNil())
 		})
 		It("Save() creates a relationship file in the specified directory", func() {
-			filepath := path.Join(dirname, rname+".yaml")
+			filepath := path.Join(dirname, rname+yamlFileExtension)
 			// No file
 			_, err := os.Stat(filepath)
 			Expect(os.IsNotExist(err)).To(BeTrue())
@@ -81,7 +81,7 @@ var _ = Describe("Relationships", func() {
 			Expect(rel.Save()).To(Succeed())
 
 			Expect(rel.Delete()).To(Succeed())
-			filepath := path.Join(dirname, rname+".yaml")
+			filepath := path.Join(dirname, rname+yamlFileExtension)
 			// No file
 			_, err := os.Stat(filepath)
 			Expect(os.IsNotExist(err)).To(BeTrue())

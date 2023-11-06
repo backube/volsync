@@ -44,6 +44,8 @@ const (
 	mountPath      = "/data"
 	devicePath     = "/dev/block"
 	dataVolumeName = "data"
+
+	volSyncRsyncPrefix = mover.VolSyncPrefix + "rsync-"
 )
 
 // Mover is the reconciliation logic for the Rsync-based data mover.
@@ -139,7 +141,7 @@ func (m *Mover) ensureServiceAndPublishAddress(ctx context.Context) (bool, error
 
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "volsync-rsync-" + m.direction() + "-" + m.owner.GetName(),
+			Name:      volSyncRsyncPrefix + m.direction() + "-" + m.owner.GetName(),
 			Namespace: m.owner.GetNamespace(),
 		},
 	}
@@ -239,7 +241,7 @@ func (m *Mover) ensureSecrets(ctx context.Context) (*string, error) {
 		Context:      ctx,
 		Client:       m.client,
 		Owner:        m.owner,
-		NameTemplate: "volsync-rsync-" + m.direction(),
+		NameTemplate: volSyncRsyncPrefix + m.direction(),
 	}
 	cont, err := keyInfo.Reconcile(m.logger)
 	if !cont || err != nil {
@@ -307,7 +309,7 @@ func (m *Mover) ensureSourcePVC(ctx context.Context) (*corev1.PersistentVolumeCl
 		m.logger.Error(err, "unable to get source PVC", "PVC", client.ObjectKeyFromObject(srcPVC))
 		return nil, err
 	}
-	dataName := "volsync-" + m.owner.GetName() + "-" + m.direction()
+	dataName := mover.VolSyncPrefix + m.owner.GetName() + "-" + m.direction()
 	return m.vh.EnsurePVCFromSrc(ctx, m.logger, srcPVC, dataName, true)
 }
 
@@ -322,7 +324,7 @@ func (m *Mover) ensureDestinationPVC(ctx context.Context) (*corev1.PersistentVol
 
 func (m *Mover) getDestinationPVCName() (bool, string) {
 	if m.mainPVCName == nil {
-		newPvcName := "volsync-" + m.owner.GetName() + "-" + m.direction()
+		newPvcName := mover.VolSyncPrefix + m.owner.GetName() + "-" + m.direction()
 		return false, newPvcName
 	}
 	return true, *m.mainPVCName
@@ -333,7 +335,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 	sa *corev1.ServiceAccount, rsyncSecretName string) (*batchv1.Job, error) {
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "volsync-rsync-" + m.direction() + "-" + m.owner.GetName(),
+			Name:      volSyncRsyncPrefix + m.direction() + "-" + m.owner.GetName(),
 			Namespace: m.owner.GetNamespace(),
 		},
 	}

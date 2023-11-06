@@ -38,6 +38,8 @@ const (
 	// part of a given relationship. The value of the key is the UUID of the
 	// relationship.
 	RelationshipLabelKey = "volsync.backube/relationship"
+
+	yamlFileExtension = ".yaml"
 )
 
 // Each relationship type (e.g., replication, migration, backup, etc.) should
@@ -56,7 +58,7 @@ type Relationship struct {
 // createRelationship creates a new relationship structure. If an existing
 // relationship file is found, this will return an error.
 func createRelationship(configDir string, name string, rType RelationshipType) (*Relationship, error) {
-	filename := path.Join(configDir, name) + ".yaml"
+	filename := path.Join(configDir, name) + yamlFileExtension
 	if err := os.MkdirAll(configDir, 0711); err != nil {
 		return nil, fmt.Errorf("unable to create configuration directory (%s): %w", configDir, err)
 	}
@@ -91,7 +93,7 @@ func CreateRelationshipFromCommand(cmd *cobra.Command, rType RelationshipType) (
 // relationship file. If the relationship does not exist or is of the wrong
 // type, this function will return an error.
 func loadRelationship(configDir string, name string, rType RelationshipType) (*Relationship, error) {
-	filename := path.Join(configDir, name) + ".yaml"
+	filename := path.Join(configDir, name) + yamlFileExtension
 	if _, err := os.Stat(filename); errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("relationship not found")
 	}

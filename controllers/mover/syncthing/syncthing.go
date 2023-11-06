@@ -166,5 +166,5 @@ func asTCPAddress(address string) string {
 		return address
 	}
 
-	return "tcp://" + address
+	return "tcp://" + address //nolint:goconst // goconst thinks tcp:// is used 4x
 }

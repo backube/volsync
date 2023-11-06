@@ -209,7 +209,7 @@ func (m *Mover) ensureCache(ctx context.Context,
 	}
 
 	// Allocate cache volume
-	cacheName := "volsync-" + m.owner.GetName() + "-cache"
+	cacheName := mover.VolSyncPrefix + m.owner.GetName() + "-cache"
 	m.logger.Info("allocating cache volume", "PVC", cacheName)
 	return cacheVh.EnsureNewPVC(ctx, m.logger, cacheName)
 }
@@ -224,7 +224,7 @@ func (m *Mover) ensureSourcePVC(ctx context.Context) (*corev1.PersistentVolumeCl
 	if err := m.client.Get(ctx, client.ObjectKeyFromObject(srcPVC), srcPVC); err != nil {
 		return nil, err
 	}
-	dataName := "volsync-" + m.owner.GetName() + "-src"
+	dataName := mover.VolSyncPrefix + m.owner.GetName() + "-src"
 	return m.vh.EnsurePVCFromSrc(ctx, m.logger, srcPVC, dataName, true)
 }
 
@@ -239,7 +239,7 @@ func (m *Mover) ensureDestinationPVC(ctx context.Context) (*corev1.PersistentVol
 
 func (m *Mover) getDestinationPVCName() (bool, string) {
 	if m.mainPVCName == nil {
-		newPvcName := "volsync-" + m.owner.GetName() + "-dest"
+		newPvcName := mover.VolSyncPrefix + m.owner.GetName() + "-dest"
 		return false, newPvcName
 	}
 	return true, *m.mainPVCName
@@ -272,7 +272,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "volsync-" + dir + "-" + m.owner.GetName(),
+			Name:      mover.VolSyncPrefix + dir + "-" + m.owner.GetName(),
 			Namespace: m.owner.GetNamespace(),
 		},
 	}

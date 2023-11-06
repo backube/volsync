@@ -25,6 +25,10 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
+const (
+	VolSyncPrefix = "volsync-"
+)
+
 // Mover is a common interface that all data movers implement
 type Mover interface {
 	// The name of this data mover
