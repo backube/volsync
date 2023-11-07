@@ -95,8 +95,8 @@ func (ms *migrationSync) Run(ctx context.Context) error {
 		// Remove the directory containing secrets
 		if sshKeyDir != nil {
 			if err = os.RemoveAll(*sshKeyDir); err != nil {
-				klog.Infof("failed to remove temporary directory with ssh keys (%s): %w",
-					sshKeyDir, err)
+				klog.Infof("failed to remove temporary directory with ssh keys (%s): %v",
+					*sshKeyDir, err)
 			}
 		}
 	}()
