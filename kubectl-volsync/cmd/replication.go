@@ -165,13 +165,13 @@ func (rr *replicationRelationship) GetClients() (client.Client, client.Client, e
 	errList := []error{}
 	if rr.data.Source != nil {
 		if srcClient, err = newClient(rr.data.Source.Cluster); err != nil {
-			klog.Errorf("unable to create client for source cluster: %w", err)
+			klog.Errorf("unable to create client for source cluster: %v", err)
 			errList = append(errList, err)
 		}
 	}
 	if rr.data.Destination != nil {
 		if dstClient, err = newClient(rr.data.Destination.Cluster); err != nil {
-			klog.Errorf("unable to create client for destination cluster: %w", err)
+			klog.Errorf("unable to create client for destination cluster: %v", err)
 			errList = append(errList, err)
 		}
 	}
@@ -199,7 +199,7 @@ func (rr *replicationRelationship) DeleteSource(ctx context.Context,
 			client.MatchingLabels{RelationshipLabelKey: rr.ID().String()},
 			client.PropagationPolicy(metav1.DeletePropagationBackground))
 		if client.IgnoreNotFound(err) != nil {
-			klog.Errorf("unable to remove previous Source objects: %w", err)
+			klog.Errorf("unable to remove previous Source objects: %v", err)
 			errList = append(errList, err)
 		}
 	}
@@ -223,7 +223,7 @@ func (rr *replicationRelationship) DeleteDestination(ctx context.Context,
 		client.PropagationPolicy(metav1.DeletePropagationBackground))
 	err = client.IgnoreNotFound(err)
 	if err != nil {
-		klog.Errorf("unable to remove previous Destination objects: %w", err)
+		klog.Errorf("unable to remove previous Destination objects: %v", err)
 	}
 	return err
 }
@@ -351,13 +351,13 @@ func (rr *replicationRelationship) applyDestination(ctx context.Context,
 		return nil
 	})
 	if err != nil {
-		klog.Errorf("unable to create ReplicationDestination: %w", err)
+		klog.Errorf("unable to create ReplicationDestination: %v", err)
 		return nil, nil, err
 	}
 
 	rd, err = rr.awaitDestAddrKeys(ctx, c, client.ObjectKeyFromObject(rd))
 	if err != nil {
-		klog.Errorf("error while waiting for destination keys and address: %w", err)
+		klog.Errorf("error while waiting for destination keys and address: %v", err)
 		return nil, nil, err
 	}
 
@@ -369,7 +369,7 @@ func (rr *replicationRelationship) applyDestination(ctx context.Context,
 		},
 	}
 	if err = c.Get(ctx, client.ObjectKeyFromObject(secret), secret); err != nil {
-		klog.Errorf("unable to retrieve ssh keys: %w", err)
+		klog.Errorf("unable to retrieve ssh keys: %v", err)
 		return nil, nil, err
 	}
 
@@ -407,7 +407,7 @@ func (rr *replicationRelationship) applySource(ctx context.Context, c client.Cli
 	klog.Infof("creating resources on Source")
 	srcKeys, err := rr.applySourceKeys(ctx, c, dstKeys)
 	if err != nil {
-		klog.Errorf("unable to create source ssh keys: %w", err)
+		klog.Errorf("unable to create source ssh keys: %v", err)
 		return err
 	}
 
