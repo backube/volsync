@@ -24,10 +24,22 @@ annotations:  # https://artifacthub.io/docs/topics/annotations/helm/
   # Changelog for current chart & app version
   # Kinds: added, changed, deprecated, removed, fixed, and security
   artifacthub.io/changes: |
+    - kind: added
+      description: Restic - ReplicationSource/ReplicationDestination can now specify a CustomCA that is from a configmap rather than only from a secret
+    - kind: added
+      description: Rclone - ReplicationSource/ReplicationDestination can now specify a CustomCA that is contained in either a configmap or secret
+    - kind: added
+      description: Restic - New option to run a restic unlock before the backup in the next sync
+    - kind: added
+      description: Restic - Allow passing through of RCLONE_ env vars from the restic secret to the mover job
+    - kind: added
+      description: Volume Populator added for ReplicationDestinations
     - kind: changed
-      description: Modified leader election settings (LeaseDuration, RenewDeadline, RetryPeriod)
+      description: Syncthing upgraded to v1.25.0
     - kind: changed
-      description: Syncthing upgraded to v1.23.2
+      description: Restic upgraded to v0.16.2
+    - kind: changed
+      description: Rclone upgraded to v1.63.1
   artifacthub.io/crds: |
     - kind: ReplicationDestination
       version: v1alpha1
@@ -54,10 +66,10 @@ kubeVersion: "^1.20.0-0"
 # This is the chart version. This version number should be incremented each time
 # you make changes to the chart and its templates, including the app version.
 # Versions are expected to follow Semantic Versioning (https://semver.org/)
-version: "0.7.1"
+version: "0.8.0"
 
 # This is the version number of the application being deployed. This version
 # number should be incremented each time you make changes to the application.
 # Versions are not expected to follow Semantic Versioning. They should reflect
 # the version the application is using. It is recommended to use it with quotes.
-appVersion: "0.7.1"
+appVersion: "0.8.0"
