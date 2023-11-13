@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [unreleased]
+
+### Changed
+
+- Syncthing upgraded to v1.26.0
+
 ## [0.8.0]
 
 ### Added
@@ -248,6 +254,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for rsync & rclone replication
 - Helm chart to deploy operator
 
+[Unreleased]: https://github.com/backube/volsync/compare/release-0.8...HEAD
 [0.8.0]: https://github.com/backube/volsync/compare/release-0.7...v0.8.0
 [0.7.1]: https://github.com/backube/volsync/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/backube/volsync/compare/release-0.6...v0.7.0
