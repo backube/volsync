@@ -377,7 +377,7 @@ jobs:
 
       - name: Run e2e tests
         env:
-          BATCHES: 2
+          MAX_PARALLELISM: 5
         run: make test-e2e
 
   # This is a dummy job that can be used to determine success of CI:
