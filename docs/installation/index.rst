@@ -72,8 +72,8 @@ specified, these defaults will be used. However, it is not necessary to set or
 modify the default on your cluster since the classes can be specified directly
 in the ReplicationSource and ReplicationDestination objects used by VolSync.
 
-Below are examples of configured CSI storage on a few different cloud platforms.
-Your configuration may be different.
+Below are examples of configured CSI storage on a few different platforms. Your
+configuration may be different.
 
 .. tabs::
 
@@ -166,6 +166,33 @@ Your configuration may be different.
          provisioner: pd.csi.storage.gke.io
          reclaimPolicy: Delete
          volumeBindingMode: WaitForFirstConsumer
+
+   .. group-tab:: Longhorn
+
+      The CSI driver on Longhorn-based clusters are configured based on the
+      underlying storage type. Here, we will assume a default StorageClass named
+      ``longhorn``.
+
+      .. code-block:: console
+
+         # List StorageClasses
+         $ kubectl get storageclasses
+         NAME                 PROVISIONER             RECLAIMPOLICY   VOLUMEBINDINGMODE      ALLOWVOLUMEEXPANSION   AGE
+         longhorn (default)   driver.longhorn.io      Delete          Immediate              true                   15m
+
+
+         # View details of the longhorn SC
+         $ kubectl get storageclass/longhorn -oyaml
+         kind: StorageClass
+         apiVersion: storage.k8s.io/v1
+         metadata:
+           name: longhorn
+         provisioner: driver.longhorn.io
+         allowVolumeExpansion: true
+         reclaimPolicy: Delete
+         volumeBindingMode: Immediate
+         parameters:
+           # Your parameters here...
 
    .. group-tab:: vSphere
 
@@ -283,6 +310,32 @@ be the same, but the provisioner/driver should be.
             name: csi-gce-pd-vsc
             resourceVersion: "5981"
             uid: 886de96d-820c-403b-8570-fcfb37939532
+
+   .. group-tab:: Longhorn
+
+      .. code-block:: console
+
+         # List VolumeSnapshotClasses
+         $ kubectl get volumesnapshotclasses
+         NAME                    DRIVER                  DELETIONPOLICY   AGE
+         longhorn-snapshot-vsc   driver.longhorn.io      Delete           10m
+
+
+         # View details of the longhorn-snapshot-vsc VSC
+         $ kubectl get volumesnapshotclass/longhorn-snapshot-vsc -oyaml
+         kind: VolumeSnapshotClass
+         apiVersion: snapshot.storage.k8s.io/v1
+         metadata:
+           annotations:
+             snapshot.storage.kubernetes.io/is-default-class: "true"
+           name: longhorn-snapshot-vsc
+         driver: driver.longhorn.io
+         deletionPolicy: Delete
+         parameters:
+           type: snap  # a CSI snapshot maps to a Longhorn snapshot
+
+      For more information on configuring Longhorn snapshots, see the `Longhorn
+      documentation <https://longhorn.io/docs/>`_.
 
    .. group-tab:: vSphere
 
