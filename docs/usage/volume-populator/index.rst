@@ -90,7 +90,7 @@ VolumeSnapshot indicated in the ``status.latestImage`` of the ReplicationDestina
       resources:
         requests:
           storage: 10Gi
-      storageClassName: my-vsc
+      storageClassName: my-sc
 
 The ``.spec.dataSourceRef.kind`` must be set to ``ReplicationDestination`` and the ``.spec.dataSourceRef.apiGroup``
 must be set to ``volsync.backube``.
@@ -107,7 +107,7 @@ would be: ``volsync-rclone-replicationdestination-dest-20230813072935``.
   ReplicationDestination at the same time. The PVC will only start the volume population process after the
   ReplicationDestination has completed a replication and a snapshot is available (as seen in ``.status.latestImage``).
 
-  Additionally, if the storage class used (``my-vsc`` in the example) has a ``volumeBindingMode`` of
+  Additionally, if the storage class used (``my-sc`` in the example) has a ``volumeBindingMode`` of
   ``WaitForFirstConsumer``, the volume populator will need to wait until there is a consumer of the PVC before it gets
   populated. When a consumer does come along (for example a pod that wants to mount the PVC), then the volume will be
   populated at that time. At this point the VolSync volume populator controller will take the latestImage from the
@@ -149,7 +149,7 @@ after it has been populated.
       resources:
         requests:
           storage: 10Gi
-      storageClassName: my-vsc
+      storageClassName: my-sc
       volumeMode: Filesystem
       volumeName: pvc-dec29e3a-6f21-4eb0-84b2-b9d9d875f486
     status:
