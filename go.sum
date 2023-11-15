@@ -367,8 +367,8 @@ github.com/subosito/gotenv v1.6.0 h1:9NlTDc1FTs4qu0DDq7AEtTPNw6SVm7uBMsUCUjABIf8
 github.com/subosito/gotenv v1.6.0/go.mod h1:Dk4QP5c2W3ibzajGcXpNraDfq2IrhjMIvMSWPKKo0FU=
 github.com/syncthing/notify v0.0.0-20210616190510-c6b7342338d2 h1:F4snRP//nIuTTW9LYEzVH4HVwDG9T3M4t8y/2nqMbiY=
 github.com/syncthing/notify v0.0.0-20210616190510-c6b7342338d2/go.mod h1:J0q59IWjLtpRIJulohwqEZvjzwOfTEPp8SVhDJl+y0Y=
-github.com/syncthing/syncthing v1.26.0 h1:8chhm8xkTeOn4lD/KL0ueunaoFBCiQk8c8mISLTlAN4=
-github.com/syncthing/syncthing v1.26.0/go.mod h1:L1f7wDqxRZ3Il+c5WGwMw+HyB9YUqeSgGH/1eIoQHu4=
+github.com/syncthing/syncthing v1.26.1 h1:WGuHSFxW0IKQ2RjLivAnvCqU4V7uzRfN0tG6NUOYFHw=
+github.com/syncthing/syncthing v1.26.1/go.mod h1:L1f7wDqxRZ3Il+c5WGwMw+HyB9YUqeSgGH/1eIoQHu4=
 github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d h1:vfofYNRScrDdvS342BElfbETmL1Aiz3i2t0zfRj16Hs=
 github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d/go.mod h1:RRCYJbIwD5jmqPI9XoAFR0OcDxqUctll6zUj/+B4S48=
 github.com/thejerf/suture/v4 v4.0.2 h1:VxIH/J8uYvqJY1+9fxi5GBfGRkRZ/jlSOP6x9HijFQc=
