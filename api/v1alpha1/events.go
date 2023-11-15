@@ -22,6 +22,7 @@ package v1alpha1
 
 // ReplicationSource/ReplicationDestination Event "reason" strings: Why are we sending an event?
 const (
+	EvRDaemonConnected                     = "DaemonConnected"
 	EvRTransferStarted                     = "TransferStarted"
 	EvRTransferFailed                      = "TransferFailed" // Warning
 	EvRSnapCreated                         = "VolumeSnapshotCreated"

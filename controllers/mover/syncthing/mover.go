@@ -752,6 +752,15 @@ func (m *Mover) ensureStatusIsUpdated(dataSVC *corev1.Service,
 		return err
 	}
 
+	// When we first establish a connection to the local Syncthing API, the
+	// local ID will be known. Publish this as an event so we can tell at the
+	// kube-level when this happens.
+	if m.status.ID != syncthing.MyID() && syncthing.MyID() != "" {
+		m.eventRecorder.Eventf(m.owner, nil, corev1.EventTypeNormal,
+			volsyncv1alpha1.EvRDaemonConnected, volsyncv1alpha1.EvANone,
+			"Connection established to local Syncthing API")
+	}
+
 	// set syncthing-related info
 	m.status.Address = asTCPAddress(addr)
 	m.status.ID = syncthing.MyID()
