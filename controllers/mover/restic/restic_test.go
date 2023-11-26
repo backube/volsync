@@ -782,8 +782,9 @@ var _ = Describe("Restic as a source", func() {
 				When("A moverSecurityContext is provided", func() {
 					BeforeEach(func() {
 						rs.Spec.Restic.MoverSecurityContext = &corev1.PodSecurityContext{
-							RunAsUser: ptr.To[int64](7),
-							FSGroup:   ptr.To[int64](8),
+							RunAsUser:    ptr.To[int64](7),
+							FSGroup:      ptr.To[int64](8),
+							RunAsNonRoot: ptr.To(true),
 						}
 					})
 					It("Should appear in the mover Job", func() {
@@ -798,8 +799,12 @@ var _ = Describe("Restic as a source", func() {
 						Expect(psc).NotTo(BeNil())
 						Expect(psc.RunAsUser).NotTo(BeNil())
 						Expect(*psc.RunAsUser).To(Equal(int64(7)))
+						Expect(psc.RunAsNonRoot).NotTo(BeNil())
+						Expect(*psc.RunAsNonRoot).To(BeTrue())
 						Expect(psc.FSGroup).NotTo(BeNil())
 						Expect(*psc.FSGroup).To(Equal(int64(8)))
+
+						Expect(*job.Spec.Template.Spec.Containers[0].SecurityContext.RunAsNonRoot).To(BeTrue())
 					})
 				})
 

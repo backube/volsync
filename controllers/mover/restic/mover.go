@@ -409,6 +409,9 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 				{Name: "tempdir", MountPath: "/tmp"},
 			},
 		}}
+		if m.moverSecurityContext != nil && m.moverSecurityContext.RunAsNonRoot != nil {
+			podSpec.Containers[0].SecurityContext.RunAsNonRoot = m.moverSecurityContext.RunAsNonRoot
+		}
 		podSpec.RestartPolicy = corev1.RestartPolicyNever
 		podSpec.ServiceAccountName = sa.Name
 		podSpec.SecurityContext = m.moverSecurityContext

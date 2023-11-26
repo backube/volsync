@@ -478,6 +478,9 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 
 		// security context
 		podSpec.SecurityContext = m.moverSecurityContext
+		if m.moverSecurityContext != nil && m.moverSecurityContext.RunAsNonRoot != nil {
+			podSpec.Containers[0].SecurityContext.RunAsNonRoot = m.moverSecurityContext.RunAsNonRoot
+		}
 
 		// configure volumes
 		podSpec.Volumes = []corev1.Volume{
@@ -524,7 +527,9 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 				"FOWNER",       // Set permission bits & times
 			}
 			podSpec.Containers[0].SecurityContext.RunAsUser = ptr.To[int64](0)
-			podSpec.Containers[0].SecurityContext.RunAsNonRoot = ptr.To(false)
+			if podSpec.Containers[0].SecurityContext.RunAsUser == nil {
+				podSpec.Containers[0].SecurityContext.RunAsNonRoot = ptr.To(false)
+			}
 		} else {
 			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
 				Name:  "PRIVILEGED_MOVER",

@@ -298,6 +298,10 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 
 		podSpec := &job.Spec.Template.Spec
 
+		if m.moverSecurityContext != nil && m.moverSecurityContext.RunAsNonRoot != nil {
+			podSpec.Containers[0].SecurityContext.RunAsNonRoot = m.moverSecurityContext.RunAsNonRoot
+		}
+
 		if customCAObj != nil {
 			// Tell mover where to find the cert
 			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{

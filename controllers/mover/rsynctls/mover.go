@@ -403,6 +403,9 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 				ReadOnlyRootFilesystem: ptr.To(true),
 			},
 		}}
+		if m.moverSecurityContext != nil && m.moverSecurityContext.RunAsNonRoot != nil {
+			podSpec.Containers[0].SecurityContext.RunAsNonRoot = m.moverSecurityContext.RunAsNonRoot
+		}
 		volumeMounts := []corev1.VolumeMount{}
 		if !blockVolume {
 			volumeMounts = append(volumeMounts, corev1.VolumeMount{Name: dataVolumeName, MountPath: mountPath})
