@@ -182,6 +182,11 @@ function select_restic_snapshot_to_restore() {
     # create an associative array that maps numeric epoch to the restic snapshot IDs
     declare -A epochs_to_snapshots
 
+    local restic_snapshots
+    if ! restic_snapshots=$("${RESTIC[@]}" -r "${RESTIC_REPOSITORY}" snapshots); then
+      error 3 "failure getting list of snapshots from repository"
+    fi
+
     # declare vars to be used in the loop
     local snapshot_id
     local snapshot_ts
@@ -190,7 +195,7 @@ function select_restic_snapshot_to_restore() {
 
     # go through the timestamps received from restic
     IFS=$'\n'
-    for line in $("${RESTIC[@]}" -r "${RESTIC_REPOSITORY}" snapshots | grep /data | awk '{print $1 "\t" $2 " " $3}'); do
+    for line in $(echo -e "${restic_snapshots}" | grep /data | awk '{print $1 "\t" $2 " " $3}'); do
         # extract the proper variables
         snapshot_id=$(echo -e "${line}" | cut -d$'\t' -f1)
         snapshot_ts=$(echo -e "${line}" | cut -d$'\t' -f2)
