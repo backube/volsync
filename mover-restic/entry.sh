@@ -68,7 +68,7 @@ function ensure_initialized {
 function do_backup {
     echo "=== Starting backup ==="
     pushd "${DATA_DIR}"
-    "${RESTIC[@]}" backup --host "${RESTIC_HOST}" .
+    "${RESTIC[@]}" backup --host "${RESTIC_HOST}" --exclude='lost+found' .
     popd
 }
 
