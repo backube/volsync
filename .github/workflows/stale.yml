@@ -22,6 +22,7 @@ jobs:
           days-before-issue-close: -1
           days-before-pr-stale: 60
           days-before-pr-close: 30
+          exempt-pr-labels: "do-not-merge/hold"
           stale-pr-message: >
             This pull request has been automatically marked as stale because it
             has not had recent activity. It will be closed in 30 days if no
