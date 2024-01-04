@@ -54,6 +54,7 @@ serviceAccount:
   name: ""
 
 podAnnotations: {}
+podLabels: {}
 
 # Default security context values are in deployment-controller.yaml
 podSecurityContext: {}
@@ -62,7 +63,7 @@ securityContext:
   allowPrivilegeEscalation: false
   capabilities:
     drop:
-    - ALL
+      - ALL
   readOnlyRootFilesystem: true
 
 resources:

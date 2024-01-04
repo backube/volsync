@@ -20,7 +20,7 @@ keywords:
   - disaster recovery
   - replication
   - storage
-annotations:  # https://artifacthub.io/docs/topics/annotations/helm/
+annotations: # https://artifacthub.io/docs/topics/annotations/helm/
   # Changelog for current chart & app version
   # Kinds: added, changed, deprecated, removed, fixed, and security
   artifacthub.io/changes: |
@@ -66,7 +66,7 @@ kubeVersion: "^1.20.0-0"
 # This is the chart version. This version number should be incremented each time
 # you make changes to the chart and its templates, including the app version.
 # Versions are expected to follow Semantic Versioning (https://semver.org/)
-version: "0.8.0"
+version: "0.9.0"
 
 # This is the version number of the application being deployed. This version
 # number should be incremented each time you make changes to the application.
