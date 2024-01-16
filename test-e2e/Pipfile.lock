@@ -16,19 +16,18 @@
     "default": {
         "ansible": {
             "hashes": [
-                "sha256:d601d89a4306934e7c0aae05195fd72c0719287fde165982d0ebac282b4280f1",
-                "sha256:f33c492690592fad12684e9897f6de2da15c9f6e1ecb79137703a06470af2ce6"
+                "sha256:2749032e26b0dbc9a694528b85fd89e7f950b8c7b53606f17dd997f23ac7cc88",
+                "sha256:327c509bdaf5cdb2489d85c09d2c107e9432f9874c8bb5c0702a731160915f2d"
             ],
             "index": "pypi",
             "markers": "python_version >= '3.9'",
-            "version": "==8.4.0"
+            "version": "==8.5.0"
         },
         "ansible-core": {
             "hashes": [
                 "sha256:55e6f4350fb98ac5441620ba981b1d9f7b90aa5f320885965af996e149bd3caa",
                 "sha256:8aa49cb1ddbf33d88c2bb4bf09ecd4b0dd8b788e174adca8b88dda6e6bdbf59b"
             ],
-            "index": "pypi",
             "markers": "python_version >= '3.9'",
             "version": "==2.15.8"
         },
