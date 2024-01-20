@@ -123,6 +123,17 @@ type ReplicationSourceRsyncSpec struct {
 	// The service account needs to exist in the same namespace as the ReplicationSource.
 	//+optional
 	MoverServiceAccount *string `json:"moverServiceAccount,omitempty"`
+	// Labels that should be added to data mover pods
+	// These will be in addition to any labels that VolSync may add
+	// +optional
+	MoverPodLabels map[string]string `json:"moverPodLabels,omitempty"`
+	// Resources represents compute resources required by the data mover container.
+	// Immutable.
+	// More info: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
+	// This should only be used by advanced users as this can result in a mover
+	// pod being unschedulable or crashing due to limited resources.
+	// +optional
+	MoverResources *corev1.ResourceRequirements `json:"moverResources,omitempty"`
 }
 
 // ReplicationSourceRcloneSpec defines the field for rclone in replicationSource.
@@ -136,15 +147,8 @@ type ReplicationSourceRcloneSpec struct {
 	RcloneConfig *string `json:"rcloneConfig,omitempty"`
 	// customCA is a custom CA that will be used to verify the remote
 	CustomCA CustomCASpec `json:"customCA,omitempty"`
-	// MoverSecurityContext allows specifying the PodSecurityContext that will
-	// be used by the data mover
-	MoverSecurityContext *corev1.PodSecurityContext `json:"moverSecurityContext,omitempty"`
-	// MoverServiceAccount allows specifying the name of the service account
-	// that will be used by the data mover. This should only be used by advanced
-	// users who want to override the service account normally used by the mover.
-	// The service account needs to exist in the same namespace as the ReplicationSource.
-	//+optional
-	MoverServiceAccount *string `json:"moverServiceAccount,omitempty"`
+
+	MoverConfig `json:",inline"`
 }
 
 // ResticRetainPolicy defines the feilds for Restic backup
@@ -205,15 +209,8 @@ type ReplicationSourceResticSpec struct {
 	// then ran a backup.
 	// Unlock will not be run again unless spec.restic.unlock is set to a different value.
 	Unlock string `json:"unlock,omitempty"`
-	// MoverSecurityContext allows specifying the PodSecurityContext that will
-	// be used by the data mover
-	MoverSecurityContext *corev1.PodSecurityContext `json:"moverSecurityContext,omitempty"`
-	// MoverServiceAccount allows specifying the name of the service account
-	// that will be used by the data mover. This should only be used by advanced
-	// users who want to override the service account normally used by the mover.
-	// The service account needs to exist in the same namespace as the ReplicationSource.
-	//+optional
-	MoverServiceAccount *string `json:"moverServiceAccount,omitempty"`
+
+	MoverConfig `json:",inline"`
 }
 
 // ReplicationSourceResticStatus defines the field for ReplicationSourceStatus in ReplicationSourceStatus
@@ -243,15 +240,8 @@ type ReplicationSourceSyncthingSpec struct {
 	// Used to set the accessModes of Syncthing config volume.
 	//+optional
 	ConfigAccessModes []corev1.PersistentVolumeAccessMode `json:"configAccessModes,omitempty"`
-	// MoverSecurityContext allows specifying the PodSecurityContext that will
-	// be used by the data mover
-	MoverSecurityContext *corev1.PodSecurityContext `json:"moverSecurityContext,omitempty"`
-	// MoverServiceAccount allows specifying the name of the service account
-	// that will be used by the data mover. This should only be used by advanced
-	// users who want to override the service account normally used by the mover.
-	// The service account needs to exist in the same namespace as the ReplicationSource.
-	//+optional
-	MoverServiceAccount *string `json:"moverServiceAccount,omitempty"`
+
+	MoverConfig `json:",inline"`
 }
 
 // ReplicationSourceSpec defines the desired state of ReplicationSource

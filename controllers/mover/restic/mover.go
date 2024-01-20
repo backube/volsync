@@ -72,8 +72,8 @@ type Mover struct {
 	mainPVCName           *string
 	customCASpec          volsyncv1alpha1.CustomCASpec
 	privileged            bool
-	moverSecurityContext  *corev1.PodSecurityContext
 	latestMoverStatus     *volsyncv1alpha1.MoverStatus
+	moverConfig           volsyncv1alpha1.MoverConfig
 	// Source-only fields
 	pruneInterval *int32
 	unlock        string
@@ -411,7 +411,6 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 		}}
 		podSpec.RestartPolicy = corev1.RestartPolicyNever
 		podSpec.ServiceAccountName = sa.Name
-		podSpec.SecurityContext = m.moverSecurityContext
 		podSpec.Volumes = []corev1.Volume{
 			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
 				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
@@ -487,6 +486,10 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 				},
 			})
 		}
+
+		// Update the job securityContext, podLabels and resourceRequirements from moverConfig (if specified)
+		utils.UpdatePodTemplateSpecFromMoverConfig(&job.Spec.Template, m.moverConfig)
+
 		if m.privileged {
 			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
 				Name:  "PRIVILEGED_MOVER",

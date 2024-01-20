@@ -121,6 +121,17 @@ type ReplicationDestinationRsyncSpec struct {
 	// The service account needs to exist in the same namespace as the ReplicationDestination.
 	//+optional
 	MoverServiceAccount *string `json:"moverServiceAccount,omitempty"`
+	// Labels that should be added to data mover pods
+	// These will be in addition to any labels that VolSync may add
+	// +optional
+	MoverPodLabels map[string]string `json:"moverPodLabels,omitempty"`
+	// Resources represents compute resources required by the data mover container.
+	// Immutable.
+	// More info: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
+	// This should only be used by advanced users as this can result in a mover
+	// pod being unschedulable or crashing due to limited resources.
+	// +optional
+	MoverResources *corev1.ResourceRequirements `json:"moverResources,omitempty"`
 }
 
 // ReplicationDestinationRcloneSpec defines the field for rclone in replicationDestination.
@@ -134,15 +145,8 @@ type ReplicationDestinationRcloneSpec struct {
 	RcloneConfig *string `json:"rcloneConfig,omitempty"`
 	// customCA is a custom CA that will be used to verify the remote
 	CustomCA CustomCASpec `json:"customCA,omitempty"`
-	// MoverSecurityContext allows specifying the PodSecurityContext that will
-	// be used by the data mover
-	MoverSecurityContext *corev1.PodSecurityContext `json:"moverSecurityContext,omitempty"`
-	// MoverServiceAccount allows specifying the name of the service account
-	// that will be used by the data mover. This should only be used by advanced
-	// users who want to override the service account normally used by the mover.
-	// The service account needs to exist in the same namespace as the ReplicationDestination.
-	//+optional
-	MoverServiceAccount *string `json:"moverServiceAccount,omitempty"`
+
+	MoverConfig `json:",inline"`
 }
 
 // ReplicationDestinationExternalSpec defines the configuration when using an
@@ -228,15 +232,8 @@ type ReplicationDestinationResticSpec struct {
 	// +kubebuilder:validation:Format="date-time"
 	//+optional
 	RestoreAsOf *string `json:"restoreAsOf,omitempty"`
-	// MoverSecurityContext allows specifying the PodSecurityContext that will
-	// be used by the data mover
-	MoverSecurityContext *corev1.PodSecurityContext `json:"moverSecurityContext,omitempty"`
-	// MoverServiceAccount allows specifying the name of the service account
-	// that will be used by the data mover. This should only be used by advanced
-	// users who want to override the service account normally used by the mover.
-	// The service account needs to exist in the same namespace as the ReplicationDestination.
-	//+optional
-	MoverServiceAccount *string `json:"moverServiceAccount,omitempty"`
+
+	MoverConfig `json:",inline"`
 }
 
 // ReplicationDestinationStatus defines the observed state of ReplicationDestination

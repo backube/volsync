@@ -136,12 +136,12 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		mainPVCName:           &source.Spec.SourcePVC,
 		customCASpec:          volsyncv1alpha1.CustomCASpec(source.Spec.Restic.CustomCA),
 		privileged:            privileged,
-		moverSecurityContext:  source.Spec.Restic.MoverSecurityContext,
 		pruneInterval:         source.Spec.Restic.PruneIntervalDays,
 		retainPolicy:          source.Spec.Restic.Retain,
 		unlock:                source.Spec.Restic.Unlock,
 		sourceStatus:          source.Status.Restic,
 		latestMoverStatus:     source.Status.LatestMoverStatus,
+		moverConfig:           source.Spec.Restic.MoverConfig,
 	}, nil
 }
 
@@ -189,9 +189,9 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		mainPVCName:           destination.Spec.Restic.DestinationPVC,
 		customCASpec:          volsyncv1alpha1.CustomCASpec(destination.Spec.Restic.CustomCA),
 		privileged:            privileged,
-		moverSecurityContext:  destination.Spec.Restic.MoverSecurityContext,
 		restoreAsOf:           destination.Spec.Restic.RestoreAsOf,
 		previous:              destination.Spec.Restic.Previous,
 		latestMoverStatus:     destination.Status.LatestMoverStatus,
+		moverConfig:           destination.Spec.Restic.MoverConfig,
 	}, nil
 }
