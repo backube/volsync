@@ -330,7 +330,7 @@ jobs:
           MINIO_NAMESPACE=minio-tls MINIO_USE_TLS=1 ./hack/run-minio.sh
 
       - name: Load operator container artifact
-        uses: actions/download-artifact@f44cd7b40bfd40b6aa1cc1b9b5b7bf03d3c67110 # v4.1.0
+        uses: actions/download-artifact@6b208ae046db98c579e8a3aa621ab581ff575935 # v4.1.1
         with:
           name: volsync-operator
           path: /tmp
@@ -355,7 +355,7 @@ jobs:
               volsync-ghaction ./helm/volsync
 
       - name: Load cli artifact
-        uses: actions/download-artifact@f44cd7b40bfd40b6aa1cc1b9b5b7bf03d3c67110 # v4.1.0
+        uses: actions/download-artifact@6b208ae046db98c579e8a3aa621ab581ff575935 # v4.1.1
         with:
           name: kubectl-volsync
           path: bin
