@@ -457,7 +457,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 		}
 
 		// Update the job podLabels and resourceRequirements (if specified)
-		utils.UpdatePodTemplateSpecFromMoverConfig(&job.Spec.Template, m.moverConfig)
+		utils.UpdatePodTemplateSpecFromMoverConfig(&job.Spec.Template, m.moverConfig, corev1.ResourceRequirements{})
 
 		logger.V(1).Info("Job has PVC", "PVC", dataPVC, "DS", dataPVC.Spec.DataSource)
 		return nil

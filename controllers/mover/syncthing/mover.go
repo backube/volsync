@@ -462,9 +462,6 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 					{Name: dataVolumeName, MountPath: dataDirMountPath},
 					{Name: certVolumeName, MountPath: certDirMountPath},
 				},
-				Resources: corev1.ResourceRequirements{
-					Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("1Gi")},
-				},
 				SecurityContext: &corev1.SecurityContext{
 					AllowPrivilegeEscalation: ptr.To(false),
 					Capabilities: &corev1.Capabilities{
@@ -510,8 +507,12 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 			},
 		}
 
+		defaultMoverResources := corev1.ResourceRequirements{
+			Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("1Gi")},
+		}
+
 		// Update the deployment securityContext, podLabels and resourceRequirements from moverConfig (if specified)
-		utils.UpdatePodTemplateSpecFromMoverConfig(&deployment.Spec.Template, m.moverConfig)
+		utils.UpdatePodTemplateSpecFromMoverConfig(&deployment.Spec.Template, m.moverConfig, defaultMoverResources)
 
 		if m.privileged {
 			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{

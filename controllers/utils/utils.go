@@ -190,21 +190,21 @@ func AppendEnvVarsForClusterWideProxy(envVars []corev1.EnvVar) []corev1.EnvVar {
 // Updates to set the securityContext, podLabels on mover pod in the spec and resourceRequirements on the mover
 // containers based on what is set in the MoverConfig
 func UpdatePodTemplateSpecFromMoverConfig(podTemplateSpec *corev1.PodTemplateSpec,
-	moverConfig volsyncv1alpha1.MoverConfig) {
+	moverConfig volsyncv1alpha1.MoverConfig, defaultMoverResources corev1.ResourceRequirements) {
 	if podTemplateSpec == nil {
 		return
 	}
 
-	// Security context
-	if moverConfig.MoverSecurityContext != nil {
-		podTemplateSpec.Spec.SecurityContext = moverConfig.MoverSecurityContext
-	}
+	// Security context (nil by default)
+	podTemplateSpec.Spec.SecurityContext = moverConfig.MoverSecurityContext
 
 	// Adjust the job/deploy containers resourceRequirements based on resourceRequirements from the moverConfig
+	moverResources := defaultMoverResources
 	if moverConfig.MoverResources != nil {
-		for i := range podTemplateSpec.Spec.Containers {
-			podTemplateSpec.Spec.Containers[i].Resources = *moverConfig.MoverResources
-		}
+		moverResources = *moverConfig.MoverResources
+	}
+	for i := range podTemplateSpec.Spec.Containers {
+		podTemplateSpec.Spec.Containers[i].Resources = moverResources
 	}
 
 	// Set custom labels on the job pod if specified in the moverConfig

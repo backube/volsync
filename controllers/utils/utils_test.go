@@ -228,7 +228,7 @@ var _ = Describe("utils tests", func() {
 	Describe("UpdatePodTemplateSpecFromMoverConfig", func() {
 		When("no pod template spec", func() {
 			It("should not fail", func() {
-				utils.UpdatePodTemplateSpecFromMoverConfig(nil, volsyncv1alpha1.MoverConfig{})
+				utils.UpdatePodTemplateSpecFromMoverConfig(nil, volsyncv1alpha1.MoverConfig{}, corev1.ResourceRequirements{})
 			})
 		})
 
@@ -265,14 +265,35 @@ var _ = Describe("utils tests", func() {
 		})
 
 		When("moverConfig does not have any moverResource requirements or pod labels", func() {
+			var defaultResourceRequirements corev1.ResourceRequirements
+
+			BeforeEach(func() {
+				defaultResourceRequirements = corev1.ResourceRequirements{}
+			})
+
 			JustBeforeEach(func() {
 				moverConfig := volsyncv1alpha1.MoverConfig{}
-				utils.UpdatePodTemplateSpecFromMoverConfig(podTemplateSpec, moverConfig)
+				utils.UpdatePodTemplateSpecFromMoverConfig(podTemplateSpec, moverConfig, defaultResourceRequirements)
 
 				// Pod template spec should essentially be unchanged
 				Expect(podTemplateSpec.Spec.SecurityContext).To(BeNil())
+			})
+			It("Should have empty resource requirements set", func() {
 				// ResourceRequirements should be default (empty value)
 				Expect(podTemplateSpec.Spec.Containers[0].Resources).To(Equal(corev1.ResourceRequirements{}))
+			})
+
+			When("Default resourceRequirements with limits are used", func() {
+				BeforeEach(func() {
+					defaultResourceRequirements = corev1.ResourceRequirements{
+						Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("1Gi")},
+					}
+				})
+				It("Should use the limits from the default requirements", func() {
+					Expect(podTemplateSpec.Spec.Containers[0].Resources).To(Equal(corev1.ResourceRequirements{
+						Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("1Gi")},
+					}))
+				})
 			})
 			When("podTemplateSpec has podLabels", func() {
 				It("Should not update the podTemplateSpec and labels should be retained", func() {
@@ -305,7 +326,7 @@ var _ = Describe("utils tests", func() {
 			})
 
 			It("Should update the securityContext in the podTemplateSpec", func() {
-				utils.UpdatePodTemplateSpecFromMoverConfig(podTemplateSpec, moverConfig)
+				utils.UpdatePodTemplateSpecFromMoverConfig(podTemplateSpec, moverConfig, corev1.ResourceRequirements{})
 				Expect(podTemplateSpec.Spec.SecurityContext).To(Equal(customMoverSecurityContext))
 			})
 		})
@@ -339,7 +360,7 @@ var _ = Describe("utils tests", func() {
 			})
 
 			It("Should update the podTemplateSpec", func() {
-				utils.UpdatePodTemplateSpecFromMoverConfig(podTemplateSpec, moverConfig)
+				utils.UpdatePodTemplateSpecFromMoverConfig(podTemplateSpec, moverConfig, corev1.ResourceRequirements{})
 
 				for k, v := range existingLabelsOrig {
 					Expect(podTemplateSpec.Labels[k]).To(Equal(v))
@@ -349,6 +370,22 @@ var _ = Describe("utils tests", func() {
 				}
 				Expect(podTemplateSpec.Spec.Containers[0].Resources.Limits).To(Equal(customResources.Limits))
 				Expect(podTemplateSpec.Spec.Containers[0].Resources.Requests).To(Equal(customResources.Requests))
+			})
+
+			When("the default resource requirements are set", func() {
+				It("Should still use the user-supplied resourceRequirements", func() {
+					defaultRequirements := corev1.ResourceRequirements{
+						Limits: corev1.ResourceList{
+							corev1.ResourceCPU: resource.MustParse("10m"),
+						},
+						Requests: corev1.ResourceList{
+							corev1.ResourceMemory: resource.MustParse("20Mi"),
+						},
+					}
+					utils.UpdatePodTemplateSpecFromMoverConfig(podTemplateSpec, moverConfig, defaultRequirements)
+					Expect(podTemplateSpec.Spec.Containers[0].Resources.Limits).To(Equal(customResources.Limits))
+					Expect(podTemplateSpec.Spec.Containers[0].Resources.Requests).To(Equal(customResources.Requests))
+				})
 			})
 		})
 	})

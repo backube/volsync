@@ -488,7 +488,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 		}
 
 		// Update the job securityContext, podLabels and resourceRequirements from moverConfig (if specified)
-		utils.UpdatePodTemplateSpecFromMoverConfig(&job.Spec.Template, m.moverConfig)
+		utils.UpdatePodTemplateSpecFromMoverConfig(&job.Spec.Template, m.moverConfig, corev1.ResourceRequirements{})
 
 		if m.privileged {
 			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{

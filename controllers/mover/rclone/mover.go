@@ -316,7 +316,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 		}
 
 		// Update the job securityContext, podLabels and resourceRequirements from moverConfig (if specified)
-		utils.UpdatePodTemplateSpecFromMoverConfig(&job.Spec.Template, m.moverConfig)
+		utils.UpdatePodTemplateSpecFromMoverConfig(&job.Spec.Template, m.moverConfig, corev1.ResourceRequirements{})
 
 		// Adjust the Job based on whether the mover should be running as privileged
 		logger.Info("mover permissions", "privileged-mover", m.privileged)
