@@ -20,7 +20,7 @@ keywords:
   - disaster recovery
   - replication
   - storage
-annotations:  # https://artifacthub.io/docs/topics/annotations/helm/
+annotations: # https://artifacthub.io/docs/topics/annotations/helm/
   # Changelog for current chart & app version
   # Kinds: added, changed, deprecated, removed, fixed, and security
   artifacthub.io/changes: |
