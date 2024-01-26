@@ -53,26 +53,26 @@ const (
 
 // Mover is the reconciliation logic for the Rsync-based data mover.
 type Mover struct {
-	client               client.Client
-	logger               logr.Logger
-	eventRecorder        events.EventRecorder
-	owner                client.Object
-	vh                   *volumehandler.VolumeHandler
-	saHandler            utils.SAHandler
-	containerImage       string
-	key                  *string
-	serviceType          *corev1.ServiceType
-	serviceAnnotations   map[string]string
-	address              *string
-	port                 *int32
-	isSource             bool
-	paused               bool
-	mainPVCName          *string
-	privileged           bool
-	moverSecurityContext *corev1.PodSecurityContext
-	sourceStatus         *volsyncv1alpha1.ReplicationSourceRsyncTLSStatus
-	destStatus           *volsyncv1alpha1.ReplicationDestinationRsyncTLSStatus
-	latestMoverStatus    *volsyncv1alpha1.MoverStatus
+	client             client.Client
+	logger             logr.Logger
+	eventRecorder      events.EventRecorder
+	owner              client.Object
+	vh                 *volumehandler.VolumeHandler
+	saHandler          utils.SAHandler
+	containerImage     string
+	key                *string
+	serviceType        *corev1.ServiceType
+	serviceAnnotations map[string]string
+	address            *string
+	port               *int32
+	isSource           bool
+	paused             bool
+	mainPVCName        *string
+	privileged         bool
+	sourceStatus       *volsyncv1alpha1.ReplicationSourceRsyncTLSStatus
+	destStatus         *volsyncv1alpha1.ReplicationDestinationRsyncTLSStatus
+	latestMoverStatus  *volsyncv1alpha1.MoverStatus
+	moverConfig        volsyncv1alpha1.MoverConfig
 }
 
 var _ mover.Mover = &Mover{}
@@ -416,7 +416,6 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 			}
 		}
 		podSpec.RestartPolicy = corev1.RestartPolicyNever
-		podSpec.SecurityContext = m.moverSecurityContext
 		podSpec.ServiceAccountName = sa.Name
 		podSpec.Volumes = []corev1.Volume{
 			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
@@ -446,6 +445,10 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 			podSpec.NodeSelector = affinity.NodeSelector
 			podSpec.Tolerations = affinity.Tolerations
 		}
+
+		// Update the job securityContext, podLabels and resourceRequirements from moverConfig (if specified)
+		utils.UpdatePodTemplateSpecFromMoverConfig(&job.Spec.Template, m.moverConfig, corev1.ResourceRequirements{})
+
 		if m.privileged {
 			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
 				Name:  "PRIVILEGED_MOVER",

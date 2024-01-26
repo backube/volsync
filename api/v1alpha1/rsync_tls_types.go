@@ -54,15 +54,8 @@ type ReplicationSourceRsyncTLSSpec struct {
 	//+kubebuilder:validation:Maximum=65535
 	//+optional
 	Port *int32 `json:"port,omitempty"`
-	// MoverSecurityContext allows specifying the PodSecurityContext that will
-	// be used by the data mover
-	MoverSecurityContext *corev1.PodSecurityContext `json:"moverSecurityContext,omitempty"`
-	// MoverServiceAccount allows specifying the name of the service account
-	// that will be used by the data mover. This should only be used by advanced
-	// users who want to override the service account normally used by the mover.
-	// The service account needs to exist in the same namespace as the ReplicationSource.
-	//+optional
-	MoverServiceAccount *string `json:"moverServiceAccount,omitempty"`
+
+	MoverConfig `json:",inline"`
 }
 
 type ReplicationSourceRsyncTLSStatus struct {
@@ -92,15 +85,8 @@ type ReplicationDestinationRsyncTLSSpec struct {
 	// will be used instead of any VolSync default values.
 	//+optional
 	ServiceAnnotations *map[string]string `json:"serviceAnnotations,omitempty"`
-	// MoverSecurityContext allows specifying the PodSecurityContext that will
-	// be used by the data mover
-	MoverSecurityContext *corev1.PodSecurityContext `json:"moverSecurityContext,omitempty"`
-	// MoverServiceAccount allows specifying the name of the service account
-	// that will be used by the data mover. This should only be used by advanced
-	// users who want to override the service account normally used by the mover.
-	// The service account needs to exist in the same namespace as the ReplicationDestination.
-	//+optional
-	MoverServiceAccount *string `json:"moverServiceAccount,omitempty"`
+
+	MoverConfig `json:",inline"`
 }
 
 type ReplicationDestinationRsyncTLSStatus struct {

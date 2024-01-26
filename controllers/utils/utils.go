@@ -30,6 +30,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/reference"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
 
 //+kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch
@@ -183,4 +185,33 @@ func AppendEnvVarsForClusterWideProxy(envVars []corev1.EnvVar) []corev1.EnvVar {
 	}
 
 	return envVars
+}
+
+// Updates to set the securityContext, podLabels on mover pod in the spec and resourceRequirements on the mover
+// containers based on what is set in the MoverConfig
+func UpdatePodTemplateSpecFromMoverConfig(podTemplateSpec *corev1.PodTemplateSpec,
+	moverConfig volsyncv1alpha1.MoverConfig, defaultMoverResources corev1.ResourceRequirements) {
+	if podTemplateSpec == nil {
+		return
+	}
+
+	// Security context (nil by default)
+	podTemplateSpec.Spec.SecurityContext = moverConfig.MoverSecurityContext
+
+	// Adjust the job/deploy containers resourceRequirements based on resourceRequirements from the moverConfig
+	moverResources := defaultMoverResources
+	if moverConfig.MoverResources != nil {
+		moverResources = *moverConfig.MoverResources
+	}
+	for i := range podTemplateSpec.Spec.Containers {
+		podTemplateSpec.Spec.Containers[i].Resources = moverResources
+	}
+
+	// Set custom labels on the job pod if specified in the moverConfig
+	if podTemplateSpec.Labels == nil {
+		podTemplateSpec.Labels = map[string]string{}
+	}
+	for label, value := range moverConfig.MoverPodLabels {
+		podTemplateSpec.Labels[label] = value
+	}
 }

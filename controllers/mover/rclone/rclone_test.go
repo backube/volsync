@@ -647,6 +647,51 @@ var _ = Describe("Rclone as a source", func() {
 					validateJobEnvVars(job.Spec.Template.Spec.Containers[0].Env, true)
 				})
 
+				It("Should not have container resourceRequirements set by default", func() {
+					j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret, nil) // Using sPVC as dataPVC (i.e. direct)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil()) // hasn't completed
+					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+					job = &batchv1.Job{}
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+
+					Expect(len(job.Spec.Template.Spec.Containers)).To(Equal(1))
+					// ResourceRequirements should be the empty/default value
+					Expect(job.Spec.Template.Spec.Containers[0].Resources).To(Equal(corev1.ResourceRequirements{}))
+				})
+
+				When("moverResources (resource requirements) are provided", func() {
+					BeforeEach(func() {
+						rs.Spec.Rclone.MoverResources = &corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("50m"),
+								corev1.ResourceMemory: resource.MustParse("128Mi"),
+							},
+						}
+					})
+					It("Should use them in the mover job container", func() {
+						j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret, nil) // Using sPVC as dataPVC (i.e. direct)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(j).To(BeNil()) // hasn't completed
+						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+						job = &batchv1.Job{}
+						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+
+						Expect(len(job.Spec.Template.Spec.Containers)).To(Equal(1))
+						// ResourceRequirements should be set
+						resourceReqs := job.Spec.Template.Spec.Containers[0].Resources
+						Expect(resourceReqs.Limits).To(BeNil()) // No limits were set
+						Expect(resourceReqs.Requests).NotTo(BeNil())
+
+						cpuRequest := resourceReqs.Requests[corev1.ResourceCPU]
+						Expect(cpuRequest).NotTo(BeNil())
+						Expect(cpuRequest).To(Equal(resource.MustParse("50m")))
+						memRequest := resourceReqs.Requests[corev1.ResourceMemory]
+						Expect(memRequest).NotTo(BeNil())
+						Expect(memRequest).To(Equal(resource.MustParse("128Mi")))
+					})
+				})
+
 				When("a custom CA is not supplied", func() {
 					It("Should not attempt to update the podspec in the mover job", func() {
 						var customCA volsyncv1alpha1.CustomCASpec // No CustomCA, not initializing w any values

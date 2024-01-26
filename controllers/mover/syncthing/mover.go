@@ -99,24 +99,24 @@ const (
 
 // Mover is the reconciliation logic for the Restic-based data mover.
 type Mover struct {
-	client               client.Client
-	logger               logr.Logger
-	owner                client.Object
-	saHandler            utils.SAHandler
-	eventRecorder        events.EventRecorder
-	configCapacity       *resource.Quantity
-	configStorageClass   *string
-	configAccessModes    []corev1.PersistentVolumeAccessMode
-	containerImage       string
-	paused               bool
-	dataPVCName          *string
-	peerList             []volsyncv1alpha1.SyncthingPeer
-	status               *volsyncv1alpha1.ReplicationSourceSyncthingStatus
-	serviceType          corev1.ServiceType
-	syncthingConnection  api.SyncthingConnection
-	apiConfig            api.APIConfig
-	privileged           bool
-	moverSecurityContext *corev1.PodSecurityContext
+	client              client.Client
+	logger              logr.Logger
+	owner               client.Object
+	saHandler           utils.SAHandler
+	eventRecorder       events.EventRecorder
+	configCapacity      *resource.Quantity
+	configStorageClass  *string
+	configAccessModes   []corev1.PersistentVolumeAccessMode
+	containerImage      string
+	paused              bool
+	dataPVCName         *string
+	peerList            []volsyncv1alpha1.SyncthingPeer
+	status              *volsyncv1alpha1.ReplicationSourceSyncthingStatus
+	serviceType         corev1.ServiceType
+	syncthingConnection api.SyncthingConnection
+	apiConfig           api.APIConfig
+	privileged          bool
+	moverConfig         volsyncv1alpha1.MoverConfig
 }
 
 var _ mover.Mover = &Mover{}
@@ -462,9 +462,6 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 					{Name: dataVolumeName, MountPath: dataDirMountPath},
 					{Name: certVolumeName, MountPath: certDirMountPath},
 				},
-				Resources: corev1.ResourceRequirements{
-					Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("1Gi")},
-				},
 				SecurityContext: &corev1.SecurityContext{
 					AllowPrivilegeEscalation: ptr.To(false),
 					Capabilities: &corev1.Capabilities{
@@ -475,9 +472,6 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 				},
 			},
 		}
-
-		// security context
-		podSpec.SecurityContext = m.moverSecurityContext
 
 		// configure volumes
 		podSpec.Volumes = []corev1.Volume{
@@ -512,6 +506,13 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 				},
 			},
 		}
+
+		defaultMoverResources := corev1.ResourceRequirements{
+			Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("1Gi")},
+		}
+
+		// Update the deployment securityContext, podLabels and resourceRequirements from moverConfig (if specified)
+		utils.UpdatePodTemplateSpecFromMoverConfig(&deployment.Spec.Template, m.moverConfig, defaultMoverResources)
 
 		if m.privileged {
 			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{

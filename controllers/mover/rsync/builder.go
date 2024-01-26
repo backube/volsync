@@ -137,9 +137,15 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		mainPVCName:        &source.Spec.SourcePVC,
 		sourceStatus:       source.Status.Rsync,
 		latestMoverStatus:  source.Status.LatestMoverStatus,
+		moverConfig: volsyncv1alpha1.MoverConfig{
+			MoverSecurityContext: nil, // Not supported for rsync ssh
+			MoverPodLabels:       source.Spec.Rsync.MoverPodLabels,
+			MoverResources:       source.Spec.Rsync.MoverResources,
+		},
 	}, nil
 }
 
+//nolint:funlen
 func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 	eventRecorder events.EventRecorder,
 	destination *volsyncv1alpha1.ReplicationDestination, _ bool) (mover.Mover, error) {
@@ -198,5 +204,10 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		mainPVCName:        destination.Spec.Rsync.DestinationPVC,
 		destStatus:         destination.Status.Rsync,
 		latestMoverStatus:  destination.Status.LatestMoverStatus,
+		moverConfig: volsyncv1alpha1.MoverConfig{
+			MoverSecurityContext: nil, // Not supported for rsync ssh
+			MoverPodLabels:       destination.Spec.Rsync.MoverPodLabels,
+			MoverResources:       destination.Spec.Rsync.MoverResources,
+		},
 	}, nil
 }

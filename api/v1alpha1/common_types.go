@@ -33,6 +33,10 @@ limitations under the License.
 
 package v1alpha1
 
+import (
+	corev1 "k8s.io/api/core/v1"
+)
+
 // CopyMethodType defines the methods for creating point-in-time copies of
 // volumes.
 // +kubebuilder:validation:Enum=Direct;None;Clone;Snapshot
@@ -115,4 +119,27 @@ type CustomCASpec struct {
 
 	// The key within the Secret or ConfigMap containing the CA certificate
 	Key string `json:"key,omitempty"`
+}
+
+type MoverConfig struct {
+	// MoverSecurityContext allows specifying the PodSecurityContext that will
+	// be used by the data mover
+	MoverSecurityContext *corev1.PodSecurityContext `json:"moverSecurityContext,omitempty"`
+	// MoverServiceAccount allows specifying the name of the service account
+	// that will be used by the data mover. This should only be used by advanced
+	// users who want to override the service account normally used by the mover.
+	// The service account needs to exist in the same namespace as this CR.
+	//+optional
+	MoverServiceAccount *string `json:"moverServiceAccount,omitempty"`
+	// Labels that should be added to data mover pods
+	// These will be in addition to any labels that VolSync may add
+	// +optional
+	MoverPodLabels map[string]string `json:"moverPodLabels,omitempty"`
+	// Resources represents compute resources required by the data mover container.
+	// Immutable.
+	// More info: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
+	// This should only be used by advanced users as this can result in a mover
+	// pod being unschedulable or crashing due to limited resources.
+	// +optional
+	MoverResources *corev1.ResourceRequirements `json:"moverResources,omitempty"`
 }

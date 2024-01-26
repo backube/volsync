@@ -68,6 +68,7 @@ type Mover struct {
 	sourceStatus       *volsyncv1alpha1.ReplicationSourceRsyncStatus
 	destStatus         *volsyncv1alpha1.ReplicationDestinationRsyncStatus
 	latestMoverStatus  *volsyncv1alpha1.MoverStatus
+	moverConfig        volsyncv1alpha1.MoverConfig
 }
 
 var _ mover.Mover = &Mover{}
@@ -454,6 +455,10 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 			job.Spec.Template.Spec.NodeSelector = affinity.NodeSelector
 			job.Spec.Template.Spec.Tolerations = affinity.Tolerations
 		}
+
+		// Update the job podLabels and resourceRequirements (if specified)
+		utils.UpdatePodTemplateSpecFromMoverConfig(&job.Spec.Template, m.moverConfig, corev1.ResourceRequirements{})
+
 		logger.V(1).Info("Job has PVC", "PVC", dataPVC, "DS", dataPVC.Spec.DataSource)
 		return nil
 	})

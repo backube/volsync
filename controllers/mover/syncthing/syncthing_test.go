@@ -1301,6 +1301,76 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 							})
 						})
 					})
+
+					Context("Mover resourceRequirements and podLabels", func() {
+						When("No mover resourceRequirements or podLables are set", func() {
+							It("Should have default container resourceRequirements set", func() {
+								deployment, err := mover.ensureDeployment(ctx, srcPVC, configPVC, sa, apiSecret)
+								Expect(err).NotTo(HaveOccurred())
+								Expect(deployment).NotTo(BeNil())
+
+								Expect(len(deployment.Spec.Template.Spec.Containers)).To(Equal(1))
+								// Restic mover sets a default memory limit of 1Gi
+								Expect(deployment.Spec.Template.Spec.Containers[0].Resources).To(Equal(
+									corev1.ResourceRequirements{
+										Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("1Gi")},
+									},
+								))
+							})
+						})
+						When("mover podLabels are set", func() {
+							BeforeEach(func() {
+								rs.Spec.Syncthing.MoverPodLabels = map[string]string{
+									"mountain": "Aconcagua",
+									"range":    "Andes",
+								}
+							})
+							It("Should set the mover podLabels on the deployment pod", func() {
+								deployment, err := mover.ensureDeployment(ctx, srcPVC, configPVC, sa, apiSecret)
+								Expect(err).NotTo(HaveOccurred())
+								Expect(deployment).NotTo(BeNil())
+
+								Expect(len(deployment.Spec.Template.Spec.Containers)).To(Equal(1))
+								Expect(deployment.Spec.Template.Labels["mountain"]).To(Equal("Aconcagua"))
+								Expect(deployment.Spec.Template.Labels["range"]).To(Equal("Andes"))
+							})
+						})
+						When("moverResources (resource requirements) are provided", func() {
+							BeforeEach(func() {
+								rs.Spec.Syncthing.MoverResources = &corev1.ResourceRequirements{
+									Limits: corev1.ResourceList{
+										corev1.ResourceCPU:    resource.MustParse("500m"),
+										corev1.ResourceMemory: resource.MustParse("2Gi"),
+									},
+									Requests: corev1.ResourceList{
+										corev1.ResourceCPU: resource.MustParse("20m"),
+									},
+								}
+							})
+							It("Should use them in the mover deployment container", func() {
+								deployment, err := mover.ensureDeployment(ctx, srcPVC, configPVC, sa, apiSecret)
+								Expect(err).NotTo(HaveOccurred())
+								Expect(deployment).NotTo(BeNil())
+
+								Expect(len(deployment.Spec.Template.Spec.Containers)).To(Equal(1))
+								// ResourceRequirements should be set
+								resourceReqs := deployment.Spec.Template.Spec.Containers[0].Resources
+								Expect(resourceReqs.Limits).NotTo(BeNil()) // No limits were set
+								Expect(resourceReqs.Requests).NotTo(BeNil())
+								// Limits
+								cpuLimit := resourceReqs.Limits[corev1.ResourceCPU]
+								Expect(cpuLimit).NotTo(BeNil())
+								Expect(cpuLimit).To(Equal(resource.MustParse("500m")))
+								memLimit := resourceReqs.Limits[corev1.ResourceMemory]
+								Expect(memLimit).NotTo(BeNil())
+								Expect(memLimit).To(Equal(resource.MustParse("2Gi")))
+								// Requests
+								cpuRequest := resourceReqs.Requests[corev1.ResourceCPU]
+								Expect(cpuRequest).NotTo(BeNil())
+								Expect(cpuRequest).To(Equal(resource.MustParse("20m")))
+							})
+						})
+					})
 				})
 
 				When("Deployment already exists", func() {
