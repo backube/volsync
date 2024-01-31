@@ -32,16 +32,26 @@ import (
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers/mover"
 	sm "github.com/backube/volsync/controllers/statemachine"
 	"github.com/backube/volsync/controllers/utils"
+)
+
+const (
+	ReplicationSourceToSourcePVCIndex string = "replicationsource.spec.sourcePVC"
 )
 
 // ReplicationSourceReconciler reconciles a ReplicationSource object
@@ -160,7 +170,90 @@ func (r *ReplicationSourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&rbacv1.Role{}).
 		Owns(&rbacv1.RoleBinding{}).
 		Owns(&snapv1.VolumeSnapshot{}).
+		Watches(&corev1.PersistentVolumeClaim{},
+			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, o client.Object) []reconcile.Request {
+				return mapFuncCopyTriggerPVCToReplicationSource(ctx, mgr.GetClient(), o)
+			}), builder.WithPredicates(copyTriggerPVCPredicate())).
 		Complete(r)
+}
+
+func mapFuncCopyTriggerPVCToReplicationSource(ctx context.Context, k8sClient client.Client,
+	o client.Object) []reconcile.Request {
+	logger := ctrl.Log.WithName("mapFuncCopyTriggerPVCToReplicationSource")
+
+	pvc, ok := o.(*corev1.PersistentVolumeClaim)
+	if !ok {
+		return []reconcile.Request{}
+	}
+
+	// Only continue if the PVC is using the use-copy-trigger annotation
+	if !utils.PVCUsesCopyTrigger(pvc) {
+		return []reconcile.Request{}
+	}
+
+	// Find if we have any ReplicationSources using this PVC as a source
+	// This will break if multiple replicationsources use the same PVC as a source
+	rsList := &volsyncv1alpha1.ReplicationSourceList{}
+	err := k8sClient.List(ctx, rsList,
+		client.MatchingFields{ReplicationSourceToSourcePVCIndex: pvc.GetName()}, // custom index
+		client.InNamespace(pvc.GetNamespace()))
+	if err != nil {
+		logger.Error(err, "Error looking up replicationsources (using index) matching source PVC",
+			"pvc name", pvc.GetName(), "namespace", pvc.GetNamespace(),
+			"index name", ReplicationSourceToSourcePVCIndex)
+		return []reconcile.Request{}
+	}
+
+	reqs := []reconcile.Request{}
+	for i := range rsList.Items {
+		rs := rsList.Items[i]
+		reqs = append(reqs, reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      rs.GetName(),
+				Namespace: rs.GetNamespace(),
+			},
+		})
+	}
+
+	return reqs
+}
+
+func copyTriggerPVCPredicate() predicate.Predicate {
+	// Only reconcile ReplicationSources for PVC if the PVC is new or updated (no delete)
+	return predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			return true
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			return false
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return true
+		},
+		GenericFunc: func(e event.GenericEvent) bool {
+			return true
+		},
+	}
+}
+
+func IndexFieldsForReplicationSource(ctx context.Context, fieldIndexer client.FieldIndexer) error {
+	// Index on ReplicationSources - used to find ReplicationSources with SourcePVC referring to a PVC
+	return fieldIndexer.IndexField(ctx, &volsyncv1alpha1.ReplicationSource{},
+		ReplicationSourceToSourcePVCIndex, func(o client.Object) []string {
+			var res []string
+			replicationSource, ok := o.(*volsyncv1alpha1.ReplicationSource)
+			if !ok {
+				// This shouldn't happen
+				return res
+			}
+
+			// just return the raw field value -- the indexer will take care of dealing with namespaces for us
+			sourcePVC := replicationSource.Spec.SourcePVC
+			if sourcePVC != "" {
+				res = append(res, sourcePVC)
+			}
+			return res
+		})
 }
 
 func newRSMachine(rs *volsyncv1alpha1.ReplicationSource, c client.Client,

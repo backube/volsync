@@ -35,6 +35,7 @@ import (
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
+	volsyncerrors "github.com/backube/volsync/controllers/errors"
 	"github.com/backube/volsync/controllers/mover"
 	"github.com/backube/volsync/controllers/utils"
 )
@@ -324,6 +325,20 @@ func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,
 	}
 	logger := log.WithValues("clone", client.ObjectKeyFromObject(clone))
 
+	// See if the clone exists
+	err := vh.client.Get(ctx, client.ObjectKeyFromObject(clone), clone)
+	if err != nil {
+		if !kerrors.IsNotFound(err) {
+			return nil, err
+		}
+
+		// Need to create the clone - see if we need to wait first for a copy-trigger
+		wait, err := vh.waitForCopyTriggerBeforeCloneOrSnap(ctx, log, src)
+		if wait || err != nil {
+			return nil, err
+		}
+	}
+
 	op, err := ctrlutil.CreateOrUpdate(ctx, vh.client, clone, func() error {
 		if err := ctrl.SetControllerReference(vh.owner, clone, vh.client.Scheme()); err != nil {
 			logger.Error(err, utils.ErrUnableToSetControllerRef)
@@ -391,6 +406,14 @@ func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,
 			"waiting for %s to bind; check StorageClass name and ensure CSI driver supports volume cloning",
 			utils.KindAndName(vh.client.Scheme(), clone))
 	}
+
+	//FIXME: do we need to wait until it binds?
+	// Clone is ready - update copy trigger if necessary
+	err = vh.updateCopyTriggerAfterCloneOrSnap(ctx, src)
+	if err != nil {
+		return clone, err
+	}
+
 	return clone, err
 }
 
@@ -404,6 +427,20 @@ func (vh *VolumeHandler) ensureSnapshot(ctx context.Context, log logr.Logger,
 		},
 	}
 	logger := log.WithValues("snapshot", client.ObjectKeyFromObject(snap))
+
+	// See if the snapshot exists
+	err := vh.client.Get(ctx, client.ObjectKeyFromObject(snap), snap)
+	if err != nil {
+		if !kerrors.IsNotFound(err) {
+			return nil, err
+		}
+
+		// Need to create the snapshot - see if we need to wait first for a copy-trigger
+		wait, err := vh.waitForCopyTriggerBeforeCloneOrSnap(ctx, log, src)
+		if wait || err != nil {
+			return nil, err
+		}
+	}
 
 	op, err := ctrlutil.CreateOrUpdate(ctx, vh.client, snap, func() error {
 		if err := ctrl.SetControllerReference(vh.owner, snap, vh.client.Scheme()); err != nil {
@@ -452,8 +489,96 @@ func (vh *VolumeHandler) ensureSnapshot(ctx context.Context, log logr.Logger,
 	// status.readyToUse either is not set by the driver at this point (even though
 	// status.BoundVolumeSnapshotContentName is set), or readyToUse=true
 
+	// Snapshot is ready - update copy trigger if necessary
+	err = vh.updateCopyTriggerAfterCloneOrSnap(ctx, src)
+	if err != nil {
+		return snap, err
+	}
+
 	logger.V(1).Info("temporary snapshot reconciled", "operation", op)
 	return snap, nil
+}
+
+// Checks if copy trigger annotations are on the srcPVC and updates accordingly
+// This should be called when clone/snapshot does not exist in order to determine
+// if we should wait before creation.
+func (vh *VolumeHandler) waitForCopyTriggerBeforeCloneOrSnap(ctx context.Context, log logr.Logger,
+	srcPVC *corev1.PersistentVolumeClaim) (bool, error) {
+	if !utils.PVCUsesCopyTrigger(srcPVC) {
+		// No need to wait
+		return false, nil
+	}
+
+	logger := log.WithValues("useCopyTrigger", "true")
+	// Look for user supplied copy trigger
+	copyTrigger := utils.GetCopyTriggerValue(srcPVC)
+	latestCopyTrigger := utils.GetLatestCopyTriggerValue(srcPVC)
+	if copyTrigger == "" || copyTrigger == latestCopyTrigger {
+		// Need to block until the user updates the copyTrigger
+		wait := true
+
+		updated := utils.SetLatestCopyStatusWaitingForTrigger(srcPVC)
+		if updated {
+			err := vh.client.Update(ctx, srcPVC)
+			if err != nil {
+				return wait, err
+			}
+		}
+
+		waitingSinceTimeStr := utils.GetLatestCopyTriggerWaitingSinceValue(srcPVC)
+		waitingSinceTime, err := time.Parse(time.RFC3339, waitingSinceTimeStr)
+		if err != nil {
+			logger.Error(err, "Waiting since pvc Annotation is not parseable, resetting ...")
+			utils.SetLatestCopyTriggerWaitingSinceValueNow(srcPVC)
+			err := vh.client.Update(ctx, srcPVC)
+			if err != nil {
+				return wait, err
+			}
+		}
+		if waitingSinceTime.Add(utils.CopyTriggerWaitTimeout).Before(time.Now()) {
+			copyTriggerTimeoutErr := &volsyncerrors.CopyTriggerTimeoutError{
+				SourcePVC: srcPVC.GetName(),
+			}
+			logger.Error(copyTriggerTimeoutErr,
+				fmt.Sprintf("Timed out after %s", utils.CopyTriggerWaitTimeout.String()))
+			return wait, &volsyncerrors.CopyTriggerTimeoutError{
+				SourcePVC: srcPVC.GetName(),
+			}
+		}
+
+		logger.Info("Waiting for copy-trigger annotation to be updated before creating a snapshot")
+		return wait, nil
+	}
+
+	// Copy trigger has been modified, we can proceed with the snapshot
+	updated := utils.SetLatestCopyStatusInProgress(srcPVC)
+	if updated {
+		err := vh.client.Update(ctx, srcPVC)
+		if err != nil {
+			return false, err
+		}
+	}
+
+	// No need to wait, we're in progress (but snapshot/clone doesn't exist yet)
+	return false, nil
+}
+
+func (vh *VolumeHandler) updateCopyTriggerAfterCloneOrSnap(ctx context.Context,
+	srcPVC *corev1.PersistentVolumeClaim) error {
+	if !utils.PVCUsesCopyTrigger(srcPVC) {
+		// Nothing to update
+		return nil
+	}
+
+	updated := utils.SetLatestCopyStatusCompleted(srcPVC)
+	updated = utils.SetLatestCopyTriggerValue(srcPVC, utils.GetCopyTriggerValue(srcPVC)) || updated
+	if updated {
+		err := vh.client.Update(ctx, srcPVC)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // nolint: funlen
