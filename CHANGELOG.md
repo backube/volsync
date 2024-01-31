@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Syncthing upgraded to v1.26.1
+- Restic upgraded to v0.16.3
 
 ## [0.8.0]
 
