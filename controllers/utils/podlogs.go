@@ -156,6 +156,12 @@ func FilterLogs(reader io.Reader, lineFilter func(line string) *string) (string,
 	return allLines.String(), nil
 }
 
+// Updates mover status to failed and puts the errMessage as the logs
+func UpdateMoverStatusFailed(moverStatus *volsyncv1alpha1.MoverStatus, errMessage string) {
+	moverStatus.Result = volsyncv1alpha1.MoverResultFailed
+	moverStatus.Logs = errMessage
+}
+
 func UpdateMoverStatusForFailedJob(ctx context.Context, logger logr.Logger,
 	moverStatus *volsyncv1alpha1.MoverStatus, jobName, jobNamespace string, logLineFilter func(string) *string) {
 	updateMoverStatusForJob(ctx, logger, moverStatus, jobName, jobNamespace, true, logLineFilter)

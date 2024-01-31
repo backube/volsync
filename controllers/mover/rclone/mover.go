@@ -33,6 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
+	vserrors "github.com/backube/volsync/controllers/errors"
 	"github.com/backube/volsync/controllers/mover"
 	"github.com/backube/volsync/controllers/utils"
 	"github.com/backube/volsync/controllers/volumehandler"
@@ -170,7 +171,19 @@ func (m *Mover) ensureSourcePVC(ctx context.Context) (*corev1.PersistentVolumeCl
 		return nil, err
 	}
 	dataName := mover.VolSyncPrefix + m.owner.GetName() + "-src"
-	return m.vh.EnsurePVCFromSrc(ctx, m.logger, srcPVC, dataName, true)
+	pvc, err := m.vh.EnsurePVCFromSrc(ctx, m.logger, srcPVC, dataName, true)
+	if err != nil {
+		// If the error was a copy TriggerTimeoutError, update the latestMoverStatus to indicate error
+		var copyTriggerTimeoutError *vserrors.CopyTriggerTimeoutError
+		if errors.As(err, &copyTriggerTimeoutError) {
+			utils.UpdateMoverStatusFailed(m.latestMoverStatus, copyTriggerTimeoutError.Error())
+			// Don't return error - we want to keep reconciling at the normal in-progress rate
+			// but just indicate in the latestMoverStatus that there is an error (we've been waiting
+			// for the user to update the copy Trigger for too long)
+			return pvc, nil
+		}
+	}
+	return pvc, nil
 }
 
 // this is so far is common to rclone & restic
