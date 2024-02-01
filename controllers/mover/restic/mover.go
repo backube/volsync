@@ -354,6 +354,14 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 			utils.EnvFromSecret(repo.Name, "AWS_SECRET_ACCESS_KEY", true),
 			utils.EnvFromSecret(repo.Name, "AWS_SESSION_TOKEN", true), // New in v0.14.0
 			utils.EnvFromSecret(repo.Name, "AWS_DEFAULT_REGION", true),
+			/* These vars are in restic main but not in an official release yet (as of v0.16.3)
+			utils.EnvFromSecret(repo.Name, "RESTIC_AWS_ASSUME_ROLE_ARN", true),
+			utils.EnvFromSecret(repo.Name, "RESTIC_AWS_ASSUME_ROLE_SESSION_NAME", true),
+			utils.EnvFromSecret(repo.Name, "RESTIC_AWS_ASSUME_ROLE_EXTERNAL_ID", true),
+			utils.EnvFromSecret(repo.Name, "RESTIC_AWS_ASSUME_ROLE_POLICY", true),
+			utils.EnvFromSecret(repo.Name, "RESTIC_AWS_ASSUME_ROLE_REGION", true),
+			utils.EnvFromSecret(repo.Name, "RESTIC_AWS_ASSUME_ROLE_STS_ENDPOINT", true),
+			*/
 			utils.EnvFromSecret(repo.Name, "ST_AUTH", true),
 			utils.EnvFromSecret(repo.Name, "ST_USER", true),
 			utils.EnvFromSecret(repo.Name, "ST_KEY", true),
@@ -379,8 +387,11 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 			utils.EnvFromSecret(repo.Name, "B2_ACCOUNT_KEY", true),
 			utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_NAME", true),
 			utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_KEY", true),
-			utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_SAS", true), // New in v0.14.0
+			utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_SAS", true),     // New in v0.14.0
+			utils.EnvFromSecret(repo.Name, "AZURE_ENDPOINT_SUFFIX", true), // New in v0.16.0
 			utils.EnvFromSecret(repo.Name, "GOOGLE_PROJECT_ID", true),
+			utils.EnvFromSecret(repo.Name, "RESTIC_REST_USERNAME", true), // New in v0.16.1
+			utils.EnvFromSecret(repo.Name, "RESTIC_REST_PASSWORD", true), // New in v0.16.1
 		}
 
 		// Rclone env vars for restic if they are in the secret
