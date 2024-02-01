@@ -503,6 +503,8 @@ func (vh *VolumeHandler) ensureSnapshot(ctx context.Context, log logr.Logger,
 // Checks if copy trigger annotations are on the srcPVC and updates accordingly
 // This should be called when clone/snapshot does not exist in order to determine
 // if we should wait before creation.
+//
+//nolint:funlen
 func (vh *VolumeHandler) waitForCopyTriggerBeforeCloneOrSnap(ctx context.Context, log logr.Logger,
 	srcPVC *corev1.PersistentVolumeClaim) (bool, error) {
 	if !utils.PVCUsesCopyTrigger(srcPVC) {
@@ -524,6 +526,10 @@ func (vh *VolumeHandler) waitForCopyTriggerBeforeCloneOrSnap(ctx context.Context
 			if err != nil {
 				return wait, err
 			}
+			vh.eventRecorder.Eventf(vh.owner, srcPVC, corev1.EventTypeNormal,
+				volsyncv1alpha1.EvRSrcPVCWaitingForCopyTrigger, volsyncv1alpha1.EvACreateSrcCopyUsingCopyTrigger,
+				"Waiting on copy trigger on src PVC %s before creating snapshot or clone",
+				utils.KindAndName(vh.client.Scheme(), srcPVC))
 		}
 
 		waitingSinceTimeStr := utils.GetLatestCopyTriggerWaitingSinceValue(srcPVC)
@@ -540,8 +546,11 @@ func (vh *VolumeHandler) waitForCopyTriggerBeforeCloneOrSnap(ctx context.Context
 			copyTriggerTimeoutErr := &volsyncerrors.CopyTriggerTimeoutError{
 				SourcePVC: srcPVC.GetName(),
 			}
-			logger.Error(copyTriggerTimeoutErr,
-				fmt.Sprintf("Timed out after %s", utils.CopyTriggerWaitTimeout.String()))
+			logger.Error(copyTriggerTimeoutErr, fmt.Sprintf("Timed out after %s", utils.CopyTriggerWaitTimeout.String()))
+			vh.eventRecorder.Eventf(vh.owner, srcPVC, corev1.EventTypeWarning,
+				volsyncv1alpha1.EvRSrcPVCTimeoutWaitingForCopyTrigger, volsyncv1alpha1.EvACreateSrcCopyUsingCopyTrigger,
+				"Timed out waiting on copy trigger on src PVC %s before creating snapshot or clone",
+				utils.KindAndName(vh.client.Scheme(), srcPVC))
 			return wait, &volsyncerrors.CopyTriggerTimeoutError{
 				SourcePVC: srcPVC.GetName(),
 			}
@@ -558,6 +567,10 @@ func (vh *VolumeHandler) waitForCopyTriggerBeforeCloneOrSnap(ctx context.Context
 		if err != nil {
 			return false, err
 		}
+		vh.eventRecorder.Eventf(vh.owner, srcPVC, corev1.EventTypeNormal,
+			volsyncv1alpha1.EvRSrcPVCCopyTriggerReceived, volsyncv1alpha1.EvACreateSrcCopyUsingCopyTrigger,
+			"Received updated copy trigger on src PVC %s, proceeding to create snapshot or clone",
+			utils.KindAndName(vh.client.Scheme(), srcPVC))
 	}
 
 	// No need to wait, we're in progress (but snapshot/clone doesn't exist yet)
@@ -578,6 +591,10 @@ func (vh *VolumeHandler) updateCopyTriggerAfterCloneOrSnap(ctx context.Context,
 		if err != nil {
 			return err
 		}
+		vh.eventRecorder.Eventf(vh.owner, srcPVC, corev1.EventTypeNormal,
+			volsyncv1alpha1.EvRSrcPVCCopyUsingCopyTriggerCompleted, volsyncv1alpha1.EvACreateSrcCopyUsingCopyTrigger,
+			"snapshot or clone complete for src PVC %s using copy trigger",
+			utils.KindAndName(vh.client.Scheme(), srcPVC))
 	}
 	return nil
 }

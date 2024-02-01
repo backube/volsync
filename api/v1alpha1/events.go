@@ -22,23 +22,28 @@ package v1alpha1
 
 // ReplicationSource/ReplicationDestination Event "reason" strings: Why are we sending an event?
 const (
-	EvRTransferStarted = "TransferStarted"
-	EvRTransferFailed  = "TransferFailed" // Warning
-	EvRSnapCreated     = "VolumeSnapshotCreated"
-	EvRSnapNotBound    = "VolumeSnapshotNotBound" // Warning
-	EvRPVCCreated      = "PersistentVolumeClaimCreated"
-	EvRPVCNotBound     = "PersistentVolumeClaimNotBound" // Warning
-	EvRSvcAddress      = "ServiceAddressAssigned"
-	EvRSvcNoAddress    = "NoServiceAddressAssigned" // Warning
+	EvRTransferStarted                     = "TransferStarted"
+	EvRTransferFailed                      = "TransferFailed" // Warning
+	EvRSnapCreated                         = "VolumeSnapshotCreated"
+	EvRSnapNotBound                        = "VolumeSnapshotNotBound" // Warning
+	EvRPVCCreated                          = "PersistentVolumeClaimCreated"
+	EvRPVCNotBound                         = "PersistentVolumeClaimNotBound" // Warning
+	EvRSvcAddress                          = "ServiceAddressAssigned"
+	EvRSvcNoAddress                        = "NoServiceAddressAssigned" // Warning
+	EvRSrcPVCWaitingForCopyTrigger         = "SrcPVCWaitingForCopyTrigger"
+	EvRSrcPVCTimeoutWaitingForCopyTrigger  = "SrcPVCTimeoutWaitingForCopyTrigger" // Warning
+	EvRSrcPVCCopyTriggerReceived           = "SrcPVCCopyTriggerReceived"
+	EvRSrcPVCCopyUsingCopyTriggerCompleted = "SrcPVCCopyUsingCopyTriggerCompleted"
 )
 
 // ReplicationSource/ReplicationDestination Event "action" strings: Things the controller "does"
 const (
-	EvANone        = "" // No action
-	EvACreateMover = "CreateMover"
-	EvADeleteMover = "DeleteMover"
-	EvACreatePVC   = "CreatePersistentVolumeClaim"
-	EvACreateSnap  = "CreateVolumeSnapshot"
+	EvANone                          = "" // No action
+	EvACreateMover                   = "CreateMover"
+	EvADeleteMover                   = "DeleteMover"
+	EvACreatePVC                     = "CreatePersistentVolumeClaim"
+	EvACreateSnap                    = "CreateVolumeSnapshot"
+	EvACreateSrcCopyUsingCopyTrigger = "CreateSrcCopyUsingCopyTrigger"
 )
 
 // Volume Populator Event "reason" strings
