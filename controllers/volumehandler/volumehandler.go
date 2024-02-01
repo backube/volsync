@@ -407,11 +407,12 @@ func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,
 			utils.KindAndName(vh.client.Scheme(), clone))
 	}
 
-	//FIXME: do we need to wait until it binds?
-	// Clone is ready - update copy trigger if necessary
-	err = vh.updateCopyTriggerAfterCloneOrSnap(ctx, src)
-	if err != nil {
-		return clone, err
+	if clone.Status.Phase == corev1.ClaimBound {
+		// Clone is ready as it's gone into ClaimBound - update copy trigger if necessary
+		err = vh.updateCopyTriggerAfterCloneOrSnap(ctx, src)
+		if err != nil {
+			return clone, err
+		}
 	}
 
 	return clone, err

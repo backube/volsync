@@ -18,7 +18,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package utils
 
 import (
-	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -30,7 +29,7 @@ const (
 	// that is using CopyMode: Snapshot or Clone will wait for the user to set a unique copy-trigger
 	// before proceeding to take the src snapshot/clone.
 	UseCopyTriggerAnnotation = "volsync.backube/use-copy-trigger"
-	SnapTriggerAnnotation    = "volsync.backube/copy-trigger"
+	CopyTriggerAnnotation    = "volsync.backube/copy-trigger"
 
 	// Annotations for status set by VolSync on a src pvc if UseCopyTriggerAnnotation is set to "true"
 	LatestCopyTriggerAnnotation             = "volsync.backube/latest-copy-trigger"
@@ -39,30 +38,20 @@ const (
 
 	// VolSync latest-copy-status annotation values
 	LatestCopyStatusValueWaitingForTrigger = "WaitingForTrigger"
-	LatestCopyStatusValueCreating          = "InProgress"
+	LatestCopyStatusValueInProgress        = "InProgress"
 	LatestCopyStatusValueCompleted         = "Completed"
 
 	CopyTriggerWaitTimeout time.Duration = 10 * time.Minute
 )
 
 func PVCUsesCopyTrigger(pvc *corev1.PersistentVolumeClaim) bool {
-	copyTriggerAnnotationValue, ok := pvc.Annotations[UseCopyTriggerAnnotation]
-	if !ok {
-		return false
-	}
-
-	// If the annotation exists and is not false/FALSE/no/NO then we assume
-	// it uses the copy trigger
-	if strings.EqualFold(copyTriggerAnnotationValue, "false") ||
-		strings.EqualFold(copyTriggerAnnotationValue, "no") {
-		return false
-	}
-
-	return true
+	// If the annotation exists on the PVC (with any value) then we assume copy-trigger coordination is desired
+	_, ok := pvc.Annotations[UseCopyTriggerAnnotation]
+	return ok
 }
 
 func GetCopyTriggerValue(pvc *corev1.PersistentVolumeClaim) string {
-	return pvc.Annotations[SnapTriggerAnnotation]
+	return pvc.Annotations[CopyTriggerAnnotation]
 }
 
 func GetLatestCopyTriggerValue(pvc *corev1.PersistentVolumeClaim) string {
@@ -92,7 +81,7 @@ func SetLatestCopyStatusWaitingForTrigger(pvc *corev1.PersistentVolumeClaim) boo
 
 // Returns true if the pvc was updated
 func SetLatestCopyStatusInProgress(pvc *corev1.PersistentVolumeClaim) bool {
-	updated := setAnnotation(pvc, LatestCopyStatusAnnotation, LatestCopyStatusValueCreating)
+	updated := setAnnotation(pvc, LatestCopyStatusAnnotation, LatestCopyStatusValueInProgress)
 	// Make sure waiting since annotation is removed
 	return unsetAnnotation(pvc, LatestCopyTriggerWaitingSinceAnnotation) || updated
 }
