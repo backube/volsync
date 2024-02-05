@@ -22,6 +22,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
 
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
 	. "github.com/onsi/ginkgo/v2"
@@ -434,6 +435,234 @@ var _ = Describe("Rclone as a source", func() {
 					// It will be cleaned up at the end of the transfer
 					Expect(dataPVC.Labels).To(HaveKey("volsync.backube/cleanup"))
 				})
+
+				When("the use-copy-trigger annotation exists on the source (data) PVC", func() {
+					BeforeEach(func() {
+						sPVC.Annotations = map[string]string{
+							volsyncv1alpha1.UseCopyTriggerAnnotation: "yes", // Any value is ok
+						}
+						Expect(k8sClient.Update(ctx, sPVC)).To(Succeed())
+					})
+					JustBeforeEach(func() {
+						dataPVC, err := mover.ensureSourcePVC(ctx)
+						Expect(err).NotTo(HaveOccurred())
+						// VolSync should not create the clone yet (Waiting on user-supplied copy-trigger)
+						Expect(dataPVC).To(BeNil())
+
+						// re-load sPVC to see that volsync has added latest-copy-trigger annotation
+						// k8sClient is direct in this test, so no need for Eventually()
+						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sPVC), sPVC)).To(Succeed())
+						latestCopyStatus, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyStatusAnnotation]
+						Expect(ok).To(BeTrue())
+						Expect(latestCopyStatus).To(Equal(volsyncv1alpha1.LatestCopyStatusValueWaitingForTrigger))
+
+						// Also should have a waiting-since timestamp annotation
+						waitingSince, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerWaitingSinceAnnotation]
+						Expect(ok).To(BeTrue())
+
+						waitingSinceTime, err := time.Parse(time.RFC3339, waitingSince)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(waitingSinceTime.Before(time.Now().Add(1 * time.Second)))
+					})
+					It("Should wait before creating the clone and set latest-copy-status to WaitingForTrigger", func() {
+						// Tests are in JustBeforeEach above
+						// Let's also confirm that no latest-status-trigger has been set yet
+						_, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
+						Expect(ok).To(BeFalse())
+					})
+					When("The trigger is not updated in > 10 mins", func() {
+						JustBeforeEach(func() {
+							// Fake out long waiting time by manually setting the latest-copy-waiting-since to an old value
+							oldTime := time.Now().Add(-15 * time.Minute) // Subtract 15 mins
+							sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerWaitingSinceAnnotation] = oldTime.UTC().Format(time.RFC3339)
+							Expect(k8sClient.Update(ctx, sPVC)).To(Succeed())
+
+							// Now run another ensureSourcePVC/reconcile
+							dataPVC, err := mover.ensureSourcePVC(ctx)
+							Expect(err).NotTo(HaveOccurred())
+							Expect(dataPVC).To(BeNil())
+							// Err is not returned
+							// However the latestMoverStatus should be updated to show the error
+						})
+						It("should update latestMoverStatus with an error", func() {
+							Expect(mover.latestMoverStatus).NotTo(BeNil())
+							Expect(mover.latestMoverStatus.Result).To(Equal(volsyncv1alpha1.MoverResultFailed))
+							Expect(mover.latestMoverStatus.Logs).To(ContainSubstring("Timed out waiting for copy-trigger"))
+						})
+					})
+					When("The user triggers the clone to proceed via copy-trigger annotation", func() {
+						var dataPVC *corev1.PersistentVolumeClaim
+						JustBeforeEach(func() {
+							// set a copy-trigger annotation
+							sPVC.Annotations[volsyncv1alpha1.CopyTriggerAnnotation] = "first-t"
+							Expect(k8sClient.Update(ctx, sPVC)).To(Succeed())
+
+							// Now run another ensureSourcePVC/reconcile
+							var err error
+							dataPVC, err = mover.ensureSourcePVC(ctx)
+							Expect(err).NotTo(HaveOccurred())
+							Expect(dataPVC).NotTo(BeNil()) // Should have proceeded to create the clone PVC
+
+							Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sPVC), sPVC)).To(Succeed())
+							latestCopyStatus, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyStatusAnnotation]
+							Expect(ok).To(BeTrue())
+							Expect(latestCopyStatus).To(Equal(volsyncv1alpha1.LatestCopyStatusValueInProgress))
+
+							// waiting-since timestamp annotation should now be removed
+							_, ok = sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerWaitingSinceAnnotation]
+							Expect(ok).To(BeFalse())
+						})
+						It("Should proceed with the clone and update latest-copy-status accordingly", func() {
+							// Tests are in JustBeforeEach above
+							// Let's also confirm that no latest-status-trigger has been set yet
+							// since the clone has not gone into ClaimBound state
+							_, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
+							Expect(ok).To(BeFalse())
+						})
+						When("The clone goes to ClaimBound", func() {
+							JustBeforeEach(func() {
+								// Manually update clone to fake ClaimBound status
+								dataPVC.Status.Phase = corev1.ClaimBound
+								Expect(k8sClient.Status().Update(ctx, dataPVC)).To(Succeed())
+
+								// Now run another ensureSourcePVC/reconcile
+								var err error
+								dataPVC, err = mover.ensureSourcePVC(ctx)
+								Expect(err).NotTo(HaveOccurred())
+								Expect(dataPVC).NotTo(BeNil())
+
+								// re-load sourcePVC to see annotation updates
+								Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sPVC), sPVC)).To(Succeed())
+
+								latestCopyStatus, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyStatusAnnotation]
+								Expect(ok).To(BeTrue())
+								Expect(latestCopyStatus).To(Equal(volsyncv1alpha1.LatestCopyStatusValueCompleted))
+
+								latestCopyTrigger, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
+								Expect(ok).To(BeTrue())
+								Expect(latestCopyTrigger).To(Equal("first-t"))
+							})
+							It("Should update the latest-copy-trigger and status annotations", func() {
+								// See checks in JustBeforeEach
+								latestCopyTrigger := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
+								userCopyTrigger := sPVC.Annotations[volsyncv1alpha1.CopyTriggerAnnotation]
+								Expect(latestCopyTrigger).To(Equal(userCopyTrigger))
+							})
+							When("Another clone needs to be created (another sync)", func() {
+								JustBeforeEach(func() {
+									// remove the clone to simulate sync done, need to create for
+									// the next sync
+									Expect(k8sClient.Delete(ctx, dataPVC)).To(Succeed())
+
+									// Make sure the PVC is actually deleted or we will not be
+									// able to simulate a new sync (new clone required)
+									dataPVCReloaded := &corev1.PersistentVolumeClaim{}
+									err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dataPVC), dataPVCReloaded)
+									if err != nil {
+										Expect(kerrors.IsNotFound(err)).To(BeTrue())
+									} else {
+										// clone pvc still exists - clear out finalizers to let it delete
+										dataPVCReloaded.Finalizers = []string{}
+										Expect(k8sClient.Update(ctx, dataPVCReloaded)).To(Succeed())
+									}
+
+									Eventually(func() bool {
+										// Re-load until it is not found anymore
+										err = k8sClient.Get(ctx, client.ObjectKeyFromObject(dataPVCReloaded), dataPVCReloaded)
+										return err != nil && kerrors.IsNotFound(err)
+									}, timeout, interval).Should(BeTrue())
+
+									// Now run another ensureSourcePVC/reconcile
+									dataPVCClone2, err := mover.ensureSourcePVC(ctx)
+									Expect(err).NotTo(HaveOccurred())
+									Expect(dataPVCClone2).To(BeNil())
+
+									// re-load sPVC to see that volsync has added latest-copy-trigger annotation
+									// k8sClient is direct in this test, so no need for Eventually()
+									Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sPVC), sPVC)).To(Succeed())
+									latestCopyStatus, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyStatusAnnotation]
+									Expect(ok).To(BeTrue())
+									Expect(latestCopyStatus).To(Equal(volsyncv1alpha1.LatestCopyStatusValueWaitingForTrigger))
+
+									// Also should have a waiting-since timestamp annotation
+									waitingSince, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerWaitingSinceAnnotation]
+									Expect(ok).To(BeTrue())
+
+									waitingSinceTime, err := time.Parse(time.RFC3339, waitingSince)
+									Expect(err).NotTo(HaveOccurred())
+									Expect(waitingSinceTime.Before(time.Now().Add(1 * time.Second)))
+								})
+								It("Should again wait for the copy-trigger to be updated to a new value", func() {
+									// the latestcopytrigger should still be from the previous sync
+									latestCopyTrigger, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
+									Expect(ok).To(BeTrue())
+									Expect(latestCopyTrigger).To(Equal("first-t"))
+								})
+								When("The user updates the copy-trigger to a new value", func() {
+									var dataPVCClone2 *corev1.PersistentVolumeClaim
+
+									JustBeforeEach(func() {
+										// update the copy-trigger annotation
+										sPVC.Annotations[volsyncv1alpha1.CopyTriggerAnnotation] = "second-t"
+										Expect(k8sClient.Update(ctx, sPVC)).To(Succeed())
+
+										// Now run another ensureSourcePVC/reconcile
+										var err error
+										dataPVCClone2, err = mover.ensureSourcePVC(ctx)
+										Expect(err).NotTo(HaveOccurred())
+										Expect(dataPVCClone2).NotTo(BeNil()) // Should have proceeded to create the clone PVC
+
+										Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sPVC), sPVC)).To(Succeed())
+										latestCopyStatus, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyStatusAnnotation]
+										Expect(ok).To(BeTrue())
+										Expect(latestCopyStatus).To(Equal(volsyncv1alpha1.LatestCopyStatusValueInProgress))
+
+										// waiting-since timestamp annotation should now be removed
+										_, ok = sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerWaitingSinceAnnotation]
+										Expect(ok).To(BeFalse())
+									})
+									It("Should proceed with the clone and update latest-copy-status accordingly", func() {
+										// Tests are in JustBeforeEach above
+										// Let's also confirm that latest-status-trigger still has the previous trigger
+										latestCopyTrigger, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
+										Expect(ok).To(BeTrue())
+										Expect(latestCopyTrigger).To(Equal("first-t"))
+									})
+									When("The clone goes to ClaimBound", func() {
+										JustBeforeEach(func() {
+											// Manually update clone to fake ClaimBound status
+											dataPVCClone2.Status.Phase = corev1.ClaimBound
+											Expect(k8sClient.Status().Update(ctx, dataPVCClone2)).To(Succeed())
+
+											// Now run another ensureSourcePVC/reconcile
+											var err error
+											dataPVCClone2, err = mover.ensureSourcePVC(ctx)
+											Expect(err).NotTo(HaveOccurred())
+											Expect(dataPVCClone2).NotTo(BeNil())
+
+											// re-load sourcePVC to see annotation updates
+											Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sPVC), sPVC)).To(Succeed())
+
+											latestCopyStatus, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyStatusAnnotation]
+											Expect(ok).To(BeTrue())
+											Expect(latestCopyStatus).To(Equal(volsyncv1alpha1.LatestCopyStatusValueCompleted))
+
+											latestCopyTrigger, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
+											Expect(ok).To(BeTrue())
+											Expect(latestCopyTrigger).To(Equal("second-t"))
+										})
+										It("Should update the latest-copy-trigger and status annotations", func() {
+											// See checks in JustBeforeEach
+											latestCopyTrigger := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
+											userCopyTrigger := sPVC.Annotations[volsyncv1alpha1.CopyTriggerAnnotation]
+											Expect(latestCopyTrigger).To(Equal(userCopyTrigger))
+										})
+									})
+								})
+							})
+						})
+					})
+				})
 			})
 			When("CopyMethod is Snapshot", func() {
 				BeforeEach(func() {
@@ -470,6 +699,272 @@ var _ = Describe("Rclone as a source", func() {
 					// It should have datasource which is a snapshot
 					Expect(dataPVC.Spec.DataSource.Name).To(Equal(snapshot.Name))
 					Expect(dataPVC.Spec.DataSource.Kind).To(Equal("VolumeSnapshot"))
+				})
+
+				//nolint:dupl
+				When("the use-copy-trigger annotation exists on the source (data) PVC", func() {
+					BeforeEach(func() {
+						sPVC.Annotations = map[string]string{
+							volsyncv1alpha1.UseCopyTriggerAnnotation: "", // Any value is ok
+						}
+						Expect(k8sClient.Update(ctx, sPVC)).To(Succeed())
+					})
+					JustBeforeEach(func() {
+						dataPVC, err := mover.ensureSourcePVC(ctx)
+						Expect(err).NotTo(HaveOccurred())
+						// VolSync should not create the snap or pvc-from-snap yet (Waiting on user-supplied copy-trigger)
+						Expect(dataPVC).To(BeNil())
+
+						snapshots := &snapv1.VolumeSnapshotList{}
+						Expect(k8sClient.List(ctx, snapshots, client.InNamespace(rs.Namespace))).To(Succeed())
+						Expect(len(snapshots.Items)).To(Equal(0))
+
+						// re-load sPVC to see that volsync has added latest-copy-trigger annotation
+						// k8sClient is direct in this test, so no need for Eventually()
+						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sPVC), sPVC)).To(Succeed())
+						latestCopyStatus, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyStatusAnnotation]
+						Expect(ok).To(BeTrue())
+						Expect(latestCopyStatus).To(Equal(volsyncv1alpha1.LatestCopyStatusValueWaitingForTrigger))
+
+						// Also should have a waiting-since timestamp annotation
+						waitingSince, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerWaitingSinceAnnotation]
+						Expect(ok).To(BeTrue())
+
+						waitingSinceTime, err := time.Parse(time.RFC3339, waitingSince)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(waitingSinceTime.Before(time.Now().Add(1 * time.Second)))
+					})
+					It("Should wait before creating the snapshot and set latest-copy-status to WaitingForTrigger", func() {
+						// Tests are in JustBeforeEach above
+						// Let's also confirm that no latest-status-trigger has been set yet
+						_, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
+						Expect(ok).To(BeFalse())
+					})
+					When("The trigger is not updated in > 10 mins", func() {
+						JustBeforeEach(func() {
+							// Fake out long waiting time by manually setting the latest-copy-waiting-since to an old value
+							oldTime := time.Now().Add(-15 * time.Minute) // Subtract 15 mins
+							sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerWaitingSinceAnnotation] = oldTime.UTC().Format(time.RFC3339)
+							Expect(k8sClient.Update(ctx, sPVC)).To(Succeed())
+
+							// Now run another ensureSourcePVC/reconcile
+							dataPVC, err := mover.ensureSourcePVC(ctx)
+							Expect(err).NotTo(HaveOccurred())
+							Expect(dataPVC).To(BeNil())
+							// Err is not returned
+							// However the latestMoverStatus should be updated to show the error
+						})
+						It("should update latestMoverStatus with an error", func() {
+							Expect(mover.latestMoverStatus).NotTo(BeNil())
+							Expect(mover.latestMoverStatus.Result).To(Equal(volsyncv1alpha1.MoverResultFailed))
+							Expect(mover.latestMoverStatus.Logs).To(ContainSubstring("Timed out waiting for copy-trigger"))
+						})
+					})
+					When("The user triggers the snapshot to proceed via copy-trigger annotation", func() {
+						var firstSyncDataPVC *corev1.PersistentVolumeClaim
+						var firstSyncSnapshot *snapv1.VolumeSnapshot
+						JustBeforeEach(func() {
+							// set a copy-trigger annotation
+							sPVC.Annotations[volsyncv1alpha1.CopyTriggerAnnotation] = "first-t"
+							Expect(k8sClient.Update(ctx, sPVC)).To(Succeed())
+
+							// Now run another ensureSourcePVC/reconcile
+							var err error
+							firstSyncDataPVC, err = mover.ensureSourcePVC(ctx)
+							Expect(err).NotTo(HaveOccurred())
+							Expect(firstSyncDataPVC).To(BeNil()) // Will not create the PVC as snapshot isn't ready yet
+
+							// Snapshot however should have been created
+							snapshots := &snapv1.VolumeSnapshotList{}
+							Expect(k8sClient.List(ctx, snapshots, client.InNamespace(rs.Namespace))).To(Succeed())
+							Expect(len(snapshots.Items)).To(Equal(1))
+
+							firstSyncSnapshot = &snapshots.Items[0]
+
+							Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sPVC), sPVC)).To(Succeed())
+							latestCopyStatus, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyStatusAnnotation]
+							Expect(ok).To(BeTrue())
+							Expect(latestCopyStatus).To(Equal(volsyncv1alpha1.LatestCopyStatusValueInProgress))
+
+							// waiting-since timestamp annotation should now be removed
+							_, ok = sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerWaitingSinceAnnotation]
+							Expect(ok).To(BeFalse())
+						})
+						It("Should proceed with the snapshot and update latest-copy-status accordingly", func() {
+							// Tests are in JustBeforeEach above
+							// Let's also confirm that no latest-status-trigger has been set yet
+							// since the clone has not gone into ClaimBound state
+							_, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
+							Expect(ok).To(BeFalse())
+						})
+						When("The snapshot gets boundVolumeSnapshotContentName (Snapshot is ready)", func() {
+							JustBeforeEach(func() {
+								// update the volumesnapshot to set BoundVolumeSnapshotContentName
+								foo := "dummysourcesnapshot"
+								firstSyncSnapshot.Status = &snapv1.VolumeSnapshotStatus{
+									BoundVolumeSnapshotContentName: &foo,
+								}
+								Expect(k8sClient.Status().Update(ctx, firstSyncSnapshot)).To(Succeed())
+
+								// Now run another ensureSourcePVC/reconcile
+								var err error
+								firstSyncDataPVC, err = mover.ensureSourcePVC(ctx)
+								Expect(err).NotTo(HaveOccurred())
+								Expect(firstSyncDataPVC).NotTo(BeNil())
+
+								// re-load sourcePVC to see annotation updates
+								Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sPVC), sPVC)).To(Succeed())
+
+								latestCopyStatus, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyStatusAnnotation]
+								Expect(ok).To(BeTrue())
+								Expect(latestCopyStatus).To(Equal(volsyncv1alpha1.LatestCopyStatusValueCompleted))
+
+								latestCopyTrigger, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
+								Expect(ok).To(BeTrue())
+								Expect(latestCopyTrigger).To(Equal("first-t"))
+							})
+							It("Should update the latest-copy-trigger and status annotations", func() {
+								// See checks in JustBeforeEach
+								latestCopyTrigger := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
+								userCopyTrigger := sPVC.Annotations[volsyncv1alpha1.CopyTriggerAnnotation]
+								Expect(latestCopyTrigger).To(Equal(userCopyTrigger))
+							})
+							When("Another snapshot needs to be created (another sync)", func() {
+								JustBeforeEach(func() {
+									// remove the pvc-from-snap and snapshot to simulate sync done, need to create for
+									// the next sync
+									Expect(k8sClient.Delete(ctx, firstSyncDataPVC)).To(Succeed())
+
+									// Make sure the PVC is actually deleted or we will not be
+									// able to simulate a new sync (new clone required)
+									dataPVCReloaded := &corev1.PersistentVolumeClaim{}
+									err := k8sClient.Get(ctx, client.ObjectKeyFromObject(firstSyncDataPVC), dataPVCReloaded)
+									if err != nil {
+										Expect(kerrors.IsNotFound(err)).To(BeTrue())
+									} else {
+										// pvc from snap still exists - clear out finalizers to let it delete
+										dataPVCReloaded.Finalizers = []string{}
+										Expect(k8sClient.Update(ctx, dataPVCReloaded)).To(Succeed())
+									}
+									Eventually(func() bool {
+										// Re-load until it is not found anymore
+										err = k8sClient.Get(ctx, client.ObjectKeyFromObject(dataPVCReloaded), dataPVCReloaded)
+										return err != nil && kerrors.IsNotFound(err)
+									}, timeout, interval).Should(BeTrue())
+
+									// Now remove the snapshot too
+									Expect(k8sClient.Delete(ctx, firstSyncSnapshot)).To(Succeed())
+									snapshotReloaded := &snapv1.VolumeSnapshot{}
+									err = k8sClient.Get(ctx, client.ObjectKeyFromObject(firstSyncSnapshot), snapshotReloaded)
+									Expect(err).To(HaveOccurred())
+									Expect(kerrors.IsNotFound(err))
+
+									// Now run another ensureSourcePVC/reconcile
+									dataPVCSnap2, err := mover.ensureSourcePVC(ctx)
+									Expect(err).NotTo(HaveOccurred())
+									Expect(dataPVCSnap2).To(BeNil())
+
+									// No new snap should be created yet since we're waiting on the copy-trigger
+									snapshots := &snapv1.VolumeSnapshotList{}
+									Expect(k8sClient.List(ctx, snapshots, client.InNamespace(rs.Namespace))).To(Succeed())
+									Expect(len(snapshots.Items)).To(Equal(0))
+
+									// re-load sPVC to see that volsync has added latest-copy-trigger annotation
+									// k8sClient is direct in this test, so no need for Eventually()
+									Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sPVC), sPVC)).To(Succeed())
+									latestCopyStatus, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyStatusAnnotation]
+									Expect(ok).To(BeTrue())
+									Expect(latestCopyStatus).To(Equal(volsyncv1alpha1.LatestCopyStatusValueWaitingForTrigger))
+
+									// Also should have a waiting-since timestamp annotation
+									waitingSince, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerWaitingSinceAnnotation]
+									Expect(ok).To(BeTrue())
+
+									waitingSinceTime, err := time.Parse(time.RFC3339, waitingSince)
+									Expect(err).NotTo(HaveOccurred())
+									Expect(waitingSinceTime.Before(time.Now().Add(1 * time.Second)))
+								})
+								It("Should again wait for the copy-trigger to be updated to a new value", func() {
+									// the latestcopytrigger should still be from the previous sync
+									latestCopyTrigger, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
+									Expect(ok).To(BeTrue())
+									Expect(latestCopyTrigger).To(Equal("first-t"))
+								})
+								When("The user updates the copy-trigger to a new value", func() {
+									var secondDataPVC *corev1.PersistentVolumeClaim
+									var secondSyncSnapshot *snapv1.VolumeSnapshot
+
+									JustBeforeEach(func() {
+										// update the copy-trigger annotation
+										sPVC.Annotations[volsyncv1alpha1.CopyTriggerAnnotation] = "second-t"
+										Expect(k8sClient.Update(ctx, sPVC)).To(Succeed())
+
+										// Now run another ensureSourcePVC/reconcile
+										var err error
+										secondDataPVC, err = mover.ensureSourcePVC(ctx)
+										Expect(err).NotTo(HaveOccurred())
+										Expect(secondDataPVC).To(BeNil()) // No PVC should exists yet since snap is not ready
+
+										// Snapshot however should have been created
+										snapshots := &snapv1.VolumeSnapshotList{}
+										Expect(k8sClient.List(ctx, snapshots, client.InNamespace(rs.Namespace))).To(Succeed())
+										Expect(len(snapshots.Items)).To(Equal(1))
+
+										secondSyncSnapshot = &snapshots.Items[0]
+
+										Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sPVC), sPVC)).To(Succeed())
+										latestCopyStatus, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyStatusAnnotation]
+										Expect(ok).To(BeTrue())
+										Expect(latestCopyStatus).To(Equal(volsyncv1alpha1.LatestCopyStatusValueInProgress))
+
+										// waiting-since timestamp annotation should now be removed
+										_, ok = sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerWaitingSinceAnnotation]
+										Expect(ok).To(BeFalse())
+									})
+									It("Should proceed with the snap and update latest-copy-status accordingly", func() {
+										// Tests are in JustBeforeEach above
+										// Let's also confirm that latest-status-trigger still has the previous trigger
+										latestCopyTrigger, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
+										Expect(ok).To(BeTrue())
+										Expect(latestCopyTrigger).To(Equal("first-t"))
+									})
+									When("The snapshot gets boundVolumeSnapshotContentName (Snapshot is ready)", func() {
+										JustBeforeEach(func() {
+											// update the volumesnapshot to set BoundVolumeSnapshotContentName
+											foo := "dummysourcesnapshot2"
+											secondSyncSnapshot.Status = &snapv1.VolumeSnapshotStatus{
+												BoundVolumeSnapshotContentName: &foo,
+											}
+											Expect(k8sClient.Status().Update(ctx, secondSyncSnapshot)).To(Succeed())
+
+											// Now run another ensureSourcePVC/reconcile
+											var err error
+											secondDataPVC, err = mover.ensureSourcePVC(ctx)
+											Expect(err).NotTo(HaveOccurred())
+											Expect(secondDataPVC).NotTo(BeNil())
+
+											// re-load sourcePVC to see annotation updates
+											Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sPVC), sPVC)).To(Succeed())
+
+											latestCopyStatus, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyStatusAnnotation]
+											Expect(ok).To(BeTrue())
+											Expect(latestCopyStatus).To(Equal(volsyncv1alpha1.LatestCopyStatusValueCompleted))
+
+											latestCopyTrigger, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
+											Expect(ok).To(BeTrue())
+											Expect(latestCopyTrigger).To(Equal("second-t"))
+										})
+										It("Should update the latest-copy-trigger and status annotations", func() {
+											// See checks in JustBeforeEach
+											latestCopyTrigger := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
+											userCopyTrigger := sPVC.Annotations[volsyncv1alpha1.CopyTriggerAnnotation]
+											Expect(latestCopyTrigger).To(Equal(userCopyTrigger))
+										})
+									})
+								})
+							})
+						})
+					})
 				})
 			})
 		})

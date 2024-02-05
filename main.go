@@ -224,6 +224,11 @@ func main() {
 
 	initPodLogsClient(cfg)
 
+	// Index fields that are required for the ReplicationSource controller
+	if err := controllers.IndexFieldsForReplicationSource(context.Background(), mgr.GetFieldIndexer()); err != nil {
+		setupLog.Error(err, "unable to index fields for controller", "controller", "ReplicationSource")
+		os.Exit(1)
+	}
 	if err = (&controllers.ReplicationSourceReconciler{
 		Client:        mgr.GetClient(),
 		Log:           ctrl.Log.WithName("controllers").WithName("ReplicationSource"),

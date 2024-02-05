@@ -34,6 +34,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"time"
+
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -64,6 +66,29 @@ const (
 	SynchronizingReasonManual  string = "WaitingForManual"
 	SynchronizingReasonCleanup string = "CleaningUp"
 	SynchronizingReasonError   string = "Error"
+)
+
+const (
+	// Annotation optionally set on src pvc by user.  When set, a volsync source replication
+	// that is using CopyMode: Snapshot or Clone will wait for the user to set a unique copy-trigger
+	// before proceeding to take the src snapshot/clone.
+	UseCopyTriggerAnnotation = "volsync.backube/use-copy-trigger"
+	CopyTriggerAnnotation    = "volsync.backube/copy-trigger"
+
+	// Annotations for status set by VolSync on a src pvc if UseCopyTriggerAnnotation is set to "true"
+	LatestCopyTriggerAnnotation             = "volsync.backube/latest-copy-trigger"
+	LatestCopyStatusAnnotation              = "volsync.backube/latest-copy-status"
+	LatestCopyTriggerWaitingSinceAnnotation = "volsync.backube/latest-copy-trigger-waiting-since"
+
+	// VolSync latest-copy-status annotation values
+	LatestCopyStatusValueWaitingForTrigger = "WaitingForTrigger"
+	LatestCopyStatusValueInProgress        = "InProgress"
+	LatestCopyStatusValueCompleted         = "Completed"
+
+	// Timeout before we start updating the latestMoverStatus with an error
+	// (After timeout we still continue to sync and wait for the copy-trigger to be
+	//  set/updated)
+	CopyTriggerWaitTimeout time.Duration = 10 * time.Minute
 )
 
 // SyncthingPeer Defines the necessary information needed by VolSync

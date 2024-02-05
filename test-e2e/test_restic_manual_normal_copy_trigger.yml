@@ -1,0 +1,288 @@
+---
+- hosts: localhost
+  tags:
+    - e2e
+    - restic
+    - unprivileged
+    - copy-trigger
+  vars:
+    restic_secret_name: restic-secret
+  tasks:
+    - include_role:
+        name: create_namespace
+
+    - include_role:
+        name: gather_cluster_info
+
+    # We're running everything as a normal user
+    - name: Define podSecurityContext
+      ansible.builtin.set_fact:
+        podSecurityContext:
+          fsGroup: 5678
+          runAsGroup: 5678
+          runAsNonRoot: true
+          runAsUser: 1234
+          seccompProfile:
+            type: RuntimeDefault
+      when: not cluster_info.is_openshift
+
+    - include_role:
+        name: create_restic_secret
+      vars:
+        minio_namespace: minio
+
+    - name: Create source PVC
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          kind: PersistentVolumeClaim
+          apiVersion: v1
+          metadata:
+            name: data-source
+            namespace: "{{ namespace }}"
+            annotations:
+              # Use the copy-trigger PVC annotation (for coordination)
+              volsync.backube/use-copy-trigger: ""
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 1Gi
+
+    - name: Write data into the source PVC
+      include_role:
+        name: write_to_pvc
+      vars:
+        data: 'data'
+        path: '/datafile'
+        pvc_name: 'data-source'
+
+    - name: Backup data from source volume with manual trigger (w/ mSC)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationSource
+          metadata:
+            name: source
+            namespace: "{{ namespace }}"
+          spec:
+            sourcePVC: data-source
+            trigger:
+              manual: once
+            restic:
+              pruneIntervalDays: 1
+              repository: "{{ restic_secret_name }}"
+              retain:
+                hourly: 3
+                daily: 2
+                monthly: 1
+              copyMethod: Snapshot
+              cacheCapacity: 1Gi
+              moverSecurityContext: "{{ podSecurityContext }}"
+      when: podSecurityContext is defined
+
+    - name: Backup data from source volume with manual trigger (w/o mSC)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationSource
+          metadata:
+            name: source
+            namespace: "{{ namespace }}"
+          spec:
+            sourcePVC: data-source
+            trigger:
+              manual: once
+            restic:
+              pruneIntervalDays: 1
+              repository: "{{ restic_secret_name }}"
+              retain:
+                hourly: 3
+                daily: 2
+                monthly: 1
+              copyMethod: Snapshot
+              cacheCapacity: 1Gi
+      when: podSecurityContext is not defined
+
+    # At this point VolSync should be waiting on a copy-trigger annotation
+    # before creating the source snapshot
+    - name: Check annotations on source PVC (WaitingForTrigger)
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: PersistentVolumeClaim
+        name: data-source
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].metadata.annotations is defined and
+        res.resources[0].metadata.annotations['volsync.backube/latest-copy-status'] is defined and
+        res.resources[0].metadata.annotations['volsync.backube/latest-copy-status'] == "WaitingForTrigger" and
+        res.resources[0].metadata.annotations['volsync.backube/latest-copy-trigger'] is not defined
+      delay: 1
+      retries: 60
+
+    - name: Pause to make sure VolSync is waiting on the copy-trigger
+      ansible.builtin.pause:
+        seconds: 30
+
+    - name: Confirm no source snapshot is created yet (should be no snaps at all at this point)
+      kubernetes.core.k8s_info:
+        api_version: snapshot.storage.k8s.io/v1
+        kind: VolumeSnapshot
+        namespace: "{{ namespace }}"
+      register: snapshots
+
+    - name: Check no snapshots
+      ansible.builtin.fail:
+        msg: snapshot should not exist due to waiting on copy-trigger
+      when:
+        snapshots.resources | length > 0
+
+    - name: update copy-trigger to continue
+      kubernetes.core.k8s:
+        state: patched
+        kind: PersistentVolumeClaim
+        api_version: v1
+        name: data-source
+        namespace: "{{ namespace }}"
+        definition:
+          metadata:
+            annotations:
+              # set a copy trigger
+              volsync.backube/copy-trigger: "first"
+
+    - name: Check annotations on source PVC (Complete)
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: PersistentVolumeClaim
+        name: data-source
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].metadata.annotations is defined and
+        res.resources[0].metadata.annotations['volsync.backube/latest-copy-status'] is defined and
+        res.resources[0].metadata.annotations['volsync.backube/latest-copy-status'] == "Completed" and
+        res.resources[0].metadata.annotations['volsync.backube/latest-copy-trigger'] is defined and
+        res.resources[0].metadata.annotations['volsync.backube/latest-copy-trigger'] == "first"
+      delay: 1
+      retries: 600
+
+    - name: Wait for sync to MinIO to complete
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationSource
+        name: source
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastManualSync is defined and
+        res.resources[0].status.lastManualSync=="once" and
+        res.resources[0].status.latestMoverStatus is defined and
+        res.resources[0].status.latestMoverStatus.result == "Successful" and
+        res.resources[0].status.latestMoverStatus.logs is search("processed.*files") and
+        res.resources[0].status.latestMoverStatus.logs is search("snapshot.*saved") and
+        res.resources[0].status.latestMoverStatus.logs is search("Restic completed in.*")
+      delay: 1
+      retries: 900
+
+    - name: Create dest PVC (restore volume)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          kind: PersistentVolumeClaim
+          apiVersion: v1
+          metadata:
+            name: data-dest
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 1Gi
+
+    # Run affinity pod attached to both pvcs to make sure they end up in the
+    # same availability zone so they can be mounted by a single pod later
+    # when running compare-pvcs
+    - name: Run pvc affinity pod
+      include_role:
+        name: pvc_affinity_pod
+      vars:
+        pvc_names:
+          - data-source
+          - data-dest
+
+    - name: Restore data to destination (w/ mSC)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationDestination
+          metadata:
+            name: restore
+            namespace: "{{ namespace }}"
+          spec:
+            trigger:
+              manual: restore-once
+            restic:
+              repository: "{{ restic_secret_name }}"
+              destinationPVC: data-dest
+              copyMethod: Direct
+              cacheCapacity: 1Gi
+              moverSecurityContext: "{{ podSecurityContext }}"
+      when: podSecurityContext is defined
+
+    - name: Restore data to destination (w/o mSC)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationDestination
+          metadata:
+            name: restore
+            namespace: "{{ namespace }}"
+          spec:
+            trigger:
+              manual: restore-once
+            restic:
+              repository: "{{ restic_secret_name }}"
+              destinationPVC: data-dest
+              copyMethod: Direct
+              cacheCapacity: 1Gi
+      when: podSecurityContext is not defined
+
+    - name: Wait for restore to complete
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationDestination
+        name: restore
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastManualSync is defined and
+        res.resources[0].status.lastManualSync=="restore-once" and
+        res.resources[0].status.latestMoverStatus is defined and
+        res.resources[0].status.latestMoverStatus.result == "Successful" and
+        res.resources[0].status.latestMoverStatus.logs is search("restoring.*") and
+        res.resources[0].status.latestMoverStatus.logs is search("Restic completed in.*")
+      delay: 1
+      retries: 300
+
+    - name: Shutdown pvc affinity pod
+      include_role:
+        name: pvc_affinity_pod
+        tasks_from: "delete"
+
+    - name: Verify contents of PVC
+      include_role:
+        name: compare_pvc_data
+      vars:
+        pvc1_name: data-source
+        pvc2_name: data-dest
