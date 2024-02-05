@@ -542,14 +542,12 @@ func (vh *VolumeHandler) waitForCopyTriggerBeforeCloneOrSnap(ctx context.Context
 				return wait, err
 			}
 		}
-		if waitingSinceTime.Add(utils.CopyTriggerWaitTimeout).Before(time.Now()) {
-			copyTriggerTimeoutErr := &volsyncerrors.CopyTriggerTimeoutError{
-				SourcePVC: srcPVC.GetName(),
-			}
-			logger.Error(copyTriggerTimeoutErr, fmt.Sprintf("Timed out after %s", utils.CopyTriggerWaitTimeout.String()))
+		if waitingSinceTime.Add(volsyncv1alpha1.CopyTriggerWaitTimeout).Before(time.Now()) {
+			logger.Info(
+				fmt.Sprintf("Warning, still waiting on copy-trigger after %s", volsyncv1alpha1.CopyTriggerWaitTimeout.String()))
 			vh.eventRecorder.Eventf(vh.owner, srcPVC, corev1.EventTypeWarning,
 				volsyncv1alpha1.EvRSrcPVCTimeoutWaitingForCopyTrigger, volsyncv1alpha1.EvACreateSrcCopyUsingCopyTrigger,
-				"Timed out waiting on copy trigger on src PVC %s before creating snapshot or clone",
+				"waiting on copy trigger on src PVC %s before creating snapshot or clone; check PVC annotations",
 				utils.KindAndName(vh.client.Scheme(), srcPVC))
 			return wait, &volsyncerrors.CopyTriggerTimeoutError{
 				SourcePVC: srcPVC.GetName(),

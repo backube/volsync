@@ -335,7 +335,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 				When("the use-copy-trigger annotation exists on the source (data) PVC", func() {
 					BeforeEach(func() {
 						sPVC.Annotations = map[string]string{
-							utils.UseCopyTriggerAnnotation: "yes", // Any value is ok
+							volsyncv1alpha1.UseCopyTriggerAnnotation: "yes", // Any value is ok
 						}
 						Expect(k8sClient.Update(ctx, sPVC)).To(Succeed())
 					})
@@ -348,12 +348,12 @@ var _ = Describe("RsyncTLS as a source", func() {
 						// re-load sPVC to see that volsync has added latest-copy-trigger annotation
 						// k8sClient is direct in this test, so no need for Eventually()
 						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sPVC), sPVC)).To(Succeed())
-						latestCopyStatus, ok := sPVC.Annotations[utils.LatestCopyStatusAnnotation]
+						latestCopyStatus, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyStatusAnnotation]
 						Expect(ok).To(BeTrue())
-						Expect(latestCopyStatus).To(Equal(utils.LatestCopyStatusValueWaitingForTrigger))
+						Expect(latestCopyStatus).To(Equal(volsyncv1alpha1.LatestCopyStatusValueWaitingForTrigger))
 
 						// Also should have a waiting-since timestamp annotation
-						waitingSince, ok := sPVC.Annotations[utils.LatestCopyTriggerWaitingSinceAnnotation]
+						waitingSince, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerWaitingSinceAnnotation]
 						Expect(ok).To(BeTrue())
 
 						waitingSinceTime, err := time.Parse(time.RFC3339, waitingSince)
@@ -363,14 +363,14 @@ var _ = Describe("RsyncTLS as a source", func() {
 					It("Should wait before creating the clone and set latest-copy-status to WaitingForTrigger", func() {
 						// Tests are in JustBeforeEach above
 						// Let's also confirm that no latest-status-trigger has been set yet
-						_, ok := sPVC.Annotations[utils.LatestCopyTriggerAnnotation]
+						_, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
 						Expect(ok).To(BeFalse())
 					})
 					When("The trigger is not updated in > 10 mins", func() {
 						JustBeforeEach(func() {
 							// Fake out long waiting time by manually setting the latest-copy-waiting-since to an old value
 							oldTime := time.Now().Add(-15 * time.Minute) // Subtract 15 mins
-							sPVC.Annotations[utils.LatestCopyTriggerWaitingSinceAnnotation] = oldTime.UTC().Format(time.RFC3339)
+							sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerWaitingSinceAnnotation] = oldTime.UTC().Format(time.RFC3339)
 							Expect(k8sClient.Update(ctx, sPVC)).To(Succeed())
 
 							// Now run another ensureSourcePVC/reconcile
@@ -390,7 +390,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 						var dataPVC *corev1.PersistentVolumeClaim
 						JustBeforeEach(func() {
 							// set a copy-trigger annotation
-							sPVC.Annotations[utils.CopyTriggerAnnotation] = "first-t"
+							sPVC.Annotations[volsyncv1alpha1.CopyTriggerAnnotation] = "first-t"
 							Expect(k8sClient.Update(ctx, sPVC)).To(Succeed())
 
 							// Now run another ensureSourcePVC/reconcile
@@ -400,19 +400,19 @@ var _ = Describe("RsyncTLS as a source", func() {
 							Expect(dataPVC).NotTo(BeNil()) // Should have proceeded to create the clone PVC
 
 							Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sPVC), sPVC)).To(Succeed())
-							latestCopyStatus, ok := sPVC.Annotations[utils.LatestCopyStatusAnnotation]
+							latestCopyStatus, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyStatusAnnotation]
 							Expect(ok).To(BeTrue())
-							Expect(latestCopyStatus).To(Equal(utils.LatestCopyStatusValueInProgress))
+							Expect(latestCopyStatus).To(Equal(volsyncv1alpha1.LatestCopyStatusValueInProgress))
 
 							// waiting-since timestamp annotation should now be removed
-							_, ok = sPVC.Annotations[utils.LatestCopyTriggerWaitingSinceAnnotation]
+							_, ok = sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerWaitingSinceAnnotation]
 							Expect(ok).To(BeFalse())
 						})
 						It("Should proceed with the clone and update latest-copy-status accordingly", func() {
 							// Tests are in JustBeforeEach above
 							// Let's also confirm that no latest-status-trigger has been set yet
 							// since the clone has not gone into ClaimBound state
-							_, ok := sPVC.Annotations[utils.LatestCopyTriggerAnnotation]
+							_, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
 							Expect(ok).To(BeFalse())
 						})
 						When("The clone goes to ClaimBound", func() {
@@ -430,18 +430,18 @@ var _ = Describe("RsyncTLS as a source", func() {
 								// re-load sourcePVC to see annotation updates
 								Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sPVC), sPVC)).To(Succeed())
 
-								latestCopyStatus, ok := sPVC.Annotations[utils.LatestCopyStatusAnnotation]
+								latestCopyStatus, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyStatusAnnotation]
 								Expect(ok).To(BeTrue())
-								Expect(latestCopyStatus).To(Equal(utils.LatestCopyStatusValueCompleted))
+								Expect(latestCopyStatus).To(Equal(volsyncv1alpha1.LatestCopyStatusValueCompleted))
 
-								latestCopyTrigger, ok := sPVC.Annotations[utils.LatestCopyTriggerAnnotation]
+								latestCopyTrigger, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
 								Expect(ok).To(BeTrue())
 								Expect(latestCopyTrigger).To(Equal("first-t"))
 							})
 							It("Should update the latest-copy-trigger and status annotations", func() {
 								// See checks in JustBeforeEach
-								latestCopyTrigger := sPVC.Annotations[utils.LatestCopyTriggerAnnotation]
-								userCopyTrigger := sPVC.Annotations[utils.CopyTriggerAnnotation]
+								latestCopyTrigger := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
+								userCopyTrigger := sPVC.Annotations[volsyncv1alpha1.CopyTriggerAnnotation]
 								Expect(latestCopyTrigger).To(Equal(userCopyTrigger))
 							})
 							When("Another clone needs to be created (another sync)", func() {
@@ -476,12 +476,12 @@ var _ = Describe("RsyncTLS as a source", func() {
 									// re-load sPVC to see that volsync has added latest-copy-trigger annotation
 									// k8sClient is direct in this test, so no need for Eventually()
 									Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sPVC), sPVC)).To(Succeed())
-									latestCopyStatus, ok := sPVC.Annotations[utils.LatestCopyStatusAnnotation]
+									latestCopyStatus, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyStatusAnnotation]
 									Expect(ok).To(BeTrue())
-									Expect(latestCopyStatus).To(Equal(utils.LatestCopyStatusValueWaitingForTrigger))
+									Expect(latestCopyStatus).To(Equal(volsyncv1alpha1.LatestCopyStatusValueWaitingForTrigger))
 
 									// Also should have a waiting-since timestamp annotation
-									waitingSince, ok := sPVC.Annotations[utils.LatestCopyTriggerWaitingSinceAnnotation]
+									waitingSince, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerWaitingSinceAnnotation]
 									Expect(ok).To(BeTrue())
 
 									waitingSinceTime, err := time.Parse(time.RFC3339, waitingSince)
@@ -490,7 +490,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 								})
 								It("Should again wait for the copy-trigger to be updated to a new value", func() {
 									// the latestcopytrigger should still be from the previous sync
-									latestCopyTrigger, ok := sPVC.Annotations[utils.LatestCopyTriggerAnnotation]
+									latestCopyTrigger, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
 									Expect(ok).To(BeTrue())
 									Expect(latestCopyTrigger).To(Equal("first-t"))
 								})
@@ -499,7 +499,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 
 									JustBeforeEach(func() {
 										// update the copy-trigger annotation
-										sPVC.Annotations[utils.CopyTriggerAnnotation] = "second-t"
+										sPVC.Annotations[volsyncv1alpha1.CopyTriggerAnnotation] = "second-t"
 										Expect(k8sClient.Update(ctx, sPVC)).To(Succeed())
 
 										// Now run another ensureSourcePVC/reconcile
@@ -509,18 +509,18 @@ var _ = Describe("RsyncTLS as a source", func() {
 										Expect(dataPVCClone2).NotTo(BeNil()) // Should have proceeded to create the clone PVC
 
 										Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sPVC), sPVC)).To(Succeed())
-										latestCopyStatus, ok := sPVC.Annotations[utils.LatestCopyStatusAnnotation]
+										latestCopyStatus, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyStatusAnnotation]
 										Expect(ok).To(BeTrue())
-										Expect(latestCopyStatus).To(Equal(utils.LatestCopyStatusValueInProgress))
+										Expect(latestCopyStatus).To(Equal(volsyncv1alpha1.LatestCopyStatusValueInProgress))
 
 										// waiting-since timestamp annotation should now be removed
-										_, ok = sPVC.Annotations[utils.LatestCopyTriggerWaitingSinceAnnotation]
+										_, ok = sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerWaitingSinceAnnotation]
 										Expect(ok).To(BeFalse())
 									})
 									It("Should proceed with the clone and update latest-copy-status accordingly", func() {
 										// Tests are in JustBeforeEach above
 										// Let's also confirm that latest-status-trigger still has the previous trigger
-										latestCopyTrigger, ok := sPVC.Annotations[utils.LatestCopyTriggerAnnotation]
+										latestCopyTrigger, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
 										Expect(ok).To(BeTrue())
 										Expect(latestCopyTrigger).To(Equal("first-t"))
 									})
@@ -539,18 +539,18 @@ var _ = Describe("RsyncTLS as a source", func() {
 											// re-load sourcePVC to see annotation updates
 											Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sPVC), sPVC)).To(Succeed())
 
-											latestCopyStatus, ok := sPVC.Annotations[utils.LatestCopyStatusAnnotation]
+											latestCopyStatus, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyStatusAnnotation]
 											Expect(ok).To(BeTrue())
-											Expect(latestCopyStatus).To(Equal(utils.LatestCopyStatusValueCompleted))
+											Expect(latestCopyStatus).To(Equal(volsyncv1alpha1.LatestCopyStatusValueCompleted))
 
-											latestCopyTrigger, ok := sPVC.Annotations[utils.LatestCopyTriggerAnnotation]
+											latestCopyTrigger, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
 											Expect(ok).To(BeTrue())
 											Expect(latestCopyTrigger).To(Equal("second-t"))
 										})
 										It("Should update the latest-copy-trigger and status annotations", func() {
 											// See checks in JustBeforeEach
-											latestCopyTrigger := sPVC.Annotations[utils.LatestCopyTriggerAnnotation]
-											userCopyTrigger := sPVC.Annotations[utils.CopyTriggerAnnotation]
+											latestCopyTrigger := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
+											userCopyTrigger := sPVC.Annotations[volsyncv1alpha1.CopyTriggerAnnotation]
 											Expect(latestCopyTrigger).To(Equal(userCopyTrigger))
 										})
 									})
@@ -599,7 +599,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 				When("the use-copy-trigger annotation exists on the source (data) PVC", func() {
 					BeforeEach(func() {
 						sPVC.Annotations = map[string]string{
-							utils.UseCopyTriggerAnnotation: "", // Any value is ok
+							volsyncv1alpha1.UseCopyTriggerAnnotation: "", // Any value is ok
 						}
 						Expect(k8sClient.Update(ctx, sPVC)).To(Succeed())
 					})
@@ -616,12 +616,12 @@ var _ = Describe("RsyncTLS as a source", func() {
 						// re-load sPVC to see that volsync has added latest-copy-trigger annotation
 						// k8sClient is direct in this test, so no need for Eventually()
 						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sPVC), sPVC)).To(Succeed())
-						latestCopyStatus, ok := sPVC.Annotations[utils.LatestCopyStatusAnnotation]
+						latestCopyStatus, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyStatusAnnotation]
 						Expect(ok).To(BeTrue())
-						Expect(latestCopyStatus).To(Equal(utils.LatestCopyStatusValueWaitingForTrigger))
+						Expect(latestCopyStatus).To(Equal(volsyncv1alpha1.LatestCopyStatusValueWaitingForTrigger))
 
 						// Also should have a waiting-since timestamp annotation
-						waitingSince, ok := sPVC.Annotations[utils.LatestCopyTriggerWaitingSinceAnnotation]
+						waitingSince, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerWaitingSinceAnnotation]
 						Expect(ok).To(BeTrue())
 
 						waitingSinceTime, err := time.Parse(time.RFC3339, waitingSince)
@@ -631,14 +631,14 @@ var _ = Describe("RsyncTLS as a source", func() {
 					It("Should wait before creating the snapshot and set latest-copy-status to WaitingForTrigger", func() {
 						// Tests are in JustBeforeEach above
 						// Let's also confirm that no latest-status-trigger has been set yet
-						_, ok := sPVC.Annotations[utils.LatestCopyTriggerAnnotation]
+						_, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
 						Expect(ok).To(BeFalse())
 					})
 					When("The trigger is not updated in > 10 mins", func() {
 						JustBeforeEach(func() {
 							// Fake out long waiting time by manually setting the latest-copy-waiting-since to an old value
 							oldTime := time.Now().Add(-15 * time.Minute) // Subtract 15 mins
-							sPVC.Annotations[utils.LatestCopyTriggerWaitingSinceAnnotation] = oldTime.UTC().Format(time.RFC3339)
+							sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerWaitingSinceAnnotation] = oldTime.UTC().Format(time.RFC3339)
 							Expect(k8sClient.Update(ctx, sPVC)).To(Succeed())
 
 							// Now run another ensureSourcePVC/reconcile
@@ -659,7 +659,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 						var firstSyncSnapshot *snapv1.VolumeSnapshot
 						JustBeforeEach(func() {
 							// set a copy-trigger annotation
-							sPVC.Annotations[utils.CopyTriggerAnnotation] = "first-t"
+							sPVC.Annotations[volsyncv1alpha1.CopyTriggerAnnotation] = "first-t"
 							Expect(k8sClient.Update(ctx, sPVC)).To(Succeed())
 
 							// Now run another ensureSourcePVC/reconcile
@@ -676,19 +676,19 @@ var _ = Describe("RsyncTLS as a source", func() {
 							firstSyncSnapshot = &snapshots.Items[0]
 
 							Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sPVC), sPVC)).To(Succeed())
-							latestCopyStatus, ok := sPVC.Annotations[utils.LatestCopyStatusAnnotation]
+							latestCopyStatus, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyStatusAnnotation]
 							Expect(ok).To(BeTrue())
-							Expect(latestCopyStatus).To(Equal(utils.LatestCopyStatusValueInProgress))
+							Expect(latestCopyStatus).To(Equal(volsyncv1alpha1.LatestCopyStatusValueInProgress))
 
 							// waiting-since timestamp annotation should now be removed
-							_, ok = sPVC.Annotations[utils.LatestCopyTriggerWaitingSinceAnnotation]
+							_, ok = sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerWaitingSinceAnnotation]
 							Expect(ok).To(BeFalse())
 						})
 						It("Should proceed with the snapshot and update latest-copy-status accordingly", func() {
 							// Tests are in JustBeforeEach above
 							// Let's also confirm that no latest-status-trigger has been set yet
 							// since the clone has not gone into ClaimBound state
-							_, ok := sPVC.Annotations[utils.LatestCopyTriggerAnnotation]
+							_, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
 							Expect(ok).To(BeFalse())
 						})
 						When("The snapshot gets boundVolumeSnapshotContentName (Snapshot is ready)", func() {
@@ -709,18 +709,18 @@ var _ = Describe("RsyncTLS as a source", func() {
 								// re-load sourcePVC to see annotation updates
 								Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sPVC), sPVC)).To(Succeed())
 
-								latestCopyStatus, ok := sPVC.Annotations[utils.LatestCopyStatusAnnotation]
+								latestCopyStatus, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyStatusAnnotation]
 								Expect(ok).To(BeTrue())
-								Expect(latestCopyStatus).To(Equal(utils.LatestCopyStatusValueCompleted))
+								Expect(latestCopyStatus).To(Equal(volsyncv1alpha1.LatestCopyStatusValueCompleted))
 
-								latestCopyTrigger, ok := sPVC.Annotations[utils.LatestCopyTriggerAnnotation]
+								latestCopyTrigger, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
 								Expect(ok).To(BeTrue())
 								Expect(latestCopyTrigger).To(Equal("first-t"))
 							})
 							It("Should update the latest-copy-trigger and status annotations", func() {
 								// See checks in JustBeforeEach
-								latestCopyTrigger := sPVC.Annotations[utils.LatestCopyTriggerAnnotation]
-								userCopyTrigger := sPVC.Annotations[utils.CopyTriggerAnnotation]
+								latestCopyTrigger := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
+								userCopyTrigger := sPVC.Annotations[volsyncv1alpha1.CopyTriggerAnnotation]
 								Expect(latestCopyTrigger).To(Equal(userCopyTrigger))
 							})
 							When("Another snapshot needs to be created (another sync)", func() {
@@ -766,12 +766,12 @@ var _ = Describe("RsyncTLS as a source", func() {
 									// re-load sPVC to see that volsync has added latest-copy-trigger annotation
 									// k8sClient is direct in this test, so no need for Eventually()
 									Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sPVC), sPVC)).To(Succeed())
-									latestCopyStatus, ok := sPVC.Annotations[utils.LatestCopyStatusAnnotation]
+									latestCopyStatus, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyStatusAnnotation]
 									Expect(ok).To(BeTrue())
-									Expect(latestCopyStatus).To(Equal(utils.LatestCopyStatusValueWaitingForTrigger))
+									Expect(latestCopyStatus).To(Equal(volsyncv1alpha1.LatestCopyStatusValueWaitingForTrigger))
 
 									// Also should have a waiting-since timestamp annotation
-									waitingSince, ok := sPVC.Annotations[utils.LatestCopyTriggerWaitingSinceAnnotation]
+									waitingSince, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerWaitingSinceAnnotation]
 									Expect(ok).To(BeTrue())
 
 									waitingSinceTime, err := time.Parse(time.RFC3339, waitingSince)
@@ -780,7 +780,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 								})
 								It("Should again wait for the copy-trigger to be updated to a new value", func() {
 									// the latestcopytrigger should still be from the previous sync
-									latestCopyTrigger, ok := sPVC.Annotations[utils.LatestCopyTriggerAnnotation]
+									latestCopyTrigger, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
 									Expect(ok).To(BeTrue())
 									Expect(latestCopyTrigger).To(Equal("first-t"))
 								})
@@ -790,7 +790,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 
 									JustBeforeEach(func() {
 										// update the copy-trigger annotation
-										sPVC.Annotations[utils.CopyTriggerAnnotation] = "second-t"
+										sPVC.Annotations[volsyncv1alpha1.CopyTriggerAnnotation] = "second-t"
 										Expect(k8sClient.Update(ctx, sPVC)).To(Succeed())
 
 										// Now run another ensureSourcePVC/reconcile
@@ -807,18 +807,18 @@ var _ = Describe("RsyncTLS as a source", func() {
 										secondSyncSnapshot = &snapshots.Items[0]
 
 										Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sPVC), sPVC)).To(Succeed())
-										latestCopyStatus, ok := sPVC.Annotations[utils.LatestCopyStatusAnnotation]
+										latestCopyStatus, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyStatusAnnotation]
 										Expect(ok).To(BeTrue())
-										Expect(latestCopyStatus).To(Equal(utils.LatestCopyStatusValueInProgress))
+										Expect(latestCopyStatus).To(Equal(volsyncv1alpha1.LatestCopyStatusValueInProgress))
 
 										// waiting-since timestamp annotation should now be removed
-										_, ok = sPVC.Annotations[utils.LatestCopyTriggerWaitingSinceAnnotation]
+										_, ok = sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerWaitingSinceAnnotation]
 										Expect(ok).To(BeFalse())
 									})
 									It("Should proceed with the snap and update latest-copy-status accordingly", func() {
 										// Tests are in JustBeforeEach above
 										// Let's also confirm that latest-status-trigger still has the previous trigger
-										latestCopyTrigger, ok := sPVC.Annotations[utils.LatestCopyTriggerAnnotation]
+										latestCopyTrigger, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
 										Expect(ok).To(BeTrue())
 										Expect(latestCopyTrigger).To(Equal("first-t"))
 									})
@@ -840,18 +840,18 @@ var _ = Describe("RsyncTLS as a source", func() {
 											// re-load sourcePVC to see annotation updates
 											Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sPVC), sPVC)).To(Succeed())
 
-											latestCopyStatus, ok := sPVC.Annotations[utils.LatestCopyStatusAnnotation]
+											latestCopyStatus, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyStatusAnnotation]
 											Expect(ok).To(BeTrue())
-											Expect(latestCopyStatus).To(Equal(utils.LatestCopyStatusValueCompleted))
+											Expect(latestCopyStatus).To(Equal(volsyncv1alpha1.LatestCopyStatusValueCompleted))
 
-											latestCopyTrigger, ok := sPVC.Annotations[utils.LatestCopyTriggerAnnotation]
+											latestCopyTrigger, ok := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
 											Expect(ok).To(BeTrue())
 											Expect(latestCopyTrigger).To(Equal("second-t"))
 										})
 										It("Should update the latest-copy-trigger and status annotations", func() {
 											// See checks in JustBeforeEach
-											latestCopyTrigger := sPVC.Annotations[utils.LatestCopyTriggerAnnotation]
-											userCopyTrigger := sPVC.Annotations[utils.CopyTriggerAnnotation]
+											latestCopyTrigger := sPVC.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
+											userCopyTrigger := sPVC.Annotations[volsyncv1alpha1.CopyTriggerAnnotation]
 											Expect(latestCopyTrigger).To(Equal(userCopyTrigger))
 										})
 									})

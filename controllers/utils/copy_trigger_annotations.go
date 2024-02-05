@@ -22,54 +22,38 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-)
 
-const (
-	// Annotation optionally set on src pvc by user.  When set, a volsync source replication
-	// that is using CopyMode: Snapshot or Clone will wait for the user to set a unique copy-trigger
-	// before proceeding to take the src snapshot/clone.
-	UseCopyTriggerAnnotation = "volsync.backube/use-copy-trigger"
-	CopyTriggerAnnotation    = "volsync.backube/copy-trigger"
-
-	// Annotations for status set by VolSync on a src pvc if UseCopyTriggerAnnotation is set to "true"
-	LatestCopyTriggerAnnotation             = "volsync.backube/latest-copy-trigger"
-	LatestCopyStatusAnnotation              = "volsync.backube/latest-copy-status"
-	LatestCopyTriggerWaitingSinceAnnotation = "volsync.backube/latest-copy-trigger-waiting-since"
-
-	// VolSync latest-copy-status annotation values
-	LatestCopyStatusValueWaitingForTrigger = "WaitingForTrigger"
-	LatestCopyStatusValueInProgress        = "InProgress"
-	LatestCopyStatusValueCompleted         = "Completed"
-
-	CopyTriggerWaitTimeout time.Duration = 10 * time.Minute
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
 
 func PVCUsesCopyTrigger(pvc *corev1.PersistentVolumeClaim) bool {
 	// If the annotation exists on the PVC (with any value) then we assume copy-trigger coordination is desired
-	_, ok := pvc.Annotations[UseCopyTriggerAnnotation]
+	_, ok := pvc.Annotations[volsyncv1alpha1.UseCopyTriggerAnnotation]
 	return ok
 }
 
 func GetCopyTriggerValue(pvc *corev1.PersistentVolumeClaim) string {
-	return pvc.Annotations[CopyTriggerAnnotation]
+	return pvc.Annotations[volsyncv1alpha1.CopyTriggerAnnotation]
 }
 
 func GetLatestCopyTriggerValue(pvc *corev1.PersistentVolumeClaim) string {
-	return pvc.Annotations[LatestCopyTriggerAnnotation]
+	return pvc.Annotations[volsyncv1alpha1.LatestCopyTriggerAnnotation]
 }
 
 func GetLatestCopyTriggerWaitingSinceValue(pvc *corev1.PersistentVolumeClaim) string {
-	return pvc.Annotations[LatestCopyTriggerWaitingSinceAnnotation]
+	return pvc.Annotations[volsyncv1alpha1.LatestCopyTriggerWaitingSinceAnnotation]
 }
 
 // Returns true if the pvc was updated
 func SetLatestCopyTriggerWaitingSinceValueNow(pvc *corev1.PersistentVolumeClaim) bool {
-	return setAnnotation(pvc, LatestCopyTriggerWaitingSinceAnnotation, time.Now().UTC().Format(time.RFC3339))
+	return setAnnotation(pvc,
+		volsyncv1alpha1.LatestCopyTriggerWaitingSinceAnnotation, time.Now().UTC().Format(time.RFC3339))
 }
 
 // Returns true if the pvc was updated
 func SetLatestCopyStatusWaitingForTrigger(pvc *corev1.PersistentVolumeClaim) bool {
-	updated := setAnnotation(pvc, LatestCopyStatusAnnotation, LatestCopyStatusValueWaitingForTrigger)
+	updated := setAnnotation(pvc,
+		volsyncv1alpha1.LatestCopyStatusAnnotation, volsyncv1alpha1.LatestCopyStatusValueWaitingForTrigger)
 	if updated || GetLatestCopyTriggerWaitingSinceValue(pvc) == "" {
 		// We're setting the status to WaitingForTrigger - set a waiting-since annotation
 		// to give us a timestamp
@@ -81,21 +65,23 @@ func SetLatestCopyStatusWaitingForTrigger(pvc *corev1.PersistentVolumeClaim) boo
 
 // Returns true if the pvc was updated
 func SetLatestCopyStatusInProgress(pvc *corev1.PersistentVolumeClaim) bool {
-	updated := setAnnotation(pvc, LatestCopyStatusAnnotation, LatestCopyStatusValueInProgress)
+	updated := setAnnotation(pvc,
+		volsyncv1alpha1.LatestCopyStatusAnnotation, volsyncv1alpha1.LatestCopyStatusValueInProgress)
 	// Make sure waiting since annotation is removed
-	return unsetAnnotation(pvc, LatestCopyTriggerWaitingSinceAnnotation) || updated
+	return unsetAnnotation(pvc, volsyncv1alpha1.LatestCopyTriggerWaitingSinceAnnotation) || updated
 }
 
 // Returns true if the pvc was updated
 func SetLatestCopyStatusCompleted(pvc *corev1.PersistentVolumeClaim) bool {
-	updated := setAnnotation(pvc, LatestCopyStatusAnnotation, LatestCopyStatusValueCompleted)
+	updated := setAnnotation(pvc,
+		volsyncv1alpha1.LatestCopyStatusAnnotation, volsyncv1alpha1.LatestCopyStatusValueCompleted)
 	// Make sure waiting since annotation is removed
-	return unsetAnnotation(pvc, LatestCopyTriggerWaitingSinceAnnotation) || updated
+	return unsetAnnotation(pvc, volsyncv1alpha1.LatestCopyTriggerWaitingSinceAnnotation) || updated
 }
 
 // Returns true if the pvc was updated
 func SetLatestCopyTriggerValue(pvc *corev1.PersistentVolumeClaim, value string) bool {
-	return setAnnotation(pvc, LatestCopyTriggerAnnotation, value)
+	return setAnnotation(pvc, volsyncv1alpha1.LatestCopyTriggerAnnotation, value)
 }
 
 // Returns true if the local obj resource was updated - does not perform a client.Update()
@@ -130,5 +116,7 @@ func unsetAnnotation(obj metav1.Object, annotationName string) bool {
 	}
 
 	delete(annotations, annotationName)
-	return true
+	obj.SetAnnotations(annotations)
+
+	return true // updated
 }
