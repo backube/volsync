@@ -3,13 +3,19 @@ resources:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 patches:
-- path: patches/deploy-prereqs.yaml
+- path: patches/deploy-prereqs-stage0.yaml
   target:
     group: scorecard.operatorframework.io
     kind: Configuration
     name: config
     version: v1alpha3
-- path: patches/e2e-tests.yaml
+- path: patches/e2e-tests-stage1.yaml
+  target:
+    group: scorecard.operatorframework.io
+    kind: Configuration
+    name: config
+    version: v1alpha3
+- path: patches/e2e-tests-stage2.yaml
   target:
     group: scorecard.operatorframework.io
     kind: Configuration
