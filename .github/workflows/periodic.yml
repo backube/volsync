@@ -41,6 +41,9 @@ jobs:
           gh workflow run --ref "main" "operator.yml"
           gh workflow run --ref "main" "documentation.yml"
 
+          gh workflow run --ref "release-0.9" "operator.yml"
+          gh workflow run --ref "release-0.9" "documentation.yml"
+
           gh workflow run --ref "release-0.8" "operator.yml"
           gh workflow run --ref "release-0.8" "documentation.yml"
 
