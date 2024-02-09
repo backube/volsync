@@ -22,9 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
-	"sort"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -409,7 +407,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 		}
 
 		// Rclone env vars for restic if they are in the secret
-		envVars = appendRCloneEnvVars(repo, envVars)
+		envVars = utils.AppendRCloneEnvVars(repo, envVars)
 
 		// Cluster-wide proxy settings
 		envVars = utils.AppendEnvVarsForClusterWideProxy(envVars)
@@ -635,25 +633,4 @@ func generateForgetOptions(policy *volsyncv1alpha1.ResticRetainPolicy) string {
 		return defaultForget
 	}
 	return forget
-}
-
-// Append k/v from the restic secret if they start with RCLONE_
-func appendRCloneEnvVars(resticSecret *corev1.Secret, envVars []corev1.EnvVar) []corev1.EnvVar {
-	rcloneKeys := []string{}
-	for key := range resticSecret.Data {
-		if strings.HasPrefix(key, "RCLONE_") {
-			rcloneKeys = append(rcloneKeys, key)
-		}
-	}
-
-	if len(rcloneKeys) > 0 {
-		// Sort so we do not keep re-ordering env vars (range over map keys will give us inconsistent sorting)
-		sort.Strings(rcloneKeys)
-
-		for _, sortedKey := range rcloneKeys {
-			envVars = append(envVars, utils.EnvFromSecret(resticSecret.Name, sortedKey, true))
-		}
-	}
-
-	return envVars
 }

@@ -225,6 +225,117 @@ var _ = Describe("utils tests", func() {
 		})
 	})
 
+	Describe("AppendRCloneEnvVars", func() {
+		envVarsOrig := []corev1.EnvVar{
+			{
+				Name:  "existingvar1",
+				Value: "value1",
+			},
+			{
+				Name:  "EXISTINGVAR2",
+				Value: "VALUE2",
+			},
+		}
+
+		var envVars []corev1.EnvVar
+		var secret *corev1.Secret
+
+		BeforeEach(func() {
+			// Reset envVars back to initial starting value for test
+			envVars = make([]corev1.EnvVar, len(envVarsOrig))
+			copy(envVars, envVarsOrig)
+
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-secret-withrclonevars",
+					Namespace: "test-secret-namespace",
+				},
+				Data: map[string][]byte{},
+			}
+		})
+
+		When("no secret env vars are set", func() {
+			It("Should not modify the existing env vars", func() {
+				envVars = utils.AppendRCloneEnvVars(secret, envVars)
+				Expect(envVars).To(Equal(envVarsOrig))
+			})
+		})
+
+		When("no env vars containing RCLONE_ are set in the secret", func() {
+			BeforeEach(func() {
+				secret.Data = map[string][]byte{
+					"testkey":        []byte("pineapples"),
+					"NOT_RCLONE_VAR": []byte("kiwis"),
+					"OTHER_VAR":      []byte("oranges"),
+				}
+			})
+			It("Should not modify the existing env vars", func() {
+				envVars = utils.AppendRCloneEnvVars(secret, envVars)
+				Expect(envVars).To(Equal(envVarsOrig))
+			})
+		})
+
+		When("RCLONE_ env vars are set", func() {
+			BeforeEach(func() {
+				secret.Data = map[string][]byte{
+					"RCLONE_TESTVAR1": []byte("veryimportant"),
+					"RCLONE_TESTVAR2": []byte("evenmoreimportant"),
+					"NOT_RCLONE_VAR":  []byte("shouldntbeset"),
+					"RCLONE_BWLIMIT":  []byte("5M:10M"),
+				}
+			})
+
+			It("Should set the appropriate env vars", func() {
+				envVars = utils.AppendRCloneEnvVars(secret, envVars)
+				for i := range envVarsOrig {
+					// Original env vars should still be set
+					origVar := envVarsOrig[i]
+					Expect(envVars).To(ContainElements(origVar))
+				}
+
+				t := true
+
+				// RCLONE_ env vars from secret should be set
+				Expect(envVars).To(ContainElement(corev1.EnvVar{
+					Name: "RCLONE_TESTVAR1",
+					ValueFrom: &corev1.EnvVarSource{
+						SecretKeyRef: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: secret.GetName(),
+							},
+							Key:      "RCLONE_TESTVAR1",
+							Optional: &t,
+						},
+					},
+				}))
+				Expect(envVars).To(ContainElement(corev1.EnvVar{
+					Name: "RCLONE_TESTVAR2",
+					ValueFrom: &corev1.EnvVarSource{
+						SecretKeyRef: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: secret.GetName(),
+							},
+							Key:      "RCLONE_TESTVAR2",
+							Optional: &t,
+						},
+					},
+				}))
+				Expect(envVars).To(ContainElement(corev1.EnvVar{
+					Name: "RCLONE_BWLIMIT",
+					ValueFrom: &corev1.EnvVarSource{
+						SecretKeyRef: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: secret.GetName(),
+							},
+							Key:      "RCLONE_BWLIMIT",
+							Optional: &t,
+						},
+					},
+				}))
+			})
+		})
+	})
+
 	Describe("UpdatePodTemplateSpecFromMoverConfig", func() {
 		When("no pod template spec", func() {
 			It("should not fail", func() {
