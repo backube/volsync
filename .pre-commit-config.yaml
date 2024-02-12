@@ -55,6 +55,6 @@ repos:
         args: ["--style", ".ci-scripts/mdl-style.rb"]
 
   - repo: https://github.com/renovatebot/pre-commit-hooks
-    rev: "37.173.0"
+    rev: "37.184.0"
     hooks:
       - id: renovate-config-validator
