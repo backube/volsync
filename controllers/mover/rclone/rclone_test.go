@@ -1323,6 +1323,126 @@ var _ = Describe("Rclone as a source", func() {
 					})
 				})
 
+				When("RCLONE_ env vars are in the rclone secret", func() {
+					BeforeEach(func() {
+						rcloneConfigSecret.StringData = map[string]string{
+							"rclone.config":                        "datahere",
+							"RCLONE_CONFIG_MYS3_TYPE":              "mys3",
+							"RCLONE_CONFIG_MYS3_ACCESS_KEY_ID":     "9999",
+							"RCLONE_CONFIG_MYS3_SECRET_ACCESS_KEY": "111222",
+							"RCLONE_BWLIMIT":                       "5M",
+							"othervar":                             "abc123",
+							"RCLONE_CONFIG":                        "bad", // Should not override what we set
+						}
+					})
+
+					It("Should set the env vars in the mover job pod", func() {
+						j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret, nil) // Using sPVC as dataPVC (i.e. direct)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(j).To(BeNil()) // hasn't completed
+						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+						job = &batchv1.Job{}
+						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+
+						env := job.Spec.Template.Spec.Containers[0].Env
+
+						// First validate all our normal env vars should be set
+						validateJobEnvVars(env, true)
+
+						t := true
+
+						// Validate our RCLONE_ env vars got set
+						Expect(env).To(ContainElement(corev1.EnvVar{
+							Name: "RCLONE_CONFIG_MYS3_TYPE",
+							ValueFrom: &corev1.EnvVarSource{
+								SecretKeyRef: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: rcloneConfigSecret.GetName(),
+									},
+									Key:      "RCLONE_CONFIG_MYS3_TYPE",
+									Optional: &t,
+								},
+							},
+						}))
+						Expect(env).To(ContainElement(corev1.EnvVar{
+							Name: "RCLONE_CONFIG_MYS3_ACCESS_KEY_ID",
+							ValueFrom: &corev1.EnvVarSource{
+								SecretKeyRef: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: rcloneConfigSecret.GetName(),
+									},
+									Key:      "RCLONE_CONFIG_MYS3_ACCESS_KEY_ID",
+									Optional: &t,
+								},
+							},
+						}))
+						Expect(env).To(ContainElement(corev1.EnvVar{
+							Name: "RCLONE_CONFIG_MYS3_SECRET_ACCESS_KEY",
+							ValueFrom: &corev1.EnvVarSource{
+								SecretKeyRef: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: rcloneConfigSecret.GetName(),
+									},
+									Key:      "RCLONE_CONFIG_MYS3_SECRET_ACCESS_KEY",
+									Optional: &t,
+								},
+							},
+						}))
+						Expect(env).To(ContainElement(corev1.EnvVar{
+							Name: "RCLONE_BWLIMIT",
+							ValueFrom: &corev1.EnvVarSource{
+								SecretKeyRef: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: rcloneConfigSecret.GetName(),
+									},
+									Key:      "RCLONE_BWLIMIT",
+									Optional: &t,
+								},
+							},
+						}))
+						// This one should still get set
+						Expect(env).To(ContainElement(corev1.EnvVar{
+							Name: "RCLONE_CONFIG",
+							ValueFrom: &corev1.EnvVarSource{
+								SecretKeyRef: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: rcloneConfigSecret.GetName(),
+									},
+									Key:      "RCLONE_CONFIG",
+									Optional: &t,
+								},
+							},
+						}))
+
+						// Confirm the RCLONE_CONFIG env var we set is after
+						// the one the user tried to override in the rclone secret
+						// to avoid users accidentally overriding something we need in
+						// the mover job
+						rcloneConfigEnvVars := []corev1.EnvVar{}
+						for _, envVar := range env {
+							if envVar.Name == "RCLONE_CONFIG" {
+								rcloneConfigEnvVars = append(rcloneConfigEnvVars, envVar)
+							}
+						}
+						Expect(len(rcloneConfigEnvVars)).To(Equal(2))
+						first := rcloneConfigEnvVars[0]
+						second := rcloneConfigEnvVars[1]
+						// First one in the env array should be the one from the secret
+						Expect(first.ValueFrom).To(Equal(&corev1.EnvVarSource{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: rcloneConfigSecret.GetName(),
+								},
+								Key:      "RCLONE_CONFIG",
+								Optional: &t,
+							},
+						}))
+						// Second one should be the one we set for the rclone mover
+						// (this one will take precedence in the mover pod)
+						Expect(second.Value).To(Equal("/rclone-config/rclone.conf"))
+					})
+				})
+
 				It("Should have correct volume mounts", func() {
 					j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret, nil) // Using sPVC as dataPVC (i.e. direct)
 					Expect(e).NotTo(HaveOccurred())
@@ -1963,10 +2083,13 @@ func validateJobEnvVars(env []corev1.EnvVar, isSource bool) {
 
 func validateEnvVar(env []corev1.EnvVar, envVarName, envVarExpectedValue string) {
 	found := false
-	for _, envVar := range env {
+	// Reverse over range, look for env vars from the end first
+	for i := len(env) - 1; i >= 0; i-- {
+		envVar := env[i]
 		if envVar.Name == envVarName {
 			found = true
 			Expect(envVar.Value).To(Equal(envVarExpectedValue))
+			break
 		}
 	}
 	Expect(found).To(BeTrue())

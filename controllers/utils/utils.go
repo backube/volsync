@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -182,6 +183,27 @@ func AppendEnvVarsForClusterWideProxy(envVars []corev1.EnvVar) []corev1.EnvVar {
 	if ok {
 		envVars = append(envVars, corev1.EnvVar{Name: "NO_PROXY", Value: noProxy})
 		envVars = append(envVars, corev1.EnvVar{Name: "no_proxy", Value: noProxy})
+	}
+
+	return envVars
+}
+
+// Append k/v from the secret if they start with RCLONE_
+func AppendRCloneEnvVars(secret *corev1.Secret, envVars []corev1.EnvVar) []corev1.EnvVar {
+	rcloneKeys := []string{}
+	for key := range secret.Data {
+		if strings.HasPrefix(key, "RCLONE_") {
+			rcloneKeys = append(rcloneKeys, key)
+		}
+	}
+
+	if len(rcloneKeys) > 0 {
+		// Sort so we do not keep re-ordering env vars (range over map keys will give us inconsistent sorting)
+		sort.Strings(rcloneKeys)
+
+		for _, sortedKey := range rcloneKeys {
+			envVars = append(envVars, EnvFromSecret(secret.Name, sortedKey, true))
+		}
 	}
 
 	return envVars
