@@ -6,6 +6,7 @@ Usage
    :hidden:
 
    permissionmodel
+   resourcerequirements
    triggers
    metrics/index
    rclone/index
@@ -43,6 +44,13 @@ The data replication mover Pods run in the user's source and destination
 Namespaces. The permissions that are given to these Pods control what data can
 be replicated. They also affect the security of the cluster. Please see the
 :doc:`permission model documentation <permissionmodel>` for more details.
+
+Resource requirements
+=====================
+
+The data replication mover Pods can be configured to set specific resource requirements. This can include CPU and memory
+resource requirements or resource limits. Please see the
+:doc:`resource requirements documentation <resourcerequirements>` for more details.
 
 Triggers
 ========
