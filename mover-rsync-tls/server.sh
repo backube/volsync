@@ -8,11 +8,18 @@ RSYNCD_CONF=/tmp/rsyncd.conf
 STUNNEL_CONF=/tmp/stunnel.conf
 STUNNEL_PID_FILE=/tmp/stunnel.pid
 PSK_FILE=/keys/psk.txt
-STUNNEL_LISTEN_PORT=8000
 RSYNC_LOG=/tmp/rsyncd.log
+IPV6_ENABLED=$(cat /sys/module/ipv6/parameters/disable)
 
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 cd "$SCRIPT_DIR"
+
+# If IPv6 is in enabled state, the output would be "0"
+if [ $IPV6_ENABLED -eq 0 ]; then
+    STUNNEL_LISTEN_PORT=:::8000
+else
+    STUNNEL_LISTEN_PORT=8000
+fi
 
 if [[ ! -r $PSK_FILE ]]; then
     echo "ERROR: Pre-shared key not found - $PSK_FILE"
@@ -87,7 +94,7 @@ syslog = no
 ciphers = PSK
 PSKsecrets = $PSK_FILE
 ; Port to listen for incoming connections from remote
-accept = :::$STUNNEL_LISTEN_PORT
+accept = $STUNNEL_LISTEN_PORT
 ; We are the server
 client = no
 ; When we get an incoming connection, spawn rsync to handle it
@@ -132,7 +139,7 @@ syslog = no
 ciphers = PSK
 PSKsecrets = $PSK_FILE
 ; Port to listen for incoming connections from remote
-accept = :::$STUNNEL_LISTEN_PORT
+accept = $STUNNEL_LISTEN_PORT
 ; We are the server
 client = no
 connect = 8888
