@@ -1,6 +1,6 @@
 ######################################################################
 # Establish a common builder image for all golang-based images
-FROM golang:1.20 as golang-builder
+FROM golang:1.21 as golang-builder
 USER root
 WORKDIR /workspace
 # We don't vendor modules. Enforce that behavior
