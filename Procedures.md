@@ -213,9 +213,6 @@ from the csv.spec when it's empty for us.
   * Change the version number for the builder images in
     * [Dockerfile](Dockerfile)
     * [Dockerfile.volsync-custom-scorecard-tests](Dockerfile.volsync-custom-scorecard-tests)
-    * [mover-rclone/Dockerfile](mover-rclone/Dockerfile)
-    * [mover-restic/Dockerfile](mover-restic/Dockerfile)
-    * [mover-syncthing/Dockerfile](mover-syncthing/Dockerfile)
   * Update the OpenShift CI builder images & image substitution rules
 * [golangci-lint](https://github.com/golangci/golangci-lint/releases)
   * Change the version number in [Makefile](Makefile)
