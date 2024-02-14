@@ -12,6 +12,18 @@ ARG TARGETARCH
 ENV GOOS=${TARGETOS:-linux}
 ENV GOARCH=${TARGETARCH}
 
+# Syncthing < 1.24.0 still needs to be built with go 1.20
+FROM golang:1.20 as syncthing-golang-builder
+USER root
+WORKDIR /workspace
+# We don't vendor modules. Enforce that behavior
+ENV GOFLAGS=-mod=readonly
+ENV GO111MODULE=on
+ENV CGO_ENABLED=1
+ARG TARGETOS
+ARG TARGETARCH
+ENV GOOS=${TARGETOS:-linux}
+ENV GOARCH=${TARGETARCH}
 
 ######################################################################
 # Build the manager binary
@@ -63,10 +75,10 @@ RUN go run build.go --enable-cgo
 
 ######################################################################
 # Build syncthing
-FROM golang-builder as syncthing-builder
+FROM syncthing-golang-builder as syncthing-builder
 
-ARG SYNCTHING_VERSION="v1.23.2"
-ARG SYNCTHING_GIT_HASH="8bbf2ba9ac7048cdc7527c3b6e71b3086448fa3a"
+ARG SYNCTHING_VERSION="v1.23.7"
+ARG SYNCTHING_GIT_HASH="97625ccc26d0919f709acc8e4b1211b485e722aa"
 
 RUN git clone --depth 1 -b ${SYNCTHING_VERSION} https://github.com/syncthing/syncthing.git
 WORKDIR /workspace/syncthing
