@@ -221,16 +221,16 @@ func mapFuncCopyTriggerPVCToReplicationSource(ctx context.Context, k8sClient cli
 func copyTriggerPVCPredicate() predicate.Predicate {
 	// Only reconcile ReplicationSources for PVC if the PVC is new or updated (no delete)
 	return predicate.Funcs{
-		CreateFunc: func(e event.CreateEvent) bool {
+		CreateFunc: func(_ event.CreateEvent) bool {
 			return true
 		},
-		DeleteFunc: func(e event.DeleteEvent) bool {
+		DeleteFunc: func(_ event.DeleteEvent) bool {
 			return false
 		},
-		UpdateFunc: func(e event.UpdateEvent) bool {
+		UpdateFunc: func(_ event.UpdateEvent) bool {
 			return true
 		},
-		GenericFunc: func(e event.GenericEvent) bool {
+		GenericFunc: func(_ event.GenericEvent) bool {
 			return true
 		},
 	}

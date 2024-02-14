@@ -503,7 +503,7 @@ func pvcOwnedByPredicate() predicate.Predicate {
 		CreateFunc: func(e event.CreateEvent) bool {
 			return utils.HasLabel(e.Object, labelPvcPrime)
 		},
-		DeleteFunc: func(e event.DeleteEvent) bool {
+		DeleteFunc: func(_ event.DeleteEvent) bool {
 			return false
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
@@ -524,7 +524,7 @@ func pvcForVolumePopulatorFilterPredicate() predicate.Predicate {
 			}
 			return pvcHasReplicationDestinationDataSourceRef(pvc)
 		},
-		DeleteFunc: func(e event.DeleteEvent) bool {
+		DeleteFunc: func(_ event.DeleteEvent) bool {
 			// Do not reconcile on PVC deletes
 			return false
 		},
@@ -548,16 +548,16 @@ func pvcForVolumePopulatorFilterPredicate() predicate.Predicate {
 func replicationDestinationPredicate() predicate.Predicate {
 	// Only reconcile pvcs for replication destination if replication destination is new or updated (no delete)
 	return predicate.Funcs{
-		CreateFunc: func(e event.CreateEvent) bool {
+		CreateFunc: func(_ event.CreateEvent) bool {
 			return true
 		},
-		DeleteFunc: func(e event.DeleteEvent) bool {
+		DeleteFunc: func(_ event.DeleteEvent) bool {
 			return false
 		},
-		UpdateFunc: func(e event.UpdateEvent) bool {
+		UpdateFunc: func(_ event.UpdateEvent) bool {
 			return true
 		},
-		GenericFunc: func(e event.GenericEvent) bool {
+		GenericFunc: func(_ event.GenericEvent) bool {
 			return true
 		},
 	}
@@ -566,16 +566,16 @@ func replicationDestinationPredicate() predicate.Predicate {
 func storageClassPredicate() predicate.Predicate {
 	// Only reconcile pvcs for storageclass on storageclass creation
 	return predicate.Funcs{
-		CreateFunc: func(e event.CreateEvent) bool {
+		CreateFunc: func(_ event.CreateEvent) bool {
 			return true
 		},
-		DeleteFunc: func(e event.DeleteEvent) bool {
+		DeleteFunc: func(_ event.DeleteEvent) bool {
 			return false
 		},
-		UpdateFunc: func(e event.UpdateEvent) bool {
+		UpdateFunc: func(_ event.UpdateEvent) bool {
 			return false
 		},
-		GenericFunc: func(e event.GenericEvent) bool {
+		GenericFunc: func(_ event.GenericEvent) bool {
 			return false
 		},
 	}

@@ -46,7 +46,7 @@ var replicationSetSourceCmd = &cobra.Command{
 	Long: templates.LongDesc(i18n.T(`
 	This command sets the source of the replication.
 	`)),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		rss, err := newReplicationSetSource(cmd)
 		if err != nil {
 			return err

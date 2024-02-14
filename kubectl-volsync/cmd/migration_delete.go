@@ -39,7 +39,7 @@ var migrationDeleteCmd = &cobra.Command{
 	Short: i18n.T("Delete a new migration destination"),
 	Long: `This command deletes the Replication destination
 	and the relationship file`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		md := newMigrationDelete()
 		mr, err := loadMigrationRelationship(cmd)
 		if err != nil {

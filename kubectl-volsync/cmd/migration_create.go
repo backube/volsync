@@ -77,7 +77,7 @@ var migrationCreateCmd = &cobra.Command{
 	and it sets up an associated ReplicationDestination that will be configured
 	to accept incoming transfers via rsync over ssh.
 	`)),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		mc, err := newMigrationCreate(cmd)
 		if err != nil {
 			return err

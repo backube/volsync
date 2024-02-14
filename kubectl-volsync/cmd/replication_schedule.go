@@ -41,7 +41,7 @@ var replicationScheduleCmd = &cobra.Command{
 	Long: templates.LongDesc(i18n.T(`
 	This command sets the schedule for replicating data.
 	`)),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		rsched, err := newReplicationSchedule(cmd)
 		if err != nil {
 			return err
