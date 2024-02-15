@@ -89,6 +89,8 @@
   "postUpdateOptions": [
     "gomodTidy"   // Run `go mod tidy` after updating dependencies
   ],
+  // Set max number of PRs. This is set high since we have many updates on /hold
+  "prConcurrentLimit": 50,
   "regexManagers": [
     {
       "customType": "regex",
