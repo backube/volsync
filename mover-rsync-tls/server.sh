@@ -9,15 +9,14 @@ STUNNEL_CONF=/tmp/stunnel.conf
 STUNNEL_PID_FILE=/tmp/stunnel.pid
 PSK_FILE=/keys/psk.txt
 RSYNC_LOG=/tmp/rsyncd.log
-IPV6_ENABLED=$(cat /sys/module/ipv6/parameters/disable)
+IPV6_DISABLED=$(cat /sys/module/ipv6/parameters/disable)
 
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 cd "$SCRIPT_DIR"
 
-# If IPv6 is in enabled state, the output would be "0"
-if [ $IPV6_ENABLED -eq 0 ]; then
-    STUNNEL_LISTEN_PORT=:::8000
-else
+STUNNEL_LISTEN_PORT=:::8000
+# If IPv6 is in disable state, the output would be "1"
+if [[ $IPV6_DISABLED -eq 1 ]]; then
     STUNNEL_LISTEN_PORT=8000
 fi
 
