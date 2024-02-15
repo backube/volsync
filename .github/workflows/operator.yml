@@ -289,6 +289,13 @@ jobs:
       KUBECONFIG: /tmp/kubeconfig
       KUBERNETES_VERSION: ${{ matrix.KUBERNETES_VERSIONS }}
     steps:
+      - name: Enable Workflow Telemetry
+        uses: runforesight/workflow-telemetry-action@6705383eabd01833acfe8412ec697384830e1455 # v1.8.7
+        with:
+          comment_on_pr: false
+          job_summary: true
+          proc_trace_chart_show: false
+
       - name: Checkout source
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
 
@@ -377,7 +384,7 @@ jobs:
 
       - name: Run e2e tests
         env:
-          BATCHES: 2
+          MAX_PARALLELISM: 5
         run: make test-e2e
 
   # This is a dummy job that can be used to determine success of CI:
