@@ -5,6 +5,8 @@ Understanding ``rclone-secret``
 The Rclone Secret provides the configuration details to locate and access the intermediary
 storage system. It is mounted as a secret on the Rclone data mover pod and provided to the Rclone executable.
 
+The secret should contain the key ``rclone.conf`` that contains the contents of your rclone.conf file. Here is an
+example rclone.conf:
 
 .. code:: none
 
@@ -48,3 +50,36 @@ Secret can be created via:
     rclone-secret         Opaque                                1      17s
 
 This Secret should be created on both the source and the destination locations.
+
+Using ``RCLONE_`` environment variables in ``rclone-secret``
+============================================================
+
+Rclone has the ability to set environment variables for configuration. Environment variables that
+start with ``RCLONE_`` can be set as key/value pairs in the ``rclone-secret`` and they will be passed
+to the rclone mover job.
+
+Here is an example ``rclone-secret`` that sets ``RCLONE_BWLIMIT`` to 5M:
+
+.. code-block:: yaml
+
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: rclone-secret
+   type: Opaque
+   stringData:
+     # equivalent to the --bwlimit command line flag
+     RCLONE_BWLIMIT: 5M
+     # rclone.conf
+     rclone.conf: |
+       [s3-bucket]
+       type = s3
+       provider = Minio
+       env_auth = false
+       access_key_id = user1
+       secret_access_key = abc123
+       region = us-east-1
+       endpoint = http://minio.minio.svc.cluster.local:9000
+
+For detailed information on Rclone environment variables see the
+`Rclone environment variable documentation <https://rclone.org/docs/#environment-variables>`_.

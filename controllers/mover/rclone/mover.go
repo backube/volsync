@@ -246,13 +246,21 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 		}
 		job.Spec.Parallelism = &parallelism
 
-		envVars := []corev1.EnvVar{
+		envVars := []corev1.EnvVar{}
+		// Rclone env vars if they are in the secret
+		envVars = utils.AppendRCloneEnvVars(rcloneConfigSecret, envVars)
+
+		defaultEnvVars := []corev1.EnvVar{
 			{Name: "RCLONE_CONFIG", Value: "/rclone-config/rclone.conf"},
 			{Name: "RCLONE_DEST_PATH", Value: *m.rcloneDestPath},
 			{Name: "DIRECTION", Value: direction},
 			{Name: "MOUNT_PATH", Value: mountPath},
 			{Name: "RCLONE_CONFIG_SECTION", Value: *m.rcloneConfigSection},
 		}
+
+		// Add our defaults after RCLONE_ env vars so any duplicates will be
+		// overridden by the defaults
+		envVars = append(envVars, defaultEnvVars...)
 
 		// Cluster-wide proxy settings
 		envVars = utils.AppendEnvVarsForClusterWideProxy(envVars)
