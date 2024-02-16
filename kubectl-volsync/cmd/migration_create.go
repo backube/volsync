@@ -101,6 +101,7 @@ func initMigrationCreateCmd(migrationCreateCmd *cobra.Command) {
 	migrationCreateCmd.Flags().String("storageclass", "", "StorageClass name for the PVC")
 	migrationCreateCmd.Flags().String("servicetype", "LoadBalancer",
 		"Service Type or ingress methods for a service. viz: ClusterIP, LoadBalancer")
+	migrationCreateCmd.Flags().String("rdname", "", "name of the ReplicationDestination to create")
 }
 
 func newMigrationCreate(cmd *cobra.Command) (*migrationCreate, error) {
@@ -181,7 +182,15 @@ func (mc *migrationCreate) parseCLI(cmd *cobra.Command) error {
 		return fmt.Errorf("unsupported service type: %v", corev1.ServiceType(serviceType))
 	}
 	mc.ServiceType = (*corev1.ServiceType)(&serviceType)
-	mc.RDName = mc.Namespace + "-" + mc.DestinationPVC + "-migration-dest"
+
+	rdName, err := cmd.Flags().GetString("rdname")
+	if err != nil {
+		return fmt.Errorf("failed to fetch rdname, %w", err)
+	}
+	if rdName == "" {
+		rdName = mc.DestinationPVC + "-mig-dst" // Generate default value
+	}
+	mc.RDName = rdName
 
 	return nil
 }
