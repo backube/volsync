@@ -8,6 +8,7 @@ Usage
    permissionmodel
    resourcerequirements
    triggers
+   pvccopytriggers
    metrics/index
    rclone/index
    restic/index
@@ -56,6 +57,12 @@ Triggers
 ========
 
 VolSync :doc:`supports several types of triggers <triggers>` to specify when to schedule the replication.
+
+PVC Annotations for Copy Triggers
+=================================
+
+VolSync :doc:`supports source PVC annotations <pvccopytriggers>` to coordinate triggering when VolSync takes a copy
+(snapshot or clone) for a replication.
 
 Metrics
 =======
