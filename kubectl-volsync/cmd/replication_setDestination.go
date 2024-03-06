@@ -48,7 +48,7 @@ var replicationSetDestinationCmd = &cobra.Command{
 	Long: templates.LongDesc(i18n.T(`
 	This command sets the destination of the replication.
 	`)),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		rsd, err := newReplicationSetDestination(cmd)
 		if err != nil {
 			return err

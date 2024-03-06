@@ -42,7 +42,7 @@ var replicationDeleteCmd = &cobra.Command{
 	data, the destination should be "promote"-ed prior to deleting the
 	relationship.
 	`)),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		r, err := newReplicationDelete(cmd)
 		if err != nil {
 			return err

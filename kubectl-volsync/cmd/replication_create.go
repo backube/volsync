@@ -38,7 +38,7 @@ var replicationCreateCmd = &cobra.Command{
 	Once created, both a source (set-source) and a destination (set-destination)
 	must be added.
 	`)),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		r := &replicationCreate{
 			Command: *cmd,
 		}

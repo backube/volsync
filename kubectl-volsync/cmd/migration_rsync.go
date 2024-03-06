@@ -51,7 +51,7 @@ var migrationSyncCmd = &cobra.Command{
 	via rsync over ssh. The execution of this command should be followed by
 	migration create which establishes the relationship.
 	`)),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		ms, err := newMigrationSync(cmd)
 		if err != nil {
 			return err

@@ -44,7 +44,7 @@ var replicationSyncCmd = &cobra.Command{
 	This command causes a one-time synchronization. Use the "schedule" command
 	for scheduled replication.
 	`)),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		rsync, err := newReplicationSync(cmd)
 		if err != nil {
 			return err
