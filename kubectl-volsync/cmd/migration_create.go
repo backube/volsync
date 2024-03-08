@@ -19,6 +19,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
@@ -47,6 +48,8 @@ type migrationCreate struct {
 	DestinationPVC string
 	// Name of the ReplicationDestination object
 	RDName string
+	// True if the ReplicationDestination should use RsyncTLS
+	IsRsyncTLS bool
 	// copyMethod describes how a point-in-time (PiT) image of the destination
 	// volume should be created
 	CopyMethod volsyncv1alpha1.CopyMethodType
@@ -64,6 +67,9 @@ type migrationCreate struct {
 	client client.Client
 	// PVC object associated with pvcName used to create destination object
 	PVC *corev1.PersistentVolumeClaim
+	// MoverSecurity context to use for the ReplicationDestination
+	// Individual fields will come from cli parameters
+	MoverSecurityContext *corev1.PodSecurityContext
 }
 
 // migrationCreateCmd represents the create command
@@ -102,6 +108,21 @@ func initMigrationCreateCmd(migrationCreateCmd *cobra.Command) {
 	migrationCreateCmd.Flags().String("servicetype", "LoadBalancer",
 		"Service Type or ingress methods for a service. viz: ClusterIP, LoadBalancer")
 	migrationCreateCmd.Flags().String("rdname", "", "name of the ReplicationDestination to create")
+	migrationCreateCmd.Flags().Bool("rsynctls", false, "if true, will use rsync-tls")
+
+	// MoverSecurityContext flags - will only apply if rsyncTLS is true
+	migrationCreateCmd.Flags().String("runasgroup", "",
+		"MoverSecurityContext runAsGroup to use in the ReplicationDestination (only if rsynctls=true)")
+	migrationCreateCmd.Flags().String("runasuser", "",
+		"MoverSecurityContext runAsUser to use in the ReplicationDestination (only if rsynctls=true)")
+	migrationCreateCmd.Flags().String("fsgroup", "",
+		"MoverSecurityContext fsGroup to use in the ReplicationDestination (only if rsynctls=true)")
+	// set runAsNonRoot as a string value with "" as default, as we don't want to
+	// specify moverSecurityContext.runAsNonRoot unless the user sets this flag
+	migrationCreateCmd.Flags().String("runasnonroot", "",
+		"MoverSecurityContext runAsNonRoot (true/false) setting to use in the ReplicationDestination (only if rsynctls=true)")
+	migrationCreateCmd.Flags().String("seccompprofiletype", "",
+		"MoverSecurityContext SeccompProfile.Type to use in the ReplicationDestination (only if rsynctls=true)")
 }
 
 func newMigrationCreate(cmd *cobra.Command) (*migrationCreate, error) {
@@ -115,6 +136,13 @@ func newMigrationCreate(cmd *cobra.Command) (*migrationCreate, error) {
 
 	if err = mc.parseCLI(cmd); err != nil {
 		return nil, err
+	}
+
+	mc.mr.data.IsRsyncTLS = mc.IsRsyncTLS
+	if mc.IsRsyncTLS {
+		mc.mr.mh = &migrationHandlerRsyncTLS{}
+	} else {
+		mc.mr.mh = &migrationHandlerRsync{}
 	}
 
 	return mc, nil
@@ -192,13 +220,108 @@ func (mc *migrationCreate) parseCLI(cmd *cobra.Command) error {
 	}
 	mc.RDName = rdName
 
+	isRsyncTLS, err := cmd.Flags().GetBool("rsynctls")
+	if err != nil {
+		return fmt.Errorf("failed to fetch rsynctls, %w", err)
+	}
+	mc.IsRsyncTLS = isRsyncTLS
+
+	if isRsyncTLS {
+		// Parse the moverSecurityContext flags (these flags will not apply to the
+		// rsync ssh case)
+		err = mc.parseCLIAdditionalRsyncTLSParams(cmd)
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
 //nolint:funlen
+func (mc *migrationCreate) parseCLIAdditionalRsyncTLSParams(cmd *cobra.Command) error {
+	runAsGroupStr, err := cmd.Flags().GetString("runasgroup")
+	if err != nil {
+		return fmt.Errorf("failed to fetch runasgroup, %w", err)
+	}
+	if runAsGroupStr != "" {
+		runAsGroupInt64, err := strconv.ParseInt(runAsGroupStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("failed to parse runasgroup, %w", err)
+		}
+		mc.initMoverSecurityContext()
+		mc.MoverSecurityContext.RunAsGroup = &runAsGroupInt64
+	}
+
+	runAsUserStr, err := cmd.Flags().GetString("runasuser")
+	if err != nil {
+		return fmt.Errorf("failed to fetch runasuser, %w", err)
+	}
+	if runAsUserStr != "" {
+		runAsUserInt64, err := strconv.ParseInt(runAsUserStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("failed to parse runasuser, %w", err)
+		}
+		mc.initMoverSecurityContext()
+		mc.MoverSecurityContext.RunAsUser = &runAsUserInt64
+	}
+
+	fsGroupStr, err := cmd.Flags().GetString("fsgroup")
+	if err != nil {
+		return fmt.Errorf("failed to fetch fsgroup, %w", err)
+	}
+	if fsGroupStr != "" {
+		fsGroupInt64, err := strconv.ParseInt(fsGroupStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("failed to parse fsgroup, %w", err)
+		}
+		mc.initMoverSecurityContext()
+		mc.MoverSecurityContext.FSGroup = &fsGroupInt64
+	}
+
+	runAsNonRootStr, err := cmd.Flags().GetString("runasnonroot")
+	if err != nil {
+		return fmt.Errorf("failed to fetch runasnonroot, %w", err)
+	}
+	if runAsNonRootStr != "" {
+		runAsNonRootBool, err := strconv.ParseBool(runAsNonRootStr)
+		if err != nil {
+			return fmt.Errorf("Failed to parse runasnonroot, %w", err)
+		}
+		mc.initMoverSecurityContext()
+		mc.MoverSecurityContext.RunAsNonRoot = &runAsNonRootBool
+	}
+
+	secCompProfileTypeStr, err := cmd.Flags().GetString("seccompprofiletype")
+	if err != nil {
+		return fmt.Errorf("failed to fetch seccompprofiletype, %w", err)
+	}
+	if secCompProfileTypeStr != "" {
+		if corev1.SeccompProfileType(secCompProfileTypeStr) != corev1.SeccompProfileTypeLocalhost &&
+			corev1.SeccompProfileType(secCompProfileTypeStr) != corev1.SeccompProfileTypeRuntimeDefault &&
+			corev1.SeccompProfileType(secCompProfileTypeStr) != corev1.SeccompProfileTypeUnconfined {
+			return fmt.Errorf("unsupported seccompprofiletype: %v", secCompProfileTypeStr)
+		}
+		mc.initMoverSecurityContext()
+		mc.MoverSecurityContext.SeccompProfile = &corev1.SeccompProfile{
+			Type: corev1.SeccompProfileType(secCompProfileTypeStr),
+		}
+	}
+
+	return nil
+}
+
+func (mc *migrationCreate) initMoverSecurityContext() {
+	// Init the moverSecurityContext if it's not defined yet
+	if mc.MoverSecurityContext == nil {
+		mc.MoverSecurityContext = &corev1.PodSecurityContext{}
+	}
+}
+
+//nolint:funlen
 func (mc *migrationCreate) newMigrationRelationshipDestination() (
-	*migrationRelationshipDestination, error) {
-	mrd := &migrationRelationshipDestination{}
+	*migrationRelationshipDestinationV2, error) {
+	mrd := &migrationRelationshipDestinationV2{}
 
 	// Assign the values from migrationCreate built after parsing cmd args
 	mrd.RDName = mc.RDName
@@ -212,8 +335,12 @@ func (mc *migrationCreate) newMigrationRelationshipDestination() (
 		}
 	}
 
-	mrd.Destination.DestinationPVC = &mc.DestinationPVC
-	mrd.Destination.ServiceType = mc.ServiceType
+	// Some migration create Cli parameters such as capacity, storageclassname, accesmodes etc are not
+	// saved to the migrationrelationship .yaml file.  These are only used at create time when the
+	// destination PVC and ReplicationDestination will be created.
+
+	mrd.ServiceType = mc.ServiceType
+	mrd.CopyMethod = mc.CopyMethod
 
 	return mrd, nil
 }
@@ -248,13 +375,14 @@ func (mc *migrationCreate) Run(ctx context.Context) error {
 	}
 
 	// Creates the RD if it doesn't exist
-	_, err = mc.ensureReplicationDestination(ctx)
+	rd, err := mc.mr.mh.EnsureReplicationDestination(ctx, mc.client, mc.mr.data.Destination)
+	//_, err = mc.ensureReplicationDestination(ctx)
 	if err != nil {
 		return err
 	}
 
 	// Wait for ReplicationDestination to post address, sshkeys
-	_, err = mc.mr.data.Destination.waitForRDStatus(ctx, mc.client)
+	_, err = mc.mr.mh.WaitForRDStatus(ctx, mc.client, rd)
 	if err != nil {
 		return err
 	}
@@ -341,30 +469,4 @@ func (mc *migrationCreate) getDestinationPVC(ctx context.Context) (*corev1.Persi
 		return nil, err
 	}
 	return destPVC, nil
-}
-
-func (mc *migrationCreate) ensureReplicationDestination(ctx context.Context) (
-	*volsyncv1alpha1.ReplicationDestination, error) {
-	mrd := mc.mr.data.Destination
-	rd := &volsyncv1alpha1.ReplicationDestination{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      mrd.RDName,
-			Namespace: mrd.Namespace,
-		},
-		Spec: volsyncv1alpha1.ReplicationDestinationSpec{
-			Rsync: &volsyncv1alpha1.ReplicationDestinationRsyncSpec{
-				ReplicationDestinationVolumeOptions: volsyncv1alpha1.ReplicationDestinationVolumeOptions{
-					DestinationPVC: mrd.Destination.DestinationPVC,
-				},
-				ServiceType: mrd.Destination.ServiceType,
-			},
-		},
-	}
-	if err := mc.client.Create(ctx, rd); err != nil {
-		return nil, err
-	}
-	klog.Infof("Created ReplicationDestination: \"%s\" in Namespace: \"%s\"",
-		rd.Name, rd.Namespace)
-
-	return rd, nil
 }

@@ -124,20 +124,18 @@ func (rss *replicationSetSource) Run(ctx context.Context) error {
 	_ = rss.rel.DeleteSource(ctx, srcClient)
 	_ = rss.rel.DeleteDestination(ctx, dstClient)
 
-	rss.rel.data.Source = &replicationRelationshipSource{
+	rss.rel.data.Source = &replicationRelationshipSourceV2{
 		Cluster:   rss.pvcName.Cluster,
 		Namespace: rss.pvcName.Namespace,
 		// The RS name needs to be unique since it's possible to have a single
 		// PVC be the source of multiple replications
 		RSName:  rss.pvcName.Name + "-" + krand.String(5),
 		PVCName: rss.pvcName.Name,
-		Source: volsyncv1alpha1.ReplicationSourceRsyncSpec{
-			ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
-				AccessModes:             rss.accessModes,
-				CopyMethod:              rss.copyMethod,
-				StorageClassName:        rss.storageClassName,
-				VolumeSnapshotClassName: rss.volumeSnapshotClassName,
-			},
+		ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
+			AccessModes:             rss.accessModes,
+			CopyMethod:              rss.copyMethod,
+			StorageClassName:        rss.storageClassName,
+			VolumeSnapshotClassName: rss.volumeSnapshotClassName,
 		},
 	}
 

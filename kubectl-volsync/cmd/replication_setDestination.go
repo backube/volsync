@@ -144,20 +144,18 @@ func (rsd *replicationSetDestination) Run(ctx context.Context) error {
 	_ = rsd.rel.DeleteSource(ctx, srcClient)
 	_ = rsd.rel.DeleteDestination(ctx, dstClient)
 
-	rsd.rel.data.Destination = &replicationRelationshipDestination{
+	rsd.rel.data.Destination = &replicationRelationshipDestinationV2{
 		Cluster:   rsd.destName.Cluster,
 		Namespace: rsd.destName.Namespace,
 		RDName:    rsd.destName.Name,
-		Destination: volsyncv1alpha1.ReplicationDestinationRsyncSpec{
-			ReplicationDestinationVolumeOptions: volsyncv1alpha1.ReplicationDestinationVolumeOptions{
-				AccessModes:             rsd.accessModes,
-				CopyMethod:              rsd.copyMethod,
-				Capacity:                rsd.capacity,
-				StorageClassName:        rsd.storageClassName,
-				VolumeSnapshotClassName: rsd.volumeSnapshotClassName,
-			},
-			ServiceType: &rsd.serviceType,
+		ReplicationDestinationVolumeOptions: volsyncv1alpha1.ReplicationDestinationVolumeOptions{
+			AccessModes:             rsd.accessModes,
+			CopyMethod:              rsd.copyMethod,
+			Capacity:                rsd.capacity,
+			StorageClassName:        rsd.storageClassName,
+			VolumeSnapshotClassName: rsd.volumeSnapshotClassName,
 		},
+		ServiceType: &rsd.serviceType,
 	}
 
 	var err error
