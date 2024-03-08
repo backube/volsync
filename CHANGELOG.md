@@ -282,7 +282,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for rsync & rclone replication
 - Helm chart to deploy operator
 
-[Unreleased]: https://github.com/backube/volsync/compare/release-0.8...release-0.9
+[Unreleased]: https://github.com/backube/volsync/compare/release-0.8...HEAD
 [0.8.1]: https://github.com/backube/volsync/compare/release-0.8.0...v0.8.1
 [0.8.0]: https://github.com/backube/volsync/compare/release-0.7...v0.8.0
 [0.7.1]: https://github.com/backube/volsync/compare/v0.7.0...v0.7.1
