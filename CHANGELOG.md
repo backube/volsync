@@ -9,8 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Syncthing upgraded to v1.26.1
+- Syncthing upgraded to v1.27.3
 - Restic upgraded to v0.16.4
+- Updated release to build on golang 1.21
+
+### Added
+
+- Allow customization of resource requirements and limits on mover job containers
+- Include additional restic environment variables from the restic secret
+  (RESTIC_REST_USERNAME, RESTIC_REST_PASSWORD, AZURE_ENDPOINT_SUFFIX)
+- Copy trigger pvc annotations.  Allows copy-trigger annotations on the pvc to
+  pause/trigger snapshots or clones in a sync
+- Include all RCLONE_ env vars from the rclone secret to be set in the rclone
+  mover job
+
+### Fixed
+
+- Exclude lost+found for restic backups
+- Check if ipv6 is enabled before assigning 'STUNNEL_LISTEN_PORT' in mover-rsync-tls
+  server script
+
+## [0.8.1]
+
+### Changed
+
+- Updated release to build on golang 1.21
+
+### Fixed
+
+- Capture error on restic restore when connecting to repository
 
 ## [0.8.0]
 
@@ -256,6 +283,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Helm chart to deploy operator
 
 [Unreleased]: https://github.com/backube/volsync/compare/release-0.8...HEAD
+[0.8.1]: https://github.com/backube/volsync/compare/release-0.8.0...v0.8.1
 [0.8.0]: https://github.com/backube/volsync/compare/release-0.7...v0.8.0
 [0.7.1]: https://github.com/backube/volsync/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/backube/volsync/compare/release-0.6...v0.7.0
