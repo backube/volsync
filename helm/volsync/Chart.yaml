@@ -24,22 +24,20 @@ annotations: # https://artifacthub.io/docs/topics/annotations/helm/
   # Changelog for current chart & app version
   # Kinds: added, changed, deprecated, removed, fixed, and security
   artifacthub.io/changes: |
-    - kind: added
-      description: Restic - ReplicationSource/ReplicationDestination can now specify a CustomCA that is from a configmap rather than only from a secret
-    - kind: added
-      description: Rclone - ReplicationSource/ReplicationDestination can now specify a CustomCA that is contained in either a configmap or secret
-    - kind: added
-      description: Restic - New option to run a restic unlock before the backup in the next sync
-    - kind: added
-      description: Restic - Allow passing through of RCLONE_ env vars from the restic secret to the mover job
-    - kind: added
-      description: Volume Populator added for ReplicationDestinations
     - kind: changed
-      description: Syncthing upgraded to v1.25.0
+      description: Syncthing upgraded to v1.27.3
     - kind: changed
-      description: Restic upgraded to v0.16.2
+      description: Restic upgraded to v0.16.4
     - kind: changed
-      description: Rclone upgraded to v1.63.1
+      description: Updated release to build on golang 1.21
+    - kind: added
+      description: Allow customization of resource requirements and limits on mover job containers
+    - kind: added
+      description: Include additional restic environment variables from the restic secret (RESTIC_REST_USERNAME, RESTIC_REST_PASSWORD, AZURE_ENDPOINT_SUFFIX)
+    - kind: added
+      description: Copy trigger pvc annotations.  Allows copy-trigger annotations on the pvc to pause/trigger snapshots or clones in a sync
+    - kind: added
+      description: Include all RCLONE_ env vars from the rclone secret to be set in the rclone mover job
   artifacthub.io/crds: |
     - kind: ReplicationDestination
       version: v1alpha1
@@ -66,10 +64,10 @@ kubeVersion: "^1.20.0-0"
 # This is the chart version. This version number should be incremented each time
 # you make changes to the chart and its templates, including the app version.
 # Versions are expected to follow Semantic Versioning (https://semver.org/)
-version: "0.8.0"
+version: "0.9.0"
 
 # This is the version number of the application being deployed. This version
 # number should be incremented each time you make changes to the application.
 # Versions are not expected to follow Semantic Versioning. They should reflect
 # the version the application is using. It is recommended to use it with quotes.
-appVersion: "0.8.0"
+appVersion: "0.9.0"
