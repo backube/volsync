@@ -49,13 +49,16 @@ function check_contents {
 
 # Ensure the repo has been initialized
 function ensure_initialized {
-    echo "== Initialize Dir ======="
+    echo "=== Check for dir initialized ==="
     # Try a restic command and capture the rc & output
     outfile=$(mktemp -q)
     if ! "${RESTIC[@]}" snapshots 2>"$outfile"; then
         output=$(<"$outfile")
         # Match against error string for uninitialized repo
+        # This string also appears when credentials are incorrect (in which case
+        # the following cmd `restic init` will also fail)
         if [[ $output =~ .*(Is there a repository at the following location).* ]]; then
+            echo "=== Initialize Dir ==="
             "${RESTIC[@]}" init
         else
             cat "$outfile"
@@ -252,6 +255,7 @@ function do_restore {
     snapshot_id=$(select_restic_snapshot_to_restore)
     if [[ -z ${snapshot_id} ]]; then
         echo "No eligible snapshots found"
+        echo "=== No data will be restored ==="
     else
     pushd "${DATA_DIR}"
         echo "Selected restic snapshot with id: ${snapshot_id}"
@@ -286,6 +290,7 @@ for op in "$@"; do
             do_prune
             ;;
         "restore")
+            ensure_initialized
             do_restore
             sync
             ;;

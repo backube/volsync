@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [unreleased]
+
+### Fixed
+
+- Allow restic restore from empty or non-initialized path
+
 ## [0.9.0]
 
 ### Changed
@@ -282,6 +288,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for rsync & rclone replication
 - Helm chart to deploy operator
 
+[Unreleased]: https://github.com/backube/volsync/compare/release-0.9...HEAD
 [0.9.0]: https://github.com/backube/volsync/compare/release-0.8...v0.9.0
 [0.8.1]: https://github.com/backube/volsync/compare/release-0.8.0...v0.8.1
 [0.8.0]: https://github.com/backube/volsync/compare/release-0.7...v0.8.0
