@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Allow restic restore from empty or non-initialized path
+- Ignore lost+found on restic backup when checking for empty source volume
 
 ## [0.9.0]
 

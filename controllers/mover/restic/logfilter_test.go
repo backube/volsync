@@ -83,6 +83,28 @@ Restic completed in 18s`
 			Expect(filteredLines).To(Equal(expectedFilteredResticSourceLogSuccessful))
 		})
 
+		It("Should filter the logs from a successful replication source of an empty dir (skip restic backup)", func() {
+			// Sample backup log for restic mover where data is empty
+			// nolint:lll
+			resticSourceLogSuccessful := `Starting container
+VolSync restic container version: v0.9.1+aa9ab46-dirty
+backup
+restic 0.16.4 compiled with go1.21.8 on linux/amd64
+Testing mandatory env variables
+== Checking directory for content ===
+== Directory is empty skipping backup ===`
+
+			// nolint:lll
+			expectedFilteredResticSourceLogSuccessful := `== Directory is empty skipping backup ===`
+
+			reader := strings.NewReader(resticSourceLogSuccessful)
+			filteredLines, err := utils.FilterLogs(reader, restic.LogLineFilterSuccess)
+			Expect(err).NotTo(HaveOccurred())
+
+			logger.Info("Logs after filter", "filteredLines", filteredLines)
+			Expect(filteredLines).To(Equal(expectedFilteredResticSourceLogSuccessful))
+		})
+
 		It("Should filter the logs from a replication source (restic backup) that performed an unlock", func() {
 			// Sample backup log for restic mover
 			resticSourceLog := `Starting container
