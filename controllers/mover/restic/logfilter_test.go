@@ -66,12 +66,36 @@ Restic completed in 18s
 === Done ===`
 
 			// nolint:lll
-			expectedFilteredResticSourceLogSuccessful := `repository f5bccd54 opened (repository version 2) successfully, password is correct
+			expectedFilteredResticSourceLogSuccessful := `created restic repository f5bccd54c8 at s3:http://minio-api-minio.apps.app-aws-411ga-sno-net2-zp5jq.dev06.red-chesterfield.com/ttest-restic-new
+repository f5bccd54 opened (repository version 2) successfully, password is correct
+created new cache in /home/testuser/DEVFEDORA/volsync/RESTICTESTS/CACHE
 no parent snapshot found, will read all files
 Added to the repository: 12.941 MiB (12.529 MiB stored)
 processed 25 files, 36.658 MiB in 0:12
 snapshot 0ff74383 saved
 Restic completed in 18s`
+
+			reader := strings.NewReader(resticSourceLogSuccessful)
+			filteredLines, err := utils.FilterLogs(reader, restic.LogLineFilterSuccess)
+			Expect(err).NotTo(HaveOccurred())
+
+			logger.Info("Logs after filter", "filteredLines", filteredLines)
+			Expect(filteredLines).To(Equal(expectedFilteredResticSourceLogSuccessful))
+		})
+
+		It("Should filter the logs from a successful replication source of an empty dir (skip restic backup)", func() {
+			// Sample backup log for restic mover where data is empty
+			// nolint:lll
+			resticSourceLogSuccessful := `Starting container
+VolSync restic container version: v0.9.1+aa9ab46-dirty
+backup
+restic 0.16.4 compiled with go1.21.8 on linux/amd64
+Testing mandatory env variables
+== Checking directory for content ===
+== Directory is empty skipping backup ===`
+
+			// nolint:lll
+			expectedFilteredResticSourceLogSuccessful := `== Directory is empty skipping backup ===`
 
 			reader := strings.NewReader(resticSourceLogSuccessful)
 			filteredLines, err := utils.FilterLogs(reader, restic.LogLineFilterSuccess)
@@ -189,6 +213,43 @@ Restic completed in 9s
 		expectedFilteredResticDestlogSuccessful := `repository f5bccd54 opened (repository version 2) successfully, password is correct
 restoring <Snapshot 0ff74383 of [/home/testuser/DEVFEDORA/volsync/TESTDATA] at 2022-12-15 11:10:01.858799017 -0500 EST by testuser@volsync> to .
 Restic completed in 9s`
+
+		It("Should filter the logs from a successful replication dest (restic restore)", func() {
+			reader := strings.NewReader(resticDestlogSuccessful)
+			filteredLines, err := utils.FilterLogs(reader, restic.LogLineFilterSuccess)
+			Expect(err).NotTo(HaveOccurred())
+
+			logger.Info("Logs after filter", "filteredLines", filteredLines)
+			Expect(filteredLines).To(Equal(expectedFilteredResticDestlogSuccessful))
+		})
+	})
+
+	Context("Restic dest mover logs - empty repo/path (not initialized previously)", func() {
+		// Sample restore log for restic mover
+		// nolint:lll
+		resticDestlogSuccessful := `Starting container
+VolSync restic container version: v0.9.0+169bc5b-dirty
+restore
+restic 0.16.4 compiled with go1.21.8 on linux/amd64
+Testing mandatory env variables
+=== Check for dir initialized ===
+=== Initialize Dir ===
+created restic repository 374c6313cb at s3:http://minio.minio.svc.cluster.local:9000/resticbucket1b
+
+Please note that knowledge of your password is required to access
+the repository. Losing your password means that your data is
+irrecoverably lost.
+=== Starting restore ===
+No eligible snapshots found
+=== No data will be restored ===
+Restic completed in 4s
+=== Done ===`
+
+		// nolint:lll
+		expectedFilteredResticDestlogSuccessful := `created restic repository 374c6313cb at s3:http://minio.minio.svc.cluster.local:9000/resticbucket1b
+No eligible snapshots found
+=== No data will be restored ===
+Restic completed in 4s`
 
 		It("Should filter the logs from a successful replication dest (restic restore)", func() {
 			reader := strings.NewReader(resticDestlogSuccessful)
