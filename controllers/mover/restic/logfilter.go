@@ -24,6 +24,10 @@ import (
 var resticRegex = regexp.MustCompile(
 	`^\s*([pP]rocessed)\s.+([fF]iles)|` +
 		`^\s*([sS]napshot)\s.+([sS]aved)|` +
+		`^\s*(No eligible)|` +
+		`(No data)|` +
+		`(Directory is empty)|` +
+		`^\s*([cC]reated)|` +
 		`^\s*([rR]epository)\s.+([oO]pened)|` +
 		`^\s*([rR]estoring)|` +
 		`^\s*([nN]o parent snapshot)|` +
