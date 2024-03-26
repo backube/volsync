@@ -40,7 +40,7 @@ function check_var_defined {
 
 function check_contents {
     echo "== Checking directory for content ==="
-    DIR_CONTENTS="$(ls -A "${DATA_DIR}" | grep -v "lost+found" || true)"
+    DIR_CONTENTS="$(ls -A "${DATA_DIR}" --ignore="lost+found")"
     if [ -z "${DIR_CONTENTS}" ]; then
         echo "== Directory is empty skipping backup ==="
         exit 0
