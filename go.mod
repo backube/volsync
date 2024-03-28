@@ -8,7 +8,7 @@ require (
 	github.com/go-logr/logr v1.4.1
 	github.com/google/uuid v1.6.0
 	github.com/kubernetes-csi/external-snapshotter/client/v6 v6.3.0
-	github.com/kubernetes-csi/volume-data-source-validator/client v0.0.0-20230911161012-c2e130d28434
+	github.com/kubernetes-csi/volume-data-source-validator/client v1.3.0
 	github.com/onsi/ginkgo/v2 v2.17.1
 	github.com/onsi/gomega v1.32.0
 	github.com/openshift/api v0.0.0-20230918105526-6488b1202507 // release-4.14
