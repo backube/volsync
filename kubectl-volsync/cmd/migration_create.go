@@ -299,7 +299,7 @@ func (mc *migrationCreate) createDestinationPVC(ctx context.Context) (*corev1.Pe
 		Spec: corev1.PersistentVolumeClaimSpec{
 			AccessModes:      mc.AccessModes,
 			StorageClassName: mc.StorageClassName,
-			Resources: corev1.ResourceRequirements{
+			Resources: corev1.VolumeResourceRequirements{
 				Requests: corev1.ResourceList{
 					corev1.ResourceStorage: *mc.Capacity,
 				},

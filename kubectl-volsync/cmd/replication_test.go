@@ -244,7 +244,7 @@ var _ = Describe("Replication relationships", func() {
 			srcPVC = &corev1.PersistentVolumeClaim{
 				Spec: corev1.PersistentVolumeClaimSpec{
 					AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-					Resources: corev1.ResourceRequirements{
+					Resources: corev1.VolumeResourceRequirements{
 						Requests: corev1.ResourceList{
 							corev1.ResourceStorage: srcCap,
 						},
@@ -305,7 +305,7 @@ var _ = Describe("Replication relationships", func() {
 						AccessModes: []corev1.PersistentVolumeAccessMode{
 							corev1.ReadWriteOnce,
 						},
-						Resources: corev1.ResourceRequirements{
+						Resources: corev1.VolumeResourceRequirements{
 							Requests: corev1.ResourceList{
 								corev1.ResourceStorage: resource.MustParse("45Gi"),
 							},
