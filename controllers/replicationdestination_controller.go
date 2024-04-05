@@ -110,7 +110,8 @@ func (r *ReplicationDestinationReconciler) Reconcile(ctx context.Context, req ct
 		return result, err
 	}
 
-	rdm, err := newRDMachine(inst, r.Client, logger, record.NewEventRecorderAdapter(r.EventRecorder), privilegedMoverOk)
+	rdm, err := newRDMachine(inst, r.Client, logger,
+		record.NewEventRecorderAdapter(mover.NewEventRecorderLogger(r.EventRecorder)), privilegedMoverOk)
 
 	// Using only external method
 	if errors.Is(err, mover.ErrNoMoverFound) && inst.Spec.External != nil {
