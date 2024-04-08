@@ -17,7 +17,12 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 package mover
 
-import "time"
+import (
+	"time"
+
+	"k8s.io/client-go/tools/record"
+	"k8s.io/klog/v2"
+)
 
 // This file contains timeout constants used for generating events.
 
@@ -33,3 +38,18 @@ const (
 	// Service has not been assigned an address
 	ServiceAddressTimeout = 15 * time.Second
 )
+
+var _ record.EventRecorderLogger = EventRecorderLogger{}
+
+type EventRecorderLogger struct {
+	record.EventRecorder
+}
+
+func (e EventRecorderLogger) WithLogger(_ klog.Logger) record.EventRecorderLogger {
+	// no-op
+	return e
+}
+
+func NewEventRecorderLogger(eventRecorder record.EventRecorder) EventRecorderLogger {
+	return EventRecorderLogger{eventRecorder}
+}

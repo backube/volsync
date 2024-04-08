@@ -423,7 +423,7 @@ var _ = Describe("Restic as a source", func() {
 				AccessModes: []corev1.PersistentVolumeAccessMode{
 					corev1.ReadWriteOnce,
 				},
-				Resources: corev1.ResourceRequirements{
+				Resources: corev1.VolumeResourceRequirements{
 					Requests: corev1.ResourceList{
 						"storage": resource.MustParse("7Gi"),
 					},
@@ -1419,7 +1419,7 @@ var _ = Describe("Restic as a source", func() {
 							AccessModes: []corev1.PersistentVolumeAccessMode{
 								corev1.ReadOnlyMany,
 							},
-							Resources: corev1.ResourceRequirements{
+							Resources: corev1.VolumeResourceRequirements{
 								Requests: corev1.ResourceList{
 									"storage": resource.MustParse("1Gi"),
 								},
@@ -1818,7 +1818,7 @@ var _ = Describe("Restic as a destination", func() {
 						AccessModes: []corev1.PersistentVolumeAccessMode{
 							corev1.ReadWriteOnce,
 						},
-						Resources: corev1.ResourceRequirements{
+						Resources: corev1.VolumeResourceRequirements{
 							Requests: corev1.ResourceList{
 								"storage": resource.MustParse("1Gi"),
 							},
@@ -1906,7 +1906,7 @@ var _ = Describe("Restic as a destination", func() {
 						AccessModes: []corev1.PersistentVolumeAccessMode{
 							corev1.ReadWriteOnce,
 						},
-						Resources: corev1.ResourceRequirements{
+						Resources: corev1.VolumeResourceRequirements{
 							Requests: corev1.ResourceList{
 								"storage": resource.MustParse("1Gi"),
 							},
@@ -1922,7 +1922,7 @@ var _ = Describe("Restic as a destination", func() {
 						AccessModes: []corev1.PersistentVolumeAccessMode{
 							corev1.ReadWriteOnce,
 						},
-						Resources: corev1.ResourceRequirements{
+						Resources: corev1.VolumeResourceRequirements{
 							Requests: corev1.ResourceList{
 								"storage": resource.MustParse("1Gi"),
 							},

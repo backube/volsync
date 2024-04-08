@@ -116,7 +116,8 @@ func (r *ReplicationSourceReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return result, err
 	}
 
-	rsm, err := newRSMachine(inst, r.Client, logger, record.NewEventRecorderAdapter(r.EventRecorder), privilegedMoverOk)
+	rsm, err := newRSMachine(inst, r.Client, logger,
+		record.NewEventRecorderAdapter(mover.NewEventRecorderLogger(r.EventRecorder)), privilegedMoverOk)
 
 	// Using only external method
 	if errors.Is(err, mover.ErrNoMoverFound) && inst.Spec.External != nil {

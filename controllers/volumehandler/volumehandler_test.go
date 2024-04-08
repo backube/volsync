@@ -143,7 +143,7 @@ var _ = Describe("Volumehandler", func() {
 							AccessModes: []corev1.PersistentVolumeAccessMode{
 								corev1.ReadWriteMany,
 							},
-							Resources: corev1.ResourceRequirements{
+							Resources: corev1.VolumeResourceRequirements{
 								Requests: corev1.ResourceList{
 									"storage": resource.MustParse("2Gi"),
 								},
@@ -186,7 +186,7 @@ var _ = Describe("Volumehandler", func() {
 						AccessModes: []corev1.PersistentVolumeAccessMode{
 							corev1.ReadWriteMany,
 						},
-						Resources: corev1.ResourceRequirements{
+						Resources: corev1.VolumeResourceRequirements{
 							Requests: corev1.ResourceList{
 								"storage": resource.MustParse("2Gi"),
 							},
@@ -280,7 +280,7 @@ var _ = Describe("Volumehandler", func() {
 					AccessModes: []corev1.PersistentVolumeAccessMode{
 						corev1.ReadWriteMany,
 					},
-					Resources: corev1.ResourceRequirements{
+					Resources: corev1.VolumeResourceRequirements{
 						Requests: corev1.ResourceList{
 							"storage": pvcRequestedSize,
 						},

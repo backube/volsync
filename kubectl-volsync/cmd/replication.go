@@ -313,7 +313,7 @@ func (rr *replicationRelationship) ensureDestinationPVC(ctx context.Context, c c
 		klog.Infof("creating destination PVC: %v/%v", pvc.Namespace, pvc.Name)
 		pvc.Spec = corev1.PersistentVolumeClaimSpec{
 			AccessModes: accessModes,
-			Resources: corev1.ResourceRequirements{
+			Resources: corev1.VolumeResourceRequirements{
 				Requests: corev1.ResourceList{
 					corev1.ResourceStorage: capacity,
 				},
