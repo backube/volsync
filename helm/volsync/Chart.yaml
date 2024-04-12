@@ -24,20 +24,10 @@ annotations: # https://artifacthub.io/docs/topics/annotations/helm/
   # Changelog for current chart & app version
   # Kinds: added, changed, deprecated, removed, fixed, and security
   artifacthub.io/changes: |
-    - kind: changed
-      description: Syncthing upgraded to v1.27.3
-    - kind: changed
-      description: Restic upgraded to v0.16.4
-    - kind: changed
-      description: Updated release to build on golang 1.21
-    - kind: added
-      description: Allow customization of resource requirements and limits on mover job containers
-    - kind: added
-      description: Include additional restic environment variables from the restic secret (RESTIC_REST_USERNAME, RESTIC_REST_PASSWORD, AZURE_ENDPOINT_SUFFIX)
-    - kind: added
-      description: Copy trigger pvc annotations.  Allows copy-trigger annotations on the pvc to pause/trigger snapshots or clones in a sync
-    - kind: added
-      description: Include all RCLONE_ env vars from the rclone secret to be set in the rclone mover job
+    - kind: fixed
+      description: Allow restic restore from empty or non-initialized path
+    - kind: fixed
+      description: Ignore lost+found on restic backup when checking for empty source volume
   artifacthub.io/crds: |
     - kind: ReplicationDestination
       version: v1alpha1
@@ -64,10 +54,10 @@ kubeVersion: "^1.20.0-0"
 # This is the chart version. This version number should be incremented each time
 # you make changes to the chart and its templates, including the app version.
 # Versions are expected to follow Semantic Versioning (https://semver.org/)
-version: "0.9.0"
+version: "0.9.1"
 
 # This is the version number of the application being deployed. This version
 # number should be incremented each time you make changes to the application.
 # Versions are not expected to follow Semantic Versioning. They should reflect
 # the version the application is using. It is recommended to use it with quotes.
-appVersion: "0.9.0"
+appVersion: "0.9.1"
