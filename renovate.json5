@@ -23,7 +23,7 @@
       "groupName": "golang version",
       "groupSlug": "golang",
       "matchDepNames": [
-        "^golang$"
+        "^(golang|go)$"
       ]
     },
     {
@@ -91,7 +91,7 @@
   ],
   // Set max number of PRs. This is set high since we have many updates on /hold
   "prConcurrentLimit": 50,
-  "regexManagers": [
+  "customManagers": [
     {
       "customType": "regex",
       "description": "controller-tools version updates",
