@@ -28,7 +28,7 @@ require (
 	k8s.io/component-helpers v0.29.3
 	k8s.io/klog/v2 v2.120.1
 	k8s.io/kubectl v0.29.3
-	k8s.io/utils v0.0.0-20240310230437-4693a0247e57
+	k8s.io/utils v0.0.0-20240423183400-0849a56e8f22
 	sigs.k8s.io/controller-runtime v0.17.3
 )
 
