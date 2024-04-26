@@ -105,7 +105,8 @@ func (mhr *migrationHandlerRsync) WaitForRDStatus(ctx context.Context, c client.
 }
 
 func (mhr *migrationHandlerRsync) RunMigration(ctx context.Context, c client.Client,
-	source string, destConfig *migrationRelationshipDestinationV2) error {
+	source string, destConfig *migrationRelationshipDestinationV2,
+	_ int32 /*stunnellocalport, not needed for rsyncssh*/) error {
 	var sshKeyDir *string
 	var destAddr string
 	var err error
