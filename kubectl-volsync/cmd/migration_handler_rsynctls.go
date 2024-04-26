@@ -44,8 +44,8 @@ type stunnelConfParams struct {
 	StunnelConfFile    string
 	StunnelPIDFile     string
 	PSKFile            string
-	LocalPort          int
-	DestinationPort    int
+	LocalPort          int32
+	DestinationPort    int32
 	DestinationAddress string
 }
 
@@ -120,7 +120,7 @@ func (mhrtls *migrationHandlerRsyncTLS) WaitForRDStatus(ctx context.Context, c c
 }
 
 func (mhrtls *migrationHandlerRsyncTLS) RunMigration(ctx context.Context, c client.Client,
-	source string, destConfig *migrationRelationshipDestinationV2) error {
+	source string, destConfig *migrationRelationshipDestinationV2, sTunnelLocalPort int32) error {
 	var stunnelTempDir *string
 	var destAddr string
 	var err error
@@ -153,8 +153,8 @@ func (mhrtls *migrationHandlerRsyncTLS) RunMigration(ctx context.Context, c clie
 		StunnelConfFile:    filepath.Join(*stunnelTempDir, "stunnel-client.conf"),
 		StunnelPIDFile:     filepath.Join(*stunnelTempDir, "stunnel-client.pid"),
 		PSKFile:            pskFile,
-		LocalPort:          defaultLocalStunnelPort,       //TODO: allow to config from cmd line
-		DestinationPort:    defaultDestinationStunnelPort, //TODO: allow to config from cmd line
+		LocalPort:          sTunnelLocalPort,
+		DestinationPort:    defaultDestinationStunnelPort,
 		DestinationAddress: destAddr,
 	}
 
