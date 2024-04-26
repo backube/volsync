@@ -33,9 +33,11 @@ type migrationSync struct {
 	Source string
 	// client object to communicate with a cluster
 	client client.Client
+	// Local Port to use for stunnel (only applies for rsync-tls)
+	StunnelLocalPort int32
 }
 
-// migrationCreateCmd represents the create command
+// migrationSyncCmd represents the create command
 var migrationSyncCmd = &cobra.Command{
 	Use:   "rsync",
 	Short: i18n.T("Rsync data from source to destination"),
@@ -63,11 +65,14 @@ func init() {
 	initmigrationSyncCmd(migrationSyncCmd)
 }
 
-func initmigrationSyncCmd(migrationCreateCmd *cobra.Command) {
-	migrationCmd.AddCommand(migrationCreateCmd)
+func initmigrationSyncCmd(migrationSyncCmd *cobra.Command) {
+	migrationCmd.AddCommand(migrationSyncCmd)
 
-	migrationCreateCmd.Flags().String("source", "", "source volume to be migrated")
-	cobra.CheckErr(migrationCreateCmd.MarkFlagRequired("source"))
+	migrationSyncCmd.Flags().String("source", "", "source volume to be migrated")
+	cobra.CheckErr(migrationSyncCmd.MarkFlagRequired("source"))
+
+	migrationSyncCmd.Flags().Int32("stunnellocalport", defaultLocalStunnelPort,
+		"if using rsyncl-tls, stunnel will need to run locally. Set this to override the default local port used")
 }
 
 func (ms *migrationSync) Run(ctx context.Context) error {
@@ -83,7 +88,7 @@ func (ms *migrationSync) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to access the source volume, %w", err)
 	}
 
-	return ms.mr.mh.RunMigration(ctx, ms.client, ms.Source, ms.mr.data.Destination)
+	return ms.mr.mh.RunMigration(ctx, ms.client, ms.Source, ms.mr.data.Destination, ms.StunnelLocalPort)
 }
 
 func newMigrationSync(cmd *cobra.Command) (*migrationSync, error) {
@@ -93,6 +98,13 @@ func newMigrationSync(cmd *cobra.Command) (*migrationSync, error) {
 		return nil, fmt.Errorf("failed to fetch the source arg, err = %w", err)
 	}
 	ms.Source = source
+
+	// Allow users to specify different local stunnel port
+	sTunnelLocalPort, err := cmd.Flags().GetInt32("stunnellocalport")
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch stunnellocalport, %w", err)
+	}
+	ms.StunnelLocalPort = sTunnelLocalPort
 
 	return ms, nil
 }

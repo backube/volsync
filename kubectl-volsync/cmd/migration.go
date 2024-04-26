@@ -52,7 +52,8 @@ type migrationHandler interface {
 		destConfig *migrationRelationshipDestinationV2) (*volsyncv1alpha1.ReplicationDestination, error)
 	WaitForRDStatus(ctx context.Context, c client.Client,
 		replicationDestination *volsyncv1alpha1.ReplicationDestination) (*volsyncv1alpha1.ReplicationDestination, error)
-	RunMigration(ctx context.Context, c client.Client, source string, destConfig *migrationRelationshipDestinationV2) error
+	RunMigration(ctx context.Context, c client.Client, source string, destConfig *migrationRelationshipDestinationV2,
+		sTunnelLocalPort int32) error
 }
 
 // Old v1 version of the data
