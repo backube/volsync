@@ -3,7 +3,7 @@
   tags:
     - cli
     - rsync_tls
-    - unprivileged
+    - privileged
   tasks:
     - name: Create namespace
       include_role:
@@ -13,16 +13,9 @@
       include_role:
         name: gather_cluster_info
 
-    - name: Define podSecurityContext
-      ansible.builtin.set_fact:
-        podSecurityContext:
-          fsGroup: 5678
-          runAsGroup: 5678
-          runAsNonRoot: true
-          runAsUser: 1234
-          seccompProfile:
-            type: RuntimeDefault
-      when: not cluster_info.is_openshift
+    - name: Enable privileged movers
+      include_role:
+        name: enable_privileged_mover
 
     - name: Create source PVC
       kubernetes.core.k8s:
@@ -85,7 +78,7 @@
           - "--rsynctls"
           - "true"
 
-    - name: Set source of replication (w/ mSC)
+    - name: Set source of replication
       include_role:
         name: cli
       vars:
@@ -98,59 +91,8 @@
           - "{{namespace}}/data-source"
           - "--copymethod"
           - "Snapshot"
-          - "--fsgroup"
-          - "{{ podSecurityContext.fsGroup }}"
-          - "--runasgroup"
-          - "{{ podSecurityContext.runAsGroup }}"
-          - "--runasuser"
-          - "{{ podSecurityContext.runAsUser }}"
-          - "--runasnonroot"
-          - "{{ podSecurityContext.runAsNonRoot }}"
-          - "--seccompprofiletype"
-          - "{{ podSecurityContext.seccompProfile.type }}"
-      when: podSecurityContext is defined
 
-    - name: Set source of replication (w/o mSC)
-      include_role:
-        name: cli
-      vars:
-        params:
-          - "replication"
-          - "-r"
-          - "replication"
-          - "set-source"
-          - "--pvcname"
-          - "{{namespace}}/data-source"
-          - "--copymethod"
-          - "Snapshot"
-      when: podSecurityContext is not defined
-
-    - name: Set destination of replication (w/ mSC)
-      include_role:
-        name: cli
-      vars:
-        params:
-          - "replication"
-          - "-r"
-          - "replication"
-          - "set-destination"
-          - "--destination"
-          - "{{namespace}}/data-dest"
-          - "--copymethod"
-          - "Direct"
-          - "--fsgroup"
-          - "{{ podSecurityContext.fsGroup }}"
-          - "--runasgroup"
-          - "{{ podSecurityContext.runAsGroup }}"
-          - "--runasuser"
-          - "{{ podSecurityContext.runAsUser }}"
-          - "--runasnonroot"
-          - "{{ podSecurityContext.runAsNonRoot }}"
-          - "--seccompprofiletype"
-          - "{{ podSecurityContext.seccompProfile.type }}"
-      when: podSecurityContext is defined
-
-    - name: Set destination of replication (w/o mSC)
+    - name: Set destination of replication
       include_role:
         name: cli
       vars:

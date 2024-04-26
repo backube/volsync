@@ -39,6 +39,9 @@ type replicationSetDestination struct {
 	serviceType             corev1.ServiceType
 	storageClassName        *string
 	volumeSnapshotClassName *string
+	// MoverSecurity context to use for the ReplicationDestination
+	// Individual fields will come from cli parameters
+	MoverSecurityContext *corev1.PodSecurityContext
 }
 
 // replicationSetDestinationCmd represents the replicationSetDestination command
@@ -77,6 +80,9 @@ func init() {
 		"name of the StorageClass to use for the destination volume")
 	replicationSetDestinationCmd.Flags().String("volumesnapshotclass", "",
 		"name of the VolumeSnapshotClass to use for destination snapshots")
+
+	// MoverSecurityContext flags - will only apply if rsyncTLS is true
+	addCLIRsyncTLSMoverSecurityContextFlags(replicationSetDestinationCmd, true)
 }
 
 func newReplicationSetDestination(cmd *cobra.Command) (*replicationSetDestination, error) {
@@ -133,6 +139,12 @@ func newReplicationSetDestination(cmd *cobra.Command) (*replicationSetDestinatio
 		rsd.volumeSnapshotClassName = &vscName
 	}
 
+	// Parse moverSecurityContext flags into a desired MoverSecurityContext
+	rsd.MoverSecurityContext, err = parseCLIRsyncTLSMoverSecurityContextFlags(cmd)
+	if err != nil {
+		return nil, err
+	}
+
 	return rsd, nil
 }
 
@@ -143,6 +155,14 @@ func (rsd *replicationSetDestination) Run(ctx context.Context) error {
 	// Best effort to delete. Error status doesn't affect what we need to do
 	_ = rsd.rel.DeleteSource(ctx, srcClient)
 	_ = rsd.rel.DeleteDestination(ctx, dstClient)
+
+	if !rsd.rel.data.IsRsyncTLS {
+		// the rsync (ssh) handler will ignore moversecuritycontext,
+		// but remove it here in case someone passes in these flags when
+		// using rsync ssh so it doesn't end up in the saved yaml
+		// and confuse anyone
+		rsd.MoverSecurityContext = nil
+	}
 
 	rsd.rel.data.Destination = &replicationRelationshipDestinationV2{
 		Cluster:   rsd.destName.Cluster,
@@ -155,7 +175,8 @@ func (rsd *replicationSetDestination) Run(ctx context.Context) error {
 			StorageClassName:        rsd.storageClassName,
 			VolumeSnapshotClassName: rsd.volumeSnapshotClassName,
 		},
-		ServiceType: &rsd.serviceType,
+		ServiceType:          &rsd.serviceType,
+		MoverSecurityContext: rsd.MoverSecurityContext,
 	}
 
 	var err error

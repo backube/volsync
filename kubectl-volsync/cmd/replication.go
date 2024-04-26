@@ -107,6 +107,9 @@ type replicationRelationshipSourceV2 struct {
 	ReplicationSourceVolumeOptions volsyncv1alpha1.ReplicationSourceVolumeOptions
 	// Scheduling parameters
 	Trigger volsyncv1alpha1.ReplicationSourceTriggerSpec
+	// MoverSecurityContext allows specifying the PodSecurityContext that will
+	// be used by the data mover
+	MoverSecurityContext *corev1.PodSecurityContext
 }
 
 type replicationRelationshipDestination struct {
@@ -131,6 +134,9 @@ type replicationRelationshipDestinationV2 struct {
 	ReplicationDestinationVolumeOptions volsyncv1alpha1.ReplicationDestinationVolumeOptions
 	// Service Type for the ReplicationDestination
 	ServiceType *corev1.ServiceType
+	// MoverSecurityContext allows specifying the PodSecurityContext that will
+	// be used by the data mover
+	MoverSecurityContext *corev1.PodSecurityContext
 }
 
 // replicationCmd represents the replication command

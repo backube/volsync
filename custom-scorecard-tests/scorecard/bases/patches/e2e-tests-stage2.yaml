@@ -13,121 +13,41 @@
         mountPath: {}
   - entrypoint:
     - volsync-custom-scorecard-tests
-    - test_restic_manual_normal.yml
+    - test_replication_sched_snap.yml
     image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
-      test: test_restic_manual_normal.yml
+      test: test_replication_sched_snap.yml
     storage:
       spec:
         mountPath: {}
   - entrypoint:
     - volsync-custom-scorecard-tests
-    - test_restic_manual_normal_cleanup_pvcs.yml
+    - test_replication_sync_direct.yml
     image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
-      test: test_restic_manual_normal_cleanup_pvcs.yml
+      test: test_replication_sync_direct.yml
     storage:
       spec:
         mountPath: {}
   - entrypoint:
     - volsync-custom-scorecard-tests
-    - test_restic_manual_normal_copy_trigger.yml
+    - test_replication_sync_direct_tls_normal.yml
     image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
-      test: test_restic_manual_normal_copy_trigger.yml
+      test: test_replication_sync_direct_tls_normal.yml
     storage:
       spec:
         mountPath: {}
   - entrypoint:
     - volsync-custom-scorecard-tests
-    - test_restic_manual_normal_longname.yml
+    - test_replication_sync_direct_tls_priv.yml
     image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
       suite: volsync-e2e
-      test: test_restic_manual_normal_longname.yml
-    storage:
-      spec:
-        mountPath: {}
-  - entrypoint:
-    - volsync-custom-scorecard-tests
-    - test_restic_manual_normal_restore_emptyrepo.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
-    labels:
-      suite: volsync-e2e
-      test: test_restic_manual_normal_restore_emptyrepo.yml
-    storage:
-      spec:
-        mountPath: {}
-  - entrypoint:
-    - volsync-custom-scorecard-tests
-    - test_restic_manual_priv.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
-    labels:
-      suite: volsync-e2e
-      test: test_restic_manual_priv.yml
-    storage:
-      spec:
-        mountPath: {}
-  - entrypoint:
-    - volsync-custom-scorecard-tests
-    - test_restic_with_customca_configmap.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
-    labels:
-      suite: volsync-e2e
-      test: test_restic_with_customca_configmap.yml
-    storage:
-      spec:
-        mountPath: {}
-  - entrypoint:
-    - volsync-custom-scorecard-tests
-    - test_restic_with_customca_secret.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
-    labels:
-      suite: volsync-e2e
-      test: test_restic_with_customca_secret.yml
-    storage:
-      spec:
-        mountPath: {}
-  - entrypoint:
-    - volsync-custom-scorecard-tests
-    - test_restic_with_previous.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
-    labels:
-      suite: volsync-e2e
-      test: test_restic_with_previous.yml
-    storage:
-      spec:
-        mountPath: {}
-  - entrypoint:
-    - volsync-custom-scorecard-tests
-    - test_restic_with_restoreasof.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
-    labels:
-      suite: volsync-e2e
-      test: test_restic_with_restoreasof.yml
-    storage:
-      spec:
-        mountPath: {}
-  - entrypoint:
-    - volsync-custom-scorecard-tests
-    - test_restic_with_restoreoptions.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
-    labels:
-      suite: volsync-e2e
-      test: test_restic_with_restoreoptions.yml
-    storage:
-      spec:
-        mountPath: {}
-  - entrypoint:
-    - volsync-custom-scorecard-tests
-    - test_restic_without_trigger.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
-    labels:
-      suite: volsync-e2e
-      test: test_restic_without_trigger.yml
+      test: test_replication_sync_direct_tls_priv.yml
     storage:
       spec:
         mountPath: {}

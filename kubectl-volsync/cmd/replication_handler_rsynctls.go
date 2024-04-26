@@ -53,6 +53,9 @@ func (rhrtls *replicationHandlerRsyncTLS) ApplyDestination(ctx context.Context,
 			RsyncTLS: &volsyncv1alpha1.ReplicationDestinationRsyncTLSSpec{
 				ReplicationDestinationVolumeOptions: destConfig.ReplicationDestinationVolumeOptions,
 				ServiceType:                         destConfig.ServiceType,
+				MoverConfig: volsyncv1alpha1.MoverConfig{
+					MoverSecurityContext: destConfig.MoverSecurityContext,
+				},
 			},
 		}
 		if dstPVC != nil {
@@ -135,6 +138,9 @@ func (rhrtls *replicationHandlerRsyncTLS) ApplySource(ctx context.Context, c cli
 			Trigger:   &sourceConfig.Trigger,
 			RsyncTLS: &volsyncv1alpha1.ReplicationSourceRsyncTLSSpec{
 				ReplicationSourceVolumeOptions: sourceConfig.ReplicationSourceVolumeOptions,
+				MoverConfig: volsyncv1alpha1.MoverConfig{
+					MoverSecurityContext: sourceConfig.MoverSecurityContext,
+				},
 			},
 		}
 		rs.Spec.RsyncTLS.Address = address
