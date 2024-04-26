@@ -19,7 +19,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"strconv"
 
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
@@ -111,18 +110,7 @@ func initMigrationCreateCmd(migrationCreateCmd *cobra.Command) {
 	migrationCreateCmd.Flags().Bool("rsynctls", false, "if true, will use rsync-tls")
 
 	// MoverSecurityContext flags - will only apply if rsyncTLS is true
-	migrationCreateCmd.Flags().String("runasgroup", "",
-		"MoverSecurityContext runAsGroup to use in the ReplicationDestination (only if rsynctls=true)")
-	migrationCreateCmd.Flags().String("runasuser", "",
-		"MoverSecurityContext runAsUser to use in the ReplicationDestination (only if rsynctls=true)")
-	migrationCreateCmd.Flags().String("fsgroup", "",
-		"MoverSecurityContext fsGroup to use in the ReplicationDestination (only if rsynctls=true)")
-	// set runAsNonRoot as a string value with "" as default, as we don't want to
-	// specify moverSecurityContext.runAsNonRoot unless the user sets this flag
-	migrationCreateCmd.Flags().String("runasnonroot", "",
-		"MoverSecurityContext runAsNonRoot (true/false) setting to use in the ReplicationDestination (only if rsynctls=true)")
-	migrationCreateCmd.Flags().String("seccompprofiletype", "",
-		"MoverSecurityContext SeccompProfile.Type to use in the ReplicationDestination (only if rsynctls=true)")
+	addCLIRsyncTLSMoverSecurityContextFlags(migrationCreateCmd, true)
 }
 
 func newMigrationCreate(cmd *cobra.Command) (*migrationCreate, error) {
@@ -229,93 +217,13 @@ func (mc *migrationCreate) parseCLI(cmd *cobra.Command) error {
 	if isRsyncTLS {
 		// Parse the moverSecurityContext flags (these flags will not apply to the
 		// rsync ssh case)
-		err = mc.parseCLIAdditionalRsyncTLSParams(cmd)
+		mc.MoverSecurityContext, err = parseCLIRsyncTLSMoverSecurityContextFlags(cmd)
 		if err != nil {
 			return err
 		}
 	}
 
 	return nil
-}
-
-//nolint:funlen
-func (mc *migrationCreate) parseCLIAdditionalRsyncTLSParams(cmd *cobra.Command) error {
-	runAsGroupStr, err := cmd.Flags().GetString("runasgroup")
-	if err != nil {
-		return fmt.Errorf("failed to fetch runasgroup, %w", err)
-	}
-	if runAsGroupStr != "" {
-		runAsGroupInt64, err := strconv.ParseInt(runAsGroupStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("failed to parse runasgroup, %w", err)
-		}
-		mc.initMoverSecurityContext()
-		mc.MoverSecurityContext.RunAsGroup = &runAsGroupInt64
-	}
-
-	runAsUserStr, err := cmd.Flags().GetString("runasuser")
-	if err != nil {
-		return fmt.Errorf("failed to fetch runasuser, %w", err)
-	}
-	if runAsUserStr != "" {
-		runAsUserInt64, err := strconv.ParseInt(runAsUserStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("failed to parse runasuser, %w", err)
-		}
-		mc.initMoverSecurityContext()
-		mc.MoverSecurityContext.RunAsUser = &runAsUserInt64
-	}
-
-	fsGroupStr, err := cmd.Flags().GetString("fsgroup")
-	if err != nil {
-		return fmt.Errorf("failed to fetch fsgroup, %w", err)
-	}
-	if fsGroupStr != "" {
-		fsGroupInt64, err := strconv.ParseInt(fsGroupStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("failed to parse fsgroup, %w", err)
-		}
-		mc.initMoverSecurityContext()
-		mc.MoverSecurityContext.FSGroup = &fsGroupInt64
-	}
-
-	runAsNonRootStr, err := cmd.Flags().GetString("runasnonroot")
-	if err != nil {
-		return fmt.Errorf("failed to fetch runasnonroot, %w", err)
-	}
-	if runAsNonRootStr != "" {
-		runAsNonRootBool, err := strconv.ParseBool(runAsNonRootStr)
-		if err != nil {
-			return fmt.Errorf("Failed to parse runasnonroot, %w", err)
-		}
-		mc.initMoverSecurityContext()
-		mc.MoverSecurityContext.RunAsNonRoot = &runAsNonRootBool
-	}
-
-	secCompProfileTypeStr, err := cmd.Flags().GetString("seccompprofiletype")
-	if err != nil {
-		return fmt.Errorf("failed to fetch seccompprofiletype, %w", err)
-	}
-	if secCompProfileTypeStr != "" {
-		if corev1.SeccompProfileType(secCompProfileTypeStr) != corev1.SeccompProfileTypeLocalhost &&
-			corev1.SeccompProfileType(secCompProfileTypeStr) != corev1.SeccompProfileTypeRuntimeDefault &&
-			corev1.SeccompProfileType(secCompProfileTypeStr) != corev1.SeccompProfileTypeUnconfined {
-			return fmt.Errorf("unsupported seccompprofiletype: %v", secCompProfileTypeStr)
-		}
-		mc.initMoverSecurityContext()
-		mc.MoverSecurityContext.SeccompProfile = &corev1.SeccompProfile{
-			Type: corev1.SeccompProfileType(secCompProfileTypeStr),
-		}
-	}
-
-	return nil
-}
-
-func (mc *migrationCreate) initMoverSecurityContext() {
-	// Init the moverSecurityContext if it's not defined yet
-	if mc.MoverSecurityContext == nil {
-		mc.MoverSecurityContext = &corev1.PodSecurityContext{}
-	}
 }
 
 //nolint:funlen

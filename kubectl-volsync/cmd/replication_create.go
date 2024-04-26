@@ -24,9 +24,6 @@ import (
 	"k8s.io/kubectl/pkg/util/templates"
 )
 
-//TODO: Rsync-TLS scenario needs to consider moverSecurityContext so it can work in non-privileged cases
-// Most likely needs to be done at setSource and setDestination
-
 type replicationCreate struct {
 	cobra.Command
 }
