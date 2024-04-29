@@ -343,7 +343,8 @@ type ReplicationSourceStatus struct {
 	Syncthing *ReplicationSourceSyncthingStatus `json:"syncthing,omitempty"`
 }
 
-// ReplicationSource defines the source for a replicated volume
+// A ReplicationSource is a VolSync resource that you can use to define the source PVC and replication mover type,
+// enabling you to replicate or synchronize PVC data to a remote location.
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Namespaced
 // +kubebuilder:subresource:status

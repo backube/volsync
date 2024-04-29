@@ -276,7 +276,8 @@ type ReplicationDestinationStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
-// ReplicationDestination defines the destination for a replicated volume
+// A ReplicationDestination is a VolSync resource that you can use to define the destination of a VolSync replication
+// or synchronization.
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Namespaced
 // +kubebuilder:subresource:status
