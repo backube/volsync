@@ -32,7 +32,9 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ReplicationSource defines the source for a replicated volume
+        description: A ReplicationSource is a VolSync resource that you can use to
+          define the source PVC and replication mover type, enabling you to replicate
+          or synchronize PVC data to a remote location.
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation
