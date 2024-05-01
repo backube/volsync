@@ -19,6 +19,38 @@ SCRIPT="$(realpath "$0")"
 SCRIPT_DIR="$(dirname "$SCRIPT")"
 cd "$SCRIPT_DIR"
 
+DEBUG_FILE_BASE=/tmp/run_command
+DEBUG_CMD_COUNT=0
+function run_command() {
+  DEBUG_CMD_COUNT=$((DEBUG_CMD_COUNT + 1))
+  DEBUG_FILE="${DEBUG_FILE_BASE}-${DEBUG_CMD_COUNT}"
+
+  if [[ $DEBUG_MOVER -eq 1 ]]; then
+    echo "Next command: " > ${DEBUG_FILE}
+    echo ""
+    echo "$@" >> ${DEBUG_FILE}
+    echo "" >> ${DEBUG_FILE}
+    echo "Run the command manually, then to continue, delete this file" >> ${DEBUG_FILE}
+
+    echo ""
+    echo "##################################################################"
+    echo "DEBUG_MOVER is enabled, commands will need to be run manually"
+    echo "The command that would run next is shown in file ${DEBUG_FILE}"
+    echo "To continue this script, delete file ${DEBUG_FILE}"
+    echo "##################################################################"
+
+    # Wait for user to delete the file before proceeding
+    while [[ -f "${DEBUG_FILE}" ]]; do
+      sleep 5
+    done
+    echo ""
+    echo "Continuing ..."
+  else
+    echo Running command "$@"
+    "$@"
+  fi
+}
+
 # shellcheck disable=SC2317  # It's reachable due to the TRAP
 function stop_stunnel() {
     ## Terminate stunnel
@@ -92,8 +124,8 @@ stunnel -version "$STUNNEL_CONF"
 
 ##############################
 ## Start stunnel to wait for incoming connections
-stunnel "$STUNNEL_CONF"
-trap stop_stunnel EXIT
+run_command stunnel "$STUNNEL_CONF"
+run_command trap stop_stunnel EXIT
 
 # Sync files
 START_TIME=$SECONDS
@@ -108,13 +140,13 @@ while [[ $rc -ne 0 && $RETRY -lt $MAX_RETRIES ]]; do
     RETRY=$(( RETRY + 1 ))
     if test -b $BLOCK_SOURCE; then
       echo "calling diskrsync-tcp $BLOCK_SOURCE --source --target-address 127.0.0.1 --port $STUNNEL_LISTEN_PORT"
-      /diskrsync-tcp $BLOCK_SOURCE --source --target-address 127.0.0.1 --port $STUNNEL_LISTEN_PORT
+      run_command /diskrsync-tcp $BLOCK_SOURCE --source --target-address 127.0.0.1 --port $STUNNEL_LISTEN_PORT
       rc=$?
     else
         shopt -s dotglob  # Make * include dotfiles
         if [[ -n "$(ls -A -- ${SOURCE}/*)" ]]; then
             # 1st run preserves as much as possible, but excludes the root directory
-            rsync -aAhHSxz --exclude=lost+found --itemize-changes --info=stats2,misc2 ${SOURCE}/* rsync://127.0.0.1:$STUNNEL_LISTEN_PORT/data
+            run_command rsync -aAhHSxz --exclude=lost+found --itemize-changes --info=stats2,misc2 ${SOURCE}/* rsync://127.0.0.1:$STUNNEL_LISTEN_PORT/data
         else
             echo "Skipping sync of empty source directory"
         fi
@@ -124,7 +156,7 @@ while [[ $rc -ne 0 && $RETRY -lt $MAX_RETRIES ]]; do
         # To delete extra files, must sync at the directory-level, but need to avoid
         # trying to modify the directory itself. This pass will only delete files
         # that exist on the destination but not on the source, not make updates.
-        rsync -rx --exclude=lost+found --ignore-existing --ignore-non-existing --delete --itemize-changes --info=stats2,misc2 ${SOURCE}/ rsync://127.0.0.1:$STUNNEL_LISTEN_PORT/data
+        run_command rsync -rx --exclude=lost+found --ignore-existing --ignore-non-existing --delete --itemize-changes --info=stats2,misc2 ${SOURCE}/ rsync://127.0.0.1:$STUNNEL_LISTEN_PORT/data
         rc_b=$?
         rc=$(( rc_a * 100 + rc_b ))
     fi
@@ -144,7 +176,7 @@ else
     if [[ $rc -eq 0 ]]; then
         # Tell server to shutdown. Actual file contents don't matter
         echo "Sending shutdown to remote..."
-        rsync "$SCRIPT" rsync://127.0.0.1:$STUNNEL_LISTEN_PORT/control/complete
+        run_command rsync "$SCRIPT" rsync://127.0.0.1:$STUNNEL_LISTEN_PORT/control/complete
         echo "...done"
         sleep 5  # Give time for the remote to shut down
     else

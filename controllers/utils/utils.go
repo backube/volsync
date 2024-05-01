@@ -28,6 +28,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/reference"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -204,6 +205,18 @@ func AppendRCloneEnvVars(secret *corev1.Secret, envVars []corev1.EnvVar) []corev
 		for _, sortedKey := range rcloneKeys {
 			envVars = append(envVars, EnvFromSecret(secret.Name, sortedKey, true))
 		}
+	}
+
+	return envVars
+}
+
+// Will append the MoverDebug Env var if the volsyncv1alpha1.EnableDebugMoverAnnotation
+// annotation is set on the corresponding ReplicationSource or Destination
+func AppendDebugMoverEnvVar(replicationSourceOrDestObj metav1.Object, envVars []corev1.EnvVar) []corev1.EnvVar {
+	// If the annotation exists on the RS/RD (with any value) then we assume mover debug mode is desired
+	_, debugMoverEnabled := replicationSourceOrDestObj.GetAnnotations()[volsyncv1alpha1.EnableDebugMoverAnnotation]
+	if debugMoverEnabled {
+		envVars = append(envVars, corev1.EnvVar{Name: "DEBUG_MOVER", Value: "1"})
 	}
 
 	return envVars
