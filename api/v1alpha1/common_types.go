@@ -57,6 +57,9 @@ const (
 
 	// Namespace annotation to indicate that elevated permissions are ok for movers
 	PrivilegedMoversNamespaceAnnotation = "volsync.backube/privileged-movers"
+
+	// Annotation on ReplicationSource or ReplicationDestination to enable running the mover job in debug mode
+	EnableDebugMoverAnnotation = "volsync.backube/enable-debug-mover"
 )
 
 const (

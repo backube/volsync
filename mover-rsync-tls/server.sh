@@ -14,6 +14,38 @@ IPV6_DISABLED=$(cat /sys/module/ipv6/parameters/disable)
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 cd "$SCRIPT_DIR"
 
+DEBUG_FILE_BASE=/tmp/run_command
+DEBUG_CMD_COUNT=0
+function run_command() {
+  DEBUG_CMD_COUNT=$((DEBUG_CMD_COUNT + 1))
+  DEBUG_FILE="${DEBUG_FILE_BASE}-${DEBUG_CMD_COUNT}"
+
+  if [[ $DEBUG_MOVER -eq 1 ]]; then
+    echo "Next command: " > ${DEBUG_FILE}
+    echo ""
+    echo "$@" >> ${DEBUG_FILE}
+    echo "" >> ${DEBUG_FILE}
+    echo "Run the command manually, then to continue, delete this file" >> ${DEBUG_FILE}
+
+    echo ""
+    echo "##################################################################"
+    echo "DEBUG_MOVER is enabled, commands will need to be run manually"
+    echo "The command that would run next is shown in file ${DEBUG_FILE}"
+    echo "To continue this script, delete file ${DEBUG_FILE}"
+    echo "##################################################################"
+
+    # Wait for user to delete the file before proceeding
+    while [[ -f "${DEBUG_FILE}" ]]; do
+      sleep 5
+    done
+    echo ""
+    echo "Continuing ..."
+  else
+    echo Running command "$@"
+    "$@"
+  fi
+}
+
 STUNNEL_LISTEN_PORT=:::8000
 # If IPv6 is in disable state, the output would be "1"
 if [[ $IPV6_DISABLED -eq 1 ]]; then
@@ -152,7 +184,7 @@ fi
 ##############################
 ## Start stunnel to wait for incoming connections
 echo "Starting stunnel..."
-stunnel "$STUNNEL_CONF"
+run_command stunnel "$STUNNEL_CONF"
 
 ##############################
 ## Wait for the control file to be created, signaling that we should
@@ -167,7 +199,7 @@ sleep 5  # Give time for the rsync connection to finish
 ##############################
 ## Terminate stunnel
 echo "Shutting down..."
-kill -TERM "$(<"$STUNNEL_PID_FILE")"
+run_command kill -TERM "$(<"$STUNNEL_PID_FILE")"
 if [[ -d $TARGET ]]; then
     kill -TERM "$TAIL_PID"
 fi
