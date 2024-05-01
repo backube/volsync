@@ -174,7 +174,7 @@ jobs:
         run: docker save -o /tmp/image.tar ${OPERATOR_IMAGE}
 
       - name: Save container as artifact
-        uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.3.1
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
         with:
           name: volsync-operator
           path: /tmp/image.tar
@@ -211,7 +211,7 @@ jobs:
         run: docker save -o /tmp/image.tar ${CUSTOM_SCORECARD_IMAGE}
 
       - name: Save container as artifact
-        uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.3.1
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
         with:
           name: volsync-custom-scorecard-tests-container
           path: /tmp/image.tar
@@ -259,7 +259,7 @@ jobs:
         run: make test-krew
 
       - name: Save cli as artifact
-        uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.3.1
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
         with:
           name: kubectl-volsync
           path: bin/kubectl-volsync
