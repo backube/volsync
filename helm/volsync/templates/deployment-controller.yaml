@@ -52,7 +52,7 @@ spec:
               drop:
                 - "ALL"
             readOnlyRootFilesystem: true
-          image: quay.io/brancz/kube-rbac-proxy:v0.16.0
+          image: quay.io/brancz/kube-rbac-proxy:v0.17.1
           args:
             - --secure-listen-address=0.0.0.0:8443
             - --upstream=http://127.0.0.1:8080/
