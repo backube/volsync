@@ -21,11 +21,13 @@ function run_command() {
   DEBUG_FILE="${DEBUG_FILE_BASE}-${DEBUG_CMD_COUNT}"
 
   if [[ $DEBUG_MOVER -eq 1 ]]; then
-    echo "Next command: " > ${DEBUG_FILE}
-    echo ""
-    echo "$@" >> ${DEBUG_FILE}
-    echo "" >> ${DEBUG_FILE}
-    echo "Run the command manually, then to continue, delete this file" >> ${DEBUG_FILE}
+    {
+      echo "Next command: "
+      echo ""
+      echo "$@"
+      echo ""
+      echo "Run the command manually, then to continue, delete this file"
+    } > ${DEBUG_FILE}
 
     echo ""
     echo "##################################################################"
