@@ -12,7 +12,7 @@ SCRIPT_DIR="$(dirname "$SCRIPT_FULLPATH")"
 # mover script copy in /tmp
 if [[ $DEBUG_MOVER -eq 1 && "$SCRIPT_DIR" != "/tmp" ]]; then
   MOVER_SCRIPT_COPY="/tmp/$SCRIPT"
-  cp $SCRIPT_FULLPATH $MOVER_SCRIPT_COPY
+  cp "$SCRIPT_FULLPATH" "$MOVER_SCRIPT_COPY"
 
   END_DEBUG_FILE="/tmp/exit-debug-if-removed"
   touch $END_DEBUG_FILE
@@ -25,7 +25,7 @@ if [[ $DEBUG_MOVER -eq 1 && "$SCRIPT_DIR" != "/tmp" ]]; then
   echo "$MOVER_SCRIPT_COPY".
   echo ""
   echo "To debug, you can modify this file and run it with:"
-  echo "$MOVER_SCRIPT_COPY $@"
+  echo "$MOVER_SCRIPT_COPY" "$@"
   echo ""
   echo "If you wish to exit this pod after debugging, delete the"
   echo "file $END_DEBUG_FILE from the system."
