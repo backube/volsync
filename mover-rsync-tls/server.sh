@@ -11,42 +11,47 @@ PSK_FILE=/keys/psk.txt
 RSYNC_LOG=/tmp/rsyncd.log
 IPV6_DISABLED=$(cat /sys/module/ipv6/parameters/disable)
 
-SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+SCRIPT_FULLPATH="$(realpath "$0")"
+SCRIPT="$(basename "$SCRIPT_FULLPATH")"
+SCRIPT_DIR="$(dirname "$SCRIPT_FULLPATH")"
+
+# Do not do this debug mover code if this is already the
+# mover script copy in /tmp
+if [[ $DEBUG_MOVER -eq 1 && "$SCRIPT_DIR" != "/tmp" ]]; then
+  MOVER_SCRIPT_COPY="/tmp/$SCRIPT"
+  cp $SCRIPT_FULLPATH $MOVER_SCRIPT_COPY
+
+  END_DEBUG_FILE="/tmp/exit-debug-if-removed"
+  touch $END_DEBUG_FILE
+
+  echo ""
+  echo "##################################################################"
+  echo "DEBUG_MOVER is enabled, this pod will sleep indefinitely."
+  echo ""
+  echo "The mover script that would normally run has been copied to"
+  echo "$MOVER_SCRIPT_COPY".
+  echo ""
+  echo "To debug, you can modify this file and run it with:"
+  echo "$MOVER_SCRIPT_COPY $@"
+  echo ""
+  echo "If you wish to exit this pod after debugging, delete the"
+  echo "file $END_DEBUG_FILE from the system."
+  echo "##################################################################"
+
+  # Wait for user to delete the file before exiting
+  while [[ -f "${END_DEBUG_FILE}" ]]; do
+    sleep 10
+  done
+
+  echo ""
+  echo "##################################################################"
+  echo "Debug done, exiting."
+  echo "##################################################################"
+  sleep 2
+  exit 0
+fi
+
 cd "$SCRIPT_DIR"
-
-DEBUG_FILE_BASE=/tmp/run_command
-DEBUG_CMD_COUNT=0
-function run_command() {
-  DEBUG_CMD_COUNT=$((DEBUG_CMD_COUNT + 1))
-  DEBUG_FILE="${DEBUG_FILE_BASE}-${DEBUG_CMD_COUNT}"
-
-  if [[ $DEBUG_MOVER -eq 1 ]]; then
-    {
-      echo "Next command: "
-      echo ""
-      echo "$@"
-      echo ""
-      echo "Run the command manually, then to continue, delete this file"
-    } > ${DEBUG_FILE}
-
-    echo ""
-    echo "##################################################################"
-    echo "DEBUG_MOVER is enabled, commands will need to be run manually"
-    echo "The command that would run next is shown in file ${DEBUG_FILE}"
-    echo "To continue this script, delete file ${DEBUG_FILE}"
-    echo "##################################################################"
-
-    # Wait for user to delete the file before proceeding
-    while [[ -f "${DEBUG_FILE}" ]]; do
-      sleep 5
-    done
-    echo ""
-    echo "Continuing ..."
-  else
-    echo Running command "$@"
-    "$@"
-  fi
-}
 
 STUNNEL_LISTEN_PORT=:::8000
 # If IPv6 is in disable state, the output would be "1"
@@ -186,7 +191,7 @@ fi
 ##############################
 ## Start stunnel to wait for incoming connections
 echo "Starting stunnel..."
-run_command stunnel "$STUNNEL_CONF"
+stunnel "$STUNNEL_CONF"
 
 ##############################
 ## Wait for the control file to be created, signaling that we should
@@ -201,7 +206,7 @@ sleep 5  # Give time for the rsync connection to finish
 ##############################
 ## Terminate stunnel
 echo "Shutting down..."
-run_command kill -TERM "$(<"$STUNNEL_PID_FILE")"
+kill -TERM "$(<"$STUNNEL_PID_FILE")"
 if [[ -d $TARGET ]]; then
     kill -TERM "$TAIL_PID"
 fi
