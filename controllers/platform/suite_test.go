@@ -22,7 +22,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
+	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v7/apis/volumesnapshot/v1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	ocpsecurityv1 "github.com/openshift/api/security/v1"
