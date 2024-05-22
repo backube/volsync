@@ -15,8 +15,46 @@ STUNNEL_LISTEN_PORT=9000
 SOURCE="/data"
 BLOCK_SOURCE="/dev/block"
 
-SCRIPT="$(realpath "$0")"
-SCRIPT_DIR="$(dirname "$SCRIPT")"
+SCRIPT_FULLPATH="$(realpath "$0")"
+SCRIPT="$(basename "$SCRIPT_FULLPATH")"
+SCRIPT_DIR="$(dirname "$SCRIPT_FULLPATH")"
+
+# Do not do this debug mover code if this is already the
+# mover script copy in /tmp
+if [[ $DEBUG_MOVER -eq 1 && "$SCRIPT_DIR" != "/tmp" ]]; then
+  MOVER_SCRIPT_COPY="/tmp/$SCRIPT"
+  cp "$SCRIPT_FULLPATH" "$MOVER_SCRIPT_COPY"
+
+  END_DEBUG_FILE="/tmp/exit-debug-if-removed"
+  touch $END_DEBUG_FILE
+
+  echo ""
+  echo "##################################################################"
+  echo "DEBUG_MOVER is enabled, this pod will sleep indefinitely."
+  echo ""
+  echo "The mover script that would normally run has been copied to"
+  echo "$MOVER_SCRIPT_COPY".
+  echo ""
+  echo "To debug, you can modify this file and run it with:"
+  echo "$MOVER_SCRIPT_COPY" "$@"
+  echo ""
+  echo "If you wish to exit this pod after debugging, delete the"
+  echo "file $END_DEBUG_FILE from the system."
+  echo "##################################################################"
+
+  # Wait for user to delete the file before exiting
+  while [[ -f "${END_DEBUG_FILE}" ]]; do
+    sleep 10
+  done
+
+  echo ""
+  echo "##################################################################"
+  echo "Debug done, exiting."
+  echo "##################################################################"
+  sleep 2
+  exit 0
+fi
+
 cd "$SCRIPT_DIR"
 
 # shellcheck disable=SC2317  # It's reachable due to the TRAP
@@ -144,7 +182,7 @@ else
     if [[ $rc -eq 0 ]]; then
         # Tell server to shutdown. Actual file contents don't matter
         echo "Sending shutdown to remote..."
-        rsync "$SCRIPT" rsync://127.0.0.1:$STUNNEL_LISTEN_PORT/control/complete
+        rsync "$SCRIPT_FULLPATH" rsync://127.0.0.1:$STUNNEL_LISTEN_PORT/control/complete
         echo "...done"
         sleep 5  # Give time for the remote to shut down
     else

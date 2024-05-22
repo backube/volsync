@@ -9,6 +9,46 @@ set -e -o pipefail
 echo "VolSync restic container version: ${version:-unknown}"
 echo  "$@"
 
+SCRIPT_FULLPATH="$(realpath "$0")"
+SCRIPT="$(basename "$SCRIPT_FULLPATH")"
+SCRIPT_DIR="$(dirname "$SCRIPT_FULLPATH")"
+
+# Do not do this debug mover code if this is already the
+# mover script copy in /tmp
+if [[ $DEBUG_MOVER -eq 1 && "$SCRIPT_DIR" != "/tmp" ]]; then
+  MOVER_SCRIPT_COPY="/tmp/$SCRIPT"
+  cp "$SCRIPT_FULLPATH" "$MOVER_SCRIPT_COPY"
+
+  END_DEBUG_FILE="/tmp/exit-debug-if-removed"
+  touch $END_DEBUG_FILE
+
+  echo ""
+  echo "##################################################################"
+  echo "DEBUG_MOVER is enabled, this pod will sleep indefinitely."
+  echo ""
+  echo "The mover script that would normally run has been copied to"
+  echo "$MOVER_SCRIPT_COPY".
+  echo ""
+  echo "To debug, you can modify this file and run it with:"
+  echo "$MOVER_SCRIPT_COPY" "$@"
+  echo ""
+  echo "If you wish to exit this pod after debugging, delete the"
+  echo "file $END_DEBUG_FILE from the system."
+  echo "##################################################################"
+
+  # Wait for user to delete the file before exiting
+  while [[ -f "${END_DEBUG_FILE}" ]]; do
+    sleep 10
+  done
+
+  echo ""
+  echo "##################################################################"
+  echo "Debug done, exiting."
+  echo "##################################################################"
+  sleep 2
+  exit 0
+fi
+
 declare -a RESTIC
 RESTIC=("restic")
 if [[ -n "${CUSTOM_CA}" ]]; then

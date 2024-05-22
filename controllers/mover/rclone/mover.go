@@ -265,6 +265,9 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 		// Cluster-wide proxy settings
 		envVars = utils.AppendEnvVarsForClusterWideProxy(envVars)
 
+		// Run mover in debug mode if required
+		envVars = utils.AppendDebugMoverEnvVar(m.owner, envVars)
+
 		job.Spec.Template.Spec.Containers = []corev1.Container{{
 			Name:    "rclone",
 			Env:     envVars,

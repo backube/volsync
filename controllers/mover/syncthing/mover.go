@@ -58,6 +58,7 @@ const (
 	dataDirMountPath   = "/data"
 	configDirMountPath = "/mover-syncthing/config"
 	certDirMountPath   = "/certs"
+	tempDirMountPath   = "/tmp"
 )
 
 // Volume names loaded by the Deployment.
@@ -65,6 +66,7 @@ const (
 	certVolumeName   = "https-certs"
 	configVolumeName = "syncthing-config"
 	dataVolumeName   = "syncthing-data"
+	tempVolumeName   = "tempdir"
 )
 
 // Ports used by the Syncthing container.
@@ -446,6 +448,9 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 		// Cluster-wide proxy settings
 		envVars = utils.AppendEnvVarsForClusterWideProxy(envVars)
 
+		// Run mover in debug mode if required
+		envVars = utils.AppendDebugMoverEnvVar(m.owner, envVars)
+
 		podSpec.Containers = []corev1.Container{
 			{
 				Name:    "syncthing",
@@ -461,6 +466,7 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 					{Name: configVolumeName, MountPath: configDirMountPath},
 					{Name: dataVolumeName, MountPath: dataDirMountPath},
 					{Name: certVolumeName, MountPath: certDirMountPath},
+					{Name: tempVolumeName, MountPath: tempDirMountPath},
 				},
 				SecurityContext: &corev1.SecurityContext{
 					AllowPrivilegeEscalation: ptr.To(false),
@@ -502,6 +508,13 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 							{Key: httpsKeyDataKey, Path: httpsKeyPath},
 							{Key: httpsCertDataKey, Path: httpsCertPath},
 						},
+					},
+				},
+			},
+			{
+				Name: tempVolumeName, VolumeSource: corev1.VolumeSource{
+					EmptyDir: &corev1.EmptyDirVolumeSource{
+						Medium: corev1.StorageMediumMemory,
 					},
 				},
 			},

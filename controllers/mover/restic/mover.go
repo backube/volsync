@@ -412,6 +412,9 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 		// Cluster-wide proxy settings
 		envVars = utils.AppendEnvVarsForClusterWideProxy(envVars)
 
+		// Run mover in debug mode if required
+		envVars = utils.AppendDebugMoverEnvVar(m.owner, envVars)
+
 		podSpec.Containers = []corev1.Container{{
 			Name:    "restic",
 			Env:     envVars,

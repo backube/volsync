@@ -123,6 +123,8 @@ RUN microdnf --refresh update -y && \
         perl            `# rsync/ssh - rrsync script` \
         stunnel         `# rsync-tls` \
         openssl         `# syncthing - server certs` \
+        vim-minimal     `# for mover debug` \
+        tar             `# for mover debug` \
     && microdnf --setopt=install_weak_deps=0 install -y \
         `# docs are needed so rrsync gets installed for ssh variant` \
         rsync           `# rsync/ssh, rsync-tls - rsync, rrsync` \

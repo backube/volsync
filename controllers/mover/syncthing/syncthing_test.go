@@ -1159,6 +1159,8 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 								}
 								Expect(httpsKeysChecked).To(Equal(len(httpsItems)))
 								checked++
+							} else if volume.Name == tempVolumeName {
+								checked++
 							}
 						}
 						// make sure that all volumes are accounted for

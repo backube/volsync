@@ -397,6 +397,10 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 			// Set read-only for volume in repl source job spec if the PVC only supports read-only
 			readOnlyVolume = utils.PvcIsReadOnly(dataPVC)
 		}
+
+		// Run mover in debug mode if required
+		containerEnv = utils.AppendDebugMoverEnvVar(m.owner, containerEnv)
+
 		job.Spec.Template.Spec.Containers = []corev1.Container{{
 			Name:    "rsync",
 			Env:     containerEnv,
