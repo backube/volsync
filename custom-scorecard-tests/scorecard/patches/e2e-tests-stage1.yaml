@@ -184,7 +184,7 @@
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_rsync_tls_normal_manyfiles.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.10
     labels:
       suite: volsync-e2e
       test: test_rsync_tls_normal_manyfiles.yml
