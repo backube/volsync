@@ -24,6 +24,13 @@ spec:
               mkdir -p `dirname /mnt/{{ path }}`
               echo '{{ data }}' > '/mnt/{{ path }}'
               stat '/mnt/{{ path }}'
+
+              counter=1
+              while [ $counter -lt "{{ create_file_count }}" ]; do
+                echo '{{ data }}' > '/mnt/{{ path }}'-${counter}
+                counter=$((counter+1))
+              done
+
               sync
           securityContext:
             allowPrivilegeEscalation: false

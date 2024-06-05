@@ -197,6 +197,16 @@ stages:
         mountPath: {}
   - entrypoint:
     - volsync-custom-scorecard-tests
+    - test_rsync_tls_normal_manyfiles.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_rsync_tls_normal_manyfiles.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
     - test_rsync_tls_priv.yml
     image: quay.io/backube/volsync-custom-scorecard-tests:release-0.10
     labels:

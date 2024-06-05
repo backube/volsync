@@ -11,6 +11,10 @@
   loop_control:
     loop_var: var_check
 
+- name: determine number of files to create
+  ansible.builtin.set_fact:
+    create_file_count: "{{ file_count | default(1) }}"
+
 - name: Create Job
   kubernetes.core.k8s:
     state: present
