@@ -79,7 +79,7 @@ func NewSAHandler(c client.Client, owner metav1.Object, isSource,
 		}
 	}
 
-	// User has supplised a moverSecurityContext - use SAHandlerUserSupplied to ensure it exists
+	// User has supplied a moverServiceAccount - use SAHandlerUserSupplied to ensure it exists
 	sa := &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      *userSuppliedSA,
