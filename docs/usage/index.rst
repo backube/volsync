@@ -6,6 +6,7 @@ Usage
    :hidden:
 
    permissionmodel
+   moverserviceaccount
    resourcerequirements
    triggers
    pvccopytriggers
@@ -45,6 +46,14 @@ The data replication mover Pods run in the user's source and destination
 Namespaces. The permissions that are given to these Pods control what data can
 be replicated. They also affect the security of the cluster. Please see the
 :doc:`permission model documentation <permissionmodel>` for more details.
+
+Service account
+===============
+
+The data replication Pods that run in the user's source and destination Namespaces
+will use service accounts that are normally created by VolSync. Advanced users can use
+their own service account instead. Please see the
+:doc:`mover service account documentation <moverserviceaccount>` for more details.
 
 Resource requirements
 =====================
