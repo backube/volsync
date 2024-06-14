@@ -27,7 +27,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
       - name: Install pre-commit
         run: |
@@ -54,7 +54,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
       - name: Install Go
         uses: actions/setup-go@cdcb36043654635271a94b9a6d1392de5bb323a7 # v5.0.1
@@ -126,7 +126,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
           fetch-depth: 0
 
@@ -165,7 +165,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
       - name: Build operator container
         run: make docker-build IMG=${OPERATOR_IMAGE}
@@ -185,7 +185,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
       - name: Install Go
         uses: actions/setup-go@cdcb36043654635271a94b9a6d1392de5bb323a7 # v5.0.1
@@ -225,7 +225,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
           # Fetch whole history so we can properly determine the version string
           # (required by krew validation)
@@ -298,7 +298,7 @@ jobs:
           proc_trace_chart_show: false
 
       - name: Checkout source
-        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
       # We set bash as the default shell (instead of dash) because the kuttl
       # test steps require bash, but the "script" directive executes them as "sh
