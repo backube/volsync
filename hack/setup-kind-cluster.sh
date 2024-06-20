@@ -258,7 +258,7 @@ case "$KUBE_MINOR" in
     ;;
   *)
     # renovate: datasource=github-releases depName=kubernetes-csi/csi-driver-host-path versioning=semver-coerced
-    TAG="v1.12.1"
+    TAG="v1.14.0"
     DEPLOY_SCRIPT="deploy.sh"
     ;;
 esac
