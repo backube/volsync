@@ -113,6 +113,24 @@
         file_count: 21000
         pvc_name: 'data-source'
 
+    - name: Write file that starts with a hash char
+      include_role:
+        name: write_to_pvc
+      vars:
+        data: '000111'
+        path: '/#filestartswithhash'
+        file_count: 1
+        pvc_name: 'data-source'
+
+    - name: Write dir that starts with a hash char
+      include_role:
+        name: write_to_pvc
+      vars:
+        data: '222333444555'
+        path: '/#dirtartswithhash/#subfile'
+        file_count: 1
+        pvc_name: 'data-source'
+
     - name: Wait for key and address to be ready
       kubernetes.core.k8s_info:
         api_version: volsync.backube/v1alpha1
