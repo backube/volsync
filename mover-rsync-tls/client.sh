@@ -111,7 +111,8 @@ while [[ $rc -ne 0 && $RETRY -lt $MAX_RETRIES ]]; do
       /diskrsync-tcp $BLOCK_SOURCE --source --target-address 127.0.0.1 --port $STUNNEL_LISTEN_PORT
       rc=$?
     else
-        ls -A "${SOURCE}"/ > /tmp/filelist.txt
+        # Find all files/dirs at root of pvc, prepend / to each (rsync will use SOURCE as the base dir for these files)
+        find "${SOURCE}" -mindepth 1 -maxdepth 1 -printf '/%P\n' > /tmp/filelist.txt
         if [[ -s /tmp/filelist.txt ]]; then
             # 1st run preserves as much as possible, but excludes the root directory
             rsync -aAhHSxz -r --exclude=lost+found --itemize-changes --info=stats2,misc2 --files-from=/tmp/filelist.txt ${SOURCE}/ rsync://127.0.0.1:$STUNNEL_LISTEN_PORT/data
