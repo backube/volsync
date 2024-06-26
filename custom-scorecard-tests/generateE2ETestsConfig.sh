@@ -16,8 +16,10 @@ TESTS=$(echo "${TESTS_UNSORTED}" | LC_ALL=C sort)
 
 # Group tests into 2 stages (each stage gets run sequentially but
 # all tests in a stage can run in parallel)
-E2E_TESTS_GROUP1=$(echo "${TESTS}" | grep -v -e role -e syncthing)
-E2E_TESTS_GROUP2=$(echo "${TESTS}" | grep -e role -e syncthing)
+# Group1 contains most e2e tests
+# Group2 contains syncthing tests, cli tests and role tests
+E2E_TESTS_GROUP1=$(echo "${TESTS}" | grep -v -e role -e syncthing -e test_replication_ )
+E2E_TESTS_GROUP2=$(echo "${TESTS}" | grep -e role -e syncthing -e test_replication_ )
 
 echo "####################"
 echo "# E2E test list is: "
