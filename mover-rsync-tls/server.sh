@@ -211,5 +211,7 @@ if [[ -d $TARGET ]]; then
     kill -TERM "$TAIL_PID"
 fi
 wait
+echo "Stunnel completed shut down."
 
 sync
+echo "Sync complete, exiting."
