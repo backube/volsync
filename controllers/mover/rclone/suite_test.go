@@ -23,7 +23,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v7/apis/volumesnapshot/v1"
+	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumesnapshot/v1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/spf13/viper"
@@ -109,7 +109,6 @@ var _ = BeforeSuite(func() {
 	commonBuilderForTestSuite, err = newBuilder(viper.New(), flag.NewFlagSet("testfsetrclonetests", flag.ExitOnError))
 	Expect(err).NotTo(HaveOccurred())
 	Expect(commonBuilderForTestSuite).NotTo(BeNil())
-
 })
 
 var _ = AfterSuite(func() {
