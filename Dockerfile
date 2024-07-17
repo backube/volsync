@@ -1,6 +1,6 @@
 ######################################################################
 # Establish a common builder image for all golang-based images
-FROM golang:1.22 as golang-builder
+FROM golang:1.22 AS golang-builder
 USER root
 WORKDIR /workspace
 # We don't vendor modules. Enforce that behavior
@@ -15,7 +15,7 @@ ENV GOARCH=${TARGETARCH}
 
 ######################################################################
 # Build the manager binary
-FROM golang-builder as manager-builder
+FROM golang-builder AS manager-builder
 
 # Copy the Go Modules manifests & download dependencies
 COPY go.mod go.mod
@@ -23,19 +23,20 @@ COPY go.sum go.sum
 RUN go mod download
 
 # Copy the go source
-COPY main.go main.go
+COPY *.go .
 COPY api/ api/
 COPY controllers/ controllers/
 COPY config/openshift config/openshift
 
 # Build
 ARG version_arg="(unknown)"
-RUN go build -a -o manager -ldflags "-X=main.volsyncVersion=${version_arg}" main.go
+ARG tags_arg=""
+RUN go build -a -o manager -ldflags "-X=main.volsyncVersion=${version_arg}" -tags "${tags_arg}" .
 
 
 ######################################################################
 # Build rclone
-FROM golang-builder as rclone-builder
+FROM golang-builder AS rclone-builder
 
 ARG RCLONE_VERSION=v1.63.1
 ARG RCLONE_GIT_HASH=bd1fbcae12f795f498c7ace6af9d9cc218102094
@@ -51,7 +52,7 @@ RUN make rclone
 
 ######################################################################
 # Build restic
-FROM golang-builder as restic-builder
+FROM golang-builder AS restic-builder
 
 COPY /mover-restic/restic ./restic
 COPY /mover-restic/minio-go ./minio-go
@@ -63,7 +64,7 @@ RUN go run build.go --enable-cgo
 
 ######################################################################
 # Build syncthing
-FROM golang-builder as syncthing-builder
+FROM golang-builder AS syncthing-builder
 
 ARG SYNCTHING_VERSION="v1.27.9"
 ARG SYNCTHING_GIT_HASH="4704d3bc48761d89c2eafadf79f5d268631a063d"

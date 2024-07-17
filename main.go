@@ -18,6 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
@@ -51,11 +52,6 @@ import (
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers"
 	"github.com/backube/volsync/controllers/mover"
-	"github.com/backube/volsync/controllers/mover/rclone"
-	"github.com/backube/volsync/controllers/mover/restic"
-	"github.com/backube/volsync/controllers/mover/rsync"
-	"github.com/backube/volsync/controllers/mover/rsynctls"
-	"github.com/backube/volsync/controllers/mover/syncthing"
 	"github.com/backube/volsync/controllers/platform"
 	"github.com/backube/volsync/controllers/utils"
 	//+kubebuilder:scaffold:imports
@@ -68,6 +64,10 @@ var (
 
 	//go:embed config/openshift/mover_scc.yaml
 	volsyncMoverSCCYamlRaw []byte
+
+	// See each mover_<movertype>_register.go where they add themselves to
+	// enabledMovers
+	enabledMovers = map[string]func() error{}
 )
 
 func init() {
@@ -81,20 +81,16 @@ func init() {
 
 // registerMovers Registers the data movers to be used by the VolSync operator.
 func registerMovers() error {
-	if err := rsync.Register(); err != nil {
-		return fmt.Errorf("error registering rsync data mover: %w", err)
-	}
-	if err := rclone.Register(); err != nil {
-		return fmt.Errorf("error registering rclone data mover: %w", err)
-	}
-	if err := restic.Register(); err != nil {
-		return fmt.Errorf("error registering restic data mover: %w", err)
-	}
-	if err := rsynctls.Register(); err != nil {
-		return fmt.Errorf("error registering rsync-tls data mover: %w", err)
-	}
-	if err := syncthing.Register(); err != nil {
-		return fmt.Errorf("error registering syncthing data mover: %w", err)
+	// logger isn't initialized yet, write to stdout
+	bufout := bufio.NewWriter(os.Stdout)
+	defer bufout.Flush()
+
+	fmt.Fprintf(bufout, "Registering data movers: \n")
+	for moverName, moverRegisterFunc := range enabledMovers {
+		fmt.Fprintf(bufout, "> %s\n", moverName)
+		if err := moverRegisterFunc(); err != nil {
+			return fmt.Errorf("error registering %s data mover: %w", moverName, err)
+		}
 	}
 	return nil
 }
@@ -185,7 +181,7 @@ func initPodLogsClient(cfg *rest.Config) {
 func main() {
 	err := registerMovers()
 	if err != nil {
-		setupLog.Error(err, "error registering data movers")
+		fmt.Printf("error registering data movers: %+v", err)
 		os.Exit(1)
 	}
 	var probeAddr, metricsAddr string

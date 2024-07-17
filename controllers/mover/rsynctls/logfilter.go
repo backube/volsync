@@ -1,3 +1,5 @@
+//go:build !disable_rsynctls
+
 /*
 Copyright 2022 The VolSync authors.
 

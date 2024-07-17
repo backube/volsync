@@ -43,7 +43,6 @@ import (
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/controllers/mover/rclone"
-	"github.com/backube/volsync/controllers/mover/restic"
 	"github.com/backube/volsync/controllers/mover/rsync"
 	"github.com/backube/volsync/controllers/utils"
 	//+kubebuilder:scaffold:imports
@@ -59,12 +58,14 @@ const (
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
-var cfg *rest.Config
-var k8sClient client.Client
-var k8sDirectClient client.Client
-var testEnv *envtest.Environment
-var cancel context.CancelFunc
-var ctx context.Context
+var (
+	cfg             *rest.Config
+	k8sClient       client.Client
+	k8sDirectClient client.Client
+	testEnv         *envtest.Environment
+	cancel          context.CancelFunc
+	ctx             context.Context
+)
 
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -114,7 +115,7 @@ var _ = BeforeSuite(func() {
 	// Register the data movers
 	Expect(rsync.Register()).To(Succeed())
 	Expect(rclone.Register()).To(Succeed())
-	Expect(restic.Register()).To(Succeed())
+	//	Expect(restic.Register()).To(Succeed())
 
 	k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:  scheme.Scheme,
@@ -254,9 +255,11 @@ func (m *ownerRefMatcher) Match(actual interface{}) (success bool, err error) {
 	}
 	return true, nil
 }
+
 func (m *ownerRefMatcher) FailureMessage(actual interface{}) (message string) {
 	return fmt.Sprintf("Expected\n\t%#v\nto be owned by\n\t%#v\nbut %v", actual, m.owner, m.reason)
 }
+
 func (m *ownerRefMatcher) NegatedFailureMessage(actual interface{}) (message string) {
 	return fmt.Sprintf("Expected\n\t%#v\nnot to be owned by\n\t%#v", actual, m.owner)
 }

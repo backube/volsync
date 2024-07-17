@@ -1,7 +1,7 @@
-//go:build !disable_rsync
+//go:build !disable_rclone
 
 /*
-Copyright 2022 The VolSync authors.
+Copyright 2024 The VolSync authors.
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published
@@ -17,21 +17,12 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-package rsync
+package main
 
 import (
-	"regexp"
+	"github.com/backube/volsync/controllers/mover/rclone"
 )
 
-var rsyncRegex = regexp.MustCompile(
-	`^\s*([sS]ent)\s.+([bB]ytes)\s.+([rR]eceived)\s.+([bB]ytes)|` +
-		`^\s*([tT]otal size)|` +
-		`^\s*([rR]sync completed in)`)
-
-// Filter rsync log lines for a successful move job
-func LogLineFilterSuccess(line string) *string {
-	if rsyncRegex.MatchString(line) {
-		return &line
-	}
-	return nil
+func init() {
+	enabledMovers["rclone"] = rclone.Register
 }

@@ -1,0 +1,4 @@
+- op: add
+  path: /stages/3/tests
+  value:
+    []

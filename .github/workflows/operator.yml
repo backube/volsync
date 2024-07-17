@@ -62,7 +62,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
 
       # Only run this for branch (PR and push, not tag)
-      - name: Ensure custom-scorecard-tests config.yaml is up-to-date
+      - name: Ensure custom-scorecard-tests config.yaml and config-downstream.yaml are up-to-date
         if: github.ref_type == 'branch'
         run: |
           TGT_BRANCH_NAME="${{ github.base_ref || github.ref_name }}"
@@ -83,6 +83,14 @@ jobs:
           if [ -n "$diff" ]; then
             echo "$diff"
             echo "***** custom-scorecard-tests/config.yaml is out-of-date *****"
+            echo "*****     run 'make custom-scorecard-tests-generate-config'      *****"
+            exit 1
+          fi
+
+          diff2=$(git diff --color --ignore-space-change -- custom-scorecard-tests/config-downstream.yaml)
+          if [ -n "$diff2" ]; then
+            echo "$diff2"
+            echo "***** custom-scorecard-tests/config-downstream.yaml is out-of-date *****"
             echo "*****     run 'make custom-scorecard-tests-generate-config'      *****"
             exit 1
           fi

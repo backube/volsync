@@ -40,6 +40,20 @@ be copied to the midstream volsync operator bundle as the scorecard config.yaml.
 Before copying some edits may need to be made if certain e2e tests should/should
 not be run.
 
+In case we need to exclude files for certain builds, we have 2 overlays in the
+scorecard dir - "upstream" and "downstream".  This is just a placeholder in case
+we want to exclude tests from the downstream config.yaml. To do this,
+update [generateE2ETestsConfig.sh](generateE2ETestsConfig.sh) and update to add
+tests that should run in the upstream only in E2E_TESTS_GROUP3.
+
+The upstream overlay applies stage0 (prereqs) as well as all e2e tests, while
+the downstream overlay does not apply the e2e-tests-stage3.yaml patch.
+
+The make build target will generate the [config.yaml](config.yaml) as well as a
+downstream version called [config-downstream.yaml](config-downstream.yaml).
+The downstream version will not be used by default, but can be copied to a
+downstream location to be used as the config.yaml for running scorecard tests.
+
 ## Running the scorecard tests manually
 
 ### Prereqs

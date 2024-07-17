@@ -134,6 +134,14 @@ test: bundle generate lint envtest helm-lint ginkgo ## Run tests.
 	-rm -f cover.out
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GINKGO) $(TEST_ARGS) $(TEST_PACKAGES)
 
+# Example build target showing how to run unit tests, excluding syncthing from being built entirely
+# this is not bothering to exclude syncthing during linting but should be possible
+.PHONY: test-disable-syncthing
+TEST_ARGS_DISABLE_SYNCTHING ?= --tags disable_syncthing
+test-disable-syncthing: bundle generate lint envtest helm-lint ginkgo ## Run tests.
+	-rm -f cover.out
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GINKGO) $(TEST_ARGS) $(TEST_ARGS_DISABLE_SYNCTHING) $(TEST_PACKAGES)
+
 .PHONY: test-e2e-install
 PIP_INSTALL_ARGS ?= --user
 test-e2e-install: ## Install environment for running e2e
@@ -155,7 +163,13 @@ test-krew: krew-plugin-manifest
 
 .PHONY: build
 build: manifests generate lint ## Build manager binary.
-	go build -o bin/manager -ldflags -X=main.volsyncVersion=$(BUILD_VERSION) main.go
+	go build -o bin/manager -ldflags -X=main.volsyncVersion=$(BUILD_VERSION) .
+
+# Example build target showing how to build the volsync binary, excluding syncthing
+.PHONY: build-disable-syncthing
+build-disable-syncthing: manifests generate lint ## Build manager binary.
+	go build -o bin/manager -ldflags -X=main.volsyncVersion=$(BUILD_VERSION) -tags disable_syncthing .
+
 
 .PHONY: cli
 cli: bin/kubectl-volsync ## Build VolSync kubectl plugin
@@ -165,11 +179,23 @@ bin/kubectl-volsync: lint
 
 .PHONY: run
 run: manifests generate lint  ## Run a controller from your host.
-	go run -ldflags -X=main.volsyncVersion=$(BUILD_VERSION) ./main.go
+	go run -ldflags -X=main.volsyncVersion=$(BUILD_VERSION) .
+
+# Example build target showing how to run volsync, excluding syncthing
+.PHONY: run-disable-syncthing
+run-disable-syncthing: manifests generate lint  ## Run a controller from your host.
+	go run -ldflags -X=main.volsyncVersion=$(BUILD_VERSION) -tags disable_syncthing .
+
 
 .PHONY: docker-build
 docker-build:  ## Build docker image with the manager.
 	docker build --build-arg "builddate_arg=$(BUILDDATE)" --build-arg "version_arg=$(BUILD_VERSION)" -t ${IMG} .
+
+# Example build target showing how to build the docker image, excluding syncthing mover from the volsync binary
+# Note the dockerfile will still package syncthing itself - Dockerfile would need to be modified to exclude it
+.PHONY: docker-build-disable-syncthing
+docker-build-disable-syncthing:  ## Build docker image with the manager.
+	docker build --build-arg "builddate_arg=$(BUILDDATE)" --build-arg "version_arg=$(BUILD_VERSION)" --build-arg "tags_arg=disable_syncthing" -t ${IMG} .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
@@ -341,7 +367,8 @@ custom-scorecard-tests-build:
 .PHONY: custom-scorecard-tests-generate-config
 custom-scorecard-tests-generate-config: kustomize
 	cd custom-scorecard-tests && ./generateE2ETestsConfig.sh ${CUSTOM_SCORECARD_IMG}
-	cd custom-scorecard-tests && $(KUSTOMIZE) build scorecard > config.yaml
+	cd custom-scorecard-tests && $(KUSTOMIZE) build scorecard/overlays/upstream > config.yaml
+	cd custom-scorecard-tests && $(KUSTOMIZE) build scorecard/overlays/downstream > config-downstream.yaml
 
 
 ##@ Download utilities
