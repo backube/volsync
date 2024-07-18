@@ -234,7 +234,9 @@ func UpdatePodTemplateSpecFromMoverConfig(podTemplateSpec *corev1.PodTemplateSpe
 	podTemplateSpec.Spec.SecurityContext = moverConfig.MoverSecurityContext
 
 	// Affinity
-	podTemplateSpec.Spec.Affinity = moverConfig.MoverAffinity
+	if moverConfig.MoverAffinity != nil {
+		podTemplateSpec.Spec.Affinity = moverConfig.MoverAffinity
+	}
 
 	// Adjust the job/deploy containers resourceRequirements based on resourceRequirements from the moverConfig
 	moverResources := defaultMoverResources
