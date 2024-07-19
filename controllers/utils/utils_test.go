@@ -548,5 +548,39 @@ var _ = Describe("utils tests", func() {
 			})
 		})
 
+		When("moverConfig has no podAffinity set", func() {
+			var moverConfig volsyncv1alpha1.MoverConfig
+			var podSpecAffinity corev1.Affinity
+
+			BeforeEach(func() {
+				moverConfig = volsyncv1alpha1.MoverConfig{
+					MoverAffinity: nil,
+				}
+
+				podSpecAffinity = corev1.Affinity{
+					NodeAffinity: &corev1.NodeAffinity{
+						RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+							NodeSelectorTerms: []corev1.NodeSelectorTerm{
+								{
+									MatchFields: []corev1.NodeSelectorRequirement{
+										{
+											Key:      "a-key",
+											Operator: corev1.NodeSelectorOpIn,
+											Values:   []string{"a-label"},
+										},
+									},
+								},
+							},
+						}},
+				}
+				podTemplateSpec.Spec.Affinity = &podSpecAffinity
+			})
+
+			It("Should not remove the affinity in the podTemplateSpec", func() {
+				utils.UpdatePodTemplateSpecFromMoverConfig(podTemplateSpec, moverConfig, corev1.ResourceRequirements{})
+				Expect(podTemplateSpec.Spec.Affinity).To(Equal(&podSpecAffinity))
+			})
+		})
+
 	})
 })
