@@ -6,6 +6,12 @@ metadata:
     control-plane: {{ include "volsync.fullname" . }}-controller
     {{- include "volsync.labels" . | nindent 4 }}
 spec:
+  {{- if .Values.service.ipFamilyPolicy }}
+  ipFamilyPolicy: {{ .Values.service.ipFamilyPolicy }}
+  {{- end }}
+  {{- if .Values.service.ipFamilies }}
+  ipFamilies: {{ .Values.service.ipFamilies | toYaml | nindent 2 }}
+  {{- end }}
   ports:
   - name: https
     port: 8443
