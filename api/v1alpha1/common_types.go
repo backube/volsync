@@ -170,4 +170,6 @@ type MoverConfig struct {
 	// pod being unschedulable or crashing due to limited resources.
 	// +optional
 	MoverResources *corev1.ResourceRequirements `json:"moverResources,omitempty"`
+	// MoverAffinity allows specifying the PodAffinity that will be used by the data mover
+	MoverAffinity *corev1.Affinity `json:"moverAffinity,omitempty"`
 }
