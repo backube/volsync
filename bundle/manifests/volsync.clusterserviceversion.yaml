@@ -469,7 +469,7 @@ spec:
                 - --logtostderr=true
                 - --tls-min-version=VersionTLS12
                 - --v=0
-                image: quay.io/brancz/kube-rbac-proxy:v0.17.1
+                image: quay.io/brancz/kube-rbac-proxy:v0.18.0
                 name: kube-rbac-proxy
                 ports:
                 - containerPort: 8443
