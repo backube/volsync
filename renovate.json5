@@ -83,7 +83,8 @@
       // Renovate's packages update too frequently, so we only schedule updates
       // once a week to keep the noise down
       "matchPackageNames": ["renovatebot/pre-commit-hooks"],
-      "schedule": ["before 9am on monday"]
+      "schedule": ["before 9am on monday"],
+      "updateNotScheduled": false
     }
   ],
   "postUpdateOptions": [
