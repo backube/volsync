@@ -19,6 +19,40 @@ OPERATOR_SDK_VERSION := v1.31.0
 PIPENV_VERSION := 2024.0.1
 YQ_VERSION := v4.44.3
 
+#
+# Build tags - can use tags here to exclude building specific movers.
+# By default all movers are included.
+#
+TAGS ?=
+# Examples - showing how to disable syncthing with 'disable_sycthing' go build tag.
+#            Each mover has its own tag, just using syncthing here as an example.
+#
+#   Running tests:                   TAGS=disable_syncthing make test
+#   Building the manager binary:     TAGS=disable_syncthing make build
+#   Running the manger locally:      TAGS=disable_syncthing make run
+#   Building the Docker container:   TAGS=disable_syncthing make docker-build
+#
+#   Notes:
+#   1. Building the docker container will still package the binary for the excluded mover(s), syncthing in this case.
+#      Changes would need to be made in the Dockerfile to exclude it.
+#   2. When running the docker image, flags for the movers may need to be updated (i.e. the deloyment.yaml in the
+#      helm chart would also to be updated) to remove passing in the container-image argument
+#      (--syncthing-container-image in the example above).
+#   2. Running tests currently will not work if you disable rsync or rclone as common tests in controllers
+#      depend on them (see setup in suite_test.go for example)
+#   3. If you want to disable multiple movers, use a comma separated list of tags like this:
+#      TAGS=disable_syncthing,disable_restic
+#
+GOBUILDTAGS :=
+TESTBUILDTAGS :=
+CONTAINERBUILDTAGS :=
+ifdef TAGS
+	GOBUILDTAGS :=-tags $(TAGS)
+  TESTBUILDTAGS :=--tags $(TAGS)
+  CONTAINERBUILDTAGS :=--build-arg "tags_arg=$(TAGS)"
+endif
+
+
 # We don't vendor modules. Enforce that behavior
 export GOFLAGS := -mod=readonly
 
@@ -132,15 +166,7 @@ TEST_ARGS ?= --randomize-all --randomize-suites -p -cover -coverprofile cover.ou
 TEST_PACKAGES ?= ./...
 test: bundle generate lint envtest helm-lint ginkgo ## Run tests.
 	-rm -f cover.out
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GINKGO) $(TEST_ARGS) $(TEST_PACKAGES)
-
-# Example build target showing how to run unit tests, excluding syncthing from being built entirely
-# this is not bothering to exclude syncthing during linting but should be possible
-.PHONY: test-disable-syncthing
-TEST_ARGS_DISABLE_SYNCTHING ?= --tags disable_syncthing
-test-disable-syncthing: bundle generate lint envtest helm-lint ginkgo ## Run tests.
-	-rm -f cover.out
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GINKGO) $(TEST_ARGS) $(TEST_ARGS_DISABLE_SYNCTHING) $(TEST_PACKAGES)
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GINKGO) $(TEST_ARGS) $(TESTBUILDTAGS) $(TEST_PACKAGES)
 
 .PHONY: test-e2e-install
 PIP_INSTALL_ARGS ?= --user
@@ -163,13 +189,7 @@ test-krew: krew-plugin-manifest
 
 .PHONY: build
 build: manifests generate lint ## Build manager binary.
-	go build -o bin/manager -ldflags -X=main.volsyncVersion=$(BUILD_VERSION) .
-
-# Example build target showing how to build the volsync binary, excluding syncthing
-.PHONY: build-disable-syncthing
-build-disable-syncthing: manifests generate lint ## Build manager binary.
-	go build -o bin/manager -ldflags -X=main.volsyncVersion=$(BUILD_VERSION) -tags disable_syncthing .
-
+	go build -o bin/manager -ldflags -X=main.volsyncVersion=$(BUILD_VERSION) $(GOBUILDTAGS) .
 
 .PHONY: cli
 cli: bin/kubectl-volsync ## Build VolSync kubectl plugin
@@ -179,23 +199,11 @@ bin/kubectl-volsync: lint
 
 .PHONY: run
 run: manifests generate lint  ## Run a controller from your host.
-	go run -ldflags -X=main.volsyncVersion=$(BUILD_VERSION) .
-
-# Example build target showing how to run volsync, excluding syncthing
-.PHONY: run-disable-syncthing
-run-disable-syncthing: manifests generate lint  ## Run a controller from your host.
-	go run -ldflags -X=main.volsyncVersion=$(BUILD_VERSION) -tags disable_syncthing .
-
+	go run -ldflags -X=main.volsyncVersion=$(BUILD_VERSION) $(GOBUILDTAGS) .
 
 .PHONY: docker-build
 docker-build:  ## Build docker image with the manager.
-	docker build --build-arg "builddate_arg=$(BUILDDATE)" --build-arg "version_arg=$(BUILD_VERSION)" -t ${IMG} .
-
-# Example build target showing how to build the docker image, excluding syncthing mover from the volsync binary
-# Note the dockerfile will still package syncthing itself - Dockerfile would need to be modified to exclude it
-.PHONY: docker-build-disable-syncthing
-docker-build-disable-syncthing:  ## Build docker image with the manager.
-	docker build --build-arg "builddate_arg=$(BUILDDATE)" --build-arg "version_arg=$(BUILD_VERSION)" --build-arg "tags_arg=disable_syncthing" -t ${IMG} .
+	docker build --build-arg "builddate_arg=$(BUILDDATE)" --build-arg "version_arg=$(BUILD_VERSION)" $(CONTAINERBUILDTAGS) -t ${IMG} .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
