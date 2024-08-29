@@ -35,6 +35,7 @@ import (
 )
 
 const (
+	rsyncTLSMoverName = "rsync-tls"
 	// defaultRsyncContainerImage is the default container image for the
 	// rsync-tls data mover
 	defaultRsyncTLSContainerImage = "quay.io/backube/volsync:latest"
@@ -79,6 +80,8 @@ func newBuilder(viper *viper.Viper, flags *flag.FlagSet) (*Builder, error) {
 
 	return b, err
 }
+
+func (rb *Builder) Name() string { return rsyncTLSMoverName }
 
 func (rb *Builder) VersionInfo() string {
 	return fmt.Sprintf("Rsync TLS container: %s", rb.getRsyncTLSContainerImage())

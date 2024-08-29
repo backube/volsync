@@ -24,5 +24,5 @@ import (
 )
 
 func init() {
-	enabledMovers["syncthing"] = syncthing.Register
+	enabledMovers = append(enabledMovers, syncthing.Register)
 }

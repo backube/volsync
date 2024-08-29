@@ -24,5 +24,5 @@ import (
 )
 
 func init() {
-	enabledMovers["rclone"] = rclone.Register
+	enabledMovers = append(enabledMovers, rclone.Register)
 }

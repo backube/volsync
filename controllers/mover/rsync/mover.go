@@ -85,7 +85,7 @@ var cleanupTypes = []client.Object{
 	&batchv1.Job{},
 }
 
-func (m *Mover) Name() string { return "rsync" }
+func (m *Mover) Name() string { return rsyncMoverName }
 
 func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 	var err error

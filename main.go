@@ -67,7 +67,7 @@ var (
 
 	// See each mover_<movertype>_register.go where they add themselves to
 	// enabledMovers
-	enabledMovers = map[string]func() error{}
+	enabledMovers = []func() error{}
 )
 
 func init() {
@@ -85,13 +85,12 @@ func registerMovers() error {
 	bufout := bufio.NewWriter(os.Stdout)
 	defer bufout.Flush()
 
-	fmt.Fprintf(bufout, "Registering data movers: \n")
-	for moverName, moverRegisterFunc := range enabledMovers {
-		fmt.Fprintf(bufout, "> %s\n", moverName)
+	for _, moverRegisterFunc := range enabledMovers {
 		if err := moverRegisterFunc(); err != nil {
-			return fmt.Errorf("error registering %s data mover: %w", moverName, err)
+			return err
 		}
 	}
+	fmt.Fprintf(bufout, "Registered Movers: %v\n", mover.GetEnabledMoverList())
 	return nil
 }
 

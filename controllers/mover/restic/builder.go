@@ -35,6 +35,7 @@ import (
 )
 
 const (
+	resticMoverName = "restic"
 	// defaultResticContainerImage is the default container image for the restic
 	// data mover
 	defaultResticContainerImage = "quay.io/backube/volsync:latest"
@@ -79,6 +80,8 @@ func newBuilder(viper *viper.Viper, flags *flag.FlagSet) (*Builder, error) {
 
 	return b, err
 }
+
+func (rb *Builder) Name() string { return resticMoverName }
 
 func (rb *Builder) VersionInfo() string {
 	return fmt.Sprintf("Restic container: %s", rb.getResticContainerImage())

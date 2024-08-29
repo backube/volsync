@@ -35,6 +35,7 @@ import (
 )
 
 const (
+	rsyncMoverName = "rsync"
 	// defaultRsyncContainerImage is the default container image for the rsync
 	// data mover
 	defaultRsyncContainerImage = "quay.io/backube/volsync:latest"
@@ -79,6 +80,8 @@ func newBuilder(viper *viper.Viper, flags *flag.FlagSet) (*Builder, error) {
 
 	return b, err
 }
+
+func (rb *Builder) Name() string { return rsyncMoverName }
 
 func (rb *Builder) VersionInfo() string {
 	return fmt.Sprintf("Rsync container: %s", rb.getRsyncContainerImage())

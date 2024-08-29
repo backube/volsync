@@ -126,7 +126,7 @@ type Mover struct {
 var _ mover.Mover = &Mover{}
 
 // Name Returns the name of the mover.
-func (m *Mover) Name() string { return "syncthing" }
+func (m *Mover) Name() string { return syncthingMoverName }
 
 // Synchronize Runs through a synchronization cycle between
 // the VolSync operator and the Syncthing data mover.

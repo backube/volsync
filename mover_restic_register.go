@@ -24,5 +24,5 @@ import (
 )
 
 func init() {
-	enabledMovers["restic"] = restic.Register
+	enabledMovers = append(enabledMovers, restic.Register)
 }

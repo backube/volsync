@@ -24,5 +24,5 @@ import (
 )
 
 func init() {
-	enabledMovers["rsync"] = rsync.Register
+	enabledMovers = append(enabledMovers, rsync.Register)
 }
