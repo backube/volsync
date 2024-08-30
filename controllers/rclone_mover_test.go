@@ -1,3 +1,5 @@
+//go:build !disable_rclone
+
 package controllers
 
 import (

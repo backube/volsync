@@ -1,3 +1,5 @@
+//go:build !disable_rclone
+
 /*
 Copyright 2021 The VolSync authors.
 
@@ -33,6 +35,7 @@ import (
 )
 
 const (
+	rcloneMoverName = "rclone"
 	// defaultRcloneContainerImage is the default container image for the rclone
 	// data mover
 	defaultRcloneContainerImage = "quay.io/backube/volsync:latest"
@@ -78,6 +81,8 @@ func newBuilder(viper *viper.Viper, flags *flag.FlagSet) (*Builder, error) {
 	return b, err
 }
 
+func (rb *Builder) Name() string { return rcloneMoverName }
+
 func (rb *Builder) VersionInfo() string {
 	return fmt.Sprintf("Rclone container: %s", rb.getRcloneContainerImage())
 }
@@ -89,7 +94,8 @@ func (rb *Builder) getRcloneContainerImage() string {
 
 func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 	eventRecorder events.EventRecorder,
-	source *volsyncv1alpha1.ReplicationSource, privileged bool) (mover.Mover, error) {
+	source *volsyncv1alpha1.ReplicationSource, privileged bool,
+) (mover.Mover, error) {
 	// Only build if the CR belongs to us
 	if source.Spec.Rclone == nil {
 		return nil, nil

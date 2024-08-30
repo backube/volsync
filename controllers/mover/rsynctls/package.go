@@ -1,7 +1,5 @@
-//go:build !disable_rsync
-
 /*
-Copyright 2022 The VolSync authors.
+Copyright 2024 The VolSync authors.
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published
@@ -17,21 +15,7 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-package rsync
+package rsynctls
 
-import (
-	"regexp"
-)
-
-var rsyncRegex = regexp.MustCompile(
-	`^\s*([sS]ent)\s.+([bB]ytes)\s.+([rR]eceived)\s.+([bB]ytes)|` +
-		`^\s*([tT]otal size)|` +
-		`^\s*([rR]sync completed in)`)
-
-// Filter rsync log lines for a successful move job
-func LogLineFilterSuccess(line string) *string {
-	if rsyncRegex.MatchString(line) {
-		return &line
-	}
-	return nil
-}
+// This file is here as we can exclude all the other .go files with the build tag 'disable_rsynctls'
+// Including this file allows the package to still be compiled even with 'disable_rsynctls' specified.

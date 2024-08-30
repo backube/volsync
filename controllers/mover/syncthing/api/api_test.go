@@ -1,3 +1,5 @@
+//go:build !disable_syncthing
+
 package api
 
 import (

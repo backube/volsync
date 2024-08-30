@@ -1,3 +1,5 @@
+//go:build !disable_rclone
+
 /*
 Copyright 2021 The VolSync authors.
 
@@ -78,7 +80,7 @@ var cleanupTypes = []client.Object{
 	&batchv1.Job{},
 }
 
-func (m *Mover) Name() string { return "rclone" }
+func (m *Mover) Name() string { return rcloneMoverName }
 
 func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 	var err error

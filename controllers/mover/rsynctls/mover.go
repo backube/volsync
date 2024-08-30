@@ -1,3 +1,5 @@
+//go:build !disable_rsynctls
+
 /*
 Copyright 2021 The VolSync authors.
 
@@ -87,7 +89,7 @@ var cleanupTypes = []client.Object{
 	&batchv1.Job{},
 }
 
-func (m *Mover) Name() string { return "rsync-tls" }
+func (m *Mover) Name() string { return rsyncTLSMoverName }
 
 func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 	var err error

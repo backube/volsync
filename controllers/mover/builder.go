@@ -59,9 +59,20 @@ type Builder interface {
 		eventRecorder events.EventRecorder,
 		destination *volsyncv1alpha1.ReplicationDestination, privileged bool) (Mover, error)
 
+	// The name of the mover this builder is for
+	Name() string
+
 	// VersionInfo returns a string describing the version of this mover. In
 	// most cases, this is the container image/tag that will be used.
 	VersionInfo() string
+}
+
+func GetEnabledMoverList() []string {
+	enabledMoverNames := []string{}
+	for _, builder := range Catalog {
+		enabledMoverNames = append(enabledMoverNames, builder.Name())
+	}
+	return enabledMoverNames
 }
 
 func GetDestinationMoverFromCatalog(client client.Client, logger logr.Logger,

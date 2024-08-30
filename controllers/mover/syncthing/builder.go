@@ -1,3 +1,5 @@
+//go:build !disable_syncthing
+
 /*
 Copyright 2022 The VolSync authors.
 
@@ -43,6 +45,7 @@ type Builder struct {
 var _ mover.Builder = &Builder{}
 
 const (
+	syncthingMoverName             = "syncthing"
 	defaultSyncthingContainerImage = "quay.io/backube/volsync:latest"
 	syncthingContainerImageFlag    = "syncthing-container-image"
 	syncthingContainerImageEnvVar  = "RELATED_IMAGE_SYNCTHING_CONTAINER"
@@ -78,6 +81,8 @@ func newBuilder(viper *viper.Viper, flags *flag.FlagSet) (*Builder, error) {
 
 	return b, err
 }
+
+func (rb *Builder) Name() string { return syncthingMoverName }
 
 // VersionInfo Returns the Syncthing container image version being used by this Builder.
 func (rb *Builder) VersionInfo() string {

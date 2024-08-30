@@ -20,6 +20,7 @@ package controllers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -140,7 +141,7 @@ func (r *ReplicationSourceReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			Type:    volsyncv1alpha1.ConditionSynchronizing,
 			Status:  metav1.ConditionFalse,
 			Reason:  volsyncv1alpha1.SynchronizingReasonError,
-			Message: err.Error(),
+			Message: err.Error() + fmt.Sprintf(" - enabled movers: %v", mover.GetEnabledMoverList()),
 		})
 	}
 

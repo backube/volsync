@@ -1,3 +1,5 @@
+//go:build !disable_restic
+
 /*
 Copyright 2021 The VolSync authors.
 
@@ -94,7 +96,7 @@ var cleanupTypes = []client.Object{
 	&batchv1.Job{},
 }
 
-func (m *Mover) Name() string { return "restic" }
+func (m *Mover) Name() string { return resticMoverName }
 
 func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 	var err error

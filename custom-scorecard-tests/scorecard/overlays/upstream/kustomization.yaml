@@ -1,0 +1,11 @@
+resources:
+- ../../bases
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+patches:
+- path: patches/e2e-tests-stage3-upstreamonly.yaml
+  target:
+    group: scorecard.operatorframework.io
+    kind: Configuration
+    name: config
+    version: v1alpha3

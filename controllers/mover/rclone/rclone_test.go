@@ -1,3 +1,5 @@
+//go:build !disable_rclone
+
 /*
 Copyright 2021 The VolSync authors.
 
