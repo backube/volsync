@@ -2163,6 +2163,75 @@ var _ = Describe("Restic as a destination", func() {
 				})
 			})
 
+			Context("Restore options", func() {
+				When("No restore options are specified", func() {
+					It("should set env vars related to restore options with defaults", func() {
+						j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo, nil)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(j).To(BeNil()) // hasn't completed
+						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+						job = &batchv1.Job{}
+						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+
+						var forgetOptions *corev1.EnvVar
+						var restoreAsOf *corev1.EnvVar
+						var selectPrevious *corev1.EnvVar
+						var restoreOptions *corev1.EnvVar
+
+						envVars := job.Spec.Template.Spec.Containers[0].Env
+						for i := range envVars {
+							envVar := envVars[i]
+							switch envVar.Name {
+							case "FORGET_OPTIONS":
+								forgetOptions = &envVar
+							case "RESTORE_AS_OF":
+								restoreAsOf = &envVar
+							case "SELECT_PREVIOUS":
+								selectPrevious = &envVar
+							case "RESTORE_OPTIONS":
+								restoreOptions = &envVar
+							}
+						}
+
+						Expect(forgetOptions).NotTo(BeNil())
+						Expect(forgetOptions.Value).To(Equal("--keep-last 1")) // Default value
+
+						Expect(restoreAsOf).NotTo(BeNil())
+						Expect(restoreAsOf.Value).To(Equal("")) // Default value
+
+						Expect(selectPrevious).NotTo(BeNil())
+						Expect(selectPrevious.Value).To(Equal("0")) // Default value
+
+						Expect(restoreOptions).NotTo(BeNil())
+						Expect(restoreOptions.Value).To(Equal("")) // Default value
+					})
+				})
+				When("Restore option of delete is specified", func() {
+					BeforeEach(func() {
+						rd.Spec.Restic.Delete = true
+					})
+					It("should set RESTORE_OPTIONS env var with delete flag", func() {
+						j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo, nil)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(j).To(BeNil()) // hasn't completed
+						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+						job = &batchv1.Job{}
+						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+
+						var restoreOptions *corev1.EnvVar
+						envVars := job.Spec.Template.Spec.Containers[0].Env
+						for i := range envVars {
+							envVar := envVars[i]
+							if envVar.Name == "RESTORE_OPTIONS" {
+								restoreOptions = &envVar
+							}
+						}
+						Expect(restoreOptions).NotTo(BeNil())
+						Expect(restoreOptions.Value).To(Equal("--delete"))
+					})
+				})
+			})
+
 			Context("Cluster wide proxy settings", func() {
 				When("no proxy env vars are set on the volsync controller", func() {
 					It("shouldn't set any proxy env vars on the mover job", func() {

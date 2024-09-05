@@ -196,6 +196,7 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		privileged:            privileged,
 		restoreAsOf:           destination.Spec.Restic.RestoreAsOf,
 		previous:              destination.Spec.Restic.Previous,
+		deleteFilesOnRestore:  destination.Spec.Restic.Delete,
 		latestMoverStatus:     destination.Status.LatestMoverStatus,
 		moverConfig:           destination.Spec.Restic.MoverConfig,
 	}, nil

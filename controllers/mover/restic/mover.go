@@ -82,8 +82,9 @@ type Mover struct {
 	retainPolicy  *volsyncv1alpha1.ResticRetainPolicy
 	sourceStatus  *volsyncv1alpha1.ReplicationSourceResticStatus
 	// Destination-only fields
-	previous    *int32
-	restoreAsOf *string
+	previous             *int32
+	restoreAsOf          *string
+	deleteFilesOnRestore bool
 }
 
 var _ mover.Mover = &Mover{}
@@ -312,6 +313,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 		// set default values
 		var restoreAsOf = ""
 		var previous = strconv.Itoa(int(int32(0)))
+		var restoreOptions = ""
 
 		readOnlyVolume := false
 		var actions []string
@@ -338,6 +340,12 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 			if m.previous != nil {
 				previous = strconv.Itoa(int(*m.previous))
 			}
+
+			// Delete option for restores, default is false (mover.deleteFilesOnRestore is only set in the builder
+			// for replicationdestinations)
+			if m.deleteFilesOnRestore {
+				restoreOptions = "--delete"
+			}
 		}
 		logger.Info("job actions", "actions", actions)
 		podSpec := &job.Spec.Template.Spec
@@ -348,6 +356,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 			{Name: "RESTIC_CACHE_DIR", Value: resticCacheMountPath},
 			{Name: "RESTORE_AS_OF", Value: restoreAsOf},
 			{Name: "SELECT_PREVIOUS", Value: previous},
+			{Name: "RESTORE_OPTIONS", Value: restoreOptions},
 			// We populate environment variables from the restic repo
 			// Secret. They are taken 1-for-1 from the Secret into env vars.
 			// The allowed variables are defined by restic.

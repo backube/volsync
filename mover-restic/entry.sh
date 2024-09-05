@@ -297,9 +297,14 @@ function do_restore {
         echo "No eligible snapshots found"
         echo "=== No data will be restored ==="
     else
-    pushd "${DATA_DIR}"
+        if [[ -n ${RESTORE_OPTIONS} ]]; then
+          echo "RESTORE_OPTIONS: ${RESTORE_OPTIONS}"
+        fi
+        pushd "${DATA_DIR}"
         echo "Selected restic snapshot with id: ${snapshot_id}"
-        "${RESTIC[@]}" restore -t . --host "${RESTIC_HOST}" "${snapshot_id}"
+        # Running this cmd can be finicky with spaces, do not put quotes around ${RESTORE_OPTIONS}
+        #shellcheck disable=SC2086
+        "${RESTIC[@]}" restore "${snapshot_id}" -t . --host "${RESTIC_HOST}" ${RESTORE_OPTIONS}
         popd
     fi
 }
