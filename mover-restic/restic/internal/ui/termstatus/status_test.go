@@ -32,6 +32,15 @@ func TestSetStatus(t *testing.T) {
 	term.SetStatus([]string{"first"})
 	exp := home + clear + "first" + home
 
+	term.SetStatus([]string{""})
+	exp += home + clear + "" + home
+
+	term.SetStatus([]string{})
+	exp += home + clear + "" + home
+
+	// already empty status
+	term.SetStatus([]string{})
+
 	term.SetStatus([]string{"foo", "bar", "baz"})
 	exp += home + clear + "foo\n" + home + clear + "bar\n" +
 		home + clear + "baz" + home + up + up
@@ -39,11 +48,10 @@ func TestSetStatus(t *testing.T) {
 	term.SetStatus([]string{"quux", "needs\nquote"})
 	exp += home + clear + "quux\n" +
 		home + clear + "\"needs\\nquote\"\n" +
-		home + clear + home + up + up // Third line implicit.
+		home + clear + home + up + up // Clear third line
 
 	cancel()
-	exp += home + clear + "\n" + home + clear + "\n" +
-		home + up + up // Status cleared.
+	exp += home + clear + "\n" + home + clear + home + up // Status cleared
 
 	<-term.closed
 	rtest.Equals(t, exp, buf.String())

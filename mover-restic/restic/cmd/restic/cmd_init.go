@@ -23,7 +23,8 @@ The "init" command initializes a new repository.
 EXIT STATUS
 ===========
 
-Exit status is 0 if the command was successful, and non-zero if there was any error.
+Exit status is 0 if the command was successful.
+Exit status is 1 if there was any error.
 `,
 	DisableAutoGenTag: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -80,7 +81,7 @@ func runInit(ctx context.Context, opts InitOptions, gopts GlobalOptions, args []
 		return err
 	}
 
-	gopts.password, err = ReadPasswordTwice(gopts,
+	gopts.password, err = ReadPasswordTwice(ctx, gopts,
 		"enter password for new repository: ",
 		"enter password again: ")
 	if err != nil {
@@ -131,7 +132,7 @@ func runInit(ctx context.Context, opts InitOptions, gopts GlobalOptions, args []
 
 func maybeReadChunkerPolynomial(ctx context.Context, opts InitOptions, gopts GlobalOptions) (*chunker.Pol, error) {
 	if opts.CopyChunkerParameters {
-		otherGopts, _, err := fillSecondaryGlobalOpts(opts.secondaryRepoOptions, gopts, "secondary")
+		otherGopts, _, err := fillSecondaryGlobalOpts(ctx, opts.secondaryRepoOptions, gopts, "secondary")
 		if err != nil {
 			return nil, err
 		}

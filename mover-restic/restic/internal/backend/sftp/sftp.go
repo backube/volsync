@@ -17,9 +17,10 @@ import (
 	"github.com/restic/restic/internal/backend/layout"
 	"github.com/restic/restic/internal/backend/limiter"
 	"github.com/restic/restic/internal/backend/location"
+	"github.com/restic/restic/internal/backend/util"
 	"github.com/restic/restic/internal/debug"
 	"github.com/restic/restic/internal/errors"
-	"github.com/restic/restic/internal/restic"
+	"github.com/restic/restic/internal/feature"
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/pkg/sftp"
@@ -38,10 +39,12 @@ type SFTP struct {
 
 	layout.Layout
 	Config
-	backend.Modes
+	util.Modes
 }
 
-var _ restic.Backend = &SFTP{}
+var _ backend.Backend = &SFTP{}
+
+var errTooShort = fmt.Errorf("file is too short")
 
 func NewFactory() location.Factory {
 	return location.NewLimitedBackendFactory("sftp", ParseConfig, location.NoPassword, limiter.WrapBackendConstructor(Create), limiter.WrapBackendConstructor(Open))
@@ -83,9 +86,9 @@ func startClient(cfg Config) (*SFTP, error) {
 		return nil, errors.Wrap(err, "cmd.StdoutPipe")
 	}
 
-	bg, err := backend.StartForeground(cmd)
+	bg, err := util.StartForeground(cmd)
 	if err != nil {
-		if backend.IsErrDot(err) {
+		if util.IsErrDot(err) {
 			return nil, errors.Errorf("cannot implicitly run relative executable %v found in current directory, use -o sftp.command=./<command> to override", cmd.Path)
 		}
 		return nil, err
@@ -102,7 +105,12 @@ func startClient(cfg Config) (*SFTP, error) {
 	}()
 
 	// open the SFTP session
-	client, err := sftp.NewClientPipe(rd, wr)
+	client, err := sftp.NewClientPipe(rd, wr,
+		// write multiple packets (32kb) in parallel per file
+		// not strictly necessary as we use ReadFromWithConcurrency
+		sftp.UseConcurrentWrites(true),
+		// increase send buffer per file to 4MB
+		sftp.MaxConcurrentRequestsPerFile(128))
 	if err != nil {
 		return nil, errors.Errorf("unable to start the sftp session, error: %v", err)
 	}
@@ -152,8 +160,8 @@ func open(ctx context.Context, sftp *SFTP, cfg Config) (*SFTP, error) {
 
 	debug.Log("layout: %v\n", sftp.Layout)
 
-	fi, err := sftp.c.Stat(sftp.Layout.Filename(restic.Handle{Type: restic.ConfigFile}))
-	m := backend.DeriveModesFromFileInfo(fi, err)
+	fi, err := sftp.c.Stat(sftp.Layout.Filename(backend.Handle{Type: backend.ConfigFile}))
+	m := util.DeriveModesFromFileInfo(fi, err)
 	debug.Log("using (%03O file, %03O dir) permissions", m.File, m.Dir)
 
 	sftp.Config = cfg
@@ -205,6 +213,10 @@ func (r *SFTP) ReadDir(_ context.Context, dir string) ([]os.FileInfo, error) {
 // IsNotExist returns true if the error is caused by a not existing file.
 func (r *SFTP) IsNotExist(err error) bool {
 	return errors.Is(err, os.ErrNotExist)
+}
+
+func (r *SFTP) IsPermanentError(err error) bool {
+	return r.IsNotExist(err) || errors.Is(err, errTooShort) || errors.Is(err, os.ErrPermission)
 }
 
 func buildSSHCommand(cfg Config) (cmd string, args []string, err error) {
@@ -259,10 +271,10 @@ func Create(ctx context.Context, cfg Config) (*SFTP, error) {
 		return nil, err
 	}
 
-	sftp.Modes = backend.DefaultModes
+	sftp.Modes = util.DefaultModes
 
 	// test if config file already exists
-	_, err = sftp.c.Lstat(sftp.Layout.Filename(restic.Handle{Type: restic.ConfigFile}))
+	_, err = sftp.c.Lstat(sftp.Layout.Filename(backend.Handle{Type: backend.ConfigFile}))
 	if err == nil {
 		return nil, errors.New("config file already exists")
 	}
@@ -278,11 +290,6 @@ func Create(ctx context.Context, cfg Config) (*SFTP, error) {
 
 func (r *SFTP) Connections() uint {
 	return r.Config.Connections
-}
-
-// Location returns this backend's location (the directory name).
-func (r *SFTP) Location() string {
-	return r.p
 }
 
 // Hasher may return a hash function for calculating a content hash for the backend
@@ -302,7 +309,7 @@ func Join(parts ...string) string {
 }
 
 // tempSuffix generates a random string suffix that should be sufficiently long
-// to avoid accidential conflicts
+// to avoid accidental conflicts
 func tempSuffix() string {
 	var nonce [16]byte
 	_, err := rand.Read(nonce[:])
@@ -313,7 +320,7 @@ func tempSuffix() string {
 }
 
 // Save stores data in the backend at the handle.
-func (r *SFTP) Save(_ context.Context, h restic.Handle, rd restic.RewindReader) error {
+func (r *SFTP) Save(_ context.Context, h backend.Handle, rd backend.RewindReader) error {
 	if err := r.clientError(); err != nil {
 		return err
 	}
@@ -359,7 +366,7 @@ func (r *SFTP) Save(_ context.Context, h restic.Handle, rd restic.RewindReader) 
 	}()
 
 	// save data, make sure to use the optimized sftp upload method
-	wbytes, err := f.ReadFrom(rd)
+	wbytes, err := f.ReadFromWithConcurrency(rd, 0)
 	if err != nil {
 		_ = f.Close()
 		err = r.checkNoSpace(dirname, rd.Length(), err)
@@ -413,11 +420,28 @@ func (r *SFTP) checkNoSpace(dir string, size int64, origErr error) error {
 
 // Load runs fn with a reader that yields the contents of the file at h at the
 // given offset.
-func (r *SFTP) Load(ctx context.Context, h restic.Handle, length int, offset int64, fn func(rd io.Reader) error) error {
-	return backend.DefaultLoad(ctx, h, length, offset, r.openReader, fn)
+func (r *SFTP) Load(ctx context.Context, h backend.Handle, length int, offset int64, fn func(rd io.Reader) error) error {
+	return util.DefaultLoad(ctx, h, length, offset, r.openReader, func(rd io.Reader) error {
+		if length == 0 || !feature.Flag.Enabled(feature.BackendErrorRedesign) {
+			return fn(rd)
+		}
+
+		// there is no direct way to efficiently check whether the file is too short
+		// rd is already a LimitedReader which can be used to track the number of bytes read
+		err := fn(rd)
+
+		// check the underlying reader to be agnostic to however fn() handles the returned error
+		_, rderr := rd.Read([]byte{0})
+		if rderr == io.EOF && rd.(*util.LimitedReadCloser).N != 0 {
+			// file is too short
+			return fmt.Errorf("%w: %v", errTooShort, err)
+		}
+
+		return err
+	})
 }
 
-func (r *SFTP) openReader(_ context.Context, h restic.Handle, length int, offset int64) (io.ReadCloser, error) {
+func (r *SFTP) openReader(_ context.Context, h backend.Handle, length int, offset int64) (io.ReadCloser, error) {
 	f, err := r.c.Open(r.Filename(h))
 	if err != nil {
 		return nil, err
@@ -434,28 +458,28 @@ func (r *SFTP) openReader(_ context.Context, h restic.Handle, length int, offset
 	if length > 0 {
 		// unlimited reads usually use io.Copy which needs WriteTo support at the underlying reader
 		// limited reads are usually combined with io.ReadFull which reads all required bytes into a buffer in one go
-		return backend.LimitReadCloser(f, int64(length)), nil
+		return util.LimitReadCloser(f, int64(length)), nil
 	}
 
 	return f, nil
 }
 
 // Stat returns information about a blob.
-func (r *SFTP) Stat(_ context.Context, h restic.Handle) (restic.FileInfo, error) {
+func (r *SFTP) Stat(_ context.Context, h backend.Handle) (backend.FileInfo, error) {
 	if err := r.clientError(); err != nil {
-		return restic.FileInfo{}, err
+		return backend.FileInfo{}, err
 	}
 
 	fi, err := r.c.Lstat(r.Filename(h))
 	if err != nil {
-		return restic.FileInfo{}, errors.Wrap(err, "Lstat")
+		return backend.FileInfo{}, errors.Wrap(err, "Lstat")
 	}
 
-	return restic.FileInfo{Size: fi.Size(), Name: h.Name}, nil
+	return backend.FileInfo{Size: fi.Size(), Name: h.Name}, nil
 }
 
 // Remove removes the content stored at name.
-func (r *SFTP) Remove(_ context.Context, h restic.Handle) error {
+func (r *SFTP) Remove(_ context.Context, h backend.Handle) error {
 	if err := r.clientError(); err != nil {
 		return err
 	}
@@ -465,7 +489,7 @@ func (r *SFTP) Remove(_ context.Context, h restic.Handle) error {
 
 // List runs fn for each file in the backend which has the type t. When an
 // error occurs (or fn returns an error), List stops and returns it.
-func (r *SFTP) List(ctx context.Context, t restic.FileType, fn func(restic.FileInfo) error) error {
+func (r *SFTP) List(ctx context.Context, t backend.FileType, fn func(backend.FileInfo) error) error {
 	basedir, subdirs := r.Basedir(t)
 	walker := r.c.Walk(basedir)
 	for {
@@ -498,7 +522,7 @@ func (r *SFTP) List(ctx context.Context, t restic.FileType, fn func(restic.FileI
 
 		debug.Log("send %v\n", path.Base(walker.Path()))
 
-		rfi := restic.FileInfo{
+		rfi := backend.FileInfo{
 			Name: path.Base(walker.Path()),
 			Size: fi.Size(),
 		}

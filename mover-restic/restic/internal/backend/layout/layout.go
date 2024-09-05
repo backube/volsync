@@ -7,17 +7,19 @@ import (
 	"path/filepath"
 	"regexp"
 
+	"github.com/restic/restic/internal/backend"
 	"github.com/restic/restic/internal/debug"
 	"github.com/restic/restic/internal/errors"
+	"github.com/restic/restic/internal/feature"
 	"github.com/restic/restic/internal/fs"
 	"github.com/restic/restic/internal/restic"
 )
 
 // Layout computes paths for file name storage.
 type Layout interface {
-	Filename(restic.Handle) string
-	Dirname(restic.Handle) string
-	Basedir(restic.FileType) (dir string, subdirs bool)
+	Filename(backend.Handle) string
+	Dirname(backend.Handle) string
+	Basedir(backend.FileType) (dir string, subdirs bool)
 	Paths() []string
 	Name() string
 }
@@ -92,6 +94,8 @@ func hasBackendFile(ctx context.Context, fs Filesystem, dir string) (bool, error
 // cannot be detected automatically.
 var ErrLayoutDetectionFailed = errors.New("auto-detecting the filesystem layout failed")
 
+var ErrLegacyLayoutFound = errors.New("detected legacy S3 layout. Use `RESTIC_FEATURES=deprecate-s3-legacy-layout=false restic migrate s3_layout` to migrate your repository")
+
 // DetectLayout tries to find out which layout is used in a local (or sftp)
 // filesystem at the given path. If repo is nil, an instance of LocalFilesystem
 // is used.
@@ -102,13 +106,13 @@ func DetectLayout(ctx context.Context, repo Filesystem, dir string) (Layout, err
 	}
 
 	// key file in the "keys" dir (DefaultLayout)
-	foundKeysFile, err := hasBackendFile(ctx, repo, repo.Join(dir, defaultLayoutPaths[restic.KeyFile]))
+	foundKeysFile, err := hasBackendFile(ctx, repo, repo.Join(dir, defaultLayoutPaths[backend.KeyFile]))
 	if err != nil {
 		return nil, err
 	}
 
 	// key file in the "key" dir (S3LegacyLayout)
-	foundKeyFile, err := hasBackendFile(ctx, repo, repo.Join(dir, s3LayoutPaths[restic.KeyFile]))
+	foundKeyFile, err := hasBackendFile(ctx, repo, repo.Join(dir, s3LayoutPaths[backend.KeyFile]))
 	if err != nil {
 		return nil, err
 	}
@@ -122,6 +126,10 @@ func DetectLayout(ctx context.Context, repo Filesystem, dir string) (Layout, err
 	}
 
 	if foundKeyFile && !foundKeysFile {
+		if feature.Flag.Enabled(feature.DeprecateS3LegacyLayout) {
+			return nil, ErrLegacyLayoutFound
+		}
+
 		debug.Log("found s3 layout at %v", dir)
 		return &S3LegacyLayout{
 			Path: dir,
@@ -144,6 +152,10 @@ func ParseLayout(ctx context.Context, repo Filesystem, layout, defaultLayout, pa
 			Join: repo.Join,
 		}
 	case "s3legacy":
+		if feature.Flag.Enabled(feature.DeprecateS3LegacyLayout) {
+			return nil, ErrLegacyLayoutFound
+		}
+
 		l = &S3LegacyLayout{
 			Path: path,
 			Join: repo.Join,

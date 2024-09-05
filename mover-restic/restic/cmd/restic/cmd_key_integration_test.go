@@ -3,17 +3,20 @@ package main
 import (
 	"bufio"
 	"context"
+	"os"
+	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 
+	"github.com/restic/restic/internal/backend"
 	"github.com/restic/restic/internal/repository"
-	"github.com/restic/restic/internal/restic"
 	rtest "github.com/restic/restic/internal/test"
 )
 
 func testRunKeyListOtherIDs(t testing.TB, gopts GlobalOptions) []string {
 	buf, err := withCaptureStdout(func() error {
-		return runKey(context.TODO(), gopts, []string{"list"})
+		return runKeyList(context.TODO(), gopts, []string{})
 	})
 	rtest.OK(t, err)
 
@@ -36,21 +39,20 @@ func testRunKeyAddNewKey(t testing.TB, newPassword string, gopts GlobalOptions) 
 		testKeyNewPassword = ""
 	}()
 
-	rtest.OK(t, runKey(context.TODO(), gopts, []string{"add"}))
+	rtest.OK(t, runKeyAdd(context.TODO(), gopts, KeyAddOptions{}, []string{}))
 }
 
 func testRunKeyAddNewKeyUserHost(t testing.TB, gopts GlobalOptions) {
 	testKeyNewPassword = "john's geheimnis"
 	defer func() {
 		testKeyNewPassword = ""
-		keyUsername = ""
-		keyHostname = ""
 	}()
 
-	rtest.OK(t, cmdKey.Flags().Parse([]string{"--user=john", "--host=example.com"}))
-
 	t.Log("adding key for john@example.com")
-	rtest.OK(t, runKey(context.TODO(), gopts, []string{"add"}))
+	rtest.OK(t, runKeyAdd(context.TODO(), gopts, KeyAddOptions{
+		Username: "john",
+		Hostname: "example.com",
+	}, []string{}))
 
 	repo, err := OpenRepository(context.TODO(), gopts)
 	rtest.OK(t, err)
@@ -67,13 +69,13 @@ func testRunKeyPasswd(t testing.TB, newPassword string, gopts GlobalOptions) {
 		testKeyNewPassword = ""
 	}()
 
-	rtest.OK(t, runKey(context.TODO(), gopts, []string{"passwd"}))
+	rtest.OK(t, runKeyPasswd(context.TODO(), gopts, KeyPasswdOptions{}, []string{}))
 }
 
 func testRunKeyRemove(t testing.TB, gopts GlobalOptions, IDs []string) {
 	t.Logf("remove %d keys: %q\n", len(IDs), IDs)
 	for _, id := range IDs {
-		rtest.OK(t, runKey(context.TODO(), gopts, []string{"remove", id}))
+		rtest.OK(t, runKeyRemove(context.TODO(), gopts, []string{id}))
 	}
 }
 
@@ -103,18 +105,55 @@ func TestKeyAddRemove(t *testing.T) {
 
 	env.gopts.password = passwordList[len(passwordList)-1]
 	t.Logf("testing access with last password %q\n", env.gopts.password)
-	rtest.OK(t, runKey(context.TODO(), env.gopts, []string{"list"}))
+	rtest.OK(t, runKeyList(context.TODO(), env.gopts, []string{}))
 	testRunCheck(t, env.gopts)
 
 	testRunKeyAddNewKeyUserHost(t, env.gopts)
 }
 
-type emptySaveBackend struct {
-	restic.Backend
+func TestKeyAddInvalid(t *testing.T) {
+	env, cleanup := withTestEnvironment(t)
+	defer cleanup()
+	testRunInit(t, env.gopts)
+
+	err := runKeyAdd(context.TODO(), env.gopts, KeyAddOptions{
+		NewPasswordFile:    "some-file",
+		InsecureNoPassword: true,
+	}, []string{})
+	rtest.Assert(t, strings.Contains(err.Error(), "only either"), "unexpected error message, got %q", err)
+
+	pwfile := filepath.Join(t.TempDir(), "pwfile")
+	rtest.OK(t, os.WriteFile(pwfile, []byte{}, 0o666))
+
+	err = runKeyAdd(context.TODO(), env.gopts, KeyAddOptions{
+		NewPasswordFile: pwfile,
+	}, []string{})
+	rtest.Assert(t, strings.Contains(err.Error(), "an empty password is not allowed by default"), "unexpected error message, got %q", err)
 }
 
-func (b *emptySaveBackend) Save(ctx context.Context, h restic.Handle, _ restic.RewindReader) error {
-	return b.Backend.Save(ctx, h, restic.NewByteReader([]byte{}, nil))
+func TestKeyAddEmpty(t *testing.T) {
+	env, cleanup := withTestEnvironment(t)
+	// must list keys more than once
+	env.gopts.backendTestHook = nil
+	defer cleanup()
+	testRunInit(t, env.gopts)
+
+	rtest.OK(t, runKeyAdd(context.TODO(), env.gopts, KeyAddOptions{
+		InsecureNoPassword: true,
+	}, []string{}))
+
+	env.gopts.password = ""
+	env.gopts.InsecureNoPassword = true
+
+	testRunCheck(t, env.gopts)
+}
+
+type emptySaveBackend struct {
+	backend.Backend
+}
+
+func (b *emptySaveBackend) Save(ctx context.Context, h backend.Handle, _ backend.RewindReader) error {
+	return b.Backend.Save(ctx, h, backend.NewByteReader([]byte{}, nil))
 }
 
 func TestKeyProblems(t *testing.T) {
@@ -122,7 +161,7 @@ func TestKeyProblems(t *testing.T) {
 	defer cleanup()
 
 	testRunInit(t, env.gopts)
-	env.gopts.backendTestHook = func(r restic.Backend) (restic.Backend, error) {
+	env.gopts.backendTestHook = func(r backend.Backend) (backend.Backend, error) {
 		return &emptySaveBackend{r}, nil
 	}
 
@@ -131,15 +170,45 @@ func TestKeyProblems(t *testing.T) {
 		testKeyNewPassword = ""
 	}()
 
-	err := runKey(context.TODO(), env.gopts, []string{"passwd"})
+	err := runKeyPasswd(context.TODO(), env.gopts, KeyPasswdOptions{}, []string{})
 	t.Log(err)
 	rtest.Assert(t, err != nil, "expected passwd change to fail")
 
-	err = runKey(context.TODO(), env.gopts, []string{"add"})
+	err = runKeyAdd(context.TODO(), env.gopts, KeyAddOptions{}, []string{})
 	t.Log(err)
 	rtest.Assert(t, err != nil, "expected key adding to fail")
 
 	t.Logf("testing access with initial password %q\n", env.gopts.password)
-	rtest.OK(t, runKey(context.TODO(), env.gopts, []string{"list"}))
+	rtest.OK(t, runKeyList(context.TODO(), env.gopts, []string{}))
 	testRunCheck(t, env.gopts)
+}
+
+func TestKeyCommandInvalidArguments(t *testing.T) {
+	env, cleanup := withTestEnvironment(t)
+	defer cleanup()
+
+	testRunInit(t, env.gopts)
+	env.gopts.backendTestHook = func(r backend.Backend) (backend.Backend, error) {
+		return &emptySaveBackend{r}, nil
+	}
+
+	err := runKeyAdd(context.TODO(), env.gopts, KeyAddOptions{}, []string{"johndoe"})
+	t.Log(err)
+	rtest.Assert(t, err != nil && strings.Contains(err.Error(), "no arguments"), "unexpected error for key add: %v", err)
+
+	err = runKeyPasswd(context.TODO(), env.gopts, KeyPasswdOptions{}, []string{"johndoe"})
+	t.Log(err)
+	rtest.Assert(t, err != nil && strings.Contains(err.Error(), "no arguments"), "unexpected error for key passwd: %v", err)
+
+	err = runKeyList(context.TODO(), env.gopts, []string{"johndoe"})
+	t.Log(err)
+	rtest.Assert(t, err != nil && strings.Contains(err.Error(), "no arguments"), "unexpected error for key list: %v", err)
+
+	err = runKeyRemove(context.TODO(), env.gopts, []string{})
+	t.Log(err)
+	rtest.Assert(t, err != nil && strings.Contains(err.Error(), "one argument"), "unexpected error for key remove: %v", err)
+
+	err = runKeyRemove(context.TODO(), env.gopts, []string{"john", "doe"})
+	t.Log(err)
+	rtest.Assert(t, err != nil && strings.Contains(err.Error(), "one argument"), "unexpected error for key remove: %v", err)
 }

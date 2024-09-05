@@ -24,16 +24,17 @@ again:
     $ restic -r /srv/restic-repo --verbose backup ~/work
     open repository
     enter password for repository:
-    password is correct
-    lock repository
+    repository a14e5863 opened (version 2, compression level auto)
     load index files
-    start scan
-    start backup
-    scan finished in 1.837s
-    processed 1.720 GiB in 0:12
+    start scan on [/home/user/work]
+    start backup on [/home/user/work]
+    scan finished in 1.837s: 5307 files, 1.720 GiB
+    
     Files:        5307 new,     0 changed,     0 unmodified
     Dirs:         1867 new,     0 changed,     0 unmodified
-    Added:      1.200 GiB
+    Added to the repository: 1.200 GiB (1.103 GiB stored)
+    
+    processed 5307 files, 1.720 GiB in 0:12
     snapshot 40dc1520 saved
 
 As you can see, restic created a backup of the directory and was pretty
@@ -44,6 +45,7 @@ You can see that restic tells us it processed 1.720 GiB of data, this is the
 size of the files and directories in ``~/work`` on the local file system. It
 also tells us that only 1.200 GiB was added to the repository. This means that
 some of the data was duplicate and restic was able to efficiently reduce it.
+The data compression also managed to compress the data down to 1.103 GiB.
 
 If you don't pass the ``--verbose`` option, restic will print less data. You'll
 still get a nice live status display. Be aware that the live status shows the
@@ -55,6 +57,39 @@ Service (VSS) when creating backups. Restic will transparently create a VSS
 snapshot for each volume that contains files to backup. Files are read from the
 VSS snapshot instead of the regular filesystem. This allows to backup files that are
 exclusively locked by another process during the backup.
+
+You can use the following extended options to change the VSS behavior:
+
+ * ``-o vss.timeout`` specifies timeout for VSS snapshot creation, default value being 120 seconds
+ * ``-o vss.exclude-all-mount-points`` disable auto snapshotting of all volume mount points
+ * ``-o vss.exclude-volumes`` allows excluding specific volumes or volume mount points from snapshotting
+ * ``-o vss.provider`` specifies VSS provider used for snapshotting
+
+For example a 2.5 minutes timeout with snapshotting of mount points disabled can be specified as:
+
+.. code-block:: console
+
+    -o vss.timeout=2m30s -o vss.exclude-all-mount-points=true
+
+and excluding drive ``d:\``, mount point ``c:\mnt`` and volume ``\\?\Volume{04ce0545-3391-11e0-ba2f-806e6f6e6963}\`` as:
+
+.. code-block:: console
+
+    -o vss.exclude-volumes="d:;c:\mnt\;\\?\volume{04ce0545-3391-11e0-ba2f-806e6f6e6963}"
+
+VSS provider can be specified by GUID:
+
+.. code-block:: console
+
+    -o vss.provider={3f900f90-00e9-440e-873a-96ca5eb079e5}
+
+or by name:
+
+.. code-block:: console
+
+    -o vss.provider="Hyper-V IC Software Shadow Copy Provider"
+
+Also, ``MS`` can be used as alias for ``Microsoft Software Shadow Copy provider 1.0``.
 
 By default VSS ignores Outlook OST files. This is not a restriction of restic
 but the default Windows VSS configuration. The files not to snapshot are
@@ -76,17 +111,18 @@ repository (since all data is already there). This is de-duplication at work!
     $ restic -r /srv/restic-repo --verbose backup ~/work
     open repository
     enter password for repository:
-    password is correct
-    lock repository
+    repository a14e5863 opened (version 2, compression level auto)
     load index files
-    using parent snapshot d875ae93
-    start scan
-    start backup
-    scan finished in 1.881s
-    processed 1.720 GiB in 0:03
+    using parent snapshot 40dc1520
+    start scan on [/home/user/work]
+    start backup on [/home/user/work]
+    scan finished in 1.881s: 5307 files, 1.720 GiB
+    
     Files:           0 new,     0 changed,  5307 unmodified
     Dirs:            0 new,     0 changed,  1867 unmodified
-    Added:      0 B
+    Added to the repository: 0 B   (0 B   stored)
+
+    processed 5307 files, 1.720 GiB in 0:03
     snapshot 79766175 saved
 
 You can even backup individual files in the same repository (not passing
@@ -96,7 +132,6 @@ You can even backup individual files in the same repository (not passing
 
     $ restic -r /srv/restic-repo backup ~/work.txt
     enter password for repository:
-    password is correct
     snapshot 249d0210 saved
 
 If you're interested in what restic does, pass ``--verbose`` twice (or
@@ -110,7 +145,6 @@ restic encounters:
     $ restic -r /srv/restic-repo --verbose --verbose backup ~/work.txt
     open repository
     enter password for repository:
-    password is correct
     lock repository
     load index files
     using parent snapshot f3f8d56b
@@ -170,10 +204,10 @@ On **Unix** (including Linux and Mac), given that a file lives at the same
 location as a file in a previous backup, the following file metadata
 attributes have to match for its contents to be presumed unchanged:
 
- * Modification timestamp (mtime).
- * Metadata change timestamp (ctime).
- * File size.
- * Inode number (internal number used to reference a file in a filesystem).
+* Modification timestamp (mtime).
+* Metadata change timestamp (ctime).
+* File size.
+* Inode number (internal number used to reference a file in a filesystem).
 
 The reason for requiring both mtime and ctime to match is that Unix programs
 can freely change mtime (and some do). In such cases, a ctime change may be
@@ -182,9 +216,9 @@ the only hint that a file did change.
 The following ``restic backup`` command line flags modify the change detection
 rules:
 
- * ``--force``: turn off change detection and rescan all files.
- * ``--ignore-ctime``: require mtime to match, but allow ctime to differ.
- * ``--ignore-inode``: require mtime to match, but allow inode number
+* ``--force``: turn off change detection and rescan all files.
+* ``--ignore-ctime``: require mtime to match, but allow ctime to differ.
+* ``--ignore-inode``: require mtime to match, but allow inode number
    and ctime to differ.
 
 The option ``--ignore-inode`` exists to support FUSE-based filesystems and
@@ -197,6 +231,40 @@ If you want to force a re-scan in such a case, you can change the mountpoint.
 On **Windows**, a file is considered unchanged when its path, size
 and modification time match, and only ``--force`` has any effect.
 The other options are recognized but ignored.
+
+Skip creating snapshots if unchanged
+************************************
+
+By default, restic always creates a new snapshot even if nothing has changed
+compared to the parent snapshot. To omit the creation of a new snapshot in this
+case, specify the ``--skip-if-unchanged`` option.
+
+Note that when using absolute paths to specify the backup source, then also
+changes to the parent folders result in a changed snapshot. For example, a backup
+of ``/home/user/work`` will create a new snapshot if the metadata of either
+``/``, ``/home`` or ``/home/user`` change. To avoid this problem run restic from
+the corresponding folder and use relative paths.
+
+.. code-block:: console
+
+    $ cd /home/user/work && restic -r /srv/restic-repo backup . --skip-if-unchanged
+
+    open repository
+    enter password for repository:
+    repository a14e5863 opened (version 2, compression level auto)
+    load index files
+    using parent snapshot 40dc1520
+    start scan on [.]
+    start backup on [.]
+    scan finished in 1.814s: 5307 files, 1.720 GiB
+    
+    Files:           0 new,     0 changed,  5307 unmodified
+    Dirs:            0 new,     0 changed,  1867 unmodified
+    Added to the repository: 0 B   (0 B   stored)
+
+    processed 5307 files, 1.720 GiB in 0:03
+    skipped creating snapshot
+
 
 Dry Runs
 ********
@@ -250,9 +318,9 @@ It can be used like this:
 
 This instructs restic to exclude files matching the following criteria:
 
- * All files matching ``*.c`` (parameter ``--exclude``)
- * All files matching ``*.go`` (second line in ``excludes.txt``)
- * All files and sub-directories named ``bar`` which reside somewhere below a directory called ``foo`` (fourth line in ``excludes.txt``)
+* All files matching ``*.c`` (parameter ``--exclude``)
+* All files matching ``*.go`` (second line in ``excludes.txt``)
+* All files and sub-directories named ``bar`` which reside somewhere below a directory called ``foo`` (fourth line in ``excludes.txt``)
 
 Patterns use the syntax of the Go function
 `filepath.Match <https://pkg.go.dev/path/filepath#Match>`__
@@ -270,8 +338,8 @@ environment variable (depending on your operating system).
 
 Patterns need to match on complete path components. For example, the pattern ``foo``:
 
- * matches ``/dir1/foo/dir2/file`` and ``/dir/foo``
- * does not match ``/dir/foobar`` or ``barfoo``
+* matches ``/dir1/foo/dir2/file`` and ``/dir/foo``
+* does not match ``/dir/foobar`` or ``barfoo``
 
 A trailing ``/`` is ignored, a leading ``/`` anchors the pattern at the root directory.
 This means, ``/bin`` matches ``/bin/bash`` but does not match ``/usr/bin/restic``.
@@ -281,9 +349,9 @@ e.g. ``b*ash`` matches ``/bin/bash`` but does not match ``/bin/ash``. For this,
 the special wildcard ``**`` can be used to match arbitrary sub-directories: The
 pattern ``foo/**/bar`` matches:
 
- * ``/dir1/foo/dir2/bar/file``
- * ``/foo/bar/file``
- * ``/tmp/foo/bar``
+* ``/dir1/foo/dir2/bar/file``
+* ``/foo/bar/file``
+* ``/tmp/foo/bar``
 
 Spaces in patterns listed in an exclude file can be specified verbatim. That is,
 in order to exclude a file named ``foo bar star.txt``, put that just as it reads
@@ -298,9 +366,9 @@ some escaping in order to pass the name/pattern as a single argument to restic.
 
 On most Unixy shells, you can either quote or use backslashes. For example:
 
- * ``--exclude='foo bar star/foo.txt'``
- * ``--exclude="foo bar star/foo.txt"``
- * ``--exclude=foo\ bar\ star/foo.txt``
+* ``--exclude='foo bar star/foo.txt'``
+* ``--exclude="foo bar star/foo.txt"``
+* ``--exclude=foo\ bar\ star/foo.txt``
 
 If a pattern starts with exclamation mark and matches a file that
 was previously matched by a regular pattern, the match is cancelled.
@@ -381,8 +449,8 @@ contains one *pattern* per line. The file must be encoded as UTF-8, or UTF-16
 with a byte-order mark. Leading and trailing whitespace is removed from the
 patterns. Empty lines and lines starting with a ``#`` are ignored and each
 pattern is expanded when read, such that special characters in it are expanded
-using the Go function `filepath.Glob <https://pkg.go.dev/path/filepath#Glob>`__
-- please see its documentation for the syntax you can use in the patterns.
+according to the syntax described in the documentation of the Go function
+`filepath.Match <https://pkg.go.dev/path/filepath#Match>`__.
 
 The argument passed to ``--files-from-verbatim`` must be the name of a text file
 that contains one *path* per line, e.g. as generated by GNU ``find`` with the
@@ -430,18 +498,17 @@ You can combine all three options with each other and with the normal file argum
 Comparing Snapshots
 *******************
 
-Restic has a `diff` command which shows the difference between two snapshots
+Restic has a ``diff`` command which shows the difference between two snapshots
 and displays a small statistic, just pass the command two snapshot IDs:
 
 .. code-block:: console
 
     $ restic -r /srv/restic-repo diff 5845b002 2ab627a6
-    password is correct
     comparing snapshot ea657ce5 to 2ab627a6:
 
-     C   /restic/cmd_diff.go
+    M    /restic/cmd_diff.go
     +    /restic/foo
-     C   /restic/restic
+    M    /restic/restic
 
     Files:           0 new,     0 removed,     2 changed
     Dirs:            1 new,     0 removed
@@ -460,6 +527,24 @@ folder, you could use the following command:
 
     $ restic -r /srv/restic-repo diff 5845b002:/restic 2ab627a6:/restic
 
+By default, the ``diff`` command only lists differences in file contents.
+The flag ``--metadata`` shows changes to file metadata, too.
+
+The characters left of the file path show what has changed for this file:
+
++-------+-----------------------+
+| ``+`` | added                 |
++-------+-----------------------+
+| ``-`` | removed               |
++-------+-----------------------+
+| ``T`` | entry type changed    |
++-------+-----------------------+
+| ``M`` | file content changed  |
++-------+-----------------------+
+| ``U`` | metadata changed      |
++-------+-----------------------+
+| ``?`` | bitrot detected       |
++-------+-----------------------+
 
 Backing up special items and metadata
 *************************************
@@ -481,44 +566,81 @@ written, and the next backup needs to write new metadata again. If you really
 want to save the access time for files and directories, you can pass the
 ``--with-atime`` option to the ``backup`` command.
 
-Note that ``restic`` does not back up some metadata associated with files. Of
-particular note are::
+Backing up full security descriptors on Windows is only possible when the user
+has ``SeBackupPrivilege`` privilege or is running as admin. This is a restriction
+of Windows not restic.
+If either of these conditions are not met, only the owner, group and DACL will
+be backed up.
 
-  - file creation date on Unix platforms
-  - inode flags on Unix platforms
-  - file ownership and ACLs on Windows
-  - the "hidden" flag on Windows
+Note that ``restic`` does not back up some metadata associated with files. Of
+particular note are:
+
+* File creation date on Unix platforms
+* Inode flags on Unix platforms
+
+Reading data from a command
+***************************
+
+Sometimes, it can be useful to directly save the output of a program, for example,
+``mysqldump`` so that the SQL can later be restored. Restic supports this mode
+of operation; just supply the option ``--stdin-from-command`` when using the
+``backup`` action, and write the command in place of the files/directories:
+
+.. code-block:: console
+
+    $ restic -r /srv/restic-repo backup --stdin-from-command mysqldump [...]
+
+This command creates a new snapshot based on the standard output of ``mysqldump``.
+By default, the command's standard output is saved in a file named ``stdin``.
+A different name can be specified with ``--stdin-filename``:
+
+.. code-block:: console
+
+    $ restic -r /srv/restic-repo backup --stdin-filename production.sql --stdin-from-command mysqldump [...]
+
+Restic uses the command exit code to determine whether the command succeeded. A
+non-zero exit code from the command causes restic to cancel the backup. This causes
+restic to fail with exit code 1. No snapshot will be created in this case.
 
 Reading data from stdin
 ***********************
 
-Sometimes it can be nice to directly save the output of a program, e.g.
-``mysqldump`` so that the SQL can later be restored. Restic supports
-this mode of operation, just supply the option ``--stdin`` to the
-``backup`` command like this:
+.. warning::
+
+    Restic cannot detect if data read from stdin is complete or not. As explained
+    below, this can cause incomplete backup unless additional checks (outside of
+    restic) are configured. If possible, use ``--stdin-from-command`` instead.
+
+Alternatively, restic supports reading arbitrary data directly from the standard
+input. Use the option ``--stdin`` of the ``backup`` command as  follows:
 
 .. code-block:: console
 
-    $ set -o pipefail
+    # Will not notice failures, see the warning below
+    $ gzip bigfile.dat | restic -r /srv/restic-repo backup --stdin
+
+This creates a new snapshot of the content of ``bigfile.dat``.
+As for ``--stdin-from-command``, the default file name is ``stdin``; a
+different name can be specified with ``--stdin-filename``.
+
+**Important**: while it is possible to pipe a command output to restic using
+``--stdin``, doing so is discouraged as it will mask errors from the
+command, leading to corrupted backups. For example, in the following code
+block, if ``mysqldump`` fails to connect to the MySQL database, the restic
+backup will nevertheless succeed in creating an _empty_ backup:
+
+.. code-block:: console
+
+    # Will not notice failures, read the warning above
     $ mysqldump [...] | restic -r /srv/restic-repo backup --stdin
 
-This creates a new snapshot of the output of ``mysqldump``. You can then
-use e.g. the fuse mounting option (see below) to mount the repository
-and read the file.
-
-By default, the file name ``stdin`` is used, a different name can be
-specified with ``--stdin-filename``, e.g. like this:
-
-.. code-block:: console
-
-    $ mysqldump [...] | restic -r /srv/restic-repo backup --stdin --stdin-filename production.sql
-
-The option ``pipefail`` is highly recommended so that a non-zero exit code from
-one of the programs in the pipe (e.g. ``mysqldump`` here) makes the whole chain
-return a non-zero exit code. Refer to the `Use the Unofficial Bash Strict Mode
-<http://redsymbol.net/articles/unofficial-bash-strict-mode/>`__ for more
-details on this.
-
+A simple solution is to use ``--stdin-from-command`` (see above). If you
+still need to use the ``--stdin`` flag, you must use the shell option ``set -o pipefail``
+(so that a non-zero exit code from one of the programs in the pipe makes the
+whole chain return a non-zero exit code) and you must check the exit code of
+the pipe and act accordingly (e.g., remove the last backup). Refer to the
+`Use the Unofficial Bash Strict Mode <http://redsymbol.net/articles/unofficial-bash-strict-mode/>`__
+for more details on this.
 
 Tags for backup
 ***************
@@ -584,7 +706,8 @@ environment variables. The following lists these environment variables:
     RESTIC_PACK_SIZE                    Target size for pack files
     RESTIC_READ_CONCURRENCY             Concurrency for file reads
 
-    TMPDIR                              Location for temporary files
+    TMPDIR                              Location for temporary files (except Windows)
+    TMP                                 Location for temporary files (only Windows)
 
     AWS_ACCESS_KEY_ID                   Amazon S3 access key ID
     AWS_SECRET_ACCESS_KEY               Amazon S3 secret access key
@@ -592,6 +715,12 @@ environment variables. The following lists these environment variables:
     AWS_DEFAULT_REGION                  Amazon S3 default region
     AWS_PROFILE                         Amazon credentials profile (alternative to specifying key and region)
     AWS_SHARED_CREDENTIALS_FILE         Location of the AWS CLI shared credentials file (default: ~/.aws/credentials)
+    RESTIC_AWS_ASSUME_ROLE_ARN          Amazon IAM Role ARN to assume using discovered credentials
+    RESTIC_AWS_ASSUME_ROLE_SESSION_NAME Session Name to use with the role assumption
+    RESTIC_AWS_ASSUME_ROLE_EXTERNAL_ID  External ID to use with the role assumption
+    RESTIC_AWS_ASSUME_ROLE_POLICY       Inline Amazion IAM session policy
+    RESTIC_AWS_ASSUME_ROLE_REGION       Region to use for IAM calls for the role assumption (default: us-east-1)
+    RESTIC_AWS_ASSUME_ROLE_STS_ENDPOINT URL to the STS endpoint (default is determined based on RESTIC_AWS_ASSUME_ROLE_REGION). You generally do not need to set this, advanced use only.
 
     AZURE_ACCOUNT_NAME                  Account name for Azure
     AZURE_ACCOUNT_KEY                   Account key for Azure
@@ -643,15 +772,14 @@ The external programs that restic may execute include ``rclone`` (for rclone
 backends) and ``ssh`` (for the SFTP backend). These may respond to further
 environment variables and configuration files; see their respective manuals.
 
-
 Exit status codes
 *****************
 
 Restic returns one of the following exit status codes after the backup command is run:
 
- * 0 when the backup was successful (snapshot with all source files created)
- * 1 when there was a fatal error (no snapshot created)
- * 3 when some source files could not be read (incomplete snapshot with remaining files created)
+* 0 when the backup was successful (snapshot with all source files created)
+* 1 when there was a fatal error (no snapshot created)
+* 3 when some source files could not be read (incomplete snapshot with remaining files created)
 
 Fatal errors occur for example when restic is unable to write to the backup destination, when
 there are network connectivity issues preventing successful communication, or when an invalid

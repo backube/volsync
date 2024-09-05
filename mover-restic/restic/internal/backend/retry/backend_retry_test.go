@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
+	"github.com/restic/restic/internal/backend"
 	"github.com/restic/restic/internal/backend/mock"
 	"github.com/restic/restic/internal/errors"
 	"github.com/restic/restic/internal/restic"
@@ -18,7 +20,7 @@ func TestBackendSaveRetry(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
 	errcount := 0
 	be := &mock.Backend{
-		SaveFn: func(ctx context.Context, h restic.Handle, rd restic.RewindReader) error {
+		SaveFn: func(ctx context.Context, h backend.Handle, rd backend.RewindReader) error {
 			if errcount == 0 {
 				errcount++
 				_, err := io.CopyN(io.Discard, rd, 120)
@@ -38,7 +40,7 @@ func TestBackendSaveRetry(t *testing.T) {
 	retryBackend := New(be, 10, nil, nil)
 
 	data := test.Random(23, 5*1024*1024+11241)
-	err := retryBackend.Save(context.TODO(), restic.Handle{}, restic.NewByteReader(data, be.Hasher()))
+	err := retryBackend.Save(context.TODO(), backend.Handle{}, backend.NewByteReader(data, be.Hasher()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,14 +58,14 @@ func TestBackendSaveRetryAtomic(t *testing.T) {
 	errcount := 0
 	calledRemove := false
 	be := &mock.Backend{
-		SaveFn: func(ctx context.Context, h restic.Handle, rd restic.RewindReader) error {
+		SaveFn: func(ctx context.Context, h backend.Handle, rd backend.RewindReader) error {
 			if errcount == 0 {
 				errcount++
 				return errors.New("injected error")
 			}
 			return nil
 		},
-		RemoveFn: func(ctx context.Context, h restic.Handle) error {
+		RemoveFn: func(ctx context.Context, h backend.Handle) error {
 			calledRemove = true
 			return nil
 		},
@@ -74,7 +76,7 @@ func TestBackendSaveRetryAtomic(t *testing.T) {
 	retryBackend := New(be, 10, nil, nil)
 
 	data := test.Random(23, 5*1024*1024+11241)
-	err := retryBackend.Save(context.TODO(), restic.Handle{}, restic.NewByteReader(data, be.Hasher()))
+	err := retryBackend.Save(context.TODO(), backend.Handle{}, backend.NewByteReader(data, be.Hasher()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,15 +93,15 @@ func TestBackendListRetry(t *testing.T) {
 
 	retry := 0
 	be := &mock.Backend{
-		ListFn: func(ctx context.Context, t restic.FileType, fn func(restic.FileInfo) error) error {
+		ListFn: func(ctx context.Context, t backend.FileType, fn func(backend.FileInfo) error) error {
 			// fail during first retry, succeed during second
 			retry++
 			if retry == 1 {
-				_ = fn(restic.FileInfo{Name: ID1})
+				_ = fn(backend.FileInfo{Name: ID1})
 				return errors.New("test list error")
 			}
-			_ = fn(restic.FileInfo{Name: ID1})
-			_ = fn(restic.FileInfo{Name: ID2})
+			_ = fn(backend.FileInfo{Name: ID1})
+			_ = fn(backend.FileInfo{Name: ID2})
 			return nil
 		},
 	}
@@ -108,7 +110,7 @@ func TestBackendListRetry(t *testing.T) {
 	retryBackend := New(be, 10, nil, nil)
 
 	var listed []string
-	err := retryBackend.List(context.TODO(), restic.PackFile, func(fi restic.FileInfo) error {
+	err := retryBackend.List(context.TODO(), backend.PackFile, func(fi backend.FileInfo) error {
 		listed = append(listed, fi.Name)
 		return nil
 	})
@@ -121,10 +123,10 @@ func TestBackendListRetryErrorFn(t *testing.T) {
 	var names = []string{"id1", "id2", "foo", "bar"}
 
 	be := &mock.Backend{
-		ListFn: func(ctx context.Context, tpe restic.FileType, fn func(restic.FileInfo) error) error {
+		ListFn: func(ctx context.Context, tpe backend.FileType, fn func(backend.FileInfo) error) error {
 			t.Logf("List called for %v", tpe)
 			for _, name := range names {
-				err := fn(restic.FileInfo{Name: name})
+				err := fn(backend.FileInfo{Name: name})
 				if err != nil {
 					return err
 				}
@@ -141,7 +143,7 @@ func TestBackendListRetryErrorFn(t *testing.T) {
 
 	var listed []string
 	run := 0
-	err := retryBackend.List(context.TODO(), restic.PackFile, func(fi restic.FileInfo) error {
+	err := retryBackend.List(context.TODO(), backend.PackFile, func(fi backend.FileInfo) error {
 		t.Logf("fn called for %v", fi.Name)
 		run++
 		// return an error for the third item in the list
@@ -172,7 +174,7 @@ func TestBackendListRetryErrorBackend(t *testing.T) {
 
 	retries := 0
 	be := &mock.Backend{
-		ListFn: func(ctx context.Context, tpe restic.FileType, fn func(restic.FileInfo) error) error {
+		ListFn: func(ctx context.Context, tpe backend.FileType, fn func(backend.FileInfo) error) error {
 			t.Logf("List called for %v, retries %v", tpe, retries)
 			retries++
 			for i, name := range names {
@@ -180,7 +182,7 @@ func TestBackendListRetryErrorBackend(t *testing.T) {
 					return ErrBackendTest
 				}
 
-				err := fn(restic.FileInfo{Name: name})
+				err := fn(backend.FileInfo{Name: name})
 				if err != nil {
 					return err
 				}
@@ -191,11 +193,12 @@ func TestBackendListRetryErrorBackend(t *testing.T) {
 	}
 
 	TestFastRetries(t)
-	const maxRetries = 2
-	retryBackend := New(be, maxRetries, nil, nil)
+	const maxElapsedTime = 10 * time.Millisecond
+	now := time.Now()
+	retryBackend := New(be, maxElapsedTime, nil, nil)
 
 	var listed []string
-	err := retryBackend.List(context.TODO(), restic.PackFile, func(fi restic.FileInfo) error {
+	err := retryBackend.List(context.TODO(), backend.PackFile, func(fi backend.FileInfo) error {
 		t.Logf("fn called for %v", fi.Name)
 		listed = append(listed, fi.Name)
 		return nil
@@ -205,8 +208,9 @@ func TestBackendListRetryErrorBackend(t *testing.T) {
 		t.Fatalf("wrong error returned, want %v, got %v", ErrBackendTest, err)
 	}
 
-	if retries != maxRetries+1 {
-		t.Fatalf("List was called %d times, wanted %v", retries, maxRetries+1)
+	duration := time.Since(now)
+	if duration > 100*time.Millisecond {
+		t.Fatalf("list retries took %v, expected at most 10ms", duration)
 	}
 
 	test.Equals(t, names[:2], listed)
@@ -252,7 +256,7 @@ func TestBackendLoadRetry(t *testing.T) {
 	attempt := 0
 
 	be := mock.NewBackend()
-	be.OpenReaderFn = func(ctx context.Context, h restic.Handle, length int, offset int64) (io.ReadCloser, error) {
+	be.OpenReaderFn = func(ctx context.Context, h backend.Handle, length int, offset int64) (io.ReadCloser, error) {
 		// returns failing reader on first invocation, good reader on subsequent invocations
 		attempt++
 		if attempt > 1 {
@@ -265,7 +269,7 @@ func TestBackendLoadRetry(t *testing.T) {
 	retryBackend := New(be, 10, nil, nil)
 
 	var buf []byte
-	err := retryBackend.Load(context.TODO(), restic.Handle{}, 0, 0, func(rd io.Reader) (err error) {
+	err := retryBackend.Load(context.TODO(), backend.Handle{}, 0, 0, func(rd io.Reader) (err error) {
 		buf, err = io.ReadAll(rd)
 		return err
 	})
@@ -274,19 +278,98 @@ func TestBackendLoadRetry(t *testing.T) {
 	test.Equals(t, 2, attempt)
 }
 
+func TestBackendLoadNotExists(t *testing.T) {
+	// load should not retry if the error matches IsNotExist
+	notFound := errors.New("not found")
+	attempt := 0
+
+	be := mock.NewBackend()
+	be.OpenReaderFn = func(ctx context.Context, h backend.Handle, length int, offset int64) (io.ReadCloser, error) {
+		attempt++
+		if attempt > 1 {
+			t.Fail()
+			return nil, errors.New("must not retry")
+		}
+		return nil, notFound
+	}
+	be.IsPermanentErrorFn = func(err error) bool {
+		return errors.Is(err, notFound)
+	}
+
+	TestFastRetries(t)
+	retryBackend := New(be, 10, nil, nil)
+
+	err := retryBackend.Load(context.TODO(), backend.Handle{}, 0, 0, func(rd io.Reader) (err error) {
+		return nil
+	})
+	test.Assert(t, be.IsPermanentErrorFn(err), "unexpected error %v", err)
+	test.Equals(t, 1, attempt)
+}
+
+func TestBackendLoadCircuitBreaker(t *testing.T) {
+	// retry should not retry if the error matches IsPermanentError
+	notFound := errors.New("not found")
+	otherError := errors.New("something")
+	attempt := 0
+
+	be := mock.NewBackend()
+	be.IsPermanentErrorFn = func(err error) bool {
+		return errors.Is(err, notFound)
+	}
+	be.OpenReaderFn = func(ctx context.Context, h backend.Handle, length int, offset int64) (io.ReadCloser, error) {
+		attempt++
+		return nil, otherError
+	}
+	nilRd := func(rd io.Reader) (err error) {
+		return nil
+	}
+
+	TestFastRetries(t)
+	retryBackend := New(be, 2, nil, nil)
+	// trip the circuit breaker for file "other"
+	err := retryBackend.Load(context.TODO(), backend.Handle{Name: "other"}, 0, 0, nilRd)
+	test.Equals(t, otherError, err, "unexpected error")
+	test.Equals(t, 2, attempt)
+
+	attempt = 0
+	err = retryBackend.Load(context.TODO(), backend.Handle{Name: "other"}, 0, 0, nilRd)
+	test.Assert(t, strings.Contains(err.Error(), "circuit breaker open for file"), "expected circuit breaker error, got %v")
+	test.Equals(t, 0, attempt)
+
+	// don't trip for permanent errors
+	be.OpenReaderFn = func(ctx context.Context, h backend.Handle, length int, offset int64) (io.ReadCloser, error) {
+		attempt++
+		return nil, notFound
+	}
+	err = retryBackend.Load(context.TODO(), backend.Handle{Name: "notfound"}, 0, 0, nilRd)
+	test.Equals(t, notFound, err, "expected circuit breaker to only affect other file, got %v")
+	err = retryBackend.Load(context.TODO(), backend.Handle{Name: "notfound"}, 0, 0, nilRd)
+	test.Equals(t, notFound, err, "persistent error must not trigger circuit breaker, got %v")
+
+	// wait for circuit breaker to expire
+	time.Sleep(5 * time.Millisecond)
+	old := failedLoadExpiry
+	defer func() {
+		failedLoadExpiry = old
+	}()
+	failedLoadExpiry = 3 * time.Millisecond
+	err = retryBackend.Load(context.TODO(), backend.Handle{Name: "other"}, 0, 0, nilRd)
+	test.Equals(t, notFound, err, "expected circuit breaker to reset, got %v")
+}
+
 func TestBackendStatNotExists(t *testing.T) {
 	// stat should not retry if the error matches IsNotExist
 	notFound := errors.New("not found")
 	attempt := 0
 
 	be := mock.NewBackend()
-	be.StatFn = func(ctx context.Context, h restic.Handle) (restic.FileInfo, error) {
+	be.StatFn = func(ctx context.Context, h backend.Handle) (backend.FileInfo, error) {
 		attempt++
 		if attempt > 1 {
 			t.Fail()
-			return restic.FileInfo{}, errors.New("must not retry")
+			return backend.FileInfo{}, errors.New("must not retry")
 		}
-		return restic.FileInfo{}, notFound
+		return backend.FileInfo{}, notFound
 	}
 	be.IsNotExistFn = func(err error) bool {
 		return errors.Is(err, notFound)
@@ -295,9 +378,39 @@ func TestBackendStatNotExists(t *testing.T) {
 	TestFastRetries(t)
 	retryBackend := New(be, 10, nil, nil)
 
-	_, err := retryBackend.Stat(context.TODO(), restic.Handle{})
+	_, err := retryBackend.Stat(context.TODO(), backend.Handle{})
 	test.Assert(t, be.IsNotExistFn(err), "unexpected error %v", err)
 	test.Equals(t, 1, attempt)
+}
+
+func TestBackendRetryPermanent(t *testing.T) {
+	// retry should not retry if the error matches IsPermanentError
+	notFound := errors.New("not found")
+	attempt := 0
+
+	be := mock.NewBackend()
+	be.IsPermanentErrorFn = func(err error) bool {
+		return errors.Is(err, notFound)
+	}
+
+	TestFastRetries(t)
+	retryBackend := New(be, 2, nil, nil)
+	err := retryBackend.retry(context.TODO(), "test", func() error {
+		attempt++
+		return notFound
+	})
+
+	test.Assert(t, be.IsPermanentErrorFn(err), "unexpected error %v", err)
+	test.Equals(t, 1, attempt)
+
+	attempt = 0
+	err = retryBackend.retry(context.TODO(), "test", func() error {
+		attempt++
+		return errors.New("something")
+	})
+	test.Assert(t, !be.IsPermanentErrorFn(err), "error unexpectedly considered permanent %v", err)
+	test.Equals(t, 2, attempt)
+
 }
 
 func assertIsCanceled(t *testing.T, err error) {
@@ -309,7 +422,7 @@ func TestBackendCanceledContext(t *testing.T) {
 	// check that we received the expected context canceled error instead
 	TestFastRetries(t)
 	retryBackend := New(mock.NewBackend(), 2, nil, nil)
-	h := restic.Handle{Type: restic.PackFile, Name: restic.NewRandomID().String()}
+	h := backend.Handle{Type: backend.PackFile, Name: restic.NewRandomID().String()}
 
 	// create an already canceled context
 	ctx, cancel := context.WithCancel(context.Background())
@@ -318,15 +431,15 @@ func TestBackendCanceledContext(t *testing.T) {
 	_, err := retryBackend.Stat(ctx, h)
 	assertIsCanceled(t, err)
 
-	err = retryBackend.Save(ctx, h, restic.NewByteReader([]byte{}, nil))
+	err = retryBackend.Save(ctx, h, backend.NewByteReader([]byte{}, nil))
 	assertIsCanceled(t, err)
 	err = retryBackend.Remove(ctx, h)
 	assertIsCanceled(t, err)
-	err = retryBackend.Load(ctx, restic.Handle{}, 0, 0, func(rd io.Reader) (err error) {
+	err = retryBackend.Load(ctx, backend.Handle{}, 0, 0, func(rd io.Reader) (err error) {
 		return nil
 	})
 	assertIsCanceled(t, err)
-	err = retryBackend.List(ctx, restic.PackFile, func(restic.FileInfo) error {
+	err = retryBackend.List(ctx, backend.PackFile, func(backend.FileInfo) error {
 		return nil
 	})
 	assertIsCanceled(t, err)
@@ -347,7 +460,7 @@ func TestNotifyWithSuccessIsNotCalled(t *testing.T) {
 		t.Fatal("Success should not have been called")
 	}
 
-	err := retryNotifyErrorWithSuccess(operation, &backoff.ZeroBackOff{}, notify, success)
+	err := retryNotifyErrorWithSuccess(operation, backoff.WithContext(&backoff.ZeroBackOff{}, context.Background()), notify, success)
 	if err != nil {
 		t.Fatal("retry should not have returned an error")
 	}
@@ -373,7 +486,7 @@ func TestNotifyWithSuccessIsCalled(t *testing.T) {
 		successCalled++
 	}
 
-	err := retryNotifyErrorWithSuccess(operation, &backoff.ZeroBackOff{}, notify, success)
+	err := retryNotifyErrorWithSuccess(operation, backoff.WithContext(&backoff.ZeroBackOff{}, context.Background()), notify, success)
 	if err != nil {
 		t.Fatal("retry should not have returned an error")
 	}
@@ -385,4 +498,84 @@ func TestNotifyWithSuccessIsCalled(t *testing.T) {
 	if successCalled != 1 {
 		t.Fatalf("Success should have been called only once, but was called %d times instead", successCalled)
 	}
+}
+
+func TestNotifyWithSuccessFinalError(t *testing.T) {
+	operation := func() error {
+		return errors.New("expected error in test")
+	}
+
+	notifyCalled := 0
+	notify := func(error, time.Duration) {
+		notifyCalled++
+	}
+
+	successCalled := 0
+	success := func(retries int) {
+		successCalled++
+	}
+
+	err := retryNotifyErrorWithSuccess(operation, backoff.WithContext(backoff.WithMaxRetries(&backoff.ZeroBackOff{}, 5), context.Background()), notify, success)
+	test.Assert(t, err.Error() == "expected error in test", "wrong error message %v", err)
+	test.Equals(t, 6, notifyCalled, "notify should have been called 6 times")
+	test.Equals(t, 0, successCalled, "success should not have been called")
+}
+
+func TestNotifyWithCancelError(t *testing.T) {
+	operation := func() error {
+		return errors.New("expected error in test")
+	}
+
+	notify := func(error, time.Duration) {
+		t.Error("unexpected call to notify")
+	}
+
+	success := func(retries int) {
+		t.Error("unexpected call to success")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := retryNotifyErrorWithSuccess(operation, backoff.WithContext(&backoff.ZeroBackOff{}, ctx), notify, success)
+	test.Assert(t, err == context.Canceled, "wrong error message %v", err)
+}
+
+type testClock struct {
+	Time time.Time
+}
+
+func (c *testClock) Now() time.Time {
+	return c.Time
+}
+
+func TestRetryAtLeastOnce(t *testing.T) {
+	expBackOff := backoff.NewExponentialBackOff()
+	expBackOff.InitialInterval = 500 * time.Millisecond
+	expBackOff.RandomizationFactor = 0
+	expBackOff.MaxElapsedTime = 5 * time.Second
+	expBackOff.Multiplier = 2 // guarantee numerical stability
+	clock := &testClock{Time: time.Now()}
+	expBackOff.Clock = clock
+	expBackOff.Reset()
+
+	retry := withRetryAtLeastOnce(expBackOff)
+
+	// expire backoff
+	clock.Time = clock.Time.Add(10 * time.Second)
+	delay := retry.NextBackOff()
+	test.Equals(t, expBackOff.InitialInterval, delay, "must retry at least once")
+
+	delay = retry.NextBackOff()
+	test.Equals(t, expBackOff.Stop, delay, "must not retry more than once")
+
+	// test reset behavior
+	retry.Reset()
+	test.Equals(t, uint64(0), retry.numTries, "numTries should be reset to 0")
+
+	// Verify that after reset, NextBackOff returns the initial interval again
+	delay = retry.NextBackOff()
+	test.Equals(t, expBackOff.InitialInterval, delay, "retries must work after reset")
+
+	delay = retry.NextBackOff()
+	test.Equals(t, expBackOff.InitialInterval*time.Duration(expBackOff.Multiplier), delay, "retries must work after reset")
 }

@@ -46,7 +46,7 @@ func newDir(root *Root, inode, parentInode uint64, node *restic.Node) (*dir, err
 	}, nil
 }
 
-// returing a wrapped context.Canceled error will instead result in returing
+// returning a wrapped context.Canceled error will instead result in returning
 // an input / output error to the user. Thus unwrap the error to match the
 // expectations of bazil/fuse
 func unwrapCtxCanceled(err error) error {
@@ -58,7 +58,7 @@ func unwrapCtxCanceled(err error) error {
 
 // replaceSpecialNodes replaces nodes with name "." and "/" by their contents.
 // Otherwise, the node is returned.
-func replaceSpecialNodes(ctx context.Context, repo restic.Repository, node *restic.Node) ([]*restic.Node, error) {
+func replaceSpecialNodes(ctx context.Context, repo restic.BlobLoader, node *restic.Node) ([]*restic.Node, error) {
 	if node.Type != "dir" || node.Subtree == nil {
 		return []*restic.Node{node}, nil
 	}

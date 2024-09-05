@@ -25,9 +25,29 @@ type Snapshot struct {
 	Tags     []string  `json:"tags,omitempty"`
 	Original *ID       `json:"original,omitempty"`
 
-	ProgramVersion string `json:"program_version,omitempty"`
+	ProgramVersion string           `json:"program_version,omitempty"`
+	Summary        *SnapshotSummary `json:"summary,omitempty"`
 
 	id *ID // plaintext ID, used during restore
+}
+
+type SnapshotSummary struct {
+	BackupStart time.Time `json:"backup_start"`
+	BackupEnd   time.Time `json:"backup_end"`
+
+	// statistics from the backup json output
+	FilesNew            uint   `json:"files_new"`
+	FilesChanged        uint   `json:"files_changed"`
+	FilesUnmodified     uint   `json:"files_unmodified"`
+	DirsNew             uint   `json:"dirs_new"`
+	DirsChanged         uint   `json:"dirs_changed"`
+	DirsUnmodified      uint   `json:"dirs_unmodified"`
+	DataBlobs           int    `json:"data_blobs"`
+	TreeBlobs           int    `json:"tree_blobs"`
+	DataAdded           uint64 `json:"data_added"`
+	DataAddedPacked     uint64 `json:"data_added_packed"`
+	TotalFilesProcessed uint   `json:"total_files_processed"`
+	TotalBytesProcessed uint64 `json:"total_bytes_processed"`
 }
 
 // NewSnapshot returns an initialized snapshot struct for the current user and
@@ -83,7 +103,7 @@ func ForAllSnapshots(ctx context.Context, be Lister, loader LoaderUnpacked, excl
 	var m sync.Mutex
 
 	// For most snapshots decoding is nearly for free, thus just assume were only limited by IO
-	return ParallelList(ctx, be, SnapshotFile, loader.Connections(), func(ctx context.Context, id ID, size int64) error {
+	return ParallelList(ctx, be, SnapshotFile, loader.Connections(), func(ctx context.Context, id ID, _ int64) error {
 		if excludeIDs.Has(id) {
 			return nil
 		}
@@ -96,7 +116,7 @@ func ForAllSnapshots(ctx context.Context, be Lister, loader LoaderUnpacked, excl
 }
 
 func (sn Snapshot) String() string {
-	return fmt.Sprintf("<Snapshot %s of %v at %s by %s@%s>",
+	return fmt.Sprintf("snapshot %s of %v at %s by %s@%s",
 		sn.id.Str(), sn.Paths, sn.Time, sn.Username, sn.Hostname)
 }
 

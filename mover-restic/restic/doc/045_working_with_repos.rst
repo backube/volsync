@@ -18,19 +18,21 @@ Working with repositories
 Listing all snapshots
 =====================
 
-Now, you can list all the snapshots stored in the repository:
+Now, you can list all the snapshots stored in the repository. The size column
+only exists for snapshots created using restic 0.17.0 or later. It reflects the
+size of the contained files at the time when the snapshot was created.
 
 .. code-block:: console
 
     $ restic -r /srv/restic-repo snapshots
     enter password for repository:
-    ID        Date                 Host    Tags   Directory
-    ----------------------------------------------------------------------
-    40dc1520  2015-05-08 21:38:30  kasimir        /home/user/work
-    79766175  2015-05-08 21:40:19  kasimir        /home/user/work
-    bdbd3439  2015-05-08 21:45:17  luigi          /home/art
-    590c8fc8  2015-05-08 21:47:38  kazik          /srv
-    9f0bc19e  2015-05-08 21:46:11  luigi          /srv
+    ID        Date                 Host    Tags   Directory        Size
+    -------------------------------------------------------------------------
+    40dc1520  2015-05-08 21:38:30  kasimir        /home/user/work  20.643GiB
+    79766175  2015-05-08 21:40:19  kasimir        /home/user/work  20.645GiB
+    bdbd3439  2015-05-08 21:45:17  luigi          /home/art        3.141GiB
+    590c8fc8  2015-05-08 21:47:38  kazik          /srv             580.200MiB
+    9f0bc19e  2015-05-08 21:46:11  luigi          /srv             572.180MiB
 
 You can filter the listing by directory path:
 
@@ -38,10 +40,10 @@ You can filter the listing by directory path:
 
     $ restic -r /srv/restic-repo snapshots --path="/srv"
     enter password for repository:
-    ID        Date                 Host    Tags   Directory
-    ----------------------------------------------------------------------
-    590c8fc8  2015-05-08 21:47:38  kazik          /srv
-    9f0bc19e  2015-05-08 21:46:11  luigi          /srv
+    ID        Date                 Host    Tags   Directory  Size
+    -------------------------------------------------------------------
+    590c8fc8  2015-05-08 21:47:38  kazik          /srv       580.200MiB
+    9f0bc19e  2015-05-08 21:46:11  luigi          /srv       572.180MiB
 
 Or filter by host:
 
@@ -49,10 +51,10 @@ Or filter by host:
 
     $ restic -r /srv/restic-repo snapshots --host luigi
     enter password for repository:
-    ID        Date                 Host    Tags   Directory
-    ----------------------------------------------------------------------
-    bdbd3439  2015-05-08 21:45:17  luigi          /home/art
-    9f0bc19e  2015-05-08 21:46:11  luigi          /srv
+    ID        Date                 Host    Tags   Directory  Size
+    -------------------------------------------------------------------
+    bdbd3439  2015-05-08 21:45:17  luigi          /home/art  3.141GiB
+    9f0bc19e  2015-05-08 21:46:11  luigi          /srv       572.180MiB
 
 Combining filters is also possible.
 
@@ -64,22 +66,92 @@ Furthermore you can group the output by the same filters (host, paths, tags):
 
     enter password for repository:
     snapshots for (host [kasimir])
-    ID        Date                 Host    Tags   Directory
-    ----------------------------------------------------------------------
-    40dc1520  2015-05-08 21:38:30  kasimir        /home/user/work
-    79766175  2015-05-08 21:40:19  kasimir        /home/user/work
+    ID        Date                 Host    Tags   Directory        Size
+    ------------------------------------------------------------------------
+    40dc1520  2015-05-08 21:38:30  kasimir        /home/user/work  20.643GiB
+    79766175  2015-05-08 21:40:19  kasimir        /home/user/work  20.645GiB
     2 snapshots
     snapshots for (host [luigi])
-    ID        Date                 Host    Tags   Directory
-    ----------------------------------------------------------------------
-    bdbd3439  2015-05-08 21:45:17  luigi          /home/art
-    9f0bc19e  2015-05-08 21:46:11  luigi          /srv
+    ID        Date                 Host    Tags   Directory  Size
+    -------------------------------------------------------------------
+    bdbd3439  2015-05-08 21:45:17  luigi          /home/art  3.141GiB
+    9f0bc19e  2015-05-08 21:46:11  luigi          /srv       572.180MiB
     2 snapshots
     snapshots for (host [kazik])
-    ID        Date                 Host    Tags   Directory
-    ----------------------------------------------------------------------
-    590c8fc8  2015-05-08 21:47:38  kazik          /srv
+    ID        Date                 Host    Tags   Directory  Size
+    -------------------------------------------------------------------
+    590c8fc8  2015-05-08 21:47:38  kazik          /srv       580.200MiB
     1 snapshots
+
+
+Listing files in a snapshot
+===========================
+
+To get a list of the files in a specific snapshot you can use the ``ls`` command:
+
+.. code-block:: console
+
+    $ restic ls 073a90db
+
+    snapshot 073a90db of [/home/user/work.txt] filtered by [] at 2024-01-21 16:51:18.474558607 +0100 CET):
+    /home
+    /home/user
+    /home/user/work.txt
+
+The special snapshot ID ``latest`` can be used to list files and directories of the latest snapshot in the repository.
+The ``--host`` flag can be used in conjunction to select the latest snapshot originating from a certain host only.
+
+.. code-block:: console
+
+    $ restic ls --host kasimir latest
+
+    snapshot 073a90db of [/home/user/work.txt] filtered by [] at 2024-01-21 16:51:18.474558607 +0100 CET):
+    /home
+    /home/user
+    /home/user/work.txt
+
+By default, ``ls`` prints all files in a snapshot.
+
+File listings can optionally be filtered by directories. Any positional arguments after the snapshot ID are interpreted
+as absolute directory paths, and only files inside those directories will be listed. Files in subdirectories are not
+listed when filtering by directories. If the ``--recursive`` flag is used, then subdirectories are also included.
+Any directory paths specified must be absolute (starting with a path separator); paths use the forward slash '/'
+as separator.
+
+.. code-block:: console
+
+    $ restic ls latest /home
+    
+    snapshot 073a90db of [/home/user/work.txt] filtered by [/home] at 2024-01-21 16:51:18.474558607 +0100 CET):
+    /home
+    /home/user
+
+.. code-block:: console
+
+    $ restic ls --recursive latest /home
+
+    snapshot 073a90db of [/home/user/work.txt] filtered by [/home] at 2024-01-21 16:51:18.474558607 +0100 CET):
+    /home
+    /home/user
+    /home/user/work.txt
+
+To show more details about the files in a snapshot, you can use the ``--long`` option.  The columns include
+file permissions, UID, GID, file size, modification time and file path. For scripting usage, the
+``ls`` command supports the ``--json`` flag; the JSON output format is described at :ref:`ls json`.
+
+.. code-block:: console
+
+    $ restic ls --long latest
+
+    snapshot 073a90db of [/home/user/work.txt] filtered by [] at 2024-01-21 16:51:18.474558607 +0100 CET):
+    drwxr-xr-x     0     0      0 2024-01-21 16:50:52 /home
+    drwxr-xr-x     0     0      0 2024-01-21 16:51:03 /home/user
+    -rw-r--r--     0     0     18 2024-01-21 16:51:03 /home/user/work.txt
+
+NCDU (NCurses Disk Usage) is a tool to analyse disk usage of directories. The ``ls`` command supports
+outputting information about a snapshot in the NCDU format using the ``--ncdu`` option.
+
+You can use it as follows: ``restic ls latest --ncdu | ncdu -f -``
 
 
 Copying snapshots between repositories
@@ -91,14 +163,14 @@ example from a local to a remote repository, you can use the ``copy`` command:
 .. code-block:: console
 
     $ restic -r /srv/restic-repo-copy copy --from-repo /srv/restic-repo
-    repository d6504c63 opened successfully, password is correct
-    repository 3dd0878c opened successfully, password is correct
+    repository d6504c63 opened successfully
+    repository 3dd0878c opened successfully
 
-    snapshot 410b18a2 of [/home/user/work] at 2020-06-09 23:15:57.305305 +0200 CEST)
+    snapshot 410b18a2 of [/home/user/work] at 2020-06-09 23:15:57.305305 +0200 CEST by user@kasimir
       copy started, this may take a while...
     snapshot 7a746a07 saved
 
-    snapshot 4e5d5487 of [/home/user/work] at 2020-05-01 22:44:07.012113 +0200 CEST)
+    snapshot 4e5d5487 of [/home/user/work] at 2020-05-01 22:44:07.012113 +0200 CEST by user@kasimir
     skipping snapshot 4e5d5487, was already copied to snapshot 50eb62b7
 
 The example command copies all snapshots from the source repository
@@ -191,20 +263,20 @@ the unwanted files from affected snapshots by rewriting them using the
 .. code-block:: console
 
     $ restic -r /srv/restic-repo rewrite --exclude secret-file
-    repository c881945a opened (repository version 2) successfully, password is correct
+    repository c881945a opened (repository version 2) successfully
 
-    snapshot 6160ddb2 of [/home/user/work] at 2022-06-12 16:01:28.406630608 +0200 CEST)
+    snapshot 6160ddb2 of [/home/user/work] at 2022-06-12 16:01:28.406630608 +0200 CEST by user@kasimir
     excluding /home/user/work/secret-file
     saved new snapshot b6aee1ff
 
-    snapshot 4fbaf325 of [/home/user/work] at 2022-05-01 11:22:26.500093107 +0200 CEST)
+    snapshot 4fbaf325 of [/home/user/work] at 2022-05-01 11:22:26.500093107 +0200 CEST by user@kasimir
 
     modified 1 snapshots
 
     $ restic -r /srv/restic-repo rewrite --exclude secret-file 6160ddb2
-    repository c881945a opened (repository version 2) successfully, password is correct
+    repository c881945a opened (repository version 2) successfully
 
-    snapshot 6160ddb2 of [/home/user/work] at 2022-06-12 16:01:28.406630608 +0200 CEST)
+    snapshot 6160ddb2 of [/home/user/work] at 2022-06-12 16:01:28.406630608 +0200 CEST by user@kasimir
     excluding /home/user/work/secret-file
     new snapshot saved as b6aee1ff
 
@@ -232,6 +304,28 @@ In order to preview the changes which ``rewrite`` would make, you can use the
 ``--dry-run`` option. This will simulate the rewriting process without actually
 modifying the repository. Instead restic will only print the actions it would
 perform.
+
+
+Modifying metadata of snapshots
+===============================
+
+Sometimes it may be desirable to change the metadata of an existing snapshot.
+Currently, rewriting the hostname and the time of the backup is supported. 
+This is possible using the ``rewrite`` command with the option ``--new-host`` followed by the desired new hostname or the option ``--new-time`` followed by the desired new timestamp.
+
+.. code-block:: console
+
+    $ restic rewrite --new-host newhost --new-time "1999-01-01 11:11:11"
+
+    repository b7dbade3 opened (version 2, compression level auto)
+    [0:00] 100.00%  1 / 1 index files loaded
+
+    snapshot 8ed674f4 of [/path/to/abc.txt] at 2023-11-27 21:57:52.439139291 +0100 CET by user@kasimir
+    setting time to 1999-01-01 11:11:11 +0100 CET
+    setting host to newhost
+    saved new snapshot c05da643
+
+    modified 1 snapshots
 
 
 .. _checking-integrity:
@@ -274,10 +368,22 @@ detect this and yield the same error as when you tried to restore:
     $ restic -r /srv/restic-repo check
     ...
     load indexes
-    error: error loading index de30f323: load <index/de30f3231c>: invalid data returned
-    Fatal: LoadIndex returned errors
+    error: error loading index de30f3231ca2e6a59af4aa84216dfe2ef7339c549dc11b09b84000997b139628: LoadRaw(<index/de30f3231c>): invalid data returned
 
-If the repository structure is intact, restic will show that no errors were found:
+    The repository index is damaged and must be repaired. You must run `restic repair index' to correct this.
+
+    Fatal: repository contains errors
+
+.. warning::
+
+    If ``check`` reports an error in the repository, then you must repair the repository.
+    As long as a repository is damaged, restoring some files or directories will fail. New
+    snapshots are not guaranteed to be restorable either.
+
+    For instructions how to repair a damaged repository, see the :ref:`troubleshooting`
+    section or follow the instructions provided by the ``check`` command.
+
+If the repository structure is intact, restic will show that ``no errors were found``:
 
 .. code-block:: console
 

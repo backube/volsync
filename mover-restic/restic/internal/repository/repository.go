@@ -1,34 +1,31 @@
 package repository
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"runtime"
 	"sort"
 	"sync"
 
-	"github.com/cenkalti/backoff/v4"
 	"github.com/klauspost/compress/zstd"
 	"github.com/restic/chunker"
 	"github.com/restic/restic/internal/backend"
+	"github.com/restic/restic/internal/backend/cache"
 	"github.com/restic/restic/internal/backend/dryrun"
-	"github.com/restic/restic/internal/cache"
 	"github.com/restic/restic/internal/crypto"
 	"github.com/restic/restic/internal/debug"
 	"github.com/restic/restic/internal/errors"
-	"github.com/restic/restic/internal/index"
-	"github.com/restic/restic/internal/pack"
+	"github.com/restic/restic/internal/repository/index"
+	"github.com/restic/restic/internal/repository/pack"
 	"github.com/restic/restic/internal/restic"
 	"github.com/restic/restic/internal/ui/progress"
 
 	"golang.org/x/sync/errgroup"
 )
-
-const MaxStreamBufferSize = 4 * 1024 * 1024
 
 const MinPackSize = 4 * 1024 * 1024
 const DefaultPackSize = 16 * 1024 * 1024
@@ -36,7 +33,7 @@ const MaxPackSize = 128 * 1024 * 1024
 
 // Repository is used to access a repository in a backend.
 type Repository struct {
-	be    restic.Backend
+	be    backend.Backend
 	cfg   restic.Config
 	key   *crypto.Key
 	keyID restic.ID
@@ -44,8 +41,6 @@ type Repository struct {
 	Cache *cache.Cache
 
 	opts Options
-
-	noAutoIndexUpdate bool
 
 	packerWg *errgroup.Group
 	uploader *packerUploader
@@ -110,7 +105,7 @@ func (c *CompressionMode) Type() string {
 }
 
 // New returns a new repository with backend be.
-func New(be restic.Backend, opts Options) (*Repository, error) {
+func New(be backend.Backend, opts Options) (*Repository, error) {
 	if opts.Compression == CompressionInvalid {
 		return nil, errors.New("invalid compression mode")
 	}
@@ -133,18 +128,9 @@ func New(be restic.Backend, opts Options) (*Repository, error) {
 	return repo, nil
 }
 
-// DisableAutoIndexUpdate deactives the automatic finalization and upload of new
-// indexes once these are full
-func (r *Repository) DisableAutoIndexUpdate() {
-	r.noAutoIndexUpdate = true
-}
-
 // setConfig assigns the given config and updates the repository parameters accordingly
 func (r *Repository) setConfig(cfg restic.Config) {
 	r.cfg = cfg
-	if r.cfg.Version >= 2 {
-		r.idx.MarkCompressed()
-	}
 }
 
 // Config returns the repository configuration.
@@ -152,8 +138,8 @@ func (r *Repository) Config() restic.Config {
 	return r.cfg
 }
 
-// PackSize return the target size of a pack file when uploading
-func (r *Repository) PackSize() uint {
+// packSize return the target size of a pack file when uploading
+func (r *Repository) packSize() uint {
 	return r.opts.PackSize
 }
 
@@ -180,46 +166,11 @@ func (r *Repository) LoadUnpacked(ctx context.Context, t restic.FileType, id res
 		id = restic.ID{}
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-
-	h := restic.Handle{Type: t, Name: id.String()}
-	retriedInvalidData := false
-	var dataErr error
-	wr := new(bytes.Buffer)
-
-	err := r.be.Load(ctx, h, 0, 0, func(rd io.Reader) error {
-		// make sure this call is idempotent, in case an error occurs
-		wr.Reset()
-		_, cerr := io.Copy(wr, rd)
-		if cerr != nil {
-			return cerr
-		}
-
-		buf := wr.Bytes()
-		if t != restic.ConfigFile && !restic.Hash(buf).Equal(id) {
-			debug.Log("retry loading broken blob %v", h)
-			if !retriedInvalidData {
-				retriedInvalidData = true
-			} else {
-				// with a canceled context there is not guarantee which error will
-				// be returned by `be.Load`.
-				dataErr = fmt.Errorf("load(%v): %w", h, restic.ErrInvalidData)
-				cancel()
-			}
-			return restic.ErrInvalidData
-
-		}
-		return nil
-	})
-
-	if dataErr != nil {
-		return nil, dataErr
-	}
+	buf, err := r.LoadRaw(ctx, t, id)
 	if err != nil {
 		return nil, err
 	}
 
-	buf := wr.Bytes()
 	nonce, ciphertext := buf[:r.key.NonceSize()], buf[r.key.NonceSize():]
 	plaintext, err := r.key.Open(ciphertext[:0], nonce, ciphertext, nil)
 	if err != nil {
@@ -233,7 +184,7 @@ func (r *Repository) LoadUnpacked(ctx context.Context, t restic.FileType, id res
 }
 
 type haver interface {
-	Has(restic.Handle) bool
+	Has(backend.Handle) bool
 }
 
 // sortCachedPacksFirst moves all cached pack files to the front of blobs.
@@ -251,7 +202,7 @@ func sortCachedPacksFirst(cache haver, blobs []restic.PackedBlob) {
 	noncached := make([]restic.PackedBlob, 0, len(blobs)/2)
 
 	for _, blob := range blobs {
-		if cache.Has(restic.Handle{Type: restic.PackFile, Name: blob.PackID.String()}) {
+		if cache.Has(backend.Handle{Type: restic.PackFile, Name: blob.PackID.String()}) {
 			cached = append(cached, blob)
 			continue
 		}
@@ -276,16 +227,27 @@ func (r *Repository) LoadBlob(ctx context.Context, t restic.BlobType, id restic.
 	// try cached pack files first
 	sortCachedPacksFirst(r.Cache, blobs)
 
-	var lastError error
-	for _, blob := range blobs {
-		debug.Log("blob %v/%v found: %v", t, id, blob)
-
-		if blob.Type != t {
-			debug.Log("blob %v has wrong block type, want %v", blob, t)
+	buf, err := r.loadBlob(ctx, blobs, buf)
+	if err != nil {
+		if r.Cache != nil {
+			for _, blob := range blobs {
+				h := backend.Handle{Type: restic.PackFile, Name: blob.PackID.String(), IsMetadata: blob.Type.IsMetadata()}
+				// ignore errors as there's not much we can do here
+				_ = r.Cache.Forget(h)
+			}
 		}
 
+		buf, err = r.loadBlob(ctx, blobs, buf)
+	}
+	return buf, err
+}
+
+func (r *Repository) loadBlob(ctx context.Context, blobs []restic.PackedBlob, buf []byte) ([]byte, error) {
+	var lastError error
+	for _, blob := range blobs {
+		debug.Log("blob %v found: %v", blob.BlobHandle, blob)
 		// load blob from pack
-		h := restic.Handle{Type: restic.PackFile, Name: blob.PackID.String(), ContainedBlobType: t}
+		h := backend.Handle{Type: restic.PackFile, Name: blob.PackID.String(), IsMetadata: blob.Type.IsMetadata()}
 
 		switch {
 		case cap(buf) < int(blob.Length):
@@ -294,42 +256,26 @@ func (r *Repository) LoadBlob(ctx context.Context, t restic.BlobType, id restic.
 			buf = buf[:blob.Length]
 		}
 
-		n, err := backend.ReadAt(ctx, r.be, h, int64(blob.Offset), buf)
+		_, err := backend.ReadAt(ctx, r.be, h, int64(blob.Offset), buf)
 		if err != nil {
 			debug.Log("error loading blob %v: %v", blob, err)
 			lastError = err
 			continue
 		}
 
-		if uint(n) != blob.Length {
-			lastError = errors.Errorf("error loading blob %v: wrong length returned, want %d, got %d",
-				id.Str(), blob.Length, uint(n))
-			debug.Log("lastError: %v", lastError)
-			continue
-		}
+		it := newPackBlobIterator(blob.PackID, newByteReader(buf), uint(blob.Offset), []restic.Blob{blob.Blob}, r.key, r.getZstdDecoder())
+		pbv, err := it.Next()
 
-		// decrypt
-		nonce, ciphertext := buf[:r.key.NonceSize()], buf[r.key.NonceSize():]
-		plaintext, err := r.key.Open(ciphertext[:0], nonce, ciphertext, nil)
+		if err == nil {
+			err = pbv.Err
+		}
 		if err != nil {
-			lastError = errors.Errorf("decrypting blob %v failed: %v", id, err)
+			debug.Log("error decoding blob %v: %v", blob, err)
+			lastError = err
 			continue
 		}
 
-		if blob.IsCompressed() {
-			plaintext, err = r.getZstdDecoder().DecodeAll(plaintext, make([]byte, 0, blob.DataLength()))
-			if err != nil {
-				lastError = errors.Errorf("decompressing blob %v failed: %v", id, err)
-				continue
-			}
-		}
-
-		// check hash
-		if !restic.Hash(plaintext).Equal(id) {
-			lastError = errors.Errorf("blob %v returned invalid hash", id)
-			continue
-		}
-
+		plaintext := pbv.Plaintext
 		if len(plaintext) > cap(buf) {
 			return plaintext, nil
 		}
@@ -343,12 +289,7 @@ func (r *Repository) LoadBlob(ctx context.Context, t restic.BlobType, id restic.
 		return nil, lastError
 	}
 
-	return nil, errors.Errorf("loading blob %v from %v packs failed", id.Str(), len(blobs))
-}
-
-// LookupBlobSize returns the size of blob id.
-func (r *Repository) LookupBlobSize(id restic.ID, tpe restic.BlobType) (uint, bool) {
-	return r.idx.LookupSize(restic.BlobHandle{ID: id, Type: tpe})
+	return nil, errors.Errorf("loading %v from %v packs failed", blobs[0].BlobHandle, len(blobs))
 }
 
 func (r *Repository) getZstdEncoder() *zstd.Encoder {
@@ -531,9 +472,9 @@ func (r *Repository) SaveUnpacked(ctx context.Context, t restic.FileType, buf []
 	} else {
 		id = restic.Hash(ciphertext)
 	}
-	h := restic.Handle{Type: t, Name: id.String()}
+	h := backend.Handle{Type: t, Name: id.String()}
 
-	err = r.be.Save(ctx, h, restic.NewByteReader(ciphertext, r.be.Hasher()))
+	err = r.be.Save(ctx, h, backend.NewByteReader(ciphertext, r.be.Hasher()))
 	if err != nil {
 		debug.Log("error saving blob %v: %v", h, err)
 		return restic.ID{}, err
@@ -566,16 +507,17 @@ func (r *Repository) verifyUnpacked(buf []byte, t restic.FileType, expected []by
 	return nil
 }
 
+func (r *Repository) RemoveUnpacked(ctx context.Context, t restic.FileType, id restic.ID) error {
+	// TODO prevent everything except removing snapshots for non-repository code
+	return r.be.Remove(ctx, backend.Handle{Type: t, Name: id.String()})
+}
+
 // Flush saves all remaining packs and the index
 func (r *Repository) Flush(ctx context.Context) error {
 	if err := r.flushPacks(ctx); err != nil {
 		return err
 	}
 
-	// Save index after flushing only if noAutoIndexUpdate is not set
-	if r.noAutoIndexUpdate {
-		return nil
-	}
 	return r.idx.SaveIndex(ctx, r)
 }
 
@@ -587,8 +529,8 @@ func (r *Repository) StartPackUploader(ctx context.Context, wg *errgroup.Group) 
 	innerWg, ctx := errgroup.WithContext(ctx)
 	r.packerWg = innerWg
 	r.uploader = newPackerUploader(ctx, innerWg, r, r.be.Connections())
-	r.treePM = newPackerManager(r.key, restic.TreeBlob, r.PackSize(), r.uploader.QueuePacker)
-	r.dataPM = newPackerManager(r.key, restic.DataBlob, r.PackSize(), r.uploader.QueuePacker)
+	r.treePM = newPackerManager(r.key, restic.TreeBlob, r.packSize(), r.uploader.QueuePacker)
+	r.dataPM = newPackerManager(r.key, restic.DataBlob, r.packSize(), r.uploader.QueuePacker)
 
 	wg.Go(func() error {
 		return innerWg.Wait()
@@ -620,18 +562,27 @@ func (r *Repository) flushPacks(ctx context.Context) error {
 	return err
 }
 
-// Backend returns the backend for the repository.
-func (r *Repository) Backend() restic.Backend {
-	return r.be
-}
-
 func (r *Repository) Connections() uint {
 	return r.be.Connections()
 }
 
-// Index returns the currently used MasterIndex.
-func (r *Repository) Index() restic.MasterIndex {
-	return r.idx
+func (r *Repository) LookupBlob(tpe restic.BlobType, id restic.ID) []restic.PackedBlob {
+	return r.idx.Lookup(restic.BlobHandle{Type: tpe, ID: id})
+}
+
+// LookupBlobSize returns the size of blob id.
+func (r *Repository) LookupBlobSize(tpe restic.BlobType, id restic.ID) (uint, bool) {
+	return r.idx.LookupSize(restic.BlobHandle{Type: tpe, ID: id})
+}
+
+// ListBlobs runs fn on all blobs known to the index. When the context is cancelled,
+// the index iteration returns immediately with ctx.Err(). This blocks any modification of the index.
+func (r *Repository) ListBlobs(ctx context.Context, fn func(restic.PackedBlob)) error {
+	return r.idx.Each(ctx, fn)
+}
+
+func (r *Repository) ListPacksFromIndex(ctx context.Context, packs restic.IDSet) <-chan restic.PackBlobs {
+	return r.idx.ListPacks(ctx, packs)
 }
 
 // SetIndex instructs the repository to use the given index.
@@ -640,50 +591,18 @@ func (r *Repository) SetIndex(i restic.MasterIndex) error {
 	return r.prepareCache()
 }
 
+func (r *Repository) clearIndex() {
+	r.idx = index.NewMasterIndex()
+}
+
 // LoadIndex loads all index files from the backend in parallel and stores them
 func (r *Repository) LoadIndex(ctx context.Context, p *progress.Counter) error {
 	debug.Log("Loading index")
 
-	indexList, err := backend.MemorizeList(ctx, r.Backend(), restic.IndexFile)
-	if err != nil {
-		return err
-	}
+	// reset in-memory index before loading it from the repository
+	r.clearIndex()
 
-	if p != nil {
-		var numIndexFiles uint64
-		err := indexList.List(ctx, restic.IndexFile, func(fi restic.FileInfo) error {
-			_, err := restic.ParseID(fi.Name)
-			if err != nil {
-				debug.Log("unable to parse %v as an ID", fi.Name)
-				return nil
-			}
-
-			numIndexFiles++
-			return nil
-		})
-		if err != nil {
-			return err
-		}
-		p.SetMax(numIndexFiles)
-		defer p.Done()
-	}
-
-	err = index.ForAllIndexes(ctx, indexList, r, func(id restic.ID, idx *index.Index, oldFormat bool, err error) error {
-		if err != nil {
-			return err
-		}
-		r.idx.Insert(idx)
-		if p != nil {
-			p.Add(1)
-		}
-		return nil
-	})
-
-	if err != nil {
-		return err
-	}
-
-	err = r.idx.MergeFinalIndexes()
+	err := r.idx.Load(ctx, r, p, nil)
 	if err != nil {
 		return err
 	}
@@ -697,24 +616,30 @@ func (r *Repository) LoadIndex(ctx context.Context, p *progress.Counter) error {
 		defer cancel()
 
 		invalidIndex := false
-		r.idx.Each(ctx, func(blob restic.PackedBlob) {
+		err := r.idx.Each(ctx, func(blob restic.PackedBlob) {
 			if blob.IsCompressed() {
 				invalidIndex = true
 			}
 		})
+		if err != nil {
+			return err
+		}
 		if invalidIndex {
 			return errors.New("index uses feature not supported by repository version 1")
 		}
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
 
 	// remove index files from the cache which have been removed in the repo
 	return r.prepareCache()
 }
 
-// CreateIndexFromPacks creates a new index by reading all given pack files (with sizes).
+// createIndexFromPacks creates a new index by reading all given pack files (with sizes).
 // The index is added to the MasterIndex but not marked as finalized.
 // Returned is the list of pack files which could not be read.
-func (r *Repository) CreateIndexFromPacks(ctx context.Context, packsize map[restic.ID]int64, p *progress.Counter) (invalid restic.IDs, err error) {
+func (r *Repository) createIndexFromPacks(ctx context.Context, packsize map[restic.ID]int64, p *progress.Counter) (invalid restic.IDs, err error) {
 	var m sync.Mutex
 
 	debug.Log("Loading index from pack files")
@@ -809,12 +734,19 @@ func (r *Repository) SearchKey(ctx context.Context, password string, maxKeys int
 		return err
 	}
 
+	oldKey := r.key
+	oldKeyID := r.keyID
+
 	r.key = key.master
 	r.keyID = key.ID()
 	cfg, err := restic.LoadConfig(ctx, r)
-	if err == crypto.ErrUnauthenticated {
-		return fmt.Errorf("config or key %v is damaged: %w", key.ID(), err)
-	} else if err != nil {
+	if err != nil {
+		r.key = oldKey
+		r.keyID = oldKeyID
+
+		if err == crypto.ErrUnauthenticated {
+			return fmt.Errorf("config or key %v is damaged: %w", key.ID(), err)
+		}
 		return fmt.Errorf("config cannot be loaded: %w", err)
 	}
 
@@ -833,12 +765,29 @@ func (r *Repository) Init(ctx context.Context, version uint, password string, ch
 		return fmt.Errorf("repository version %v too low", version)
 	}
 
-	_, err := r.be.Stat(ctx, restic.Handle{Type: restic.ConfigFile})
+	_, err := r.be.Stat(ctx, backend.Handle{Type: restic.ConfigFile})
 	if err != nil && !r.be.IsNotExist(err) {
 		return err
 	}
 	if err == nil {
 		return errors.New("repository master key and config already initialized")
+	}
+	// double check to make sure that a repository is not accidentally reinitialized
+	// if the backend somehow fails to stat the config file. An initialized repository
+	// must always contain at least one key file.
+	if err := r.List(ctx, restic.KeyFile, func(_ restic.ID, _ int64) error {
+		return errors.New("repository already contains keys")
+	}); err != nil {
+		return err
+	}
+	// Also check for snapshots to detect repositories with a misconfigured retention
+	// policy that deletes files older than x days. For such repositories usually the
+	// config and key files are removed first and therefore the check would not detect
+	// the old repository.
+	if err := r.List(ctx, restic.SnapshotFile, func(_ restic.ID, _ int64) error {
+		return errors.New("repository already contains snapshots")
+	}); err != nil {
+		return err
 	}
 
 	cfg, err := restic.CreateConfig(version)
@@ -878,7 +827,7 @@ func (r *Repository) KeyID() restic.ID {
 
 // List runs fn for all files of type t in the repo.
 func (r *Repository) List(ctx context.Context, t restic.FileType, fn func(restic.ID, int64) error) error {
-	return r.be.List(ctx, t, func(fi restic.FileInfo) error {
+	return r.be.List(ctx, t, func(fi backend.FileInfo) error {
 		id, err := restic.ParseID(fi.Name)
 		if err != nil {
 			debug.Log("unable to parse %v as an ID", fi.Name)
@@ -891,9 +840,19 @@ func (r *Repository) List(ctx context.Context, t restic.FileType, fn func(restic
 // ListPack returns the list of blobs saved in the pack id and the length of
 // the pack header.
 func (r *Repository) ListPack(ctx context.Context, id restic.ID, size int64) ([]restic.Blob, uint32, error) {
-	h := restic.Handle{Type: restic.PackFile, Name: id.String()}
+	h := backend.Handle{Type: restic.PackFile, Name: id.String()}
 
-	return pack.List(r.Key(), backend.ReaderAt(ctx, r.Backend(), h), size)
+	entries, hdrSize, err := pack.List(r.Key(), backend.ReaderAt(ctx, r.be, h), size)
+	if err != nil {
+		if r.Cache != nil {
+			// ignore error as there is not much we can do here
+			_ = r.Cache.Forget(h)
+		}
+
+		// retry on error
+		entries, hdrSize, err = pack.List(r.Key(), backend.ReaderAt(ctx, r.be, h), size)
+	}
+	return entries, hdrSize, err
 }
 
 // Delete calls backend.Delete() if implemented, and returns an error
@@ -915,6 +874,10 @@ func (r *Repository) Close() error {
 // If the blob was not known before, it returns the number of bytes the blob
 // occupies in the repo (compressed or not, including encryption overhead).
 func (r *Repository) SaveBlob(ctx context.Context, t restic.BlobType, buf []byte, id restic.ID, storeDuplicate bool) (newID restic.ID, known bool, size int, err error) {
+
+	if int64(len(buf)) > math.MaxUint32 {
+		return restic.ID{}, false, 0, fmt.Errorf("blob is larger than 4GB")
+	}
 
 	// compute plaintext hash if not already set
 	if id.IsNull() {
@@ -941,16 +904,22 @@ func (r *Repository) SaveBlob(ctx context.Context, t restic.BlobType, buf []byte
 	return newID, known, size, err
 }
 
-type BackendLoadFn func(ctx context.Context, h restic.Handle, length int, offset int64, fn func(rd io.Reader) error) error
+type backendLoadFn func(ctx context.Context, h backend.Handle, length int, offset int64, fn func(rd io.Reader) error) error
+type loadBlobFn func(ctx context.Context, t restic.BlobType, id restic.ID, buf []byte) ([]byte, error)
 
-// Skip sections with more than 4MB unused blobs
-const maxUnusedRange = 4 * 1024 * 1024
+// Skip sections with more than 1MB unused blobs
+const maxUnusedRange = 1 * 1024 * 1024
 
-// StreamPack loads the listed blobs from the specified pack file. The plaintext blob is passed to
+// LoadBlobsFromPack loads the listed blobs from the specified pack file. The plaintext blob is passed to
 // the handleBlobFn callback or an error if decryption failed or the blob hash does not match.
-// handleBlobFn is never called multiple times for the same blob. If the callback returns an error,
-// then StreamPack will abort and not retry it.
-func StreamPack(ctx context.Context, beLoad BackendLoadFn, key *crypto.Key, packID restic.ID, blobs []restic.Blob, handleBlobFn func(blob restic.BlobHandle, buf []byte, err error) error) error {
+// handleBlobFn is called at most once for each blob. If the callback returns an error,
+// then LoadBlobsFromPack will abort and not retry it. The buf passed to the callback is only valid within
+// this specific call. The callback must not keep a reference to buf.
+func (r *Repository) LoadBlobsFromPack(ctx context.Context, packID restic.ID, blobs []restic.Blob, handleBlobFn func(blob restic.BlobHandle, buf []byte, err error) error) error {
+	return streamPack(ctx, r.be.Load, r.LoadBlob, r.getZstdDecoder(), r.key, packID, blobs, handleBlobFn)
+}
+
+func streamPack(ctx context.Context, beLoad backendLoadFn, loadBlobFn loadBlobFn, dec *zstd.Decoder, key *crypto.Key, packID restic.ID, blobs []restic.Blob, handleBlobFn func(blob restic.BlobHandle, buf []byte, err error) error) error {
 	if len(blobs) == 0 {
 		// nothing to do
 		return nil
@@ -962,14 +931,29 @@ func StreamPack(ctx context.Context, beLoad BackendLoadFn, key *crypto.Key, pack
 
 	lowerIdx := 0
 	lastPos := blobs[0].Offset
+	const maxChunkSize = 2 * DefaultPackSize
+
 	for i := 0; i < len(blobs); i++ {
 		if blobs[i].Offset < lastPos {
 			// don't wait for streamPackPart to fail
 			return errors.Errorf("overlapping blobs in pack %v", packID)
 		}
+
+		chunkSizeAfter := (blobs[i].Offset + blobs[i].Length) - blobs[lowerIdx].Offset
+		split := false
+		// split if the chunk would become larger than maxChunkSize. Oversized chunks are
+		// handled by the requirement that the chunk contains at least one blob (i > lowerIdx)
+		if i > lowerIdx && chunkSizeAfter >= maxChunkSize {
+			split = true
+		}
+		// skip too large gaps as a new request is typically much cheaper than data transfers
 		if blobs[i].Offset-lastPos > maxUnusedRange {
+			split = true
+		}
+
+		if split {
 			// load everything up to the skipped file section
-			err := streamPackPart(ctx, beLoad, key, packID, blobs[lowerIdx:i], handleBlobFn)
+			err := streamPackPart(ctx, beLoad, loadBlobFn, dec, key, packID, blobs[lowerIdx:i], handleBlobFn)
 			if err != nil {
 				return err
 			}
@@ -978,110 +962,204 @@ func StreamPack(ctx context.Context, beLoad BackendLoadFn, key *crypto.Key, pack
 		lastPos = blobs[i].Offset + blobs[i].Length
 	}
 	// load remainder
-	return streamPackPart(ctx, beLoad, key, packID, blobs[lowerIdx:], handleBlobFn)
+	return streamPackPart(ctx, beLoad, loadBlobFn, dec, key, packID, blobs[lowerIdx:], handleBlobFn)
 }
 
-func streamPackPart(ctx context.Context, beLoad BackendLoadFn, key *crypto.Key, packID restic.ID, blobs []restic.Blob, handleBlobFn func(blob restic.BlobHandle, buf []byte, err error) error) error {
-	h := restic.Handle{Type: restic.PackFile, Name: packID.String(), ContainedBlobType: restic.DataBlob}
+func streamPackPart(ctx context.Context, beLoad backendLoadFn, loadBlobFn loadBlobFn, dec *zstd.Decoder, key *crypto.Key, packID restic.ID, blobs []restic.Blob, handleBlobFn func(blob restic.BlobHandle, buf []byte, err error) error) error {
+	h := backend.Handle{Type: restic.PackFile, Name: packID.String(), IsMetadata: blobs[0].Type.IsMetadata()}
 
 	dataStart := blobs[0].Offset
 	dataEnd := blobs[len(blobs)-1].Offset + blobs[len(blobs)-1].Length
 
 	debug.Log("streaming pack %v (%d to %d bytes), blobs: %v", packID, dataStart, dataEnd, len(blobs))
 
-	dec, err := zstd.NewReader(nil)
-	if err != nil {
-		panic(dec)
-	}
-	defer dec.Close()
-
-	ctx, cancel := context.WithCancel(ctx)
-	// stream blobs in pack
-	err = beLoad(ctx, h, int(dataEnd-dataStart), int64(dataStart), func(rd io.Reader) error {
-		// prevent callbacks after cancelation
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		bufferSize := int(dataEnd - dataStart)
-		if bufferSize > MaxStreamBufferSize {
-			bufferSize = MaxStreamBufferSize
-		}
-		// create reader here to allow reusing the buffered reader from checker.checkData
-		bufRd := bufio.NewReaderSize(rd, bufferSize)
-		currentBlobEnd := dataStart
-		var buf []byte
-		var decode []byte
-		for len(blobs) > 0 {
-			entry := blobs[0]
-
-			skipBytes := int(entry.Offset - currentBlobEnd)
-			if skipBytes < 0 {
-				return errors.Errorf("overlapping blobs in pack %v", packID)
-			}
-
-			_, err := bufRd.Discard(skipBytes)
-			if err != nil {
-				return err
-			}
-
-			h := restic.BlobHandle{ID: entry.ID, Type: entry.Type}
-			debug.Log("  process blob %v, skipped %d, %v", h, skipBytes, entry)
-
-			if uint(cap(buf)) < entry.Length {
-				buf = make([]byte, entry.Length)
-			}
-			buf = buf[:entry.Length]
-
-			n, err := io.ReadFull(bufRd, buf)
-			if err != nil {
-				debug.Log("    read error %v", err)
-				return errors.Wrap(err, "ReadFull")
-			}
-
-			if n != len(buf) {
-				return errors.Errorf("read blob %v from %v: not enough bytes read, want %v, got %v",
-					h, packID.Str(), len(buf), n)
-			}
-			currentBlobEnd = entry.Offset + entry.Length
-
-			if int(entry.Length) <= key.NonceSize() {
-				debug.Log("%v", blobs)
-				return errors.Errorf("invalid blob length %v", entry)
-			}
-
-			// decryption errors are likely permanent, give the caller a chance to skip them
-			nonce, ciphertext := buf[:key.NonceSize()], buf[key.NonceSize():]
-			plaintext, err := key.Open(ciphertext[:0], nonce, ciphertext, nil)
-			if err == nil && entry.IsCompressed() {
-				// DecodeAll will allocate a slice if it is not large enough since it
-				// knows the decompressed size (because we're using EncodeAll)
-				decode, err = dec.DecodeAll(plaintext, decode[:0])
-				plaintext = decode
-				if err != nil {
-					err = errors.Errorf("decompressing blob %v failed: %v", h, err)
-				}
-			}
-			if err == nil {
-				id := restic.Hash(plaintext)
-				if !id.Equal(entry.ID) {
-					debug.Log("read blob %v/%v from %v: wrong data returned, hash is %v",
-						h.Type, h.ID, packID.Str(), id)
-					err = errors.Errorf("read blob %v from %v: wrong data returned, hash is %v",
-						h, packID.Str(), id)
-				}
-			}
-
-			err = handleBlobFn(entry.BlobHandle, plaintext, err)
-			if err != nil {
-				cancel()
-				return backoff.Permanent(err)
-			}
-			// ensure that each blob is only passed once to handleBlobFn
-			blobs = blobs[1:]
-		}
-		return nil
+	data := make([]byte, int(dataEnd-dataStart))
+	err := beLoad(ctx, h, int(dataEnd-dataStart), int64(dataStart), func(rd io.Reader) error {
+		_, cerr := io.ReadFull(rd, data)
+		return cerr
 	})
+	// prevent callbacks after cancellation
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if err != nil {
+		// the context is only still valid if handleBlobFn never returned an error
+		if loadBlobFn != nil {
+			// check whether we can get the remaining blobs somewhere else
+			for _, entry := range blobs {
+				buf, ierr := loadBlobFn(ctx, entry.Type, entry.ID, nil)
+				err = handleBlobFn(entry.BlobHandle, buf, ierr)
+				if err != nil {
+					break
+				}
+			}
+		}
+		return errors.Wrap(err, "StreamPack")
+	}
+
+	it := newPackBlobIterator(packID, newByteReader(data), dataStart, blobs, key, dec)
+
+	for {
+		val, err := it.Next()
+		if err == errPackEOF {
+			break
+		} else if err != nil {
+			return err
+		}
+
+		if val.Err != nil && loadBlobFn != nil {
+			var ierr error
+			// check whether we can get a valid copy somewhere else
+			buf, ierr := loadBlobFn(ctx, val.Handle.Type, val.Handle.ID, nil)
+			if ierr == nil {
+				// success
+				val.Plaintext = buf
+				val.Err = nil
+			}
+		}
+
+		err = handleBlobFn(val.Handle, val.Plaintext, val.Err)
+		if err != nil {
+			return err
+		}
+		// ensure that each blob is only passed once to handleBlobFn
+		blobs = blobs[1:]
+	}
+
 	return errors.Wrap(err, "StreamPack")
+}
+
+// discardReader allows the PackBlobIterator to perform zero copy
+// reads if the underlying data source is a byte slice.
+type discardReader interface {
+	Discard(n int) (discarded int, err error)
+	// ReadFull reads the next n bytes into a byte slice. The caller must not
+	// retain a reference to the byte. Modifications are only allowed within
+	// the boundaries of the returned slice.
+	ReadFull(n int) (buf []byte, err error)
+}
+
+type byteReader struct {
+	buf []byte
+}
+
+func newByteReader(buf []byte) *byteReader {
+	return &byteReader{
+		buf: buf,
+	}
+}
+
+func (b *byteReader) Discard(n int) (discarded int, err error) {
+	if len(b.buf) < n {
+		return 0, io.ErrUnexpectedEOF
+	}
+	b.buf = b.buf[n:]
+	return n, nil
+}
+
+func (b *byteReader) ReadFull(n int) (buf []byte, err error) {
+	if len(b.buf) < n {
+		return nil, io.ErrUnexpectedEOF
+	}
+	buf = b.buf[:n]
+	b.buf = b.buf[n:]
+	return buf, nil
+}
+
+type packBlobIterator struct {
+	packID        restic.ID
+	rd            discardReader
+	currentOffset uint
+
+	blobs []restic.Blob
+	key   *crypto.Key
+	dec   *zstd.Decoder
+
+	decode []byte
+}
+
+type packBlobValue struct {
+	Handle    restic.BlobHandle
+	Plaintext []byte
+	Err       error
+}
+
+var errPackEOF = errors.New("reached EOF of pack file")
+
+func newPackBlobIterator(packID restic.ID, rd discardReader, currentOffset uint,
+	blobs []restic.Blob, key *crypto.Key, dec *zstd.Decoder) *packBlobIterator {
+	return &packBlobIterator{
+		packID:        packID,
+		rd:            rd,
+		currentOffset: currentOffset,
+		blobs:         blobs,
+		key:           key,
+		dec:           dec,
+	}
+}
+
+// Next returns the next blob, an error or ErrPackEOF if all blobs were read
+func (b *packBlobIterator) Next() (packBlobValue, error) {
+	if len(b.blobs) == 0 {
+		return packBlobValue{}, errPackEOF
+	}
+
+	entry := b.blobs[0]
+	b.blobs = b.blobs[1:]
+
+	skipBytes := int(entry.Offset - b.currentOffset)
+	if skipBytes < 0 {
+		return packBlobValue{}, fmt.Errorf("overlapping blobs in pack %v", b.packID)
+	}
+
+	_, err := b.rd.Discard(skipBytes)
+	if err != nil {
+		return packBlobValue{}, err
+	}
+	b.currentOffset = entry.Offset
+
+	h := restic.BlobHandle{ID: entry.ID, Type: entry.Type}
+	debug.Log("  process blob %v, skipped %d, %v", h, skipBytes, entry)
+
+	buf, err := b.rd.ReadFull(int(entry.Length))
+	if err != nil {
+		debug.Log("    read error %v", err)
+		return packBlobValue{}, fmt.Errorf("readFull: %w", err)
+	}
+
+	b.currentOffset = entry.Offset + entry.Length
+
+	if int(entry.Length) <= b.key.NonceSize() {
+		debug.Log("%v", b.blobs)
+		return packBlobValue{}, fmt.Errorf("invalid blob length %v", entry)
+	}
+
+	// decryption errors are likely permanent, give the caller a chance to skip them
+	nonce, ciphertext := buf[:b.key.NonceSize()], buf[b.key.NonceSize():]
+	plaintext, err := b.key.Open(ciphertext[:0], nonce, ciphertext, nil)
+	if err != nil {
+		err = fmt.Errorf("decrypting blob %v from %v failed: %w", h, b.packID.Str(), err)
+	}
+	if err == nil && entry.IsCompressed() {
+		// DecodeAll will allocate a slice if it is not large enough since it
+		// knows the decompressed size (because we're using EncodeAll)
+		b.decode, err = b.dec.DecodeAll(plaintext, b.decode[:0])
+		plaintext = b.decode
+		if err != nil {
+			err = fmt.Errorf("decompressing blob %v from %v failed: %w", h, b.packID.Str(), err)
+		}
+	}
+	if err == nil {
+		id := restic.Hash(plaintext)
+		if !id.Equal(entry.ID) {
+			debug.Log("read blob %v/%v from %v: wrong data returned, hash is %v",
+				h.Type, h.ID, b.packID.Str(), id)
+			err = fmt.Errorf("read blob %v from %v: wrong data returned, hash is %v",
+				h, b.packID.Str(), id)
+		}
+	}
+
+	return packBlobValue{entry.BlobHandle, plaintext, err}, nil
 }
 
 var zeroChunkOnce sync.Once

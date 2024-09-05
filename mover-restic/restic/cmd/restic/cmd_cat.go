@@ -7,7 +7,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/restic/restic/internal/backend"
 	"github.com/restic/restic/internal/errors"
 	"github.com/restic/restic/internal/repository"
 	"github.com/restic/restic/internal/restic"
@@ -22,7 +21,10 @@ The "cat" command is used to print internal objects to stdout.
 EXIT STATUS
 ===========
 
-Exit status is 0 if the command was successful, and non-zero if there was any error.
+Exit status is 0 if the command was successful.
+Exit status is 1 if there was any error.
+Exit status is 10 if the repository does not exist.
+Exit status is 11 if the repository is already locked.
 `,
 	DisableAutoGenTag: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -64,19 +66,11 @@ func runCat(ctx context.Context, gopts GlobalOptions, args []string) error {
 		return err
 	}
 
-	repo, err := OpenRepository(ctx, gopts)
+	ctx, repo, unlock, err := openWithReadLock(ctx, gopts, gopts.NoLock)
 	if err != nil {
 		return err
 	}
-
-	if !gopts.NoLock {
-		var lock *restic.Lock
-		lock, ctx, err = lockRepo(ctx, repo, gopts.RetryLock, gopts.JSON)
-		defer unlockRepo(lock)
-		if err != nil {
-			return err
-		}
-	}
+	defer unlock()
 
 	tpe := args[0]
 
@@ -106,7 +100,7 @@ func runCat(ctx context.Context, gopts GlobalOptions, args []string) error {
 		Println(string(buf))
 		return nil
 	case "snapshot":
-		sn, _, err := restic.FindSnapshot(ctx, repo.Backend(), repo, args[1])
+		sn, _, err := restic.FindSnapshot(ctx, repo, repo, args[1])
 		if err != nil {
 			return errors.Fatalf("could not find snapshot: %v\n", err)
 		}
@@ -154,9 +148,9 @@ func runCat(ctx context.Context, gopts GlobalOptions, args []string) error {
 		return nil
 
 	case "pack":
-		h := restic.Handle{Type: restic.PackFile, Name: id.String()}
-		buf, err := backend.LoadAll(ctx, nil, repo.Backend(), h)
-		if err != nil {
+		buf, err := repo.LoadRaw(ctx, restic.PackFile, id)
+		// allow returning broken pack files
+		if buf == nil {
 			return err
 		}
 
@@ -176,8 +170,7 @@ func runCat(ctx context.Context, gopts GlobalOptions, args []string) error {
 		}
 
 		for _, t := range []restic.BlobType{restic.DataBlob, restic.TreeBlob} {
-			bh := restic.BlobHandle{ID: id, Type: t}
-			if !repo.Index().Has(bh) {
+			if _, ok := repo.LookupBlobSize(t, id); !ok {
 				continue
 			}
 
@@ -193,7 +186,7 @@ func runCat(ctx context.Context, gopts GlobalOptions, args []string) error {
 		return errors.Fatal("blob not found")
 
 	case "tree":
-		sn, subfolder, err := restic.FindSnapshot(ctx, repo.Backend(), repo, args[1])
+		sn, subfolder, err := restic.FindSnapshot(ctx, repo, repo, args[1])
 		if err != nil {
 			return errors.Fatalf("could not find snapshot: %v\n", err)
 		}

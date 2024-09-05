@@ -35,15 +35,15 @@ environment variable ``RESTIC_REPOSITORY_FILE``.
 For automating the supply of the repository password to restic, several options
 exist:
 
- * Setting the environment variable ``RESTIC_PASSWORD``
+* Setting the environment variable ``RESTIC_PASSWORD``
 
- * Specifying the path to a file with the password via the option
-   ``--password-file`` or the environment variable ``RESTIC_PASSWORD_FILE``
+* Specifying the path to a file with the password via the option
+  ``--password-file`` or the environment variable ``RESTIC_PASSWORD_FILE``
 
- * Configuring a program to be called when the password is needed via the
-   option ``--password-command`` or the environment variable
-   ``RESTIC_PASSWORD_COMMAND``
-   
+* Configuring a program to be called when the password is needed via the
+  option ``--password-command`` or the environment variable
+  ``RESTIC_PASSWORD_COMMAND``
+
 The ``init`` command has an option called ``--repository-version`` which can
 be used to explicitly set the version of the new repository. By default, the
 current stable version is used (see table below). The alias ``latest`` will
@@ -201,15 +201,16 @@ scheme like this:
     $ restic -r rest:http://host:8000/ init
 
 Depending on your REST server setup, you can use HTTPS protocol,
-password protection, multiple repositories or any combination of
-those features. The TCP/IP port is also configurable. Here
-are some more examples:
+unix socket, password protection, multiple repositories or any
+combination of those features. The TCP/IP port is also configurable.
+Here are some more examples:
 
 .. code-block:: console
 
     $ restic -r rest:https://host:8000/ init
     $ restic -r rest:https://user:pass@host:8000/ init
     $ restic -r rest:https://user:pass@host:8000/my_backup_repo/ init
+    $ restic -r rest:http+unix:///tmp/rest.socket:/my_backup_repo/ init
 
 The server username and password can be specified using environment
 variables as well:
@@ -487,7 +488,8 @@ Backblaze B2
 
    Different from the B2 backend, restic's S3 backend will only hide no longer
    necessary files. Thus, make sure to setup lifecycle rules to eventually
-   delete hidden files.
+   delete hidden files. The lifecycle setting "Keep only the last version of the file" 
+   will keep only the most current version of a file. Read the [Backblaze documentation](https://www.backblaze.com/docs/cloud-storage-lifecycle-rules).
 
 Restic can backup data to any Backblaze B2 bucket. You need to first setup the
 following environment variables with the credentials you can find in the
@@ -722,9 +724,9 @@ For debugging rclone, you can set the environment variable ``RCLONE_VERBOSE=2``.
 
 The rclone backend has three additional options:
 
- * ``-o rclone.program`` specifies the path to rclone, the default value is just ``rclone``
- * ``-o rclone.args`` allows setting the arguments passed to rclone, by default this is ``serve restic --stdio --b2-hard-delete``
- * ``-o rclone.timeout`` specifies timeout for waiting on repository opening, the default value is ``1m``
+* ``-o rclone.program`` specifies the path to rclone, the default value is just ``rclone``
+* ``-o rclone.args`` allows setting the arguments passed to rclone, by default this is ``serve restic --stdio --b2-hard-delete``
+* ``-o rclone.timeout`` specifies timeout for waiting on repository opening, the default value is ``1m``
 
 The reason for the ``--b2-hard-delete`` parameters can be found in the corresponding GitHub `issue #1657`_.
 
@@ -850,3 +852,26 @@ and then grants read/write permissions for group access.
 .. note:: To manage who has access to the repository you can use
           ``usermod`` on Linux systems, to change which group controls
           repository access ``chgrp -R`` is your friend.
+
+
+Repositories with empty password
+********************************
+
+Restic by default refuses to create or operate on repositories that use an
+empty password. Since restic 0.17.0, the option ``--insecure-no-password`` allows
+disabling this check. Restic will not prompt for a password when using this option.
+Specifying ``--insecure-no-password`` while also passing a password to restic
+via a CLI option or via environment variable results in an error.
+
+For security reasons, the option must always be specified when operating on
+repositories with an empty password. For example to create a new repository
+with an empty password, use the following command.
+
+.. code-block:: console
+
+    restic init --insecure-no-password
+
+
+The ``init`` and ``copy`` command also support the option ``--from-insecure-no-password``
+which applies to the source repository. The ``key add`` and ``key passwd`` commands
+include the ``--new-insecure-no-password`` option to add or set and empty password.

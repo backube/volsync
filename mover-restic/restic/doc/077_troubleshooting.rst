@@ -10,6 +10,8 @@
   ^ for subsubsections
   " for paragraphs
 
+.. _troubleshooting:
+
 #########################
 Troubleshooting
 #########################
@@ -71,10 +73,14 @@ some blobs in the repository, then please ask for help in the forum or our IRC
 channel. These errors are often caused by hardware problems which **must** be
 investigated and fixed. Otherwise, the backup will be damaged again and again.
 
-Similarly, if a repository is repeatedly damaged, please open an `issue on Github
+Similarly, if a repository is repeatedly damaged, please open an `issue on GitHub
 <https://github.com/restic/restic/issues/new/choose>`_ as this could indicate a bug
 somewhere. Please include the check output and additional information that might
 help locate the problem.
+
+If ``check`` detects damaged pack files, it will show instructions on how to repair
+them using the ``repair pack`` command. Use that command instead of the "Repair the
+index" section in this guide.
 
 
 2. Backup the repository
@@ -98,11 +104,16 @@ remove data unexpectedly.
 Please take the time to understand what the commands described in the following
 do. If you are unsure, then ask for help in the forum or our IRC channel. Search
 whether your issue is already known and solved. Please take a look at the
-`forum`_ and `Github issues <https://github.com/restic/restic/issues>`_.
+`forum`_ and `GitHub issues <https://github.com/restic/restic/issues>`_.
 
 
 3. Repair the index
 *******************
+
+.. note::
+
+  If the `check` command tells you to run `restic repair pack`, then use that
+  command instead. It will repair the damaged pack files and also update the index.
 
 Restic relies on its index to contain correct information about what data is
 stored in the repository. Thus, the first step to repair a repository is to
@@ -153,7 +164,7 @@ command will automatically remove the original, damaged snapshots.
 
   $ restic repair snapshots --forget
 
-  snapshot 6979421e of [/home/user/restic/restic] at 2022-11-02 20:59:18.617503315 +0100 CET)
+  snapshot 6979421e of [/home/user/restic/restic] at 2022-11-02 20:59:18.617503315 +0100 CET by user@host
     file "/restic/internal/fuse/snapshots_dir.go": removed missing content
     file "/restic/internal/restorer/restorer_unix_test.go": removed missing content
     file "/restic/internal/walker/walker.go": removed missing content

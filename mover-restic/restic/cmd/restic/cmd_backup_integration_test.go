@@ -249,29 +249,18 @@ func TestBackupTreeLoadError(t *testing.T) {
 	opts := BackupOptions{}
 	// Backup a subdirectory first, such that we can remove the tree pack for the subdirectory
 	testRunBackup(t, env.testdata, []string{"test"}, opts, env.gopts)
-
-	r, err := OpenRepository(context.TODO(), env.gopts)
-	rtest.OK(t, err)
-	rtest.OK(t, r.LoadIndex(context.TODO(), nil))
-	treePacks := restic.NewIDSet()
-	r.Index().Each(context.TODO(), func(pb restic.PackedBlob) {
-		if pb.Type == restic.TreeBlob {
-			treePacks.Insert(pb.PackID)
-		}
-	})
+	treePacks := listTreePacks(env.gopts, t)
 
 	testRunBackup(t, filepath.Dir(env.testdata), []string{filepath.Base(env.testdata)}, opts, env.gopts)
 	testRunCheck(t, env.gopts)
 
 	// delete the subdirectory pack first
-	for id := range treePacks {
-		rtest.OK(t, r.Backend().Remove(context.TODO(), restic.Handle{Type: restic.PackFile, Name: id.String()}))
-	}
+	removePacks(env.gopts, t, treePacks)
 	testRunRebuildIndex(t, env.gopts)
 	// now the repo is missing the tree blob in the index; check should report this
 	testRunCheckMustFail(t, env.gopts)
 	// second backup should report an error but "heal" this situation
-	err = testRunBackupAssumeFailure(t, filepath.Dir(env.testdata), []string{filepath.Base(env.testdata)}, opts, env.gopts)
+	err := testRunBackupAssumeFailure(t, filepath.Dir(env.testdata), []string{filepath.Base(env.testdata)}, opts, env.gopts)
 	rtest.Assert(t, err != nil, "backup should have reported an error for the subdirectory")
 	testRunCheck(t, env.gopts)
 
@@ -405,6 +394,7 @@ func TestIncrementalBackup(t *testing.T) {
 	t.Logf("repository grown by %d bytes", stat3.size-stat2.size)
 }
 
+// nolint: staticcheck // false positive nil pointer dereference check
 func TestBackupTags(t *testing.T) {
 	env, cleanup := withTestEnvironment(t)
 	defer cleanup()
@@ -440,6 +430,7 @@ func TestBackupTags(t *testing.T) {
 		"expected parent to be %v, got %v", parent.ID, newest.Parent)
 }
 
+// nolint: staticcheck // false positive nil pointer dereference check
 func TestBackupProgramVersion(t *testing.T) {
 	env, cleanup := withTestEnvironment(t)
 	defer cleanup()
@@ -566,4 +557,102 @@ func linkEqual(source, dest []string) bool {
 	}
 
 	return true
+}
+
+func TestStdinFromCommand(t *testing.T) {
+	env, cleanup := withTestEnvironment(t)
+	defer cleanup()
+
+	testSetupBackupData(t, env)
+	opts := BackupOptions{
+		StdinCommand:  true,
+		StdinFilename: "stdin",
+	}
+
+	testRunBackup(t, filepath.Dir(env.testdata), []string{"python", "-c", "import sys; print('something'); sys.exit(0)"}, opts, env.gopts)
+	testListSnapshots(t, env.gopts, 1)
+
+	testRunCheck(t, env.gopts)
+}
+
+func TestStdinFromCommandNoOutput(t *testing.T) {
+	env, cleanup := withTestEnvironment(t)
+	defer cleanup()
+
+	testSetupBackupData(t, env)
+	opts := BackupOptions{
+		StdinCommand:  true,
+		StdinFilename: "stdin",
+	}
+
+	err := testRunBackupAssumeFailure(t, filepath.Dir(env.testdata), []string{"python", "-c", "import sys; sys.exit(0)"}, opts, env.gopts)
+	rtest.Assert(t, err != nil && err.Error() == "at least one source file could not be read", "No data error expected")
+	testListSnapshots(t, env.gopts, 1)
+
+	testRunCheck(t, env.gopts)
+}
+
+func TestStdinFromCommandFailExitCode(t *testing.T) {
+	env, cleanup := withTestEnvironment(t)
+	defer cleanup()
+
+	testSetupBackupData(t, env)
+	opts := BackupOptions{
+		StdinCommand:  true,
+		StdinFilename: "stdin",
+	}
+
+	err := testRunBackupAssumeFailure(t, filepath.Dir(env.testdata), []string{"python", "-c", "import sys; print('test'); sys.exit(1)"}, opts, env.gopts)
+	rtest.Assert(t, err != nil, "Expected error while backing up")
+
+	testListSnapshots(t, env.gopts, 0)
+
+	testRunCheck(t, env.gopts)
+}
+
+func TestStdinFromCommandFailNoOutputAndExitCode(t *testing.T) {
+	env, cleanup := withTestEnvironment(t)
+	defer cleanup()
+
+	testSetupBackupData(t, env)
+	opts := BackupOptions{
+		StdinCommand:  true,
+		StdinFilename: "stdin",
+	}
+
+	err := testRunBackupAssumeFailure(t, filepath.Dir(env.testdata), []string{"python", "-c", "import sys; sys.exit(1)"}, opts, env.gopts)
+	rtest.Assert(t, err != nil, "Expected error while backing up")
+
+	testListSnapshots(t, env.gopts, 0)
+
+	testRunCheck(t, env.gopts)
+}
+
+func TestBackupEmptyPassword(t *testing.T) {
+	// basic sanity test that empty passwords work
+	env, cleanup := withTestEnvironment(t)
+	defer cleanup()
+
+	env.gopts.password = ""
+	env.gopts.InsecureNoPassword = true
+
+	testSetupBackupData(t, env)
+	testRunBackup(t, filepath.Dir(env.testdata), []string{"testdata"}, BackupOptions{}, env.gopts)
+	testListSnapshots(t, env.gopts, 1)
+	testRunCheck(t, env.gopts)
+}
+
+func TestBackupSkipIfUnchanged(t *testing.T) {
+	env, cleanup := withTestEnvironment(t)
+	defer cleanup()
+
+	testSetupBackupData(t, env)
+	opts := BackupOptions{SkipIfUnchanged: true}
+
+	for i := 0; i < 3; i++ {
+		testRunBackup(t, filepath.Dir(env.testdata), []string{"testdata"}, opts, env.gopts)
+		testListSnapshots(t, env.gopts, 1)
+	}
+
+	testRunCheck(t, env.gopts)
 }

@@ -6,9 +6,9 @@ import (
 	"path"
 	"strings"
 
+	"github.com/restic/restic/internal/backend"
 	"github.com/restic/restic/internal/errors"
 	"github.com/restic/restic/internal/options"
-	"github.com/restic/restic/internal/restic"
 )
 
 // Config contains all configuration necessary to connect to an s3 compatible
@@ -20,14 +20,15 @@ type Config struct {
 	Secret       options.SecretString
 	Bucket       string
 	Prefix       string
-	Layout       string `option:"layout" help:"use this backend layout (default: auto-detect)"`
+	Layout       string `option:"layout" help:"use this backend layout (default: auto-detect) (deprecated)"`
 	StorageClass string `option:"storage-class" help:"set S3 storage class (STANDARD, STANDARD_IA, ONEZONE_IA, INTELLIGENT_TIERING or REDUCED_REDUNDANCY)"`
 
-	Connections   uint   `option:"connections" help:"set a limit for the number of concurrent connections (default: 5)"`
-	MaxRetries    uint   `option:"retries" help:"set the number of retries attempted"`
-	Region        string `option:"region" help:"set region"`
-	BucketLookup  string `option:"bucket-lookup" help:"bucket lookup style: 'auto', 'dns', or 'path'"`
-	ListObjectsV1 bool   `option:"list-objects-v1" help:"use deprecated V1 api for ListObjects calls"`
+	Connections         uint   `option:"connections" help:"set a limit for the number of concurrent connections (default: 5)"`
+	MaxRetries          uint   `option:"retries" help:"set the number of retries attempted"`
+	Region              string `option:"region" help:"set region"`
+	BucketLookup        string `option:"bucket-lookup" help:"bucket lookup style: 'auto', 'dns', or 'path'"`
+	ListObjectsV1       bool   `option:"list-objects-v1" help:"use deprecated V1 api for ListObjects calls"`
+	UnsafeAnonymousAuth bool   `option:"unsafe-anonymous-auth" help:"use anonymous authentication"`
 }
 
 // NewConfig returns a new Config with the default values filled in.
@@ -94,7 +95,7 @@ func createConfig(endpoint, bucket, prefix string, useHTTP bool) (*Config, error
 	return &cfg, nil
 }
 
-var _ restic.ApplyEnvironmenter = &Config{}
+var _ backend.ApplyEnvironmenter = &Config{}
 
 // ApplyEnvironment saves values from the environment to the config.
 func (cfg *Config) ApplyEnvironment(prefix string) {

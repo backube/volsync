@@ -48,7 +48,7 @@ be used instead of the complete filename.
 Apart from the files stored within the ``keys`` and ``data`` directories,
 all files are encrypted with AES-256 in counter mode (CTR). The integrity
 of the encrypted data is secured by a Poly1305-AES message authentication
-code (sometimes also referred to as a "signature").
+code (MAC).
 Files in the ``data`` directory ("pack files") consist of multiple parts
 which are all independently encrypted and authenticated, see below.
 
@@ -296,8 +296,8 @@ of a JSON document like the following:
     }
 
 This JSON document lists Packs and the blobs contained therein. In this
-example, the Pack ``73d04e61`` contains two data Blobs and one Tree
-blob, the plaintext hashes are listed afterwards. The ``length`` field
+example, the Pack ``73d04e61`` contains three data Blobs,
+the plaintext hashes are listed afterwards. The ``length`` field
 corresponds to ``Length(encrypted_blob)`` in the pack file header.
 Field ``uncompressed_length`` is only present for compressed blobs and
 therefore is never present in version 1 of the repository format. It is
@@ -824,4 +824,4 @@ Changes
 Repository Version 2
 --------------------
 
- * Support compression for blobs (data/tree) and index / lock / snapshot files
+* Support compression for blobs (data/tree) and index / lock / snapshot files
