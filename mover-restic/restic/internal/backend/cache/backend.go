@@ -2,11 +2,14 @@ package cache
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"os"
 	"sync"
 
 	"github.com/restic/restic/internal/backend"
 	"github.com/restic/restic/internal/debug"
+	"github.com/restic/restic/internal/restic"
 )
 
 // Backend wraps a restic.Backend and adds a cache.
@@ -162,7 +165,9 @@ func (b *Backend) Load(ctx context.Context, h backend.Handle, length int, offset
 	// try loading from cache without checking that the handle is actually cached
 	inCache, err := b.loadFromCache(h, length, offset, consumer)
 	if inCache {
-		debug.Log("error loading %v from cache: %v", h, err)
+		if err != nil {
+			debug.Log("error loading %v from cache: %v", h, err)
+		}
 		// the caller must explicitly use cache.Forget() to remove the cache entry
 		return err
 	}
@@ -212,4 +217,44 @@ func (b *Backend) IsNotExist(err error) bool {
 
 func (b *Backend) Unwrap() backend.Backend {
 	return b.Backend
+}
+
+func (b *Backend) List(ctx context.Context, t backend.FileType, fn func(f backend.FileInfo) error) error {
+	if !b.Cache.canBeCached(t) {
+		return b.Backend.List(ctx, t, fn)
+	}
+
+	// will contain the IDs of the files that are in the repository
+	ids := restic.NewIDSet()
+
+	// wrap the original function to also add the file to the ids set
+	wrapFn := func(f backend.FileInfo) error {
+		id, err := restic.ParseID(f.Name)
+		if err != nil {
+			// ignore files with invalid name
+			return nil
+		}
+
+		ids.Insert(id)
+
+		// execute the original function
+		return fn(f)
+	}
+
+	err := b.Backend.List(ctx, t, wrapFn)
+	if err != nil {
+		return err
+	}
+
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
+	// clear the cache for files that are not in the repo anymore, ignore errors
+	err = b.Cache.Clear(t, ids)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error clearing %s files in cache: %v\n", t.String(), err)
+	}
+
+	return nil
 }

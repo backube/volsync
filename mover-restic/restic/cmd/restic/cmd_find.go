@@ -37,7 +37,9 @@ Exit status is 0 if the command was successful.
 Exit status is 1 if there was any error.
 Exit status is 10 if the repository does not exist.
 Exit status is 11 if the repository is already locked.
+Exit status is 12 if the password is incorrect.
 `,
+	GroupID:           cmdGroupDefault,
 	DisableAutoGenTag: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runFind(cmd.Context(), findOptions, globalOptions, args)
@@ -377,6 +379,10 @@ func (f *Finder) findIDs(ctx context.Context, sn *restic.Snapshot) error {
 
 		if node.Type == "file" && f.blobIDs != nil {
 			for _, id := range node.Content {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+
 				idStr := id.String()
 				if _, ok := f.blobIDs[idStr]; !ok {
 					// Look for short ID form

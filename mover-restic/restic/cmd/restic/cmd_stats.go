@@ -53,7 +53,9 @@ Exit status is 0 if the command was successful.
 Exit status is 1 if there was any error.
 Exit status is 10 if the repository does not exist.
 Exit status is 11 if the repository is already locked.
+Exit status is 12 if the password is incorrect.
 `,
+	GroupID:           cmdGroupDefault,
 	DisableAutoGenTag: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runStats(cmd.Context(), statsOptions, globalOptions, args)
@@ -70,10 +72,20 @@ type StatsOptions struct {
 
 var statsOptions StatsOptions
 
+func must(err error) {
+	if err != nil {
+		panic(fmt.Sprintf("error during setup: %v", err))
+	}
+}
+
 func init() {
 	cmdRoot.AddCommand(cmdStats)
 	f := cmdStats.Flags()
 	f.StringVar(&statsOptions.countMode, "mode", countModeRestoreSize, "counting mode: restore-size (default), files-by-contents, blobs-per-file or raw-data")
+	must(cmdStats.RegisterFlagCompletionFunc("mode", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		return []string{countModeRestoreSize, countModeUniqueFilesByContents, countModeBlobsPerFile, countModeRawData}, cobra.ShellCompDirectiveDefault
+	}))
+
 	initMultiSnapshotFilter(f, &statsOptions.SnapshotFilter, true)
 }
 

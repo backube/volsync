@@ -36,7 +36,9 @@ Exit status is 0 if the command was successful.
 Exit status is 1 if there was any error.
 Exit status is 10 if the repository does not exist.
 Exit status is 11 if the repository is already locked.
+Exit status is 12 if the password is incorrect.
 `,
+	GroupID:           cmdGroupDefault,
 	DisableAutoGenTag: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		term, cancel := setupTermstatus()
@@ -164,9 +166,8 @@ func runRestore(ctx context.Context, opts RestoreOptions, gopts GlobalOptions,
 
 	totalErrors := 0
 	res.Error = func(location string, err error) error {
-		msg.E("ignoring error for %s: %s\n", location, err)
 		totalErrors++
-		return nil
+		return progress.Error(location, err)
 	}
 	res.Warn = func(message string) {
 		msg.E("Warning: %s\n", message)
@@ -221,7 +222,7 @@ func runRestore(ctx context.Context, opts RestoreOptions, gopts GlobalOptions,
 		msg.P("restoring %s to %s\n", res.Snapshot(), opts.Target)
 	}
 
-	err = res.RestoreTo(ctx, opts.Target)
+	countRestoredFiles, err := res.RestoreTo(ctx, opts.Target)
 	if err != nil {
 		return err
 	}
@@ -238,7 +239,8 @@ func runRestore(ctx context.Context, opts RestoreOptions, gopts GlobalOptions,
 		}
 		var count int
 		t0 := time.Now()
-		count, err = res.VerifyFiles(ctx, opts.Target)
+		bar := newTerminalProgressMax(!gopts.Quiet && !gopts.JSON && stdoutIsTerminal(), 0, "files verified", term)
+		count, err = res.VerifyFiles(ctx, opts.Target, countRestoredFiles, bar)
 		if err != nil {
 			return err
 		}

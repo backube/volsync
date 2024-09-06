@@ -26,8 +26,10 @@ Exit status is 0 if the command was successful.
 Exit status is 1 if there was any error.
 Exit status is 10 if the repository does not exist.
 Exit status is 11 if the repository is already locked.
+Exit status is 12 if the password is incorrect.
 `,
 	DisableAutoGenTag: true,
+	GroupID:           cmdGroupDefault,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		term, cancel := setupTermstatus()
 		defer cancel()
@@ -74,8 +76,10 @@ func checkMigrations(ctx context.Context, repo restic.Repository, printer progre
 func applyMigrations(ctx context.Context, opts MigrateOptions, gopts GlobalOptions, repo restic.Repository, args []string, term *termstatus.Terminal, printer progress.Printer) error {
 	var firsterr error
 	for _, name := range args {
+		found := false
 		for _, m := range migrations.All {
 			if m.Name() == name {
+				found = true
 				ok, reason, err := m.Check(ctx, repo)
 				if err != nil {
 					return err
@@ -118,6 +122,9 @@ func applyMigrations(ctx context.Context, opts MigrateOptions, gopts GlobalOptio
 
 				printer.P("migration %v: success\n", m.Name())
 			}
+		}
+		if !found {
+			printer.E("unknown migration %v", name)
 		}
 	}
 

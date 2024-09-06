@@ -26,7 +26,9 @@ Exit status is 0 if the command was successful.
 Exit status is 1 if there was any error.
 Exit status is 10 if the repository does not exist.
 Exit status is 11 if the repository is already locked.
+Exit status is 12 if the password is incorrect.
 `,
+	GroupID:           cmdGroupDefault,
 	DisableAutoGenTag: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		return runRecover(cmd.Context(), globalOptions)
@@ -116,6 +118,10 @@ func runRecover(ctx context.Context, gopts GlobalOptions) error {
 	if len(roots) == 0 {
 		Verbosef("no snapshot to write.\n")
 		return nil
+	}
+
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
 
 	tree := restic.NewTree(len(roots))
