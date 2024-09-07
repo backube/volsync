@@ -5,7 +5,7 @@
     - restic
     - unprivileged
     - restoreoptions
-    - delete
+    - enableFileDeletion
   vars:
     restic_secret_name: restic-secret
   tasks:
@@ -230,7 +230,7 @@
         pvc1_name: data-source
         pvc2_name: data-dest
 
-    # Want to test the "delete" flag - so write data to the dest PVC that doesn't exist in
+    # Want to test the "--delete" flag (enableFileDeletion)- so write data to the dest PVC that doesn't exist in
     # our original pvc (and therefore the restic snapshot)
     - name: Write extra data into the dest PVC
       include_role:
@@ -268,7 +268,7 @@
         should_fail: true
 
     # This restore should delete any files in the dest pvc that aren't in the restic snapshot
-    - name: Trigger another restore with the delete option
+    - name: Trigger another restore with the enableFileDeletion option
       kubernetes.core.k8s:
         state: patched
         definition:
@@ -279,7 +279,7 @@
             namespace: "{{ namespace }}"
           spec:
             restic:
-              delete: true
+              enableFileDeletion: true
             trigger:
               manual: restore-with-delete
 

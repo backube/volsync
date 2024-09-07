@@ -2206,9 +2206,9 @@ var _ = Describe("Restic as a destination", func() {
 						Expect(restoreOptions.Value).To(Equal("")) // Default value
 					})
 				})
-				When("Restore option of delete is specified", func() {
+				When("Restore option of enableFileDeletion is specified", func() {
 					BeforeEach(func() {
-						rd.Spec.Restic.Delete = true
+						rd.Spec.Restic.EnableFileDeletion = true
 					})
 					It("should set RESTORE_OPTIONS env var with delete flag", func() {
 						j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo, nil)

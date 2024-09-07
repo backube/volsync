@@ -82,9 +82,9 @@ type Mover struct {
 	retainPolicy  *volsyncv1alpha1.ResticRetainPolicy
 	sourceStatus  *volsyncv1alpha1.ReplicationSourceResticStatus
 	// Destination-only fields
-	previous             *int32
-	restoreAsOf          *string
-	deleteFilesOnRestore bool
+	previous                    *int32
+	restoreAsOf                 *string
+	enableFileDeletionOnRestore bool
 }
 
 var _ mover.Mover = &Mover{}
@@ -341,9 +341,9 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 				previous = strconv.Itoa(int(*m.previous))
 			}
 
-			// Delete option for restores, default is false (mover.deleteFilesOnRestore is only set in the builder
+			// Delete option for restores, default is false (mover.enableFileDeletionOnRestore is only set in the builder
 			// for replicationdestinations)
-			if m.deleteFilesOnRestore {
+			if m.enableFileDeletionOnRestore {
 				restoreOptions = "--delete"
 			}
 		}
