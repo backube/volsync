@@ -147,6 +147,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 	}, nil
 }
 
+//nolint:funlen
 func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 	eventRecorder events.EventRecorder,
 	destination *volsyncv1alpha1.ReplicationDestination, privileged bool) (mover.Mover, error) {
@@ -188,24 +189,25 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 	}
 
 	return &Mover{
-		client:             client,
-		logger:             logger.WithValues("method", "RsyncTLS"),
-		eventRecorder:      eventRecorder,
-		owner:              destination,
-		vh:                 vh,
-		saHandler:          saHandler,
-		containerImage:     rb.getRsyncTLSContainerImage(),
-		key:                destination.Spec.RsyncTLS.KeySecret,
-		serviceType:        destination.Spec.RsyncTLS.ServiceType,
-		serviceAnnotations: svcAnnotations,
-		address:            nil,
-		port:               nil,
-		isSource:           isSource,
-		paused:             destination.Spec.Paused,
-		mainPVCName:        destination.Spec.RsyncTLS.DestinationPVC,
-		privileged:         privileged,
-		destStatus:         destination.Status.RsyncTLS,
-		latestMoverStatus:  destination.Status.LatestMoverStatus,
-		moverConfig:        destination.Spec.RsyncTLS.MoverConfig,
+		client:                    client,
+		logger:                    logger.WithValues("method", "RsyncTLS"),
+		eventRecorder:             eventRecorder,
+		owner:                     destination,
+		vh:                        vh,
+		saHandler:                 saHandler,
+		containerImage:            rb.getRsyncTLSContainerImage(),
+		key:                       destination.Spec.RsyncTLS.KeySecret,
+		serviceType:               destination.Spec.RsyncTLS.ServiceType,
+		serviceAnnotations:        svcAnnotations,
+		address:                   nil,
+		port:                      nil,
+		isSource:                  isSource,
+		paused:                    destination.Spec.Paused,
+		mainPVCName:               destination.Spec.RsyncTLS.DestinationPVC,
+		cleanupTempDestinationPVC: destination.Spec.RsyncTLS.CleanupTempDestinationPVC,
+		privileged:                privileged,
+		destStatus:                destination.Status.RsyncTLS,
+		latestMoverStatus:         destination.Status.LatestMoverStatus,
+		moverConfig:               destination.Spec.RsyncTLS.MoverConfig,
 	}, nil
 }

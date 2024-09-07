@@ -281,7 +281,7 @@ func (m *Mover) ensureConfigPVC(
 	// Allocate the config volume
 	configName := mover.VolSyncPrefix + m.owner.GetName() + "-config"
 	m.logger.Info("allocating config volume", "PVC", configName)
-	return configVh.EnsureNewPVC(ctx, m.logger, configName)
+	return configVh.EnsureNewPVC(ctx, m.logger, configName, false /* this is NOT a temp pvc */)
 }
 
 // ensureDataPVC Ensures that the PVC holding the data meant to be synced is available.

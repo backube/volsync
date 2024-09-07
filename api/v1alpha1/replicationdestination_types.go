@@ -84,6 +84,18 @@ type ReplicationDestinationVolumeOptions struct {
 	// accessModes must be specified.
 	//+optional
 	DestinationPVC *string `json:"destinationPVC,omitempty"`
+	// Set this to true to delete the temp destination PVC (dynamically provisioned
+	// by VolSync) at the end of each ReplicationDestination sync cycle.
+	// If destinationPVC is set, this will have no effect, VolSync will only
+	// cleanup temp PVCs that it deployed.
+	// Note that if this is set to true, every sync this ReplicationDestination
+	// makes will re-provision a new temp destination PVC and all data
+	// will need to be sent again during the sync.
+	// Dynamically provisioned destination PVCs will always be deleted if the
+	// owning ReplicationDestination is removed, even if this setting is false.
+	// The default is false.
+	//+optional
+	CleanupTempDestinationPVC bool `json:"cleanupTempDestinationPVC,omitempty"`
 }
 
 type ReplicationDestinationRsyncSpec struct {
@@ -225,6 +237,13 @@ type ReplicationDestinationResticSpec struct {
 	// accessModes can be used to set the accessModes of restic metadata cache volume
 	//+optional
 	CacheAccessModes []corev1.PersistentVolumeAccessMode `json:"cacheAccessModes,omitempty"`
+	// Set this to true to delete the restic cache PVC (dynamically provisioned
+	// by VolSync) at the end of each ReplicationDestination sync cycle.
+	// Cache PVCs will always be deleted if the owning ReplicationDestination is
+	// removed, even if this setting is false.
+	// The default is false.
+	//+optional
+	CleanupCachePVC bool `json:"cleanupCachePVC,omitempty"`
 	// Previous specifies the number of image to skip before selecting one to restore from
 	//+optional
 	Previous *int32 `json:"previous,omitempty"`

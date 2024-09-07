@@ -85,6 +85,8 @@ type Mover struct {
 	previous                    *int32
 	restoreAsOf                 *string
 	enableFileDeletionOnRestore bool
+	cleanupTempDestinationPVC   bool
+	cleanupCachePVC             bool
 }
 
 var _ mover.Mover = &Mover{}
@@ -113,7 +115,8 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 	}
 
 	// Allocate cache volume
-	cachePVC, err := m.ensureCache(ctx, dataPVC)
+	// cleanupCachePVC will always be false for replicationsources - it's only set in the builder FromDestination()
+	cachePVC, err := m.ensureCache(ctx, dataPVC, m.cleanupCachePVC)
 	if cachePVC == nil || err != nil {
 		return mover.InProgress(), err
 	}
@@ -177,7 +180,7 @@ func (m *Mover) Cleanup(ctx context.Context) (mover.Result, error) {
 }
 
 func (m *Mover) ensureCache(ctx context.Context,
-	dataPVC *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error) {
+	dataPVC *corev1.PersistentVolumeClaim, isTemporary bool) (*corev1.PersistentVolumeClaim, error) {
 	// Create a separate vh for the Restic cache volume that's based on the main
 	// vh, but override options where necessary.
 	cacheConfig := []volumehandler.VHOption{
@@ -213,8 +216,8 @@ func (m *Mover) ensureCache(ctx context.Context,
 
 	// Allocate cache volume
 	cacheName := mover.VolSyncPrefix + m.owner.GetName() + "-cache"
-	m.logger.Info("allocating cache volume", "PVC", cacheName)
-	return cacheVh.EnsureNewPVC(ctx, m.logger, cacheName)
+	m.logger.Info("allocating cache volume", "PVC", cacheName, "isTemporary", isTemporary)
+	return cacheVh.EnsureNewPVC(ctx, m.logger, cacheName, isTemporary)
 }
 
 func (m *Mover) ensureSourcePVC(ctx context.Context) (*corev1.PersistentVolumeClaim, error) {
@@ -249,7 +252,7 @@ func (m *Mover) ensureDestinationPVC(ctx context.Context) (*corev1.PersistentVol
 		return m.vh.UseProvidedPVC(ctx, dataPVCName)
 	}
 	// Need to allocate the incoming data volume
-	return m.vh.EnsureNewPVC(ctx, m.logger, dataPVCName)
+	return m.vh.EnsureNewPVC(ctx, m.logger, dataPVCName, m.cleanupTempDestinationPVC)
 }
 
 func (m *Mover) getDestinationPVCName() (bool, string) {

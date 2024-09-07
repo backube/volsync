@@ -217,3 +217,19 @@
       vars:
         pvc1_name: data-source
         pvc2_name: data-dest
+
+    # Check that the cache PVC is preserved
+    # since we're using cleanupCachePVC: false
+    - name: Confirm cache PVC is preserved
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: PersistentVolumeClaim
+        name: volsync-restore-cache
+        namespace: "{{ namespace }}"
+      register: cachepvcreloaded
+
+    - name: Check cache pvc preserved (cleanupCachePVC is false by default)
+      ansible.builtin.fail:
+        msg: cache pvc should be preserved, but has been deleted
+      when:
+        cachepvcreloaded.resources | length == 0

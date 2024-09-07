@@ -92,7 +92,11 @@ var _ = Describe("Volumehandler", func() {
 				rd.Spec.Rsync.StorageClassName = &customSC
 			})
 
-			It("can be used to provision a temporary PVC", func() {
+			pvcName := "thepvc"
+			var newPVC *corev1.PersistentVolumeClaim
+			var isTemporary bool
+
+			JustBeforeEach(func() {
 				vh, err := NewVolumeHandler(
 					WithClient(k8sClient),
 					WithOwner(rd),
@@ -101,13 +105,32 @@ var _ = Describe("Volumehandler", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(vh).ToNot(BeNil())
 
-				pvcName := "thepvc"
-				newPVC, err := vh.EnsureNewPVC(context.TODO(), logger, pvcName)
+				newPVC, err = vh.EnsureNewPVC(context.TODO(), logger, pvcName, isTemporary)
 				Expect(err).ToNot(HaveOccurred())
-				Expect(newPVC).ToNot(BeNil())
-				Expect(*newPVC.Spec.StorageClassName).To(Equal(customSC))
-				Expect(*(newPVC.Spec.Resources.Requests.Storage())).To(Equal((capacity)))
-				Expect(newPVC.Name).To(Equal(pvcName))
+			})
+
+			When("isTemporary is false", func() {
+				BeforeEach(func() {
+					isTemporary = false
+				})
+				It("can be used to provision a dynamic PVC", func() {
+					Expect(newPVC).ToNot(BeNil())
+					Expect(*newPVC.Spec.StorageClassName).To(Equal(customSC))
+					Expect(*(newPVC.Spec.Resources.Requests.Storage())).To(Equal((capacity)))
+					Expect(newPVC.Name).To(Equal(pvcName))
+
+					Expect(newPVC.Labels).NotTo(HaveKey("volsync.backube/cleanup"))
+				})
+			})
+
+			When("isTemporary is true", func() {
+				BeforeEach(func() {
+					isTemporary = true
+				})
+				It("Should mark the pvc for cleanup", func() {
+					Expect(newPVC).ToNot(BeNil())
+					Expect(newPVC.Labels).To(HaveKey("volsync.backube/cleanup"))
+				})
 			})
 		})
 

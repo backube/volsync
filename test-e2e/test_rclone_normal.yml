@@ -177,6 +177,22 @@
       delay: 1
       retries: 300
 
+    # Check that the dynamically provisioned destination PVC is still there
+    # and that it has NOT been cleaned up
+    - name: Confirm dynamically provisioned destination PVC is preserved (no cleanup by default)
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: PersistentVolumeClaim
+        name: volsync-destination-dest
+        namespace: "{{ namespace }}"
+      register: destpvc
+
+    - name: Check dest pvc was not deleted
+      ansible.builtin.fail:
+        msg: destination pvc (dynamically provisioned by volsync) should be preserved, but has been deleted
+      when:
+        destpvc.resources | length == 0
+
     - name: Convert latestImage to PVC using VolumePopulator
       kubernetes.core.k8s:
         state: present
