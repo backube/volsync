@@ -167,6 +167,16 @@ stages:
         mountPath: {}
   - entrypoint:
     - volsync-custom-scorecard-tests
+    - test_restic_with_restoreoptions.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_restic_with_restoreoptions.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
     - test_restic_without_trigger.yml
     image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
