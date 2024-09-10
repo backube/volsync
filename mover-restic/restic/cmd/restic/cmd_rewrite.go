@@ -3,11 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/restic/restic/internal/backend"
 	"github.com/restic/restic/internal/debug"
 	"github.com/restic/restic/internal/errors"
 	"github.com/restic/restic/internal/repository"
@@ -38,12 +38,47 @@ use the "prune" command.
 EXIT STATUS
 ===========
 
-Exit status is 0 if the command was successful, and non-zero if there was any error.
+Exit status is 0 if the command was successful.
+Exit status is 1 if there was any error.
+Exit status is 10 if the repository does not exist.
+Exit status is 11 if the repository is already locked.
+Exit status is 12 if the password is incorrect.
 `,
+	GroupID:           cmdGroupDefault,
 	DisableAutoGenTag: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runRewrite(cmd.Context(), rewriteOptions, globalOptions, args)
 	},
+}
+
+type snapshotMetadata struct {
+	Hostname string
+	Time     *time.Time
+}
+
+type snapshotMetadataArgs struct {
+	Hostname string
+	Time     string
+}
+
+func (sma snapshotMetadataArgs) empty() bool {
+	return sma.Hostname == "" && sma.Time == ""
+}
+
+func (sma snapshotMetadataArgs) convert() (*snapshotMetadata, error) {
+	if sma.empty() {
+		return nil, nil
+	}
+
+	var timeStamp *time.Time
+	if sma.Time != "" {
+		t, err := time.ParseInLocation(TimeFormat, sma.Time, time.Local)
+		if err != nil {
+			return nil, errors.Fatalf("error in time option: %v\n", err)
+		}
+		timeStamp = &t
+	}
+	return &snapshotMetadata{Hostname: sma.Hostname, Time: timeStamp}, nil
 }
 
 // RewriteOptions collects all options for the rewrite command.
@@ -51,6 +86,7 @@ type RewriteOptions struct {
 	Forget bool
 	DryRun bool
 
+	Metadata snapshotMetadataArgs
 	restic.SnapshotFilter
 	excludePatternOptions
 }
@@ -63,10 +99,14 @@ func init() {
 	f := cmdRewrite.Flags()
 	f.BoolVarP(&rewriteOptions.Forget, "forget", "", false, "remove original snapshots after creating new ones")
 	f.BoolVarP(&rewriteOptions.DryRun, "dry-run", "n", false, "do not do anything, just print what would be done")
+	f.StringVar(&rewriteOptions.Metadata.Hostname, "new-host", "", "replace hostname")
+	f.StringVar(&rewriteOptions.Metadata.Time, "new-time", "", "replace time of the backup")
 
 	initMultiSnapshotFilter(f, &rewriteOptions.SnapshotFilter, true)
 	initExcludePatternOptions(f, &rewriteOptions.excludePatternOptions)
 }
+
+type rewriteFilterFunc func(ctx context.Context, sn *restic.Snapshot) (restic.ID, error)
 
 func rewriteSnapshot(ctx context.Context, repo *repository.Repository, sn *restic.Snapshot, opts RewriteOptions) (bool, error) {
 	if sn.Tree == nil {
@@ -78,33 +118,59 @@ func rewriteSnapshot(ctx context.Context, repo *repository.Repository, sn *resti
 		return false, err
 	}
 
-	selectByName := func(nodepath string) bool {
-		for _, reject := range rejectByNameFuncs {
-			if reject(nodepath) {
-				return false
-			}
-		}
-		return true
+	metadata, err := opts.Metadata.convert()
+
+	if err != nil {
+		return false, err
 	}
 
-	rewriter := walker.NewTreeRewriter(walker.RewriteOpts{
-		RewriteNode: func(node *restic.Node, path string) *restic.Node {
+	var filter rewriteFilterFunc
+
+	if len(rejectByNameFuncs) > 0 {
+		selectByName := func(nodepath string) bool {
+			for _, reject := range rejectByNameFuncs {
+				if reject(nodepath) {
+					return false
+				}
+			}
+			return true
+		}
+
+		rewriteNode := func(node *restic.Node, path string) *restic.Node {
 			if selectByName(path) {
 				return node
 			}
 			Verbosef(fmt.Sprintf("excluding %s\n", path))
 			return nil
-		},
-		DisableNodeCache: true,
-	})
+		}
+
+		rewriter, querySize := walker.NewSnapshotSizeRewriter(rewriteNode)
+
+		filter = func(ctx context.Context, sn *restic.Snapshot) (restic.ID, error) {
+			id, err := rewriter.RewriteTree(ctx, repo, "/", *sn.Tree)
+			if err != nil {
+				return restic.ID{}, err
+			}
+			ss := querySize()
+			if sn.Summary != nil {
+				sn.Summary.TotalFilesProcessed = ss.FileCount
+				sn.Summary.TotalBytesProcessed = ss.FileSize
+			}
+			return id, err
+		}
+
+	} else {
+		filter = func(_ context.Context, sn *restic.Snapshot) (restic.ID, error) {
+			return *sn.Tree, nil
+		}
+	}
 
 	return filterAndReplaceSnapshot(ctx, repo, sn,
-		func(ctx context.Context, sn *restic.Snapshot) (restic.ID, error) {
-			return rewriter.RewriteTree(ctx, repo, "/", *sn.Tree)
-		}, opts.DryRun, opts.Forget, "rewrite")
+		filter, opts.DryRun, opts.Forget, metadata, "rewrite")
 }
 
-func filterAndReplaceSnapshot(ctx context.Context, repo restic.Repository, sn *restic.Snapshot, filter func(ctx context.Context, sn *restic.Snapshot) (restic.ID, error), dryRun bool, forget bool, addTag string) (bool, error) {
+func filterAndReplaceSnapshot(ctx context.Context, repo restic.Repository, sn *restic.Snapshot,
+	filter rewriteFilterFunc, dryRun bool, forget bool, newMetadata *snapshotMetadata, addTag string) (bool, error) {
 
 	wg, wgCtx := errgroup.WithContext(ctx)
 	repo.StartPackUploader(wgCtx, wg)
@@ -128,8 +194,7 @@ func filterAndReplaceSnapshot(ctx context.Context, repo restic.Repository, sn *r
 		if dryRun {
 			Verbosef("would delete empty snapshot\n")
 		} else {
-			h := restic.Handle{Type: restic.SnapshotFile, Name: sn.ID().String()}
-			if err = repo.Backend().Remove(ctx, h); err != nil {
+			if err = repo.RemoveUnpacked(ctx, restic.SnapshotFile, *sn.ID()); err != nil {
 				return false, err
 			}
 			debug.Log("removed empty snapshot %v", sn.ID())
@@ -138,7 +203,7 @@ func filterAndReplaceSnapshot(ctx context.Context, repo restic.Repository, sn *r
 		return true, nil
 	}
 
-	if filteredTree == *sn.Tree {
+	if filteredTree == *sn.Tree && newMetadata == nil {
 		debug.Log("Snapshot %v not modified", sn)
 		return false, nil
 	}
@@ -149,6 +214,14 @@ func filterAndReplaceSnapshot(ctx context.Context, repo restic.Repository, sn *r
 
 		if forget {
 			Verbosef("would remove old snapshot\n")
+		}
+
+		if newMetadata != nil && newMetadata.Time != nil {
+			Verbosef("would set time to %s\n", newMetadata.Time)
+		}
+
+		if newMetadata != nil && newMetadata.Hostname != "" {
+			Verbosef("would set hostname to %s\n", newMetadata.Hostname)
 		}
 
 		return true, nil
@@ -162,6 +235,16 @@ func filterAndReplaceSnapshot(ctx context.Context, repo restic.Repository, sn *r
 		sn.AddTags([]string{addTag})
 	}
 
+	if newMetadata != nil && newMetadata.Time != nil {
+		Verbosef("setting time to %s\n", *newMetadata.Time)
+		sn.Time = *newMetadata.Time
+	}
+
+	if newMetadata != nil && newMetadata.Hostname != "" {
+		Verbosef("setting host to %s\n", newMetadata.Hostname)
+		sn.Hostname = newMetadata.Hostname
+	}
+
 	// Save the new snapshot.
 	id, err := restic.SaveSnapshot(ctx, repo, sn)
 	if err != nil {
@@ -170,8 +253,7 @@ func filterAndReplaceSnapshot(ctx context.Context, repo restic.Repository, sn *r
 	Verbosef("saved new snapshot %v\n", id.Str())
 
 	if forget {
-		h := restic.Handle{Type: restic.SnapshotFile, Name: sn.ID().String()}
-		if err = repo.Backend().Remove(ctx, h); err != nil {
+		if err = repo.RemoveUnpacked(ctx, restic.SnapshotFile, *sn.ID()); err != nil {
 			return false, err
 		}
 		debug.Log("removed old snapshot %v", sn.ID())
@@ -181,33 +263,28 @@ func filterAndReplaceSnapshot(ctx context.Context, repo restic.Repository, sn *r
 }
 
 func runRewrite(ctx context.Context, opts RewriteOptions, gopts GlobalOptions, args []string) error {
-	if opts.excludePatternOptions.Empty() {
-		return errors.Fatal("Nothing to do: no excludes provided")
+	if opts.excludePatternOptions.Empty() && opts.Metadata.empty() {
+		return errors.Fatal("Nothing to do: no excludes provided and no new metadata provided")
 	}
 
-	repo, err := OpenRepository(ctx, gopts)
+	var (
+		repo   *repository.Repository
+		unlock func()
+		err    error
+	)
+
+	if opts.Forget {
+		Verbosef("create exclusive lock for repository\n")
+		ctx, repo, unlock, err = openWithExclusiveLock(ctx, gopts, opts.DryRun)
+	} else {
+		ctx, repo, unlock, err = openWithAppendLock(ctx, gopts, opts.DryRun)
+	}
 	if err != nil {
 		return err
 	}
+	defer unlock()
 
-	if !opts.DryRun {
-		var lock *restic.Lock
-		var err error
-		if opts.Forget {
-			Verbosef("create exclusive lock for repository\n")
-			lock, ctx, err = lockRepoExclusive(ctx, repo, gopts.RetryLock, gopts.JSON)
-		} else {
-			lock, ctx, err = lockRepo(ctx, repo, gopts.RetryLock, gopts.JSON)
-		}
-		defer unlockRepo(lock)
-		if err != nil {
-			return err
-		}
-	} else {
-		repo.SetDryRun()
-	}
-
-	snapshotLister, err := backend.MemorizeList(ctx, repo.Backend(), restic.SnapshotFile)
+	snapshotLister, err := restic.MemorizeList(ctx, repo, restic.SnapshotFile)
 	if err != nil {
 		return err
 	}
@@ -219,7 +296,7 @@ func runRewrite(ctx context.Context, opts RewriteOptions, gopts GlobalOptions, a
 
 	changedCount := 0
 	for sn := range FindFilteredSnapshots(ctx, snapshotLister, repo, &opts.SnapshotFilter, args) {
-		Verbosef("\nsnapshot %s of %v at %s)\n", sn.ID().Str(), sn.Paths, sn.Time)
+		Verbosef("\n%v\n", sn)
 		changed, err := rewriteSnapshot(ctx, repo, sn, opts)
 		if err != nil {
 			return errors.Fatalf("unable to rewrite snapshot ID %q: %v", sn.ID().Str(), err)
@@ -227,6 +304,9 @@ func runRewrite(ctx context.Context, opts RewriteOptions, gopts GlobalOptions, a
 		if changed {
 			changedCount++
 		}
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
 
 	Verbosef("\n")

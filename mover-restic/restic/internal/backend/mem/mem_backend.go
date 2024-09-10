@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"fmt"
 	"hash"
 	"io"
 	"net/http"
@@ -12,15 +13,15 @@ import (
 	"github.com/cespare/xxhash/v2"
 	"github.com/restic/restic/internal/backend"
 	"github.com/restic/restic/internal/backend/location"
+	"github.com/restic/restic/internal/backend/util"
 	"github.com/restic/restic/internal/debug"
 	"github.com/restic/restic/internal/errors"
-	"github.com/restic/restic/internal/restic"
 )
 
-type memMap map[restic.Handle][]byte
+type memMap map[backend.Handle][]byte
 
 // make sure that MemoryBackend implements backend.Backend
-var _ restic.Backend = &MemoryBackend{}
+var _ backend.Backend = &MemoryBackend{}
 
 // NewFactory creates a persistent mem backend
 func NewFactory() location.Factory {
@@ -28,7 +29,7 @@ func NewFactory() location.Factory {
 
 	return location.NewHTTPBackendFactory[struct{}, *MemoryBackend](
 		"mem",
-		func(s string) (*struct{}, error) {
+		func(_ string) (*struct{}, error) {
 			return &struct{}{}, nil
 		},
 		location.NoPassword,
@@ -41,7 +42,8 @@ func NewFactory() location.Factory {
 	)
 }
 
-var errNotFound = errors.New("not found")
+var errNotFound = fmt.Errorf("not found")
+var errTooSmall = errors.New("access beyond end of file")
 
 const connectionCount = 2
 
@@ -68,13 +70,17 @@ func (be *MemoryBackend) IsNotExist(err error) bool {
 	return errors.Is(err, errNotFound)
 }
 
+func (be *MemoryBackend) IsPermanentError(err error) bool {
+	return be.IsNotExist(err) || errors.Is(err, errTooSmall)
+}
+
 // Save adds new Data to the backend.
-func (be *MemoryBackend) Save(ctx context.Context, h restic.Handle, rd restic.RewindReader) error {
+func (be *MemoryBackend) Save(ctx context.Context, h backend.Handle, rd backend.RewindReader) error {
 	be.m.Lock()
 	defer be.m.Unlock()
 
-	h.ContainedBlobType = restic.InvalidBlob
-	if h.Type == restic.ConfigFile {
+	h.IsMetadata = false
+	if h.Type == backend.ConfigFile {
 		h.Name = ""
 	}
 
@@ -112,16 +118,16 @@ func (be *MemoryBackend) Save(ctx context.Context, h restic.Handle, rd restic.Re
 
 // Load runs fn with a reader that yields the contents of the file at h at the
 // given offset.
-func (be *MemoryBackend) Load(ctx context.Context, h restic.Handle, length int, offset int64, fn func(rd io.Reader) error) error {
-	return backend.DefaultLoad(ctx, h, length, offset, be.openReader, fn)
+func (be *MemoryBackend) Load(ctx context.Context, h backend.Handle, length int, offset int64, fn func(rd io.Reader) error) error {
+	return util.DefaultLoad(ctx, h, length, offset, be.openReader, fn)
 }
 
-func (be *MemoryBackend) openReader(ctx context.Context, h restic.Handle, length int, offset int64) (io.ReadCloser, error) {
+func (be *MemoryBackend) openReader(ctx context.Context, h backend.Handle, length int, offset int64) (io.ReadCloser, error) {
 	be.m.Lock()
 	defer be.m.Unlock()
 
-	h.ContainedBlobType = restic.InvalidBlob
-	if h.Type == restic.ConfigFile {
+	h.IsMetadata = false
+	if h.Type == backend.ConfigFile {
 		h.Name = ""
 	}
 
@@ -130,12 +136,12 @@ func (be *MemoryBackend) openReader(ctx context.Context, h restic.Handle, length
 	}
 
 	buf := be.data[h]
-	if offset > int64(len(buf)) {
-		return nil, errors.New("offset beyond end of file")
+	if offset+int64(length) > int64(len(buf)) {
+		return nil, errTooSmall
 	}
 
 	buf = buf[offset:]
-	if length > 0 && len(buf) > length {
+	if length > 0 {
 		buf = buf[:length]
 	}
 
@@ -143,29 +149,29 @@ func (be *MemoryBackend) openReader(ctx context.Context, h restic.Handle, length
 }
 
 // Stat returns information about a file in the backend.
-func (be *MemoryBackend) Stat(ctx context.Context, h restic.Handle) (restic.FileInfo, error) {
+func (be *MemoryBackend) Stat(ctx context.Context, h backend.Handle) (backend.FileInfo, error) {
 	be.m.Lock()
 	defer be.m.Unlock()
 
-	h.ContainedBlobType = restic.InvalidBlob
-	if h.Type == restic.ConfigFile {
+	h.IsMetadata = false
+	if h.Type == backend.ConfigFile {
 		h.Name = ""
 	}
 
 	e, ok := be.data[h]
 	if !ok {
-		return restic.FileInfo{}, errNotFound
+		return backend.FileInfo{}, errNotFound
 	}
 
-	return restic.FileInfo{Size: int64(len(e)), Name: h.Name}, ctx.Err()
+	return backend.FileInfo{Size: int64(len(e)), Name: h.Name}, ctx.Err()
 }
 
 // Remove deletes a file from the backend.
-func (be *MemoryBackend) Remove(ctx context.Context, h restic.Handle) error {
+func (be *MemoryBackend) Remove(ctx context.Context, h backend.Handle) error {
 	be.m.Lock()
 	defer be.m.Unlock()
 
-	h.ContainedBlobType = restic.InvalidBlob
+	h.IsMetadata = false
 	if _, ok := be.data[h]; !ok {
 		return errNotFound
 	}
@@ -176,7 +182,7 @@ func (be *MemoryBackend) Remove(ctx context.Context, h restic.Handle) error {
 }
 
 // List returns a channel which yields entries from the backend.
-func (be *MemoryBackend) List(ctx context.Context, t restic.FileType, fn func(restic.FileInfo) error) error {
+func (be *MemoryBackend) List(ctx context.Context, t backend.FileType, fn func(backend.FileInfo) error) error {
 	entries := make(map[string]int64)
 
 	be.m.Lock()
@@ -190,7 +196,7 @@ func (be *MemoryBackend) List(ctx context.Context, t restic.FileType, fn func(re
 	be.m.Unlock()
 
 	for name, size := range entries {
-		fi := restic.FileInfo{
+		fi := backend.FileInfo{
 			Name: name,
 			Size: size,
 		}
@@ -214,11 +220,6 @@ func (be *MemoryBackend) List(ctx context.Context, t restic.FileType, fn func(re
 
 func (be *MemoryBackend) Connections() uint {
 	return connectionCount
-}
-
-// Location returns the location of the backend (RAM).
-func (be *MemoryBackend) Location() string {
-	return "RAM"
 }
 
 // Hasher may return a hash function for calculating a content hash for the backend

@@ -2,13 +2,11 @@ package main
 
 import (
 	"context"
-	"strings"
-	"sync"
+	"path/filepath"
 	"time"
 
 	"github.com/restic/restic/internal/debug"
 	"github.com/restic/restic/internal/errors"
-	"github.com/restic/restic/internal/filter"
 	"github.com/restic/restic/internal/restic"
 	"github.com/restic/restic/internal/restorer"
 	"github.com/restic/restic/internal/ui"
@@ -28,54 +26,38 @@ a directory.
 The special snapshotID "latest" can be used to restore the latest snapshot in the
 repository.
 
-To only restore a specific subfolder, you can use the "<snapshotID>:<subfolder>"
+To only restore a specific subfolder, you can use the "snapshotID:subfolder"
 syntax, where "subfolder" is a path within the snapshot.
 
 EXIT STATUS
 ===========
 
-Exit status is 0 if the command was successful, and non-zero if there was any error.
+Exit status is 0 if the command was successful.
+Exit status is 1 if there was any error.
+Exit status is 10 if the repository does not exist.
+Exit status is 11 if the repository is already locked.
+Exit status is 12 if the password is incorrect.
 `,
+	GroupID:           cmdGroupDefault,
 	DisableAutoGenTag: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ctx := cmd.Context()
-		var wg sync.WaitGroup
-		cancelCtx, cancel := context.WithCancel(ctx)
-		defer func() {
-			// shutdown termstatus
-			cancel()
-			wg.Wait()
-		}()
-
-		term := termstatus.New(globalOptions.stdout, globalOptions.stderr, globalOptions.Quiet)
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			term.Run(cancelCtx)
-		}()
-
-		// allow usage of warnf / verbosef
-		prevStdout, prevStderr := globalOptions.stdout, globalOptions.stderr
-		defer func() {
-			globalOptions.stdout, globalOptions.stderr = prevStdout, prevStderr
-		}()
-		stdioWrapper := ui.NewStdioWrapper(term)
-		globalOptions.stdout, globalOptions.stderr = stdioWrapper.Stdout(), stdioWrapper.Stderr()
-
-		return runRestore(ctx, restoreOptions, globalOptions, term, args)
+		term, cancel := setupTermstatus()
+		defer cancel()
+		return runRestore(cmd.Context(), restoreOptions, globalOptions, term, args)
 	},
 }
 
 // RestoreOptions collects all options for the restore command.
 type RestoreOptions struct {
-	Exclude            []string
-	InsensitiveExclude []string
-	Include            []string
-	InsensitiveInclude []string
-	Target             string
+	excludePatternOptions
+	includePatternOptions
+	Target string
 	restic.SnapshotFilter
-	Sparse bool
-	Verify bool
+	DryRun    bool
+	Sparse    bool
+	Verify    bool
+	Overwrite restorer.OverwriteBehavior
+	Delete    bool
 }
 
 var restoreOptions RestoreOptions
@@ -84,52 +66,34 @@ func init() {
 	cmdRoot.AddCommand(cmdRestore)
 
 	flags := cmdRestore.Flags()
-	flags.StringArrayVarP(&restoreOptions.Exclude, "exclude", "e", nil, "exclude a `pattern` (can be specified multiple times)")
-	flags.StringArrayVar(&restoreOptions.InsensitiveExclude, "iexclude", nil, "same as --exclude but ignores the casing of `pattern`")
-	flags.StringArrayVarP(&restoreOptions.Include, "include", "i", nil, "include a `pattern`, exclude everything else (can be specified multiple times)")
-	flags.StringArrayVar(&restoreOptions.InsensitiveInclude, "iinclude", nil, "same as --include but ignores the casing of `pattern`")
 	flags.StringVarP(&restoreOptions.Target, "target", "t", "", "directory to extract data to")
 
+	initExcludePatternOptions(flags, &restoreOptions.excludePatternOptions)
+	initIncludePatternOptions(flags, &restoreOptions.includePatternOptions)
+
 	initSingleSnapshotFilter(flags, &restoreOptions.SnapshotFilter)
+	flags.BoolVar(&restoreOptions.DryRun, "dry-run", false, "do not write any data, just show what would be done")
 	flags.BoolVar(&restoreOptions.Sparse, "sparse", false, "restore files as sparse")
 	flags.BoolVar(&restoreOptions.Verify, "verify", false, "verify restored files content")
+	flags.Var(&restoreOptions.Overwrite, "overwrite", "overwrite behavior, one of (always|if-changed|if-newer|never) (default: always)")
+	flags.BoolVar(&restoreOptions.Delete, "delete", false, "delete files from target directory if they do not exist in snapshot. Use '--dry-run -vv' to check what would be deleted")
 }
 
 func runRestore(ctx context.Context, opts RestoreOptions, gopts GlobalOptions,
 	term *termstatus.Terminal, args []string) error {
 
-	hasExcludes := len(opts.Exclude) > 0 || len(opts.InsensitiveExclude) > 0
-	hasIncludes := len(opts.Include) > 0 || len(opts.InsensitiveInclude) > 0
-
-	// Validate provided patterns
-	if len(opts.Exclude) > 0 {
-		if err := filter.ValidatePatterns(opts.Exclude); err != nil {
-			return errors.Fatalf("--exclude: %s", err)
-		}
-	}
-	if len(opts.InsensitiveExclude) > 0 {
-		if err := filter.ValidatePatterns(opts.InsensitiveExclude); err != nil {
-			return errors.Fatalf("--iexclude: %s", err)
-		}
-	}
-	if len(opts.Include) > 0 {
-		if err := filter.ValidatePatterns(opts.Include); err != nil {
-			return errors.Fatalf("--include: %s", err)
-		}
-	}
-	if len(opts.InsensitiveInclude) > 0 {
-		if err := filter.ValidatePatterns(opts.InsensitiveInclude); err != nil {
-			return errors.Fatalf("--iinclude: %s", err)
-		}
+	excludePatternFns, err := opts.excludePatternOptions.CollectPatterns()
+	if err != nil {
+		return err
 	}
 
-	for i, str := range opts.InsensitiveExclude {
-		opts.InsensitiveExclude[i] = strings.ToLower(str)
+	includePatternFns, err := opts.includePatternOptions.CollectPatterns()
+	if err != nil {
+		return err
 	}
 
-	for i, str := range opts.InsensitiveInclude {
-		opts.InsensitiveInclude[i] = strings.ToLower(str)
-	}
+	hasExcludes := len(excludePatternFns) > 0
+	hasIncludes := len(includePatternFns) > 0
 
 	switch {
 	case len(args) == 0:
@@ -145,30 +109,29 @@ func runRestore(ctx context.Context, opts RestoreOptions, gopts GlobalOptions,
 	if hasExcludes && hasIncludes {
 		return errors.Fatal("exclude and include patterns are mutually exclusive")
 	}
+	if opts.DryRun && opts.Verify {
+		return errors.Fatal("--dry-run and --verify are mutually exclusive")
+	}
+
+	if opts.Delete && filepath.Clean(opts.Target) == "/" && !hasExcludes && !hasIncludes {
+		return errors.Fatal("'--target / --delete' must be combined with an include or exclude filter")
+	}
 
 	snapshotIDString := args[0]
 
 	debug.Log("restore %v to %v", snapshotIDString, opts.Target)
 
-	repo, err := OpenRepository(ctx, gopts)
+	ctx, repo, unlock, err := openWithReadLock(ctx, gopts, gopts.NoLock)
 	if err != nil {
 		return err
 	}
-
-	if !gopts.NoLock {
-		var lock *restic.Lock
-		lock, ctx, err = lockRepo(ctx, repo, gopts.RetryLock, gopts.JSON)
-		defer unlockRepo(lock)
-		if err != nil {
-			return err
-		}
-	}
+	defer unlock()
 
 	sn, subfolder, err := (&restic.SnapshotFilter{
 		Hosts: opts.Hosts,
 		Paths: opts.Paths,
 		Tags:  opts.Tags,
-	}).FindLatest(ctx, repo.Backend(), repo, snapshotIDString)
+	}).FindLatest(ctx, repo, repo, snapshotIDString)
 	if err != nil {
 		return errors.Fatalf("failed to find snapshot: %v", err)
 	}
@@ -187,59 +150,64 @@ func runRestore(ctx context.Context, opts RestoreOptions, gopts GlobalOptions,
 	msg := ui.NewMessage(term, gopts.verbosity)
 	var printer restoreui.ProgressPrinter
 	if gopts.JSON {
-		printer = restoreui.NewJSONProgress(term)
+		printer = restoreui.NewJSONProgress(term, gopts.verbosity)
 	} else {
-		printer = restoreui.NewTextProgress(term)
+		printer = restoreui.NewTextProgress(term, gopts.verbosity)
 	}
 
 	progress := restoreui.NewProgress(printer, calculateProgressInterval(!gopts.Quiet, gopts.JSON))
-	res := restorer.NewRestorer(repo, sn, opts.Sparse, progress)
+	res := restorer.NewRestorer(repo, sn, restorer.Options{
+		DryRun:    opts.DryRun,
+		Sparse:    opts.Sparse,
+		Progress:  progress,
+		Overwrite: opts.Overwrite,
+		Delete:    opts.Delete,
+	})
 
 	totalErrors := 0
 	res.Error = func(location string, err error) error {
-		msg.E("ignoring error for %s: %s\n", location, err)
 		totalErrors++
-		return nil
+		return progress.Error(location, err)
+	}
+	res.Warn = func(message string) {
+		msg.E("Warning: %s\n", message)
 	}
 
-	excludePatterns := filter.ParsePatterns(opts.Exclude)
-	insensitiveExcludePatterns := filter.ParsePatterns(opts.InsensitiveExclude)
-	selectExcludeFilter := func(item string, dstpath string, node *restic.Node) (selectedForRestore bool, childMayBeSelected bool) {
-		matched, err := filter.List(excludePatterns, item)
-		if err != nil {
-			msg.E("error for exclude pattern: %v", err)
-		}
+	selectExcludeFilter := func(item string, isDir bool) (selectedForRestore bool, childMayBeSelected bool) {
+		matched := false
+		for _, rejectFn := range excludePatternFns {
+			matched = matched || rejectFn(item)
 
-		matchedInsensitive, err := filter.List(insensitiveExcludePatterns, strings.ToLower(item))
-		if err != nil {
-			msg.E("error for iexclude pattern: %v", err)
+			// implementing a short-circuit here to improve the performance
+			// to prevent additional pattern matching once the first pattern
+			// matches.
+			if matched {
+				break
+			}
 		}
-
 		// An exclude filter is basically a 'wildcard but foo',
 		// so even if a childMayMatch, other children of a dir may not,
 		// therefore childMayMatch does not matter, but we should not go down
 		// unless the dir is selected for restore
-		selectedForRestore = !matched && !matchedInsensitive
-		childMayBeSelected = selectedForRestore && node.Type == "dir"
+		selectedForRestore = !matched
+		childMayBeSelected = selectedForRestore && isDir
 
 		return selectedForRestore, childMayBeSelected
 	}
 
-	includePatterns := filter.ParsePatterns(opts.Include)
-	insensitiveIncludePatterns := filter.ParsePatterns(opts.InsensitiveInclude)
-	selectIncludeFilter := func(item string, dstpath string, node *restic.Node) (selectedForRestore bool, childMayBeSelected bool) {
-		matched, childMayMatch, err := filter.ListWithChild(includePatterns, item)
-		if err != nil {
-			msg.E("error for include pattern: %v", err)
-		}
+	selectIncludeFilter := func(item string, isDir bool) (selectedForRestore bool, childMayBeSelected bool) {
+		selectedForRestore = false
+		childMayBeSelected = false
+		for _, includeFn := range includePatternFns {
+			matched, childMayMatch := includeFn(item)
+			selectedForRestore = selectedForRestore || matched
+			childMayBeSelected = childMayBeSelected || childMayMatch
 
-		matchedInsensitive, childMayMatchInsensitive, err := filter.ListWithChild(insensitiveIncludePatterns, strings.ToLower(item))
-		if err != nil {
-			msg.E("error for iexclude pattern: %v", err)
+			if selectedForRestore && childMayBeSelected {
+				break
+			}
 		}
-
-		selectedForRestore = matched || matchedInsensitive
-		childMayBeSelected = (childMayMatch || childMayMatchInsensitive) && node.Type == "dir"
+		childMayBeSelected = childMayBeSelected && isDir
 
 		return selectedForRestore, childMayBeSelected
 	}
@@ -254,7 +222,7 @@ func runRestore(ctx context.Context, opts RestoreOptions, gopts GlobalOptions,
 		msg.P("restoring %s to %s\n", res.Snapshot(), opts.Target)
 	}
 
-	err = res.RestoreTo(ctx, opts.Target)
+	countRestoredFiles, err := res.RestoreTo(ctx, opts.Target)
 	if err != nil {
 		return err
 	}
@@ -271,7 +239,8 @@ func runRestore(ctx context.Context, opts RestoreOptions, gopts GlobalOptions,
 		}
 		var count int
 		t0 := time.Now()
-		count, err = res.VerifyFiles(ctx, opts.Target)
+		bar := newTerminalProgressMax(!gopts.Quiet && !gopts.JSON && stdoutIsTerminal(), 0, "files verified", term)
+		count, err = res.VerifyFiles(ctx, opts.Target, countRestoredFiles, bar)
 		if err != nil {
 			return err
 		}

@@ -77,3 +77,50 @@ func TempFile(dir, prefix string) (f *os.File, err error) {
 func Chmod(name string, mode os.FileMode) error {
 	return os.Chmod(fixpath(name), mode)
 }
+
+// ClearSystem removes the system attribute from the file.
+func ClearSystem(path string) error {
+	return ClearAttribute(path, windows.FILE_ATTRIBUTE_SYSTEM)
+}
+
+// ClearAttribute removes the specified attribute from the file.
+func ClearAttribute(path string, attribute uint32) error {
+	ptr, err := windows.UTF16PtrFromString(fixpath(path))
+	if err != nil {
+		return err
+	}
+	fileAttributes, err := windows.GetFileAttributes(ptr)
+	if err != nil {
+		return err
+	}
+	if fileAttributes&attribute != 0 {
+		// Clear the attribute
+		fileAttributes &= ^uint32(attribute)
+		err = windows.SetFileAttributes(ptr, fileAttributes)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// OpenHandleForEA return a file handle for file or dir for setting/getting EAs
+func OpenHandleForEA(nodeType, path string, writeAccess bool) (handle windows.Handle, err error) {
+	path = fixpath(path)
+	fileAccess := windows.FILE_READ_EA
+	if writeAccess {
+		fileAccess = fileAccess | windows.FILE_WRITE_EA
+	}
+
+	switch nodeType {
+	case "file":
+		utf16Path := windows.StringToUTF16Ptr(path)
+		handle, err = windows.CreateFile(utf16Path, uint32(fileAccess), 0, nil, windows.OPEN_EXISTING, windows.FILE_ATTRIBUTE_NORMAL, 0)
+	case "dir":
+		utf16Path := windows.StringToUTF16Ptr(path)
+		handle, err = windows.CreateFile(utf16Path, uint32(fileAccess), 0, nil, windows.OPEN_EXISTING, windows.FILE_ATTRIBUTE_NORMAL|windows.FILE_FLAG_BACKUP_SEMANTICS, 0)
+	default:
+		return 0, nil
+	}
+	return handle, err
+}

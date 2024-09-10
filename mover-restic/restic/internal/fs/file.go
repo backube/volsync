@@ -1,6 +1,7 @@
 package fs
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -123,4 +124,39 @@ func RemoveIfExists(filename string) error {
 // precise time unit. If there is an error, it will be of type *PathError.
 func Chtimes(name string, atime time.Time, mtime time.Time) error {
 	return os.Chtimes(fixpath(name), atime, mtime)
+}
+
+// IsAccessDenied checks if the error is due to permission error.
+func IsAccessDenied(err error) bool {
+	return os.IsPermission(err)
+}
+
+// ResetPermissions resets the permissions of the file at the specified path
+func ResetPermissions(path string) error {
+	// Set the default file permissions
+	if err := os.Chmod(fixpath(path), 0600); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Readdirnames returns a list of file in a directory. Flags are passed to fs.OpenFile. O_RDONLY is implied.
+func Readdirnames(filesystem FS, dir string, flags int) ([]string, error) {
+	f, err := filesystem.OpenFile(dir, O_RDONLY|flags, 0)
+	if err != nil {
+		return nil, fmt.Errorf("openfile for readdirnames failed: %w", err)
+	}
+
+	entries, err := f.Readdirnames(-1)
+	if err != nil {
+		_ = f.Close()
+		return nil, fmt.Errorf("readdirnames %v failed: %w", dir, err)
+	}
+
+	err = f.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	return entries, nil
 }

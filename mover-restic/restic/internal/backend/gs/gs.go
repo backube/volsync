@@ -12,12 +12,13 @@ import (
 	"strings"
 
 	"cloud.google.com/go/storage"
-	"github.com/pkg/errors"
+
 	"github.com/restic/restic/internal/backend"
 	"github.com/restic/restic/internal/backend/layout"
 	"github.com/restic/restic/internal/backend/location"
+	"github.com/restic/restic/internal/backend/util"
 	"github.com/restic/restic/internal/debug"
-	"github.com/restic/restic/internal/restic"
+	"github.com/restic/restic/internal/errors"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -45,8 +46,8 @@ type Backend struct {
 	layout.Layout
 }
 
-// Ensure that *Backend implements restic.Backend.
-var _ restic.Backend = &Backend{}
+// Ensure that *Backend implements backend.Backend.
+var _ backend.Backend = &Backend{}
 
 func NewFactory() location.Factory {
 	return location.NewHTTPBackendFactory("gs", ParseConfig, location.NoPassword, Create, Open)
@@ -122,7 +123,7 @@ func open(cfg Config, rt http.RoundTripper) (*Backend, error) {
 }
 
 // Open opens the gs backend at the specified bucket.
-func Open(_ context.Context, cfg Config, rt http.RoundTripper) (restic.Backend, error) {
+func Open(_ context.Context, cfg Config, rt http.RoundTripper) (backend.Backend, error) {
 	return open(cfg, rt)
 }
 
@@ -131,10 +132,10 @@ func Open(_ context.Context, cfg Config, rt http.RoundTripper) (restic.Backend, 
 //
 // The service account must have the "storage.buckets.create" permission to
 // create a bucket the does not yet exist.
-func Create(ctx context.Context, cfg Config, rt http.RoundTripper) (restic.Backend, error) {
+func Create(ctx context.Context, cfg Config, rt http.RoundTripper) (backend.Backend, error) {
 	be, err := open(cfg, rt)
 	if err != nil {
-		return nil, errors.Wrap(err, "open")
+		return nil, err
 	}
 
 	// Try to determine if the bucket exists. If it does not, try to create it.
@@ -145,7 +146,7 @@ func Create(ctx context.Context, cfg Config, rt http.RoundTripper) (restic.Backe
 			// however, the client doesn't have storage.bucket.get permission
 			return be, nil
 		}
-		return nil, errors.Wrap(err, "service.Buckets.Get")
+		return nil, errors.WithStack(err)
 	}
 
 	if !exists {
@@ -155,7 +156,7 @@ func Create(ctx context.Context, cfg Config, rt http.RoundTripper) (restic.Backe
 		// Bucket doesn't exist, try to create it.
 		if err := be.bucket.Create(ctx, be.projectID, bucketAttrs); err != nil {
 			// Always an error, as the bucket definitely doesn't exist.
-			return nil, errors.Wrap(err, "service.Buckets.Insert")
+			return nil, errors.WithStack(err)
 		}
 
 	}
@@ -173,6 +174,21 @@ func (be *Backend) IsNotExist(err error) bool {
 	return errors.Is(err, storage.ErrObjectNotExist)
 }
 
+func (be *Backend) IsPermanentError(err error) bool {
+	if be.IsNotExist(err) {
+		return true
+	}
+
+	var gerr *googleapi.Error
+	if errors.As(err, &gerr) {
+		if gerr.Code == http.StatusRequestedRangeNotSatisfiable || gerr.Code == http.StatusUnauthorized || gerr.Code == http.StatusForbidden {
+			return true
+		}
+	}
+
+	return false
+}
+
 // Join combines path components with slashes.
 func (be *Backend) Join(p ...string) string {
 	return path.Join(p...)
@@ -180,11 +196,6 @@ func (be *Backend) Join(p ...string) string {
 
 func (be *Backend) Connections() uint {
 	return be.connections
-}
-
-// Location returns this backend's location (the bucket name).
-func (be *Backend) Location() string {
-	return be.Join(be.bucketName, be.prefix)
 }
 
 // Hasher may return a hash function for calculating a content hash for the backend
@@ -203,7 +214,7 @@ func (be *Backend) Path() string {
 }
 
 // Save stores data in the backend at the handle.
-func (be *Backend) Save(ctx context.Context, h restic.Handle, rd restic.RewindReader) error {
+func (be *Backend) Save(ctx context.Context, h backend.Handle, rd backend.RewindReader) error {
 	objName := be.Filename(h)
 
 	// Set chunk size to zero to disable resumable uploads.
@@ -241,7 +252,7 @@ func (be *Backend) Save(ctx context.Context, h restic.Handle, rd restic.RewindRe
 	}
 
 	if err != nil {
-		return errors.Wrap(err, "service.Objects.Insert")
+		return errors.WithStack(err)
 	}
 
 	// sanity check
@@ -253,14 +264,14 @@ func (be *Backend) Save(ctx context.Context, h restic.Handle, rd restic.RewindRe
 
 // Load runs fn with a reader that yields the contents of the file at h at the
 // given offset.
-func (be *Backend) Load(ctx context.Context, h restic.Handle, length int, offset int64, fn func(rd io.Reader) error) error {
+func (be *Backend) Load(ctx context.Context, h backend.Handle, length int, offset int64, fn func(rd io.Reader) error) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	return backend.DefaultLoad(ctx, h, length, offset, be.openReader, fn)
+	return util.DefaultLoad(ctx, h, length, offset, be.openReader, fn)
 }
 
-func (be *Backend) openReader(ctx context.Context, h restic.Handle, length int, offset int64) (io.ReadCloser, error) {
+func (be *Backend) openReader(ctx context.Context, h backend.Handle, length int, offset int64) (io.ReadCloser, error) {
 	if length == 0 {
 		// negative length indicates read till end to GCS lib
 		length = -1
@@ -273,24 +284,29 @@ func (be *Backend) openReader(ctx context.Context, h restic.Handle, length int, 
 		return nil, err
 	}
 
+	if length > 0 && r.Attrs.Size < offset+int64(length) {
+		_ = r.Close()
+		return nil, &googleapi.Error{Code: http.StatusRequestedRangeNotSatisfiable, Message: "restic-file-too-short"}
+	}
+
 	return r, err
 }
 
 // Stat returns information about a blob.
-func (be *Backend) Stat(ctx context.Context, h restic.Handle) (bi restic.FileInfo, err error) {
+func (be *Backend) Stat(ctx context.Context, h backend.Handle) (bi backend.FileInfo, err error) {
 	objName := be.Filename(h)
 
 	attr, err := be.bucket.Object(objName).Attrs(ctx)
 
 	if err != nil {
-		return restic.FileInfo{}, errors.Wrap(err, "service.Objects.Get")
+		return backend.FileInfo{}, errors.WithStack(err)
 	}
 
-	return restic.FileInfo{Size: attr.Size, Name: h.Name}, nil
+	return backend.FileInfo{Size: attr.Size, Name: h.Name}, nil
 }
 
 // Remove removes the blob with the given name and type.
-func (be *Backend) Remove(ctx context.Context, h restic.Handle) error {
+func (be *Backend) Remove(ctx context.Context, h backend.Handle) error {
 	objName := be.Filename(h)
 
 	err := be.bucket.Object(objName).Delete(ctx)
@@ -299,12 +315,12 @@ func (be *Backend) Remove(ctx context.Context, h restic.Handle) error {
 		err = nil
 	}
 
-	return errors.Wrap(err, "client.RemoveObject")
+	return errors.WithStack(err)
 }
 
 // List runs fn for each file in the backend which has the type t. When an
 // error occurs (or fn returns an error), List stops and returns it.
-func (be *Backend) List(ctx context.Context, t restic.FileType, fn func(restic.FileInfo) error) error {
+func (be *Backend) List(ctx context.Context, t backend.FileType, fn func(backend.FileInfo) error) error {
 	prefix, _ := be.Basedir(t)
 
 	// make sure prefix ends with a slash
@@ -330,7 +346,7 @@ func (be *Backend) List(ctx context.Context, t restic.FileType, fn func(restic.F
 			continue
 		}
 
-		fi := restic.FileInfo{
+		fi := backend.FileInfo{
 			Name: path.Base(m),
 			Size: int64(attrs.Size),
 		}
@@ -350,7 +366,7 @@ func (be *Backend) List(ctx context.Context, t restic.FileType, fn func(restic.F
 
 // Delete removes all restic keys in the bucket. It will not remove the bucket itself.
 func (be *Backend) Delete(ctx context.Context) error {
-	return backend.DefaultDelete(ctx, be)
+	return util.DefaultDelete(ctx, be)
 }
 
 // Close does nothing.

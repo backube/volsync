@@ -6,11 +6,11 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/restic/restic/internal/crypto"
 	"github.com/restic/restic/internal/debug"
 	"github.com/restic/restic/internal/fs"
 	"github.com/restic/restic/internal/restic"
@@ -25,13 +25,13 @@ func TestSnapshot(t testing.TB, repo restic.Repository, path string, parent *res
 		Tags:     []string{"test"},
 	}
 	if parent != nil {
-		sn, err := restic.LoadSnapshot(context.TODO(), arch.Repo, *parent)
+		sn, err := restic.LoadSnapshot(context.TODO(), repo, *parent)
 		if err != nil {
 			t.Fatal(err)
 		}
 		opts.ParentSnapshot = sn
 	}
-	sn, _, err := arch.Snapshot(context.TODO(), []string{path}, opts)
+	sn, _, _, err := arch.Snapshot(context.TODO(), []string{path}, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,11 +63,29 @@ func (s TestSymlink) String() string {
 	return "<Symlink>"
 }
 
+// TestHardlink describes a hardlink created for a test.
+type TestHardlink struct {
+	Target string
+}
+
+func (s TestHardlink) String() string {
+	return "<Hardlink>"
+}
+
 // TestCreateFiles creates a directory structure described by dir at target,
 // which must already exist. On Windows, symlinks aren't created.
 func TestCreateFiles(t testing.TB, target string, dir TestDir) {
 	t.Helper()
-	for name, item := range dir {
+
+	// ensure a stable order such that it can be guaranteed that a hardlink target already exists
+	var names []string
+	for name := range dir {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		item := dir[name]
 		targetPath := filepath.Join(target, name)
 
 		switch it := item.(type) {
@@ -78,6 +96,11 @@ func TestCreateFiles(t testing.TB, target string, dir TestDir) {
 			}
 		case TestSymlink:
 			err := fs.Symlink(filepath.FromSlash(it.Target), targetPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+		case TestHardlink:
+			err := fs.Link(filepath.Join(target, filepath.FromSlash(it.Target)), targetPath)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -209,13 +232,13 @@ func TestEnsureFiles(t testing.TB, target string, dir TestDir) {
 }
 
 // TestEnsureFileContent checks if the file in the repo is the same as file.
-func TestEnsureFileContent(ctx context.Context, t testing.TB, repo restic.Repository, filename string, node *restic.Node, file TestFile) {
+func TestEnsureFileContent(ctx context.Context, t testing.TB, repo restic.BlobLoader, filename string, node *restic.Node, file TestFile) {
 	if int(node.Size) != len(file.Content) {
 		t.Fatalf("%v: wrong node size: want %d, got %d", filename, node.Size, len(file.Content))
 		return
 	}
 
-	content := make([]byte, crypto.CiphertextLength(len(file.Content)))
+	content := make([]byte, len(file.Content))
 	pos := 0
 	for _, id := range node.Content {
 		part, err := repo.LoadBlob(ctx, restic.DataBlob, id, content[pos:])
@@ -237,7 +260,7 @@ func TestEnsureFileContent(ctx context.Context, t testing.TB, repo restic.Reposi
 
 // TestEnsureTree checks that the tree ID in the repo matches dir. On Windows,
 // Symlinks are ignored.
-func TestEnsureTree(ctx context.Context, t testing.TB, prefix string, repo restic.Repository, treeID restic.ID, dir TestDir) {
+func TestEnsureTree(ctx context.Context, t testing.TB, prefix string, repo restic.BlobLoader, treeID restic.ID, dir TestDir) {
 	t.Helper()
 
 	tree, err := restic.LoadTree(ctx, repo, treeID)

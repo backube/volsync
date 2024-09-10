@@ -43,11 +43,11 @@ type Key struct {
 	id restic.ID
 }
 
-// Params tracks the parameters used for the KDF. If not set, it will be
+// params tracks the parameters used for the KDF. If not set, it will be
 // calibrated on the first run of AddKey().
-var Params *crypto.Params
+var params *crypto.Params
 
-var (
+const (
 	// KDFTimeout specifies the maximum runtime for the KDF.
 	KDFTimeout = 500 * time.Millisecond
 
@@ -116,7 +116,7 @@ func SearchKey(ctx context.Context, s *Repository, password string, maxKeys int,
 	checked := 0
 
 	if len(keyHint) > 0 {
-		id, err := restic.Find(ctx, s.Backend(), restic.KeyFile, keyHint)
+		id, err := restic.Find(ctx, s, restic.KeyFile, keyHint)
 
 		if err == nil {
 			key, err := OpenKey(ctx, s, id, password)
@@ -136,7 +136,7 @@ func SearchKey(ctx context.Context, s *Repository, password string, maxKeys int,
 	defer cancel()
 
 	// try at most maxKeys keys in repo
-	err = s.List(listCtx, restic.KeyFile, func(id restic.ID, size int64) error {
+	err = s.List(listCtx, restic.KeyFile, func(id restic.ID, _ int64) error {
 		checked++
 		if maxKeys > 0 && checked > maxKeys {
 			return ErrMaxKeysReached
@@ -178,8 +178,7 @@ func SearchKey(ctx context.Context, s *Repository, password string, maxKeys int,
 
 // LoadKey loads a key from the backend.
 func LoadKey(ctx context.Context, s *Repository, id restic.ID) (k *Key, err error) {
-	h := restic.Handle{Type: restic.KeyFile, Name: id.String()}
-	data, err := backend.LoadAll(ctx, nil, s.be, h)
+	data, err := s.LoadRaw(ctx, restic.KeyFile, id)
 	if err != nil {
 		return nil, err
 	}
@@ -196,13 +195,13 @@ func LoadKey(ctx context.Context, s *Repository, id restic.ID) (k *Key, err erro
 // AddKey adds a new key to an already existing repository.
 func AddKey(ctx context.Context, s *Repository, password, username, hostname string, template *crypto.Key) (*Key, error) {
 	// make sure we have valid KDF parameters
-	if Params == nil {
+	if params == nil {
 		p, err := crypto.Calibrate(KDFTimeout, KDFMemory)
 		if err != nil {
 			return nil, errors.Wrap(err, "Calibrate")
 		}
 
-		Params = &p
+		params = &p
 		debug.Log("calibrated KDF parameters are %v", p)
 	}
 
@@ -213,9 +212,9 @@ func AddKey(ctx context.Context, s *Repository, password, username, hostname str
 		Hostname: hostname,
 
 		KDF: "scrypt",
-		N:   Params.N,
-		R:   Params.R,
-		P:   Params.P,
+		N:   params.N,
+		R:   params.R,
+		P:   params.P,
 	}
 
 	if newkey.Hostname == "" {
@@ -237,7 +236,7 @@ func AddKey(ctx context.Context, s *Repository, password, username, hostname str
 	}
 
 	// call KDF to derive user key
-	newkey.user, err = crypto.KDF(*Params, newkey.Salt, password)
+	newkey.user, err = crypto.KDF(*params, newkey.Salt, password)
 	if err != nil {
 		return nil, err
 	}
@@ -270,12 +269,12 @@ func AddKey(ctx context.Context, s *Repository, password, username, hostname str
 
 	id := restic.Hash(buf)
 	// store in repository and return
-	h := restic.Handle{
+	h := backend.Handle{
 		Type: restic.KeyFile,
 		Name: id.String(),
 	}
 
-	err = s.be.Save(ctx, h, restic.NewByteReader(buf, s.be.Hasher()))
+	err = s.be.Save(ctx, h, backend.NewByteReader(buf, s.be.Hasher()))
 	if err != nil {
 		return nil, err
 	}
@@ -283,6 +282,15 @@ func AddKey(ctx context.Context, s *Repository, password, username, hostname str
 	newkey.id = id
 
 	return newkey, nil
+}
+
+func RemoveKey(ctx context.Context, repo *Repository, id restic.ID) error {
+	if id == repo.KeyID() {
+		return errors.New("refusing to remove key currently used to access repository")
+	}
+
+	h := backend.Handle{Type: restic.KeyFile, Name: id.String()}
+	return repo.be.Remove(ctx, h)
 }
 
 func (k *Key) String() string {

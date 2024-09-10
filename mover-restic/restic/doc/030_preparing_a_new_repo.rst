@@ -35,15 +35,15 @@ environment variable ``RESTIC_REPOSITORY_FILE``.
 For automating the supply of the repository password to restic, several options
 exist:
 
- * Setting the environment variable ``RESTIC_PASSWORD``
+* Setting the environment variable ``RESTIC_PASSWORD``
 
- * Specifying the path to a file with the password via the option
-   ``--password-file`` or the environment variable ``RESTIC_PASSWORD_FILE``
+* Specifying the path to a file with the password via the option
+  ``--password-file`` or the environment variable ``RESTIC_PASSWORD_FILE``
 
- * Configuring a program to be called when the password is needed via the
-   option ``--password-command`` or the environment variable
-   ``RESTIC_PASSWORD_COMMAND``
-   
+* Configuring a program to be called when the password is needed via the
+  option ``--password-command`` or the environment variable
+  ``RESTIC_PASSWORD_COMMAND``
+
 The ``init`` command has an option called ``--repository-version`` which can
 be used to explicitly set the version of the new repository. By default, the
 current stable version is used (see table below). The alias ``latest`` will
@@ -201,15 +201,16 @@ scheme like this:
     $ restic -r rest:http://host:8000/ init
 
 Depending on your REST server setup, you can use HTTPS protocol,
-password protection, multiple repositories or any combination of
-those features. The TCP/IP port is also configurable. Here
-are some more examples:
+unix socket, password protection, multiple repositories or any
+combination of those features. The TCP/IP port is also configurable.
+Here are some more examples:
 
 .. code-block:: console
 
     $ restic -r rest:https://host:8000/ init
     $ restic -r rest:https://user:pass@host:8000/ init
     $ restic -r rest:https://user:pass@host:8000/my_backup_repo/ init
+    $ restic -r rest:http+unix:///tmp/rest.socket:/my_backup_repo/ init
 
 The server username and password can be specified using environment
 variables as well:
@@ -248,27 +249,21 @@ while creating the bucket.
     $ export AWS_ACCESS_KEY_ID=<MY_ACCESS_KEY>
     $ export AWS_SECRET_ACCESS_KEY=<MY_SECRET_ACCESS_KEY>
 
+When using temporary credentials make sure to include the session token via
+the environment variable ``AWS_SESSION_TOKEN``.
+
 You can then easily initialize a repository that uses your Amazon S3 as
-a backend. If the bucket does not exist it will be created in the
-default location:
+a backend. Make sure to use the endpoint for the correct region. The example
+uses ``us-east-1``. If the bucket does not exist it will be created in that region:
 
 .. code-block:: console
 
-    $ restic -r s3:s3.amazonaws.com/bucket_name init
+    $ restic -r s3:s3.us-east-1.amazonaws.com/bucket_name init
     enter password for new repository:
     enter password again:
-    created restic repository eefee03bbd at s3:s3.amazonaws.com/bucket_name
+    created restic repository eefee03bbd at s3:s3.us-east-1.amazonaws.com/bucket_name
     Please note that knowledge of your password is required to access the repository.
     Losing your password means that your data is irrecoverably lost.
-
-If needed, you can manually specify the region to use by either setting the
-environment variable ``AWS_DEFAULT_REGION`` or calling restic with an option
-parameter like ``-o s3.region="us-east-1"``. If the region is not specified,
-the default region is used. Afterwards, the S3 server (at least for AWS,
-``s3.amazonaws.com``) will redirect restic to the correct endpoint.
-
-When using temporary credentials make sure to include the session token via
-then environment variable ``AWS_SESSION_TOKEN``.
 
 Until version 0.8.0, restic used a default prefix of ``restic``, so the files
 in the bucket were placed in a directory named ``restic``. If you want to
@@ -277,25 +272,14 @@ after the bucket name like this:
 
 .. code-block:: console
 
-    $ restic -r s3:s3.amazonaws.com/bucket_name/restic [...]
+    $ restic -r s3:s3.us-east-1.amazonaws.com/bucket_name/restic [...]
 
-For an S3-compatible server that is not Amazon (like Minio, see below),
-or is only available via HTTP, you can specify the URL to the server
-like this: ``s3:http://server:port/bucket_name``.
-          
 .. note:: restic expects `path-style URLs <https://docs.aws.amazon.com/AmazonS3/latest/userguide/access-bucket-intro.html>`__
-          like for example ``s3.us-west-2.amazonaws.com/bucket_name``.
+          like for example ``s3.us-west-2.amazonaws.com/bucket_name`` for Amazon S3.
           Virtual-hosted–style URLs like ``bucket_name.s3.us-west-2.amazonaws.com``,
           where the bucket name is part of the hostname are not supported. These must
           be converted to path-style URLs instead, for example ``s3.us-west-2.amazonaws.com/bucket_name``.
-
-.. note:: Certain S3-compatible servers do not properly implement the
-          ``ListObjectsV2`` API, most notably Ceph versions before v14.2.5. On these
-          backends, as a temporary workaround, you can provide the
-          ``-o s3.list-objects-v1=true`` option to use the older
-          ``ListObjects`` API instead. This option may be removed in future
-          versions of restic.
-
+          See below for configuration options for S3-compatible storage from other providers.
 
 Minio Server
 ************
@@ -320,81 +304,66 @@ this command.
 
 .. code-block:: console
 
-    $ ./restic -r s3:http://localhost:9000/restic init
+    $ restic -r s3:http://localhost:9000/restic init
     enter password for new repository:
     enter password again:
-    created restic repository 6ad29560f5 at s3:http://localhost:9000/restic1
+    created restic repository 6ad29560f5 at s3:http://localhost:9000/restic
     Please note that knowledge of your password is required to access
     the repository. Losing your password means that your data is irrecoverably lost.
 
+S3-compatible Storage
+*********************
+
+For an S3-compatible server that is not Amazon, you can specify the URL to the server
+like this: ``s3:https://server:port/bucket_name``.
+
+If needed, you can manually specify the region to use by either setting the
+environment variable ``AWS_DEFAULT_REGION`` or calling restic with an option
+parameter like ``-o s3.region="us-east-1"``. If the region is not specified,
+the default region ``us-east-1`` is used.
+
+To select between path-style and virtual-hosted access, the extended option
+``-o s3.bucket-lookup=auto`` can be used. It supports the following values:
+
+- ``auto``: Default behavior. Uses ``dns`` for Amazon and Google endpoints. Uses
+  ``path`` for all other endpoints
+- ``dns``: Use virtual-hosted-style bucket access
+- ``path``: Use path-style bucket access
+
+Certain S3-compatible servers do not properly implement the ``ListObjectsV2`` API,
+most notably Ceph versions before v14.2.5. On these backends, as a temporary
+workaround, you can provide the ``-o s3.list-objects-v1=true`` option to use the
+older ``ListObjects`` API instead. This option may be removed in future versions
+of restic.
+
 Wasabi
-************
+******
 
-`Wasabi <https://wasabi.com>`__ is a low cost Amazon S3 conformant object storage provider.
-Due to its S3 conformance, Wasabi can be used as a storage provider for a restic repository.
+S3 storage from `Wasabi <https://wasabi.com>`__ can be used as follows.
 
--  Create a Wasabi bucket using the `Wasabi Console <https://console.wasabisys.com>`__.
--  Determine the correct Wasabi service URL for your bucket `here <https://wasabi-support.zendesk.com/hc/en-us/articles/360015106031-What-are-the-service-URLs-for-Wasabi-s-different-regions->`__.
-
-You must first setup the following environment variables with the
-credentials of your Wasabi account.
+- Determine the correct Wasabi service URL for your bucket `here <https://wasabi-support.zendesk.com/hc/en-us/articles/360015106031-What-are-the-service-URLs-for-Wasabi-s-different-regions->`__.
+- Set environment variables with the necessary account credentials
 
 .. code-block:: console
 
     $ export AWS_ACCESS_KEY_ID=<YOUR-WASABI-ACCESS-KEY-ID>
     $ export AWS_SECRET_ACCESS_KEY=<YOUR-WASABI-SECRET-ACCESS-KEY>
-
-Now you can easily initialize restic to use Wasabi as a backend with
-this command.
-
-.. code-block:: console
-
-    $ ./restic -r s3:https://<WASABI-SERVICE-URL>/<WASABI-BUCKET-NAME> init
-    enter password for new repository:
-    enter password again:
-    created restic repository xxxxxxxxxx at s3:https://<WASABI-SERVICE-URL>/<WASABI-BUCKET-NAME>
-    Please note that knowledge of your password is required to access
-    the repository. Losing your password means that your data is irrecoverably lost.
+    $ restic -r s3:https://<WASABI-SERVICE-URL>/<WASABI-BUCKET-NAME> init
 
 Alibaba Cloud (Aliyun) Object Storage System (OSS)
 **************************************************
 
-`Alibaba OSS <https://www.alibabacloud.com/product/object-storage-service>`__ is an
-encrypted, secure, cost-effective, and easy-to-use object storage
-service that enables you to store, back up, and archive large amounts
-of data in the cloud.
+S3 storage from `Alibaba OSS <https://www.alibabacloud.com/product/object-storage-service>`__ can be used as follows.
 
-Alibaba OSS is S3 compatible so it can be used as a storage provider
-for a restic repository with a couple of extra parameters.
-
--  Determine the correct `Alibaba OSS region endpoint <https://www.alibabacloud.com/help/en/object-storage-service/latest/regions-and-endpoints>`__ - this will be something like ``oss-eu-west-1.aliyuncs.com``
--  You'll need the region name too - this will be something like ``oss-eu-west-1``
-
-You must first setup the following environment variables with the
-credentials of your Alibaba OSS account.
+- Determine the correct `Alibaba OSS region endpoint <https://www.alibabacloud.com/help/en/object-storage-service/latest/regions-and-endpoints>`__ - this will be something like ``oss-eu-west-1.aliyuncs.com``
+- You will need the region name too - this will be something like ``oss-eu-west-1``
+- Set environment variables with the necessary account credentials
 
 .. code-block:: console
 
     $ export AWS_ACCESS_KEY_ID=<YOUR-OSS-ACCESS-KEY-ID>
     $ export AWS_SECRET_ACCESS_KEY=<YOUR-OSS-SECRET-ACCESS-KEY>
-
-Now you can easily initialize restic to use Alibaba OSS as a backend with
-this command.
-
-.. code-block:: console
-
-    $ ./restic -o s3.bucket-lookup=dns -o s3.region=<OSS-REGION> -r s3:https://<OSS-ENDPOINT>/<OSS-BUCKET-NAME> init
-    enter password for new backend:
-    enter password again:
-    created restic backend xxxxxxxxxx at s3:https://<OSS-ENDPOINT>/<OSS-BUCKET-NAME>
-    Please note that knowledge of your password is required to access
-    the repository. Losing your password means that your data is irrecoverably lost.
-
-For example with an actual endpoint:
-
-.. code-block:: console
-
-    $ restic -o s3.bucket-lookup=dns -o s3.region=oss-eu-west-1 -r s3:https://oss-eu-west-1.aliyuncs.com/bucketname init
+    $ restic -o s3.bucket-lookup=dns -o s3.region=<OSS-REGION> -r s3:https://<OSS-ENDPOINT>/<OSS-BUCKET-NAME> init
 
 OpenStack Swift
 ***************
@@ -487,7 +456,8 @@ Backblaze B2
 
    Different from the B2 backend, restic's S3 backend will only hide no longer
    necessary files. Thus, make sure to setup lifecycle rules to eventually
-   delete hidden files.
+   delete hidden files. The lifecycle setting "Keep only the last version of the file" 
+   will keep only the most current version of a file. Read the [Backblaze documentation](https://www.backblaze.com/docs/cloud-storage-lifecycle-rules).
 
 Restic can backup data to any Backblaze B2 bucket. You need to first setup the
 following environment variables with the credentials you can find in the
@@ -722,9 +692,9 @@ For debugging rclone, you can set the environment variable ``RCLONE_VERBOSE=2``.
 
 The rclone backend has three additional options:
 
- * ``-o rclone.program`` specifies the path to rclone, the default value is just ``rclone``
- * ``-o rclone.args`` allows setting the arguments passed to rclone, by default this is ``serve restic --stdio --b2-hard-delete``
- * ``-o rclone.timeout`` specifies timeout for waiting on repository opening, the default value is ``1m``
+* ``-o rclone.program`` specifies the path to rclone, the default value is just ``rclone``
+* ``-o rclone.args`` allows setting the arguments passed to rclone, by default this is ``serve restic --stdio --b2-hard-delete``
+* ``-o rclone.timeout`` specifies timeout for waiting on repository opening, the default value is ``1m``
 
 The reason for the ``--b2-hard-delete`` parameters can be found in the corresponding GitHub `issue #1657`_.
 
@@ -850,3 +820,26 @@ and then grants read/write permissions for group access.
 .. note:: To manage who has access to the repository you can use
           ``usermod`` on Linux systems, to change which group controls
           repository access ``chgrp -R`` is your friend.
+
+
+Repositories with empty password
+********************************
+
+Restic by default refuses to create or operate on repositories that use an
+empty password. Since restic 0.17.0, the option ``--insecure-no-password`` allows
+disabling this check. Restic will not prompt for a password when using this option.
+Specifying ``--insecure-no-password`` while also passing a password to restic
+via a CLI option or via environment variable results in an error.
+
+For security reasons, the option must always be specified when operating on
+repositories with an empty password. For example to create a new repository
+with an empty password, use the following command.
+
+.. code-block:: console
+
+    restic init --insecure-no-password
+
+
+The ``init`` and ``copy`` command also support the option ``--from-insecure-no-password``
+which applies to the source repository. The ``key add`` and ``key passwd`` commands
+include the ``--new-insecure-no-password`` option to add or set and empty password.

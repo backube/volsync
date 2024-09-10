@@ -48,7 +48,7 @@ be used instead of the complete filename.
 Apart from the files stored within the ``keys`` and ``data`` directories,
 all files are encrypted with AES-256 in counter mode (CTR). The integrity
 of the encrypted data is secured by a Poly1305-AES message authentication
-code (sometimes also referred to as a "signature").
+code (MAC).
 Files in the ``data`` directory ("pack files") consist of multiple parts
 which are all independently encrypted and authenticated, see below.
 
@@ -126,8 +126,8 @@ the option ``-o local.layout=default``, valid values are ``default`` and
 ``s3legacy``. The option for the sftp backend is named ``sftp.layout``, for the
 s3 backend ``s3.layout``.
 
-S3 Legacy Layout
-----------------
+S3 Legacy Layout (deprecated)
+-----------------------------
 
 Unfortunately during development the Amazon S3 backend uses slightly different
 paths (directory names use singular instead of plural for ``key``,
@@ -152,8 +152,7 @@ the ``data`` directory. The S3 Legacy repository layout looks like this:
     /snapshot
      └── 22a5af1bdc6e616f8a29579458c49627e01b32210d09adb288d1ecda7c5711ec
 
-The S3 backend understands and accepts both forms, new backends are
-always created with the default layout for compatibility reasons.
+Restic 0.17 is the last version that supports the legacy layout.
 
 Pack Format
 ===========
@@ -234,7 +233,9 @@ Individual files for the index, locks or snapshots are encrypted
 and authenticated like Data and Tree Blobs, so the outer structure is
 ``IV || Ciphertext || MAC`` again. In repository format version 1 the
 plaintext always consists of a JSON document which must either be an
-object or an array.
+object or an array. The JSON encoder must deterministically encode the
+document and should match the behavior of the Go standard library implementation
+in ``encoding/json``.
 
 Repository format version 2 adds support for compression. The plaintext
 now starts with a header to indicate the encoding version to distinguish
@@ -296,8 +297,8 @@ of a JSON document like the following:
     }
 
 This JSON document lists Packs and the blobs contained therein. In this
-example, the Pack ``73d04e61`` contains two data Blobs and one Tree
-blob, the plaintext hashes are listed afterwards. The ``length`` field
+example, the Pack ``73d04e61`` contains three data Blobs,
+the plaintext hashes are listed afterwards. The ``length`` field
 corresponds to ``Length(encrypted_blob)`` in the pack file header.
 Field ``uncompressed_length`` is only present for compressed blobs and
 therefore is never present in version 1 of the repository format. It is
@@ -473,6 +474,10 @@ A snapshot references a tree by the SHA-256 hash of the JSON string
 representation of its contents. Trees and data are saved in pack files
 in a subdirectory of the directory ``data``.
 
+The JSON encoder must deterministically encode the document and should
+match the behavior of the Go standard library implementation in ``encoding/json``.
+This ensures that trees can be properly deduplicated.
+
 The command ``restic cat blob`` can be used to inspect the tree
 referenced above (piping the output of the command to ``jq .`` so that
 the JSON is indented):
@@ -507,12 +512,11 @@ this metadata is generated:
 - The name is quoted using `strconv.Quote <https://pkg.go.dev/strconv#Quote>`__
   before being saved. This handles non-unicode names, but also changes the
   representation of names containing ``"`` or ``\``.
-
 - The filemode saved is the mode defined by `fs.FileMode <https://pkg.go.dev/io/fs#FileMode>`__
   masked by ``os.ModePerm | os.ModeType | os.ModeSetuid | os.ModeSetgid | os.ModeSticky``
-
-When the entry references a directory, the field ``subtree`` contains the plain text
-ID of another tree object.
+- When the entry references a directory, the field ``subtree`` contains the plain text
+  ID of another tree object.
+- Check the implementation for a full struct definition.
 
 When the command ``restic cat blob`` is used, the plaintext ID is needed
 to print a tree. The tree referenced above can be dumped as follows:
@@ -824,4 +828,4 @@ Changes
 Repository Version 2
 --------------------
 
- * Support compression for blobs (data/tree) and index / lock / snapshot files
+* Support compression for blobs (data/tree) and index / lock / snapshot files

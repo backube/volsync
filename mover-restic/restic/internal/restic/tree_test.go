@@ -86,7 +86,7 @@ func TestNodeComparison(t *testing.T) {
 	fi, err := os.Lstat("tree_test.go")
 	rtest.OK(t, err)
 
-	node, err := restic.NodeFromFileInfo("tree_test.go", fi)
+	node, err := restic.NodeFromFileInfo("tree_test.go", fi, false)
 	rtest.OK(t, err)
 
 	n2 := *node
@@ -127,7 +127,7 @@ func TestTreeEqualSerialization(t *testing.T) {
 		for _, fn := range files[:i] {
 			fi, err := os.Lstat(fn)
 			rtest.OK(t, err)
-			node, err := restic.NodeFromFileInfo(fn, fi)
+			node, err := restic.NodeFromFileInfo(fn, fi, false)
 			rtest.OK(t, err)
 
 			rtest.OK(t, tree.Insert(node))
@@ -181,7 +181,7 @@ func testLoadTree(t *testing.T, version uint) {
 	}
 
 	// archive a few files
-	repo := repository.TestRepositoryWithVersion(t, version)
+	repo, _ := repository.TestRepositoryWithVersion(t, version)
 	sn := archiver.TestSnapshot(t, repo, rtest.BenchArchiveDirectory, nil)
 	rtest.OK(t, repo.Flush(context.Background()))
 
@@ -199,7 +199,7 @@ func benchmarkLoadTree(t *testing.B, version uint) {
 	}
 
 	// archive a few files
-	repo := repository.TestRepositoryWithVersion(t, version)
+	repo, _ := repository.TestRepositoryWithVersion(t, version)
 	sn := archiver.TestSnapshot(t, repo, rtest.BenchArchiveDirectory, nil)
 	rtest.OK(t, repo.Flush(context.Background()))
 

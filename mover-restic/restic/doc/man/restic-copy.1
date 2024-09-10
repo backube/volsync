@@ -30,7 +30,20 @@ This can be mitigated by the "--copy-chunker-params" option when initializing a
 new destination repository using the "init" command.
 
 
+.SH EXIT STATUS
+.PP
+Exit status is 0 if the command was successful.
+Exit status is 1 if there was any error.
+Exit status is 10 if the repository does not exist.
+Exit status is 11 if the repository is already locked.
+Exit status is 12 if the password is incorrect.
+
+
 .SH OPTIONS
+.PP
+\fB--from-insecure-no-password\fP[=false]
+	use an empty password for the source repository (insecure)
+
 .PP
 \fB--from-key-hint\fP=""
 	key ID of key to try decrypting the source repository first (default: $RESTIC_FROM_KEY_HINT)
@@ -57,11 +70,11 @@ new destination repository using the "init" command.
 
 .PP
 \fB-H\fP, \fB--host\fP=[]
-	only consider snapshots for this \fBhost\fR (can be specified multiple times)
+	only consider snapshots for this \fBhost\fR (can be specified multiple times) (default: $RESTIC_HOST)
 
 .PP
 \fB--path\fP=[]
-	only consider snapshots including this (absolute) \fBpath\fR (can be specified multiple times)
+	only consider snapshots including this (absolute) \fBpath\fR (can be specified multiple times, snapshots must include all specified paths)
 
 .PP
 \fB--tag\fP=[]
@@ -84,6 +97,14 @@ new destination repository using the "init" command.
 .PP
 \fB--compression\fP=auto
 	compression mode (only available for repository format version 2), one of (auto|off|max) (default: $RESTIC_COMPRESSION)
+
+.PP
+\fB--http-user-agent\fP=""
+	set a http user agent for outgoing http requests
+
+.PP
+\fB--insecure-no-password\fP[=false]
+	use an empty password for the repository, must be passed to every restic command (insecure)
 
 .PP
 \fB--insecure-tls\fP[=false]
@@ -148,6 +169,10 @@ new destination repository using the "init" command.
 .PP
 \fB--retry-lock\fP=0s
 	retry to lock the repository if it is already locked, takes a value like 5m or 2h (default: no retries)
+
+.PP
+\fB--stuck-request-timeout\fP=5m0s
+	\fBduration\fR after which to retry stuck requests
 
 .PP
 \fB--tls-client-cert\fP=""

@@ -11,7 +11,7 @@ import (
 
 // TreeSaver concurrently saves incoming trees to the repo.
 type TreeSaver struct {
-	saveBlob func(ctx context.Context, t restic.BlobType, buf *Buffer, cb func(res SaveBlobResponse))
+	saveBlob SaveBlobFn
 	errFn    ErrorFunc
 
 	ch chan<- saveTreeJob
@@ -19,7 +19,7 @@ type TreeSaver struct {
 
 // NewTreeSaver returns a new tree saver. A worker pool with treeWorkers is
 // started, it is stopped when ctx is cancelled.
-func NewTreeSaver(ctx context.Context, wg *errgroup.Group, treeWorkers uint, saveBlob func(ctx context.Context, t restic.BlobType, buf *Buffer, cb func(res SaveBlobResponse)), errFn ErrorFunc) *TreeSaver {
+func NewTreeSaver(ctx context.Context, wg *errgroup.Group, treeWorkers uint, saveBlob SaveBlobFn, errFn ErrorFunc) *TreeSaver {
 	ch := make(chan saveTreeJob)
 
 	s := &TreeSaver{
@@ -90,6 +90,10 @@ func (s *TreeSaver) save(ctx context.Context, job *saveTreeJob) (*restic.Node, I
 		// return the error if it wasn't ignored
 		if fnr.err != nil {
 			debug.Log("err for %v: %v", fnr.snPath, fnr.err)
+			if fnr.err == context.Canceled {
+				return nil, stats, fnr.err
+			}
+
 			fnr.err = s.errFn(fnr.target, fnr.err)
 			if fnr.err == nil {
 				// ignore error
@@ -126,7 +130,7 @@ func (s *TreeSaver) save(ctx context.Context, job *saveTreeJob) (*restic.Node, I
 
 	b := &Buffer{Data: buf}
 	ch := make(chan SaveBlobResponse, 1)
-	s.saveBlob(ctx, restic.TreeBlob, b, func(res SaveBlobResponse) {
+	s.saveBlob(ctx, restic.TreeBlob, b, job.target, func(res SaveBlobResponse) {
 		ch <- res
 	})
 

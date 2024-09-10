@@ -323,6 +323,11 @@ func updateVersion() {
 }
 
 func updateVersionDev() {
+	err := os.WriteFile("VERSION", []byte(opts.Version+"-dev\n"), 0644)
+	if err != nil {
+		die("unable to write version to file: %v", err)
+	}
+
 	newVersion := fmt.Sprintf(`var version = "%s-dev (compiled manually)"`, opts.Version)
 	replace(versionCodeFile, versionPattern, newVersion)
 
@@ -379,7 +384,7 @@ func readdir(dir string) []string {
 }
 
 func sha256sums(inputDir, outputFile string) {
-	msg("runnnig sha256sum in %v", inputDir)
+	msg("running sha256sum in %v", inputDir)
 
 	filenames := readdir(inputDir)
 
