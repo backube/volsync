@@ -36,6 +36,7 @@ var resticRegex = regexp.MustCompile(
 		`^\s*([uU]sing parent snapshot)|` +
 		`^\s*([aA]dded to the repository)|` +
 		`^\s*([sS]uccessfully)|` +
+		`(RESTORE_OPTIONS)|` +
 		`^\s*(Restic completed in)`)
 
 // Filter restic log lines for a successful move job

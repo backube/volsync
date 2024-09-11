@@ -1429,6 +1429,12 @@ spec:
                       automatically provisioning one. Either this field or both capacity and
                       accessModes must be specified.
                     type: string
+                  enableFileDeletion:
+                    description: |-
+                      enableFileDeletion will pass the --delete flag to the restic restore command.
+                      This will remove files and directories in the pvc that do not exist in the snapshot being restored.
+                      Defaults to false.
+                    type: boolean
                   moverAffinity:
                     description: MoverAffinity allows specifying the PodAffinity that
                       will be used by the data mover

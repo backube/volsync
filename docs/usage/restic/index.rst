@@ -286,6 +286,10 @@ restoreAsOf
    timestamp, Kubernetes will only accept ones with the day and hour fields
    separated by a ``T``. E.g, ``2022-08-10T20:01:03-04:00`` will work but
    ``2022-08-10 20:01:03-04:00`` will fail.
+delete
+   A boolean indicating whether files and directories that exist on the pvc
+   being restored to should be deleted if they do not exist in the restic
+   snapshot being restored. The default value is ``false``.
 
 Using a custom certificate authority
 ====================================

@@ -232,6 +232,11 @@ type ReplicationDestinationResticSpec struct {
 	// +kubebuilder:validation:Format="date-time"
 	//+optional
 	RestoreAsOf *string `json:"restoreAsOf,omitempty"`
+	// enableFileDeletion will pass the --delete flag to the restic restore command.
+	// This will remove files and directories in the pvc that do not exist in the snapshot being restored.
+	// Defaults to false.
+	//+optional
+	EnableFileDeletion bool `json:"enableFileDeletion,omitempty"`
 
 	MoverConfig `json:",inline"`
 }
