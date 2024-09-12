@@ -1,0 +1,314 @@
+---
+- hosts: localhost
+  tags:
+    - e2e
+    - restic
+    - unprivileged
+    - cleanupTempDestinationPVC
+    - cleanupCachePVC
+  vars:
+    restic_secret_name: restic-secret
+  tasks:
+    - include_role:
+        name: create_namespace
+
+    - include_role:
+        name: gather_cluster_info
+
+    # We're running everything as a normal user
+    - name: Define podSecurityContext
+      ansible.builtin.set_fact:
+        podSecurityContext:
+          fsGroup: 5678
+          runAsGroup: 5678
+          runAsNonRoot: true
+          runAsUser: 1234
+          seccompProfile:
+            type: RuntimeDefault
+      when: not cluster_info.is_openshift
+
+    - include_role:
+        name: create_restic_secret
+      vars:
+        minio_namespace: minio
+
+    - name: Create source PVC
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          kind: PersistentVolumeClaim
+          apiVersion: v1
+          metadata:
+            name: data-source
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 1Gi
+
+    - name: Write data into the source PVC
+      include_role:
+        name: write_to_pvc
+      vars:
+        data: 'data'
+        path: '/datafile'
+        pvc_name: 'data-source'
+
+    - name: Backup data from source volume with manual trigger (w/ mSC)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationSource
+          metadata:
+            name: source
+            namespace: "{{ namespace }}"
+          spec:
+            sourcePVC: data-source
+            trigger:
+              manual: once
+            restic:
+              pruneIntervalDays: 1
+              repository: "{{ restic_secret_name }}"
+              retain:
+                hourly: 3
+                daily: 2
+                monthly: 1
+              copyMethod: Snapshot
+              cacheCapacity: 1Gi
+              moverSecurityContext: "{{ podSecurityContext }}"
+      when: podSecurityContext is defined
+
+    - name: Backup data from source volume with manual trigger (w/o mSC)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationSource
+          metadata:
+            name: source
+            namespace: "{{ namespace }}"
+          spec:
+            sourcePVC: data-source
+            trigger:
+              manual: once
+            restic:
+              pruneIntervalDays: 1
+              repository: "{{ restic_secret_name }}"
+              retain:
+                hourly: 3
+                daily: 2
+                monthly: 1
+              copyMethod: Snapshot
+              cacheCapacity: 1Gi
+      when: podSecurityContext is not defined
+
+    - name: Wait for sync to MinIO to complete
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationSource
+        name: source
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastManualSync is defined and
+        res.resources[0].status.lastManualSync=="once" and
+        res.resources[0].status.latestMoverStatus is defined and
+        res.resources[0].status.latestMoverStatus.result == "Successful" and
+        res.resources[0].status.latestMoverStatus.logs is search("processed.*files") and
+        res.resources[0].status.latestMoverStatus.logs is search("snapshot.*saved") and
+        res.resources[0].status.latestMoverStatus.logs is search("Restic completed in.*")
+      delay: 1
+      retries: 900
+
+    - name: Restore data to destination (w/ mSC)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationDestination
+          metadata:
+            name: restore
+            namespace: "{{ namespace }}"
+          spec:
+            trigger:
+              manual: restore-once
+            restic:
+              cleanupTempDestinationPVC: true
+              cleanupCachePVC: true
+              repository: "{{ restic_secret_name }}"
+              copyMethod: Snapshot
+              accessModes: [ReadWriteOnce]
+              capacity: 1Gi
+              cacheCapacity: 1Gi
+              moverSecurityContext: "{{ podSecurityContext }}"
+      when: podSecurityContext is defined
+
+    - name: Restore data to destination (w/o mSC)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationDestination
+          metadata:
+            name: restore
+            namespace: "{{ namespace }}"
+          spec:
+            trigger:
+              manual: restore-once
+            restic:
+              cleanupTempDestinationPVC: true
+              cleanupCachePVC: true
+              repository: "{{ restic_secret_name }}"
+              copyMethod: Snapshot
+              accessModes: [ReadWriteOnce]
+              capacity: 1Gi
+              cacheCapacity: 1Gi
+      when: podSecurityContext is not defined
+
+    - name: Wait for restore to complete
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationDestination
+        name: restore
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastManualSync is defined and
+        res.resources[0].status.lastManualSync=="restore-once" and
+        res.resources[0].status.latestMoverStatus is defined and
+        res.resources[0].status.latestMoverStatus.result == "Successful" and
+        res.resources[0].status.latestMoverStatus.logs is search("restoring.*") and
+        res.resources[0].status.latestMoverStatus.logs is search("Restic completed in.*")
+      delay: 1
+      retries: 300
+
+    # Check that the dynamically provisioned destination PVC was cleaned
+    # up since we're using cleanupTempDestinationPVC: true
+    - name: Confirm dynamically provisioned destination PVC is cleaned up
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: PersistentVolumeClaim
+        name: volsync-restore-dest
+        namespace: "{{ namespace }}"
+      register: destpvc
+
+    - name: Check dest pvc deleted (cleanupTempDestinationPVC is true)
+      ansible.builtin.fail:
+        msg: destination pvc (dynamically provisioned by volsync) should deleted but still remains
+      when:
+        destpvc.resources | length == 1
+
+    # Check that the cache PVC was cleaned
+    # up since we're using cleanupCachePVC: true
+    - name: Confirm cache PVC is cleaned up
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: PersistentVolumeClaim
+        name: volsync-restore-cache
+        namespace: "{{ namespace }}"
+      register: cachepvc
+
+    - name: Check cache pvc deleted (cleanupCachePVC is true)
+      ansible.builtin.fail:
+        msg: cache pvc should deleted but still remains
+      when:
+        cachepvc.resources | length == 1
+
+    - name: Convert latestImage to PVC
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: data-dest
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            dataSource:
+              kind: VolumeSnapshot
+              apiGroup: snapshot.storage.k8s.io
+              name: "{{ res.resources[0].status.latestImage.name }}"
+            resources:
+              requests:
+                storage: 1Gi
+
+    - name: Verify contents of PVC
+      include_role:
+        name: compare_pvc_data
+      vars:
+        pvc1_name: data-source
+        pvc2_name: data-dest
+
+    # turn default behavior back on, dest pvc and cache pvc should be left behind again after another sync
+    - name: Trigger another restore with cleanupTempDestinationPVC false
+      kubernetes.core.k8s:
+        state: patched
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationDestination
+          metadata:
+            name: restore
+            namespace: "{{ namespace }}"
+          spec:
+            restic:
+              cleanupTempDestinationPVC: false
+              cleanupCachePVC: false
+            trigger:
+              manual: restore-twice
+
+    - name: Wait for 2nd restore to complete
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationDestination
+        name: restore
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastManualSync is defined and
+        res.resources[0].status.lastManualSync=="restore-twice" and
+        res.resources[0].status.latestMoverStatus is defined and
+        res.resources[0].status.latestMoverStatus.result == "Successful" and
+        res.resources[0].status.latestMoverStatus.logs is search("restoring.*") and
+        res.resources[0].status.latestMoverStatus.logs is search("Restic completed in.*")
+      delay: 1
+      retries: 300
+
+    # Check that the dynamically provisioned destination PVC is preserved
+    # since we're using cleanupTempDestinationPVC: false
+    - name: Confirm dynamically provisioned destination PVC is preserved
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: PersistentVolumeClaim
+        name: volsync-restore-dest
+        namespace: "{{ namespace }}"
+      register: destpvcreloaded
+
+    - name: Check dest pvc preserved (cleanupTempDestinationPVC is false)
+      ansible.builtin.fail:
+        msg: destination pvc (dynamically provisioned by volsync) should be preserved, but has been deleted
+      when:
+        destpvcreloaded.resources | length == 0
+
+    # Check that the cache PVC is preserved
+    # since we're using cleanupCachePVC: false
+    - name: Confirm cache PVC is preserved
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: PersistentVolumeClaim
+        name: volsync-restore-cache
+        namespace: "{{ namespace }}"
+      register: cachepvcreloaded
+
+    - name: Check cache pvc preserved (cleanupCachePVC is false)
+      ansible.builtin.fail:
+        msg: cache pvc should be preserved, but has been deleted
+      when:
+        cachepvcreloaded.resources | length == 0

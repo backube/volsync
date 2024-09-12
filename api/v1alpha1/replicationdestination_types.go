@@ -85,7 +85,7 @@ type ReplicationDestinationVolumeOptions struct {
 	//+optional
 	DestinationPVC *string `json:"destinationPVC,omitempty"`
 	// Set this to true to delete the temp destination PVC (dynamically provisioned
-	// by VolSync) at the end of each ReplicationDestination sync cycle.
+	// by VolSync) at the end of each successful ReplicationDestination sync iteration.
 	// If destinationPVC is set, this will have no effect, VolSync will only
 	// cleanup temp PVCs that it deployed.
 	// Note that if this is set to true, every sync this ReplicationDestination
@@ -238,7 +238,7 @@ type ReplicationDestinationResticSpec struct {
 	//+optional
 	CacheAccessModes []corev1.PersistentVolumeAccessMode `json:"cacheAccessModes,omitempty"`
 	// Set this to true to delete the restic cache PVC (dynamically provisioned
-	// by VolSync) at the end of each ReplicationDestination sync cycle.
+	// by VolSync) at the end of each successful ReplicationDestination sync iteration.
 	// Cache PVCs will always be deleted if the owning ReplicationDestination is
 	// removed, even if this setting is false.
 	// The default is false.
