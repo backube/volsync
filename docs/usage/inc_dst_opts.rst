@@ -17,6 +17,17 @@ destinationPVC
    Instead of having VolSync automatically provision the destination volume
    (using capacity, accessModes, etc.), the name of a pre-existing PVC may be
    specified here.
+cleanupTempDestinationPVC
+   This optional boolean specifies whether a destination PVC dynamically
+   provisioned by VolSync should be deleted at the end of a successful sync
+   iteration. If destinationPVC is specified, then this setting will have no
+   effect, VolSync will only cleanup PVCs that it deployed.
+   If this is set to true, every sync this ReplicationDestination
+   makes will re-provision a new temp destination PVC and all data
+   will need to be sent again during the sync.
+   Dynamically provisioned destination PVCs will always be deleted if the
+   owning ReplicationDestination is removed, even if this setting is false.
+   The default is ``false``.
 storageClassName
    When VolSync creates the destination volume, this specifies the name of the
    StorageClass to use. If omitted, the system default StorageClass will be

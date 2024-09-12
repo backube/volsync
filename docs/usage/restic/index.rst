@@ -260,6 +260,11 @@ cacheAccessModes
    This is the access mode(s) that should be used to provision the cache volume.
    It defaults to ``.spec.accessModes``, then to the access modes used by the
    source PVC.
+cleanupCachePVC
+   This optional boolean determines if the cache PVC should be cleaned up at
+   the end of the restore. Cache PVCs will always be deleted if the owning
+   ReplicationDestination is removed, even if this setting is false.
+   Defaults to ``false``.
 customCA
    This option allows a custom certificate authority to be used when making TLS
    (https) connections to the remote repository.
@@ -286,7 +291,7 @@ restoreAsOf
    timestamp, Kubernetes will only accept ones with the day and hour fields
    separated by a ``T``. E.g, ``2022-08-10T20:01:03-04:00`` will work but
    ``2022-08-10 20:01:03-04:00`` will fail.
-delete
+enableFileDeletion
    A boolean indicating whether files and directories that exist on the pvc
    being restored to should be deleted if they do not exist in the restic
    snapshot being restored. The default value is ``false``.
