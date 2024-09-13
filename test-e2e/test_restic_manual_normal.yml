@@ -232,4 +232,5 @@
       ansible.builtin.fail:
         msg: cache pvc should be preserved, but has been deleted
       when:
-        cachepvcreloaded.resources | length == 0
+        cachepvcreloaded.resources | length == 0 or
+        cachepvcreloaded.resources[0].metadata.deletionTimestamp is defined

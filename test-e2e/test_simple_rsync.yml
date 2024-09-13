@@ -147,6 +147,7 @@
       when:
         destpvc.resources | length == 0 or
         destpvcreloaded.resources | length == 0 or
+        destpvcreloaded.resources[0].metadata.deletionTimestamp is defined or
         destpvcreloaded.resources[0].metadata.uid != destpvc.resources[0].metadata.uid
 
     - name: Convert latestImage to PVC using VolumePopulator

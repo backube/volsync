@@ -196,12 +196,10 @@
         name: volsync-restore-dest
         namespace: "{{ namespace }}"
       register: destpvc
-
-    - name: Check dest pvc deleted (cleanupTempDestinationPVC is true)
-      ansible.builtin.fail:
-        msg: destination pvc (dynamically provisioned by volsync) should deleted but still remains
-      when:
-        destpvc.resources | length == 1
+      until: >
+        destpvc.resources | length == 0
+      delay: 1
+      retries: 300
 
     # Check that the cache PVC was cleaned
     # up since we're using cleanupCachePVC: true
@@ -212,12 +210,10 @@
         name: volsync-restore-cache
         namespace: "{{ namespace }}"
       register: cachepvc
-
-    - name: Check cache pvc deleted (cleanupCachePVC is true)
-      ansible.builtin.fail:
-        msg: cache pvc should deleted but still remains
-      when:
-        cachepvc.resources | length == 1
+      until: >
+        cachepvc.resources | length == 0
+      delay: 1
+      retries: 300
 
     - name: Convert latestImage to PVC
       kubernetes.core.k8s:
@@ -295,7 +291,8 @@
       ansible.builtin.fail:
         msg: destination pvc (dynamically provisioned by volsync) should be preserved, but has been deleted
       when:
-        destpvcreloaded.resources | length == 0
+        destpvcreloaded.resources | length == 0 or
+        destpvcreloaded.resources[0].metadata.deletionTimestamp is defined
 
     # Check that the cache PVC is preserved
     # since we're using cleanupCachePVC: false
@@ -311,4 +308,5 @@
       ansible.builtin.fail:
         msg: cache pvc should be preserved, but has been deleted
       when:
-        cachepvcreloaded.resources | length == 0
+        cachepvcreloaded.resources | length == 0 or
+        cachepvcreloaded.resources[0].metadata.deletionTimestamp is defined
