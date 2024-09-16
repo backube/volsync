@@ -95,7 +95,7 @@ type ReplicationDestinationVolumeOptions struct {
 	// owning ReplicationDestination is removed, even if this setting is false.
 	// The default is false.
 	//+optional
-	CleanupTempDestinationPVC bool `json:"cleanupTempDestinationPVC,omitempty"`
+	CleanupTempPVC bool `json:"cleanupTempPVC,omitempty"`
 }
 
 type ReplicationDestinationRsyncSpec struct {

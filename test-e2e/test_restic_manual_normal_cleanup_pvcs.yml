@@ -4,7 +4,7 @@
     - e2e
     - restic
     - unprivileged
-    - cleanupTempDestinationPVC
+    - cleanupTempPVC
     - cleanupCachePVC
   vars:
     restic_secret_name: restic-secret
@@ -137,7 +137,7 @@
             trigger:
               manual: restore-once
             restic:
-              cleanupTempDestinationPVC: true
+              cleanupTempPVC: true
               cleanupCachePVC: true
               repository: "{{ restic_secret_name }}"
               copyMethod: Snapshot
@@ -160,7 +160,7 @@
             trigger:
               manual: restore-once
             restic:
-              cleanupTempDestinationPVC: true
+              cleanupTempPVC: true
               cleanupCachePVC: true
               repository: "{{ restic_secret_name }}"
               copyMethod: Snapshot
@@ -188,7 +188,7 @@
       retries: 300
 
     # Check that the dynamically provisioned destination PVC was cleaned
-    # up since we're using cleanupTempDestinationPVC: true
+    # up since we're using cleanupTempPVC: true
     - name: Confirm dynamically provisioned destination PVC is cleaned up
       kubernetes.core.k8s_info:
         api_version: v1
@@ -243,7 +243,7 @@
         pvc2_name: data-dest
 
     # turn default behavior back on, dest pvc and cache pvc should be left behind again after another sync
-    - name: Trigger another restore with cleanupTempDestinationPVC false
+    - name: Trigger another restore with cleanupTempPVC false
       kubernetes.core.k8s:
         state: patched
         definition:
@@ -254,7 +254,7 @@
             namespace: "{{ namespace }}"
           spec:
             restic:
-              cleanupTempDestinationPVC: false
+              cleanupTempPVC: false
               cleanupCachePVC: false
             trigger:
               manual: restore-twice
@@ -278,7 +278,7 @@
       retries: 300
 
     # Check that the dynamically provisioned destination PVC is preserved
-    # since we're using cleanupTempDestinationPVC: false
+    # since we're using cleanupTempPVC: false
     - name: Confirm dynamically provisioned destination PVC is preserved
       kubernetes.core.k8s_info:
         api_version: v1
@@ -287,7 +287,7 @@
         namespace: "{{ namespace }}"
       register: destpvcreloaded
 
-    - name: Check dest pvc preserved (cleanupTempDestinationPVC is false)
+    - name: Check dest pvc preserved (cleanupTempPVC is false)
       ansible.builtin.fail:
         msg: destination pvc (dynamically provisioned by volsync) should be preserved, but has been deleted
       when:

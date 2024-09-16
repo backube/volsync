@@ -1602,9 +1602,9 @@ var _ = Describe("Rsync as a destination", func() {
 					Expect(pvc.Labels).ToNot(HaveKey("volsync.backube/cleanup"))
 				})
 
-				When("cleanupDestinationPVC is set to true", func() {
+				When("cleanupPVC is set to true", func() {
 					BeforeEach(func() {
-						rd.Spec.RsyncTLS.CleanupTempDestinationPVC = true
+						rd.Spec.RsyncTLS.CleanupTempPVC = true
 					})
 					It("The dynamic PVC should be marked for deletion", func() {
 						pvc, e := mover.ensureDestinationPVC(ctx)
@@ -1654,10 +1654,10 @@ var _ = Describe("Rsync as a destination", func() {
 				})
 
 				// We will NOT cleanup a users destination PVC, only ones we create dynamically
-				// So we should ignore the cleanupDestinationPVC setting if destinationPVC is set
-				When("cleanupDestinationPVC is set to true", func() {
+				// So we should ignore the cleanupPVC setting if destinationPVC is set
+				When("cleanupPVC is set to true", func() {
 					BeforeEach(func() {
-						rd.Spec.RsyncTLS.CleanupTempDestinationPVC = true
+						rd.Spec.RsyncTLS.CleanupTempPVC = true
 					})
 					It("The user supplied PVC should NOT be marked for deletion", func() {
 						pvc, e := mover.ensureDestinationPVC(ctx)

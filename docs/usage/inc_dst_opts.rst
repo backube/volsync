@@ -17,7 +17,7 @@ destinationPVC
    Instead of having VolSync automatically provision the destination volume
    (using capacity, accessModes, etc.), the name of a pre-existing PVC may be
    specified here.
-cleanupTempDestinationPVC
+cleanupTempPVC
    This optional boolean specifies whether a destination PVC dynamically
    provisioned by VolSync should be deleted at the end of a successful sync
    iteration. If destinationPVC is specified, then this setting will have no

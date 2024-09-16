@@ -97,7 +97,7 @@ spec:
                       create.
                     pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                     x-kubernetes-int-or-string: true
-                  cleanupTempDestinationPVC:
+                  cleanupTempPVC:
                     description: |-
                       Set this to true to delete the temp destination PVC (dynamically provisioned
                       by VolSync) at the end of each successful ReplicationDestination sync iteration.
@@ -1415,7 +1415,7 @@ spec:
                       removed, even if this setting is false.
                       The default is false.
                     type: boolean
-                  cleanupTempDestinationPVC:
+                  cleanupTempPVC:
                     description: |-
                       Set this to true to delete the temp destination PVC (dynamically provisioned
                       by VolSync) at the end of each successful ReplicationDestination sync iteration.
@@ -2719,7 +2719,7 @@ spec:
                       create.
                     pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                     x-kubernetes-int-or-string: true
-                  cleanupTempDestinationPVC:
+                  cleanupTempPVC:
                     description: |-
                       Set this to true to delete the temp destination PVC (dynamically provisioned
                       by VolSync) at the end of each successful ReplicationDestination sync iteration.
@@ -2885,7 +2885,7 @@ spec:
                       create.
                     pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                     x-kubernetes-int-or-string: true
-                  cleanupTempDestinationPVC:
+                  cleanupTempPVC:
                     description: |-
                       Set this to true to delete the temp destination PVC (dynamically provisioned
                       by VolSync) at the end of each successful ReplicationDestination sync iteration.

@@ -74,8 +74,8 @@ type Mover struct {
 	// Source-only fields
 	sourceStatus *volsyncv1alpha1.ReplicationSourceRsyncStatus
 	// Destination-only fields
-	destStatus                *volsyncv1alpha1.ReplicationDestinationRsyncStatus
-	cleanupTempDestinationPVC bool
+	destStatus     *volsyncv1alpha1.ReplicationDestinationRsyncStatus
+	cleanupTempPVC bool
 }
 
 var _ mover.Mover = &Mover{}
@@ -339,7 +339,7 @@ func (m *Mover) ensureDestinationPVC(ctx context.Context) (*corev1.PersistentVol
 		return m.vh.UseProvidedPVC(ctx, dataPVCName)
 	}
 	// Need to allocate the incoming data volume
-	return m.vh.EnsureNewPVC(ctx, m.logger, dataPVCName, m.cleanupTempDestinationPVC)
+	return m.vh.EnsureNewPVC(ctx, m.logger, dataPVCName, m.cleanupTempPVC)
 }
 
 func (m *Mover) getDestinationPVCName() (bool, string) {
