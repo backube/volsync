@@ -147,6 +147,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 	}, nil
 }
 
+//nolint:funlen
 func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 	eventRecorder events.EventRecorder,
 	destination *volsyncv1alpha1.ReplicationDestination, privileged bool) (mover.Mover, error) {
@@ -203,6 +204,7 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		isSource:           isSource,
 		paused:             destination.Spec.Paused,
 		mainPVCName:        destination.Spec.RsyncTLS.DestinationPVC,
+		cleanupTempPVC:     destination.Spec.RsyncTLS.CleanupTempPVC,
 		privileged:         privileged,
 		destStatus:         destination.Status.RsyncTLS,
 		latestMoverStatus:  destination.Status.LatestMoverStatus,

@@ -97,6 +97,19 @@ spec:
                       create.
                     pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                     x-kubernetes-int-or-string: true
+                  cleanupTempPVC:
+                    description: |-
+                      Set this to true to delete the temp destination PVC (dynamically provisioned
+                      by VolSync) at the end of each successful ReplicationDestination sync iteration.
+                      If destinationPVC is set, this will have no effect, VolSync will only
+                      cleanup temp PVCs that it deployed.
+                      Note that if this is set to true, every sync this ReplicationDestination
+                      makes will re-provision a new temp destination PVC and all data
+                      will need to be sent again during the sync.
+                      Dynamically provisioned destination PVCs will always be deleted if the
+                      owning ReplicationDestination is removed, even if this setting is false.
+                      The default is false.
+                    type: boolean
                   copyMethod:
                     description: |-
                       copyMethod describes how a point-in-time (PiT) image of the destination
@@ -1394,6 +1407,27 @@ spec:
                       create.
                     pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                     x-kubernetes-int-or-string: true
+                  cleanupCachePVC:
+                    description: |-
+                      Set this to true to delete the restic cache PVC (dynamically provisioned
+                      by VolSync) at the end of each successful ReplicationDestination sync iteration.
+                      Cache PVCs will always be deleted if the owning ReplicationDestination is
+                      removed, even if this setting is false.
+                      The default is false.
+                    type: boolean
+                  cleanupTempPVC:
+                    description: |-
+                      Set this to true to delete the temp destination PVC (dynamically provisioned
+                      by VolSync) at the end of each successful ReplicationDestination sync iteration.
+                      If destinationPVC is set, this will have no effect, VolSync will only
+                      cleanup temp PVCs that it deployed.
+                      Note that if this is set to true, every sync this ReplicationDestination
+                      makes will re-provision a new temp destination PVC and all data
+                      will need to be sent again during the sync.
+                      Dynamically provisioned destination PVCs will always be deleted if the
+                      owning ReplicationDestination is removed, even if this setting is false.
+                      The default is false.
+                    type: boolean
                   copyMethod:
                     description: |-
                       copyMethod describes how a point-in-time (PiT) image of the destination
@@ -2685,6 +2719,19 @@ spec:
                       create.
                     pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                     x-kubernetes-int-or-string: true
+                  cleanupTempPVC:
+                    description: |-
+                      Set this to true to delete the temp destination PVC (dynamically provisioned
+                      by VolSync) at the end of each successful ReplicationDestination sync iteration.
+                      If destinationPVC is set, this will have no effect, VolSync will only
+                      cleanup temp PVCs that it deployed.
+                      Note that if this is set to true, every sync this ReplicationDestination
+                      makes will re-provision a new temp destination PVC and all data
+                      will need to be sent again during the sync.
+                      Dynamically provisioned destination PVCs will always be deleted if the
+                      owning ReplicationDestination is removed, even if this setting is false.
+                      The default is false.
+                    type: boolean
                   copyMethod:
                     description: |-
                       copyMethod describes how a point-in-time (PiT) image of the destination
@@ -2838,6 +2885,19 @@ spec:
                       create.
                     pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                     x-kubernetes-int-or-string: true
+                  cleanupTempPVC:
+                    description: |-
+                      Set this to true to delete the temp destination PVC (dynamically provisioned
+                      by VolSync) at the end of each successful ReplicationDestination sync iteration.
+                      If destinationPVC is set, this will have no effect, VolSync will only
+                      cleanup temp PVCs that it deployed.
+                      Note that if this is set to true, every sync this ReplicationDestination
+                      makes will re-provision a new temp destination PVC and all data
+                      will need to be sent again during the sync.
+                      Dynamically provisioned destination PVCs will always be deleted if the
+                      owning ReplicationDestination is removed, even if this setting is false.
+                      The default is false.
+                    type: boolean
                   copyMethod:
                     description: |-
                       copyMethod describes how a point-in-time (PiT) image of the destination

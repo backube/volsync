@@ -4,6 +4,8 @@
     - e2e
     - restic
     - unprivileged
+    - cleanupTempPVC
+    - cleanupCachePVC
   vars:
     restic_secret_name: restic-secret
   tasks:
@@ -122,33 +124,6 @@
       delay: 1
       retries: 900
 
-    - name: Create dest PVC (restore volume)
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          kind: PersistentVolumeClaim
-          apiVersion: v1
-          metadata:
-            name: data-dest
-            namespace: "{{ namespace }}"
-          spec:
-            accessModes:
-              - ReadWriteOnce
-            resources:
-              requests:
-                storage: 1Gi
-
-    # Run affinity pod attached to both pvcs to make sure they end up in the
-    # same availability zone so they can be mounted by a single pod later
-    # when running compare-pvcs
-    - name: Run pvc affinity pod
-      include_role:
-        name: pvc_affinity_pod
-      vars:
-        pvc_names:
-          - data-source
-          - data-dest
-
     - name: Restore data to destination (w/ mSC)
       kubernetes.core.k8s:
         state: present
@@ -162,9 +137,12 @@
             trigger:
               manual: restore-once
             restic:
+              cleanupTempPVC: true
+              cleanupCachePVC: true
               repository: "{{ restic_secret_name }}"
-              destinationPVC: data-dest
-              copyMethod: Direct
+              copyMethod: Snapshot
+              accessModes: [ReadWriteOnce]
+              capacity: 1Gi
               cacheCapacity: 1Gi
               moverSecurityContext: "{{ podSecurityContext }}"
       when: podSecurityContext is defined
@@ -182,9 +160,12 @@
             trigger:
               manual: restore-once
             restic:
+              cleanupTempPVC: true
+              cleanupCachePVC: true
               repository: "{{ restic_secret_name }}"
-              destinationPVC: data-dest
-              copyMethod: Direct
+              copyMethod: Snapshot
+              accessModes: [ReadWriteOnce]
+              capacity: 1Gi
               cacheCapacity: 1Gi
       when: podSecurityContext is not defined
 
@@ -206,10 +187,53 @@
       delay: 1
       retries: 300
 
-    - name: Shutdown pvc affinity pod
-      include_role:
-        name: pvc_affinity_pod
-        tasks_from: "delete"
+    # Check that the dynamically provisioned destination PVC was cleaned
+    # up since we're using cleanupTempPVC: true
+    - name: Confirm dynamically provisioned destination PVC is cleaned up
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: PersistentVolumeClaim
+        name: volsync-restore-dest
+        namespace: "{{ namespace }}"
+      register: destpvc
+      until: >
+        destpvc.resources | length == 0
+      delay: 1
+      retries: 300
+
+    # Check that the cache PVC was cleaned
+    # up since we're using cleanupCachePVC: true
+    - name: Confirm cache PVC is cleaned up
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: PersistentVolumeClaim
+        name: volsync-restore-cache
+        namespace: "{{ namespace }}"
+      register: cachepvc
+      until: >
+        cachepvc.resources | length == 0
+      delay: 1
+      retries: 300
+
+    - name: Convert latestImage to PVC
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: data-dest
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            dataSource:
+              kind: VolumeSnapshot
+              apiGroup: snapshot.storage.k8s.io
+              name: "{{ res.resources[0].status.latestImage.name }}"
+            resources:
+              requests:
+                storage: 1Gi
 
     - name: Verify contents of PVC
       include_role:
@@ -217,6 +241,58 @@
       vars:
         pvc1_name: data-source
         pvc2_name: data-dest
+
+    # turn default behavior back on, dest pvc and cache pvc should be left behind again after another sync
+    - name: Trigger another restore with cleanupTempPVC false
+      kubernetes.core.k8s:
+        state: patched
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationDestination
+          metadata:
+            name: restore
+            namespace: "{{ namespace }}"
+          spec:
+            restic:
+              cleanupTempPVC: false
+              cleanupCachePVC: false
+            trigger:
+              manual: restore-twice
+
+    - name: Wait for 2nd restore to complete
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationDestination
+        name: restore
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastManualSync is defined and
+        res.resources[0].status.lastManualSync=="restore-twice" and
+        res.resources[0].status.latestMoverStatus is defined and
+        res.resources[0].status.latestMoverStatus.result == "Successful" and
+        res.resources[0].status.latestMoverStatus.logs is search("restoring.*") and
+        res.resources[0].status.latestMoverStatus.logs is search("Restic completed in.*")
+      delay: 1
+      retries: 300
+
+    # Check that the dynamically provisioned destination PVC is preserved
+    # since we're using cleanupTempPVC: false
+    - name: Confirm dynamically provisioned destination PVC is preserved
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: PersistentVolumeClaim
+        name: volsync-restore-dest
+        namespace: "{{ namespace }}"
+      register: destpvcreloaded
+
+    - name: Check dest pvc preserved (cleanupTempPVC is false)
+      ansible.builtin.fail:
+        msg: destination pvc (dynamically provisioned by volsync) should be preserved, but has been deleted
+      when:
+        destpvcreloaded.resources | length == 0 or
+        destpvcreloaded.resources[0].metadata.deletionTimestamp is defined
 
     # Check that the cache PVC is preserved
     # since we're using cleanupCachePVC: false
@@ -228,7 +304,7 @@
         namespace: "{{ namespace }}"
       register: cachepvcreloaded
 
-    - name: Check cache pvc preserved (cleanupCachePVC is false by default)
+    - name: Check cache pvc preserved (cleanupCachePVC is false)
       ansible.builtin.fail:
         msg: cache pvc should be preserved, but has been deleted
       when:

@@ -1734,7 +1734,7 @@ var _ = Describe("Rclone as a destination", func() {
 					destVolCap = resource.MustParse("6Gi")
 					rd.Spec.Rclone.Capacity = &destVolCap
 				})
-				It("creates a temporary PVC", func() {
+				It("creates a dynamic PVC", func() {
 					pvc, e := mover.ensureDestinationPVC(ctx)
 					Expect(e).NotTo(HaveOccurred())
 					Expect(pvc).NotTo(BeNil())
@@ -1742,6 +1742,18 @@ var _ = Describe("Rclone as a destination", func() {
 					Expect(*pvc.Spec.Resources.Requests.Storage()).To(Equal(destVolCap))
 					// It should NOT be marked for cleaned up
 					Expect(pvc.Labels).ToNot(HaveKey("volsync.backube/cleanup"))
+				})
+				When("cleanupTempPVC is set to true", func() {
+					BeforeEach(func() {
+						rd.Spec.Rclone.CleanupTempPVC = true
+					})
+					It("The dynamic PVC should be marked for deletion", func() {
+						pvc, e := mover.ensureDestinationPVC(ctx)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(pvc).NotTo(BeNil())
+						// Cleanup label should be set on this PVC
+						Expect(pvc.Labels).To(HaveKey("volsync.backube/cleanup"))
+					})
 				})
 			})
 			When("a destination volume is supplied", func() {
@@ -1781,7 +1793,21 @@ var _ = Describe("Rclone as a destination", func() {
 					Expect(pvc.OwnerReferences).To(BeEmpty())
 					// It won't be cleaned up at the end of the transfer
 					Expect(pvc.Labels).NotTo(HaveKey("volsync.backube/cleanup"))
+				})
 
+				// We will NOT cleanup a users destination PVC, only ones we create dynamically
+				// So we should ignore the cleanupTempPVC setting if destinationPVC is set
+				When("cleanupTempPVC is set to true", func() {
+					BeforeEach(func() {
+						rd.Spec.Rclone.CleanupTempPVC = true
+					})
+					It("The user supplied PVC should NOT be marked for deletion", func() {
+						pvc, e := mover.ensureDestinationPVC(ctx)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(pvc).NotTo(BeNil())
+						// Cleanup label should NOT be set on this PVC
+						Expect(pvc.Labels).NotTo(HaveKey("volsync.backube/cleanup"))
+					})
 				})
 			})
 		})

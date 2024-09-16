@@ -516,13 +516,28 @@ var _ = Describe("Restic as a source", func() {
 				dataPVC = sPVC
 			})
 
+			When("default (no cleanupCachePVC set)", func() {
+				It("Should not have the cleanup label", func() {
+					cache, err := mover.ensureCache(ctx, dataPVC, false)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(cache.Labels).NotTo(HaveKey("volsync.backube/cleanup"))
+				})
+			})
+			When("cleanupCachePVC set to true", func() {
+				It("Should not have the cleanup label", func() {
+					cache, err := mover.ensureCache(ctx, dataPVC, true /* cleanup */)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(cache.Labels).To(HaveKey("volsync.backube/cleanup"))
+				})
+			})
+
 			When("no capacity is specified", func() {
 				BeforeEach(func() {
 					rs.Spec.Restic.CacheCapacity = nil
 				})
 				It("is 1Gi is size", func() {
 					oneGB := resource.MustParse("1Gi")
-					cache, err := mover.ensureCache(ctx, dataPVC)
+					cache, err := mover.ensureCache(ctx, dataPVC, false)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(*cache.Spec.Resources.Requests.Storage()).To(Equal(oneGB))
 				})
@@ -533,7 +548,7 @@ var _ = Describe("Restic as a source", func() {
 					rs.Spec.Restic.CacheCapacity = &theSize
 				})
 				It("uses the specified size", func() {
-					cache, err := mover.ensureCache(ctx, dataPVC)
+					cache, err := mover.ensureCache(ctx, dataPVC, false)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(*cache.Spec.Resources.Requests.Storage()).To(Equal(theSize))
 				})
@@ -545,7 +560,7 @@ var _ = Describe("Restic as a source", func() {
 					rs.Spec.Restic.CacheAccessModes = nil
 				})
 				It("matches the source pvc", func() {
-					cache, err := mover.ensureCache(ctx, dataPVC)
+					cache, err := mover.ensureCache(ctx, dataPVC, false)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(cache.Spec.AccessModes).To(Equal(dataPVC.Spec.AccessModes))
 				})
@@ -556,7 +571,7 @@ var _ = Describe("Restic as a source", func() {
 					rs.Spec.Restic.CacheAccessModes = nil
 				})
 				It("matches the specified option", func() {
-					cache, err := mover.ensureCache(ctx, dataPVC)
+					cache, err := mover.ensureCache(ctx, dataPVC, false)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(cache.Spec.AccessModes).To(Equal([]corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany}))
 				})
@@ -567,7 +582,7 @@ var _ = Describe("Restic as a source", func() {
 					rs.Spec.Restic.CacheAccessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadOnlyMany}
 				})
 				It("uses the cache-specific mode", func() {
-					cache, err := mover.ensureCache(ctx, dataPVC)
+					cache, err := mover.ensureCache(ctx, dataPVC, false)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(cache.Spec.AccessModes).To(Equal([]corev1.PersistentVolumeAccessMode{corev1.ReadOnlyMany}))
 				})
@@ -579,7 +594,7 @@ var _ = Describe("Restic as a source", func() {
 					rs.Spec.Restic.CacheStorageClassName = nil
 				})
 				It("uses the cluster default", func() {
-					cache, err := mover.ensureCache(ctx, dataPVC)
+					cache, err := mover.ensureCache(ctx, dataPVC, false)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(cache.Spec.StorageClassName).To(BeNil())
 				})
@@ -591,7 +606,7 @@ var _ = Describe("Restic as a source", func() {
 					rs.Spec.Restic.CacheStorageClassName = nil
 				})
 				It("matches the option SC", func() {
-					cache, err := mover.ensureCache(ctx, dataPVC)
+					cache, err := mover.ensureCache(ctx, dataPVC, false)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(*cache.Spec.StorageClassName).To(Equal(option))
 				})
@@ -604,7 +619,7 @@ var _ = Describe("Restic as a source", func() {
 					rs.Spec.Restic.CacheStorageClassName = &cachesc
 				})
 				It("matches the cache SC", func() {
-					cache, err := mover.ensureCache(ctx, dataPVC)
+					cache, err := mover.ensureCache(ctx, dataPVC, false)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(*cache.Spec.StorageClassName).To(Equal(cachesc))
 				})
@@ -1800,12 +1815,28 @@ var _ = Describe("Restic as a destination", func() {
 				destVolCap = resource.MustParse("6Gi")
 				rd.Spec.Restic.Capacity = &destVolCap
 			})
-			It("creates a temporary PVC", func() {
+			It("creates a dynamic PVC", func() {
 				pvc, e := mover.ensureDestinationPVC(ctx)
 				Expect(e).NotTo(HaveOccurred())
 				Expect(pvc).NotTo(BeNil())
 				Expect(pvc.Spec.AccessModes).To(ConsistOf(am))
 				Expect(*pvc.Spec.Resources.Requests.Storage()).To(Equal(destVolCap))
+
+				// Cleanup label should not be on this PVC
+				Expect(pvc.Labels).NotTo(HaveKey("volsync.backube/cleanup"))
+			})
+
+			When("cleanupTempPVC is set to true", func() {
+				BeforeEach(func() {
+					rd.Spec.Restic.CleanupTempPVC = true
+				})
+				It("The dynamic PVC should be marked for deletion", func() {
+					pvc, e := mover.ensureDestinationPVC(ctx)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(pvc).NotTo(BeNil())
+					// Cleanup label should be set on this PVC
+					Expect(pvc.Labels).To(HaveKey("volsync.backube/cleanup"))
+				})
 			})
 		})
 		When("a destination volume is supplied", func() {
@@ -1835,6 +1866,21 @@ var _ = Describe("Restic as a destination", func() {
 				Expect(e).NotTo(HaveOccurred())
 				Expect(pvc).NotTo(BeNil())
 				Expect(pvc.Name).To(Equal(dPVC.Name))
+			})
+
+			// We will NOT cleanup a users destination PVC, only ones we create dynamically
+			// So we should ignore the cleanupTempPVC setting if destinationPVC is set
+			When("cleanupTempPVC is set to true", func() {
+				BeforeEach(func() {
+					rd.Spec.Restic.CleanupTempPVC = true
+				})
+				It("The user supplied PVC should NOT be marked for deletion", func() {
+					pvc, e := mover.ensureDestinationPVC(ctx)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(pvc).NotTo(BeNil())
+					// Cleanup label should NOT be set on this PVC
+					Expect(pvc.Labels).NotTo(HaveKey("volsync.backube/cleanup"))
+				})
 			})
 		})
 		When("the service account is created", func() {

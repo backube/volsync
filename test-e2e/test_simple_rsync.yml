@@ -66,6 +66,14 @@
       delay: 1
       retries: 300
 
+    - name: Check on dynamically provisioned destination PVC
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: PersistentVolumeClaim
+        name: volsync-test-dst
+        namespace: "{{ namespace }}"
+      register: destpvc
+
     - name: Create ReplicationSource
       kubernetes.core.k8s:
         state: present
@@ -117,6 +125,30 @@
         res.resources[0].status.latestMoverStatus.result == "Successful"
       delay: 1
       retries: 900
+
+    # Check that the dynamically provisioned destination PVC is still there
+    # and that it has NOT been cleaned up
+    #
+    # rsync is a special case where we immediately start the destination mover again (no trigger or schedule)
+    # so even if the dest pvc was deleted, it would be re-created as soon as the last replicationdestionation completed
+    # To check we have not deleted the original destination pvc, reload it and check against the destpvc variable
+    # we loaded earlier
+    - name: Confirm dynamically provisioned destination PVC is preserved (no cleanup by default)
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: PersistentVolumeClaim
+        name: volsync-test-dst
+        namespace: "{{ namespace }}"
+      register: destpvcreloaded
+
+    - name: Check dest pvc was not deleted (should be same pvc from our original sync to preserve data)
+      ansible.builtin.fail:
+        msg: destination pvc (dynamically provisioned by volsync) should be preserved, but has been deleted
+      when:
+        destpvc.resources | length == 0 or
+        destpvcreloaded.resources | length == 0 or
+        destpvcreloaded.resources[0].metadata.deletionTimestamp is defined or
+        destpvcreloaded.resources[0].metadata.uid != destpvc.resources[0].metadata.uid
 
     - name: Convert latestImage to PVC using VolumePopulator
       kubernetes.core.k8s:

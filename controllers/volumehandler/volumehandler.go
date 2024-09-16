@@ -149,7 +149,7 @@ func (vh *VolumeHandler) getPVCByName(ctx context.Context, pvcName string) (*cor
 
 // nolint: funlen
 func (vh *VolumeHandler) EnsureNewPVC(ctx context.Context, log logr.Logger,
-	name string) (*corev1.PersistentVolumeClaim, error) {
+	name string, isTemporary bool) (*corev1.PersistentVolumeClaim, error) {
 	logger := log.WithValues("PVC", name)
 
 	// Ensure required configuration parameters have been provided in order to
@@ -183,6 +183,10 @@ func (vh *VolumeHandler) EnsureNewPVC(ctx context.Context, log logr.Logger,
 			pvc.Spec.StorageClassName = vh.storageClassName
 			volumeMode := corev1.PersistentVolumeFilesystem
 			pvc.Spec.VolumeMode = &volumeMode
+		}
+
+		if isTemporary {
+			utils.MarkForCleanup(vh.owner, pvc)
 		}
 
 		pvc.Spec.Resources.Requests = corev1.ResourceList{

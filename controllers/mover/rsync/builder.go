@@ -207,6 +207,7 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		isSource:           isSource,
 		paused:             destination.Spec.Paused,
 		mainPVCName:        destination.Spec.Rsync.DestinationPVC,
+		cleanupTempPVC:     destination.Spec.Rsync.CleanupTempPVC,
 		destStatus:         destination.Status.Rsync,
 		latestMoverStatus:  destination.Status.LatestMoverStatus,
 		moverConfig: volsyncv1alpha1.MoverConfig{
