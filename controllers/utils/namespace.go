@@ -49,10 +49,6 @@ func PrivilegedMoversOk(ctx context.Context, cl client.Client, logger logr.Logge
 			"namespace", namespace, "Annotation", volsyncv1alpha1.PrivilegedMoversNamespaceAnnotation,
 			"Annotation value", privilegedMoverOkVal)
 		return true, nil
-	} else if strings.ToLower(privilegedMoverOkVal) != "false" {
-		logger.Info("Namespace does not indicate volsync privileged movers are allowed, will assume privileged movers "+
-			"are not allowed. Annotation missing or not set to 'true' or 'false'", "namespace", namespace,
-			"Annotation", volsyncv1alpha1.PrivilegedMoversNamespaceAnnotation)
 	}
 
 	return false, nil
