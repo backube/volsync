@@ -16,20 +16,17 @@ TESTS=$(echo "${TESTS_UNSORTED}" | LC_ALL=C sort)
 
 TESTS_COUNT=$(echo "${TESTS}" | wc -w)
 
-# Group tests into 2 stages (each stage gets run sequentially but
+# Group tests into 3 stages (each stage gets run sequentially but
 # all tests in a stage can run in parallel)
-E2E_TESTS_GROUP1=$(echo "${TESTS}" | grep -v -e role -e syncthing -e restic)
-E2E_TESTS_GROUP2=$(echo "${TESTS}" | grep -e role -e syncthing -e restic)
+# Group1 contains most e2e tests
+E2E_TESTS_GROUP1=$(echo "${TESTS}" | grep -v -e role -e syncthing -e restic -e test_replication_ )
+# Group2 contains syncthing tests, restic tests, cli tests and role tests
+E2E_TESTS_GROUP2=$(echo "${TESTS}" | grep -e role -e syncthing -e restic -e test_replication_ )
 E2E_TESTS_GROUP3="" # If we want to exclude specific tests downstream - put them in this group
 
 E2E_TESTS_GROUP1_COUNT=$(echo "${E2E_TESTS_GROUP1}" | wc -w)
 E2E_TESTS_GROUP2_COUNT=$(echo "${E2E_TESTS_GROUP2}" | wc -w)
 E2E_TESTS_GROUP3_COUNT=$(echo "${E2E_TESTS_GROUP3}" | wc -w)
-# Group1 contains most e2e tests
-# Group2 contains syncthing tests, cli tests and role tests
-E2E_TESTS_GROUP1=$(echo "${TESTS}" | grep -v -e role -e syncthing -e test_replication_ )
-E2E_TESTS_GROUP2=$(echo "${TESTS}" | grep -e role -e syncthing -e test_replication_ )
-
 echo "####################"
 echo "# E2E tests (${TESTS_COUNT} tests total)"
 echo "## Stage 1: (${E2E_TESTS_GROUP1_COUNT} tests)"
