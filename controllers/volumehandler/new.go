@@ -113,6 +113,12 @@ func Capacity(c *resource.Quantity) VHOption {
 	}
 }
 
+func VolumeMode(vm *corev1.PersistentVolumeMode) VHOption {
+	return func(vh *VolumeHandler) {
+		vh.volumeMode = vm
+	}
+}
+
 func StorageClassName(sc *string) VHOption {
 	return func(vh *VolumeHandler) {
 		vh.storageClassName = sc

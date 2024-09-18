@@ -72,6 +72,10 @@ type ReplicationSourceRsyncTLSStatus struct {
 
 type ReplicationDestinationRsyncTLSSpec struct {
 	ReplicationDestinationVolumeOptions `json:",inline"`
+	// Will be used for the dynamic destination PVC created by VolSync.
+	// Defaults to "Filesystem"
+	//+optional
+	VolumeMode *corev1.PersistentVolumeMode `json:"volumeMode,omitempty"`
 	// keySecret is the name of a Secret that contains the TLS pre-shared key to
 	// be used for authentication. If not provided, the key will be generated.
 	//+optional

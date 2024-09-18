@@ -118,6 +118,7 @@ var _ = Describe("Volumehandler", func() {
 					Expect(*newPVC.Spec.StorageClassName).To(Equal(customSC))
 					Expect(*(newPVC.Spec.Resources.Requests.Storage())).To(Equal((capacity)))
 					Expect(newPVC.Name).To(Equal(pvcName))
+					Expect(*newPVC.Spec.VolumeMode).To(Equal(corev1.PersistentVolumeFilesystem))
 
 					Expect(newPVC.Labels).NotTo(HaveKey("volsync.backube/cleanup"))
 				})
@@ -130,6 +131,52 @@ var _ = Describe("Volumehandler", func() {
 				It("Should mark the pvc for cleanup", func() {
 					Expect(newPVC).ToNot(BeNil())
 					Expect(newPVC.Labels).To(HaveKey("volsync.backube/cleanup"))
+				})
+			})
+		})
+
+		When("volumeMode is Set", func() {
+			var vh *VolumeHandler
+			var newPVC *corev1.PersistentVolumeClaim
+			var err error
+			var volumeMode *corev1.PersistentVolumeMode
+
+			JustBeforeEach(func() {
+				capacity := resource.MustParse("1Gi")
+				customSC := "custom"
+				rd.Spec.Rsync.Capacity = &capacity
+				rd.Spec.Rsync.StorageClassName = &customSC
+
+				vh, err = NewVolumeHandler(
+					WithClient(k8sClient),
+					WithOwner(rd),
+					FromDestination(&rd.Spec.Rsync.ReplicationDestinationVolumeOptions),
+					VolumeMode(volumeMode),
+				)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(vh).ToNot(BeNil())
+
+				newPVC, err = vh.EnsureNewPVC(context.TODO(), logger, "mypvc", false)
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			When("volumeMode is set to Filesystem", func() {
+				BeforeEach(func() {
+					vmode := corev1.PersistentVolumeFilesystem
+					volumeMode = &vmode
+				})
+				It("can be used to provision a dynamic destination Filesystem PVC", func() {
+					Expect(*newPVC.Spec.VolumeMode).To(Equal(corev1.PersistentVolumeFilesystem))
+				})
+			})
+
+			When("volumeMode is set to Block", func() {
+				BeforeEach(func() {
+					vmode := corev1.PersistentVolumeBlock
+					volumeMode = &vmode
+				})
+				It("can be used to provision a dynamic destination Block PVC", func() {
+					Expect(*newPVC.Spec.VolumeMode).To(Equal(corev1.PersistentVolumeBlock))
 				})
 			})
 		})

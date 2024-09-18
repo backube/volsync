@@ -295,6 +295,11 @@ func (in *ReplicationDestinationResticSpec) DeepCopy() *ReplicationDestinationRe
 func (in *ReplicationDestinationRsyncSpec) DeepCopyInto(out *ReplicationDestinationRsyncSpec) {
 	*out = *in
 	in.ReplicationDestinationVolumeOptions.DeepCopyInto(&out.ReplicationDestinationVolumeOptions)
+	if in.VolumeMode != nil {
+		in, out := &in.VolumeMode, &out.VolumeMode
+		*out = new(v1.PersistentVolumeMode)
+		**out = **in
+	}
 	if in.SSHKeys != nil {
 		in, out := &in.SSHKeys, &out.SSHKeys
 		*out = new(string)
@@ -399,6 +404,11 @@ func (in *ReplicationDestinationRsyncStatus) DeepCopy() *ReplicationDestinationR
 func (in *ReplicationDestinationRsyncTLSSpec) DeepCopyInto(out *ReplicationDestinationRsyncTLSSpec) {
 	*out = *in
 	in.ReplicationDestinationVolumeOptions.DeepCopyInto(&out.ReplicationDestinationVolumeOptions)
+	if in.VolumeMode != nil {
+		in, out := &in.VolumeMode, &out.VolumeMode
+		*out = new(v1.PersistentVolumeMode)
+		**out = **in
+	}
 	if in.KeySecret != nil {
 		in, out := &in.KeySecret, &out.KeySecret
 		*out = new(string)

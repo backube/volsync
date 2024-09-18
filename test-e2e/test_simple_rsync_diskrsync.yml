@@ -22,23 +22,6 @@
     - when: run_diskrsync_tests
       name: diskrsync (block volume) tests - privileged
       block:
-        - name: Create dest block PVC
-          kubernetes.core.k8s:
-            state: present
-            definition:
-              kind: PersistentVolumeClaim
-              apiVersion: v1
-              metadata:
-                name: data-dest-temp
-                namespace: "{{ namespace }}"
-              spec:
-                volumeMode: Block
-                accessModes:
-                  - ReadWriteOnce
-                resources:
-                  requests:
-                    storage: 1Gi
-
         - name: Create ReplicationDestination
           kubernetes.core.k8s:
             state: present
@@ -50,7 +33,7 @@
                 namespace: "{{ namespace }}"
               spec:
                 rsync:
-                  destinationPVC: data-dest-temp
+                  volumeMode: Block
                   copyMethod: Snapshot
                   capacity: 1Gi
                   accessModes:

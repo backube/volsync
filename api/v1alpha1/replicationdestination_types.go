@@ -100,6 +100,10 @@ type ReplicationDestinationVolumeOptions struct {
 
 type ReplicationDestinationRsyncSpec struct {
 	ReplicationDestinationVolumeOptions `json:",inline"`
+	// Will be used for the dynamic destination PVC created by VolSync.
+	// Defaults to "Filesystem"
+	//+optional
+	VolumeMode *corev1.PersistentVolumeMode `json:"volumeMode,omitempty"`
 	// sshKeys is the name of a Secret that contains the SSH keys to be used for
 	// authentication. If not provided, the keys will be generated.
 	//+optional

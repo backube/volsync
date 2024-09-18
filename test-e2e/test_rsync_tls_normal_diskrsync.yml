@@ -38,23 +38,6 @@
                 type: RuntimeDefault
           when: not cluster_info.is_openshift
 
-        - name: Create dest block PVC
-          kubernetes.core.k8s:
-            state: present
-            definition:
-              kind: PersistentVolumeClaim
-              apiVersion: v1
-              metadata:
-                name: data-dest-temp
-                namespace: "{{ namespace }}"
-              spec:
-                volumeMode: Block
-                accessModes:
-                  - ReadWriteOnce
-                resources:
-                  requests:
-                    storage: 1Gi
-
         - name: Create ReplicationDestination (w/ mSC)
           kubernetes.core.k8s:
             state: present
@@ -66,7 +49,7 @@
                 namespace: "{{ namespace }}"
               spec:
                 rsyncTLS:
-                  destinationPVC: data-dest-temp
+                  volumeMode: Block
                   copyMethod: Snapshot
                   capacity: 1Gi
                   accessModes:
@@ -85,7 +68,7 @@
                 namespace: "{{ namespace }}"
               spec:
                 rsyncTLS:
-                  destinationPVC: data-dest-temp
+                  volumeMode: Block
                   copyMethod: Snapshot
                   capacity: 1Gi
                   accessModes:
