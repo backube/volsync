@@ -35,6 +35,11 @@ jobs:
           python-version: '3.10'
           cache: 'pip'
 
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+
       - name: Install pre-commit
         run: |
           python --version
