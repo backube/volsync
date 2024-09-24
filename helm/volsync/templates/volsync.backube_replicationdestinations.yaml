@@ -2735,6 +2735,11 @@ spec:
                         storageClassName can be used to specify the StorageClass of the
                         destination volume. If not set, the default StorageClass will be used.
                       type: string
+                    volumeMode:
+                      description: |-
+                        Will be used for the dynamic destination PVC created by VolSync.
+                        Defaults to "Filesystem"
+                      type: string
                     volumeSnapshotClassName:
                       description: |-
                         volumeSnapshotClassName can be used to specify the VSC to be used if
@@ -3959,6 +3964,11 @@ spec:
                       description: |-
                         storageClassName can be used to specify the StorageClass of the
                         destination volume. If not set, the default StorageClass will be used.
+                      type: string
+                    volumeMode:
+                      description: |-
+                        Will be used for the dynamic destination PVC created by VolSync.
+                        Defaults to "Filesystem"
                       type: string
                     volumeSnapshotClassName:
                       description: |-

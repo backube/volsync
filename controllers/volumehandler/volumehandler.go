@@ -47,6 +47,8 @@ const (
 	timeYYYYMMDDHHMMSS = "20060102150405"
 )
 
+var defaultVolumeMode = corev1.PersistentVolumeFilesystem
+
 type VolumeHandler struct {
 	client                  client.Client
 	eventRecorder           events.EventRecorder
@@ -55,7 +57,7 @@ type VolumeHandler struct {
 	capacity                *resource.Quantity
 	storageClassName        *string
 	accessModes             []corev1.PersistentVolumeAccessMode
-	volumeMode              corev1.PersistentVolumeMode
+	volumeMode              *corev1.PersistentVolumeMode
 	volumeSnapshotClassName *string
 }
 
@@ -65,10 +67,10 @@ type VolumeHandler struct {
 // the operation should be retried.
 func (vh *VolumeHandler) EnsurePVCFromSrc(ctx context.Context, log logr.Logger,
 	src *corev1.PersistentVolumeClaim, name string, isTemporary bool) (*corev1.PersistentVolumeClaim, error) {
-	// make sure the volumeMode is set properly
-	vh.volumeMode = corev1.PersistentVolumeFilesystem
+	// make sure the volumeMode is set properly from the source PVC
+	vh.volumeMode = &defaultVolumeMode
 	if src.Spec.VolumeMode != nil {
-		vh.volumeMode = *src.Spec.VolumeMode
+		vh.volumeMode = src.Spec.VolumeMode
 	}
 	switch vh.copyMethod {
 	case volsyncv1alpha1.CopyMethodNone:
@@ -152,6 +154,10 @@ func (vh *VolumeHandler) EnsureNewPVC(ctx context.Context, log logr.Logger,
 	name string, isTemporary bool) (*corev1.PersistentVolumeClaim, error) {
 	logger := log.WithValues("PVC", name)
 
+	if vh.volumeMode == nil {
+		vh.volumeMode = &defaultVolumeMode
+	}
+
 	// Ensure required configuration parameters have been provided in order to
 	// create volume
 	if len(vh.accessModes) == 0 {
@@ -181,8 +187,7 @@ func (vh *VolumeHandler) EnsureNewPVC(ctx context.Context, log logr.Logger,
 		if pvc.CreationTimestamp.IsZero() { // set immutable fields
 			pvc.Spec.AccessModes = vh.accessModes
 			pvc.Spec.StorageClassName = vh.storageClassName
-			volumeMode := corev1.PersistentVolumeFilesystem
-			pvc.Spec.VolumeMode = &volumeMode
+			pvc.Spec.VolumeMode = vh.volumeMode
 		}
 
 		if isTemporary {
@@ -377,7 +382,7 @@ func (vh *VolumeHandler) ensureClone(ctx context.Context, log logr.Logger,
 			} else {
 				clone.Spec.AccessModes = src.Spec.AccessModes
 			}
-			clone.Spec.VolumeMode = &vh.volumeMode
+			clone.Spec.VolumeMode = vh.volumeMode
 			clone.Spec.DataSource = &corev1.TypedLocalObjectReference{
 				APIGroup: nil,
 				Kind:     "PersistentVolumeClaim",
@@ -651,7 +656,7 @@ func (vh *VolumeHandler) pvcFromSnapshot(ctx context.Context, log logr.Logger,
 			} else {
 				pvc.Spec.AccessModes = original.Spec.AccessModes
 			}
-			pvc.Spec.VolumeMode = &vh.volumeMode
+			pvc.Spec.VolumeMode = vh.volumeMode
 			pvc.Spec.DataSource = &corev1.TypedLocalObjectReference{
 				APIGroup: &snapv1.SchemeGroupVersion.Group,
 				Kind:     "VolumeSnapshot",

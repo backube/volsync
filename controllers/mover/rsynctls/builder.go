@@ -170,6 +170,7 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		volumehandler.WithRecorder(eventRecorder),
 		volumehandler.WithOwner(destination),
 		volumehandler.FromDestination(&destination.Spec.RsyncTLS.ReplicationDestinationVolumeOptions),
+		volumehandler.VolumeMode(destination.Spec.RsyncTLS.VolumeMode), // Allow setting block mode for dynamic dest PVC
 	)
 	if err != nil {
 		return nil, err
