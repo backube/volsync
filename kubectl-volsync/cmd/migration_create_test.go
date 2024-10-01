@@ -119,7 +119,7 @@ var _ = Describe("migration", func() {
 				}
 			})
 		})
-		Context("When rsync-tls is not used", func() {
+		Context("When rsync-tls is used", func() {
 			BeforeEach(func() {
 				migrationCmdArgs["rsynctls"] = "True"
 			})
