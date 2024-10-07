@@ -17,7 +17,7 @@ exclude: |
   )$
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: "v4.6.0"
+    rev: "v5.0.0"
     hooks:
       - id: check-added-large-files  # Prevents giant files from being committed
       - id: check-json               # Check that JSON files are valid
