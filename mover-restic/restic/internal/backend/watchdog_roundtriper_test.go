@@ -135,7 +135,7 @@ func TestUploadTimeout(t *testing.T) {
 	rtest.OK(t, err)
 
 	resp, err := rt.RoundTrip(req)
-	rtest.Equals(t, errRequestTimeout, err)
+	rtest.Equals(t, context.Canceled, err)
 	// make linter happy
 	if resp != nil {
 		rtest.OK(t, resp.Body.Close())
@@ -162,7 +162,7 @@ func TestProcessingTimeout(t *testing.T) {
 	rtest.OK(t, err)
 
 	resp, err := rt.RoundTrip(req)
-	rtest.Equals(t, errRequestTimeout, err)
+	rtest.Equals(t, context.Canceled, err)
 	// make linter happy
 	if resp != nil {
 		rtest.OK(t, resp.Body.Close())
@@ -190,7 +190,7 @@ func TestDownloadTimeout(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	rt := newWatchdogRoundtripper(http.DefaultTransport, 25*time.Millisecond, 1024)
+	rt := newWatchdogRoundtripper(http.DefaultTransport, 10*time.Millisecond, 1024)
 	req, err := http.NewRequestWithContext(context.TODO(), "GET", srv.URL, io.NopCloser(bytes.NewReader(msg)))
 	rtest.OK(t, err)
 

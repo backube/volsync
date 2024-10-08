@@ -8,7 +8,7 @@ Usage help is available:
 
 .. code-block:: console
 
-    $ restic --help
+    $ ./restic --help
 
     restic is a backup program which allows saving multiple revisions of files and
     directories in an encrypted repository stored on different backends.
@@ -28,6 +28,8 @@ Usage help is available:
       dump          Print a backed-up file to stdout
       find          Find a file, a directory or restic IDs
       forget        Remove snapshots from the repository
+      generate      Generate manual pages and auto-completion files (bash, fish, zsh, powershell)
+      help          Help about any command
       init          Initialize a new repository
       key           Manage keys (passwords)
       list          List objects in the repository
@@ -39,19 +41,11 @@ Usage help is available:
       repair        Repair the repository
       restore       Extract the data from a snapshot
       rewrite       Rewrite snapshots to exclude unwanted files
+      self-update   Update the restic binary
       snapshots     List all snapshots
       stats         Scan the repository and show basic statistics
       tag           Modify tags on snapshots
       unlock        Remove locks other processes created
-
-    Advanced Options:
-      features      Print list of feature flags
-      options       Print list of extended options
-
-    Additional Commands:
-      generate      Generate manual pages and auto-completion files (bash, fish, zsh, powershell)
-      help          Help about any command
-      self-update   Update the restic binary
       version       Print version information
 
     Flags:
@@ -91,7 +85,7 @@ command:
 
 .. code-block:: console
 
-    $ restic backup --help
+    $ ./restic backup --help
 
     The "backup" command creates a new snapshot and saves the files and directories
     given as the arguments.

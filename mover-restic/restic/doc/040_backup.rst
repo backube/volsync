@@ -584,13 +584,11 @@ Reading data from a command
 Sometimes, it can be useful to directly save the output of a program, for example,
 ``mysqldump`` so that the SQL can later be restored. Restic supports this mode
 of operation; just supply the option ``--stdin-from-command`` when using the
-``backup`` action, and write the command in place of the files/directories. To prevent
-restic from interpreting the arguments for the command, make sure to add ``--`` before
-the command starts:
+``backup`` action, and write the command in place of the files/directories:
 
 .. code-block:: console
 
-    $ restic -r /srv/restic-repo backup --stdin-from-command -- mysqldump --host example mydb [...]
+    $ restic -r /srv/restic-repo backup --stdin-from-command mysqldump [...]
 
 This command creates a new snapshot based on the standard output of ``mysqldump``.
 By default, the command's standard output is saved in a file named ``stdin``.
@@ -598,7 +596,7 @@ A different name can be specified with ``--stdin-filename``:
 
 .. code-block:: console
 
-    $ restic -r /srv/restic-repo backup --stdin-filename production.sql --stdin-from-command -- mysqldump --host example mydb [...]
+    $ restic -r /srv/restic-repo backup --stdin-filename production.sql --stdin-from-command mysqldump [...]
 
 Restic uses the command exit code to determine whether the command succeeded. A
 non-zero exit code from the command causes restic to cancel the backup. This causes
@@ -686,30 +684,6 @@ created as it would only be written at the very (successful) end of
 the backup operation.  Previous snapshots will still be there and will still
 work.
 
-Exit status codes
-*****************
-
-Restic returns an exit status code after the backup command is run:
-
-* 0 when the backup was successful (snapshot with all source files created)
-* 1 when there was a fatal error (no snapshot created)
-* 3 when some source files could not be read (incomplete snapshot with remaining files created)
-* further exit codes are documented in :ref:`exit-codes`.
-
-Fatal errors occur for example when restic is unable to write to the backup destination, when
-there are network connectivity issues preventing successful communication, or when an invalid
-password or command line argument is provided. When restic returns this exit status code, one
-should not expect a snapshot to have been created.
-
-Source file read errors occur when restic fails to read one or more files or directories that
-it was asked to back up, e.g. due to permission problems. Restic displays the number of source
-file read errors that occurred while running the backup. If there are errors of this type,
-restic will still try to complete the backup run with all the other files, and create a
-snapshot that then contains all but the unreadable files.
-
-For use of these exit status codes in scripts and other automation tools, see :ref:`exit-codes`.
-To manually inspect the exit code in e.g. Linux, run ``echo $?``.
-
 Environment Variables
 *********************
 
@@ -728,7 +702,6 @@ environment variables. The following lists these environment variables:
     RESTIC_TLS_CLIENT_CERT              Location of TLS client certificate and private key (replaces --tls-client-cert)
     RESTIC_CACHE_DIR                    Location of the cache directory
     RESTIC_COMPRESSION                  Compression mode (only available for repository format version 2)
-    RESTIC_HOST                         Only consider snapshots for this host / Set the hostname for the snapshot manually (replaces --host)
     RESTIC_PROGRESS_FPS                 Frames per second by which the progress bar is updated
     RESTIC_PACK_SIZE                    Target size for pack files
     RESTIC_READ_CONCURRENCY             Concurrency for file reads
@@ -798,3 +771,26 @@ See :ref:`caching` for the rules concerning cache locations when
 The external programs that restic may execute include ``rclone`` (for rclone
 backends) and ``ssh`` (for the SFTP backend). These may respond to further
 environment variables and configuration files; see their respective manuals.
+
+Exit status codes
+*****************
+
+Restic returns one of the following exit status codes after the backup command is run:
+
+* 0 when the backup was successful (snapshot with all source files created)
+* 1 when there was a fatal error (no snapshot created)
+* 3 when some source files could not be read (incomplete snapshot with remaining files created)
+
+Fatal errors occur for example when restic is unable to write to the backup destination, when
+there are network connectivity issues preventing successful communication, or when an invalid
+password or command line argument is provided. When restic returns this exit status code, one
+should not expect a snapshot to have been created.
+
+Source file read errors occur when restic fails to read one or more files or directories that
+it was asked to back up, e.g. due to permission problems. Restic displays the number of source
+file read errors that occurred while running the backup. If there are errors of this type,
+restic will still try to complete the backup run with all the other files, and create a
+snapshot that then contains all but the unreadable files.
+
+One can use these exit status codes in scripts and other automation tools, to make them aware of
+the outcome of the backup run. To manually inspect the exit code in e.g. Linux, run ``echo $?``.

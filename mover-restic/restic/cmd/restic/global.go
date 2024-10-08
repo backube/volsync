@@ -47,7 +47,7 @@ import (
 // to a missing backend storage location or config file
 var ErrNoRepository = errors.New("repository does not exist")
 
-var version = "0.17.1"
+var version = "0.17.0"
 
 // TimeFormat is the format used for all timestamps printed by restic.
 const TimeFormat = "2006-01-02 15:04:05"
@@ -140,7 +140,6 @@ func init() {
 	f.UintVar(&globalOptions.PackSize, "pack-size", 0, "set target pack `size` in MiB, created pack files may be larger (default: $RESTIC_PACK_SIZE)")
 	f.StringSliceVarP(&globalOptions.Options, "option", "o", []string{}, "set extended option (`key=value`, can be specified multiple times)")
 	f.StringVar(&globalOptions.HTTPUserAgent, "http-user-agent", "", "set a http user agent for outgoing http requests")
-	f.DurationVar(&globalOptions.StuckRequestTimeout, "stuck-request-timeout", 5*time.Minute, "`duration` after which to retry stuck requests")
 	// Use our "generate" command instead of the cobra provided "completion" command
 	cmdRoot.CompletionOptions.DisableDefaultCmd = true
 
@@ -494,7 +493,7 @@ func OpenRepository(ctx context.Context, opts GlobalOptions) (*repository.Reposi
 		}
 	}
 	if err != nil {
-		if errors.IsFatal(err) || errors.Is(err, repository.ErrNoKeyFound) {
+		if errors.IsFatal(err) {
 			return nil, err
 		}
 		return nil, errors.Fatalf("%s", err)

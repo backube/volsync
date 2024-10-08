@@ -17,7 +17,6 @@ import (
 	"github.com/restic/restic/internal/errors"
 	"github.com/restic/restic/internal/feature"
 	"github.com/restic/restic/internal/options"
-	"github.com/restic/restic/internal/repository"
 	"github.com/restic/restic/internal/restic"
 )
 
@@ -83,22 +82,6 @@ The full documentation can be found at https://restic.readthedocs.io/ .
 	},
 }
 
-var cmdGroupDefault = "default"
-var cmdGroupAdvanced = "advanced"
-
-func init() {
-	cmdRoot.AddGroup(
-		&cobra.Group{
-			ID:    cmdGroupDefault,
-			Title: "Available Commands:",
-		},
-		&cobra.Group{
-			ID:    cmdGroupAdvanced,
-			Title: "Advanced Options:",
-		},
-	)
-}
-
 // Distinguish commands that need the password from those that work without,
 // so we don't run $RESTIC_PASSWORD_COMMAND for no reason (it might prompt the
 // user for authentication).
@@ -155,8 +138,6 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
 	case errors.IsFatal(err):
 		fmt.Fprintf(os.Stderr, "%v\n", err)
-	case errors.Is(err, repository.ErrNoKeyFound):
-		fmt.Fprintf(os.Stderr, "Fatal: %v\n", err)
 	case err != nil:
 		fmt.Fprintf(os.Stderr, "%+v\n", err)
 
@@ -179,8 +160,6 @@ func main() {
 		exitCode = 10
 	case restic.IsAlreadyLocked(err):
 		exitCode = 11
-	case errors.Is(err, repository.ErrNoKeyFound):
-		exitCode = 12
 	case errors.Is(err, context.Canceled):
 		exitCode = 130
 	default:

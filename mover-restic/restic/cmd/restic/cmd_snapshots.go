@@ -27,9 +27,7 @@ Exit status is 0 if the command was successful.
 Exit status is 1 if there was any error.
 Exit status is 10 if the repository does not exist.
 Exit status is 11 if the repository is already locked.
-Exit status is 12 if the password is incorrect.
 `,
-	GroupID:           cmdGroupDefault,
 	DisableAutoGenTag: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runSnapshots(cmd.Context(), snapshotOptions, globalOptions, args)
@@ -83,10 +81,6 @@ func runSnapshots(ctx context.Context, opts SnapshotOptions, gopts GlobalOptions
 	}
 
 	for k, list := range snapshotGroups {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-
 		if opts.Last {
 			// This branch should be removed in the same time
 			// that --last.
@@ -107,10 +101,6 @@ func runSnapshots(ctx context.Context, opts SnapshotOptions, gopts GlobalOptions
 	}
 
 	for k, list := range snapshotGroups {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-
 		if grouped {
 			err := PrintSnapshotGroupHeader(globalOptions.stdout, k)
 			if err != nil {

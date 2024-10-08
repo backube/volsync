@@ -8,7 +8,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"strings"
 	"syscall"
 	"unsafe"
 
@@ -283,36 +282,4 @@ func setFileEA(handle windows.Handle, iosb *ioStatusBlock, buf *uint8, bufLen ui
 	r0, _, _ := syscall.SyscallN(procNtSetEaFile.Addr(), uintptr(handle), uintptr(unsafe.Pointer(iosb)), uintptr(unsafe.Pointer(buf)), uintptr(bufLen))
 	status = ntStatus(r0)
 	return
-}
-
-// PathSupportsExtendedAttributes returns true if the path supports extended attributes.
-func PathSupportsExtendedAttributes(path string) (supported bool, err error) {
-	var fileSystemFlags uint32
-	utf16Path, err := windows.UTF16PtrFromString(path)
-	if err != nil {
-		return false, err
-	}
-	err = windows.GetVolumeInformation(utf16Path, nil, 0, nil, nil, &fileSystemFlags, nil, 0)
-	if err != nil {
-		return false, err
-	}
-	supported = (fileSystemFlags & windows.FILE_SUPPORTS_EXTENDED_ATTRIBUTES) != 0
-	return supported, nil
-}
-
-// GetVolumePathName returns the volume path name for the given path.
-func GetVolumePathName(path string) (volumeName string, err error) {
-	utf16Path, err := windows.UTF16PtrFromString(path)
-	if err != nil {
-		return "", err
-	}
-	// Get the volume path (e.g., "D:")
-	var volumePath [windows.MAX_PATH + 1]uint16
-	err = windows.GetVolumePathName(utf16Path, &volumePath[0], windows.MAX_PATH+1)
-	if err != nil {
-		return "", err
-	}
-	// Trim any trailing backslashes
-	volumeName = strings.TrimRight(windows.UTF16ToString(volumePath[:]), "\\")
-	return volumeName, nil
 }

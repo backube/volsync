@@ -263,8 +263,7 @@ func (arch *Archiver) nodeFromFileInfo(snPath, filename string, fi os.FileInfo, 
 	// overwrite name to match that within the snapshot
 	node.Name = path.Base(snPath)
 	if err != nil {
-		err = fmt.Errorf("incomplete metadata for %v: %w", filename, err)
-		return node, arch.error(filename, err)
+		return node, fmt.Errorf("nodeFromFileInfo %v: %w", filename, err)
 	}
 	return node, err
 }
@@ -715,12 +714,7 @@ func resolveRelativeTargets(filesys fs.FS, targets []string) ([]string, error) {
 	debug.Log("targets before resolving: %v", targets)
 	result := make([]string, 0, len(targets))
 	for _, target := range targets {
-		if target != "" && filesys.VolumeName(target) == target {
-			// special case to allow users to also specify a volume name "C:" instead of a path "C:\"
-			target = target + filesys.Separator()
-		} else {
-			target = filesys.Clean(target)
-		}
+		target = filesys.Clean(target)
 		pc, _ := pathComponents(filesys, target, false)
 		if len(pc) > 0 {
 			result = append(result, target)
