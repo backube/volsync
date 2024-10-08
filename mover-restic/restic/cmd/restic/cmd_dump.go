@@ -38,9 +38,7 @@ Exit status is 0 if the command was successful.
 Exit status is 1 if there was any error.
 Exit status is 10 if the repository does not exist.
 Exit status is 11 if the repository is already locked.
-Exit status is 12 if the password is incorrect.
 `,
-	GroupID:           cmdGroupDefault,
 	DisableAutoGenTag: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runDump(cmd.Context(), dumpOptions, globalOptions, args)
@@ -87,10 +85,6 @@ func printFromTree(ctx context.Context, tree *restic.Tree, repo restic.BlobLoade
 	item := filepath.Join(prefix, pathComponents[0])
 	l := len(pathComponents)
 	for _, node := range tree.Nodes {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-
 		// If dumping something in the highest level it will just take the
 		// first item it finds and dump that according to the switch case below.
 		if node.Name == pathComponents[0] {

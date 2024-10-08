@@ -146,9 +146,10 @@ func TestPruneWithDamagedRepository(t *testing.T) {
 		env.gopts.backendTestHook = oldHook
 	}()
 	// prune should fail
-	rtest.Equals(t, repository.ErrPacksMissing, withTermStatus(env.gopts, func(ctx context.Context, term *termstatus.Terminal) error {
+	rtest.Assert(t, withTermStatus(env.gopts, func(ctx context.Context, term *termstatus.Terminal) error {
 		return runPrune(context.TODO(), pruneDefaultOptions, env.gopts, term)
-	}), "prune should have reported index not complete error")
+	}) == repository.ErrPacksMissing,
+		"prune should have reported index not complete error")
 }
 
 // Test repos for edge cases
