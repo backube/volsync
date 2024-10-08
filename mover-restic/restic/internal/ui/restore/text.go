@@ -8,15 +8,14 @@ import (
 )
 
 type textPrinter struct {
-	*ui.Message
-
-	terminal ui.Terminal
+	terminal  term
+	verbosity uint
 }
 
-func NewTextProgress(terminal ui.Terminal, verbosity uint) ProgressPrinter {
+func NewTextProgress(terminal term, verbosity uint) ProgressPrinter {
 	return &textPrinter{
-		Message:  ui.NewMessage(terminal, verbosity),
-		terminal: terminal,
+		terminal:  terminal,
+		verbosity: verbosity,
 	}
 }
 
@@ -34,12 +33,11 @@ func (t *textPrinter) Update(p State, duration time.Duration) {
 	t.terminal.SetStatus([]string{progress})
 }
 
-func (t *textPrinter) Error(item string, err error) error {
-	t.E("ignoring error for %s: %s\n", item, err)
-	return nil
-}
-
 func (t *textPrinter) CompleteItem(messageType ItemAction, item string, size uint64) {
+	if t.verbosity < 3 {
+		return
+	}
+
 	var action string
 	switch messageType {
 	case ActionDirRestored:
@@ -59,9 +57,9 @@ func (t *textPrinter) CompleteItem(messageType ItemAction, item string, size uin
 	}
 
 	if messageType == ActionDirRestored || messageType == ActionOtherRestored || messageType == ActionDeleted {
-		t.VV("%-9v %v", action, item)
+		t.terminal.Print(fmt.Sprintf("%-9v %v", action, item))
 	} else {
-		t.VV("%-9v %v with size %v", action, item, ui.FormatBytes(size))
+		t.terminal.Print(fmt.Sprintf("%-9v %v with size %v", action, item, ui.FormatBytes(size)))
 	}
 }
 

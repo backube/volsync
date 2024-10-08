@@ -15,19 +15,17 @@ import (
 type TextProgress struct {
 	*ui.Message
 
-	term      ui.Terminal
-	verbosity uint
+	term *termstatus.Terminal
 }
 
 // assert that Backup implements the ProgressPrinter interface
 var _ ProgressPrinter = &TextProgress{}
 
 // NewTextProgress returns a new backup progress reporter.
-func NewTextProgress(term ui.Terminal, verbosity uint) *TextProgress {
+func NewTextProgress(term *termstatus.Terminal, verbosity uint) *TextProgress {
 	return &TextProgress{
-		Message:   ui.NewMessage(term, verbosity),
-		term:      term,
-		verbosity: verbosity,
+		Message: ui.NewMessage(term, verbosity),
+		term:    term,
 	}
 }
 
@@ -75,9 +73,7 @@ func (b *TextProgress) Update(total, processed Counter, errors uint, currentFile
 // ScannerError is the error callback function for the scanner, it prints the
 // error in verbose mode and returns nil.
 func (b *TextProgress) ScannerError(_ string, err error) error {
-	if b.verbosity >= 2 {
-		b.E("scan: %v\n", err)
-	}
+	b.V("scan: %v\n", err)
 	return nil
 }
 

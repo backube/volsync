@@ -39,8 +39,6 @@ Note that restic will also return exit code ``1`` if a different error is encoun
 If there are no errors, restic will return a zero exit code and print the repository
 metadata.
 
-.. _exit-codes:
-
 Exit codes
 **********
 
@@ -64,8 +62,6 @@ a more specific description.
 | 10  | Repository does not exist (since restic 0.17.0)    |
 +-----+----------------------------------------------------+
 | 11  | Failed to lock repository (since restic 0.17.0)    |
-+-----+----------------------------------------------------+
-| 12  | Wrong password (since restic 0.17.1)               |
 +-----+----------------------------------------------------+
 | 130 | Restic was interrupted using SIGINT or SIGSTOP     |
 +-----+----------------------------------------------------+
@@ -143,7 +139,7 @@ Error
 +----------------------+-------------------------------------------+
 | ``message_type``     | Always "error"                            |
 +----------------------+-------------------------------------------+
-| ``error.message``    | Error message                             |
+| ``error``            | Error message                             |
 +----------------------+-------------------------------------------+
 | ``during``           | What restic was trying to do              |
 +----------------------+-------------------------------------------+
@@ -542,19 +538,6 @@ Status
 +----------------------+------------------------------------------------------------+
 |``bytes_skipped``     | Total size of skipped files                                |
 +----------------------+------------------------------------------------------------+
-
-Error
-^^^^^
-
-+----------------------+-------------------------------------------+
-| ``message_type``     | Always "error"                            |
-+----------------------+-------------------------------------------+
-| ``error.message``    | Error message                             |
-+----------------------+-------------------------------------------+
-| ``during``           | Always "restore"                          |
-+----------------------+-------------------------------------------+
-| ``item``             | Usually, the path of the problematic file |
-+----------------------+-------------------------------------------+
 
 Verbose Status
 ^^^^^^^^^^^^^^
