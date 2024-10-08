@@ -706,10 +706,19 @@ func (r *Repository) prepareCache() error {
 		return nil
 	}
 
+	indexIDs := r.idx.IDs()
+	debug.Log("prepare cache with %d index files", len(indexIDs))
+
+	// clear old index files
+	err := r.Cache.Clear(restic.IndexFile, indexIDs)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error clearing index files in cache: %v\n", err)
+	}
+
 	packs := r.idx.Packs(restic.NewIDSet())
 
 	// clear old packs
-	err := r.Cache.Clear(restic.PackFile, packs)
+	err = r.Cache.Clear(restic.PackFile, packs)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error clearing pack files in cache: %v\n", err)
 	}
@@ -991,10 +1000,6 @@ func streamPackPart(ctx context.Context, beLoad backendLoadFn, loadBlobFn loadBl
 	it := newPackBlobIterator(packID, newByteReader(data), dataStart, blobs, key, dec)
 
 	for {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-
 		val, err := it.Next()
 		if err == errPackEOF {
 			break

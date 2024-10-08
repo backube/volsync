@@ -7,13 +7,14 @@ import (
 	"github.com/restic/restic/internal/archiver"
 	"github.com/restic/restic/internal/restic"
 	"github.com/restic/restic/internal/ui"
+	"github.com/restic/restic/internal/ui/termstatus"
 )
 
 // JSONProgress reports progress for the `backup` command in JSON.
 type JSONProgress struct {
 	*ui.Message
 
-	term ui.Terminal
+	term *termstatus.Terminal
 	v    uint
 }
 
@@ -21,7 +22,7 @@ type JSONProgress struct {
 var _ ProgressPrinter = &JSONProgress{}
 
 // NewJSONProgress returns a new backup progress reporter.
-func NewJSONProgress(term ui.Terminal, verbosity uint) *JSONProgress {
+func NewJSONProgress(term *termstatus.Terminal, verbosity uint) *JSONProgress {
 	return &JSONProgress{
 		Message: ui.NewMessage(term, verbosity),
 		term:    term,
@@ -67,7 +68,7 @@ func (b *JSONProgress) Update(total, processed Counter, errors uint, currentFile
 func (b *JSONProgress) ScannerError(item string, err error) error {
 	b.error(errorUpdate{
 		MessageType: "error",
-		Error:       errorObject{err.Error()},
+		Error:       err,
 		During:      "scan",
 		Item:        item,
 	})
@@ -78,7 +79,7 @@ func (b *JSONProgress) ScannerError(item string, err error) error {
 func (b *JSONProgress) Error(item string, err error) error {
 	b.error(errorUpdate{
 		MessageType: "error",
-		Error:       errorObject{err.Error()},
+		Error:       err,
 		During:      "archival",
 		Item:        item,
 	})
@@ -205,15 +206,11 @@ type statusUpdate struct {
 	CurrentFiles     []string `json:"current_files,omitempty"`
 }
 
-type errorObject struct {
-	Message string `json:"message"`
-}
-
 type errorUpdate struct {
-	MessageType string      `json:"message_type"` // "error"
-	Error       errorObject `json:"error"`
-	During      string      `json:"during"`
-	Item        string      `json:"item"`
+	MessageType string `json:"message_type"` // "error"
+	Error       error  `json:"error"`
+	During      string `json:"during"`
+	Item        string `json:"item"`
 }
 
 type verboseUpdate struct {

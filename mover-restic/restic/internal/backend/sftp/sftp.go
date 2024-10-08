@@ -578,10 +578,6 @@ func (r *SFTP) deleteRecursive(ctx context.Context, name string) error {
 	}
 
 	for _, fi := range entries {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-
 		itemName := r.Join(name, fi.Name())
 		if fi.IsDir() {
 			err := r.deleteRecursive(ctx, itemName)

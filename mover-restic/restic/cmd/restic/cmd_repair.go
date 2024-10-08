@@ -5,10 +5,8 @@ import (
 )
 
 var cmdRepair = &cobra.Command{
-	Use:               "repair",
-	Short:             "Repair the repository",
-	GroupID:           cmdGroupDefault,
-	DisableAutoGenTag: true,
+	Use:   "repair",
+	Short: "Repair the repository",
 }
 
 func init() {

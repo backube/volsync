@@ -181,7 +181,7 @@ func runAttributeTests(t *testing.T, fileInfo NodeInfo, existingFileAttr FileAtt
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	_, err := res.RestoreTo(ctx, testDir)
+	err := res.RestoreTo(ctx, testDir)
 	rtest.OK(t, err)
 
 	mainFilePath := path.Join(testDir, fileInfo.parentDir, fileInfo.name)
@@ -562,11 +562,11 @@ func TestRestoreDeleteCaseInsensitive(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	_, err := res.RestoreTo(ctx, tempdir)
+	err := res.RestoreTo(ctx, tempdir)
 	rtest.OK(t, err)
 
 	res = NewRestorer(repo, deleteSn, Options{Delete: true})
-	_, err = res.RestoreTo(ctx, tempdir)
+	err = res.RestoreTo(ctx, tempdir)
 	rtest.OK(t, err)
 
 	// anotherfile must still exist

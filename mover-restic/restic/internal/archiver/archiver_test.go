@@ -3,7 +3,6 @@ package archiver
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -1448,66 +1447,6 @@ func TestArchiverSnapshot(t *testing.T) {
 	}
 }
 
-func TestResolveRelativeTargetsSpecial(t *testing.T) {
-	var tests = []struct {
-		name     string
-		targets  []string
-		expected []string
-		win      bool
-	}{
-		{
-			name:     "basic relative path",
-			targets:  []string{filepath.FromSlash("some/path")},
-			expected: []string{filepath.FromSlash("some/path")},
-		},
-		{
-			name:     "partial relative path",
-			targets:  []string{filepath.FromSlash("../some/path")},
-			expected: []string{filepath.FromSlash("../some/path")},
-		},
-		{
-			name:     "basic absolute path",
-			targets:  []string{filepath.FromSlash("/some/path")},
-			expected: []string{filepath.FromSlash("/some/path")},
-		},
-		{
-			name:     "volume name",
-			targets:  []string{"C:"},
-			expected: []string{"C:\\"},
-			win:      true,
-		},
-		{
-			name:     "volume root path",
-			targets:  []string{"C:\\"},
-			expected: []string{"C:\\"},
-			win:      true,
-		},
-		{
-			name:     "UNC path",
-			targets:  []string{"\\\\server\\volume"},
-			expected: []string{"\\\\server\\volume\\"},
-			win:      true,
-		},
-		{
-			name:     "UNC path with trailing slash",
-			targets:  []string{"\\\\server\\volume\\"},
-			expected: []string{"\\\\server\\volume\\"},
-			win:      true,
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			if test.win && runtime.GOOS != "windows" {
-				t.Skip("skip test on unix")
-			}
-
-			targets, err := resolveRelativeTargets(&fs.Local{}, test.targets)
-			rtest.OK(t, err)
-			rtest.Equals(t, test.expected, targets)
-		})
-	}
-}
-
 func TestArchiverSnapshotSelect(t *testing.T) {
 	var tests = []struct {
 		name  string
@@ -2398,29 +2337,4 @@ func TestRacyFileSwap(t *testing.T) {
 	if excluded {
 		t.Errorf("Save() excluded the node, that's unexpected")
 	}
-}
-
-func TestMetadataBackupErrorFiltering(t *testing.T) {
-	tempdir := t.TempDir()
-	repo := repository.TestRepository(t)
-
-	filename := filepath.Join(tempdir, "file")
-	rtest.OK(t, os.WriteFile(filename, []byte("example"), 0o600))
-	fi, err := os.Stat(filename)
-	rtest.OK(t, err)
-
-	arch := New(repo, fs.Local{}, Options{})
-
-	var filteredErr error
-	replacementErr := fmt.Errorf("replacement")
-	arch.Error = func(item string, err error) error {
-		filteredErr = err
-		return replacementErr
-	}
-
-	// check that errors from reading extended metadata are properly filtered
-	node, err := arch.nodeFromFileInfo("file", filename+"invalid", fi, false)
-	rtest.Assert(t, node != nil, "node is missing")
-	rtest.Assert(t, err == replacementErr, "expected %v got %v", replacementErr, err)
-	rtest.Assert(t, filteredErr != nil, "missing inner error")
 }
