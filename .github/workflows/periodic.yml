@@ -24,7 +24,7 @@ on:  # yamllint disable-line rule:truthy
 jobs:
   trigger-workflows:
     name: Trigger other workflows
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
       # Must checkout source or gh can't figure out what to trigger
