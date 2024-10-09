@@ -23,7 +23,7 @@ env:
 jobs:
   lint:
     name: Lint
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout source
@@ -50,7 +50,7 @@ jobs:
 
   generated-files-check:
     name: Auto Generated Files Check
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout source
@@ -130,7 +130,7 @@ jobs:
 
   test-operator:
     name: Test-operator
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout source
@@ -169,7 +169,7 @@ jobs:
 
   build-operator:
     name: Build-operator
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout source
@@ -189,7 +189,7 @@ jobs:
 
   build-scorecard:
     name: Build-custom-scorecard-tests
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout source
@@ -226,7 +226,7 @@ jobs:
 
   kubectl-plugin:
     name: kubectl-plugin
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     env:
       KUBECONFIG: /tmp/kubeconfig
       KUBERNETES_VERSION: "1.25.0"
@@ -275,7 +275,7 @@ jobs:
   e2e:
     name: End-to-end
     needs: [build-operator, kubectl-plugin]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -404,7 +404,7 @@ jobs:
   e2e-success:
     name: Successful e2e tests
     needs: [e2e, lint, generated-files-check, test-operator, build-scorecard]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Success
         run: echo "Previous steps were successful"
@@ -420,7 +420,7 @@ jobs:
       (github.ref == 'refs/heads/main' ||
        startsWith(github.ref, 'refs/heads/release-') ||
        startsWith(github.ref, 'refs/tags/v'))
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: No-op
         run: /bin/true
