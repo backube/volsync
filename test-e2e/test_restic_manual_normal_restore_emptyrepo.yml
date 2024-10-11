@@ -1,0 +1,250 @@
+---
+- hosts: localhost
+  tags:
+    - e2e
+    - restic
+    - unprivileged
+    - emptyrepo
+  vars:
+    restic_secret_name: restic-secret
+  tasks:
+    #
+    # Purpose of this test is to make sure restoring a restic replicationdestination from a
+    # repo that is un-initialized or does not exist will work. The replicationdestionation (restore)
+    # should initialize the repo if it does not exist and then proceed with the empty restore rather
+    # than failing. This is to support gitops scenarios - see discussion
+    # related to PR: https://github.com/backube/volsync/pull/1190
+    #
+    - include_role:
+        name: create_namespace
+
+    - include_role:
+        name: gather_cluster_info
+
+    # We're running everything as a normal user
+    - name: Define podSecurityContext
+      ansible.builtin.set_fact:
+        podSecurityContext:
+          fsGroup: 5678
+          runAsGroup: 5678
+          runAsNonRoot: true
+          runAsUser: 1234
+          seccompProfile:
+            type: RuntimeDefault
+      when: not cluster_info.is_openshift
+
+    #
+    # Test1: test with bucket that does not exist
+    #   use new bucket_name that should be unique since ns name should be unique to this test
+    #
+    - include_role:
+        name: create_restic_secret
+      vars:
+        minio_namespace: minio
+        bucket_name: "test-e2e-newbucket-{{ namespace }}"
+
+    # No source pvc or replicationsource for this test - restore from empty path in repo
+
+    - name: Create dest PVC (restore volume)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          kind: PersistentVolumeClaim
+          apiVersion: v1
+          metadata:
+            name: data-dest
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 1Gi
+
+    - name: Restore data to destination (w/ mSC)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationDestination
+          metadata:
+            name: restore
+            namespace: "{{ namespace }}"
+          spec:
+            trigger:
+              manual: restore-test1-1
+            restic:
+              repository: "{{ restic_secret_name }}"
+              destinationPVC: data-dest
+              copyMethod: Direct
+              cacheCapacity: 1Gi
+              moverSecurityContext: "{{ podSecurityContext }}"
+      when: podSecurityContext is defined
+
+    - name: Restore data to destination (w/o mSC)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationDestination
+          metadata:
+            name: restore
+            namespace: "{{ namespace }}"
+          spec:
+            trigger:
+              manual: restore-test1-1
+            restic:
+              repository: "{{ restic_secret_name }}"
+              destinationPVC: data-dest
+              copyMethod: Direct
+              cacheCapacity: 1Gi
+      when: podSecurityContext is not defined
+
+    # Should have created new repo for empty path and then restored no data
+    - name: Wait for restore to complete
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationDestination
+        name: restore
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastManualSync is defined and
+        res.resources[0].status.lastManualSync=="restore-test1-1" and
+        res.resources[0].status.latestMoverStatus is defined and
+        res.resources[0].status.latestMoverStatus.result == "Successful" and
+        res.resources[0].status.latestMoverStatus.logs is search("Initialize Dir.*") and
+        res.resources[0].status.latestMoverStatus.logs is search("created restic repository.*") and
+        res.resources[0].status.latestMoverStatus.logs is search("No data will be restored.*") and
+        res.resources[0].status.latestMoverStatus.logs is search("Restic completed in.*")
+      delay: 1
+      retries: 300
+
+    # Now that the bucket/path has been created, run again and this time the repo should not be initialized
+    - name: Trigger another restore after bucket created and repo initialized
+      kubernetes.core.k8s:
+        state: patched
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationDestination
+          metadata:
+            name: restore
+            namespace: "{{ namespace }}"
+          spec:
+            restic:
+              enableFileDeletion: true
+            trigger:
+              manual: restore-test1-2
+
+    # Second restore should also be successful, no init and no files restored
+    - name: Wait for restore to complete
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationDestination
+        name: restore
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastManualSync is defined and
+        res.resources[0].status.lastManualSync=="restore-test1-2" and
+        res.resources[0].status.latestMoverStatus is defined and
+        res.resources[0].status.latestMoverStatus.result == "Successful" and
+        res.resources[0].status.latestMoverStatus.logs is not search("Initialize Dir.*") and
+        res.resources[0].status.latestMoverStatus.logs is search("No data will be restored.*") and
+        res.resources[0].status.latestMoverStatus.logs is search("Restic completed in.*")
+      delay: 1
+      retries: 300
+
+    #
+    # Test2: use existing bucket, but non-existent repo in the bucket
+    #   - delete current restic secret and create a new one that will use a repo in the same
+    #     bucket, but using a new path
+    #
+    - name: Remove the existing restic secret so we can create a new one with different repo path
+      kubernetes.core.k8s:
+        state: absent
+        api_version: v1
+        kind: Secret
+        name: "{{ restic_secret_name }}"
+        namespace: "{{ namespace }}"
+
+    - include_role:
+        name: create_restic_secret
+      vars:
+        minio_namespace: minio
+        bucket_name: "test-e2e-custombucket-{{ namespace }}"
+        path_name: "{{ namespace }}-test2"
+
+    - name: Trigger another restore now that the restic secret uses a new path in the bucket
+      kubernetes.core.k8s:
+        state: patched
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationDestination
+          metadata:
+            name: restore
+            namespace: "{{ namespace }}"
+          spec:
+            restic:
+              enableFileDeletion: true
+            trigger:
+              manual: restore-test2-1
+
+    # Should have created new repo for empty path and then restored no data
+    - name: Wait for restore to complete
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationDestination
+        name: restore
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastManualSync is defined and
+        res.resources[0].status.lastManualSync=="restore-test2-1" and
+        res.resources[0].status.latestMoverStatus is defined and
+        res.resources[0].status.latestMoverStatus.result == "Successful" and
+        res.resources[0].status.latestMoverStatus.logs is search("Initialize Dir.*") and
+        res.resources[0].status.latestMoverStatus.logs is search("created restic repository.*") and
+        res.resources[0].status.latestMoverStatus.logs is search("No data will be restored.*") and
+        res.resources[0].status.latestMoverStatus.logs is search("Restic completed in.*")
+      delay: 1
+      retries: 300
+
+    # Now that the path in the bucket has been created, run again and this time the repo should not be initialized
+    - name: Trigger another restore after repo initialized
+      kubernetes.core.k8s:
+        state: patched
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationDestination
+          metadata:
+            name: restore
+            namespace: "{{ namespace }}"
+          spec:
+            restic:
+              enableFileDeletion: true
+            trigger:
+              manual: restore-test2-2
+
+    # Second restore should also be successful, no init and no files restored
+    - name: Wait for restore to complete
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationDestination
+        name: restore
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastManualSync is defined and
+        res.resources[0].status.lastManualSync=="restore-test2-2" and
+        res.resources[0].status.latestMoverStatus is defined and
+        res.resources[0].status.latestMoverStatus.result == "Successful" and
+        res.resources[0].status.latestMoverStatus.logs is not search("Initialize Dir.*") and
+        res.resources[0].status.latestMoverStatus.logs is search("No data will be restored.*") and
+        res.resources[0].status.latestMoverStatus.logs is search("Restic completed in.*")
+      delay: 1
+      retries: 300

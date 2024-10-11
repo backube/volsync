@@ -37,7 +37,10 @@ var resticRegex = regexp.MustCompile(
 		`^\s*([aA]dded to the repository)|` +
 		`^\s*([sS]uccessfully)|` +
 		`(RESTORE_OPTIONS)|` +
-		`^\s*(Restic completed in)`)
+		`([iI]nitialize [dD]ir)|` +
+		`^\s*([fF]atal)|` +
+		`^\s*(ERROR)|` +
+		`^\s*([rR]estic completed in)`)
 
 // Filter restic log lines for a successful move job
 func LogLineFilterSuccess(line string) *string {
