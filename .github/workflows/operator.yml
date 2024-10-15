@@ -45,15 +45,19 @@ jobs:
           python --version
           python -m pip install --user pre-commit
           echo "PYHASH=$(python -VV | sha256sum | cut -d' ' -f1)" >> $GITHUB_ENV
+          echo "#### ImageOS is: $ImageOS ####"
+          echo "#### ImageVersion is: $ImageVersion ####"
+          echo "ImageOS=${ImageOS}" >> $GITHUB_ENV
+          echo "ImageVersion=${ImageVersion}" >> $GITHUB_ENV
 
       - name: Enable cache for pre-commit hooks
         uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9 # v4.0.2
         with:
           path: ~/.cache/pre-commit
-          key: pre-commit|${{ env.PYHASH }}|${{ hashFiles('.pre-commit-config.yaml') }}
+          key: pre-commit|${{ env.ImageOS }}|${{ env.ImageVersion }}|${{ env.PYHASH }}|${{ hashFiles('.pre-commit-config.yaml') }}
           restore-keys: |
-            pre-commit|${{ env.PYHASH }}
-            pre-commit|
+            pre-commit|${{ env.ImageOS }}|${{ env.ImageVersion }}|${{ env.PYHASH }}
+            pre-commit|${{ env.ImageOS }}|${{ env.ImageVersion }}|
 
       - name: Run pre-commit checks
         run: |
