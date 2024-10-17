@@ -260,6 +260,9 @@ type ReplicationDestinationResticSpec struct {
 	// Defaults to false.
 	//+optional
 	EnableFileDeletion bool `json:"enableFileDeletion,omitempty"`
+	// repositoryPVC is the name of an existing PVC containing the backup repository
+	//+optional
+	RepositoryPVC string `json:"repositoryPVC,omitempty"`
 
 	MoverConfig `json:",inline"`
 }
