@@ -68,7 +68,8 @@ Restic completed in 18s
 === Done ===`
 
 			// nolint:lll
-			expectedFilteredResticSourceLogSuccessful := `created restic repository f5bccd54c8 at s3:http://minio-api-minio.apps.app-aws-411ga-sno-net2-zp5jq.dev06.red-chesterfield.com/ttest-restic-new
+			expectedFilteredResticSourceLogSuccessful := `== Initialize Dir =======
+created restic repository f5bccd54c8 at s3:http://minio-api-minio.apps.app-aws-411ga-sno-net2-zp5jq.dev06.red-chesterfield.com/ttest-restic-new
 repository f5bccd54 opened (repository version 2) successfully, password is correct
 created new cache in /home/testuser/DEVFEDORA/volsync/RESTICTESTS/CACHE
 no parent snapshot found, will read all files
@@ -118,7 +119,6 @@ Testing mandatory env variables
 913a91c60431342abb402d7707f50a370c52a911e01abdf4160e5d41a77e5151
 successfully removed 1 locks
 == Checking directory for content ===
-== Initialize Dir =======
 ID        Time                 Host         Tags        Paths
 ------------------------------------------------------------------------
 4e825939  2023-04-07 20:17:00  volsync                  /mover-syncthing
@@ -248,7 +248,8 @@ Restic completed in 4s
 === Done ===`
 
 		// nolint:lll
-		expectedFilteredResticDestlogSuccessful := `created restic repository 374c6313cb at s3:http://minio.minio.svc.cluster.local:9000/resticbucket1b
+		expectedFilteredResticDestlogSuccessful := `=== Initialize Dir ===
+created restic repository 374c6313cb at s3:http://minio.minio.svc.cluster.local:9000/resticbucket1b
 No eligible snapshots found
 === No data will be restored ===
 Restic completed in 4s`
@@ -262,4 +263,32 @@ Restic completed in 4s`
 			Expect(filteredLines).To(Equal(expectedFilteredResticDestlogSuccessful))
 		})
 	})
+
+	Context("Restic mover logs - bad password", func() {
+		// Sample restore log for restic mover
+		// nolint:lll
+		resticMoverLog := `Starting container
+VolSync restic container version: v0.11.0+f866a4ec-dirty
+restore
+restic 0.17.0 compiled with go1.22.8 on linux/amd64
+Testing mandatory env variables
+=== Check for dir initialized ===
+Fatal: wrong password or no key found
+ERROR: failure checking existence of repository
+`
+
+		// nolint:lll
+		expectedFilteredResticMoverLog := `Fatal: wrong password or no key found
+ERROR: failure checking existence of repository`
+
+		It("Should filter the logs from the replication source or dest", func() {
+			reader := strings.NewReader(resticMoverLog)
+			filteredLines, err := utils.FilterLogs(reader, restic.LogLineFilterSuccess)
+			Expect(err).NotTo(HaveOccurred())
+
+			logger.Info("Logs after filter", "filteredLines", filteredLines)
+			Expect(filteredLines).To(Equal(expectedFilteredResticMoverLog))
+		})
+	})
+
 })

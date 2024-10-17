@@ -13,15 +13,23 @@
 - include_role:
     name: get_minio_credentials
 
+- name: Get bucket name to use (default is 'restic-e2e')
+  ansible.builtin.set_fact:
+    bucket_name: "{{ bucket_name | default('restic-e2e') }}"
+
+- name: Get path name to use under the bucket (default is namespace name)
+  ansible.builtin.set_fact:
+    path_name: "{{ path_name | default(namespace) }}"
+
 # Path in restic will include the namespace to avoid re-runs of tests interferring with each-other
 # And also to prevent multiple tests from using the same path (each test should use its own namespace)
 - name: Determine repo URL
   set_fact:
-    repo_url: "s3:http://minio.{{ minio_namespace }}.svc.cluster.local:9000/restic-e2e/{{ namespace }}"
+    repo_url: "s3:http://minio.{{ minio_namespace }}.svc.cluster.local:9000/{{ bucket_name }}/{{ path_name }}"
 
 - name: Set repo URL to use TLS
   set_fact:
-    repo_url: "s3:https://minio.{{ minio_namespace }}.svc.cluster.local:9000/restic-e2e/{{ namespace }}"
+    repo_url: "s3:https://minio.{{ minio_namespace }}.svc.cluster.local:9000/{{ bucket_name }}/{{ path_name }}"
   when: use_tls is defined and use_tls == true
 
 - name: Create restic secret

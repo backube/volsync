@@ -90,9 +90,27 @@ function check_contents {
 # Ensure the repo has been initialized
 function ensure_initialized {
     echo "=== Check for dir initialized ==="
-    # Try a restic command and capture the rc & output
+    # check for restic config and capture rc
+    # See: https://restic.readthedocs.io/en/stable/075_scripting.html#check-if-a-repository-is-already-initialized
+    set +e  # Don't exit on command failure
+
     outfile=$(mktemp -q)
-    if ! "${RESTIC[@]}" snapshots 2>"$outfile"; then
+    "${RESTIC[@]}" cat config > /dev/null 2>"$outfile"
+    rc=$?
+
+    set -e  # Exit on command failure
+
+    case $rc in
+    0)
+        echo "dir is initialized"
+        ;;
+    1)
+        # This can happen for some providers (e.g. minio) if the bucket does not exist
+        # Restic will return 10 if the bucket exists and no restic repo at the path exists, but will
+        # still return 1 if the bucket itself doesn't exist.
+        # We can proceed with trying an init which will create the bucket (and path in the bucket if there is one)
+        # restic init should fail if somehow the repo already exists when init is run or if it's unable to
+        # create the bucket
         output=$(<"$outfile")
         # Match against error string for uninitialized repo
         # This string also appears when credentials are incorrect (in which case
@@ -104,7 +122,28 @@ function ensure_initialized {
             cat "$outfile"
             error 3 "failure checking existence of repository"
         fi
-    fi
+        ;;
+    10)
+        # rc = 10  Repository does not exist (since restic 0.17.0)
+        echo "=== Initialize Dir ==="
+        "${RESTIC[@]}" init
+        ;;
+    11)
+        # rc = 11  Failed to lock repository (since restic 0.17.0)
+        cat "$outfile"
+        error 3 "failure locking repository"
+        ;;
+    12)
+        # rc = 12 Wrong password (since restic 0.17.1)
+        cat "$outfile"
+        error 3 "failure connecting to repository, incorrect password"
+        ;;
+    *)
+        cat "$outfile"
+        error 3 "failure checking existence of repository"
+        ;;
+    esac
+
     rm -f "$outfile"
 }
 
