@@ -54,6 +54,8 @@ const (
 	resticCAFilename     = "ca.crt"
 	credentialDir        = "/credentials"
 	gcsCredentialFile    = "gcs.json"
+	repositoryMountPath  = "/repository"
+	repositoryVolumeName = "repository"
 )
 
 // Mover is the reconciliation logic for the Restic-based data mover.
@@ -76,6 +78,7 @@ type Mover struct {
 	privileged            bool
 	latestMoverStatus     *volsyncv1alpha1.MoverStatus
 	moverConfig           volsyncv1alpha1.MoverConfig
+	repositoryPVC         string
 	// Source-only fields
 	pruneInterval *int32
 	unlock        string
@@ -430,6 +433,19 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 		// Run mover in debug mode if required
 		envVars = utils.AppendDebugMoverEnvVar(m.owner, envVars)
 
+		volumeMounts := []corev1.VolumeMount{
+			{Name: dataVolumeName, MountPath: mountPath},
+			{Name: resticCache, MountPath: resticCacheMountPath},
+			{Name: "tempdir", MountPath: "/tmp"},
+		}
+
+		if m.repositoryPVC != "" {
+			volumeMounts = append(volumeMounts, corev1.VolumeMount{
+				Name:      repositoryVolumeName,
+				MountPath: repositoryMountPath,
+			})
+		}
+
 		podSpec.Containers = []corev1.Container{{
 			Name:    "restic",
 			Env:     envVars,
@@ -444,15 +460,12 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 				Privileged:             ptr.To(false),
 				ReadOnlyRootFilesystem: ptr.To(true),
 			},
-			VolumeMounts: []corev1.VolumeMount{
-				{Name: dataVolumeName, MountPath: mountPath},
-				{Name: resticCache, MountPath: resticCacheMountPath},
-				{Name: "tempdir", MountPath: "/tmp"},
-			},
+			VolumeMounts: volumeMounts,
 		}}
 		podSpec.RestartPolicy = corev1.RestartPolicyNever
 		podSpec.ServiceAccountName = sa.Name
-		podSpec.Volumes = []corev1.Volume{
+
+		volumes := []corev1.Volume{
 			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
 				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 					ClaimName: dataPVC.Name,
@@ -470,6 +483,19 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 				}},
 			},
 		}
+
+		if m.repositoryPVC != "" {
+			volumes = append(volumes, corev1.Volume{
+				Name: repositoryVolumeName, VolumeSource: corev1.VolumeSource{
+					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+						ClaimName: m.repositoryPVC,
+						ReadOnly:  false,
+					}},
+			})
+		}
+
+		podSpec.Volumes = volumes
+
 		if m.vh.IsCopyMethodDirect() {
 			affinity, err := utils.AffinityFromVolume(ctx, m.client, logger, dataPVC)
 			if err != nil {

@@ -2536,6 +2536,9 @@ spec:
                     repository:
                       description: Repository is the secret name containing repository info
                       type: string
+                    repositoryPVC:
+                      description: repositoryPVC is the name of an existing PVC containing the backup repository
+                      type: string
                     retain:
                       description: ResticRetainPolicy define the retain policy
                       properties:

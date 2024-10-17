@@ -209,6 +209,9 @@ type ReplicationSourceResticSpec struct {
 	// then ran a backup.
 	// Unlock will not be run again unless spec.restic.unlock is set to a different value.
 	Unlock string `json:"unlock,omitempty"`
+	// repositoryPVC is the name of an existing PVC containing the backup repository
+	//+optional
+	RepositoryPVC string `json:"repositoryPVC,omitempty"`
 
 	MoverConfig `json:",inline"`
 }

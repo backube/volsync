@@ -2703,6 +2703,10 @@ spec:
                     description: Repository is the secret name containing repository
                       info
                     type: string
+                  repositoryPVC:
+                    description: repositoryPVC is the name of an existing PVC containing
+                      the backup repository
+                    type: string
                   restoreAsOf:
                     description: RestoreAsOf refers to the backup that is most recent
                       as of that time.
