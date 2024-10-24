@@ -47,7 +47,41 @@ var replicationCreateCmd = &cobra.Command{
 }
 
 func init() {
+	initReplicationCreateCmd(replicationCreateCmd)
+}
+
+func initReplicationCreateCmd(replicationCreateCmd *cobra.Command) {
 	replicationCmd.AddCommand(replicationCreateCmd)
+
+	replicationCreateCmd.Flags().Bool("rsynctls", false, "if true, will use rsync-tls")
+}
+
+func newReplicationRelationship(cmd *cobra.Command) (*replicationRelationship, error) {
+	r, err := CreateRelationshipFromCommand(cmd, ReplicationRelationshipType)
+	if err != nil {
+		return nil, err
+	}
+
+	isRsyncTLS, err := cmd.Flags().GetBool("rsynctls")
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch rsynctls, %w", err)
+	}
+
+	var rHandler replicationHandler
+	if isRsyncTLS {
+		rHandler = &replicationHandlerRsyncTLS{}
+	} else {
+		rHandler = &replicationHandlerRsync{}
+	}
+
+	return &replicationRelationship{
+		Relationship: *r,
+		data: replicationRelationshipDataV2{
+			Version:    2,
+			IsRsyncTLS: isRsyncTLS,
+		},
+		rh: rHandler,
+	}, nil
 }
 
 func (cmd *replicationCreate) Run() error {
