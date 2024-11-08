@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0]
+
+### Changed
+
+- Restic updated to v0.17.0
+- Syncthing updated to v1.27.12
+
+### Added
+
+- moverAffinity added to spec to allow for specifying the podAffinity assigned
+  to a VolSync mover pod
+- cleanupTempPVC option added for direct users to allow for deleting the
+  dynamically provisioned destination PVC after a completed replication.
+- cleanupCachePVC option for restic to allow for deleting the cache PVC
+  after a completed replication.
+- enableFileDeletion restic option to allow for restoring to an existing
+  PVC (for example running multiple restores) and delete files that do
+  not exist in the backup being restored.
+
 ## [0.10.0]
 
 ### Fixed
@@ -304,6 +323,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for rsync & rclone replication
 - Helm chart to deploy operator
 
+[0.11.0]: https://github.com/backube/volsync/compare/release-0.10..v0.11.0
 [0.10.0]: https://github.com/backube/volsync/compare/release-0.9..v0.10.0
 [0.9.1]: https://github.com/backube/volsync/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/backube/volsync/compare/release-0.8...v0.9.0
