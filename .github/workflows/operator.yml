@@ -14,7 +14,7 @@ on:  # yamllint disable-line rule:truthy
 
 env:
   GO_VERSION: "1.22"
-  KIND_VERSION: "0.24.0"
+  KIND_VERSION: "0.25.0"
   GO111MODULE: "on"
   OPERATOR_IMAGE: "quay.io/backube/volsync"
   CUSTOM_SCORECARD_IMAGE: "quay.io/backube/volsync-custom-scorecard-tests"
