@@ -24,14 +24,18 @@ annotations: # https://artifacthub.io/docs/topics/annotations/helm/
   # Changelog for current chart & app version
   # Kinds: added, changed, deprecated, removed, fixed, and security
   artifacthub.io/changes: |
-    - kind: fixed
-      description: Fix for rsync-tls to handle replication when there are many files in the pvc root
-    - kind: fixed
-      description: Fix for rsync-tls to handle files in the pvc root that start with `#`
     - kind: changed
-      description: Syncthing upgraded to v1.27.8
+      description: Restic updated to v0.17.0
+    - kind: changed
+      description: Syncthing updated to v1.27.12
     - kind: added
-      description: Debug mode for mover jobs added
+      description: moverAffinity added to spec to allow for specifying the podAffinity assigned to a VolSync mover pod
+    - kind: added
+      description: cleanupTempPVC option added for direct users to allow for deleting the dynamically provisioned destination PVC after a completed replication.
+    - kind: added
+      description: cleanupCachePVC option for restic to allow for deleting the cache PVC after a completed replication.
+    - kind: added
+      description: enableFileDeletion restic option to allow for restoring to an existing PVC (for example running multiple restores) and delete files that do not exist in the backup being restored.
   artifacthub.io/crds: |
     - kind: ReplicationDestination
       version: v1alpha1
@@ -58,10 +62,10 @@ kubeVersion: "^1.20.0-0"
 # This is the chart version. This version number should be incremented each time
 # you make changes to the chart and its templates, including the app version.
 # Versions are expected to follow Semantic Versioning (https://semver.org/)
-version: "0.10.0"
+version: "0.11.0"
 
 # This is the version number of the application being deployed. This version
 # number should be incremented each time you make changes to the application.
 # Versions are not expected to follow Semantic Versioning. They should reflect
 # the version the application is using. It is recommended to use it with quotes.
-appVersion: "0.10.0"
+appVersion: "0.11.0"
