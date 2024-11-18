@@ -187,7 +187,7 @@ func (m *Mover) ensureSourcePVC(ctx context.Context) (*corev1.PersistentVolumeCl
 			return pvc, nil
 		}
 	}
-	return pvc, nil
+	return pvc, err
 }
 
 // this is so far is common to rclone & restic

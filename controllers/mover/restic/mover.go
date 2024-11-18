@@ -243,7 +243,7 @@ func (m *Mover) ensureSourcePVC(ctx context.Context) (*corev1.PersistentVolumeCl
 			return pvc, nil
 		}
 	}
-	return pvc, nil
+	return pvc, err
 }
 
 func (m *Mover) ensureDestinationPVC(ctx context.Context) (*corev1.PersistentVolumeClaim, error) {
