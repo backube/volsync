@@ -17,7 +17,7 @@ KUBECTL_VERSION := v1.31.2
 KUSTOMIZE_VERSION := v5.5.0
 OPERATOR_SDK_VERSION := v1.31.0
 PIPENV_VERSION := 2024.3.1
-YQ_VERSION := v4.44.3
+YQ_VERSION := v4.44.5
 
 #
 # Build tags - can use tags here to exclude building specific movers.
