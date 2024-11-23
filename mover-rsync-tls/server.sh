@@ -213,5 +213,5 @@ fi
 wait
 echo "Stunnel completed shut down."
 
-sync
+sync -f $TARGET
 echo "Sync complete, exiting."

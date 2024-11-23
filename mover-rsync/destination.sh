@@ -68,6 +68,6 @@ if [[ -e /tmp/exit_code ]]; then
         CODE="$CODE_IN"
     fi
 fi
-sync
+sync -f $HOME
 echo "Exiting... Exit code: $CODE"
 exit "$CODE"

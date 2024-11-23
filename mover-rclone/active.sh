@@ -87,5 +87,5 @@ destination)
     error 1 "unknown value for DIRECTION: ${DIRECTION}"
     ;;
 esac
-sync
+sync -f ${RCLONE_DEST_PATH}
 echo "Rclone completed in $(( SECONDS - START_TIME ))s"
