@@ -137,7 +137,6 @@ do
 done
 set -e
 echo "Rsync completed in $(( SECONDS - START_TIME ))s"
-sync -f $SOURCE
 if [[ $rc -eq 0 ]]; then
     echo "Synchronization completed successfully. Notifying destination..."
     # ssh does not take [ip] format for ipv6, so use DESTINATION_ADDRESS rather than URL_DESTINATION_ADDRESS
