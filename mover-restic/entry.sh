@@ -376,7 +376,7 @@ for op in "$@"; do
         "restore")
             ensure_initialized
             do_restore
-            sync
+            sync -f "${DATA_DIR}"
             ;;
         *)
             error 2 "unknown operation: $op"

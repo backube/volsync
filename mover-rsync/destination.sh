@@ -49,9 +49,11 @@ mkdir -p ~/.ssh
 chmod 700 ~/.ssh
 echo "command=\"/mover-rsync/destination-command.sh\",restrict $(</keys/source.pub)" > ~/.ssh/authorized_keys
 
+MOUNT_PATH="/data"
 VOLUME_MODE="filesystem"
 if test -b /dev/block; then
     VOLUME_MODE=block
+    MOUNT_PATH="/dev/block"
 fi
 echo "Destination PVC volumeMode is $VOLUME_MODE"
 
@@ -68,6 +70,6 @@ if [[ -e /tmp/exit_code ]]; then
         CODE="$CODE_IN"
     fi
 fi
-sync -f $HOME
+sync -f "${MOUNT_PATH}"
 echo "Exiting... Exit code: $CODE"
 exit "$CODE"

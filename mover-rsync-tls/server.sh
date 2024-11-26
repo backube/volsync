@@ -213,5 +213,9 @@ fi
 wait
 echo "Stunnel completed shut down."
 
-sync -f $TARGET
+if test -b $BLOCK_TARGET; then
+    sync -f $BLOCK_TARGET
+else
+    sync -f $TARGET
+fi
 echo "Sync complete, exiting."
