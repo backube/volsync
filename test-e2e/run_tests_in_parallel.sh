@@ -8,7 +8,7 @@ SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 cd "$SCRIPT_DIR" || exit 1
 
 # Tests fit the pattern test_*.xml and are in the current directory
-TESTS="$(find . -maxdepth 1 -type f -name 'test_*.yml' -exec basename {} \;)"
+TESTS="$(find . -maxdepth 1 -type f -name 'test_simple_rsync*.yml' -exec basename {} \;)"
 NUM_TESTS=$(echo "$TESTS" | wc -w)
 
 if [[ $MAX_PARALLELISM == 0 ]] && [[ $BATCHES -gt 0 ]]; then

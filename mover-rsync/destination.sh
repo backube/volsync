@@ -56,9 +56,12 @@ fi
 echo "Destination PVC volumeMode is $VOLUME_MODE"
 
 # Wait for incoming rsync transfer
+echo "## cat /etc/pam.d/sshd ##"
+cat /etc/pam.d/sshd
 echo "Waiting for connection..."
 rm -f /var/run/nologin
-/usr/sbin/sshd -D -e -p 8022
+rm -f /etc/nologin
+/usr/sbin/sshd -D -ddd -e -p 8022
 
 # When sshd exits, need to return the proper exit code from the rsync operation
 CODE=255
