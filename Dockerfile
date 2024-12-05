@@ -23,7 +23,7 @@ COPY go.sum go.sum
 RUN go mod download
 
 # Copy the go source
-COPY *.go .
+COPY *.go ./
 COPY api/ api/
 COPY controllers/ controllers/
 COPY config/openshift config/openshift
@@ -163,12 +163,16 @@ RUN ln -s /keys/destination /etc/ssh/ssh_host_rsa_key && \
     sed -ir 's|^[#\s]*\(.*/etc/ssh/ssh_host_ed25519_key\)$|#\1|' "$SSHD_CONFIG" && \
     sed -ir 's|^[#\s]*\(PasswordAuthentication\)\s.*$|\1 no|' "$SSHD_CONFIG" && \
     sed -ir 's|^[#\s]*\(KbdInteractiveAuthentication\)\s.*$|\1 no|' "$SSHD_CONFIG" && \
-    sed -ir 's|^[#\s]*\(UsePAM\)\s.*$|\1 no|' "$SSHD_CONFIG" && \
-    sed -ir 's|^[#\s]*\(GSSAPIAuthentication\)\s.*$|\1 no|' "$SSHD_CONFIG" && \
     sed -ir 's|^[#\s]*\(AllowTcpForwarding\)\s.*$|\1 no|' "$SSHD_CONFIG" && \
     sed -ir 's|^[#\s]*\(X11Forwarding\)\s.*$|\1 no|' "$SSHD_CONFIG" && \
     sed -ir 's|^[#\s]*\(PermitTunnel\)\s.*$|\1 no|' "$SSHD_CONFIG" && \
-    sed -ir 's|^[#\s]*\(PidFile\)\s.*$|\1 /tmp/sshd.pid|' "$SSHD_CONFIG"
+    sed -ir 's|^[#\s]*\(PidFile\)\s.*$|\1 /tmp/sshd.pid|' "$SSHD_CONFIG" && \
+    sed -ir 's|^[#\s]*\(UsePAM\)\s.*$|\1 no|' "$SSHD_CONFIG" && \
+    sed -ir 's|^[#\s]*\(GSSAPIAuthentication\)\s.*$|\1 no|' "$SSHD_CONFIG" && \
+
+    INCLUDED_SSH_CONFIG_DIR="/etc/ssh/sshd_config.d" && \
+    sed -ir 's|^[#\s]*\(UsePAM\)\s.*$|\1 no|' "$INCLUDED_SSH_CONFIG_DIR"/* && \
+    sed -ir 's|^[#\s]*\(GSSAPIAuthentication\)\s.*$|\1 no|' "$INCLUDED_SSH_CONFIG_DIR"/*
 
 ##### rsync-tls
 COPY /mover-rsync-tls/client.sh \
