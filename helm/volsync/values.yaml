@@ -33,6 +33,8 @@ syncthing:
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
   image: ""
+kube-rbac-proxy:
+  image: quay.io/brancz/kube-rbac-proxy:v0.18.1
 
 manageCRDs: true
 
