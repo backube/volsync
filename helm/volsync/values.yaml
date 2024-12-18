@@ -34,7 +34,9 @@ syncthing:
   tag: ""
   image: ""
 kube-rbac-proxy:
-  image: quay.io/brancz/kube-rbac-proxy:v0.18.1
+  repository: quay.io/brancz/kube-rbac-proxy
+  tag: "v0.18.1"
+  image: ""
 
 manageCRDs: true
 
