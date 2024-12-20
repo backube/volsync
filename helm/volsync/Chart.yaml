@@ -25,17 +25,17 @@ annotations: # https://artifacthub.io/docs/topics/annotations/helm/
   # Kinds: added, changed, deprecated, removed, fixed, and security
   artifacthub.io/changes: |
     - kind: changed
-      description: Restic updated to v0.17.0
+      description: Syncthing updated to v1.28.1
     - kind: changed
-      description: Syncthing updated to v1.27.12
-    - kind: added
-      description: moverAffinity added to spec to allow for specifying the podAffinity assigned to a VolSync mover pod
-    - kind: added
-      description: cleanupTempPVC option added for direct users to allow for deleting the dynamically provisioned destination PVC after a completed replication.
-    - kind: added
-      description: cleanupCachePVC option for restic to allow for deleting the cache PVC after a completed replication.
-    - kind: added
-      description: enableFileDeletion restic option to allow for restoring to an existing PVC (for example running multiple restores) and delete files that do not exist in the backup being restored.
+      description: kube-rbac-proxy image configurable in helm chart values
+    - kind: changed
+      description: mover scripts updated to use sync -f to only sync the target filesystem at the end of mover tasks
+    - kind: changed
+      description: Updates the ensure_initialized function in the restic mover script to follow restic recommendations
+    - kind: fixed
+      description: All movers should return error if not able to EnsurePVCFromSrc
+    - kind: security
+      description: kube-rbac-proxy upgraded to 0.18.1
   artifacthub.io/crds: |
     - kind: ReplicationDestination
       version: v1alpha1
