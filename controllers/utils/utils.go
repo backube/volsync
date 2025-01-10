@@ -281,10 +281,7 @@ func GetOwnerNameLabelValue(namePrefix string, owner client.Object) string {
 }
 
 func getShortenedResourceName(namePrefix string, owner client.Object, maxLength int) string {
-	name := owner.GetName()
-	if namePrefix != "" {
-		name = namePrefix + owner.GetName()
-	}
+	name := namePrefix + owner.GetName()
 
 	if len(name) > maxLength {
 		return namePrefix + string(owner.GetUID())
