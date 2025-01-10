@@ -290,7 +290,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      mover.VolSyncPrefix + dir + "-" + m.owner.GetName(),
+			Name:      utils.GetJobName(mover.VolSyncPrefix+dir+"-", m.owner),
 			Namespace: m.owner.GetNamespace(),
 		},
 	}
