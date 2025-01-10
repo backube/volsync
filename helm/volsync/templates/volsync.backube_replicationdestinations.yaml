@@ -4174,6 +4174,11 @@ spec:
                         connections.
                       format: int32
                       type: integer
+                    serviceName:
+                      description: |-
+                        serviceName is the name of the service to connect to for incoming SSH
+                        replication connections.
+                      type: string
                     sshKeys:
                       description: |-
                         sshKeys is the name of a Secret that contains the SSH keys to be used for
@@ -4198,6 +4203,11 @@ spec:
                       description: port is the port to connect to for incoming replication connections.
                       format: int32
                       type: integer
+                    serviceName:
+                      description: |-
+                        serviceName is the name of the service to connect to for incoming TLS
+                        connections.
+                      type: string
                   type: object
               type: object
           type: object

@@ -62,7 +62,8 @@
         res.resources | length > 0 and
         res.resources[0].status.rsync is defined and
         res.resources[0].status.rsync.sshKeys is defined and
-        res.resources[0].status.rsync.address is defined
+        res.resources[0].status.rsync.address is defined and
+        res.resources[0].status.rsync.serviceName is defined
       delay: 1
       retries: 300
 

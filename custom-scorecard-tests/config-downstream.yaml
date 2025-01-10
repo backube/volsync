@@ -227,6 +227,16 @@ stages:
         mountPath: {}
   - entrypoint:
     - volsync-custom-scorecard-tests
+    - test_rsync_tls_normal_longname.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_rsync_tls_normal_longname.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
     - test_rsync_tls_normal_manyfiles.yml
     image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
@@ -272,6 +282,16 @@ stages:
     labels:
       suite: volsync-e2e
       test: test_simple_rsync_diskrsync.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_simple_rsync_longname.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_simple_rsync_longname.yml
     storage:
       spec:
         mountPath: {}

@@ -60,6 +60,11 @@ const (
 
 	// Annotation on ReplicationSource or ReplicationDestination to enable running the mover job in debug mode
 	EnableDebugMoverAnnotation = "volsync.backube/enable-debug-mover"
+
+	// Annotation on ReplicationSource or ReplicationDestination to indicate the mover job name (internal, do not modify)
+	JobNameAnnotation = "volsync.backube/jobname"
+	// Annotation on ReplicationSource or ReplicationDestination to indicate the service name (internal, do not modify)
+	ServiceNameAnnotation = "volsync.backube/servicename"
 )
 
 const (

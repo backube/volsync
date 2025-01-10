@@ -378,6 +378,11 @@ func (in *ReplicationDestinationRsyncStatus) DeepCopyInto(out *ReplicationDestin
 		*out = new(string)
 		**out = **in
 	}
+	if in.ServiceName != nil {
+		in, out := &in.ServiceName, &out.ServiceName
+		*out = new(string)
+		**out = **in
+	}
 	if in.Address != nil {
 		in, out := &in.Address, &out.Address
 		*out = new(string)
@@ -448,6 +453,11 @@ func (in *ReplicationDestinationRsyncTLSStatus) DeepCopyInto(out *ReplicationDes
 	*out = *in
 	if in.KeySecret != nil {
 		in, out := &in.KeySecret, &out.KeySecret
+		*out = new(string)
+		**out = **in
+	}
+	if in.ServiceName != nil {
+		in, out := &in.ServiceName, &out.ServiceName
 		*out = new(string)
 		**out = **in
 	}

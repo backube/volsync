@@ -99,6 +99,10 @@ type ReplicationDestinationRsyncTLSStatus struct {
 	// the key Secret will be generated and named here.
 	//+optional
 	KeySecret *string `json:"keySecret,omitempty"`
+	// serviceName is the name of the service to connect to for incoming TLS
+	// connections.
+	//+optional
+	ServiceName *string `json:"serviceName,omitempty"`
 	// address is the address to connect to for incoming TLS connections.
 	//+optional
 	Address *string `json:"address,omitempty"`
