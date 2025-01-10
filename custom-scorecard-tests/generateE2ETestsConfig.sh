@@ -18,8 +18,8 @@ TESTS_COUNT=$(echo "${TESTS}" | wc -w)
 
 # Group tests into 2 stages (each stage gets run sequentially but
 # all tests in a stage can run in parallel)
-E2E_TESTS_GROUP1=$(echo "${TESTS}" | grep -v -e role -e syncthing)
-E2E_TESTS_GROUP2=$(echo "${TESTS}" | grep -e role -e syncthing)
+E2E_TESTS_GROUP1=$(echo "${TESTS}" | grep -v -e role -e syncthing -e restic)
+E2E_TESTS_GROUP2=$(echo "${TESTS}" | grep -e role -e syncthing -e restic)
 E2E_TESTS_GROUP3="" # If we want to exclude specific tests downstream - put them in this group
 
 E2E_TESTS_GROUP1_COUNT=$(echo "${E2E_TESTS_GROUP1}" | wc -w)
