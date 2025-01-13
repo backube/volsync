@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Syncthing updated to v1.29.0
+- Syncthing updated to v1.29.2
 - kube-rbac-proxy image configurable in helm chart values
 - mover scripts updated to use sync -f to only sync the target filesystem at
   the end of mover tasks
