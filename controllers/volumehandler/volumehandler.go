@@ -301,11 +301,13 @@ func (vh *VolumeHandler) ensureImageSnapshot(ctx context.Context, log logr.Logge
 		}
 		return nil, nil
 	}
+	logger.V(1).Info("snapshot content is bound")
 	if snap.Status.ReadyToUse != nil && !*snap.Status.ReadyToUse {
 		// readyToUse is set to false for this volume snapshot
 		logger.V(1).Info("waiting for snapshot to be ready")
 		return nil, nil
 	}
+	logger.V(1).Info("snapshot is ready to use")
 	// status.readyToUse either is not set by the driver at this point (even though
 	// status.BoundVolumeSnapshotContentName is set), or readyToUse=true
 
