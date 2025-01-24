@@ -212,6 +212,10 @@ type ReplicationDestinationRsyncStatus struct {
 	// here.
 	//+optional
 	SSHKeys *string `json:"sshKeys,omitempty"`
+	// serviceName is the name of the service to connect to for incoming SSH
+	// replication connections.
+	//+optional
+	ServiceName *string `json:"serviceName,omitempty"`
 	// address is the address to connect to for incoming SSH replication
 	// connections.
 	//+optional

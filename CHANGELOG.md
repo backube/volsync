@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - All movers should return error if not able to EnsurePVCFromSrc
+- Fix for mover job/service name length too long (>63 chars) if the
+  replicationsource or replicationdestination CR name is too long
 
 ### Security
 

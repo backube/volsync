@@ -68,7 +68,8 @@
         res.resources | length > 0 and
         res.resources[0].status.rsyncTLS is defined and
         res.resources[0].status.rsyncTLS.keySecret is defined and
-        res.resources[0].status.rsyncTLS.address is defined
+        res.resources[0].status.rsyncTLS.address is defined and
+        res.resources[0].status.rsyncTLS.serviceName is defined
       delay: 1
       retries: 300
 

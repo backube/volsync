@@ -226,7 +226,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      mover.VolSyncPrefix + "rclone-" + dir + "-" + m.owner.GetName(),
+			Name:      utils.GetJobName(mover.VolSyncPrefix+"rclone-"+dir+"-", m.owner),
 			Namespace: m.owner.GetNamespace(),
 		},
 	}

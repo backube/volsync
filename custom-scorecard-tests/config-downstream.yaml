@@ -97,6 +97,118 @@ stages:
         mountPath: {}
   - entrypoint:
     - volsync-custom-scorecard-tests
+    - test_rsync_tls_normal.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_rsync_tls_normal.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_rsync_tls_normal_diskrsync.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_rsync_tls_normal_diskrsync.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_rsync_tls_normal_longname.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_rsync_tls_normal_longname.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_rsync_tls_normal_manyfiles.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_rsync_tls_normal_manyfiles.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_rsync_tls_priv.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_rsync_tls_priv.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_rsync_tls_priv_diskrsync.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_rsync_tls_priv_diskrsync.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_simple_rsync.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_simple_rsync.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_simple_rsync_diskrsync.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_simple_rsync_diskrsync.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_simple_rsync_longname.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_simple_rsync_longname.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_volumepopulator.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_volumepopulator.yml
+    storage:
+      spec:
+        mountPath: {}
+- parallel: true
+  tests:
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_namespace_role.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_namespace_role.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
     - test_restic_manual_normal.yml
     image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
@@ -122,6 +234,16 @@ stages:
     labels:
       suite: volsync-e2e
       test: test_restic_manual_normal_copy_trigger.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_restic_manual_normal_longname.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_restic_manual_normal_longname.yml
     storage:
       spec:
         mountPath: {}
@@ -207,98 +329,6 @@ stages:
         mountPath: {}
   - entrypoint:
     - volsync-custom-scorecard-tests
-    - test_rsync_tls_normal.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
-    labels:
-      suite: volsync-e2e
-      test: test_rsync_tls_normal.yml
-    storage:
-      spec:
-        mountPath: {}
-  - entrypoint:
-    - volsync-custom-scorecard-tests
-    - test_rsync_tls_normal_diskrsync.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
-    labels:
-      suite: volsync-e2e
-      test: test_rsync_tls_normal_diskrsync.yml
-    storage:
-      spec:
-        mountPath: {}
-  - entrypoint:
-    - volsync-custom-scorecard-tests
-    - test_rsync_tls_normal_manyfiles.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
-    labels:
-      suite: volsync-e2e
-      test: test_rsync_tls_normal_manyfiles.yml
-    storage:
-      spec:
-        mountPath: {}
-  - entrypoint:
-    - volsync-custom-scorecard-tests
-    - test_rsync_tls_priv.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
-    labels:
-      suite: volsync-e2e
-      test: test_rsync_tls_priv.yml
-    storage:
-      spec:
-        mountPath: {}
-  - entrypoint:
-    - volsync-custom-scorecard-tests
-    - test_rsync_tls_priv_diskrsync.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
-    labels:
-      suite: volsync-e2e
-      test: test_rsync_tls_priv_diskrsync.yml
-    storage:
-      spec:
-        mountPath: {}
-  - entrypoint:
-    - volsync-custom-scorecard-tests
-    - test_simple_rsync.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
-    labels:
-      suite: volsync-e2e
-      test: test_simple_rsync.yml
-    storage:
-      spec:
-        mountPath: {}
-  - entrypoint:
-    - volsync-custom-scorecard-tests
-    - test_simple_rsync_diskrsync.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
-    labels:
-      suite: volsync-e2e
-      test: test_simple_rsync_diskrsync.yml
-    storage:
-      spec:
-        mountPath: {}
-  - entrypoint:
-    - volsync-custom-scorecard-tests
-    - test_volumepopulator.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
-    labels:
-      suite: volsync-e2e
-      test: test_volumepopulator.yml
-    storage:
-      spec:
-        mountPath: {}
-- parallel: true
-  tests:
-  - entrypoint:
-    - volsync-custom-scorecard-tests
-    - test_namespace_role.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
-    labels:
-      suite: volsync-e2e
-      test: test_namespace_role.yml
-    storage:
-      spec:
-        mountPath: {}
-  - entrypoint:
-    - volsync-custom-scorecard-tests
     - test_roles.yml
     image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
@@ -324,6 +354,16 @@ stages:
     labels:
       suite: volsync-e2e
       test: test_syncthing_cluster_sync_normal.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_syncthing_cluster_sync_normal_longname.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_syncthing_cluster_sync_normal_longname.yml
     storage:
       spec:
         mountPath: {}

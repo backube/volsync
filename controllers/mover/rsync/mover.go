@@ -149,7 +149,7 @@ func (m *Mover) ensureServiceAndPublishAddress(ctx context.Context) (bool, error
 
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      volSyncRsyncPrefix + m.direction() + "-" + m.owner.GetName(),
+			Name:      utils.GetServiceName(volSyncRsyncPrefix+m.direction()+"-", m.owner),
 			Namespace: m.owner.GetNamespace(),
 		},
 	}
@@ -175,7 +175,7 @@ func (m *Mover) publishSvcAddress(service *corev1.Service) (bool, error) {
 	address := utils.GetServiceAddress(service)
 	if address == "" {
 		// We don't have an address yet, try again later
-		m.updateStatusAddress(nil)
+		m.updateStatusAddress(nil, &service.Name)
 		if service.CreationTimestamp.Add(mover.ServiceAddressTimeout).Before(time.Now()) {
 			m.eventRecorder.Eventf(m.owner, service, corev1.EventTypeWarning,
 				volsyncv1alpha1.EvRSvcNoAddress, volsyncv1alpha1.EvANone,
@@ -184,13 +184,13 @@ func (m *Mover) publishSvcAddress(service *corev1.Service) (bool, error) {
 		}
 		return false, nil
 	}
-	m.updateStatusAddress(&address)
+	m.updateStatusAddress(&address, &service.Name)
 
 	m.logger.V(1).Info("Service addr published", "address", address)
 	return true, nil
 }
 
-func (m *Mover) updateStatusAddress(address *string) {
+func (m *Mover) updateStatusAddress(address *string, serviceName *string) {
 	publishEvent := false
 	if m.isSource {
 		if m.sourceStatus.Address == nil ||
@@ -204,6 +204,7 @@ func (m *Mover) updateStatusAddress(address *string) {
 			publishEvent = true
 		}
 		m.destStatus.Address = address
+		m.destStatus.ServiceName = serviceName
 	}
 	if publishEvent && address != nil {
 		m.eventRecorder.Eventf(m.owner, nil, corev1.EventTypeNormal,
@@ -279,7 +280,7 @@ func (m *Mover) direction() string {
 
 func (m *Mover) serviceSelector() map[string]string {
 	return map[string]string{
-		"app.kubernetes.io/name":      m.direction() + "-" + m.owner.GetName(),
+		"app.kubernetes.io/name":      utils.GetOwnerNameLabelValue(m.direction()+"-", m.owner),
 		"app.kubernetes.io/component": "rsync-mover",
 		"app.kubernetes.io/part-of":   "volsync",
 	}
@@ -355,7 +356,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 	sa *corev1.ServiceAccount, rsyncSecretName string) (*batchv1.Job, error) {
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      volSyncRsyncPrefix + m.direction() + "-" + m.owner.GetName(),
+			Name:      utils.GetJobName(volSyncRsyncPrefix+m.direction()+"-", m.owner),
 			Namespace: m.owner.GetNamespace(),
 		},
 	}

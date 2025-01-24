@@ -2,64 +2,31 @@
 - hosts: localhost
   tags:
     - e2e
-    - rsync_tls
-    - manyfiles
-    - unprivileged
+    - rsync
     - volumepopulator
+    - long cr name
   tasks:
-    - name: Create namespace
-      include_role:
+    - include_role:
         name: create_namespace
 
-    - name: Probe cluster information
-      include_role:
+    - include_role:
         name: gather_cluster_info
 
-    - name: Define podSecurityContext
-      ansible.builtin.set_fact:
-        podSecurityContext:
-          fsGroup: 5678
-          runAsGroup: 5678
-          runAsNonRoot: true
-          runAsUser: 1234
-          seccompProfile:
-            type: RuntimeDefault
-      when: not cluster_info.is_openshift
-
-    - name: Create ReplicationDestination (w/ mSC)
+    - name: Create ReplicationDestination
       kubernetes.core.k8s:
         state: present
         definition:
           apiVersion: volsync.backube/v1alpha1
           kind: ReplicationDestination
           metadata:
-            name: test
+            name: thisisavery-very-very-very-longnameevenlongerthan63chars2
             namespace: "{{ namespace }}"
           spec:
-            rsyncTLS:
+            rsync:
               copyMethod: Snapshot
               capacity: 1Gi
               accessModes:
                 - ReadWriteOnce
-              moverSecurityContext: "{{ podSecurityContext }}"
-      when: podSecurityContext is defined
-
-    - name: Create ReplicationDestination (w/o mSC)
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          apiVersion: volsync.backube/v1alpha1
-          kind: ReplicationDestination
-          metadata:
-            name: test
-            namespace: "{{ namespace }}"
-          spec:
-            rsyncTLS:
-              copyMethod: Snapshot
-              capacity: 1Gi
-              accessModes:
-                - ReadWriteOnce
-      when: podSecurityContext is not defined
 
     - name: Create source PVC
       kubernetes.core.k8s:
@@ -81,93 +48,35 @@
       include_role:
         name: write_to_pvc
       vars:
-        data: 'some-data'
-        path: '/.subdir/subdir2/testfile1'
-        file_count: 2
-        pvc_name: 'data-source'
-
-    - name: Write more data into the source PVC at different subdir
-      include_role:
-        name: write_to_pvc
-      vars:
-        data: 'some-more-data'
-        path: '/subdir2/ttestfilehere'
-        file_count: 2
-        pvc_name: 'data-source'
-
-    - name: Write more data into the source PVC
-      include_role:
-        name: write_to_pvc
-      vars:
-        data: 'even-more-data'
-        path: '/.hiddenfile'
-        file_count: 3
-        pvc_name: 'data-source'
-
-    - name: Write many files into the root of the source PVC
-      include_role:
-        name: write_to_pvc
-      vars:
         data: 'data'
-        path: '/datafilelongname-thisnameisverylong-anditkeepsgoing-andgoing-andgoing-maybethisisenough'
-        file_count: 21000
+        path: '/datafile'
         pvc_name: 'data-source'
 
-    - name: Write file that starts with a hash char
-      include_role:
-        name: write_to_pvc
-      vars:
-        data: '000111'
-        path: '/#filestartswithhash'
-        file_count: 1
-        pvc_name: 'data-source'
-
-    - name: Write dir that starts with a hash char
-      include_role:
-        name: write_to_pvc
-      vars:
-        data: '222333444555'
-        path: '/#dirtartswithhash/#subfile'
-        file_count: 1
-        pvc_name: 'data-source'
-
-    - name: Wait for key and address to be ready
+    - name: Wait for ssh keys and address to be ready
       kubernetes.core.k8s_info:
         api_version: volsync.backube/v1alpha1
         kind: ReplicationDestination
-        name: test
+        name: thisisavery-very-very-very-longnameevenlongerthan63chars2
         namespace: "{{ namespace }}"
       register: res
       until: >
         res.resources | length > 0 and
-        res.resources[0].status.rsyncTLS is defined and
-        res.resources[0].status.rsyncTLS.keySecret is defined and
-        res.resources[0].status.rsyncTLS.address is defined and
-        res.resources[0].status.rsyncTLS.serviceName is defined
+        res.resources[0].status.rsync is defined and
+        res.resources[0].status.rsync.sshKeys is defined and
+        res.resources[0].status.rsync.address is defined and
+        res.resources[0].status.rsync.serviceName is defined
       delay: 1
       retries: 300
 
-    - name: Create ReplicationSource (w/ mSC)
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          apiVersion: volsync.backube/v1alpha1
-          kind: ReplicationSource
-          metadata:
-            name: source
-            namespace: "{{ namespace }}"
-          spec:
-            sourcePVC: data-source
-            trigger:
-              schedule: "0 0 1 1 *"
-            rsyncTLS:
-              keySecret: "{{ res.resources[0].status.rsyncTLS.keySecret }}"
-              address: "{{ res.resources[0].status.rsyncTLS.address }}"
-              copyMethod: Snapshot
-              moverSecurityContext: "{{ podSecurityContext }}"
-      when: podSecurityContext is defined
+    - name: Check on dynamically provisioned destination PVC
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: PersistentVolumeClaim
+        name: volsync-thisisavery-very-very-very-longnameevenlongerthan63chars2-dst
+        namespace: "{{ namespace }}"
+      register: destpvc
 
-    - name: Create ReplicationSource (w/o mSC)
+    - name: Create ReplicationSource
       kubernetes.core.k8s:
         state: present
         definition:
@@ -180,11 +89,10 @@
             sourcePVC: data-source
             trigger:
               schedule: "0 0 1 1 *"
-            rsyncTLS:
-              keySecret: "{{ res.resources[0].status.rsyncTLS.keySecret }}"
-              address: "{{ res.resources[0].status.rsyncTLS.address }}"
+            rsync:
+              sshKeys: "{{ res.resources[0].status.rsync.sshKeys }}"
+              address: "{{ res.resources[0].status.rsync.address }}"
               copyMethod: Snapshot
-      when: podSecurityContext is not defined
 
     - name: Check status of replicationsource
       kubernetes.core.k8s_info:
@@ -200,7 +108,7 @@
         res.resources[0].status.latestMoverStatus is defined and
         res.resources[0].status.latestMoverStatus.result == "Successful" and
         res.resources[0].status.latestMoverStatus.logs is search("sent.*bytes.*received.*bytes.*") and
-        res.resources[0].status.latestMoverStatus.logs is search("rsync completed in.*")
+        res.resources[0].status.latestMoverStatus.logs is search("Rsync completed in.*")
       delay: 1
       retries: 900
 
@@ -208,7 +116,7 @@
       kubernetes.core.k8s_info:
         api_version: volsync.backube/v1alpha1
         kind: ReplicationDestination
-        name: test
+        name: thisisavery-very-very-very-longnameevenlongerthan63chars2
         namespace: "{{ namespace }}"
       register: res
       until: >
@@ -219,6 +127,30 @@
         res.resources[0].status.latestMoverStatus.result == "Successful"
       delay: 1
       retries: 900
+
+    # Check that the dynamically provisioned destination PVC is still there
+    # and that it has NOT been cleaned up
+    #
+    # rsync is a special case where we immediately start the destination mover again (no trigger or schedule)
+    # so even if the dest pvc was deleted, it would be re-created as soon as the last replicationdestionation completed
+    # To check we have not deleted the original destination pvc, reload it and check against the destpvc variable
+    # we loaded earlier
+    - name: Confirm dynamically provisioned destination PVC is preserved (no cleanup by default)
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: PersistentVolumeClaim
+        name: volsync-thisisavery-very-very-very-longnameevenlongerthan63chars2-dst
+        namespace: "{{ namespace }}"
+      register: destpvcreloaded
+
+    - name: Check dest pvc was not deleted (should be same pvc from our original sync to preserve data)
+      ansible.builtin.fail:
+        msg: destination pvc (dynamically provisioned by volsync) should be preserved, but has been deleted
+      when:
+        destpvc.resources | length == 0 or
+        destpvcreloaded.resources | length == 0 or
+        destpvcreloaded.resources[0].metadata.deletionTimestamp is defined or
+        destpvcreloaded.resources[0].metadata.uid != destpvc.resources[0].metadata.uid
 
     - name: Convert latestImage to PVC using VolumePopulator
       kubernetes.core.k8s:
@@ -235,7 +167,7 @@
             dataSourceRef:
               kind: ReplicationDestination
               apiGroup: volsync.backube
-              name: test
+              name: thisisavery-very-very-very-longnameevenlongerthan63chars2
             resources:
               requests:
                 storage: 1Gi

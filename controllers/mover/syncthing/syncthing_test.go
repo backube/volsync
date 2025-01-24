@@ -287,11 +287,49 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					Expect(err).NotTo(HaveOccurred())
 					Expect(deployment).NotTo(BeNil())
 
+					appLabel, ok := deployment.GetLabels()["app"]
+					Expect(ok).To(BeTrue())
+					Expect(appLabel).To(Equal(rs.GetName()))
+
 					// make sure the service is created
 					svc, err := mover.ensureDataService(ctx, deployment)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(svc).NotTo(BeNil())
 					Expect(svc.Spec.Type).To(Equal(corev1.ServiceTypeClusterIP))
+				})
+
+				When("replicationsource CR name is very long", func() {
+					JustBeforeEach(func() {
+						rs.Name = "super-very-extra-long-name-that-will-definitely-need-to-be-truncated"
+					})
+
+					It("Should be able to create a deployment and api and data service", func() {
+						// get a deployment
+						deployment, err := mover.ensureDeployment(ctx, srcPVC, configPVC, sa, apiSecret)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(deployment).NotTo(BeNil())
+
+						appLabel, ok := deployment.GetLabels()["app"]
+						Expect(ok).To(BeTrue())
+						Expect(appLabel).To(ContainSubstring(string(rs.GetUID())))
+						Expect(len(appLabel) > 63).To(BeFalse())
+
+						// make sure the api service is created
+						apiSvc, err := mover.ensureAPIService(ctx, deployment)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(apiSvc).NotTo(BeNil())
+						Expect(apiSvc.GetName()).To(ContainSubstring(string(rs.GetUID())))
+						// Make sure our shortened name is actually short enough
+						Expect(len(apiSvc.GetName()) > 63).To(BeFalse())
+
+						// make sure the data service is created
+						dataSvc, err := mover.ensureDataService(ctx, deployment)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(dataSvc).NotTo(BeNil())
+						Expect(dataSvc.GetName()).To(ContainSubstring(string(rs.GetUID())))
+						// Make sure our shortened name is actually short enough
+						Expect(len(dataSvc.GetName()) > 63).To(BeFalse())
+					})
 				})
 
 				It("Can get DataServiceAddress", func() {
