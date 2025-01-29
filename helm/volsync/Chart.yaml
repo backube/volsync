@@ -25,6 +25,8 @@ annotations: # https://artifacthub.io/docs/topics/annotations/helm/
   # Kinds: added, changed, deprecated, removed, fixed, and security
   artifacthub.io/changes: |
     - kind: changed
+      description: Updated release to build on golang 1.23
+    - kind: changed
       description: Syncthing updated to v1.29.2
     - kind: changed
       description: kube-rbac-proxy image configurable in helm chart values
