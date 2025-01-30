@@ -1,0 +1,202 @@
+---
+- hosts: localhost
+  tags:
+    - e2e
+    - rsync
+    - volumepopulator
+    - long cr name
+  tasks:
+    - include_role:
+        name: create_namespace
+
+    - include_role:
+        name: gather_cluster_info
+
+    - name: Create ReplicationDestination
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationDestination
+          metadata:
+            name: thisisavery-very-very-very-longnameevenlongerthan63chars2
+            namespace: "{{ namespace }}"
+          spec:
+            rsync:
+              copyMethod: Snapshot
+              capacity: 1Gi
+              accessModes:
+                - ReadWriteOnce
+
+    - name: Create source PVC
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          kind: PersistentVolumeClaim
+          apiVersion: v1
+          metadata:
+            name: data-source
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 1Gi
+
+    - name: Write data into the source PVC
+      include_role:
+        name: write_to_pvc
+      vars:
+        data: 'data'
+        path: '/datafile'
+        pvc_name: 'data-source'
+
+    - name: Wait for ssh keys and address to be ready
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationDestination
+        name: thisisavery-very-very-very-longnameevenlongerthan63chars2
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.rsync is defined and
+        res.resources[0].status.rsync.sshKeys is defined and
+        res.resources[0].status.rsync.address is defined
+      delay: 1
+      retries: 300
+
+    - name: Check on dynamically provisioned destination PVC
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: PersistentVolumeClaim
+        name: volsync-thisisavery-very-very-very-longnameevenlongerthan63chars2-dst
+        namespace: "{{ namespace }}"
+      register: destpvc
+
+    - name: Create ReplicationSource
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationSource
+          metadata:
+            name: source
+            namespace: "{{ namespace }}"
+          spec:
+            sourcePVC: data-source
+            trigger:
+              schedule: "0 0 1 1 *"
+            rsync:
+              sshKeys: "{{ res.resources[0].status.rsync.sshKeys }}"
+              address: "{{ res.resources[0].status.rsync.address }}"
+              copyMethod: Snapshot
+
+    - name: Check status of replicationsource
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationSource
+        name: source
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastSyncDuration is defined and
+        res.resources[0].status.lastSyncTime is defined and
+        res.resources[0].status.latestMoverStatus is defined and
+        res.resources[0].status.latestMoverStatus.result == "Successful" and
+        res.resources[0].status.latestMoverStatus.logs is search("sent.*bytes.*received.*bytes.*") and
+        res.resources[0].status.latestMoverStatus.logs is search("Rsync completed in.*")
+      delay: 1
+      retries: 900
+
+    - name: Wait for sync to complete
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationDestination
+        name: thisisavery-very-very-very-longnameevenlongerthan63chars2
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.latestImage is defined and
+        res.resources[0].status.latestImage.kind == "VolumeSnapshot" and
+        res.resources[0].status.latestMoverStatus is defined and
+        res.resources[0].status.latestMoverStatus.result == "Successful"
+      delay: 1
+      retries: 900
+
+    # Check that the dynamically provisioned destination PVC is still there
+    # and that it has NOT been cleaned up
+    #
+    # rsync is a special case where we immediately start the destination mover again (no trigger or schedule)
+    # so even if the dest pvc was deleted, it would be re-created as soon as the last replicationdestionation completed
+    # To check we have not deleted the original destination pvc, reload it and check against the destpvc variable
+    # we loaded earlier
+    - name: Confirm dynamically provisioned destination PVC is preserved (no cleanup by default)
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: PersistentVolumeClaim
+        name: volsync-thisisavery-very-very-very-longnameevenlongerthan63chars2-dst
+        namespace: "{{ namespace }}"
+      register: destpvcreloaded
+
+    - name: Check dest pvc was not deleted (should be same pvc from our original sync to preserve data)
+      ansible.builtin.fail:
+        msg: destination pvc (dynamically provisioned by volsync) should be preserved, but has been deleted
+      when:
+        destpvc.resources | length == 0 or
+        destpvcreloaded.resources | length == 0 or
+        destpvcreloaded.resources[0].metadata.deletionTimestamp is defined or
+        destpvcreloaded.resources[0].metadata.uid != destpvc.resources[0].metadata.uid
+
+    - name: Convert latestImage to PVC using VolumePopulator
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: data-dest
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            dataSourceRef:
+              kind: ReplicationDestination
+              apiGroup: volsync.backube
+              name: thisisavery-very-very-very-longnameevenlongerthan63chars2
+            resources:
+              requests:
+                storage: 1Gi
+      when: cluster_info.volumepopulator_supported
+
+    - name: Convert latestImage to PVC
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: data-dest
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            dataSource:
+              kind: VolumeSnapshot
+              apiGroup: snapshot.storage.k8s.io
+              name: "{{ res.resources[0].status.latestImage.name }}"
+            resources:
+              requests:
+                storage: 1Gi
+      when: not cluster_info.volumepopulator_supported
+
+    - name: Verify contents of PVC
+      include_role:
+        name: compare_pvc_data
+      vars:
+        pvc1_name: data-source
+        pvc2_name: data-dest
+        timeout: 900

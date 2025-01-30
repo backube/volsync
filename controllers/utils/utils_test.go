@@ -583,4 +583,85 @@ var _ = Describe("utils tests", func() {
 		})
 
 	})
+
+	Describe("Name length limit tests", func() {
+		var ns *corev1.Namespace
+		var rd *volsyncv1alpha1.ReplicationDestination
+		var rdlongname *volsyncv1alpha1.ReplicationDestination
+
+		BeforeEach(func() {
+			ns = &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					GenerateName: "utils-test-",
+				},
+			}
+
+			Expect(k8sClient.Create(ctx, ns)).To(Succeed())
+			Expect(ns.Name).NotTo(BeEmpty())
+		})
+
+		JustBeforeEach(func() {
+			// Create namespace for test
+			rd = &volsyncv1alpha1.ReplicationDestination{
+				ObjectMeta: metav1.ObjectMeta{
+					GenerateName: "test-rd-owner-obj-",
+					Namespace:    ns.Name,
+				},
+				Spec: volsyncv1alpha1.ReplicationDestinationSpec{},
+			}
+
+			rdlongname = &volsyncv1alpha1.ReplicationDestination{
+				ObjectMeta: metav1.ObjectMeta{
+					GenerateName: "test-rd-owner-obj-aaa-bbb-ccc-this-name-is-greater-than-63chars-",
+					Namespace:    ns.Name,
+				},
+				Spec: volsyncv1alpha1.ReplicationDestinationSpec{},
+			}
+
+			Expect(k8sClient.Create(ctx, rd)).To(Succeed())
+			Expect(k8sClient.Create(ctx, rdlongname)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			Expect(k8sClient.Delete(ctx, ns)).To(Succeed())
+		})
+
+		Describe("Job name test", func() {
+			It("Should use the prefix + owner CR name when <= 63 chars", func() {
+				jobName := utils.GetJobName("myprefix-", rd)
+				Expect(jobName).To(Equal("myprefix-" + rd.GetName()))
+			})
+
+			It("Should use prefix + hashed owner name when > 63 chars", func() {
+				jobName := utils.GetJobName("myprefix-", rdlongname)
+				hashedName := utils.GetHashedName(rdlongname.GetName())
+				Expect(len(hashedName)).To(Equal(8))
+				Expect(jobName).To(Equal("myprefix-" + hashedName))
+			})
+		})
+
+		Describe("Service name test", func() {
+			It("Should use the prefix + owner CR name when <= 63 chars", func() {
+				jobName := utils.GetServiceName("myprefix-", rd)
+				Expect(jobName).To(Equal("myprefix-" + rd.GetName()))
+			})
+
+			It("Should use prefix + hashed owner name when > 63 chars", func() {
+				jobName := utils.GetServiceName("myprefix-", rdlongname)
+				Expect(jobName).To(Equal("myprefix-" + utils.GetHashedName(rdlongname.GetName())))
+			})
+		})
+
+		Describe("Label value test", func() {
+			It("Should use the prefix + owner CR name when <= 63 chars", func() {
+				jobName := utils.GetOwnerNameLabelValue("myprefix-", rd)
+				Expect(jobName).To(Equal("myprefix-" + rd.GetName()))
+			})
+
+			It("Should use prefix + hashed owner name when > 63 chars", func() {
+				jobName := utils.GetOwnerNameLabelValue("myprefix-", rdlongname)
+				Expect(jobName).To(Equal("myprefix-" + utils.GetHashedName(rdlongname.GetName())))
+			})
+		})
+	})
 })
