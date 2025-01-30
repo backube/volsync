@@ -34,6 +34,8 @@ annotations: # https://artifacthub.io/docs/topics/annotations/helm/
       description: Updates the ensure_initialized function in the restic mover script to follow restic recommendations
     - kind: fixed
       description: All movers should return error if not able to EnsurePVCFromSrc
+    - kind: fixed
+      description: Fix for mover job/service name length too long (>63 chars) if the replicationsource or replicationdestination CR name is too long
     - kind: security
       description: kube-rbac-proxy upgraded to 0.18.1
   artifacthub.io/crds: |

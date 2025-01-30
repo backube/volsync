@@ -20,13 +20,17 @@
   loop_control:
     loop_var: namespace
 
+- name: Determine name prefix for syncthing CRs
+  ansible.builtin.set_fact:
+    local_cr_name_prefix: "{{ cr_name_prefix | default('test-') }}"
+
 - name: Clear list of syncthings
   set_fact:
     syncthings: []
 
 - name: Build list of syncthings
   set_fact:
-    syncthings: "{{ syncthings + [{ 'Name': 'test-%s' | format(item), 'Namespace': namespaces[item] }] }}"
+    syncthings: "{{ syncthings + [{ 'Name': '{{ local_cr_name_prefix }}%s' | format(item), 'Namespace': namespaces[item] }] }}"
   loop: "{{ range(0, num_syncthings) | list }}"
 
 - name: Create data PVCs

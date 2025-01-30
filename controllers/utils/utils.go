@@ -20,6 +20,7 @@ package utils
 import (
 	"context"
 	"fmt"
+	"hash/crc32"
 	"os"
 	"sort"
 	"strings"
@@ -42,6 +43,10 @@ import (
 // Define the error messages to be returned by VolSync.
 const (
 	ErrUnableToSetControllerRef = "unable to set controller reference"
+
+	JobNameMaxLength     = 63
+	ServiceNameMaxLength = 63
+	LabelValueMaxLength  = 63
 )
 
 // Check if error is due to the CRD not being present (API kind/group not available)
@@ -254,4 +259,38 @@ func UpdatePodTemplateSpecFromMoverConfig(podTemplateSpec *corev1.PodTemplateSpe
 	for label, value := range moverConfig.MoverPodLabels {
 		podTemplateSpec.Labels[label] = value
 	}
+}
+
+// Will return a name with prefix + owner.Name unless it's too long, in which
+// case we will return prefix + owner.UID
+// (This assumes namePrefix + UID is shorter than 63 chars)
+func GetJobName(namePrefix string, owner client.Object) string {
+	return getShortenedResourceName(namePrefix, owner, JobNameMaxLength)
+}
+
+// Will return a name with prefix + owner.Name unless it's too long, in which
+// case we will return prefix + owner.UID
+// (This assumes namePrefix + UID is shorter than 63 chars)
+func GetServiceName(namePrefix string, owner client.Object) string {
+	return getShortenedResourceName(namePrefix, owner, ServiceNameMaxLength)
+}
+
+func GetOwnerNameLabelValue(namePrefix string, owner client.Object) string {
+	return getShortenedResourceName(namePrefix, owner, LabelValueMaxLength)
+}
+
+func getShortenedResourceName(namePrefix string, owner client.Object, maxLength int) string {
+	name := namePrefix + owner.GetName()
+
+	if len(name) > maxLength {
+		// Use crc32 to hash the owner CR name
+		return namePrefix + GetHashedName(owner.GetName())
+	}
+
+	// No need to shorten, use original name
+	return name
+}
+
+func GetHashedName(name string) string {
+	return fmt.Sprintf("%08x", crc32.ChecksumIEEE([]byte(name)))
 }
