@@ -1157,6 +1157,30 @@ var _ = Describe("Rclone as a source", func() {
 					Expect(job.Spec.Template.Spec.Containers[0].Resources).To(Equal(corev1.ResourceRequirements{}))
 				})
 
+				When("The ReplicationSource CR name is very long", func() {
+					BeforeEach(func() {
+						rs.Name = "very-long-name-will-cause-job-name-to-be-evenlongerthan63chars"
+					})
+
+					It("The job name should be shortened appropriately (should handle long CR names)", func() {
+						j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret, nil) // Using sPVC as dataPVC (i.e. direct)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(j).To(BeNil()) // hasn't completed
+
+						jobs := &batchv1.JobList{}
+						Expect(k8sClient.List(ctx, jobs, client.InNamespace(rs.Namespace))).To(Succeed())
+						Expect(len(jobs.Items)).To(Equal(1))
+						moverJob := jobs.Items[0]
+
+						// Reload the replicationsource to see that it got updated
+						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rs), rs)).To(Succeed())
+
+						Expect(moverJob.GetName()).To(ContainSubstring(utils.GetHashedName(rs.GetName())))
+						// Make sure our shortened name is actually short enough
+						Expect(len(moverJob.GetName()) > 63).To(BeFalse())
+					})
+				})
+
 				When("moverResources (resource requirements) are provided", func() {
 					BeforeEach(func() {
 						rs.Spec.Rclone.MoverResources = &corev1.ResourceRequirements{
