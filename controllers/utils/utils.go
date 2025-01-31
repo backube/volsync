@@ -49,6 +49,12 @@ const (
 	LabelValueMaxLength  = 63
 )
 
+const VolSyncNamespaceEnvVar = "VOLSYNC_NAMESPACE"
+
+func getVolSyncNamespace() string {
+	return os.Getenv(VolSyncNamespaceEnvVar)
+}
+
 // Check if error is due to the CRD not being present (API kind/group not available)
 // This has changed recently in controller-runtime v0.15.0, see:
 // https://github.com/kubernetes-sigs/controller-runtime/pull/2116
