@@ -84,10 +84,18 @@ spec:
             - --rsync-tls-container-image={{ include "container-image" (list . (index .Values "rsync-tls") ) }}
             - --syncthing-container-image={{ include "container-image" (list . .Values.syncthing) }}
             - --scc-name=volsync-privileged-mover
+            {{- if .Values.imagePullSecrets }}
+            - --mover-image-pull-secrets={{ range $i, $secref := .Values.imagePullSecrets }}{{ if ne $i 0 }},{{ end }}{{ $secref.name }}{{ end }}
+            {{- end }}
           command:
             - /manager
           image: "{{ include "container-image" (list . .Values.image) }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: VOLSYNC_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           livenessProbe:
             httpGet:
               path: /healthz
