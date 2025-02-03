@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- imagePullSecrets in helm charts will be copied from volsync controller
+  namespace to the mover namespace so mover jobs can use them
 - Updated release to build on golang 1.23
 - Syncthing updated to v1.29.2
 - kube-rbac-proxy image configurable in helm chart values
