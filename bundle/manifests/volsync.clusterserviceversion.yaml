@@ -55,7 +55,7 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2024-12-12T18:04:47Z"
+    createdAt: "2025-01-30T20:37:10Z"
     olm.skipRange: '>=0.4.0 <0.12.0'
     operators.operatorframework.io/builder: operator-sdk-v1.31.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
@@ -377,6 +377,10 @@ spec:
                 command:
                 - /manager
                 env:
+                - name: VOLSYNC_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
                 - name: RELATED_IMAGE_RSYNC_CONTAINER
                   value: quay.io/backube/volsync:latest
                 - name: RELATED_IMAGE_RSYNC_TLS_CONTAINER
