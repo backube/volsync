@@ -122,8 +122,10 @@ func addCommandFlags(probeAddr *string, metricsAddr *string, enableLeaderElectio
 	flag.BoolVar(enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	flag.StringVar(&utils.SCCName, "scc-name",
-		utils.DefaultSCCName, "The name of the volsync security context constraint")
+	flag.StringVar(&utils.SCCName, "scc-name", utils.DefaultSCCName,
+		"The name of the volsync security context constraint")
+	flag.StringVar(&utils.MoverImagePullSecrets, "mover-image-pull-secrets", "",
+		"comma-separated list of pull secrets volsync should copy from its namespace and use for mover jobs")
 	opts := zap.Options{
 		Development: true,
 		TimeEncoder: zapcore.ISO8601TimeEncoder,
