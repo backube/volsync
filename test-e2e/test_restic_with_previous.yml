@@ -3,11 +3,27 @@
   tags:
     - e2e
     - restic
+    - unprivileged
   vars:
     restic_secret_name: restic-secret
   tasks:
     - include_role:
         name: create_namespace
+
+    - include_role:
+        name: gather_cluster_info
+
+    # We're running everything as a normal user
+    - name: Define podSecurityContext
+      ansible.builtin.set_fact:
+        podSecurityContext:
+          fsGroup: 5678
+          runAsGroup: 5678
+          runAsNonRoot: true
+          runAsUser: 1234
+          seccompProfile:
+            type: RuntimeDefault
+      when: not cluster_info.is_openshift
 
     - include_role:
         name: create_restic_secret
@@ -38,7 +54,7 @@
         path: '/datafile'
         pvc_name: 'data-source'
 
-    - name: Backup data from source volume with manual trigger
+    - name: Backup data from source volume with manual trigger (w/ mSC)
       kubernetes.core.k8s:
         state: present
         definition:
@@ -60,6 +76,32 @@
                 monthly: 1
               copyMethod: Snapshot
               cacheCapacity: 1Gi
+              moverSecurityContext: "{{ podSecurityContext }}"
+      when: podSecurityContext is defined
+
+    - name: Backup data from source volume with manual trigger (w/o mSC)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationSource
+          metadata:
+            name: source
+            namespace: "{{ namespace }}"
+          spec:
+            sourcePVC: data-source
+            trigger:
+              manual: once
+            restic:
+              pruneIntervalDays: 1
+              repository: "{{ restic_secret_name }}"
+              retain:
+                hourly: 3
+                daily: 2
+                monthly: 1
+              copyMethod: Snapshot
+              cacheCapacity: 1Gi
+      when: podSecurityContext is not defined
 
     - name: Wait for sync to MinIO to complete
       kubernetes.core.k8s_info:
@@ -110,7 +152,7 @@
         name: pvc_affinity_pod
         tasks_from: "delete"
 
-    - name: Restore data from very far previous to destination
+    - name: Restore data from very far previous to destination (w/ mSC)
       kubernetes.core.k8s:
         state: present
         definition:
@@ -128,6 +170,28 @@
               copyMethod: Direct
               cacheCapacity: 1Gi
               previous: 9999
+              moverSecurityContext: "{{ podSecurityContext }}"
+      when: podSecurityContext is defined
+
+    - name: Restore data from very far previous to destination (w/o mSC)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationDestination
+          metadata:
+            name: restore
+            namespace: "{{ namespace }}"
+          spec:
+            trigger:
+              manual: restore-once
+            restic:
+              repository: "{{ restic_secret_name }}"
+              destinationPVC: data-dest
+              copyMethod: Direct
+              cacheCapacity: 1Gi
+              previous: 9999
+      when: podSecurityContext is not defined
 
     - name: Wait for restore to complete
       kubernetes.core.k8s_info:
