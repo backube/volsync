@@ -41,7 +41,7 @@
   ansible.builtin.set_fact:
     cluster_info: >
       {{ cluster_info | combine({
-        'volumepopulator_supported': cluster_info.version.server.kubernetes.minor | int >= 24
+        'volumepopulator_supported': cluster_info.version.server.kubernetes.minor | regex_replace("[A-Za-z+]", "") | int >= 24
       }, recursive=True) }}
 
 - name: Print volumepopulator_supported
