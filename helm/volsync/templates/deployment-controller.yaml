@@ -38,9 +38,10 @@ spec:
         # When not OpenShift, we need to set the UID
         {{- if not (.Capabilities.APIVersions.Has "security.openshift.io/v1/SecurityContextConstraints") }}
         runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
         {{- end }}
-        # seccompProfile:
-        #   type: RuntimeDefault
       {{- else }}
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       {{- end }}
