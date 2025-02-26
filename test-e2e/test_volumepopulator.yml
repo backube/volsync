@@ -13,6 +13,7 @@
   tags:
     - e2e
     - restic
+    - unprivileged
     - volumepopulator
   vars:
     restic_secret_name: restic-secret
@@ -48,6 +49,18 @@
         - include_role:
             name: create_namespace
 
+        # We're running everything as a normal user
+        - name: Define podSecurityContext
+          ansible.builtin.set_fact:
+            podSecurityContext:
+              fsGroup: 5678
+              runAsGroup: 5678
+              runAsNonRoot: true
+              runAsUser: 1234
+              seccompProfile:
+                type: RuntimeDefault
+          when: not cluster_info.is_openshift
+
         - include_role:
             name: create_restic_secret
           vars:
@@ -77,7 +90,7 @@
             path: '/datafile'
             pvc_name: 'data-source'
 
-        - name: Backup data from source volume with manual trigger
+        - name: Backup data from source volume with manual trigger (w/ mSC)
           kubernetes.core.k8s:
             state: present
             definition:
@@ -99,6 +112,32 @@
                     monthly: 1
                   copyMethod: Snapshot
                   cacheCapacity: 1Gi
+                  moverSecurityContext: "{{ podSecurityContext }}"
+          when: podSecurityContext is defined
+
+        - name: Backup data from source volume with manual trigger (w/o mSC)
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: volsync.backube/v1alpha1
+              kind: ReplicationSource
+              metadata:
+                name: source
+                namespace: "{{ namespace }}"
+              spec:
+                sourcePVC: data-source
+                trigger:
+                  manual: once
+                restic:
+                  pruneIntervalDays: 1
+                  repository: "{{ restic_secret_name }}"
+                  retain:
+                    hourly: 3
+                    daily: 2
+                    monthly: 1
+                  copyMethod: Snapshot
+                  cacheCapacity: 1Gi
+          when: podSecurityContext is not defined
 
         - name: Wait for sync to MinIO to complete
           kubernetes.core.k8s_info:
@@ -137,7 +176,7 @@
                   requests:
                     storage: 1Gi
 
-        - name: Restore data from long time ago
+        - name: Restore data from long time ago (w/ mSC)
           kubernetes.core.k8s:
             state: present
             definition:
@@ -157,6 +196,30 @@
                     - ReadWriteOnce
                   cacheCapacity: 1Gi
                   restoreAsOf: 1980-08-10T23:59:59-04:00
+                  moverSecurityContext: "{{ podSecurityContext }}"
+          when: podSecurityContext is defined
+
+        - name: Restore data from long time ago (w/o mSC)
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: volsync.backube/v1alpha1
+              kind: ReplicationDestination
+              metadata:
+                name: restore
+                namespace: "{{ namespace }}"
+              spec:
+                trigger:
+                  manual: restore-once
+                restic:
+                  repository: "{{ restic_secret_name }}"
+                  copyMethod: Snapshot
+                  capacity: 1Gi
+                  accessModes:
+                    - ReadWriteOnce
+                  cacheCapacity: 1Gi
+                  restoreAsOf: 1980-08-10T23:59:59-04:00
+          when: podSecurityContext is not defined
 
         - name: Wait for first restore to complete
           kubernetes.core.k8s_info:
@@ -336,7 +399,7 @@
 
         - name: Backup data from source volume again with manual trigger
           kubernetes.core.k8s:
-            state: present
+            state: patched
             definition:
               apiVersion: volsync.backube/v1alpha1
               kind: ReplicationSource
@@ -344,18 +407,8 @@
                 name: source
                 namespace: "{{ namespace }}"
               spec:
-                sourcePVC: data-source
                 trigger:
                   manual: once-again
-                restic:
-                  pruneIntervalDays: 1
-                  repository: "{{ restic_secret_name }}"
-                  retain:
-                    hourly: 3
-                    daily: 2
-                    monthly: 1
-                  copyMethod: Snapshot
-                  cacheCapacity: 1Gi
 
         - name: Wait for sync to MinIO to complete again
           kubernetes.core.k8s_info:

@@ -3,6 +3,7 @@
   tags:
     - e2e
     - rsync
+    - privileged
     - volumepopulator
     - long cr name
   tasks:
@@ -11,6 +12,10 @@
 
     - include_role:
         name: gather_cluster_info
+
+    # Label namespace to allow privileged as rsync alwyas runs privileged
+    - include_role:
+        name: enable_privileged_mover
 
     - name: Create ReplicationDestination
       kubernetes.core.k8s:
