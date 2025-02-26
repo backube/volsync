@@ -9,7 +9,7 @@ MINIO_NAMESPACE="${MINIO_NAMESPACE:-minio}"
 # Non-zero indicates MinIO should be deployed w/ a self-signed cert & https
 MINIO_USE_TLS=${MINIO_USE_TLS:-0}
 # Specific MinIO chart version to use
-MINIO_CHART_VERSION="${MINIO_CHART_VERSION:-11.8.2}"
+MINIO_CHART_VERSION="${MINIO_CHART_VERSION:-15.0.4}"
 
 # Delete minio if it's already there
 kubectl delete ns "${MINIO_NAMESPACE}" || true

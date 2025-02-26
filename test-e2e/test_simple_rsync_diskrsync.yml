@@ -3,6 +3,7 @@
   tags:
     - e2e
     - rsync
+    - privileged
     - diskrsync
     - block
     - volumepopulator
@@ -12,6 +13,10 @@
 
     - include_role:
         name: gather_cluster_info
+
+    # Label namespace to allow privileged as rsync alwyas runs privileged
+    - include_role:
+        name: enable_privileged_mover
 
     # These can be run in kind if enough loop devices are available
     # but only running on openshift by default
