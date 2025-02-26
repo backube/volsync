@@ -45,7 +45,7 @@ plugins:
     # - "latest" (default)
     # - specific version like "v1.24"
     defaults:
-      enforce: "privileged"
+      enforce: "restricted"
       enforce-version: "latest"
       audit: "restricted"
       audit-version: "latest"
