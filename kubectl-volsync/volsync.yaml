@@ -4,7 +4,7 @@ kind: Plugin
 metadata:
   name: volsync
 spec:
-  version: v0.11.0
+  version: v0.12.0
   homepage: https://github.com/backube/volsync
   shortDescription: "Manage replication with the VolSync operator"
   description: |
@@ -20,8 +20,8 @@ spec:
           arch: amd64
       # This URL requires the artifact to be added to the release page as an
       # "Asset"
-      uri: https://github.com/backube/volsync/releases/download/v0.11.0/kubectl-volsync.tar.gz
-      sha256: 3abdd012ba1b95d68d948dbba06c9b66083e425ba1c113a101402167865e7fb6
+      uri: https://github.com/backube/volsync/releases/download/v0.12.0/kubectl-volsync.tar.gz
+      sha256: 609d820db0df34482f8e120c794a59c4e9db92fef4bf8a57115bf321fdc604a5
       files:
         - from: "./kubectl-volsync"
           to: "."
