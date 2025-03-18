@@ -245,7 +245,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       KUBECONFIG: /tmp/kubeconfig
-      KUBERNETES_VERSION: "1.25.0"
+      KUBERNETES_VERSION: "1.32.2"
 
     steps:
       - name: Checkout source
@@ -262,10 +262,10 @@ jobs:
 
       - name: Install kubectl
         run: |
-          curl -fsSLO "https://storage.googleapis.com/kubernetes-release/release/v${KUBERNETES_VERSION}/bin/linux/amd64/kubectl"
+          curl -fsSLO "https://dl.k8s.io/release/v${KUBERNETES_VERSION}/bin/linux/amd64/kubectl"
           sudo install ./kubectl /usr/local/bin/
-          kubectl version --short --client
-          kubectl version --short --client | grep -q ${KUBERNETES_VERSION}
+          kubectl version --client
+          kubectl version --client | grep -q ${KUBERNETES_VERSION}
 
       - name: Install krew
         # https://krew.sigs.k8s.io/docs/user-guide/setup/install/
@@ -336,7 +336,7 @@ jobs:
 
       - name: Install kubectl
         run: |
-          curl -fsSLO "https://storage.googleapis.com/kubernetes-release/release/v${KUBERNETES_VERSION}/bin/linux/amd64/kubectl"
+          curl -fsSLO "https://dl.k8s.io/release/v${KUBERNETES_VERSION}/bin/linux/amd64/kubectl"
           sudo install ./kubectl /usr/local/bin/
           kubectl version --client
           kubectl version --client | grep -q ${KUBERNETES_VERSION}
