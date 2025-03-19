@@ -177,6 +177,7 @@
       "customType": "regex",
       "description": "kubectl version updates",
       "fileMatch": [
+        "^.github/(?:workflows|actions)/.+\\.ya?ml$",
         "(^|/)Makefile$"
       ],
       "matchStrings": [
