@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- Update golang.org/x/crypto to v0.36.0 for CVE-2025-22869
+- Update golang.org/x/oauth2 to v0.28.0 for CVE-2025-22868
+
 ## [0.12.0]
 
 ### Changed
@@ -347,6 +354,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for rsync & rclone replication
 - Helm chart to deploy operator
 
+[Unreleased]: https://github.com/backube/volsync/compare/release-0.12...HEAD
 [0.12.0]: https://github.com/backube/volsync/compare/release-0.11..v0.12.0
 [0.11.0]: https://github.com/backube/volsync/compare/release-0.10..v0.11.0
 [0.10.0]: https://github.com/backube/volsync/compare/release-0.9..v0.10.0
