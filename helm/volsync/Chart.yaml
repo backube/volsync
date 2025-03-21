@@ -24,24 +24,10 @@ annotations: # https://artifacthub.io/docs/topics/annotations/helm/
   # Changelog for current chart & app version
   # Kinds: added, changed, deprecated, removed, fixed, and security
   artifacthub.io/changes: |
-    - kind: changed
-      description: imagePullSecrets in helm charts will be copied from volsync controller namespace to the mover namespace so mover jobs can use them
-    - kind: changed
-      description: Updated release to build on golang 1.23
-    - kind: changed
-      description: Syncthing updated to v1.29.2
-    - kind: changed
-      description: kube-rbac-proxy image configurable in helm chart values
-    - kind: changed
-      description: mover scripts updated to use sync -f to only sync the target filesystem at the end of mover tasks
-    - kind: changed
-      description: Updates the ensure_initialized function in the restic mover script to follow restic recommendations
-    - kind: fixed
-      description: All movers should return error if not able to EnsurePVCFromSrc
-    - kind: fixed
-      description: Fix for mover job/service name length too long (>63 chars) if the replicationsource or replicationdestination CR name is too long
     - kind: security
-      description: kube-rbac-proxy upgraded to 0.18.2
+      description: Update golang.org/x/crypto to v0.36.0 for CVE-2025-22869
+    - kind: security
+      description: Update golang.org/x/oauth2 to v0.28.0 for CVE-2025-22868
   artifacthub.io/crds: |
     - kind: ReplicationDestination
       version: v1alpha1
@@ -68,10 +54,10 @@ kubeVersion: "^1.20.0-0"
 # This is the chart version. This version number should be incremented each time
 # you make changes to the chart and its templates, including the app version.
 # Versions are expected to follow Semantic Versioning (https://semver.org/)
-version: "0.12.0"
+version: "0.12.1"
 
 # This is the version number of the application being deployed. This version
 # number should be incremented each time you make changes to the application.
 # Versions are not expected to follow Semantic Versioning. They should reflect
 # the version the application is using. It is recommended to use it with quotes.
-appVersion: "0.12.0"
+appVersion: "0.12.1"
