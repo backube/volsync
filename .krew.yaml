@@ -1,0 +1,29 @@
+---
+apiVersion: krew.googlecontainertools.github.com/v1alpha2
+kind: Plugin
+metadata:
+  name: volsync
+spec:
+  version: {{ .TagName }}
+  homepage: https://github.com/backube/volsync
+  shortDescription: "Manage replication with the VolSync operator"
+  description: |
+    This plugin provides a set of commands to interact with the VolSync
+    operator.
+
+    It provides an easy method to perform several common data replication
+    workflows without directly creating/manipulating VolSync's CRs.
+  platforms:
+  - selector:
+      matchLabels:
+        os: linux
+        arch: amd64
+    # This URL requires the artifact to be added to the release page as an
+    # "Asset"
+    {{addURIAndSha "https://github.com/backube/volsync/releases/download/{{ .TagName }}/kubectl-volsync.tar.gz" .TagName }}
+    files:
+    - from: "./kubectl-volsync"
+      to: "."
+    - from: "LICENSE"
+      to: "."
+    bin: kubectl-volsync
