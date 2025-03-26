@@ -10,6 +10,7 @@ ignore: |
   custom-scorecard-tests/**
   hack/crds/*
   helm/volsync/**
+  .krew.yaml
 rules:
   comments:  # renovate-bot dosen't put 2 spaces before the version number
     ignore: |
