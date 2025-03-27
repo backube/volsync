@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Syncthing updated to v1.29.3
+
+## [v0.12.1]
+
 ### Security
 
 - Update golang.org/x/crypto to v0.36.0 for CVE-2025-22869
@@ -355,6 +361,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Helm chart to deploy operator
 
 [Unreleased]: https://github.com/backube/volsync/compare/release-0.12...HEAD
+[0.12.1]: https://github.com/backube/volsync/compare/release-0.12.0...v0.12.1
 [0.12.0]: https://github.com/backube/volsync/compare/release-0.11..v0.12.0
 [0.11.0]: https://github.com/backube/volsync/compare/release-0.10..v0.11.0
 [0.10.0]: https://github.com/backube/volsync/compare/release-0.9..v0.10.0
