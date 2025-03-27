@@ -69,7 +69,12 @@ func TestBackendSaveRetryAtomic(t *testing.T) {
 			calledRemove = true
 			return nil
 		},
-		HasAtomicReplaceFn: func() bool { return true },
+		PropertiesFn: func() backend.Properties {
+			return backend.Properties{
+				Connections:      2,
+				HasAtomicReplace: true,
+			}
+		},
 	}
 
 	TestFastRetries(t)
@@ -278,32 +283,52 @@ func TestBackendLoadRetry(t *testing.T) {
 	test.Equals(t, 2, attempt)
 }
 
-func TestBackendLoadNotExists(t *testing.T) {
+func testBackendLoadNotExists(t *testing.T, hasFlakyErrors bool) {
 	// load should not retry if the error matches IsNotExist
 	notFound := errors.New("not found")
 	attempt := 0
+	expectedAttempts := 1
+	if hasFlakyErrors {
+		expectedAttempts = 5
+	}
 
 	be := mock.NewBackend()
 	be.OpenReaderFn = func(ctx context.Context, h backend.Handle, length int, offset int64) (io.ReadCloser, error) {
 		attempt++
-		if attempt > 1 {
+		if attempt > expectedAttempts {
 			t.Fail()
 			return nil, errors.New("must not retry")
 		}
 		return nil, notFound
+	}
+	be.PropertiesFn = func() backend.Properties {
+		return backend.Properties{
+			Connections:    2,
+			HasFlakyErrors: hasFlakyErrors,
+		}
 	}
 	be.IsPermanentErrorFn = func(err error) bool {
 		return errors.Is(err, notFound)
 	}
 
 	TestFastRetries(t)
-	retryBackend := New(be, 10, nil, nil)
+	retryBackend := New(be, time.Second, nil, nil)
 
 	err := retryBackend.Load(context.TODO(), backend.Handle{}, 0, 0, func(rd io.Reader) (err error) {
 		return nil
 	})
 	test.Assert(t, be.IsPermanentErrorFn(err), "unexpected error %v", err)
-	test.Equals(t, 1, attempt)
+	test.Equals(t, expectedAttempts, attempt)
+}
+
+func TestBackendLoadNotExists(t *testing.T) {
+	// Without HasFlakyErrors, should fail after 1 attempt
+	testBackendLoadNotExists(t, false)
+}
+
+func TestBackendLoadNotExistsFlakyErrors(t *testing.T) {
+	// With HasFlakyErrors, should fail after attempt number 5
+	testBackendLoadNotExists(t, true)
 }
 
 func TestBackendLoadCircuitBreaker(t *testing.T) {
@@ -357,6 +382,30 @@ func TestBackendLoadCircuitBreaker(t *testing.T) {
 	test.Equals(t, notFound, err, "expected circuit breaker to reset, got %v")
 }
 
+func TestBackendLoadCircuitBreakerCancel(t *testing.T) {
+	cctx, cancel := context.WithCancel(context.Background())
+	be := mock.NewBackend()
+	be.OpenReaderFn = func(ctx context.Context, h backend.Handle, length int, offset int64) (io.ReadCloser, error) {
+		cancel()
+		return nil, errors.New("something")
+	}
+	nilRd := func(rd io.Reader) (err error) {
+		return nil
+	}
+
+	TestFastRetries(t)
+	retryBackend := New(be, 2, nil, nil)
+	// canceling the context should not trip the circuit breaker
+	err := retryBackend.Load(cctx, backend.Handle{Name: "other"}, 0, 0, nilRd)
+	test.Equals(t, context.Canceled, err, "unexpected error")
+
+	// reset context and check that the circuit breaker does not return an error
+	cctx, cancel = context.WithCancel(context.Background())
+	defer cancel()
+	err = retryBackend.Load(cctx, backend.Handle{Name: "other"}, 0, 0, nilRd)
+	test.Equals(t, context.Canceled, err, "unexpected error")
+}
+
 func TestBackendStatNotExists(t *testing.T) {
 	// stat should not retry if the error matches IsNotExist
 	notFound := errors.New("not found")
@@ -376,7 +425,11 @@ func TestBackendStatNotExists(t *testing.T) {
 	}
 
 	TestFastRetries(t)
-	retryBackend := New(be, 10, nil, nil)
+	retryBackend := New(be, 10, func(s string, err error, d time.Duration) {
+		t.Fatalf("unexpected error output %v", s)
+	}, func(s string, i int) {
+		t.Fatalf("unexpected log output %v", s)
+	})
 
 	_, err := retryBackend.Stat(context.TODO(), backend.Handle{})
 	test.Assert(t, be.IsNotExistFn(err), "unexpected error %v", err)

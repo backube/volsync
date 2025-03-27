@@ -1,6 +1,3 @@
-//go:build go1.20
-// +build go1.20
-
 package rest_test
 
 import (
@@ -109,7 +106,7 @@ func runRESTServer(ctx context.Context, t testing.TB, dir, reqListenAddr string)
 					matched = true
 				}
 			}
-			fmt.Fprintln(os.Stdout, line) // print all output to console
+			_, _ = fmt.Fprintln(os.Stdout, line) // print all output to console
 		}
 	}()
 

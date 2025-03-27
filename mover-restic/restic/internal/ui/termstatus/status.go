@@ -2,7 +2,6 @@ package termstatus
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -22,7 +21,6 @@ type Terminal struct {
 	wr              *bufio.Writer
 	fd              uintptr
 	errWriter       io.Writer
-	buf             *bytes.Buffer
 	msg             chan message
 	status          chan status
 	canUpdateStatus bool
@@ -60,7 +58,6 @@ func New(wr io.Writer, errWriter io.Writer, disableStatus bool) *Terminal {
 	t := &Terminal{
 		wr:        bufio.NewWriter(wr),
 		errWriter: errWriter,
-		buf:       bytes.NewBuffer(nil),
 		msg:       make(chan message),
 		status:    make(chan status),
 		closed:    make(chan struct{}),
@@ -212,7 +209,7 @@ func (t *Terminal) runWithoutStatus(ctx context.Context) {
 			}
 
 			if _, err := io.WriteString(dst, msg.line); err != nil {
-				fmt.Fprintf(os.Stderr, "write failed: %v\n", err)
+				_, _ = fmt.Fprintf(os.Stderr, "write failed: %v\n", err)
 			}
 
 			if flush == nil {
@@ -220,16 +217,18 @@ func (t *Terminal) runWithoutStatus(ctx context.Context) {
 			}
 
 			if err := flush(); err != nil {
-				fmt.Fprintf(os.Stderr, "flush failed: %v\n", err)
+				_, _ = fmt.Fprintf(os.Stderr, "flush failed: %v\n", err)
 			}
 
 		case stat := <-t.status:
 			for _, line := range stat.lines {
 				// Ensure that each message ends with exactly one newline.
-				fmt.Fprintln(t.wr, strings.TrimRight(line, "\n"))
+				if _, err := fmt.Fprintln(t.wr, strings.TrimRight(line, "\n")); err != nil {
+					_, _ = fmt.Fprintf(os.Stderr, "write failed: %v\n", err)
+				}
 			}
 			if err := t.wr.Flush(); err != nil {
-				fmt.Fprintf(os.Stderr, "flush failed: %v\n", err)
+				_, _ = fmt.Fprintf(os.Stderr, "flush failed: %v\n", err)
 			}
 		}
 	}

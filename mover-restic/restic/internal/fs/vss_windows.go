@@ -13,7 +13,7 @@ import (
 	"time"
 	"unsafe"
 
-	ole "github.com/go-ole/go-ole"
+	"github.com/go-ole/go-ole"
 	"github.com/restic/restic/internal/errors"
 	"golang.org/x/sys/windows"
 )
@@ -22,6 +22,7 @@ import (
 type HRESULT uint
 
 // HRESULT constant values necessary for using VSS api.
+//
 //nolint:golint
 const (
 	S_OK                                            HRESULT = 0x00000000
@@ -170,6 +171,11 @@ func (h HRESULT) Str() string {
 	return "UNKNOWN"
 }
 
+// Error implements the error interface
+func (h HRESULT) Error() string {
+	return h.Str()
+}
+
 // VssError encapsulates errors returned from calling VSS api.
 type vssError struct {
 	text    string
@@ -192,6 +198,11 @@ func newVssErrorIfResultNotOK(text string, hresult HRESULT) error {
 // Error implements the error interface.
 func (e *vssError) Error() string {
 	return fmt.Sprintf("VSS error: %s: %s (%#x)", e.text, e.hresult.Str(), e.hresult)
+}
+
+// Unwrap returns the underlying HRESULT error
+func (e *vssError) Unwrap() error {
+	return e.hresult
 }
 
 // vssTextError encapsulates errors returned from calling VSS api.
@@ -784,7 +795,7 @@ func (p *VssSnapshot) GetSnapshotDeviceObject() string {
 	return p.snapshotDeviceObject
 }
 
-// initializeCOMInterface initialize an instance of the VSS COM api
+// initializeVssCOMInterface initialize an instance of the VSS COM api
 func initializeVssCOMInterface() (*ole.IUnknown, error) {
 	vssInstance, err := loadIVssBackupComponentsConstructor()
 	if err != nil {
@@ -797,6 +808,26 @@ func initializeVssCOMInterface() (*ole.IUnknown, error) {
 		if oleErr, ok := err.(*ole.OleError); !ok || HRESULT(oleErr.Code()) != S_FALSE {
 			return nil, err
 		}
+	}
+
+	// initialize COM security for VSS, this can't be called more then once
+
+	// Allowing all processes to perform incoming COM calls is not necessarily a security weakness.
+	// A requester acting as a COM server, like all other COM servers, always retains the option to authorize its clients on every COM method implemented in its process.
+	//
+	// Note that internal COM callbacks implemented by VSS are secured by default.
+	// Reference: https://learn.microsoft.com/en-us/windows/win32/vss/security-considerations-for-requestors#:~:text=Allowing%20all%20processes,secured%20by%20default.
+
+	if err = ole.CoInitializeSecurity(
+		-1,   // Default COM authentication service
+		6,    // RPC_C_AUTHN_LEVEL_PKT_PRIVACY
+		3,    // RPC_C_IMP_LEVEL_IMPERSONATE
+		0x20, // EOAC_STATIC_CLOAKING
+	); err != nil {
+		// TODO warn for expected event logs for VSS IVssWriterCallback failure
+		return nil, newVssError(
+			"Failed to initialize security for VSS request",
+			HRESULT(err.(*ole.OleError).Code()))
 	}
 
 	var oleIUnknown *ole.IUnknown
@@ -830,9 +861,9 @@ func HasSufficientPrivilegesForVSS() error {
 	return err
 }
 
-// GetVolumeNameForVolumeMountPoint add trailing backslash to input parameter
+// getVolumeNameForVolumeMountPoint add trailing backslash to input parameter
 // and calls the equivalent windows api.
-func GetVolumeNameForVolumeMountPoint(mountPoint string) (string, error) {
+func getVolumeNameForVolumeMountPoint(mountPoint string) (string, error) {
 	if mountPoint != "" && mountPoint[len(mountPoint)-1] != filepath.Separator {
 		mountPoint += string(filepath.Separator)
 	}
@@ -942,10 +973,23 @@ func NewVssSnapshot(provider string,
 			"%s", volume))
 	}
 
-	snapshotSetID, err := iVssBackupComponents.StartSnapshotSet()
-	if err != nil {
-		iVssBackupComponents.Release()
-		return VssSnapshot{}, err
+	const retryStartSnapshotSetSleep = 5 * time.Second
+	var snapshotSetID ole.GUID
+	for {
+		var err error
+		snapshotSetID, err = iVssBackupComponents.StartSnapshotSet()
+		if errors.Is(err, VSS_E_SNAPSHOT_SET_IN_PROGRESS) && time.Now().Add(-retryStartSnapshotSetSleep).Before(deadline) {
+			// retry snapshot set creation while deadline is not reached
+			time.Sleep(retryStartSnapshotSetSleep)
+			continue
+		}
+
+		if err != nil {
+			iVssBackupComponents.Release()
+			return VssSnapshot{}, err
+		} else {
+			break
+		}
 	}
 
 	if err := iVssBackupComponents.AddToSnapshotSet(volume, providerID, &snapshotSetID); err != nil {

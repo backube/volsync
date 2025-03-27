@@ -96,7 +96,7 @@ func (t *Tree) Sort() {
 // Subtrees returns a slice of all subtree IDs of the tree.
 func (t *Tree) Subtrees() (trees IDs) {
 	for _, node := range t.Nodes {
-		if node.Type == "dir" && node.Subtree != nil {
+		if node.Type == NodeTypeDir && node.Subtree != nil {
 			trees = append(trees, *node.Subtree)
 		}
 	}
@@ -162,7 +162,7 @@ func NewTreeJSONBuilder() *TreeJSONBuilder {
 
 func (builder *TreeJSONBuilder) AddNode(node *Node) error {
 	if node.Name <= builder.lastName {
-		return fmt.Errorf("node %q, last%q: %w", node.Name, builder.lastName, ErrTreeNotOrdered)
+		return fmt.Errorf("node %q, last %q: %w", node.Name, builder.lastName, ErrTreeNotOrdered)
 	}
 	if builder.lastName != "" {
 		_ = builder.buf.WriteByte(',')
@@ -208,7 +208,7 @@ func FindTreeDirectory(ctx context.Context, repo BlobLoader, id *ID, dir string)
 		if node == nil {
 			return nil, fmt.Errorf("path %s: not found", subfolder)
 		}
-		if node.Type != "dir" || node.Subtree == nil {
+		if node.Type != NodeTypeDir || node.Subtree == nil {
 			return nil, fmt.Errorf("path %s: not a directory", subfolder)
 		}
 		id = node.Subtree

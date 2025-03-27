@@ -33,7 +33,7 @@ func (err *upgradeRepoV2Error) Unwrap() error {
 func upgradeRepository(ctx context.Context, repo *Repository) error {
 	h := backend.Handle{Type: backend.ConfigFile}
 
-	if !repo.be.HasAtomicReplace() {
+	if !repo.be.Properties().HasAtomicReplace {
 		// remove the original file for backends which do not support atomic overwriting
 		err := repo.be.Remove(ctx, h)
 		if err != nil {
@@ -45,7 +45,7 @@ func upgradeRepository(ctx context.Context, repo *Repository) error {
 	cfg := repo.Config()
 	cfg.Version = 2
 
-	err := restic.SaveConfig(ctx, repo, cfg)
+	err := restic.SaveConfig(ctx, &internalRepository{repo}, cfg)
 	if err != nil {
 		return fmt.Errorf("save new config file failed: %w", err)
 	}

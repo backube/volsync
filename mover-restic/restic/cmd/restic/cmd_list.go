@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"strings"
 
 	"github.com/restic/restic/internal/errors"
 	"github.com/restic/restic/internal/repository/index"
@@ -10,10 +11,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var cmdList = &cobra.Command{
-	Use:   "list [flags] [blobs|packs|index|snapshots|keys|locks]",
-	Short: "List objects in the repository",
-	Long: `
+func newListCommand() *cobra.Command {
+	var listAllowedArgs = []string{"blobs", "packs", "index", "snapshots", "keys", "locks"}
+	var listAllowedArgsUseString = strings.Join(listAllowedArgs, "|")
+
+	cmd := &cobra.Command{
+		Use:   "list [flags] [" + listAllowedArgsUseString + "]",
+		Short: "List objects in the repository",
+		Long: `
 The "list" command allows listing objects in the repository based on type.
 
 EXIT STATUS
@@ -23,15 +28,17 @@ Exit status is 0 if the command was successful.
 Exit status is 1 if there was any error.
 Exit status is 10 if the repository does not exist.
 Exit status is 11 if the repository is already locked.
+Exit status is 12 if the password is incorrect.
 `,
-	DisableAutoGenTag: true,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return runList(cmd.Context(), globalOptions, args)
-	},
-}
-
-func init() {
-	cmdRoot.AddCommand(cmdList)
+		DisableAutoGenTag: true,
+		GroupID:           cmdGroupDefault,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runList(cmd.Context(), globalOptions, args)
+		},
+		ValidArgs: listAllowedArgs,
+		Args:      cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
+	}
+	return cmd
 }
 
 func runList(ctx context.Context, gopts GlobalOptions, args []string) error {
@@ -58,7 +65,7 @@ func runList(ctx context.Context, gopts GlobalOptions, args []string) error {
 	case "locks":
 		t = restic.LockFile
 	case "blobs":
-		return index.ForAllIndexes(ctx, repo, repo, func(_ restic.ID, idx *index.Index, _ bool, err error) error {
+		return index.ForAllIndexes(ctx, repo, repo, func(_ restic.ID, idx *index.Index, err error) error {
 			if err != nil {
 				return err
 			}

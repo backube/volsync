@@ -20,12 +20,16 @@ jobs:
       contents: read
       packages: write
 
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+      digest: ${{ steps.build-and-push.outputs.digest }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Log in to the Container registry
-        uses: docker/login-action@0d4c9c5ea7693da7b068278f7b52bda2a190a446
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -37,6 +41,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
+            type=sha
             type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -55,6 +60,7 @@ jobs:
         if: github.ref != 'refs/heads/master'
 
       - name: Build and push Docker image
+        id: build-and-push
         uses: docker/build-push-action@15560696de535e4014efeff63c48f16952e52dd1
         with:
           push: true
@@ -64,3 +70,26 @@ jobs:
           pull: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+        
+      - name: Output image
+        id: image
+        run: |
+          # NOTE: Set the image as an output because the `env` context is not
+          # available to the inputs of a reusable workflow call.
+          image_name="${REGISTRY}/${IMAGE_NAME}"
+          echo "image=$image_name" >> "$GITHUB_OUTPUT"
+        
+  provenance:
+    needs: [build-and-push-image]
+    permissions:
+      actions: read # for detecting the Github Actions environment.
+      id-token: write # for creating OIDC tokens for signing.
+      packages: write # for uploading attestations.
+    if: github.repository == 'restic/restic'
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
+    with:
+      image: ${{ needs.build-and-push-image.outputs.image }}
+      digest: ${{ needs.build-and-push-image.outputs.digest }}
+      registry-username: ${{ github.actor }}
+    secrets:
+      registry-password: ${{ secrets.GITHUB_TOKEN }}

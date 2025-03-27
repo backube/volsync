@@ -7,11 +7,11 @@ import (
 )
 
 type jsonPrinter struct {
-	terminal  term
+	terminal  ui.Terminal
 	verbosity uint
 }
 
-func NewJSONProgress(terminal term, verbosity uint) ProgressPrinter {
+func NewJSONProgress(terminal ui.Terminal, verbosity uint) ProgressPrinter {
 	return &jsonPrinter{
 		terminal:  terminal,
 		verbosity: verbosity,
@@ -22,6 +22,10 @@ func (t *jsonPrinter) print(status interface{}) {
 	t.terminal.Print(ui.ToJSONString(status))
 }
 
+func (t *jsonPrinter) error(status interface{}) {
+	t.terminal.Error(ui.ToJSONString(status))
+}
+
 func (t *jsonPrinter) Update(p State, duration time.Duration) {
 	status := statusUpdate{
 		MessageType:    "status",
@@ -29,6 +33,7 @@ func (t *jsonPrinter) Update(p State, duration time.Duration) {
 		TotalFiles:     p.FilesTotal,
 		FilesRestored:  p.FilesFinished,
 		FilesSkipped:   p.FilesSkipped,
+		FilesDeleted:   p.FilesDeleted,
 		TotalBytes:     p.AllBytesTotal,
 		BytesRestored:  p.AllBytesWritten,
 		BytesSkipped:   p.AllBytesSkipped,
@@ -39,6 +44,16 @@ func (t *jsonPrinter) Update(p State, duration time.Duration) {
 	}
 
 	t.print(status)
+}
+
+func (t *jsonPrinter) Error(item string, err error) error {
+	t.error(errorUpdate{
+		MessageType: "error",
+		Error:       errorObject{err.Error()},
+		During:      "restore",
+		Item:        item,
+	})
+	return nil
 }
 
 func (t *jsonPrinter) CompleteItem(messageType ItemAction, item string, size uint64) {
@@ -80,6 +95,7 @@ func (t *jsonPrinter) Finish(p State, duration time.Duration) {
 		TotalFiles:     p.FilesTotal,
 		FilesRestored:  p.FilesFinished,
 		FilesSkipped:   p.FilesSkipped,
+		FilesDeleted:   p.FilesDeleted,
 		TotalBytes:     p.AllBytesTotal,
 		BytesRestored:  p.AllBytesWritten,
 		BytesSkipped:   p.AllBytesSkipped,
@@ -94,9 +110,21 @@ type statusUpdate struct {
 	TotalFiles     uint64  `json:"total_files,omitempty"`
 	FilesRestored  uint64  `json:"files_restored,omitempty"`
 	FilesSkipped   uint64  `json:"files_skipped,omitempty"`
+	FilesDeleted   uint64  `json:"files_deleted,omitempty"`
 	TotalBytes     uint64  `json:"total_bytes,omitempty"`
 	BytesRestored  uint64  `json:"bytes_restored,omitempty"`
 	BytesSkipped   uint64  `json:"bytes_skipped,omitempty"`
+}
+
+type errorObject struct {
+	Message string `json:"message"`
+}
+
+type errorUpdate struct {
+	MessageType string      `json:"message_type"` // "error"
+	Error       errorObject `json:"error"`
+	During      string      `json:"during"`
+	Item        string      `json:"item"`
 }
 
 type verboseUpdate struct {
@@ -112,6 +140,7 @@ type summaryOutput struct {
 	TotalFiles     uint64 `json:"total_files,omitempty"`
 	FilesRestored  uint64 `json:"files_restored,omitempty"`
 	FilesSkipped   uint64 `json:"files_skipped,omitempty"`
+	FilesDeleted   uint64 `json:"files_deleted,omitempty"`
 	TotalBytes     uint64 `json:"total_bytes,omitempty"`
 	BytesRestored  uint64 `json:"bytes_restored,omitempty"`
 	BytesSkipped   uint64 `json:"bytes_skipped,omitempty"`

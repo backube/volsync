@@ -10,22 +10,29 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/restic/restic/internal/debug"
 	"github.com/restic/restic/internal/errors"
 	"github.com/restic/restic/internal/restic"
 
-	resticfs "github.com/restic/restic/internal/fs"
 	"github.com/restic/restic/internal/fuse"
 
 	systemFuse "github.com/anacrolix/fuse"
 	"github.com/anacrolix/fuse/fs"
 )
 
-var cmdMount = &cobra.Command{
-	Use:   "mount [flags] mountpoint",
-	Short: "Mount the repository",
-	Long: `
+func registerMountCommand(cmdRoot *cobra.Command) {
+	cmdRoot.AddCommand(newMountCommand())
+}
+
+func newMountCommand() *cobra.Command {
+	var opts MountOptions
+
+	cmd := &cobra.Command{
+		Use:   "mount [flags] mountpoint",
+		Short: "Mount the repository",
+		Long: `
 The "mount" command mounts the repository via fuse to a directory. This is a
 read-only mount.
 
@@ -68,11 +75,17 @@ Exit status is 0 if the command was successful.
 Exit status is 1 if there was any error.
 Exit status is 10 if the repository does not exist.
 Exit status is 11 if the repository is already locked.
+Exit status is 12 if the password is incorrect.
 `,
-	DisableAutoGenTag: true,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return runMount(cmd.Context(), mountOptions, globalOptions, args)
-	},
+		DisableAutoGenTag: true,
+		GroupID:           cmdGroupDefault,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runMount(cmd.Context(), opts, globalOptions, args)
+		},
+	}
+
+	opts.AddFlags(cmd.Flags())
+	return cmd
 }
 
 // MountOptions collects all options for the mount command.
@@ -85,22 +98,17 @@ type MountOptions struct {
 	PathTemplates []string
 }
 
-var mountOptions MountOptions
+func (opts *MountOptions) AddFlags(f *pflag.FlagSet) {
+	f.BoolVar(&opts.OwnerRoot, "owner-root", false, "use 'root' as the owner of files and dirs")
+	f.BoolVar(&opts.AllowOther, "allow-other", false, "allow other users to access the data in the mounted directory")
+	f.BoolVar(&opts.NoDefaultPermissions, "no-default-permissions", false, "for 'allow-other', ignore Unix permissions and allow users to read all snapshot files")
 
-func init() {
-	cmdRoot.AddCommand(cmdMount)
+	initMultiSnapshotFilter(f, &opts.SnapshotFilter, true)
 
-	mountFlags := cmdMount.Flags()
-	mountFlags.BoolVar(&mountOptions.OwnerRoot, "owner-root", false, "use 'root' as the owner of files and dirs")
-	mountFlags.BoolVar(&mountOptions.AllowOther, "allow-other", false, "allow other users to access the data in the mounted directory")
-	mountFlags.BoolVar(&mountOptions.NoDefaultPermissions, "no-default-permissions", false, "for 'allow-other', ignore Unix permissions and allow users to read all snapshot files")
-
-	initMultiSnapshotFilter(mountFlags, &mountOptions.SnapshotFilter, true)
-
-	mountFlags.StringArrayVar(&mountOptions.PathTemplates, "path-template", nil, "set `template` for path names (can be specified multiple times)")
-	mountFlags.StringVar(&mountOptions.TimeTemplate, "snapshot-template", time.RFC3339, "set `template` to use for snapshot dirs")
-	mountFlags.StringVar(&mountOptions.TimeTemplate, "time-template", time.RFC3339, "set `template` to use for times")
-	_ = mountFlags.MarkDeprecated("snapshot-template", "use --time-template")
+	f.StringArrayVar(&opts.PathTemplates, "path-template", nil, "set `template` for path names (can be specified multiple times)")
+	f.StringVar(&opts.TimeTemplate, "snapshot-template", time.RFC3339, "set `template` to use for snapshot dirs")
+	f.StringVar(&opts.TimeTemplate, "time-template", time.RFC3339, "set `template` to use for times")
+	_ = f.MarkDeprecated("snapshot-template", "use --time-template")
 }
 
 func runMount(ctx context.Context, opts MountOptions, gopts GlobalOptions, args []string) error {
@@ -120,7 +128,7 @@ func runMount(ctx context.Context, opts MountOptions, gopts GlobalOptions, args 
 
 	// Check the existence of the mount point at the earliest stage to
 	// prevent unnecessary computations while opening the repository.
-	if _, err := resticfs.Stat(mountpoint); errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(mountpoint); errors.Is(err, os.ErrNotExist) {
 		Verbosef("Mountpoint %s doesn't exist\n", mountpoint)
 		return err
 	}

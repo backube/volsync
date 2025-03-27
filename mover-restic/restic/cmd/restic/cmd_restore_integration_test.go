@@ -12,23 +12,22 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restic/restic/internal/feature"
 	"github.com/restic/restic/internal/restic"
 	rtest "github.com/restic/restic/internal/test"
 	"github.com/restic/restic/internal/ui/termstatus"
 )
 
-func testRunRestore(t testing.TB, opts GlobalOptions, dir string, snapshotID restic.ID) {
+func testRunRestore(t testing.TB, opts GlobalOptions, dir string, snapshotID string) {
 	testRunRestoreExcludes(t, opts, dir, snapshotID, nil)
 }
 
-func testRunRestoreExcludes(t testing.TB, gopts GlobalOptions, dir string, snapshotID restic.ID, excludes []string) {
+func testRunRestoreExcludes(t testing.TB, gopts GlobalOptions, dir string, snapshotID string, excludes []string) {
 	opts := RestoreOptions{
 		Target: dir,
 	}
 	opts.Excludes = excludes
 
-	rtest.OK(t, testRunRestoreAssumeFailure(snapshotID.String(), opts, gopts))
+	rtest.OK(t, testRunRestoreAssumeFailure(snapshotID, opts, gopts))
 }
 
 func testRunRestoreAssumeFailure(snapshotID string, opts RestoreOptions, gopts GlobalOptions) error {
@@ -198,7 +197,7 @@ func TestRestoreFilter(t *testing.T) {
 	snapshotID := testListSnapshots(t, env.gopts, 1)[0]
 
 	// no restore filter should restore all files
-	testRunRestore(t, env.gopts, filepath.Join(env.base, "restore0"), snapshotID)
+	testRunRestore(t, env.gopts, filepath.Join(env.base, "restore0"), snapshotID.String())
 	for _, testFile := range testfiles {
 		rtest.OK(t, testFileSize(filepath.Join(env.base, "restore0", "testdata", testFile.name), int64(testFile.size)))
 	}
@@ -220,7 +219,7 @@ func TestRestoreFilter(t *testing.T) {
 
 	// restore with excludes
 	restoredir := filepath.Join(env.base, "restore-with-excludes")
-	testRunRestoreExcludes(t, env.gopts, restoredir, snapshotID, excludePatterns)
+	testRunRestoreExcludes(t, env.gopts, restoredir, snapshotID.String(), excludePatterns)
 	testRestoredFileExclusions(t, restoredir)
 
 	// Create an exclude file with some patterns
@@ -340,7 +339,7 @@ func TestRestoreWithPermissionFailure(t *testing.T) {
 
 	_ = withRestoreGlobalOptions(func() error {
 		globalOptions.stderr = io.Discard
-		testRunRestore(t, env.gopts, filepath.Join(env.base, "restore"), snapshots[0])
+		testRunRestore(t, env.gopts, filepath.Join(env.base, "restore"), snapshots[0].String())
 		return nil
 	})
 
@@ -403,36 +402,21 @@ func TestRestoreNoMetadataOnIgnoredIntermediateDirs(t *testing.T) {
 		"meta data of intermediate directory hasn't been restore")
 }
 
-func TestRestoreLocalLayout(t *testing.T) {
-	defer feature.TestSetFlag(t, feature.Flag, feature.DeprecateS3LegacyLayout, false)()
+func TestRestoreDefaultLayout(t *testing.T) {
 	env, cleanup := withTestEnvironment(t)
 	defer cleanup()
 
-	var tests = []struct {
-		filename string
-		layout   string
-	}{
-		{"repo-layout-default.tar.gz", ""},
-		{"repo-layout-s3legacy.tar.gz", ""},
-		{"repo-layout-default.tar.gz", "default"},
-		{"repo-layout-s3legacy.tar.gz", "s3legacy"},
-	}
+	datafile := filepath.Join("..", "..", "internal", "backend", "testdata", "repo-layout-default.tar.gz")
 
-	for _, test := range tests {
-		datafile := filepath.Join("..", "..", "internal", "backend", "testdata", test.filename)
+	rtest.SetupTarTestFixture(t, env.base, datafile)
 
-		rtest.SetupTarTestFixture(t, env.base, datafile)
+	// check the repo
+	testRunCheck(t, env.gopts)
 
-		env.gopts.extended["local.layout"] = test.layout
+	// restore latest snapshot
+	target := filepath.Join(env.base, "restore")
+	testRunRestoreLatest(t, env.gopts, target, nil, nil)
 
-		// check the repo
-		testRunCheck(t, env.gopts)
-
-		// restore latest snapshot
-		target := filepath.Join(env.base, "restore")
-		testRunRestoreLatest(t, env.gopts, target, nil, nil)
-
-		rtest.RemoveAll(t, filepath.Join(env.base, "repo"))
-		rtest.RemoveAll(t, target)
-	}
+	rtest.RemoveAll(t, filepath.Join(env.base, "repo"))
+	rtest.RemoveAll(t, target)
 }

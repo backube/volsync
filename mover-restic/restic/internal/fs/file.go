@@ -3,15 +3,8 @@ package fs
 import (
 	"fmt"
 	"os"
-	"path/filepath"
-	"time"
+	"runtime"
 )
-
-// Mkdir creates a new directory with the specified name and permission bits.
-// If there is an error, it will be of type *PathError.
-func Mkdir(name string, perm os.FileMode) error {
-	return os.Mkdir(fixpath(name), perm)
-}
 
 // MkdirAll creates a directory named path, along with any necessary parents,
 // and returns nil, or else returns an error. The permission bits perm are used
@@ -19,12 +12,6 @@ func Mkdir(name string, perm os.FileMode) error {
 // MkdirAll does nothing and returns nil.
 func MkdirAll(path string, perm os.FileMode) error {
 	return os.MkdirAll(fixpath(path), perm)
-}
-
-// Readlink returns the destination of the named symbolic link.
-// If there is an error, it will be of type *PathError.
-func Readlink(name string) (string, error) {
-	return os.Readlink(fixpath(name))
 }
 
 // Remove removes the named file or directory.
@@ -41,30 +28,10 @@ func RemoveAll(path string) error {
 	return os.RemoveAll(fixpath(path))
 }
 
-// Rename renames (moves) oldpath to newpath.
-// If newpath already exists, Rename replaces it.
-// OS-specific restrictions may apply when oldpath and newpath are in different directories.
-// If there is an error, it will be of type *LinkError.
-func Rename(oldpath, newpath string) error {
-	return os.Rename(fixpath(oldpath), fixpath(newpath))
-}
-
-// Symlink creates newname as a symbolic link to oldname.
-// If there is an error, it will be of type *LinkError.
-func Symlink(oldname, newname string) error {
-	return os.Symlink(oldname, fixpath(newname))
-}
-
 // Link creates newname as a hard link to oldname.
 // If there is an error, it will be of type *LinkError.
 func Link(oldname, newname string) error {
 	return os.Link(fixpath(oldname), fixpath(newname))
-}
-
-// Stat returns a FileInfo structure describing the named file.
-// If there is an error, it will be of type *PathError.
-func Stat(name string) (os.FileInfo, error) {
-	return os.Stat(fixpath(name))
 }
 
 // Lstat returns the FileInfo structure describing the named file.
@@ -75,55 +42,16 @@ func Lstat(name string) (os.FileInfo, error) {
 	return os.Lstat(fixpath(name))
 }
 
-// Create creates the named file with mode 0666 (before umask), truncating
-// it if it already exists. If successful, methods on the returned
-// File can be used for I/O; the associated file descriptor has mode
-// O_RDWR.
-// If there is an error, it will be of type *PathError.
-func Create(name string) (*os.File, error) {
-	return os.Create(fixpath(name))
-}
-
-// Open opens a file for reading.
-func Open(name string) (File, error) {
-	return os.Open(fixpath(name))
-}
-
 // OpenFile is the generalized open call; most users will use Open
 // or Create instead.  It opens the named file with specified flag
 // (O_RDONLY etc.) and perm, (0666 etc.) if applicable.  If successful,
 // methods on the returned File can be used for I/O.
 // If there is an error, it will be of type *PathError.
 func OpenFile(name string, flag int, perm os.FileMode) (*os.File, error) {
-	return os.OpenFile(fixpath(name), flag, perm)
-}
-
-// Walk walks the file tree rooted at root, calling walkFn for each file or
-// directory in the tree, including root. All errors that arise visiting files
-// and directories are filtered by walkFn. The files are walked in lexical
-// order, which makes the output deterministic but means that for very
-// large directories Walk can be inefficient.
-// Walk does not follow symbolic links.
-func Walk(root string, walkFn filepath.WalkFunc) error {
-	return filepath.Walk(fixpath(root), walkFn)
-}
-
-// RemoveIfExists removes a file, returning no error if it does not exist.
-func RemoveIfExists(filename string) error {
-	err := os.Remove(filename)
-	if err != nil && os.IsNotExist(err) {
-		err = nil
+	if runtime.GOOS == "windows" {
+		flag &^= O_NOFOLLOW
 	}
-	return err
-}
-
-// Chtimes changes the access and modification times of the named file,
-// similar to the Unix utime() or utimes() functions.
-//
-// The underlying filesystem may truncate or round the values to a less
-// precise time unit. If there is an error, it will be of type *PathError.
-func Chtimes(name string, atime time.Time, mtime time.Time) error {
-	return os.Chtimes(fixpath(name), atime, mtime)
+	return os.OpenFile(fixpath(name), flag, perm)
 }
 
 // IsAccessDenied checks if the error is due to permission error.
@@ -134,15 +62,16 @@ func IsAccessDenied(err error) bool {
 // ResetPermissions resets the permissions of the file at the specified path
 func ResetPermissions(path string) error {
 	// Set the default file permissions
-	if err := os.Chmod(path, 0600); err != nil {
+	if err := os.Chmod(fixpath(path), 0600); err != nil {
 		return err
 	}
 	return nil
 }
 
-// Readdirnames returns a list of file in a directory. Flags are passed to fs.OpenFile. O_RDONLY is implied.
+// Readdirnames returns a list of file in a directory. Flags are passed to fs.OpenFile.
+// O_RDONLY and O_DIRECTORY are implied.
 func Readdirnames(filesystem FS, dir string, flags int) ([]string, error) {
-	f, err := filesystem.OpenFile(dir, O_RDONLY|flags, 0)
+	f, err := filesystem.OpenFile(dir, O_RDONLY|O_DIRECTORY|flags, false)
 	if err != nil {
 		return nil, fmt.Errorf("openfile for readdirnames failed: %w", err)
 	}

@@ -127,12 +127,20 @@ func (be *Backend) retry(ctx context.Context, msg string, f func() error) error 
 		b = backoff.WithMaxRetries(b, 10)
 	}
 
+	permanentErrorAttempts := 1
+	if be.Backend.Properties().HasFlakyErrors {
+		permanentErrorAttempts = 5
+	}
+
 	err := retryNotifyErrorWithSuccess(
 		func() error {
 			err := f()
 			// don't retry permanent errors as those very likely cannot be fixed by retrying
 			// TODO remove IsNotExist(err) special cases when removing the feature flag
 			if feature.Flag.Enabled(feature.BackendErrorRedesign) && !errors.Is(err, &backoff.PermanentError{}) && be.Backend.IsPermanentError(err) {
+				permanentErrorAttempts--
+			}
+			if permanentErrorAttempts <= 0 {
 				return backoff.Permanent(err)
 			}
 			return err
@@ -166,7 +174,7 @@ func (be *Backend) Save(ctx context.Context, h backend.Handle, rd backend.Rewind
 			return nil
 		}
 
-		if be.Backend.HasAtomicReplace() {
+		if be.Backend.Properties().HasAtomicReplace {
 			debug.Log("Save(%v) failed with error: %v", h, err)
 			// there is no need to remove files from backends which can atomically replace files
 			// in fact if something goes wrong at the backend side the delete operation might delete the wrong instance of the file
@@ -209,9 +217,10 @@ func (be *Backend) Load(ctx context.Context, h backend.Handle, length int, offse
 			return be.Backend.Load(ctx, h, length, offset, consumer)
 		})
 
-	if feature.Flag.Enabled(feature.BackendErrorRedesign) && err != nil && !be.IsPermanentError(err) {
+	if feature.Flag.Enabled(feature.BackendErrorRedesign) && err != nil && ctx.Err() == nil && !be.IsPermanentError(err) {
 		// We've exhausted the retries, the file is likely inaccessible. By excluding permanent
-		// errors, not found or truncated files are not recorded.
+		// errors, not found or truncated files are not recorded. Also ignore errors if the context
+		// was canceled.
 		be.failedLoads.LoadOrStore(key, time.Now())
 	}
 
@@ -220,12 +229,19 @@ func (be *Backend) Load(ctx context.Context, h backend.Handle, length int, offse
 
 // Stat returns information about the File identified by h.
 func (be *Backend) Stat(ctx context.Context, h backend.Handle) (fi backend.FileInfo, err error) {
-	err = be.retry(ctx, fmt.Sprintf("Stat(%v)", h),
+	// see the call to `cancel()` below for why this context exists
+	statCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	err = be.retry(statCtx, fmt.Sprintf("Stat(%v)", h),
 		func() error {
 			var innerError error
 			fi, innerError = be.Backend.Stat(ctx, h)
 
 			if be.Backend.IsNotExist(innerError) {
+				// stat is only used to check the existence of the config file.
+				// cancel the context to suppress the final error message if the file is not found.
+				cancel()
 				// do not retry if file is not found, as stat is usually used  to check whether a file exists
 				return backoff.Permanent(innerError)
 			}
@@ -280,4 +296,12 @@ func (be *Backend) List(ctx context.Context, t backend.FileType, fn func(backend
 
 func (be *Backend) Unwrap() backend.Backend {
 	return be.Backend
+}
+
+// Warmup delegates to wrapped backend
+func (be *Backend) Warmup(ctx context.Context, h []backend.Handle) ([]backend.Handle, error) {
+	return be.Backend.Warmup(ctx, h)
+}
+func (be *Backend) WarmupWait(ctx context.Context, h []backend.Handle) error {
+	return be.Backend.WarmupWait(ctx, h)
 }
