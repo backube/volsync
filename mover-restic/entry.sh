@@ -343,7 +343,7 @@ function do_restore {
         echo "Selected restic snapshot with id: ${snapshot_id}"
         # Running this cmd can be finicky with spaces, do not put quotes around ${RESTORE_OPTIONS}
         #shellcheck disable=SC2086
-        "${RESTIC[@]}" restore "${snapshot_id}" -t . --host "${RESTIC_HOST}" ${RESTORE_OPTIONS}
+        "${RESTIC[@]}" restore "${snapshot_id}" -t . --host "${RESTIC_HOST}" --include-xattr "user.*" ${RESTORE_OPTIONS}
         popd
     fi
 }
