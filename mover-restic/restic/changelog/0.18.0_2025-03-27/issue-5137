@@ -1,0 +1,8 @@
+Enhancement: Make `tag` command print which snapshots were modified
+
+The `tag` command now outputs which snapshots were modified along with their
+new snapshot ID. The command supports the `--json` option for machine-readable
+output.
+
+https://github.com/restic/restic/issues/5137
+https://github.com/restic/restic/pull/5144

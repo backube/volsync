@@ -24,6 +24,7 @@ type PruneOptions struct {
 
 	MaxUnusedBytes func(used uint64) (unused uint64) // calculates the number of unused bytes after repacking, according to MaxUnused
 	MaxRepackBytes uint64
+	SmallPackBytes uint64
 
 	RepackCacheableOnly bool
 	RepackSmall         bool
@@ -103,6 +104,9 @@ func PlanPrune(ctx context.Context, opts PruneOptions, repo *Repository, getUsed
 	}
 	if repo.Config().Version < 2 && opts.RepackUncompressed {
 		return nil, fmt.Errorf("compression requires at least repository format version 2")
+	}
+	if opts.SmallPackBytes > uint64(repo.packSize()) {
+		return nil, fmt.Errorf("repack-smaller-than exceeds repository packsize")
 	}
 
 	usedBlobs := index.NewAssociatedSet[uint8](repo.idx)
@@ -272,7 +276,7 @@ func packInfoFromIndex(ctx context.Context, idx restic.ListBlobser, usedBlobs *i
 			ip := indexPack[blob.PackID]
 			size := uint64(blob.Length)
 			switch {
-			case ip.usedBlobs > 0, (ip.duplicateBlobs == ip.unusedBlobs), count == 0:
+			case ip.usedBlobs > 0, ip.duplicateBlobs == ip.unusedBlobs, count == 0:
 				// other used blobs in pack, only duplicate blobs or "last" occurrence ->  transition to used
 				// a pack file created by an interrupted prune run will consist of only duplicate blobs
 				// thus select such already repacked pack files
@@ -326,7 +330,9 @@ func decidePackAction(ctx context.Context, opts PruneOptions, repo *Repository, 
 	repoVersion := repo.Config().Version
 	// only repack very small files by default
 	targetPackSize := repo.packSize() / 25
-	if opts.RepackSmall {
+	if opts.SmallPackBytes > 0 {
+		targetPackSize = uint(opts.SmallPackBytes)
+	} else if opts.RepackSmall {
 		// consider files with at least 80% of the target size as large enough
 		targetPackSize = repo.packSize() / 5 * 4
 	}
@@ -402,6 +408,7 @@ func decidePackAction(ctx context.Context, opts PruneOptions, repo *Repository, 
 		bar.Add(1)
 		return nil
 	})
+
 	bar.Done()
 	if err != nil {
 		return PrunePlan{}, err
@@ -478,7 +485,8 @@ func decidePackAction(ctx context.Context, opts PruneOptions, repo *Repository, 
 	maxUnusedSizeAfter := opts.MaxUnusedBytes(stats.Size.Used)
 
 	for _, p := range repackCandidates {
-		reachedUnusedSizeAfter := (stats.Size.Unused-stats.Size.Remove-stats.Size.Repackrm < maxUnusedSizeAfter)
+		remainingUnusedSize := stats.Size.Duplicate + stats.Size.Unused - stats.Size.Remove - stats.Size.Repackrm
+		reachedUnusedSizeAfter := remainingUnusedSize < maxUnusedSizeAfter
 		reachedRepackSize := stats.Size.Repack+p.unusedSize+p.usedSize >= opts.MaxRepackBytes
 		packIsLargeEnough := p.unusedSize+p.usedSize >= uint64(targetPackSize)
 
@@ -544,7 +552,7 @@ func (plan *PrunePlan) Execute(ctx context.Context, printer progress.Printer) er
 	// unreferenced packs can be safely deleted first
 	if len(plan.removePacksFirst) != 0 {
 		printer.P("deleting unreferenced packs\n")
-		_ = deleteFiles(ctx, true, repo, plan.removePacksFirst, restic.PackFile, printer)
+		_ = deleteFiles(ctx, true, &internalRepository{repo}, plan.removePacksFirst, restic.PackFile, printer)
 		// forget unused data
 		plan.removePacksFirst = nil
 	}
@@ -556,7 +564,7 @@ func (plan *PrunePlan) Execute(ctx context.Context, printer progress.Printer) er
 		printer.P("repacking packs\n")
 		bar := printer.NewCounter("packs repacked")
 		bar.SetMax(uint64(len(plan.repackPacks)))
-		_, err := Repack(ctx, repo, repo, plan.repackPacks, plan.keepBlobs, bar)
+		_, err := Repack(ctx, repo, repo, plan.repackPacks, plan.keepBlobs, bar, printer.P)
 		bar.Done()
 		if err != nil {
 			return errors.Fatal(err.Error())
@@ -588,7 +596,7 @@ func (plan *PrunePlan) Execute(ctx context.Context, printer progress.Printer) er
 	if plan.opts.UnsafeRecovery {
 		printer.P("deleting index files\n")
 		indexFiles := repo.idx.IDs()
-		err := deleteFiles(ctx, false, repo, indexFiles, restic.IndexFile, printer)
+		err := deleteFiles(ctx, false, &internalRepository{repo}, indexFiles, restic.IndexFile, printer)
 		if err != nil {
 			return errors.Fatalf("%s", err)
 		}
@@ -601,14 +609,14 @@ func (plan *PrunePlan) Execute(ctx context.Context, printer progress.Printer) er
 
 	if len(plan.removePacks) != 0 {
 		printer.P("removing %d old packs\n", len(plan.removePacks))
-		_ = deleteFiles(ctx, true, repo, plan.removePacks, restic.PackFile, printer)
+		_ = deleteFiles(ctx, true, &internalRepository{repo}, plan.removePacks, restic.PackFile, printer)
 	}
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
 
 	if plan.opts.UnsafeRecovery {
-		err := repo.idx.SaveFallback(ctx, repo, plan.ignorePacks, printer.NewCounter("packs processed"))
+		err := repo.idx.SaveFallback(ctx, &internalRepository{repo}, plan.ignorePacks, printer.NewCounter("packs processed"))
 		if err != nil {
 			return errors.Fatalf("%s", err)
 		}
@@ -623,7 +631,7 @@ func (plan *PrunePlan) Execute(ctx context.Context, printer progress.Printer) er
 
 // deleteFiles deletes the given fileList of fileType in parallel
 // if ignoreError=true, it will print a warning if there was an error, else it will abort.
-func deleteFiles(ctx context.Context, ignoreError bool, repo restic.RemoverUnpacked, fileList restic.IDSet, fileType restic.FileType, printer progress.Printer) error {
+func deleteFiles(ctx context.Context, ignoreError bool, repo restic.RemoverUnpacked[restic.FileType], fileList restic.IDSet, fileType restic.FileType, printer progress.Printer) error {
 	bar := printer.NewCounter("files deleted")
 	defer bar.Done()
 

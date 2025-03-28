@@ -119,7 +119,7 @@ func TestFuseFile(t *testing.T) {
 	root := &Root{repo: repo, blobCache: bloblru.New(blobCacheSize)}
 
 	inode := inodeFromNode(1, node)
-	f, err := newFile(root, inode, node)
+	f, err := newFile(root, func() {}, inode, node)
 	rtest.OK(t, err)
 	of, err := f.Open(context.TODO(), nil, nil)
 	rtest.OK(t, err)
@@ -162,7 +162,7 @@ func TestFuseDir(t *testing.T) {
 	}
 	parentInode := inodeFromName(0, "parent")
 	inode := inodeFromName(1, "foo")
-	d, err := newDir(root, inode, parentInode, node)
+	d, err := newDir(root, func() {}, inode, parentInode, node)
 	rtest.OK(t, err)
 
 	// don't open the directory as that would require setting up a proper tree blob
@@ -217,6 +217,34 @@ func testTopUIDGID(t *testing.T, cfg Config, repo restic.Repository, uid, gid ui
 	rtest.Equals(t, uint32(0), attr.Gid)
 }
 
+// The Lookup method must return the same Node object unless it was forgotten in the meantime
+func testStableLookup(t *testing.T, node fs.Node, path string) fs.Node {
+	t.Helper()
+	result, err := node.(fs.NodeStringLookuper).Lookup(context.TODO(), path)
+	rtest.OK(t, err)
+	result2, err := node.(fs.NodeStringLookuper).Lookup(context.TODO(), path)
+	rtest.OK(t, err)
+	rtest.Assert(t, result == result2, "%v are not the same object", path)
+
+	result2.(fs.NodeForgetter).Forget()
+	result2, err = node.(fs.NodeStringLookuper).Lookup(context.TODO(), path)
+	rtest.OK(t, err)
+	rtest.Assert(t, result != result2, "object for %v should change after forget", path)
+	return result
+}
+
+func TestStableNodeObjects(t *testing.T) {
+	repo := repository.TestRepository(t)
+	restic.TestCreateSnapshot(t, repo, time.Unix(1460289341, 207401672), 2)
+	root := NewRoot(repo, Config{})
+
+	idsdir := testStableLookup(t, root, "ids")
+	snapID := loadFirstSnapshot(t, repo).ID().Str()
+	snapshotdir := testStableLookup(t, idsdir, snapID)
+	dir := testStableLookup(t, snapshotdir, "dir-0")
+	testStableLookup(t, dir, "file-2")
+}
+
 // Test reporting of fuse.Attr.Blocks in multiples of 512.
 func TestBlocks(t *testing.T) {
 	root := &Root{}
@@ -249,7 +277,7 @@ func TestBlocks(t *testing.T) {
 }
 
 func TestInodeFromNode(t *testing.T) {
-	node := &restic.Node{Name: "foo.txt", Type: "chardev", Links: 2}
+	node := &restic.Node{Name: "foo.txt", Type: restic.NodeTypeCharDev, Links: 2}
 	ino1 := inodeFromNode(1, node)
 	ino2 := inodeFromNode(2, node)
 	rtest.Assert(t, ino1 == ino2, "inodes %d, %d of hard links differ", ino1, ino2)
@@ -261,9 +289,9 @@ func TestInodeFromNode(t *testing.T) {
 
 	// Regression test: in a path a/b/b, the grandchild should not get the
 	// same inode as the grandparent.
-	a := &restic.Node{Name: "a", Type: "dir", Links: 2}
-	ab := &restic.Node{Name: "b", Type: "dir", Links: 2}
-	abb := &restic.Node{Name: "b", Type: "dir", Links: 2}
+	a := &restic.Node{Name: "a", Type: restic.NodeTypeDir, Links: 2}
+	ab := &restic.Node{Name: "b", Type: restic.NodeTypeDir, Links: 2}
+	abb := &restic.Node{Name: "b", Type: restic.NodeTypeDir, Links: 2}
 	inoA := inodeFromNode(1, a)
 	inoAb := inodeFromNode(inoA, ab)
 	inoAbb := inodeFromNode(inoAb, abb)
@@ -272,11 +300,11 @@ func TestInodeFromNode(t *testing.T) {
 }
 
 func TestLink(t *testing.T) {
-	node := &restic.Node{Name: "foo.txt", Type: "symlink", Links: 1, LinkTarget: "dst", ExtendedAttributes: []restic.ExtendedAttribute{
+	node := &restic.Node{Name: "foo.txt", Type: restic.NodeTypeSymlink, Links: 1, LinkTarget: "dst", ExtendedAttributes: []restic.ExtendedAttribute{
 		{Name: "foo", Value: []byte("bar")},
 	}}
 
-	lnk, err := newLink(&Root{}, 42, node)
+	lnk, err := newLink(&Root{}, func() {}, 42, node)
 	rtest.OK(t, err)
 	target, err := lnk.Readlink(context.TODO(), nil)
 	rtest.OK(t, err)
@@ -305,11 +333,11 @@ func BenchmarkInode(b *testing.B) {
 	}{
 		{
 			name: "no_hard_links",
-			node: restic.Node{Name: "a somewhat long-ish filename.svg.bz2", Type: "fifo"},
+			node: restic.Node{Name: "a somewhat long-ish filename.svg.bz2", Type: restic.NodeTypeFifo},
 		},
 		{
 			name: "hard_link",
-			node: restic.Node{Name: "some other filename", Type: "file", Links: 2},
+			node: restic.Node{Name: "some other filename", Type: restic.NodeTypeFile, Links: 2},
 		},
 	} {
 		b.Run(sub.name, func(b *testing.B) {

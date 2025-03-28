@@ -1,5 +1,9 @@
 # Table of Contents
 
+* [Changelog for 0.18.0](#changelog-for-restic-0180-2025-03-27)
+* [Changelog for 0.17.3](#changelog-for-restic-0173-2024-11-08)
+* [Changelog for 0.17.2](#changelog-for-restic-0172-2024-10-27)
+* [Changelog for 0.17.1](#changelog-for-restic-0171-2024-09-05)
 * [Changelog for 0.17.0](#changelog-for-restic-0170-2024-07-26)
 * [Changelog for 0.16.5](#changelog-for-restic-0165-2024-07-01)
 * [Changelog for 0.16.4](#changelog-for-restic-0164-2024-02-04)
@@ -33,6 +37,763 @@
 * [Changelog for 0.7.0](#changelog-for-restic-070-2017-07-01)
 * [Changelog for 0.6.1](#changelog-for-restic-061-2017-06-01)
 * [Changelog for 0.6.0](#changelog-for-restic-060-2017-05-29)
+
+
+# Changelog for restic 0.18.0 (2025-03-27)
+The following sections list the changes in restic 0.18.0 relevant to
+restic users. The changes are ordered by importance.
+
+## Summary
+
+ * Sec #5291: Mitigate attack on content-defined chunking algorithm
+ * Fix #1843: Correctly restore long filepaths' timestamp on old Windows
+ * Fix #2165: Ignore disappeared backup source files
+ * Fix #5153: Include root tree when searching using `find --tree`
+ * Fix #5169: Prevent Windows VSS event log 8194 warnings for backup with fs snapshot
+ * Fix #5212: Fix duplicate data handling in `prune --max-unused`
+ * Fix #5249: Fix creation of oversized index by `repair index --read-all-packs`
+ * Fix #5259: Fix rare crash in command output
+ * Chg #4938: Update dependencies and require Go 1.23 or newer
+ * Chg #5162: Promote feature flags
+ * Enh #1378: Add JSON support to `check` command
+ * Enh #2511: Support generating shell completions to stdout
+ * Enh #3697: Allow excluding online-only cloud files (e.g. OneDrive)
+ * Enh #4179: Add `sort` option to `ls` command
+ * Enh #4433: Change default sort order for `find` output
+ * Enh #4521: Add support for Microsoft Blob Storage access tiers
+ * Enh #4942: Add snapshot summary statistics to rewritten snapshots
+ * Enh #4948: Format exit errors as JSON when requested
+ * Enh #4983: Add SLSA provenance to GHCR container images
+ * Enh #5054: Enable compression for ZIP archives in `dump` command
+ * Enh #5081: Add retry mechanism for loading repository config
+ * Enh #5089: Allow including/excluding extended file attributes during `restore`
+ * Enh #5092: Show count of deleted files and directories during `restore`
+ * Enh #5109: Make small pack size configurable for `prune`
+ * Enh #5119: Add start and end timestamps to `backup` JSON output
+ * Enh #5131: Add DragonFlyBSD support
+ * Enh #5137: Make `tag` command print which snapshots were modified
+ * Enh #5141: Provide clear error message if AZURE_ACCOUNT_NAME is not set
+ * Enh #5173: Add experimental S3 cold storage support
+ * Enh #5174: Add xattr support for NetBSD 10+
+ * Enh #5251: Improve retry handling for flaky `rclone` backends
+ * Enh #52897: Make `recover` automatically rebuild index when needed
+
+## Details
+
+ * Security #5291: Mitigate attack on content-defined chunking algorithm
+
+   Restic uses [Rabin
+   Fingerprints](https://restic.net/blog/2015-09-12/restic-foundation1-cdc/) for
+   its content-defined chunker. The algorithm relies on a secret polynomial to
+   split files into chunks.
+
+   As shown in the paper "[Chunking Attacks on File Backup Services using
+   Content-Defined Chunking](https://eprint.iacr.org/2025/532.pdf)" by Boris
+   Alexeev, Colin Percival and Yan X Zhang, an attacker that can observe chunk
+   sizes for a known file can derive the secret polynomial. Knowledge of the
+   polynomial might in some cases allow an attacker to check whether certain large
+   files are stored in a repository.
+
+   A practical attack is nevertheless hard as restic merges multiple chunks into
+   opaque pack files and by default processes multiple files in parallel. This
+   likely prevents an attacker from matching pack files to the attacker-known file
+   and thereby prevents the attack.
+
+   Despite the low chances of a practical attack, restic now has added mitigation
+   that randomizes how chunks are assembled into pack files. This prevents
+   attackers from guessing which chunks are part of a pack file and thereby
+   prevents learning the chunk sizes.
+
+   https://github.com/restic/restic/issues/5291
+   https://github.com/restic/restic/pull/5295
+
+ * Bugfix #1843: Correctly restore long filepaths' timestamp on old Windows
+
+   The `restore` command now correctly restores timestamps for files with paths
+   longer than 256 characters on Windows versions prior to Windows 10 1607.
+
+   https://github.com/restic/restic/issues/1843
+   https://github.com/restic/restic/pull/5061
+
+ * Bugfix #2165: Ignore disappeared backup source files
+
+   The `backup` command now quietly skips files that are removed between directory
+   listing and backup, instead of printing errors like:
+
+   ```
+   error: lstat /some/file/name: no such file or directory
+   ```
+
+   https://github.com/restic/restic/issues/2165
+   https://github.com/restic/restic/issues/3098
+   https://github.com/restic/restic/pull/5143
+   https://github.com/restic/restic/pull/5145
+
+ * Bugfix #5153: Include root tree when searching using `find --tree`
+
+   The `restic find --tree` command did not find trees referenced by `restic
+   snapshot --json`. It now correctly includes the root tree when searching.
+
+   https://github.com/restic/restic/pull/5153
+
+ * Bugfix #5169: Prevent Windows VSS event log 8194 warnings for backup with fs snapshot
+
+   When running `backup` with the `--use-fs-snapshot` option in Windows with admin
+   rights, event logs like
+
+   ```
+   Volume Shadow Copy Service error: Unexpected error querying for the IVssWriterCallback interface.  hr = 0x80070005, Access is denied.
+   . This is often caused by incorrect security settings in either the writer or requester process. 
+   
+   Operation:
+      Gathering Writer Data
+   
+   Context:
+      Writer Class Id: {e8132975-6f93-4464-a53e-1050253ae220}
+      Writer Name: System Writer
+      Writer Instance ID: {54b151ac-d27d-4628-9cb0-2bc40959f50f}
+   ```
+
+   Are created several times even though the backup itself succeeds. This has now
+   been fixed.
+
+   https://github.com/restic/restic/issues/5169
+   https://github.com/restic/restic/pull/5170
+   https://forum.restic.net/t/windows-shadow-copy-snapshot-vss-unexpected-provider-error/3674/2
+
+ * Bugfix #5212: Fix duplicate data handling in `prune --max-unused`
+
+   The `prune --max-unused size` command did not correctly account for duplicate
+   data. If a repository contained a large amount of duplicate data, this could
+   previously result in pruning too little data. This has now been fixed.
+
+   https://github.com/restic/restic/pull/5212
+   https://forum.restic.net/t/restic-not-obeying-max-unused-parameter-on-prune/8879
+
+ * Bugfix #5249: Fix creation of oversized index by `repair index --read-all-packs`
+
+   Since restic 0.17.0, the new index created by `repair index --read-all-packs`
+   was written as a single large index. This significantly increased memory usage
+   while loading the index.
+
+   The index is now correctly split into multiple smaller indexes, and `repair
+   index` now also automatically splits oversized indexes.
+
+   https://github.com/restic/restic/pull/5249
+
+ * Bugfix #5259: Fix rare crash in command output
+
+   Some commands could in rare cases crash when trying to print status messages and
+   request retries at the same time, resulting in an error like the following:
+
+   ```
+   panic: runtime error: slice bounds out of range [468:156]
+   [...]
+   github.com/restic/restic/internal/ui/termstatus.(*lineWriter).Write(...)
+   	/restic/internal/ui/termstatus/stdio_wrapper.go:36 +0x136
+   ```
+
+   This has now been fixed.
+
+   https://github.com/restic/restic/issues/5259
+   https://github.com/restic/restic/pull/5300
+
+ * Change #4938: Update dependencies and require Go 1.23 or newer
+
+   We have updated all dependencies. Restic now requires Go 1.23 or newer to build.
+
+   This also disables support for TLS versions older than TLS 1.2. On Windows,
+   restic now requires at least Windows 10 or Windows Server 2016. On macOS, restic
+   now requires at least macOS 11 Big Sur.
+
+   https://github.com/restic/restic/pull/4938
+
+ * Change #5162: Promote feature flags
+
+   The `deprecate-legacy-index`, `deprecate-s3-legacy-layout`,
+   `explicit-s3-anonymous-auth` and `safe-forget-keep-tags` features are now stable
+   and can no longer be disabled. The corresponding feature flags will be removed
+   in restic 0.19.0.
+
+   https://github.com/restic/restic/pull/5162
+
+ * Enhancement #1378: Add JSON support to `check` command
+
+   The `check` command now supports the `--json` option to output all statistics in
+   JSON format.
+
+   https://github.com/restic/restic/issues/1378
+   https://github.com/restic/restic/pull/5194
+
+ * Enhancement #2511: Support generating shell completions to stdout
+
+   The `generate` command now supports using `-` as the filename with the
+   `--[shell]-completion` option to write the generated output to stdout.
+
+   https://github.com/restic/restic/issues/2511
+   https://github.com/restic/restic/pull/5053
+
+ * Enhancement #3697: Allow excluding online-only cloud files (e.g. OneDrive)
+
+   Restic treated files synced using OneDrive Files On-Demand as though they were
+   regular files. This caused issues with VSS and could cause OneDrive to download
+   all files.
+
+   Restic now allows the user to exclude these files when backing up with the
+   `--exclude-cloud-files` option.
+
+   https://github.com/restic/restic/issues/3697
+   https://github.com/restic/restic/issues/4935
+   https://github.com/restic/restic/pull/4990
+
+ * Enhancement #4179: Add `sort` option to `ls` command
+
+   The `ls -l` command output can now be sorted using the new `--sort <field>`
+   option for the fields `name`, `size`, `time` (same as `mtime`), `mtime`,
+   `atime`, `ctime` and `extension`. A `--reverse` option is also available.
+
+   https://github.com/restic/restic/issues/4179
+   https://github.com/restic/restic/pull/5182
+
+ * Enhancement #4433: Change default sort order for `find` output
+
+   The `find` command now sorts snapshots from newest to oldest by default. The
+   previous oldest-to-newest order can be restored using the new `--reverse`
+   option.
+
+   https://github.com/restic/restic/issues/4433
+   https://github.com/restic/restic/pull/5184
+
+ * Enhancement #4521: Add support for Microsoft Blob Storage access tiers
+
+   The new `-o azure.access-tier=<tier>` option allows specifying the access tier
+   (`Hot`, `Cool` or `Cold`) for objects created in Microsoft Blob Storage. If
+   unspecified, the storage account's default tier is used.
+
+   There is no official `Archive` storage support in restic, use this option at
+   your own risk. To restore any data, it is necessary to manually warm up the
+   required data in the `Archive` tier.
+
+   https://github.com/restic/restic/issues/4521
+   https://github.com/restic/restic/pull/5046
+
+ * Enhancement #4942: Add snapshot summary statistics to rewritten snapshots
+
+   The `rewrite` command now supports a `--snapshot-summary` option to add
+   statistics data to snapshots. Only two fields in the summary will be non-zero:
+   `TotalFilesProcessed` and `TotalBytesProcessed`.
+
+   For snapshots rewritten using the `--exclude` options, the summary statistics
+   are updated accordingly.
+
+   https://github.com/restic/restic/issues/4942
+   https://github.com/restic/restic/pull/5185
+
+ * Enhancement #4948: Format exit errors as JSON when requested
+
+   Restic now formats error messages as JSON when the `--json` flag is used.
+
+   https://github.com/restic/restic/issues/4948
+   https://github.com/restic/restic/pull/4952
+
+ * Enhancement #4983: Add SLSA provenance to GHCR container images
+
+   Restic's GitHub Container Registry (GHCR) image build workflow now includes SLSA
+   (Supply-chain Levels for Software Artifacts) provenance generation.
+
+   Please see the restic documentation for more information about verifying SLSA
+   provenance.
+
+   https://github.com/restic/restic/issues/4983
+   https://github.com/restic/restic/pull/4999
+
+ * Enhancement #5054: Enable compression for ZIP archives in `dump` command
+
+   The `dump` command now compresses ZIP archives using the DEFLATE algorithm,
+   reducing the size of exported archives.
+
+   https://github.com/restic/restic/pull/5054
+
+ * Enhancement #5081: Add retry mechanism for loading repository config
+
+   Restic now retries loading the repository config file when opening a repository.
+   The `init` command now also retries backend operations.
+
+   https://github.com/restic/restic/issues/5081
+   https://github.com/restic/restic/pull/5095
+
+ * Enhancement #5089: Allow including/excluding extended file attributes during `restore`
+
+   The `restore` command now supports the `--exclude-xattr` and `--include-xattr`
+   options to control which extended file attributes will be restored. By default,
+   all attributes are restored.
+
+   https://github.com/restic/restic/issues/5089
+   https://github.com/restic/restic/pull/5129
+
+ * Enhancement #5092: Show count of deleted files and directories during `restore`
+
+   The `restore` command now reports the number of deleted files and directories,
+   both in the regular output and in the `files_deleted` field of the JSON output.
+
+   https://github.com/restic/restic/issues/5092
+   https://github.com/restic/restic/pull/5100
+
+ * Enhancement #5109: Make small pack size configurable for `prune`
+
+   The `prune` command now supports the `--repack-smaller-than` option that allows
+   repacking pack files smaller than a specified size.
+
+   https://github.com/restic/restic/issues/5109
+   https://github.com/restic/restic/pull/5183
+
+ * Enhancement #5119: Add start and end timestamps to `backup` JSON output
+
+   The JSON output of the `backup` command now includes `backup_start` and
+   `backup_end` timestamps, containing the start and end time of the backup.
+
+   https://github.com/restic/restic/pull/5119
+
+ * Enhancement #5131: Add DragonFlyBSD support
+
+   Restic can now be compiled on DragonflyBSD.
+
+   https://github.com/restic/restic/issues/5131
+   https://github.com/restic/restic/pull/5138
+
+ * Enhancement #5137: Make `tag` command print which snapshots were modified
+
+   The `tag` command now outputs which snapshots were modified along with their new
+   snapshot ID. The command supports the `--json` option for machine-readable
+   output.
+
+   https://github.com/restic/restic/issues/5137
+   https://github.com/restic/restic/pull/5144
+
+ * Enhancement #5141: Provide clear error message if AZURE_ACCOUNT_NAME is not set
+
+   If `AZURE_ACCOUNT_NAME` was not set, commands related to an Azure repository
+   would result in a misleading networking error. Restic now detect this and
+   provides a clear warning that the variable is not defined.
+
+   https://github.com/restic/restic/pull/5141
+
+ * Enhancement #5173: Add experimental S3 cold storage support
+
+   Introduce S3 backend options for transitioning pack files from cold to hot
+   storage on S3 and S3-compatible providers. Note: this only works for the
+   `prune`, `copy` and `restore` commands for now.
+
+   This experimental feature is gated behind the "s3-restore" feature flag.
+
+   https://github.com/restic/restic/issues/3202
+   https://github.com/restic/restic/issues/2504
+   https://github.com/restic/restic/pull/5173
+
+ * Enhancement #5174: Add xattr support for NetBSD 10+
+
+   Extended attribute support for `backup` and `restore` operations is now
+   available on NetBSD version 10 and later.
+
+   https://github.com/restic/restic/issues/5174
+   https://github.com/restic/restic/pull/5180
+
+ * Enhancement #5251: Improve retry handling for flaky `rclone` backends
+
+   Since restic 0.17.0, the backend retry mechanisms rely on backends correctly
+   reporting when a file does not exist. This is not always the case for some
+   `rclone` backends, which caused restic to stop retrying after the first failure.
+
+   For rclone, failed requests are now retried up to 5 times before giving up.
+
+   https://github.com/restic/restic/pull/5251
+
+ * Enhancement #52897: Make `recover` automatically rebuild index when needed
+
+   When trying to recover data from an interrupted snapshot, it was previously
+   necessary to manually run `repair index` before runnning `recover`. This now
+   happens automatically so that only `recover` is necessary.
+
+   https://github.com/restic/restic/issues/52897
+   https://github.com/restic/restic/pull/5296
+
+
+# Changelog for restic 0.17.3 (2024-11-08)
+The following sections list the changes in restic 0.17.3 relevant to
+restic users. The changes are ordered by importance.
+
+## Summary
+
+ * Fix #4971: Fix unusable `mount` on macOS Sonoma
+ * Fix #5003: Fix metadata errors during backup of removable disks on Windows
+ * Fix #5101: Do not retry load/list operation if SFTP connection is broken
+ * Fix #5107: Fix metadata error on Windows for backups using VSS
+ * Enh #5096: Allow `prune --dry-run` without lock
+
+## Details
+
+ * Bugfix #4971: Fix unusable `mount` on macOS Sonoma
+
+   On macOS Sonoma when using FUSE-T, it was not possible to access files in a
+   mounted repository. This issue is now resolved.
+
+   https://github.com/restic/restic/issues/4971
+   https://github.com/restic/restic/pull/5048
+
+ * Bugfix #5003: Fix metadata errors during backup of removable disks on Windows
+
+   Since restic 0.17.0, backing up removable disks on Windows could report errors
+   with retrieving metadata like shown below.
+
+   ```
+   error: incomplete metadata for d:\filename: get named security info failed with: Access is denied.
+   ```
+
+   This has now been fixed.
+
+   https://github.com/restic/restic/issues/5003
+   https://github.com/restic/restic/pull/5123
+   https://forum.restic.net/t/backing-up-a-folder-from-a-veracrypt-volume-brings-up-errors-since-restic-v17-0/8444
+
+ * Bugfix #5101: Do not retry load/list operation if SFTP connection is broken
+
+   When using restic with the SFTP backend, backend operations that load a file or
+   list files were retried even if the SFTP connection was broken. This has now
+   been fixed.
+
+   https://github.com/restic/restic/pull/5101
+   https://forum.restic.net/t/restic-hanging-on-backup/8559
+
+ * Bugfix #5107: Fix metadata error on Windows for backups using VSS
+
+   Since restic 0.17.2, when creating a backup on Windows using
+   `--use-fs-snapshot`, restic would report an error like the following:
+
+   ```
+   error: incomplete metadata for C:\: get EA failed while opening file handle for path \\?\GLOBALROOT\Device\HarddiskVolumeShadowCopyXX\, with: The process cannot access the file because it is being used by another process.
+   ```
+
+   This has now been fixed by correctly handling paths that refer to volume shadow
+   copy snapshots.
+
+   https://github.com/restic/restic/issues/5107
+   https://github.com/restic/restic/pull/5110
+   https://github.com/restic/restic/pull/5112
+
+ * Enhancement #5096: Allow `prune --dry-run` without lock
+
+   The `prune --dry-run --no-lock` now allows performing a dry-run without locking
+   the repository. Note that if the repository is modified concurrently, `prune`
+   may return inaccurate statistics or errors.
+
+   https://github.com/restic/restic/pull/5096
+
+
+# Changelog for restic 0.17.2 (2024-10-27)
+The following sections list the changes in restic 0.17.2 relevant to
+restic users. The changes are ordered by importance.
+
+## Summary
+
+ * Fix #4004: Support container-level SAS/SAT tokens for Azure backend
+ * Fix #5047: Resolve potential error during concurrent cache cleanup
+ * Fix #5050: Return error if `tag` fails to lock repository
+ * Fix #5057: Exclude irregular files from backups
+ * Fix #5063: Correctly `backup` extended metadata when using VSS on Windows
+
+## Details
+
+ * Bugfix #4004: Support container-level SAS/SAT tokens for Azure backend
+
+   Restic previously expected SAS/SAT tokens to be generated at the account level,
+   which prevented tokens created at the container level from being used to
+   initialize a repository. This caused an error when attempting to initialize a
+   repository with container-level tokens.
+
+   Restic now supports both account-level and container-level SAS/SAT tokens for
+   initializing a repository.
+
+   https://github.com/restic/restic/issues/4004
+   https://github.com/restic/restic/pull/5093
+
+ * Bugfix #5047: Resolve potential error during concurrent cache cleanup
+
+   When multiple restic processes ran concurrently, they could compete to remove
+   obsolete snapshots from the local backend cache, sometimes leading to a "no such
+   file or directory" error. Restic now suppresses this error to prevent issues
+   during cache cleanup.
+
+   https://github.com/restic/restic/pull/5047
+
+ * Bugfix #5050: Return error if `tag` fails to lock repository
+
+   Since restic 0.17.0, the `tag` command did not return an error when it failed to
+   open or lock the repository. This issue has now been fixed.
+
+   https://github.com/restic/restic/issues/5050
+   https://github.com/restic/restic/pull/5056
+
+ * Bugfix #5057: Exclude irregular files from backups
+
+   Since restic 0.17.1, files with the type `irregular` could mistakenly be
+   included in snapshots, especially when backing up special file types on Windows
+   that restic cannot process. This issue has now been fixed.
+
+   Previously, this bug caused the `check` command to report errors like the
+   following one:
+
+   ```
+     tree 12345678[...]: node "example.zip" with invalid type "irregular"
+   ```
+
+   To repair affected snapshots, upgrade to restic 0.17.2 and run:
+
+   ```
+   restic repair snapshots --forget
+   ```
+
+   This will remove the `irregular` files from the snapshots (creating a new
+   snapshot ID for each of the affected snapshots).
+
+   https://github.com/restic/restic/pull/5057
+   https://forum.restic.net/t/errors-found-by-check-1-invalid-type-irregular-2-ciphertext-verification-failed/8447/2
+
+ * Bugfix #5063: Correctly `backup` extended metadata when using VSS on Windows
+
+   On Windows, when creating a backup with the `--use-fs-snapshot` option, restic
+   read extended metadata from the original filesystem path instead of from the
+   snapshot. This could result in errors if files were removed during the backup
+   process.
+
+   This issue has now been resolved.
+
+   https://github.com/restic/restic/issues/5063
+   https://github.com/restic/restic/pull/5097
+   https://github.com/restic/restic/pull/5099
+
+
+# Changelog for restic 0.17.1 (2024-09-05)
+The following sections list the changes in restic 0.17.1 relevant to
+restic users. The changes are ordered by importance.
+
+## Summary
+
+ * Fix #2004: Correctly handle volume names in `backup` command on Windows
+ * Fix #4945: Include missing backup error text with `--json`
+ * Fix #4953: Correctly handle long paths on older Windows versions
+ * Fix #4957: Fix delayed cancellation of certain commands
+ * Fix #4958: Don't ignore metadata-setting errors during restore
+ * Fix #4969: Correctly restore timestamp for files with resource forks on macOS
+ * Fix #4975: Prevent `backup --stdin-from-command` from panicking
+ * Fix #4980: Skip extended attribute processing on unsupported Windows volumes
+ * Fix #5004: Fix spurious "A Required Privilege Is Not Held by the Client" error
+ * Fix #5005: Fix rare failures to retry locking a repository
+ * Fix #5018: Improve HTTP/2 support for REST backend
+ * Chg #4953: Also back up files with incomplete metadata
+ * Enh #4795: Display progress bar for `restore --verify`
+ * Enh #4934: Automatically clear removed snapshots from cache
+ * Enh #4944: Print JSON-formatted errors during `restore --json`
+ * Enh #4959: Return exit code 12 for "bad password" errors
+ * Enh #4970: Make timeout for stuck requests customizable
+
+## Details
+
+ * Bugfix #2004: Correctly handle volume names in `backup` command on Windows
+
+   On Windows, when the specified backup target only included the volume name
+   without a trailing slash, for example, `C:`, then restoring the resulting
+   snapshot would result in an error. Note that using `C:\` as backup target worked
+   correctly.
+
+   Specifying volume names is now handled correctly. To restore snapshots created
+   before this bugfix, use the <snapshot>:<subpath> syntax. For example, to restore
+   a snapshot with ID `12345678` that backed up `C:`, use the following command:
+
+   ```
+   restic restore 12345678:/C/C:./ --target output/folder
+   ```
+
+   https://github.com/restic/restic/issues/2004
+   https://github.com/restic/restic/pull/5028
+
+ * Bugfix #4945: Include missing backup error text with `--json`
+
+   Previously, when running a backup with the `--json` option, restic failed to
+   include the actual error message in the output, resulting in `"error": {}` being
+   displayed.
+
+   This has now been fixed, and restic now includes the error text in JSON output.
+
+   https://github.com/restic/restic/issues/4945
+   https://github.com/restic/restic/pull/4946
+
+ * Bugfix #4953: Correctly handle long paths on older Windows versions
+
+   On older Windows versions, like Windows Server 2012, restic 0.17.0 failed to
+   back up files with long paths. This problem has now been resolved.
+
+   https://github.com/restic/restic/issues/4953
+   https://github.com/restic/restic/pull/4954
+
+ * Bugfix #4957: Fix delayed cancellation of certain commands
+
+   Since restic 0.17.0, some commands did not immediately respond to cancellation
+   via Ctrl-C (SIGINT) and continued running for a short period. The most affected
+   commands were `diff`,`find`, `ls`, `stats` and `rewrite`. This is now resolved.
+
+   https://github.com/restic/restic/issues/4957
+   https://github.com/restic/restic/pull/4960
+
+ * Bugfix #4958: Don't ignore metadata-setting errors during restore
+
+   Previously, restic used to ignore errors when setting timestamps, attributes, or
+   file modes during a restore. It now reports those errors, except for permission
+   related errors when running without root privileges.
+
+   https://github.com/restic/restic/pull/4958
+
+ * Bugfix #4969: Correctly restore timestamp for files with resource forks on macOS
+
+   On macOS, timestamps were not restored for files with resource forks. This has
+   now been fixed.
+
+   https://github.com/restic/restic/issues/4969
+   https://github.com/restic/restic/pull/5006
+
+ * Bugfix #4975: Prevent `backup --stdin-from-command` from panicking
+
+   Restic would previously crash if `--stdin-from-command` was specified without
+   providing a command. This issue has now been fixed.
+
+   https://github.com/restic/restic/issues/4975
+   https://github.com/restic/restic/pull/4976
+
+ * Bugfix #4980: Skip extended attribute processing on unsupported Windows volumes
+
+   With restic 0.17.0, backups of certain Windows paths, such as network drives,
+   failed due to errors while fetching extended attributes.
+
+   Restic now skips extended attribute processing for volumes where they are not
+   supported.
+
+   https://github.com/restic/restic/issues/4955
+   https://github.com/restic/restic/issues/4950
+   https://github.com/restic/restic/pull/4980
+   https://github.com/restic/restic/pull/4998
+
+ * Bugfix #5004: Fix spurious "A Required Privilege Is Not Held by the Client" error
+
+   On Windows, creating a backup could sometimes trigger the following error:
+
+   ```
+   error: nodeFromFileInfo [...]: get named security info failed with: a required privilege is not held by the client.
+   ```
+
+   This has now been fixed.
+
+   https://github.com/restic/restic/issues/5004
+   https://github.com/restic/restic/pull/5019
+
+ * Bugfix #5005: Fix rare failures to retry locking a repository
+
+   Restic 0.17.0 could in rare cases fail to retry locking a repository if one of
+   the lock files failed to load, resulting in the error:
+
+   ```
+   unable to create lock in backend: circuit breaker open for file <lock/1234567890>
+   ```
+
+   This issue has now been addressed. The error handling now properly retries the
+   locking operation. In addition, restic waits a few seconds between locking
+   retries to increase chances of successful locking.
+
+   https://github.com/restic/restic/issues/5005
+   https://github.com/restic/restic/pull/5011
+   https://github.com/restic/restic/pull/5012
+
+ * Bugfix #5018: Improve HTTP/2 support for REST backend
+
+   If `rest-server` tried to gracefully shut down an HTTP/2 connection still in use
+   by the client, it could result in the following error:
+
+   ```
+   http2: Transport: cannot retry err [http2: Transport received Server's graceful shutdown GOAWAY] after Request.Body was written; define Request.GetBody to avoid this error
+   ```
+
+   This issue has now been resolved.
+
+   https://github.com/restic/restic/pull/5018
+   https://forum.restic.net/t/receiving-http2-goaway-messages-with-windows-restic-v0-17-0/8367
+
+ * Change #4953: Also back up files with incomplete metadata
+
+   If restic failed to read extended metadata for a file or folder during a backup,
+   then the file or folder was not included in the resulting snapshot. Instead, a
+   warning message was printed along with returning exit code 3 once the backup was
+   finished.
+
+   Now, restic also includes items for which the extended metadata could not be
+   read in a snapshot. The warning message has been updated to:
+
+   ```
+   incomplete metadata for /path/to/file: <details about error>
+   ```
+
+   https://github.com/restic/restic/issues/4953
+   https://github.com/restic/restic/pull/4977
+
+ * Enhancement #4795: Display progress bar for `restore --verify`
+
+   When the `restore` command is run with `--verify`, it now displays a progress
+   bar while the verification step is running. The progress bar is not shown when
+   the `--json` flag is specified.
+
+   https://github.com/restic/restic/issues/4795
+   https://github.com/restic/restic/pull/4989
+
+ * Enhancement #4934: Automatically clear removed snapshots from cache
+
+   Previously, restic only removed snapshots from the cache on the host where the
+   `forget` command was executed. On other hosts that use the same repository, the
+   old snapshots remained in the cache.
+
+   Restic now automatically clears old snapshots from the local cache of the
+   current host.
+
+   https://github.com/restic/restic/issues/4934
+   https://github.com/restic/restic/pull/4981
+
+ * Enhancement #4944: Print JSON-formatted errors during `restore --json`
+
+   Restic used to print any `restore` errors directly to the console as freeform
+   text messages, even when using the `--json` option.
+
+   Now, when `--json` is specified, restic prints them as JSON formatted messages.
+
+   https://github.com/restic/restic/issues/4944
+   https://github.com/restic/restic/pull/4946
+
+ * Enhancement #4959: Return exit code 12 for "bad password" errors
+
+   Restic now returns exit code 12 when it cannot open the repository due to an
+   incorrect password.
+
+   https://github.com/restic/restic/pull/4959
+
+ * Enhancement #4970: Make timeout for stuck requests customizable
+
+   Restic monitors connections to the backend to detect stuck requests. If a
+   request does not return any data within five minutes, restic assumes the request
+   is stuck and retries it. However, for large repositories this timeout might be
+   insufficient to collect a list of all files, causing the following error:
+
+   `List(data) returned error, retrying after 1s: [...]: request timeout`
+
+   It is now possible to increase the timeout using the `--stuck-request-timeout`
+   option.
+
+   https://github.com/restic/restic/issues/4970
+   https://github.com/restic/restic/pull/5014
 
 
 # Changelog for restic 0.17.0 (2024-07-26)

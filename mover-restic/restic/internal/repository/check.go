@@ -4,12 +4,12 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"sort"
 
 	"github.com/klauspost/compress/zstd"
-	"crypto/sha256"
 	"github.com/restic/restic/internal/backend"
 	"github.com/restic/restic/internal/debug"
 	"github.com/restic/restic/internal/errors"
@@ -40,9 +40,9 @@ func (e *partialReadError) Error() string {
 func CheckPack(ctx context.Context, r *Repository, id restic.ID, blobs []restic.Blob, size int64, bufRd *bufio.Reader, dec *zstd.Decoder) error {
 	err := checkPackInner(ctx, r, id, blobs, size, bufRd, dec)
 	if err != nil {
-		if r.Cache != nil {
+		if r.cache != nil {
 			// ignore error as there's not much we can do here
-			_ = r.Cache.Forget(backend.Handle{Type: restic.PackFile, Name: id.String()})
+			_ = r.cache.Forget(backend.Handle{Type: restic.PackFile, Name: id.String()})
 		}
 
 		// retry pack verification to detect transient errors
@@ -95,6 +95,10 @@ func checkPackInner(ctx context.Context, r *Repository, id restic.ID, blobs []re
 
 		it := newPackBlobIterator(id, newBufReader(bufRd), 0, blobs, r.Key(), dec)
 		for {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+
 			val, err := it.Next()
 			if err == errPackEOF {
 				break

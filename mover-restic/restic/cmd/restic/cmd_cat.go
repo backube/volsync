@@ -12,10 +12,13 @@ import (
 	"github.com/restic/restic/internal/restic"
 )
 
-var cmdCat = &cobra.Command{
-	Use:   "cat [flags] [masterkey|config|pack ID|blob ID|snapshot ID|index ID|key ID|lock ID|tree snapshot:subfolder]",
-	Short: "Print internal objects to stdout",
-	Long: `
+var catAllowedCmds = []string{"config", "index", "snapshot", "key", "masterkey", "lock", "pack", "blob", "tree"}
+
+func newCatCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "cat [flags] [masterkey|config|pack ID|blob ID|snapshot ID|index ID|key ID|lock ID|tree snapshot:subfolder]",
+		Short: "Print internal objects to stdout",
+		Long: `
 The "cat" command is used to print internal objects to stdout.
 
 EXIT STATUS
@@ -25,33 +28,32 @@ Exit status is 0 if the command was successful.
 Exit status is 1 if there was any error.
 Exit status is 10 if the repository does not exist.
 Exit status is 11 if the repository is already locked.
+Exit status is 12 if the password is incorrect.
 `,
-	DisableAutoGenTag: true,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return runCat(cmd.Context(), globalOptions, args)
-	},
-}
-
-func init() {
-	cmdRoot.AddCommand(cmdCat)
+		GroupID:           cmdGroupDefault,
+		DisableAutoGenTag: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runCat(cmd.Context(), globalOptions, args)
+		},
+		ValidArgs: catAllowedCmds,
+	}
+	return cmd
 }
 
 func validateCatArgs(args []string) error {
-	var allowedCmds = []string{"config", "index", "snapshot", "key", "masterkey", "lock", "pack", "blob", "tree"}
-
 	if len(args) < 1 {
 		return errors.Fatal("type not specified")
 	}
 
 	validType := false
-	for _, v := range allowedCmds {
+	for _, v := range catAllowedCmds {
 		if v == args[0] {
 			validType = true
 			break
 		}
 	}
 	if !validType {
-		return errors.Fatalf("invalid type %q, must be one of [%s]", args[0], strings.Join(allowedCmds, "|"))
+		return errors.Fatalf("invalid type %q, must be one of [%s]", args[0], strings.Join(catAllowedCmds, "|"))
 	}
 
 	if args[0] != "masterkey" && args[0] != "config" && len(args) != 2 {

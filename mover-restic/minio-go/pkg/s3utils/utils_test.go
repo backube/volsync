@@ -20,121 +20,65 @@ package s3utils
 import (
 	"errors"
 	"net/url"
-	"reflect"
 	"testing"
 )
 
 // Tests get region from host URL.
 func TestGetRegionFromURL(t *testing.T) {
 	testCases := []struct {
-		u              url.URL
+		u              string
 		expectedRegion string
 	}{
-		{
-			u:              url.URL{Host: "storage.googleapis.com"},
-			expectedRegion: "",
-		},
-		{
-			u:              url.URL{Host: "s3.cn-north-1.amazonaws.com.cn"},
-			expectedRegion: "cn-north-1",
-		},
-		{
-			u:              url.URL{Host: "s3.dualstack.cn-north-1.amazonaws.com.cn"},
-			expectedRegion: "cn-north-1",
-		},
-		{
-			u:              url.URL{Host: "s3.cn-northwest-1.amazonaws.com.cn"},
-			expectedRegion: "cn-northwest-1",
-		},
-		{
-			u:              url.URL{Host: "s3.dualstack.cn-northwest-1.amazonaws.com.cn"},
-			expectedRegion: "cn-northwest-1",
-		},
-		{
-			u:              url.URL{Host: "s3-fips-us-gov-west-1.amazonaws.com"},
-			expectedRegion: "us-gov-west-1",
-		},
-		{
-			u:              url.URL{Host: "s3-fips.us-gov-west-1.amazonaws.com"},
-			expectedRegion: "us-gov-west-1",
-		},
-		{
-			u:              url.URL{Host: "s3-fips.us-gov-east-1.amazonaws.com"},
-			expectedRegion: "us-gov-east-1",
-		},
-		{
-			u:              url.URL{Host: "s3-us-gov-west-1.amazonaws.com"},
-			expectedRegion: "us-gov-west-1",
-		},
-		{
-			u:              url.URL{Host: "192.168.1.1"},
-			expectedRegion: "",
-		},
-		{
-			u:              url.URL{Host: "s3-eu-west-1.amazonaws.com"},
-			expectedRegion: "eu-west-1",
-		},
-		{
-			u:              url.URL{Host: "s3.eu-west-1.amazonaws.com"},
-			expectedRegion: "eu-west-1",
-		},
-		{
-			u:              url.URL{Host: "s3.dualstack.eu-west-1.amazonaws.com"},
-			expectedRegion: "eu-west-1",
-		},
-		{
-			u:              url.URL{Host: "s3.amazonaws.com"},
-			expectedRegion: "",
-		},
-		{
-			u:              url.URL{Host: "s3-external-1.amazonaws.com"},
-			expectedRegion: "",
-		},
-		{
-			u: url.URL{
-				Host: "s3.kubernetesfrontendlb-caf78da2b1f7516c.elb.us-west-2.amazonaws.com",
-			},
-			expectedRegion: "",
-		},
-		{
-			u: url.URL{
-				Host: "s3.kubernetesfrontendlb-caf78da2b1f7516c.elb.amazonaws.com",
-			},
-			expectedRegion: "",
-		},
-		{
-			u: url.URL{
-				Host: "s3.kubernetesfrontendlb-caf78da2b1f7516c.elb.amazonaws.com.cn",
-			},
-		},
-		{
-			u: url.URL{
-				Host: "bucket.vpce-1a2b3c4d-5e6f.s3.us-east-1.vpce.amazonaws.com",
-			},
-			expectedRegion: "us-east-1",
-		},
-		{
-			u: url.URL{
-				Host: "accesspoint.vpce-1a2b3c4d-5e6f.s3.us-east-1.vpce.amazonaws.com",
-			},
-			expectedRegion: "us-east-1",
-		},
-		{
-			u: url.URL{
-				Host: "s3-fips.us-east-1.amazonaws.com",
-			},
-			expectedRegion: "us-east-1",
-		},
-		{
-			u: url.URL{
-				Host: "s3-fips.dualstack.us-west-1.amazonaws.com",
-			},
-			expectedRegion: "us-west-1",
-		},
+		{u: "storage.googleapis.com", expectedRegion: ""},
+		{u: "s3.cn-north-1.amazonaws.com.cn", expectedRegion: "cn-north-1"},
+		{u: "s3.dualstack.cn-north-1.amazonaws.com.cn", expectedRegion: "cn-north-1"},
+		{u: "s3.cn-northwest-1.amazonaws.com.cn", expectedRegion: "cn-northwest-1"},
+		{u: "s3.dualstack.cn-northwest-1.amazonaws.com.cn", expectedRegion: "cn-northwest-1"},
+		{u: "s3-fips-us-gov-west-1.amazonaws.com", expectedRegion: "us-gov-west-1"},
+		{u: "s3-fips.us-gov-west-1.amazonaws.com", expectedRegion: "us-gov-west-1"},
+		{u: "s3-fips.us-gov-east-1.amazonaws.com", expectedRegion: "us-gov-east-1"},
+		{u: "s3-us-gov-west-1.amazonaws.com", expectedRegion: "us-gov-west-1"},
+		{u: "192.168.1.1", expectedRegion: ""},
+		{u: "s3-eu-west-1.amazonaws.com", expectedRegion: "eu-west-1"},
+		{u: "s3.eu-west-1.amazonaws.com", expectedRegion: "eu-west-1"},
+		{u: "s3.dualstack.eu-west-1.amazonaws.com", expectedRegion: "eu-west-1"},
+		{u: "s3.amazonaws.com", expectedRegion: ""},
+		{u: "s3-external-1.amazonaws.com", expectedRegion: ""},
+		{u: "s3.kubernetesfrontendlb-caf78da2b1f7516c.elb.us-west-2.amazonaws.com", expectedRegion: ""},
+		{u: "s3.kubernetesfrontendlb-caf78da2b1f7516c.elb.amazonaws.com", expectedRegion: ""},
+		{u: "s3.kubernetesfrontendlb-caf78da2b1f7516c.elb.amazonaws.com.cn", expectedRegion: ""},
+		{u: "bucket.vpce-1a2b3c4d-5e6f.s3.us-east-1.vpce.amazonaws.com", expectedRegion: "us-east-1"},
+		{u: "accesspoint.vpce-1a2b3c4d-5e6f.s3.us-east-1.vpce.amazonaws.com", expectedRegion: "us-east-1"},
+		{u: "s3-fips.us-east-1.amazonaws.com", expectedRegion: "us-east-1"},
+		{u: "s3-fips.dualstack.us-west-1.amazonaws.com", expectedRegion: "us-west-1"},
+
+		// Test cases with port numbers.
+		{u: "storage.googleapis.com:80", expectedRegion: ""},
+		{u: "s3.cn-north-1.amazonaws.com.cn:80", expectedRegion: "cn-north-1"},
+		{u: "s3.dualstack.cn-north-1.amazonaws.com.cn:80", expectedRegion: "cn-north-1"},
+		{u: "s3.cn-northwest-1.amazonaws.com.cn:80", expectedRegion: "cn-northwest-1"},
+		{u: "s3.dualstack.cn-northwest-1.amazonaws.com.cn:80", expectedRegion: "cn-northwest-1"},
+		{u: "s3-fips-us-gov-west-1.amazonaws.com:80", expectedRegion: "us-gov-west-1"},
+		{u: "s3-fips.us-gov-west-1.amazonaws.com:80", expectedRegion: "us-gov-west-1"},
+		{u: "s3-fips.us-gov-east-1.amazonaws.com:80", expectedRegion: "us-gov-east-1"},
+		{u: "s3-us-gov-west-1.amazonaws.com:80", expectedRegion: "us-gov-west-1"},
+		{u: "192.168.1.1:80", expectedRegion: ""},
+		{u: "s3-eu-west-1.amazonaws.com:80", expectedRegion: "eu-west-1"},
+		{u: "s3.eu-west-1.amazonaws.com:80", expectedRegion: "eu-west-1"},
+		{u: "s3.dualstack.eu-west-1.amazonaws.com:80", expectedRegion: "eu-west-1"},
+		{u: "s3.amazonaws.com:80", expectedRegion: ""},
+		{u: "s3-external-1.amazonaws.com:80", expectedRegion: ""},
+		{u: "s3.kubernetesfrontendlb-caf78da2b1f7516c.elb.us-west-2.amazonaws.com:80", expectedRegion: ""},
+		{u: "s3.kubernetesfrontendlb-caf78da2b1f7516c.elb.amazonaws.com:80", expectedRegion: ""},
+		{u: "s3.kubernetesfrontendlb-caf78da2b1f7516c.elb.amazonaws.com.cn:80", expectedRegion: ""},
+		{u: "bucket.vpce-1a2b3c4d-5e6f.s3.us-east-1.vpce.amazonaws.com:80", expectedRegion: "us-east-1"},
+		{u: "accesspoint.vpce-1a2b3c4d-5e6f.s3.us-east-1.vpce.amazonaws.com:80", expectedRegion: "us-east-1"},
+		{u: "s3-fips.us-east-1.amazonaws.com:80", expectedRegion: "us-east-1"},
+		{u: "s3-fips.dualstack.us-west-1.amazonaws.com:80", expectedRegion: "us-west-1"},
 	}
 
 	for i, testCase := range testCases {
-		region := GetRegionFromURL(testCase.u)
+		region := GetRegionFromURL(url.URL{Host: testCase.u})
 		if testCase.expectedRegion != region {
 			t.Errorf("Test %d: Expected region %s, got %s", i+1, testCase.expectedRegion, region)
 		}
@@ -284,6 +228,8 @@ func TestIsGoogleEndpoint(t *testing.T) {
 		// valid inputs.
 		{"http://storage.googleapis.com", true},
 		{"https://storage.googleapis.com", true},
+		{"http://storage.googleapis.com:80", true},
+		{"https://storage.googleapis.com:443", true},
 	}
 
 	for i, testCase := range testCases {
@@ -348,81 +294,6 @@ func TestQueryEncode(t *testing.T) {
 		if testCase.result != result {
 			t.Errorf("Test %d: Expected queryEncode result to be \"%s\", but found it to be \"%s\" instead", i+1, testCase.result, result)
 		}
-	}
-}
-
-// Tests tag decode to map
-func TestTagDecode(t *testing.T) {
-	testCases := []struct {
-		// canonical input
-		canonicalInput string
-
-		// Expected result.
-		resultMap map[string]string
-	}{
-		{"k=thisisthe%25url", map[string]string{"k": "thisisthe%url"}},
-		{"k=%E6%9C%AC%E8%AA%9E", map[string]string{"k": "本語"}},
-		{"k=%E6%9C%AC%E8%AA%9E.1", map[string]string{"k": "本語.1"}},
-		{"k=%3E123", map[string]string{"k": ">123"}},
-		{"k=myurl%23link", map[string]string{"k": "myurl#link"}},
-		{"k=space%20in%20url", map[string]string{"k": "space in url"}},
-		{"k=url%2Bpath", map[string]string{"k": "url+path"}},
-		{"k=url%2Fpath", map[string]string{"k": "url/path"}},
-	}
-
-	for _, testCase := range testCases {
-		testCase := testCase
-		t.Run("", func(t *testing.T) {
-			gotResult := TagDecode(testCase.canonicalInput)
-			if !reflect.DeepEqual(testCase.resultMap, gotResult) {
-				t.Errorf("Expected %s, got %s", testCase.resultMap, gotResult)
-			}
-		})
-	}
-}
-
-// Tests tag encode function for user tags.
-func TestTagEncode(t *testing.T) {
-	testCases := []struct {
-		// Input.
-		inputMap map[string]string
-		// Expected result.
-		result string
-	}{
-		{map[string]string{
-			"k": "thisisthe%url",
-		}, "k=thisisthe%25url"},
-		{map[string]string{
-			"k": "本語",
-		}, "k=%E6%9C%AC%E8%AA%9E"},
-		{map[string]string{
-			"k": "本語.1",
-		}, "k=%E6%9C%AC%E8%AA%9E.1"},
-		{map[string]string{
-			"k": ">123",
-		}, "k=%3E123"},
-		{map[string]string{
-			"k": "myurl#link",
-		}, "k=myurl%23link"},
-		{map[string]string{
-			"k": "space in url",
-		}, "k=space%20in%20url"},
-		{map[string]string{
-			"k": "url+path",
-		}, "k=url%2Bpath"},
-		{map[string]string{
-			"k": "url/path",
-		}, "k=url%2Fpath"},
-	}
-
-	for _, testCase := range testCases {
-		testCase := testCase
-		t.Run("", func(t *testing.T) {
-			gotResult := TagEncode(testCase.inputMap)
-			if testCase.result != gotResult {
-				t.Errorf("Expected %s, got %s", testCase.result, gotResult)
-			}
-		})
 	}
 }
 
@@ -540,4 +411,49 @@ func TestIsValidBucketNameStrict(t *testing.T) {
 		}
 
 	}
+}
+
+func TestIsAmazonPrivateLinkEndpoint(t *testing.T) {
+	testCases := []struct {
+		url string
+		// Expected result.
+		result bool
+	}{
+		{"https://192.168.1.1", false},
+		{"192.168.1.1", false},
+		{"http://storage.googleapis.com", false},
+		{"https://storage.googleapis.com", false},
+		{"storage.googleapis.com", false},
+		{"s3.amazonaws.com", false},
+		{"https://amazons3.amazonaws.com", false},
+		{"-192.168.1.1", false},
+		{"260.192.1.1", false},
+		{"https://s3-.amazonaws.com", false},
+		{"https://s3..amazonaws.com", false},
+		{"https://s3.dualstack.us-west-1.amazonaws.com.cn", false},
+		{"https://s3..us-west-1.amazonaws.com.cn", false},
+		{"https://s3.amazonaws.com", false},
+		{"https://s3-external-1.amazonaws.com", false},
+		{"https://s3.cn-north-1.amazonaws.com.cn", false},
+		{"https://s3-us-west-1.amazonaws.com", false},
+		{"https://s3.us-west-1.amazonaws.com", false},
+		{"https://s3.dualstack.us-west-1.amazonaws.com", false},
+		// valid inputs.
+		{"https://bucket.vpce-1a2b3c4d-5e6f.s3.us-east-1.vpce.amazonaws.com", true},
+		{"https://accesspoint.vpce-1a2b3c4d-5e6f.s3.us-east-1.vpce.amazonaws.com", true},
+		{"https://bucket.vpce-1a2b3c4d-5e6f.s3.us-east-1.vpce.amazonaws.com:443", true},
+		{"https://accesspoint.vpce-1a2b3c4d-5e6f.s3.us-east-1.vpce.amazonaws.com:443", true},
+	}
+
+	for i, testCase := range testCases {
+		u, err := url.Parse(testCase.url)
+		if err != nil {
+			t.Errorf("Test %d: Expected to pass, but failed with: <ERROR> %s", i+1, err)
+		}
+		result := IsAmazonPrivateLinkEndpoint(*u)
+		if testCase.result != result {
+			t.Errorf("Test %d: Expected IsAmazonPrivateLinkEndpoint to be '%v' for input \"%s\", but found it to be '%v' instead", i+1, testCase.result, testCase.url, result)
+		}
+	}
+
 }

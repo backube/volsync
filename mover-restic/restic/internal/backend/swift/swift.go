@@ -72,10 +72,7 @@ func Open(ctx context.Context, cfg Config, rt http.RoundTripper) (backend.Backen
 		connections: cfg.Connections,
 		container:   cfg.Container,
 		prefix:      cfg.Prefix,
-		Layout: &layout.DefaultLayout{
-			Path: cfg.Prefix,
-			Join: path.Join,
-		},
+		Layout:      layout.NewDefaultLayout(cfg.Prefix, path.Join),
 	}
 
 	// Authenticate if needed
@@ -114,18 +111,16 @@ func (be *beSwift) createContainer(ctx context.Context, policy string) error {
 	return be.conn.ContainerCreate(ctx, be.container, h)
 }
 
-func (be *beSwift) Connections() uint {
-	return be.connections
+func (be *beSwift) Properties() backend.Properties {
+	return backend.Properties{
+		Connections:      be.connections,
+		HasAtomicReplace: true,
+	}
 }
 
 // Hasher may return a hash function for calculating a content hash for the backend
 func (be *beSwift) Hasher() hash.Hash {
 	return md5.New()
-}
-
-// HasAtomicReplace returns whether Save() can atomically replace files
-func (be *beSwift) HasAtomicReplace() bool {
-	return true
 }
 
 // Load runs fn with a reader that yields the contents of the file at h at the
@@ -272,3 +267,9 @@ func (be *beSwift) Delete(ctx context.Context) error {
 
 // Close does nothing
 func (be *beSwift) Close() error { return nil }
+
+// Warmup not implemented
+func (be *beSwift) Warmup(_ context.Context, _ []backend.Handle) ([]backend.Handle, error) {
+	return []backend.Handle{}, nil
+}
+func (be *beSwift) WarmupWait(_ context.Context, _ []backend.Handle) error { return nil }

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Restic updated to v0.18.0
 - Syncthing updated to v1.29.3
 
 ## [v0.12.1]

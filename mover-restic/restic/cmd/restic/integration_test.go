@@ -35,7 +35,7 @@ func TestCheckRestoreNoLock(t *testing.T) {
 	testRunCheck(t, env.gopts)
 
 	snapshotIDs := testListSnapshots(t, env.gopts, 4)
-	testRunRestore(t, env.gopts, filepath.Join(env.base, "restore"), snapshotIDs[0])
+	testRunRestore(t, env.gopts, filepath.Join(env.base, "restore"), snapshotIDs[0].String())
 }
 
 // a listOnceBackend only allows listing once per filetype
@@ -80,7 +80,7 @@ func TestListOnce(t *testing.T) {
 	defer cleanup()
 
 	env.gopts.backendTestHook = func(r backend.Backend) (backend.Backend, error) {
-		return newListOnceBackend(r), nil
+		return newOrderedListOnceBackend(r), nil
 	}
 	pruneOpts := PruneOptions{MaxUnused: "0"}
 	checkOpts := CheckOptions{ReadData: true, CheckUnused: true}
@@ -88,7 +88,8 @@ func TestListOnce(t *testing.T) {
 	createPrunableRepo(t, env)
 	testRunPrune(t, env.gopts, pruneOpts)
 	rtest.OK(t, withTermStatus(env.gopts, func(ctx context.Context, term *termstatus.Terminal) error {
-		return runCheck(context.TODO(), checkOpts, env.gopts, nil, term)
+		_, err := runCheck(context.TODO(), checkOpts, env.gopts, nil, term)
+		return err
 	}))
 	rtest.OK(t, withTermStatus(env.gopts, func(ctx context.Context, term *termstatus.Terminal) error {
 		return runRebuildIndex(context.TODO(), RepairIndexOptions{}, env.gopts, term)
@@ -148,7 +149,7 @@ func TestFindListOnce(t *testing.T) {
 	defer cleanup()
 
 	env.gopts.backendTestHook = func(r backend.Backend) (backend.Backend, error) {
-		return newListOnceBackend(r), nil
+		return newOrderedListOnceBackend(r), nil
 	}
 
 	testSetupBackupData(t, env)
@@ -176,4 +177,48 @@ func TestFindListOnce(t *testing.T) {
 
 	// the snapshots can only be listed once, if both lists match then the there has been only a single List() call
 	rtest.Equals(t, thirdSnapshot, snapshotIDs)
+}
+
+type failConfigOnceBackend struct {
+	backend.Backend
+	failedOnce bool
+}
+
+func (be *failConfigOnceBackend) Load(ctx context.Context, h backend.Handle,
+	length int, offset int64, fn func(rd io.Reader) error) error {
+
+	if !be.failedOnce && h.Type == restic.ConfigFile {
+		be.failedOnce = true
+		return fmt.Errorf("oops")
+	}
+	return be.Backend.Load(ctx, h, length, offset, fn)
+}
+
+func (be *failConfigOnceBackend) Stat(ctx context.Context, h backend.Handle) (backend.FileInfo, error) {
+	if !be.failedOnce && h.Type == restic.ConfigFile {
+		be.failedOnce = true
+		return backend.FileInfo{}, fmt.Errorf("oops")
+	}
+	return be.Backend.Stat(ctx, h)
+}
+
+func TestBackendRetryConfig(t *testing.T) {
+	env, cleanup := withTestEnvironment(t)
+	defer cleanup()
+
+	var wrappedBackend *failConfigOnceBackend
+	// cause config loading to fail once
+	env.gopts.backendInnerTestHook = func(r backend.Backend) (backend.Backend, error) {
+		wrappedBackend = &failConfigOnceBackend{Backend: r}
+		return wrappedBackend, nil
+	}
+
+	testSetupBackupData(t, env)
+	rtest.Assert(t, wrappedBackend != nil, "backend not wrapped on init")
+	rtest.Assert(t, wrappedBackend != nil && wrappedBackend.failedOnce, "config loading was not retried on init")
+	wrappedBackend = nil
+
+	testRunBackup(t, "", []string{filepath.Join(env.testdata, "0", "0", "9")}, BackupOptions{}, env.gopts)
+	rtest.Assert(t, wrappedBackend != nil, "backend not wrapped on backup")
+	rtest.Assert(t, wrappedBackend != nil && wrappedBackend.failedOnce, "config loading was not retried on init")
 }

@@ -13,12 +13,15 @@ import (
 	"github.com/restic/restic/internal/restic"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
-var cmdDump = &cobra.Command{
-	Use:   "dump [flags] snapshotID file",
-	Short: "Print a backed-up file to stdout",
-	Long: `
+func newDumpCommand() *cobra.Command {
+	var opts DumpOptions
+	cmd := &cobra.Command{
+		Use:   "dump [flags] snapshotID file",
+		Short: "Print a backed-up file to stdout",
+		Long: `
 The "dump" command extracts files from a snapshot from the repository. If a
 single file is selected, it prints its contents to stdout. Folders are output
 as a tar (default) or zip file containing the contents of the specified folder.
@@ -38,11 +41,17 @@ Exit status is 0 if the command was successful.
 Exit status is 1 if there was any error.
 Exit status is 10 if the repository does not exist.
 Exit status is 11 if the repository is already locked.
+Exit status is 12 if the password is incorrect.
 `,
-	DisableAutoGenTag: true,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return runDump(cmd.Context(), dumpOptions, globalOptions, args)
-	},
+		GroupID:           cmdGroupDefault,
+		DisableAutoGenTag: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runDump(cmd.Context(), opts, globalOptions, args)
+		},
+	}
+
+	opts.AddFlags(cmd.Flags())
+	return cmd
 }
 
 // DumpOptions collects all options for the dump command.
@@ -52,15 +61,10 @@ type DumpOptions struct {
 	Target  string
 }
 
-var dumpOptions DumpOptions
-
-func init() {
-	cmdRoot.AddCommand(cmdDump)
-
-	flags := cmdDump.Flags()
-	initSingleSnapshotFilter(flags, &dumpOptions.SnapshotFilter)
-	flags.StringVarP(&dumpOptions.Archive, "archive", "a", "tar", "set archive `format` as \"tar\" or \"zip\"")
-	flags.StringVarP(&dumpOptions.Target, "target", "t", "", "write the output to target `path`")
+func (opts *DumpOptions) AddFlags(f *pflag.FlagSet) {
+	initSingleSnapshotFilter(f, &opts.SnapshotFilter)
+	f.StringVarP(&opts.Archive, "archive", "a", "tar", "set archive `format` as \"tar\" or \"zip\"")
+	f.StringVarP(&opts.Target, "target", "t", "", "write the output to target `path`")
 }
 
 func splitPath(p string) []string {
@@ -85,19 +89,23 @@ func printFromTree(ctx context.Context, tree *restic.Tree, repo restic.BlobLoade
 	item := filepath.Join(prefix, pathComponents[0])
 	l := len(pathComponents)
 	for _, node := range tree.Nodes {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
 		// If dumping something in the highest level it will just take the
 		// first item it finds and dump that according to the switch case below.
 		if node.Name == pathComponents[0] {
 			switch {
-			case l == 1 && dump.IsFile(node):
+			case l == 1 && node.Type == restic.NodeTypeFile:
 				return d.WriteNode(ctx, node)
-			case l > 1 && dump.IsDir(node):
+			case l > 1 && node.Type == restic.NodeTypeDir:
 				subtree, err := restic.LoadTree(ctx, repo, *node.Subtree)
 				if err != nil {
 					return errors.Wrapf(err, "cannot load subtree for %q", item)
 				}
 				return printFromTree(ctx, subtree, repo, item, pathComponents[1:], d, canWriteArchiveFunc)
-			case dump.IsDir(node):
+			case node.Type == restic.NodeTypeDir:
 				if err := canWriteArchiveFunc(); err != nil {
 					return err
 				}
@@ -108,7 +116,7 @@ func printFromTree(ctx context.Context, tree *restic.Tree, repo restic.BlobLoade
 				return d.DumpTree(ctx, subtree, item)
 			case l > 1:
 				return fmt.Errorf("%q should be a dir, but is a %q", item, node.Type)
-			case !dump.IsFile(node):
+			case node.Type != restic.NodeTypeFile:
 				return fmt.Errorf("%q should be a file, but is a %q", item, node.Type)
 			}
 		}

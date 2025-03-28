@@ -28,7 +28,7 @@ type WalkVisitor struct {
 	// was returned. This function is mandatory
 	ProcessNode WalkFunc
 	// Optional callback
-	LeaveDir func(path string)
+	LeaveDir func(path string) error
 }
 
 // Walk calls walkFn recursively for each node in root. If walkFn returns an
@@ -57,13 +57,17 @@ func walk(ctx context.Context, repo restic.BlobLoader, prefix string, parentTree
 	})
 
 	for _, node := range tree.Nodes {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
 		p := path.Join(prefix, node.Name)
 
-		if node.Type == "" {
+		if node.Type == restic.NodeTypeInvalid {
 			return errors.Errorf("node type is empty for node %q", node.Name)
 		}
 
-		if node.Type != "dir" {
+		if node.Type != restic.NodeTypeDir {
 			err := visitor.ProcessNode(parentTreeID, p, node, nil)
 			if err != nil {
 				if err == ErrSkipNode {
@@ -96,7 +100,7 @@ func walk(ctx context.Context, repo restic.BlobLoader, prefix string, parentTree
 	}
 
 	if visitor.LeaveDir != nil {
-		visitor.LeaveDir(prefix)
+		return visitor.LeaveDir(prefix)
 	}
 
 	return nil

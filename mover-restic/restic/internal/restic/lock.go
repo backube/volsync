@@ -7,7 +7,6 @@ import (
 	"os/signal"
 	"os/user"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -19,7 +18,7 @@ import (
 
 // UnlockCancelDelay bounds the duration how long lock cleanup operations will wait
 // if the passed in context was canceled.
-const UnlockCancelDelay time.Duration = 1 * time.Minute
+const UnlockCancelDelay = 1 * time.Minute
 
 // Lock represents a process locking the repository for an operation.
 //
@@ -39,7 +38,7 @@ type Lock struct {
 	UID       uint32    `json:"uid,omitempty"`
 	GID       uint32    `json:"gid,omitempty"`
 
-	repo   Unpacked
+	repo   Unpacked[FileType]
 	lockID *ID
 }
 
@@ -87,33 +86,27 @@ func IsInvalidLock(err error) bool {
 
 var ErrRemovedLock = errors.New("lock file was removed in the meantime")
 
-// NewLock returns a new, non-exclusive lock for the repository. If an
-// exclusive lock is already held by another process, it returns an error
-// that satisfies IsAlreadyLocked.
-func NewLock(ctx context.Context, repo Unpacked) (*Lock, error) {
-	return newLock(ctx, repo, false)
-}
-
-// NewExclusiveLock returns a new, exclusive lock for the repository. If
-// another lock (normal and exclusive) is already held by another process,
-// it returns an error that satisfies IsAlreadyLocked.
-func NewExclusiveLock(ctx context.Context, repo Unpacked) (*Lock, error) {
-	return newLock(ctx, repo, true)
-}
-
 var waitBeforeLockCheck = 200 * time.Millisecond
+
+// delay increases by factor 2 on each retry
+var initialWaitBetweenLockRetries = 5 * time.Second
 
 // TestSetLockTimeout can be used to reduce the lock wait timeout for tests.
 func TestSetLockTimeout(t testing.TB, d time.Duration) {
 	t.Logf("setting lock timeout to %v", d)
 	waitBeforeLockCheck = d
+	initialWaitBetweenLockRetries = d
 }
 
-func newLock(ctx context.Context, repo Unpacked, excl bool) (*Lock, error) {
+// NewLock returns a new lock for the repository. If an
+// exclusive lock is already held by another process, it returns an error
+// that satisfies IsAlreadyLocked. If the new lock is exclude, then other
+// non-exclusive locks also result in an IsAlreadyLocked error.
+func NewLock(ctx context.Context, repo Unpacked[FileType], exclusive bool) (*Lock, error) {
 	lock := &Lock{
 		Time:      time.Now(),
 		PID:       os.Getpid(),
-		Exclusive: excl,
+		Exclusive: exclusive,
 		repo:      repo,
 	}
 
@@ -170,11 +163,20 @@ func (l *Lock) checkForOtherLocks(ctx context.Context) error {
 	if l.lockID != nil {
 		checkedIDs.Insert(*l.lockID)
 	}
+	delay := initialWaitBetweenLockRetries
 	// retry locking a few times
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 4; i++ {
+		if i != 0 {
+			// sleep between retries to give backend some time to settle
+			if err := cancelableDelay(ctx, delay); err != nil {
+				return err
+			}
+			delay *= 2
+		}
+
 		// Store updates in new IDSet to prevent data races
 		var m sync.Mutex
-		newCheckedIDs := NewIDSet(checkedIDs.List()...)
+		newCheckedIDs := checkedIDs.Clone()
 		err = ForAllLocks(ctx, l.repo, checkedIDs, func(id ID, lock *Lock, err error) error {
 			if err != nil {
 				// if we cannot load a lock then it is unclear whether it can be ignored
@@ -211,6 +213,18 @@ func (l *Lock) checkForOtherLocks(ctx context.Context) error {
 		return &invalidLockError{err}
 	}
 	return err
+}
+
+func cancelableDelay(ctx context.Context, delay time.Duration) error {
+	// delay next try a bit
+	timer := time.NewTimer(delay)
+	select {
+	case <-ctx.Done():
+		timer.Stop()
+		return ctx.Err()
+	case <-timer.C:
+	}
+	return nil
 }
 
 // createLock acquires the lock by creating a file in the repository.
@@ -417,42 +431,6 @@ func LoadLock(ctx context.Context, repo LoaderUnpacked, id ID) (*Lock, error) {
 	lock.lockID = &id
 
 	return lock, nil
-}
-
-// RemoveStaleLocks deletes all locks detected as stale from the repository.
-func RemoveStaleLocks(ctx context.Context, repo Unpacked) (uint, error) {
-	var processed uint
-	err := ForAllLocks(ctx, repo, nil, func(id ID, lock *Lock, err error) error {
-		if err != nil {
-			// ignore locks that cannot be loaded
-			debug.Log("ignore lock %v: %v", id, err)
-			return nil
-		}
-
-		if lock.Stale() {
-			err = repo.RemoveUnpacked(ctx, LockFile, id)
-			if err == nil {
-				processed++
-			}
-			return err
-		}
-
-		return nil
-	})
-	return processed, err
-}
-
-// RemoveAllLocks removes all locks forcefully.
-func RemoveAllLocks(ctx context.Context, repo Unpacked) (uint, error) {
-	var processed uint32
-	err := ParallelList(ctx, repo, LockFile, repo.Connections(), func(ctx context.Context, id ID, _ int64) error {
-		err := repo.RemoveUnpacked(ctx, LockFile, id)
-		if err == nil {
-			atomic.AddUint32(&processed, 1)
-		}
-		return err
-	})
-	return uint(processed), err
 }
 
 // ForAllLocks reads all locks in parallel and calls the given callback.

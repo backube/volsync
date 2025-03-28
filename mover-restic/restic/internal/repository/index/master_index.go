@@ -153,7 +153,12 @@ func (mi *MasterIndex) Insert(idx *Index) {
 }
 
 // StorePack remembers the id and pack in the index.
-func (mi *MasterIndex) StorePack(id restic.ID, blobs []restic.Blob) {
+func (mi *MasterIndex) StorePack(ctx context.Context, id restic.ID, blobs []restic.Blob, r restic.SaverUnpacked[restic.FileType]) error {
+	mi.storePack(id, blobs)
+	return mi.saveFullIndex(ctx, r)
+}
+
+func (mi *MasterIndex) storePack(id restic.ID, blobs []restic.Blob) {
 	mi.idxMutex.Lock()
 	defer mi.idxMutex.Unlock()
 
@@ -206,7 +211,7 @@ func (mi *MasterIndex) finalizeFullIndexes() []*Index {
 			continue
 		}
 
-		if IndexFull(idx) {
+		if Full(idx) {
 			debug.Log("index %p is full", idx)
 			idx.Finalize()
 			list = append(list, idx)
@@ -265,7 +270,7 @@ func (mi *MasterIndex) MergeFinalIndexes() error {
 	return nil
 }
 
-func (mi *MasterIndex) Load(ctx context.Context, r restic.ListerLoaderUnpacked, p *progress.Counter, cb func(id restic.ID, idx *Index, oldFormat bool, err error) error) error {
+func (mi *MasterIndex) Load(ctx context.Context, r restic.ListerLoaderUnpacked, p *progress.Counter, cb func(id restic.ID, idx *Index, err error) error) error {
 	indexList, err := restic.MemorizeList(ctx, r, restic.IndexFile)
 	if err != nil {
 		return err
@@ -284,12 +289,12 @@ func (mi *MasterIndex) Load(ctx context.Context, r restic.ListerLoaderUnpacked, 
 		defer p.Done()
 	}
 
-	err = ForAllIndexes(ctx, indexList, r, func(id restic.ID, idx *Index, oldFormat bool, err error) error {
+	err = ForAllIndexes(ctx, indexList, r, func(id restic.ID, idx *Index, err error) error {
 		if p != nil {
 			p.Add(1)
 		}
 		if cb != nil {
-			err = cb(id, idx, oldFormat, err)
+			err = cb(id, idx, err)
 		}
 		if err != nil {
 			return err
@@ -321,7 +326,7 @@ type MasterIndexRewriteOpts struct {
 // This is used by repair index to only rewrite and delete the old indexes.
 //
 // Must not be called concurrently to any other MasterIndex operation.
-func (mi *MasterIndex) Rewrite(ctx context.Context, repo restic.Unpacked, excludePacks restic.IDSet, oldIndexes restic.IDSet, extraObsolete restic.IDs, opts MasterIndexRewriteOpts) error {
+func (mi *MasterIndex) Rewrite(ctx context.Context, repo restic.Unpacked[restic.FileType], excludePacks restic.IDSet, oldIndexes restic.IDSet, extraObsolete restic.IDs, opts MasterIndexRewriteOpts) error {
 	for _, idx := range mi.idx {
 		if !idx.Final() {
 			panic("internal error - index must be saved before calling MasterIndex.Rewrite")
@@ -347,6 +352,9 @@ func (mi *MasterIndex) Rewrite(ctx context.Context, repo restic.Unpacked, exclud
 
 	// copy excludePacks to prevent unintended sideeffects
 	excludePacks = excludePacks.Clone()
+	if excludePacks == nil {
+		excludePacks = restic.NewIDSet()
+	}
 	debug.Log("start rebuilding index of %d indexes, excludePacks: %v", len(indexes), excludePacks)
 	wg, wgCtx := errgroup.WithContext(ctx)
 
@@ -365,8 +373,7 @@ func (mi *MasterIndex) Rewrite(ctx context.Context, repo restic.Unpacked, exclud
 
 	var rewriteWg sync.WaitGroup
 	type rewriteTask struct {
-		idx       *Index
-		oldFormat bool
+		idx *Index
 	}
 	rewriteCh := make(chan rewriteTask)
 	loader := func() error {
@@ -376,13 +383,13 @@ func (mi *MasterIndex) Rewrite(ctx context.Context, repo restic.Unpacked, exclud
 			if err != nil {
 				return fmt.Errorf("LoadUnpacked(%v): %w", id.Str(), err)
 			}
-			idx, oldFormat, err := DecodeIndex(buf, id)
+			idx, err := DecodeIndex(buf, id)
 			if err != nil {
 				return err
 			}
 
 			select {
-			case rewriteCh <- rewriteTask{idx, oldFormat}:
+			case rewriteCh <- rewriteTask{idx}:
 			case <-wgCtx.Done():
 				return wgCtx.Err()
 			}
@@ -411,8 +418,8 @@ func (mi *MasterIndex) Rewrite(ctx context.Context, repo restic.Unpacked, exclud
 		defer close(saveCh)
 		newIndex := NewIndex()
 		for task := range rewriteCh {
-			// always rewrite indexes using the old format, that include a pack that must be removed or that are not full
-			if !task.oldFormat && len(task.idx.Packs().Intersect(excludePacks)) == 0 && IndexFull(task.idx) {
+			// always rewrite indexes that include a pack that must be removed or that are not full
+			if len(task.idx.Packs().Intersect(excludePacks)) == 0 && Full(task.idx) && !Oversized(task.idx) {
 				// make sure that each pack is only stored exactly once in the index
 				excludePacks.Merge(task.idx.Packs())
 				// index is already up to date
@@ -428,7 +435,7 @@ func (mi *MasterIndex) Rewrite(ctx context.Context, repo restic.Unpacked, exclud
 
 			for pbs := range task.idx.EachByPack(wgCtx, excludePacks) {
 				newIndex.StorePack(pbs.PackID, pbs.Blobs)
-				if IndexFull(newIndex) {
+				if Full(newIndex) {
 					select {
 					case saveCh <- newIndex:
 					case <-wgCtx.Done():
@@ -456,6 +463,9 @@ func (mi *MasterIndex) Rewrite(ctx context.Context, repo restic.Unpacked, exclud
 	worker := func() error {
 		for idx := range saveCh {
 			idx.Finalize()
+			if len(idx.packs) == 0 {
+				continue
+			}
 			if _, err := idx.SaveIndex(wgCtx, repo); err != nil {
 				return err
 			}
@@ -494,7 +504,7 @@ func (mi *MasterIndex) Rewrite(ctx context.Context, repo restic.Unpacked, exclud
 // It is only intended for use by prune with the UnsafeRecovery option.
 //
 // Must not be called concurrently to any other MasterIndex operation.
-func (mi *MasterIndex) SaveFallback(ctx context.Context, repo restic.SaverRemoverUnpacked, excludePacks restic.IDSet, p *progress.Counter) error {
+func (mi *MasterIndex) SaveFallback(ctx context.Context, repo restic.SaverRemoverUnpacked[restic.FileType], excludePacks restic.IDSet, p *progress.Counter) error {
 	p.SetMax(uint64(len(mi.Packs(excludePacks))))
 
 	mi.idxMutex.Lock()
@@ -522,7 +532,7 @@ func (mi *MasterIndex) SaveFallback(ctx context.Context, repo restic.SaverRemove
 			for pbs := range idx.EachByPack(wgCtx, excludePacks) {
 				newIndex.StorePack(pbs.PackID, pbs.Blobs)
 				p.Add(1)
-				if IndexFull(newIndex) {
+				if Full(newIndex) {
 					select {
 					case ch <- newIndex:
 					case <-wgCtx.Done():
@@ -569,7 +579,7 @@ func (mi *MasterIndex) SaveFallback(ctx context.Context, repo restic.SaverRemove
 }
 
 // saveIndex saves all indexes in the backend.
-func (mi *MasterIndex) saveIndex(ctx context.Context, r restic.SaverUnpacked, indexes ...*Index) error {
+func (mi *MasterIndex) saveIndex(ctx context.Context, r restic.SaverUnpacked[restic.FileType], indexes ...*Index) error {
 	for i, idx := range indexes {
 		debug.Log("Saving index %d", i)
 
@@ -584,13 +594,13 @@ func (mi *MasterIndex) saveIndex(ctx context.Context, r restic.SaverUnpacked, in
 	return mi.MergeFinalIndexes()
 }
 
-// SaveIndex saves all new indexes in the backend.
-func (mi *MasterIndex) SaveIndex(ctx context.Context, r restic.SaverUnpacked) error {
+// Flush saves all new indexes in the backend.
+func (mi *MasterIndex) Flush(ctx context.Context, r restic.SaverUnpacked[restic.FileType]) error {
 	return mi.saveIndex(ctx, r, mi.finalizeNotFinalIndexes()...)
 }
 
-// SaveFullIndex saves all full indexes in the backend.
-func (mi *MasterIndex) SaveFullIndex(ctx context.Context, r restic.SaverUnpacked) error {
+// saveFullIndex saves all full indexes in the backend.
+func (mi *MasterIndex) saveFullIndex(ctx context.Context, r restic.SaverUnpacked[restic.FileType]) error {
 	return mi.saveIndex(ctx, r, mi.finalizeFullIndexes()...)
 }
 

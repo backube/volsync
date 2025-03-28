@@ -1,7 +1,6 @@
 package fs
 
 import (
-	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -79,7 +78,7 @@ func parseMountPoints(list string, msgError ErrorHandler) (volumes map[string]st
 		return
 	}
 	for _, s := range strings.Split(list, ";") {
-		if v, err := GetVolumeNameForVolumeMountPoint(s); err != nil {
+		if v, err := getVolumeNameForVolumeMountPoint(s); err != nil {
 			msgError(s, errors.Errorf("failed to parse vss.exclude-volumes [%s]: %s", s, err))
 		} else {
 			if volumes == nil {
@@ -125,24 +124,14 @@ func (fs *LocalVss) DeleteSnapshots() {
 	fs.snapshots = activeSnapshots
 }
 
-// Open  wraps the Open method of the underlying file system.
-func (fs *LocalVss) Open(name string) (File, error) {
-	return os.Open(fs.snapshotPath(name))
+// OpenFile wraps the OpenFile method of the underlying file system.
+func (fs *LocalVss) OpenFile(name string, flag int, metadataOnly bool) (File, error) {
+	return fs.FS.OpenFile(fs.snapshotPath(name), flag, metadataOnly)
 }
 
-// OpenFile wraps the Open method of the underlying file system.
-func (fs *LocalVss) OpenFile(name string, flag int, perm os.FileMode) (File, error) {
-	return os.OpenFile(fs.snapshotPath(name), flag, perm)
-}
-
-// Stat wraps the Open method of the underlying file system.
-func (fs *LocalVss) Stat(name string) (os.FileInfo, error) {
-	return os.Stat(fs.snapshotPath(name))
-}
-
-// Lstat wraps the Open method of the underlying file system.
-func (fs *LocalVss) Lstat(name string) (os.FileInfo, error) {
-	return os.Lstat(fs.snapshotPath(name))
+// Lstat wraps the Lstat method of the underlying file system.
+func (fs *LocalVss) Lstat(name string) (*ExtendedFileInfo, error) {
+	return fs.FS.Lstat(fs.snapshotPath(name))
 }
 
 // isMountPointIncluded  is true if given mountpoint included by user.
@@ -151,7 +140,7 @@ func (fs *LocalVss) isMountPointIncluded(mountPoint string) bool {
 		return true
 	}
 
-	volume, err := GetVolumeNameForVolumeMountPoint(mountPoint)
+	volume, err := getVolumeNameForVolumeMountPoint(mountPoint)
 	if err != nil {
 		fs.msgError(mountPoint, errors.Errorf("failed to get volume from mount point [%s]: %s", mountPoint, err))
 		return true
@@ -176,7 +165,7 @@ func (fs *LocalVss) snapshotPath(path string) string {
 		return path
 	}
 
-	fixPath = strings.TrimPrefix(fixpath(path), `\\?\`)
+	fixPath = strings.TrimPrefix(fixPath, `\\?\`)
 	fixPathLower := strings.ToLower(fixPath)
 	volumeName := filepath.VolumeName(fixPath)
 	volumeNameLower := strings.ToLower(volumeName)

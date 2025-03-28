@@ -3,28 +3,31 @@ package test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"math/rand"
 	"os"
 	"reflect"
 	"sort"
+	"sync"
 	"testing"
 	"time"
 
-	"crypto/sha256"
 	"github.com/restic/restic/internal/errors"
 	"github.com/restic/restic/internal/restic"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/restic/restic/internal/test"
 
 	"github.com/restic/restic/internal/backend"
 )
 
-func seedRand(t testing.TB) {
+func seedRand(t testing.TB) *rand.Rand {
 	seed := time.Now().UnixNano()
-	rand.Seed(seed)
+	random := rand.New(rand.NewSource(seed))
 	t.Logf("rand initialized with seed %d", seed)
+	return random
 }
 
 func beTest(ctx context.Context, be backend.Backend, h backend.Handle) (bool, error) {
@@ -128,7 +131,7 @@ func (s *Suite[C]) TestConfig(t *testing.T) {
 
 // TestLoad tests the backend's Load function.
 func (s *Suite[C]) TestLoad(t *testing.T) {
-	seedRand(t)
+	random := seedRand(t)
 
 	b := s.open(t)
 	defer s.close(t, b)
@@ -140,7 +143,7 @@ func (s *Suite[C]) TestLoad(t *testing.T) {
 	test.Assert(t, b.IsNotExist(err), "IsNotExist() did not recognize non-existing blob: %v", err)
 	test.Assert(t, b.IsPermanentError(err), "IsPermanentError() did not recognize non-existing blob: %v", err)
 
-	length := rand.Intn(1<<24) + 2000
+	length := random.Intn(1<<24) + 2000
 
 	data := test.Random(23, length)
 	id := restic.Hash(data)
@@ -173,8 +176,8 @@ func (s *Suite[C]) TestLoad(t *testing.T) {
 	}
 
 	for i := 0; i < loadTests; i++ {
-		l := rand.Intn(length + 2000)
-		o := rand.Intn(length + 2000)
+		l := random.Intn(length + 2000)
+		o := random.Intn(length + 2000)
 
 		d := data
 		if o < len(d) {
@@ -186,7 +189,7 @@ func (s *Suite[C]) TestLoad(t *testing.T) {
 
 		getlen := l
 		if l >= len(d) {
-			if rand.Float32() >= 0.5 {
+			if random.Float32() >= 0.5 {
 				getlen = 0
 			} else {
 				getlen = len(d)
@@ -254,9 +257,9 @@ type setter interface {
 
 // TestList makes sure that the backend implements List() pagination correctly.
 func (s *Suite[C]) TestList(t *testing.T) {
-	seedRand(t)
+	random := seedRand(t)
 
-	numTestFiles := rand.Intn(20) + 20
+	numTestFiles := random.Intn(20) + 20
 
 	b := s.open(t)
 	defer s.close(t, b)
@@ -275,16 +278,26 @@ func (s *Suite[C]) TestList(t *testing.T) {
 	}
 
 	list1 := make(map[restic.ID]int64)
+	var m sync.Mutex
 
+	wg, ctx := errgroup.WithContext(context.TODO())
 	for i := 0; i < numTestFiles; i++ {
-		data := test.Random(rand.Int(), rand.Intn(100)+55)
-		id := restic.Hash(data)
-		h := backend.Handle{Type: backend.PackFile, Name: id.String()}
-		err := b.Save(context.TODO(), h, backend.NewByteReader(data, b.Hasher()))
-		if err != nil {
-			t.Fatal(err)
-		}
-		list1[id] = int64(len(data))
+		data := test.Random(random.Int(), random.Intn(100)+55)
+		wg.Go(func() error {
+			id := restic.Hash(data)
+			h := backend.Handle{Type: backend.PackFile, Name: id.String()}
+			err := b.Save(ctx, h, backend.NewByteReader(data, b.Hasher()))
+
+			m.Lock()
+			defer m.Unlock()
+			list1[id] = int64(len(data))
+			return err
+		})
+	}
+
+	err = wg.Wait()
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	t.Logf("wrote %v files", len(list1))
@@ -353,8 +366,6 @@ func (s *Suite[C]) TestList(t *testing.T) {
 
 // TestListCancel tests that the context is respected and the error is returned by List.
 func (s *Suite[C]) TestListCancel(t *testing.T) {
-	seedRand(t)
-
 	numTestFiles := 5
 
 	b := s.open(t)
@@ -498,7 +509,7 @@ func (ec errorCloser) Rewind() error {
 
 // TestSave tests saving data in the backend.
 func (s *Suite[C]) TestSave(t *testing.T) {
-	seedRand(t)
+	random := seedRand(t)
 
 	b := s.open(t)
 	defer s.close(t, b)
@@ -510,7 +521,7 @@ func (s *Suite[C]) TestSave(t *testing.T) {
 	}
 
 	for i := 0; i < saveTests; i++ {
-		length := rand.Intn(1<<23) + 200000
+		length := random.Intn(1<<23) + 200000
 		data := test.Random(23, length)
 		id = sha256.Sum256(data)
 
@@ -554,7 +565,7 @@ func (s *Suite[C]) TestSave(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	length := rand.Intn(1<<23) + 200000
+	length := random.Intn(1<<23) + 200000
 	data := test.Random(23, length)
 	id = sha256.Sum256(data)
 
@@ -614,7 +625,7 @@ func (r *incompleteByteReader) Length() int64 {
 
 // TestSaveError tests saving data in the backend.
 func (s *Suite[C]) TestSaveError(t *testing.T) {
-	seedRand(t)
+	random := seedRand(t)
 
 	b := s.open(t)
 	defer func() {
@@ -623,7 +634,7 @@ func (s *Suite[C]) TestSaveError(t *testing.T) {
 		_ = b.Close()
 	}()
 
-	length := rand.Intn(1<<23) + 200000
+	length := random.Intn(1<<23) + 200000
 	data := test.Random(24, length)
 	var id restic.ID
 	copy(id[:], data)
@@ -653,7 +664,7 @@ func (b *wrongByteReader) Hash() []byte {
 
 // TestSaveWrongHash tests that uploads with a wrong hash fail
 func (s *Suite[C]) TestSaveWrongHash(t *testing.T) {
-	seedRand(t)
+	random := seedRand(t)
 
 	b := s.open(t)
 	defer s.close(t, b)
@@ -662,7 +673,7 @@ func (s *Suite[C]) TestSaveWrongHash(t *testing.T) {
 		return
 	}
 
-	length := rand.Intn(1<<23) + 200000
+	length := random.Intn(1<<23) + 200000
 	data := test.Random(25, length)
 	var id restic.ID
 	copy(id[:], data)
@@ -697,7 +708,7 @@ var testStrings = []struct {
 func store(t testing.TB, b backend.Backend, tpe backend.FileType, data []byte) backend.Handle {
 	id := restic.Hash(data)
 	h := backend.Handle{Name: id.String(), Type: tpe}
-	err := b.Save(context.TODO(), h, backend.NewByteReader([]byte(data), b.Hasher()))
+	err := b.Save(context.TODO(), h, backend.NewByteReader(data, b.Hasher()))
 	test.OK(t, err)
 	return h
 }
@@ -714,18 +725,23 @@ func (s *Suite[C]) delayedRemove(t testing.TB, be backend.Backend, handles ...ba
 	// Some backend (swift, I'm looking at you) may implement delayed
 	// removal of data. Let's wait a bit if this happens.
 
+	wg, ctx := errgroup.WithContext(context.TODO())
 	for _, h := range handles {
-		err := be.Remove(context.TODO(), h)
-		if s.ErrorHandler != nil {
-			err = s.ErrorHandler(t, be, err)
-		}
-		if err != nil {
+		wg.Go(func() error {
+			err := be.Remove(ctx, h)
+			if s.ErrorHandler != nil {
+				err = s.ErrorHandler(t, be, err)
+			}
 			return err
-		}
+		})
+	}
+	err := wg.Wait()
+	if err != nil {
+		return err
 	}
 
+	start := time.Now()
 	for _, h := range handles {
-		start := time.Now()
 		attempt := 0
 		var found bool
 		var err error
@@ -778,125 +794,124 @@ func delayedList(t testing.TB, b backend.Backend, tpe backend.FileType, max int,
 
 // TestBackend tests all functions of the backend.
 func (s *Suite[C]) TestBackend(t *testing.T) {
-	b := s.open(t)
-	defer s.close(t, b)
-
-	test.Assert(t, !b.IsNotExist(nil), "IsNotExist() recognized nil error")
-	test.Assert(t, !b.IsPermanentError(nil), "IsPermanentError() recognized nil error")
-
 	for _, tpe := range []backend.FileType{
 		backend.PackFile, backend.KeyFile, backend.LockFile,
 		backend.SnapshotFile, backend.IndexFile,
 	} {
-		// detect non-existing files
-		for _, ts := range testStrings {
-			id, err := restic.ParseID(ts.id)
-			test.OK(t, err)
+		t.Run(tpe.String(), func(t *testing.T) {
+			t.Parallel()
 
-			// test if blob is already in repository
-			h := backend.Handle{Type: tpe, Name: id.String()}
-			ret, err := beTest(context.TODO(), b, h)
-			test.OK(t, err)
-			test.Assert(t, !ret, "blob was found to exist before creating")
+			b := s.open(t)
+			defer s.close(t, b)
 
-			// try to stat a not existing blob
-			_, err = b.Stat(context.TODO(), h)
-			test.Assert(t, err != nil, "blob data could be extracted before creation")
-			test.Assert(t, b.IsNotExist(err), "IsNotExist() did not recognize Stat() error: %v", err)
-			test.Assert(t, b.IsPermanentError(err), "IsPermanentError() did not recognize Stat() error: %v", err)
+			test.Assert(t, !b.IsNotExist(nil), "IsNotExist() recognized nil error")
+			test.Assert(t, !b.IsPermanentError(nil), "IsPermanentError() recognized nil error")
 
-			// try to read not existing blob
-			err = testLoad(b, h)
-			test.Assert(t, err != nil, "blob could be read before creation")
-			test.Assert(t, b.IsNotExist(err), "IsNotExist() did not recognize Load() error: %v", err)
-			test.Assert(t, b.IsPermanentError(err), "IsPermanentError() did not recognize Load() error: %v", err)
+			// detect non-existing files
+			for _, ts := range testStrings {
+				id, err := restic.ParseID(ts.id)
+				test.OK(t, err)
 
-			// try to get string out, should fail
-			ret, err = beTest(context.TODO(), b, h)
-			test.OK(t, err)
-			test.Assert(t, !ret, "id %q was found (but should not have)", ts.id)
-		}
+				// test if blob is already in repository
+				h := backend.Handle{Type: tpe, Name: id.String()}
+				ret, err := beTest(context.TODO(), b, h)
+				test.OK(t, err)
+				test.Assert(t, !ret, "id %q was found (but should not have)", ts.id)
 
-		// add files
-		for _, ts := range testStrings {
-			store(t, b, tpe, []byte(ts.data))
+				// try to stat a not existing blob
+				_, err = b.Stat(context.TODO(), h)
+				test.Assert(t, err != nil, "blob data could be extracted before creation")
+				test.Assert(t, b.IsNotExist(err), "IsNotExist() did not recognize Stat() error: %v", err)
+				test.Assert(t, b.IsPermanentError(err), "IsPermanentError() did not recognize Stat() error: %v", err)
 
-			// test Load()
+				// try to read not existing blob
+				err = testLoad(b, h)
+				test.Assert(t, err != nil, "blob could be read before creation")
+				test.Assert(t, b.IsNotExist(err), "IsNotExist() did not recognize Load() error: %v", err)
+				test.Assert(t, b.IsPermanentError(err), "IsPermanentError() did not recognize Load() error: %v", err)
+			}
+
+			// add files
+			for _, ts := range testStrings {
+				store(t, b, tpe, []byte(ts.data))
+
+				// test Load()
+				h := backend.Handle{Type: tpe, Name: ts.id}
+				buf, err := LoadAll(context.TODO(), b, h)
+				test.OK(t, err)
+				test.Equals(t, ts.data, string(buf))
+
+				// try to read it out with an offset and a length
+				start := 1
+				end := len(ts.data) - 2
+				length := end - start
+
+				buf2 := make([]byte, length)
+				var n int
+				err = b.Load(context.TODO(), h, len(buf2), int64(start), func(rd io.Reader) (ierr error) {
+					n, ierr = io.ReadFull(rd, buf2)
+					return ierr
+				})
+				test.OK(t, err)
+				test.OK(t, err)
+				test.Equals(t, len(buf2), n)
+				test.Equals(t, ts.data[start:end], string(buf2))
+			}
+
+			// test adding the first file again
+			ts := testStrings[0]
 			h := backend.Handle{Type: tpe, Name: ts.id}
-			buf, err := LoadAll(context.TODO(), b, h)
-			test.OK(t, err)
-			test.Equals(t, ts.data, string(buf))
 
-			// try to read it out with an offset and a length
-			start := 1
-			end := len(ts.data) - 2
-			length := end - start
-
-			buf2 := make([]byte, length)
-			var n int
-			err = b.Load(context.TODO(), h, len(buf2), int64(start), func(rd io.Reader) (ierr error) {
-				n, ierr = io.ReadFull(rd, buf2)
-				return ierr
-			})
-			test.OK(t, err)
-			test.OK(t, err)
-			test.Equals(t, len(buf2), n)
-			test.Equals(t, ts.data[start:end], string(buf2))
-		}
-
-		// test adding the first file again
-		ts := testStrings[0]
-		h := backend.Handle{Type: tpe, Name: ts.id}
-
-		// remove and recreate
-		err := s.delayedRemove(t, b, h)
-		test.OK(t, err)
-
-		// test that the blob is gone
-		ok, err := beTest(context.TODO(), b, h)
-		test.OK(t, err)
-		test.Assert(t, !ok, "removed blob still present")
-
-		// create blob
-		err = b.Save(context.TODO(), h, backend.NewByteReader([]byte(ts.data), b.Hasher()))
-		test.OK(t, err)
-
-		// list items
-		IDs := restic.IDs{}
-
-		for _, ts := range testStrings {
-			id, err := restic.ParseID(ts.id)
-			test.OK(t, err)
-			IDs = append(IDs, id)
-		}
-
-		list := delayedList(t, b, tpe, len(IDs), s.WaitForDelayedRemoval)
-		if len(IDs) != len(list) {
-			t.Fatalf("wrong number of IDs returned: want %d, got %d", len(IDs), len(list))
-		}
-
-		sort.Sort(IDs)
-		sort.Sort(list)
-
-		if !reflect.DeepEqual(IDs, list) {
-			t.Fatalf("lists aren't equal, want:\n  %v\n  got:\n%v\n", IDs, list)
-		}
-
-		var handles []backend.Handle
-		for _, ts := range testStrings {
-			id, err := restic.ParseID(ts.id)
+			// remove and recreate
+			err := s.delayedRemove(t, b, h)
 			test.OK(t, err)
 
-			h := backend.Handle{Type: tpe, Name: id.String()}
-
-			found, err := beTest(context.TODO(), b, h)
+			// test that the blob is gone
+			ok, err := beTest(context.TODO(), b, h)
 			test.OK(t, err)
-			test.Assert(t, found, fmt.Sprintf("id %v/%q not found", tpe, id))
+			test.Assert(t, !ok, "removed blob still present")
 
-			handles = append(handles, h)
-		}
+			// create blob
+			err = b.Save(context.TODO(), h, backend.NewByteReader([]byte(ts.data), b.Hasher()))
+			test.OK(t, err)
 
-		test.OK(t, s.delayedRemove(t, b, handles...))
+			// list items
+			IDs := restic.IDs{}
+
+			for _, ts := range testStrings {
+				id, err := restic.ParseID(ts.id)
+				test.OK(t, err)
+				IDs = append(IDs, id)
+			}
+
+			list := delayedList(t, b, tpe, len(IDs), s.WaitForDelayedRemoval)
+			if len(IDs) != len(list) {
+				t.Fatalf("wrong number of IDs returned: want %d, got %d", len(IDs), len(list))
+			}
+
+			sort.Sort(IDs)
+			sort.Sort(list)
+
+			if !reflect.DeepEqual(IDs, list) {
+				t.Fatalf("lists aren't equal, want:\n  %v\n  got:\n%v\n", IDs, list)
+			}
+
+			var handles []backend.Handle
+			for _, ts := range testStrings {
+				id, err := restic.ParseID(ts.id)
+				test.OK(t, err)
+
+				h := backend.Handle{Type: tpe, Name: id.String()}
+
+				found, err := beTest(context.TODO(), b, h)
+				test.OK(t, err)
+				test.Assert(t, found, fmt.Sprintf("id %v/%q not found", tpe, id))
+
+				handles = append(handles, h)
+			}
+
+			test.OK(t, s.delayedRemove(t, b, handles...))
+		})
 	}
 }
 

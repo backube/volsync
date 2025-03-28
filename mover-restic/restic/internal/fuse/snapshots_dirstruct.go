@@ -6,6 +6,7 @@ package fuse
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"path"
 	"sort"
@@ -15,8 +16,6 @@ import (
 
 	"github.com/restic/restic/internal/debug"
 	"github.com/restic/restic/internal/restic"
-
-	"crypto/sha256"
 )
 
 type MetaDirData struct {

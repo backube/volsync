@@ -11,6 +11,7 @@ type State struct {
 	FilesFinished   uint64
 	FilesTotal      uint64
 	FilesSkipped    uint64
+	FilesDeleted    uint64
 	AllBytesWritten uint64
 	AllBytesTotal   uint64
 	AllBytesSkipped uint64
@@ -32,13 +33,9 @@ type progressInfoEntry struct {
 	bytesTotal   uint64
 }
 
-type term interface {
-	Print(line string)
-	SetStatus(lines []string)
-}
-
 type ProgressPrinter interface {
 	Update(progress State, duration time.Duration)
+	Error(item string, err error) error
 	CompleteItem(action ItemAction, item string, size uint64)
 	Finish(progress State, duration time.Duration)
 }
@@ -128,15 +125,28 @@ func (p *Progress) AddSkippedFile(name string, size uint64) {
 	p.printer.CompleteItem(ActionFileUnchanged, name, size)
 }
 
-func (p *Progress) ReportDeletedFile(name string) {
+func (p *Progress) ReportDeletion(name string) {
 	if p == nil {
 		return
 	}
+
+	p.s.FilesDeleted++
 
 	p.m.Lock()
 	defer p.m.Unlock()
 
 	p.printer.CompleteItem(ActionDeleted, name, 0)
+}
+
+func (p *Progress) Error(item string, err error) error {
+	if p == nil {
+		return nil
+	}
+
+	p.m.Lock()
+	defer p.m.Unlock()
+
+	return p.printer.Error(item, err)
 }
 
 func (p *Progress) Finish() {

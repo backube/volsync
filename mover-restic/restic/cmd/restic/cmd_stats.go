@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
@@ -16,14 +17,17 @@ import (
 	"github.com/restic/restic/internal/ui/table"
 	"github.com/restic/restic/internal/walker"
 
-	"crypto/sha256"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
-var cmdStats = &cobra.Command{
-	Use:   "stats [flags] [snapshot ID] [...]",
-	Short: "Scan the repository and show basic statistics",
-	Long: `
+func newStatsCommand() *cobra.Command {
+	var opts StatsOptions
+
+	cmd := &cobra.Command{
+		Use:   "stats [flags] [snapshot ID] [...]",
+		Short: "Scan the repository and show basic statistics",
+		Long: `
 The "stats" command walks one or multiple snapshots in a repository
 and accumulates statistics about the data stored therein. It reports 
 on the number of unique files and their sizes, according to one of
@@ -53,11 +57,20 @@ Exit status is 0 if the command was successful.
 Exit status is 1 if there was any error.
 Exit status is 10 if the repository does not exist.
 Exit status is 11 if the repository is already locked.
+Exit status is 12 if the password is incorrect.
 `,
-	DisableAutoGenTag: true,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return runStats(cmd.Context(), statsOptions, globalOptions, args)
-	},
+		GroupID:           cmdGroupDefault,
+		DisableAutoGenTag: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runStats(cmd.Context(), opts, globalOptions, args)
+		},
+	}
+
+	opts.AddFlags(cmd.Flags())
+	must(cmd.RegisterFlagCompletionFunc("mode", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		return []string{countModeRestoreSize, countModeUniqueFilesByContents, countModeBlobsPerFile, countModeRawData}, cobra.ShellCompDirectiveDefault
+	}))
+	return cmd
 }
 
 // StatsOptions collects all options for the stats command.
@@ -68,13 +81,15 @@ type StatsOptions struct {
 	restic.SnapshotFilter
 }
 
-var statsOptions StatsOptions
+func (opts *StatsOptions) AddFlags(f *pflag.FlagSet) {
+	f.StringVar(&opts.countMode, "mode", countModeRestoreSize, "counting mode: restore-size (default), files-by-contents, blobs-per-file or raw-data")
+	initMultiSnapshotFilter(f, &opts.SnapshotFilter, true)
+}
 
-func init() {
-	cmdRoot.AddCommand(cmdStats)
-	f := cmdStats.Flags()
-	f.StringVar(&statsOptions.countMode, "mode", countModeRestoreSize, "counting mode: restore-size (default), files-by-contents, blobs-per-file or raw-data")
-	initMultiSnapshotFilter(f, &statsOptions.SnapshotFilter, true)
+func must(err error) {
+	if err != nil {
+		panic(fmt.Sprintf("error during setup: %v", err))
+	}
 }
 
 func runStats(ctx context.Context, opts StatsOptions, gopts GlobalOptions, args []string) error {
@@ -264,7 +279,7 @@ func statsWalkTree(repo restic.Loader, opts StatsOptions, stats *statsContainer,
 			// will still be restored
 			stats.TotalFileCount++
 
-			if node.Links == 1 || node.Type == "dir" {
+			if node.Links == 1 || node.Type == restic.NodeTypeDir {
 				stats.TotalSize += node.Size
 			} else {
 				// if hardlinks are present only count each deviceID+inode once
@@ -284,7 +299,7 @@ func statsWalkTree(repo restic.Loader, opts StatsOptions, stats *statsContainer,
 func makeFileIDByContents(node *restic.Node) fileID {
 	var bb []byte
 	for _, c := range node.Content {
-		bb = append(bb, []byte(c[:])...)
+		bb = append(bb, c[:]...)
 	}
 	return sha256.Sum256(bb)
 }

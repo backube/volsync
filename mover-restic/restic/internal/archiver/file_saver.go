@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"sync"
 
 	"github.com/restic/chunker"
@@ -15,13 +14,13 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// SaveBlobFn saves a blob to a repo.
-type SaveBlobFn func(context.Context, restic.BlobType, *Buffer, string, func(res SaveBlobResponse))
+// saveBlobFn saves a blob to a repo.
+type saveBlobFn func(context.Context, restic.BlobType, *buffer, string, func(res saveBlobResponse))
 
-// FileSaver concurrently saves incoming files to the repo.
-type FileSaver struct {
-	saveFilePool *BufferPool
-	saveBlob     SaveBlobFn
+// fileSaver concurrently saves incoming files to the repo.
+type fileSaver struct {
+	saveFilePool *bufferPool
+	saveBlob     saveBlobFn
 
 	pol chunker.Pol
 
@@ -29,21 +28,21 @@ type FileSaver struct {
 
 	CompleteBlob func(bytes uint64)
 
-	NodeFromFileInfo func(snPath, filename string, fi os.FileInfo, ignoreXattrListError bool) (*restic.Node, error)
+	NodeFromFileInfo func(snPath, filename string, meta ToNoder, ignoreXattrListError bool) (*restic.Node, error)
 }
 
-// NewFileSaver returns a new file saver. A worker pool with fileWorkers is
+// newFileSaver returns a new file saver. A worker pool with fileWorkers is
 // started, it is stopped when ctx is cancelled.
-func NewFileSaver(ctx context.Context, wg *errgroup.Group, save SaveBlobFn, pol chunker.Pol, fileWorkers, blobWorkers uint) *FileSaver {
+func newFileSaver(ctx context.Context, wg *errgroup.Group, save saveBlobFn, pol chunker.Pol, fileWorkers, blobWorkers uint) *fileSaver {
 	ch := make(chan saveFileJob)
 
 	debug.Log("new file saver with %v file workers and %v blob workers", fileWorkers, blobWorkers)
 
 	poolSize := fileWorkers + blobWorkers
 
-	s := &FileSaver{
+	s := &fileSaver{
 		saveBlob:     save,
-		saveFilePool: NewBufferPool(int(poolSize), chunker.MaxSize),
+		saveFilePool: newBufferPool(int(poolSize), chunker.MaxSize),
 		pol:          pol,
 		ch:           ch,
 
@@ -60,24 +59,23 @@ func NewFileSaver(ctx context.Context, wg *errgroup.Group, save SaveBlobFn, pol 
 	return s
 }
 
-func (s *FileSaver) TriggerShutdown() {
+func (s *fileSaver) TriggerShutdown() {
 	close(s.ch)
 }
 
-// CompleteFunc is called when the file has been saved.
-type CompleteFunc func(*restic.Node, ItemStats)
+// fileCompleteFunc is called when the file has been saved.
+type fileCompleteFunc func(*restic.Node, ItemStats)
 
 // Save stores the file f and returns the data once it has been completed. The
 // file is closed by Save. completeReading is only called if the file was read
 // successfully. complete is always called. If completeReading is called, then
 // this will always happen before calling complete.
-func (s *FileSaver) Save(ctx context.Context, snPath string, target string, file fs.File, fi os.FileInfo, start func(), completeReading func(), complete CompleteFunc) FutureNode {
+func (s *fileSaver) Save(ctx context.Context, snPath string, target string, file fs.File, start func(), completeReading func(), complete fileCompleteFunc) futureNode {
 	fn, ch := newFutureNode()
 	job := saveFileJob{
 		snPath: snPath,
 		target: target,
 		file:   file,
-		fi:     fi,
 		ch:     ch,
 
 		start:           start,
@@ -100,16 +98,15 @@ type saveFileJob struct {
 	snPath string
 	target string
 	file   fs.File
-	fi     os.FileInfo
 	ch     chan<- futureNodeResult
 
 	start           func()
 	completeReading func()
-	complete        CompleteFunc
+	complete        fileCompleteFunc
 }
 
 // saveFile stores the file f in the repo, then closes it.
-func (s *FileSaver) saveFile(ctx context.Context, chnker *chunker.Chunker, snPath string, target string, f fs.File, fi os.FileInfo, start func(), finishReading func(), finish func(res futureNodeResult)) {
+func (s *fileSaver) saveFile(ctx context.Context, chnker *chunker.Chunker, snPath string, target string, f fs.File, start func(), finishReading func(), finish func(res futureNodeResult)) {
 	start()
 
 	fnr := futureNodeResult{
@@ -156,14 +153,14 @@ func (s *FileSaver) saveFile(ctx context.Context, chnker *chunker.Chunker, snPat
 
 	debug.Log("%v", snPath)
 
-	node, err := s.NodeFromFileInfo(snPath, f.Name(), fi, false)
+	node, err := s.NodeFromFileInfo(snPath, target, f, false)
 	if err != nil {
 		_ = f.Close()
 		completeError(err)
 		return
 	}
 
-	if node.Type != "file" {
+	if node.Type != restic.NodeTypeFile {
 		_ = f.Close()
 		completeError(errors.Errorf("node type %q is wrong", node.Type))
 		return
@@ -205,7 +202,7 @@ func (s *FileSaver) saveFile(ctx context.Context, chnker *chunker.Chunker, snPat
 		node.Content = append(node.Content, restic.ID{})
 		lock.Unlock()
 
-		s.saveBlob(ctx, restic.DataBlob, buf, target, func(sbr SaveBlobResponse) {
+		s.saveBlob(ctx, restic.DataBlob, buf, target, func(sbr saveBlobResponse) {
 			lock.Lock()
 			if !sbr.known {
 				fnr.stats.DataBlobs++
@@ -246,7 +243,7 @@ func (s *FileSaver) saveFile(ctx context.Context, chnker *chunker.Chunker, snPat
 	completeBlob()
 }
 
-func (s *FileSaver) worker(ctx context.Context, jobs <-chan saveFileJob) {
+func (s *fileSaver) worker(ctx context.Context, jobs <-chan saveFileJob) {
 	// a worker has one chunker which is reused for each file (because it contains a rather large buffer)
 	chnker := chunker.New(nil, s.pol)
 
@@ -262,7 +259,7 @@ func (s *FileSaver) worker(ctx context.Context, jobs <-chan saveFileJob) {
 			}
 		}
 
-		s.saveFile(ctx, chnker, job.snPath, job.target, job.file, job.fi, job.start, func() {
+		s.saveFile(ctx, chnker, job.snPath, job.target, job.file, job.start, func() {
 			if job.completeReading != nil {
 				job.completeReading()
 			}

@@ -1,0 +1,13 @@
+Bugfix: Ignore disappeared backup source files
+
+The `backup` command now quietly skips files that are removed between directory
+listing and backup, instead of printing errors like:
+
+```
+error: lstat /some/file/name: no such file or directory
+```
+
+https://github.com/restic/restic/issues/2165
+https://github.com/restic/restic/issues/3098
+https://github.com/restic/restic/pull/5143
+https://github.com/restic/restic/pull/5145

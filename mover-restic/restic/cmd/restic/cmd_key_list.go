@@ -12,10 +12,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var cmdKeyList = &cobra.Command{
-	Use:   "list",
-	Short: "List keys (passwords)",
-	Long: `
+func newKeyListCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List keys (passwords)",
+		Long: `
 The "list" sub-command lists all the keys (passwords) associated with the repository.
 Returns the key ID, username, hostname, created time and if it's the current key being
 used to access the repository.
@@ -27,15 +28,14 @@ Exit status is 0 if the command was successful.
 Exit status is 1 if there was any error.
 Exit status is 10 if the repository does not exist.
 Exit status is 11 if the repository is already locked.
+Exit status is 12 if the password is incorrect.
 	`,
-	DisableAutoGenTag: true,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return runKeyList(cmd.Context(), globalOptions, args)
-	},
-}
-
-func init() {
-	cmdKey.AddCommand(cmdKeyList)
+		DisableAutoGenTag: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runKeyList(cmd.Context(), globalOptions, args)
+		},
+	}
+	return cmd
 }
 
 func runKeyList(ctx context.Context, gopts GlobalOptions, args []string) error {

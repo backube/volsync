@@ -38,19 +38,25 @@ type Repository struct {
 	key   *crypto.Key
 	keyID restic.ID
 	idx   *index.MasterIndex
-	Cache *cache.Cache
+	cache *cache.Cache
 
 	opts Options
 
-	packerWg *errgroup.Group
-	uploader *packerUploader
-	treePM   *packerManager
-	dataPM   *packerManager
+	packerWg    *errgroup.Group
+	uploader    *packerUploader
+	treePM      *packerManager
+	dataPM      *packerManager
+	packerCount int
 
 	allocEnc sync.Once
 	allocDec sync.Once
 	enc      *zstd.Encoder
 	dec      *zstd.Decoder
+}
+
+// internalRepository allows using SaveUnpacked and RemoveUnpacked with all FileTypes
+type internalRepository struct {
+	*Repository
 }
 
 type Options struct {
@@ -120,9 +126,10 @@ func New(be backend.Backend, opts Options) (*Repository, error) {
 	}
 
 	repo := &Repository{
-		be:   be,
-		opts: opts,
-		idx:  index.NewMasterIndex(),
+		be:          be,
+		opts:        opts,
+		idx:         index.NewMasterIndex(),
+		packerCount: defaultPackerCount,
 	}
 
 	return repo, nil
@@ -149,8 +156,12 @@ func (r *Repository) UseCache(c *cache.Cache) {
 		return
 	}
 	debug.Log("using cache")
-	r.Cache = c
+	r.cache = c
 	r.be = c.Wrap(r.be)
+}
+
+func (r *Repository) Cache() *cache.Cache {
+	return r.cache
 }
 
 // SetDryRun sets the repo backend into dry-run mode.
@@ -225,15 +236,15 @@ func (r *Repository) LoadBlob(ctx context.Context, t restic.BlobType, id restic.
 	}
 
 	// try cached pack files first
-	sortCachedPacksFirst(r.Cache, blobs)
+	sortCachedPacksFirst(r.cache, blobs)
 
 	buf, err := r.loadBlob(ctx, blobs, buf)
 	if err != nil {
-		if r.Cache != nil {
+		if r.cache != nil {
 			for _, blob := range blobs {
 				h := backend.Handle{Type: restic.PackFile, Name: blob.PackID.String(), IsMetadata: blob.Type.IsMetadata()}
 				// ignore errors as there's not much we can do here
-				_ = r.Cache.Forget(h)
+				_ = r.cache.Forget(h)
 			}
 		}
 
@@ -263,7 +274,7 @@ func (r *Repository) loadBlob(ctx context.Context, blobs []restic.PackedBlob, bu
 			continue
 		}
 
-		it := newPackBlobIterator(blob.PackID, newByteReader(buf), uint(blob.Offset), []restic.Blob{blob.Blob}, r.key, r.getZstdDecoder())
+		it := newPackBlobIterator(blob.PackID, newByteReader(buf), blob.Offset, []restic.Blob{blob.Blob}, r.key, r.getZstdDecoder())
 		pbv, err := it.Next()
 
 		if err == nil {
@@ -446,7 +457,15 @@ func (r *Repository) decompressUnpacked(p []byte) ([]byte, error) {
 
 // SaveUnpacked encrypts data and stores it in the backend. Returned is the
 // storage hash.
-func (r *Repository) SaveUnpacked(ctx context.Context, t restic.FileType, buf []byte) (id restic.ID, err error) {
+func (r *Repository) SaveUnpacked(ctx context.Context, t restic.WriteableFileType, buf []byte) (id restic.ID, err error) {
+	return r.saveUnpacked(ctx, t.ToFileType(), buf)
+}
+
+func (r *internalRepository) SaveUnpacked(ctx context.Context, t restic.FileType, buf []byte) (id restic.ID, err error) {
+	return r.Repository.saveUnpacked(ctx, t, buf)
+}
+
+func (r *Repository) saveUnpacked(ctx context.Context, t restic.FileType, buf []byte) (id restic.ID, err error) {
 	p := buf
 	if t != restic.ConfigFile {
 		p, err = r.compressUnpacked(p)
@@ -507,8 +526,15 @@ func (r *Repository) verifyUnpacked(buf []byte, t restic.FileType, expected []by
 	return nil
 }
 
-func (r *Repository) RemoveUnpacked(ctx context.Context, t restic.FileType, id restic.ID) error {
-	// TODO prevent everything except removing snapshots for non-repository code
+func (r *Repository) RemoveUnpacked(ctx context.Context, t restic.WriteableFileType, id restic.ID) error {
+	return r.removeUnpacked(ctx, t.ToFileType(), id)
+}
+
+func (r *internalRepository) RemoveUnpacked(ctx context.Context, t restic.FileType, id restic.ID) error {
+	return r.Repository.removeUnpacked(ctx, t, id)
+}
+
+func (r *Repository) removeUnpacked(ctx context.Context, t restic.FileType, id restic.ID) error {
 	return r.be.Remove(ctx, backend.Handle{Type: t, Name: id.String()})
 }
 
@@ -518,7 +544,7 @@ func (r *Repository) Flush(ctx context.Context) error {
 		return err
 	}
 
-	return r.idx.SaveIndex(ctx, r)
+	return r.idx.Flush(ctx, &internalRepository{r})
 }
 
 func (r *Repository) StartPackUploader(ctx context.Context, wg *errgroup.Group) {
@@ -528,9 +554,9 @@ func (r *Repository) StartPackUploader(ctx context.Context, wg *errgroup.Group) 
 
 	innerWg, ctx := errgroup.WithContext(ctx)
 	r.packerWg = innerWg
-	r.uploader = newPackerUploader(ctx, innerWg, r, r.be.Connections())
-	r.treePM = newPackerManager(r.key, restic.TreeBlob, r.packSize(), r.uploader.QueuePacker)
-	r.dataPM = newPackerManager(r.key, restic.DataBlob, r.packSize(), r.uploader.QueuePacker)
+	r.uploader = newPackerUploader(ctx, innerWg, r, r.Connections())
+	r.treePM = newPackerManager(r.key, restic.TreeBlob, r.packSize(), r.packerCount, r.uploader.QueuePacker)
+	r.dataPM = newPackerManager(r.key, restic.DataBlob, r.packSize(), r.packerCount, r.uploader.QueuePacker)
 
 	wg.Go(func() error {
 		return innerWg.Wait()
@@ -563,7 +589,7 @@ func (r *Repository) flushPacks(ctx context.Context) error {
 }
 
 func (r *Repository) Connections() uint {
-	return r.be.Connections()
+	return r.be.Properties().Connections
 }
 
 func (r *Repository) LookupBlob(tpe restic.BlobType, id restic.ID) []restic.PackedBlob {
@@ -677,7 +703,9 @@ func (r *Repository) createIndexFromPacks(ctx context.Context, packsize map[rest
 				invalid = append(invalid, fi.ID)
 				m.Unlock()
 			}
-			r.idx.StorePack(fi.ID, entries)
+			if err := r.idx.StorePack(ctx, fi.ID, entries, &internalRepository{r}); err != nil {
+				return err
+			}
 			p.Add(1)
 		}
 
@@ -702,23 +730,14 @@ func (r *Repository) createIndexFromPacks(ctx context.Context, packsize map[rest
 // prepareCache initializes the local cache. indexIDs is the list of IDs of
 // index files still present in the repo.
 func (r *Repository) prepareCache() error {
-	if r.Cache == nil {
+	if r.cache == nil {
 		return nil
-	}
-
-	indexIDs := r.idx.IDs()
-	debug.Log("prepare cache with %d index files", len(indexIDs))
-
-	// clear old index files
-	err := r.Cache.Clear(restic.IndexFile, indexIDs)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error clearing index files in cache: %v\n", err)
 	}
 
 	packs := r.idx.Packs(restic.NewIDSet())
 
 	// clear old packs
-	err = r.Cache.Clear(restic.PackFile, packs)
+	err := r.cache.Clear(restic.PackFile, packs)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error clearing pack files in cache: %v\n", err)
 	}
@@ -812,7 +831,7 @@ func (r *Repository) init(ctx context.Context, password string, cfg restic.Confi
 	r.key = key.master
 	r.keyID = key.ID()
 	r.setConfig(cfg)
-	return restic.SaveConfig(ctx, r, cfg)
+	return restic.SaveConfig(ctx, &internalRepository{r}, cfg)
 }
 
 // Key returns the current master key.
@@ -844,9 +863,9 @@ func (r *Repository) ListPack(ctx context.Context, id restic.ID, size int64) ([]
 
 	entries, hdrSize, err := pack.List(r.Key(), backend.ReaderAt(ctx, r.be, h), size)
 	if err != nil {
-		if r.Cache != nil {
+		if r.cache != nil {
 			// ignore error as there is not much we can do here
-			_ = r.Cache.Forget(h)
+			_ = r.cache.Forget(h)
 		}
 
 		// retry on error
@@ -1000,6 +1019,10 @@ func streamPackPart(ctx context.Context, beLoad backendLoadFn, loadBlobFn loadBl
 	it := newPackBlobIterator(packID, newByteReader(data), dataStart, blobs, key, dec)
 
 	for {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
 		val, err := it.Next()
 		if err == errPackEOF {
 			break

@@ -95,7 +95,7 @@ function ensure_initialized {
     set +e  # Don't exit on command failure
 
     outfile=$(mktemp -q)
-    "${RESTIC[@]}" cat config > /dev/null 2>"$outfile"
+    timeout 10s "${RESTIC[@]}" cat config > /dev/null 2>"$outfile"
     rc=$?
 
     set -e  # Exit on command failure
@@ -104,7 +104,11 @@ function ensure_initialized {
     0)
         echo "dir is initialized"
         ;;
-    1)
+    1 | 124)
+        # 124 will be returned if timeout occurs
+        # Using "timeout" above as restic commands such as cat now retry, so a missing repository will
+        # mean it keeps retrying
+        #
         # This can happen for some providers (e.g. minio) if the bucket does not exist
         # Restic will return 10 if the bucket exists and no restic repo at the path exists, but will
         # still return 1 if the bucket itself doesn't exist.
@@ -343,7 +347,7 @@ function do_restore {
         echo "Selected restic snapshot with id: ${snapshot_id}"
         # Running this cmd can be finicky with spaces, do not put quotes around ${RESTORE_OPTIONS}
         #shellcheck disable=SC2086
-        "${RESTIC[@]}" restore "${snapshot_id}" -t . --host "${RESTIC_HOST}" ${RESTORE_OPTIONS}
+        "${RESTIC[@]}" restore "${snapshot_id}" -t . --host "${RESTIC_HOST}" --include-xattr "user.*" ${RESTORE_OPTIONS}
         popd
     fi
 }

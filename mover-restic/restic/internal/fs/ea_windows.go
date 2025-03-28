@@ -4,17 +4,28 @@
 package fs
 
 import (
-	"bytes"
-	"encoding/binary"
-	"errors"
 	"fmt"
 	"syscall"
 	"unsafe"
 
+	"github.com/Microsoft/go-winio"
 	"golang.org/x/sys/windows"
 )
 
-// The code below was adapted from https://github.com/microsoft/go-winio under MIT license.
+// extendedAttribute is a type alias for winio.ExtendedAttribute
+type extendedAttribute = winio.ExtendedAttribute
+
+// encodeExtendedAttributes encodes the extended attributes to a byte slice.
+func encodeExtendedAttributes(attrs []extendedAttribute) ([]byte, error) {
+	return winio.EncodeExtendedAttributes(attrs)
+}
+
+// decodeExtendedAttributes decodes the extended attributes from a byte slice.
+func decodeExtendedAttributes(data []byte) ([]extendedAttribute, error) {
+	return winio.DecodeExtendedAttributes(data)
+}
+
+// The code below was copied over from https://github.com/microsoft/go-winio/blob/main/pipe.go under MIT license.
 
 // The MIT License (MIT)
 
@@ -37,140 +48,6 @@ import (
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-
-// The code below was copied over from https://github.com/microsoft/go-winio/blob/main/ea.go under MIT license.
-
-type fileFullEaInformation struct {
-	NextEntryOffset uint32
-	Flags           uint8
-	NameLength      uint8
-	ValueLength     uint16
-}
-
-var (
-	fileFullEaInformationSize = binary.Size(&fileFullEaInformation{})
-
-	errInvalidEaBuffer = errors.New("invalid extended attribute buffer")
-	errEaNameTooLarge  = errors.New("extended attribute name too large")
-	errEaValueTooLarge = errors.New("extended attribute value too large")
-)
-
-// ExtendedAttribute represents a single Windows EA.
-type ExtendedAttribute struct {
-	Name  string
-	Value []byte
-	Flags uint8
-}
-
-func parseEa(b []byte) (ea ExtendedAttribute, nb []byte, err error) {
-	var info fileFullEaInformation
-	err = binary.Read(bytes.NewReader(b), binary.LittleEndian, &info)
-	if err != nil {
-		err = errInvalidEaBuffer
-		return ea, nb, err
-	}
-
-	nameOffset := fileFullEaInformationSize
-	nameLen := int(info.NameLength)
-	valueOffset := nameOffset + int(info.NameLength) + 1
-	valueLen := int(info.ValueLength)
-	nextOffset := int(info.NextEntryOffset)
-	if valueLen+valueOffset > len(b) || nextOffset < 0 || nextOffset > len(b) {
-		err = errInvalidEaBuffer
-		return ea, nb, err
-	}
-
-	ea.Name = string(b[nameOffset : nameOffset+nameLen])
-	ea.Value = b[valueOffset : valueOffset+valueLen]
-	ea.Flags = info.Flags
-	if info.NextEntryOffset != 0 {
-		nb = b[info.NextEntryOffset:]
-	}
-	return ea, nb, err
-}
-
-// DecodeExtendedAttributes decodes a list of EAs from a FILE_FULL_EA_INFORMATION
-// buffer retrieved from BackupRead, ZwQueryEaFile, etc.
-func DecodeExtendedAttributes(b []byte) (eas []ExtendedAttribute, err error) {
-	for len(b) != 0 {
-		ea, nb, err := parseEa(b)
-		if err != nil {
-			return nil, err
-		}
-
-		eas = append(eas, ea)
-		b = nb
-	}
-	return eas, err
-}
-
-func writeEa(buf *bytes.Buffer, ea *ExtendedAttribute, last bool) error {
-	if int(uint8(len(ea.Name))) != len(ea.Name) {
-		return errEaNameTooLarge
-	}
-	if int(uint16(len(ea.Value))) != len(ea.Value) {
-		return errEaValueTooLarge
-	}
-	entrySize := uint32(fileFullEaInformationSize + len(ea.Name) + 1 + len(ea.Value))
-	withPadding := (entrySize + 3) &^ 3
-	nextOffset := uint32(0)
-	if !last {
-		nextOffset = withPadding
-	}
-	info := fileFullEaInformation{
-		NextEntryOffset: nextOffset,
-		Flags:           ea.Flags,
-		NameLength:      uint8(len(ea.Name)),
-		ValueLength:     uint16(len(ea.Value)),
-	}
-
-	err := binary.Write(buf, binary.LittleEndian, &info)
-	if err != nil {
-		return err
-	}
-
-	_, err = buf.Write([]byte(ea.Name))
-	if err != nil {
-		return err
-	}
-
-	err = buf.WriteByte(0)
-	if err != nil {
-		return err
-	}
-
-	_, err = buf.Write(ea.Value)
-	if err != nil {
-		return err
-	}
-
-	_, err = buf.Write([]byte{0, 0, 0}[0 : withPadding-entrySize])
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// EncodeExtendedAttributes encodes a list of EAs into a FILE_FULL_EA_INFORMATION
-// buffer for use with BackupWrite, ZwSetEaFile, etc.
-func EncodeExtendedAttributes(eas []ExtendedAttribute) ([]byte, error) {
-	var buf bytes.Buffer
-	for i := range eas {
-		last := false
-		if i == len(eas)-1 {
-			last = true
-		}
-
-		err := writeEa(&buf, &eas[i], last)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return buf.Bytes(), nil
-}
-
-// The code below was copied over from https://github.com/microsoft/go-winio/blob/main/pipe.go under MIT license.
 
 type ntStatus int32
 
@@ -216,11 +93,11 @@ const (
 	STATUS_NO_EAS_ON_FILE = -1073741742
 )
 
-// GetFileEA retrieves the extended attributes for the file represented by `handle`. The
+// fgetEA retrieves the extended attributes for the file represented by `handle`. The
 // `handle` must have been opened with file access flag FILE_READ_EA (0x8).
 // The extended file attribute names in windows are case-insensitive and when fetching
 // the attributes the names are generally returned in UPPER case.
-func GetFileEA(handle windows.Handle) ([]ExtendedAttribute, error) {
+func fgetEA(handle windows.Handle) ([]extendedAttribute, error) {
 	// default buffer size to start with
 	bufLen := 1024
 	buf := make([]byte, bufLen)
@@ -245,13 +122,13 @@ func GetFileEA(handle windows.Handle) ([]ExtendedAttribute, error) {
 		}
 		break
 	}
-	return DecodeExtendedAttributes(buf)
+	return decodeExtendedAttributes(buf)
 }
 
-// SetFileEA sets the extended attributes for the file represented by `handle`.  The
+// fsetEA sets the extended attributes for the file represented by `handle`.  The
 // handle must have been opened with the file access flag FILE_WRITE_EA(0x10).
-func SetFileEA(handle windows.Handle, attrs []ExtendedAttribute) error {
-	encodedEA, err := EncodeExtendedAttributes(attrs)
+func fsetEA(handle windows.Handle, attrs []extendedAttribute) error {
+	encodedEA, err := encodeExtendedAttributes(attrs)
 	if err != nil {
 		return fmt.Errorf("failed to encoded extended attributes: %w", err)
 	}
@@ -273,7 +150,7 @@ func getFileEA(handle windows.Handle, iosb *ioStatusBlock, buf *uint8, bufLen ui
 	if restartScan {
 		_p1 = 1
 	}
-	r0, _, _ := syscall.SyscallN(procNtQueryEaFile.Addr(), uintptr(handle), uintptr(unsafe.Pointer(iosb)), uintptr(unsafe.Pointer(buf)), uintptr(bufLen), uintptr(_p0), uintptr(eaList), uintptr(eaListLen), uintptr(unsafe.Pointer(eaIndex)), uintptr(_p1))
+	r0, _, _ := syscall.SyscallN(procNtQueryEaFile.Addr(), uintptr(handle), uintptr(unsafe.Pointer(iosb)), uintptr(unsafe.Pointer(buf)), uintptr(bufLen), uintptr(_p0), eaList, uintptr(eaListLen), uintptr(unsafe.Pointer(eaIndex)), uintptr(_p1))
 	status = ntStatus(r0)
 	return
 }
@@ -282,4 +159,19 @@ func setFileEA(handle windows.Handle, iosb *ioStatusBlock, buf *uint8, bufLen ui
 	r0, _, _ := syscall.SyscallN(procNtSetEaFile.Addr(), uintptr(handle), uintptr(unsafe.Pointer(iosb)), uintptr(unsafe.Pointer(buf)), uintptr(bufLen))
 	status = ntStatus(r0)
 	return
+}
+
+// pathSupportsExtendedAttributes returns true if the path supports extended attributes.
+func pathSupportsExtendedAttributes(path string) (supported bool, err error) {
+	var fileSystemFlags uint32
+	utf16Path, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return false, err
+	}
+	err = windows.GetVolumeInformation(utf16Path, nil, 0, nil, nil, &fileSystemFlags, nil, 0)
+	if err != nil {
+		return false, err
+	}
+	supported = (fileSystemFlags & windows.FILE_SUPPORTS_EXTENDED_ATTRIBUTES) != 0
+	return supported, nil
 }

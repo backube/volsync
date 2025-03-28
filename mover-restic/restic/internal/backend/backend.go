@@ -17,14 +17,11 @@ var ErrNoRepository = fmt.Errorf("repository does not exist")
 // the context package need not be wrapped, as context cancellation is checked
 // separately by the retrying logic.
 type Backend interface {
-	// Connections returns the maximum number of concurrent backend operations.
-	Connections() uint
+	// Properties returns information about the backend
+	Properties() Properties
 
 	// Hasher may return a hash function for calculating a content hash for the backend
 	Hasher() hash.Hash
-
-	// HasAtomicReplace returns whether Save() can atomically replace files
-	HasAtomicReplace() bool
 
 	// Remove removes a File described by h.
 	Remove(ctx context.Context, h Handle) error
@@ -75,6 +72,33 @@ type Backend interface {
 
 	// Delete removes all data in the backend.
 	Delete(ctx context.Context) error
+
+	// Warmup ensures that the specified handles are ready for upcoming reads.
+	// This is particularly useful for transitioning files from cold to hot
+	// storage.
+	//
+	// The method is non-blocking. WarmupWait can be used to wait for
+	// completion.
+	//
+	// Returns:
+	// - Handles currently warming up.
+	// - An error if warmup fails.
+	Warmup(ctx context.Context, h []Handle) ([]Handle, error)
+
+	// WarmupWait waits until all given handles are warm.
+	WarmupWait(ctx context.Context, h []Handle) error
+}
+
+type Properties struct {
+	// Connections states the maximum number of concurrent backend operations.
+	Connections uint
+
+	// HasAtomicReplace states whether Save() can atomically replace files
+	HasAtomicReplace bool
+
+	// HasFlakyErrors states whether the backend may temporarily return errors
+	// that are considered as permanent for existing files.
+	HasFlakyErrors bool
 }
 
 type Unwrapper interface {

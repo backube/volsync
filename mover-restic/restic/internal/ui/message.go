@@ -2,19 +2,17 @@ package ui
 
 import (
 	"fmt"
-
-	"github.com/restic/restic/internal/ui/termstatus"
 )
 
 // Message reports progress with messages of different verbosity.
 type Message struct {
-	term *termstatus.Terminal
+	term Terminal
 	v    uint
 }
 
 // NewMessage returns a message progress reporter with underlying terminal
 // term.
-func NewMessage(term *termstatus.Terminal, verbosity uint) *Message {
+func NewMessage(term Terminal, verbosity uint) *Message {
 	return &Message{
 		term: term,
 		v:    verbosity,
@@ -24,6 +22,12 @@ func NewMessage(term *termstatus.Terminal, verbosity uint) *Message {
 // E reports an error
 func (m *Message) E(msg string, args ...interface{}) {
 	m.term.Error(fmt.Sprintf(msg, args...))
+}
+
+// S prints a message, this is should only be used for very important messages
+// that are not errors.
+func (m *Message) S(msg string, args ...interface{}) {
+	m.term.Print(fmt.Sprintf(msg, args...))
 }
 
 // P prints a message if verbosity >= 1, this is used for normal messages which

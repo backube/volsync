@@ -20,14 +20,16 @@ const blockSize = 512
 
 // Statically ensure that *file and *openFile implement the given interfaces
 var _ = fs.HandleReader(&openFile{})
-var _ = fs.NodeListxattrer(&file{})
+var _ = fs.NodeForgetter(&file{})
 var _ = fs.NodeGetxattrer(&file{})
+var _ = fs.NodeListxattrer(&file{})
 var _ = fs.NodeOpener(&file{})
 
 type file struct {
-	root  *Root
-	node  *restic.Node
-	inode uint64
+	root   *Root
+	forget forgetFn
+	node   *restic.Node
+	inode  uint64
 }
 
 type openFile struct {
@@ -36,12 +38,13 @@ type openFile struct {
 	cumsize []uint64
 }
 
-func newFile(root *Root, inode uint64, node *restic.Node) (fusefile *file, err error) {
+func newFile(root *Root, forget forgetFn, inode uint64, node *restic.Node) (fusefile *file, err error) {
 	debug.Log("create new file for %v with %d blobs", node.Name, len(node.Content))
 	return &file{
-		inode: inode,
-		root:  root,
-		node:  node,
+		inode:  inode,
+		forget: forget,
+		root:   root,
+		node:   node,
 	}, nil
 }
 
@@ -66,12 +69,16 @@ func (f *file) Attr(_ context.Context, a *fuse.Attr) error {
 
 }
 
-func (f *file) Open(_ context.Context, _ *fuse.OpenRequest, _ *fuse.OpenResponse) (fs.Handle, error) {
+func (f *file) Open(ctx context.Context, _ *fuse.OpenRequest, _ *fuse.OpenResponse) (fs.Handle, error) {
 	debug.Log("open file %v with %d blobs", f.node.Name, len(f.node.Content))
 
 	var bytes uint64
 	cumsize := make([]uint64, 1+len(f.node.Content))
 	for i, id := range f.node.Content {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
 		size, found := f.root.repo.LookupBlobSize(restic.DataBlob, id)
 		if !found {
 			return nil, errors.Errorf("id %v not found in repository", id)
@@ -167,4 +174,8 @@ func (f *file) Listxattr(_ context.Context, req *fuse.ListxattrRequest, resp *fu
 
 func (f *file) Getxattr(_ context.Context, req *fuse.GetxattrRequest, resp *fuse.GetxattrResponse) error {
 	return nodeGetXattr(f.node, req, resp)
+}
+
+func (f *file) Forget() {
+	f.forget()
 }

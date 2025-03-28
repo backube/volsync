@@ -13,14 +13,25 @@ import (
 )
 
 func testRunPrune(t testing.TB, gopts GlobalOptions, opts PruneOptions) {
+	t.Helper()
+	rtest.OK(t, testRunPruneOutput(gopts, opts))
+}
+
+func testRunPruneMustFail(t testing.TB, gopts GlobalOptions, opts PruneOptions) {
+	t.Helper()
+	err := testRunPruneOutput(gopts, opts)
+	rtest.Assert(t, err != nil, "expected non nil error")
+}
+
+func testRunPruneOutput(gopts GlobalOptions, opts PruneOptions) error {
 	oldHook := gopts.backendTestHook
 	gopts.backendTestHook = func(r backend.Backend) (backend.Backend, error) { return newListOnceBackend(r), nil }
 	defer func() {
 		gopts.backendTestHook = oldHook
 	}()
-	rtest.OK(t, withTermStatus(gopts, func(ctx context.Context, term *termstatus.Terminal) error {
+	return withTermStatus(gopts, func(ctx context.Context, term *termstatus.Terminal) error {
 		return runPrune(context.TODO(), opts, gopts, term)
-	}))
+	})
 }
 
 func TestPrune(t *testing.T) {
@@ -112,7 +123,8 @@ func testPrune(t *testing.T, pruneOpts PruneOptions, checkOpts CheckOptions) {
 	createPrunableRepo(t, env)
 	testRunPrune(t, env.gopts, pruneOpts)
 	rtest.OK(t, withTermStatus(env.gopts, func(ctx context.Context, term *termstatus.Terminal) error {
-		return runCheck(context.TODO(), checkOpts, env.gopts, nil, term)
+		_, err := runCheck(context.TODO(), checkOpts, env.gopts, nil, term)
+		return err
 	}))
 }
 
@@ -146,10 +158,9 @@ func TestPruneWithDamagedRepository(t *testing.T) {
 		env.gopts.backendTestHook = oldHook
 	}()
 	// prune should fail
-	rtest.Assert(t, withTermStatus(env.gopts, func(ctx context.Context, term *termstatus.Terminal) error {
+	rtest.Equals(t, repository.ErrPacksMissing, withTermStatus(env.gopts, func(ctx context.Context, term *termstatus.Terminal) error {
 		return runPrune(context.TODO(), pruneDefaultOptions, env.gopts, term)
-	}) == repository.ErrPacksMissing,
-		"prune should have reported index not complete error")
+	}), "prune should have reported index not complete error")
 }
 
 // Test repos for edge cases
@@ -221,7 +232,8 @@ func testEdgeCaseRepo(t *testing.T, tarfile string, optionsCheck CheckOptions, o
 		testRunCheck(t, env.gopts)
 	} else {
 		rtest.Assert(t, withTermStatus(env.gopts, func(ctx context.Context, term *termstatus.Terminal) error {
-			return runCheck(context.TODO(), optionsCheck, env.gopts, nil, term)
+			_, err := runCheck(context.TODO(), optionsCheck, env.gopts, nil, term)
+			return err
 		}) != nil,
 			"check should have reported an error")
 	}
@@ -235,4 +247,21 @@ func testEdgeCaseRepo(t *testing.T, tarfile string, optionsCheck CheckOptions, o
 		}) != nil,
 			"prune should have reported an error")
 	}
+}
+
+func TestPruneRepackSmallerThanSmoke(t *testing.T) {
+	env, cleanup := withTestEnvironment(t)
+	defer cleanup()
+
+	// the implementation is already unit tested, so just check that
+	// the setting reaches its goal
+	createPrunableRepo(t, env)
+	testRunPrune(t, env.gopts, PruneOptions{
+		SmallPackSize: "4M",
+		MaxUnused:     "5%",
+	})
+	testRunPruneMustFail(t, env.gopts, PruneOptions{
+		SmallPackSize: "500M",
+		MaxUnused:     "5%",
+	})
 }

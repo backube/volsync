@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"math"
 	"sync"
@@ -12,7 +11,7 @@ import (
 
 	"github.com/restic/restic/internal/crypto"
 	"github.com/restic/restic/internal/errors"
-	"github.com/restic/restic/internal/feature"
+	"github.com/restic/restic/internal/repository/pack"
 	"github.com/restic/restic/internal/restic"
 
 	"github.com/restic/restic/internal/debug"
@@ -94,8 +93,8 @@ const (
 	indexMaxAge   = 10 * time.Minute
 )
 
-// IndexFull returns true iff the index is "full enough" to be saved as a preliminary index.
-var IndexFull = func(idx *Index) bool {
+// Full returns true iff the index is "full enough" to be saved as a preliminary index.
+var Full = func(idx *Index) bool {
 	idx.m.RLock()
 	defer idx.m.RUnlock()
 
@@ -118,7 +117,18 @@ var IndexFull = func(idx *Index) bool {
 
 	debug.Log("index %p only has %d blobs and is too young (%v)", idx, blobs, age)
 	return false
+}
 
+var Oversized = func(idx *Index) bool {
+	idx.m.RLock()
+	defer idx.m.RUnlock()
+
+	var blobs uint
+	for typ := range idx.byType {
+		blobs += idx.byType[typ].len()
+	}
+
+	return blobs >= indexMaxBlobs+pack.MaxHeaderEntries
 }
 
 // StorePack remembers the ids of all blobs of a given pack
@@ -248,8 +258,8 @@ func (idx *Index) EachByPack(ctx context.Context, packBlacklist restic.IDSet) <-
 		for packID, packByType := range byPack {
 			var result EachByPackResult
 			result.PackID = packID
-			for typ, pack := range packByType {
-				for _, e := range pack {
+			for typ, p := range packByType {
+				for _, e := range p {
 					result.Blobs = append(result.Blobs, idx.toPackedBlob(e, restic.BlobType(typ)).Blob)
 				}
 			}
@@ -353,7 +363,7 @@ func (idx *Index) Encode(w io.Writer) error {
 }
 
 // SaveIndex saves an index in the repository.
-func (idx *Index) SaveIndex(ctx context.Context, repo restic.SaverUnpacked) (restic.ID, error) {
+func (idx *Index) SaveIndex(ctx context.Context, repo restic.SaverUnpacked[restic.FileType]) (restic.ID, error) {
 	buf := bytes.NewBuffer(nil)
 
 	err := idx.Encode(buf)
@@ -489,41 +499,22 @@ func (idx *Index) merge(idx2 *Index) error {
 	return nil
 }
 
-// isErrOldIndex returns true if the error may be caused by an old index
-// format.
-func isErrOldIndex(err error) bool {
-	e, ok := err.(*json.UnmarshalTypeError)
-	return ok && e.Value == "array"
-}
-
 // DecodeIndex unserializes an index from buf.
-func DecodeIndex(buf []byte, id restic.ID) (idx *Index, oldFormat bool, err error) {
+func DecodeIndex(buf []byte, id restic.ID) (idx *Index, err error) {
 	debug.Log("Start decoding index")
 	idxJSON := &jsonIndex{}
 
 	err = json.Unmarshal(buf, idxJSON)
 	if err != nil {
 		debug.Log("Error %v", err)
-
-		if isErrOldIndex(err) {
-			if feature.Flag.Enabled(feature.DeprecateLegacyIndex) {
-				return nil, false, fmt.Errorf("index seems to use the legacy format. update it using `restic repair index`")
-			}
-
-			debug.Log("index is probably old format, trying that")
-			idx, err = decodeOldIndex(buf)
-			idx.ids = append(idx.ids, id)
-			return idx, err == nil, err
-		}
-
-		return nil, false, errors.Wrap(err, "DecodeIndex")
+		return nil, errors.Wrap(err, "DecodeIndex")
 	}
 
 	idx = NewIndex()
-	for _, pack := range idxJSON.Packs {
-		packID := idx.addToPacks(pack.ID)
+	for _, p := range idxJSON.Packs {
+		packID := idx.addToPacks(p.ID)
 
-		for _, blob := range pack.Blobs {
+		for _, blob := range p.Blobs {
 			idx.store(packID, restic.Blob{
 				BlobHandle: restic.BlobHandle{
 					Type: blob.Type,
@@ -535,38 +526,6 @@ func DecodeIndex(buf []byte, id restic.ID) (idx *Index, oldFormat bool, err erro
 		}
 	}
 	idx.ids = append(idx.ids, id)
-	idx.final = true
-
-	debug.Log("done")
-	return idx, false, nil
-}
-
-// DecodeOldIndex loads and unserializes an index in the old format from rd.
-func decodeOldIndex(buf []byte) (idx *Index, err error) {
-	debug.Log("Start decoding old index")
-	list := []*packJSON{}
-
-	err = json.Unmarshal(buf, &list)
-	if err != nil {
-		debug.Log("Error %#v", err)
-		return nil, errors.Wrap(err, "Decode")
-	}
-
-	idx = NewIndex()
-	for _, pack := range list {
-		packID := idx.addToPacks(pack.ID)
-
-		for _, blob := range pack.Blobs {
-			idx.store(packID, restic.Blob{
-				BlobHandle: restic.BlobHandle{
-					Type: blob.Type,
-					ID:   blob.ID},
-				Offset: blob.Offset,
-				Length: blob.Length,
-				// no compressed length in the old index format
-			})
-		}
-	}
 	idx.final = true
 
 	debug.Log("done")

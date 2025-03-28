@@ -50,8 +50,6 @@ func NewFactory() location.Factory {
 	return location.NewLimitedBackendFactory("sftp", ParseConfig, location.NoPassword, limiter.WrapBackendConstructor(Create), limiter.WrapBackendConstructor(Open))
 }
 
-const defaultLayout = "default"
-
 func startClient(cfg Config) (*SFTP, error) {
 	program, args, err := buildSSHCommand(cfg)
 	if err != nil {
@@ -88,7 +86,7 @@ func startClient(cfg Config) (*SFTP, error) {
 
 	bg, err := util.StartForeground(cmd)
 	if err != nil {
-		if util.IsErrDot(err) {
+		if errors.Is(err, exec.ErrDot) {
 			return nil, errors.Errorf("cannot implicitly run relative executable %v found in current directory, use -o sftp.command=./<command> to override", cmd.Path)
 		}
 		return nil, err
@@ -121,7 +119,13 @@ func startClient(cfg Config) (*SFTP, error) {
 	}
 
 	_, posixRename := client.HasExtension("posix-rename@openssh.com")
-	return &SFTP{c: client, cmd: cmd, result: ch, posixRename: posixRename}, nil
+	return &SFTP{
+		c:           client,
+		cmd:         cmd,
+		result:      ch,
+		posixRename: posixRename,
+		Layout:      layout.NewDefaultLayout(cfg.Path, path.Join),
+	}, nil
 }
 
 // clientError returns an error if the client has exited. Otherwise, nil is
@@ -139,7 +143,7 @@ func (r *SFTP) clientError() error {
 
 // Open opens an sftp backend as described by the config by running
 // "ssh" with the appropriate arguments (or cfg.Command, if set).
-func Open(ctx context.Context, cfg Config) (*SFTP, error) {
+func Open(_ context.Context, cfg Config) (*SFTP, error) {
 	debug.Log("open backend with config %#v", cfg)
 
 	sftp, err := startClient(cfg)
@@ -148,18 +152,10 @@ func Open(ctx context.Context, cfg Config) (*SFTP, error) {
 		return nil, err
 	}
 
-	return open(ctx, sftp, cfg)
+	return open(sftp, cfg)
 }
 
-func open(ctx context.Context, sftp *SFTP, cfg Config) (*SFTP, error) {
-	var err error
-	sftp.Layout, err = layout.ParseLayout(ctx, sftp, cfg.Layout, defaultLayout, cfg.Path)
-	if err != nil {
-		return nil, err
-	}
-
-	debug.Log("layout: %v\n", sftp.Layout)
-
+func open(sftp *SFTP, cfg Config) (*SFTP, error) {
 	fi, err := sftp.c.Stat(sftp.Layout.Filename(backend.Handle{Type: backend.ConfigFile}))
 	m := util.DeriveModesFromFileInfo(fi, err)
 	debug.Log("using (%03O file, %03O dir) permissions", m.File, m.Dir)
@@ -188,26 +184,11 @@ func (r *SFTP) mkdirAllDataSubdirs(ctx context.Context, nconn uint) error {
 			if err := r.c.Mkdir(d); err == nil {
 				return nil
 			}
-			return r.c.MkdirAll(d)
+			return errors.Wrapf(r.c.MkdirAll(d), "MkdirAll %v", d)
 		})
 	}
 
 	return g.Wait()
-}
-
-// Join combines path components with slashes (according to the sftp spec).
-func (r *SFTP) Join(p ...string) string {
-	return path.Join(p...)
-}
-
-// ReadDir returns the entries for a directory.
-func (r *SFTP) ReadDir(_ context.Context, dir string) ([]os.FileInfo, error) {
-	fi, err := r.c.ReadDir(dir)
-
-	// sftp client does not specify dir name on error, so add it here
-	err = errors.Wrapf(err, "(%v)", dir)
-
-	return fi, err
 }
 
 // IsNotExist returns true if the error is caused by a not existing file.
@@ -266,11 +247,6 @@ func Create(ctx context.Context, cfg Config) (*SFTP, error) {
 		return nil, err
 	}
 
-	sftp.Layout, err = layout.ParseLayout(ctx, sftp, cfg.Layout, defaultLayout, cfg.Path)
-	if err != nil {
-		return nil, err
-	}
-
 	sftp.Modes = util.DefaultModes
 
 	// test if config file already exists
@@ -285,27 +261,19 @@ func Create(ctx context.Context, cfg Config) (*SFTP, error) {
 	}
 
 	// repurpose existing connection
-	return open(ctx, sftp, cfg)
+	return open(sftp, cfg)
 }
 
-func (r *SFTP) Connections() uint {
-	return r.Config.Connections
+func (r *SFTP) Properties() backend.Properties {
+	return backend.Properties{
+		Connections:      r.Config.Connections,
+		HasAtomicReplace: r.posixRename,
+	}
 }
 
 // Hasher may return a hash function for calculating a content hash for the backend
 func (r *SFTP) Hasher() hash.Hash {
 	return nil
-}
-
-// HasAtomicReplace returns whether Save() can atomically replace files
-func (r *SFTP) HasAtomicReplace() bool {
-	return r.posixRename
-}
-
-// Join joins the given paths and cleans them afterwards. This always uses
-// forward slashes, which is required by sftp.
-func Join(parts ...string) string {
-	return path.Clean(path.Join(parts...))
 }
 
 // tempSuffix generates a random string suffix that should be sufficiently long
@@ -343,13 +311,17 @@ func (r *SFTP) Save(_ context.Context, h backend.Handle, rd backend.RewindReader
 		}
 	}
 
+	if err != nil {
+		return errors.Wrapf(err, "OpenFile %v", tmpFilename)
+	}
+
 	// pkg/sftp doesn't allow creating with a mode.
 	// Chmod while the file is still empty.
 	if err == nil {
 		err = f.Chmod(r.Modes.File)
-	}
-	if err != nil {
-		return errors.Wrap(err, "OpenFile")
+		if err != nil {
+			return errors.Wrapf(err, "Chmod %v", tmpFilename)
+		}
 	}
 
 	defer func() {
@@ -370,18 +342,18 @@ func (r *SFTP) Save(_ context.Context, h backend.Handle, rd backend.RewindReader
 	if err != nil {
 		_ = f.Close()
 		err = r.checkNoSpace(dirname, rd.Length(), err)
-		return errors.Wrap(err, "Write")
+		return errors.Wrapf(err, "Write %v", tmpFilename)
 	}
 
 	// sanity check
 	if wbytes != rd.Length() {
 		_ = f.Close()
-		return errors.Errorf("wrote %d bytes instead of the expected %d bytes", wbytes, rd.Length())
+		return errors.Errorf("Write %v: wrote %d bytes instead of the expected %d bytes", tmpFilename, wbytes, rd.Length())
 	}
 
 	err = f.Close()
 	if err != nil {
-		return errors.Wrap(err, "Close")
+		return errors.Wrapf(err, "Close %v", tmpFilename)
 	}
 
 	// Prefer POSIX atomic rename if available.
@@ -390,7 +362,7 @@ func (r *SFTP) Save(_ context.Context, h backend.Handle, rd backend.RewindReader
 	} else {
 		err = r.c.Rename(tmpFilename, filename)
 	}
-	return errors.Wrap(err, "Rename")
+	return errors.Wrapf(err, "Rename %v", tmpFilename)
 }
 
 // checkNoSpace checks if err was likely caused by lack of available space
@@ -421,6 +393,10 @@ func (r *SFTP) checkNoSpace(dir string, size int64, origErr error) error {
 // Load runs fn with a reader that yields the contents of the file at h at the
 // given offset.
 func (r *SFTP) Load(ctx context.Context, h backend.Handle, length int, offset int64, fn func(rd io.Reader) error) error {
+	if err := r.clientError(); err != nil {
+		return err
+	}
+
 	return util.DefaultLoad(ctx, h, length, offset, r.openReader, func(rd io.Reader) error {
 		if length == 0 || !feature.Flag.Enabled(feature.BackendErrorRedesign) {
 			return fn(rd)
@@ -444,14 +420,14 @@ func (r *SFTP) Load(ctx context.Context, h backend.Handle, length int, offset in
 func (r *SFTP) openReader(_ context.Context, h backend.Handle, length int, offset int64) (io.ReadCloser, error) {
 	f, err := r.c.Open(r.Filename(h))
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "Open %v", r.Filename(h))
 	}
 
 	if offset > 0 {
 		_, err = f.Seek(offset, 0)
 		if err != nil {
 			_ = f.Close()
-			return nil, err
+			return nil, errors.Wrapf(err, "Seek %v", r.Filename(h))
 		}
 	}
 
@@ -472,7 +448,7 @@ func (r *SFTP) Stat(_ context.Context, h backend.Handle) (backend.FileInfo, erro
 
 	fi, err := r.c.Lstat(r.Filename(h))
 	if err != nil {
-		return backend.FileInfo{}, errors.Wrap(err, "Lstat")
+		return backend.FileInfo{}, errors.Wrapf(err, "Lstat %v", r.Filename(h))
 	}
 
 	return backend.FileInfo{Size: fi.Size(), Name: h.Name}, nil
@@ -484,12 +460,16 @@ func (r *SFTP) Remove(_ context.Context, h backend.Handle) error {
 		return err
 	}
 
-	return r.c.Remove(r.Filename(h))
+	return errors.Wrapf(r.c.Remove(r.Filename(h)), "Remove %v", r.Filename(h))
 }
 
 // List runs fn for each file in the backend which has the type t. When an
 // error occurs (or fn returns an error), List stops and returns it.
 func (r *SFTP) List(ctx context.Context, t backend.FileType, fn func(backend.FileInfo) error) error {
+	if err := r.clientError(); err != nil {
+		return err
+	}
+
 	basedir, subdirs := r.Basedir(t)
 	walker := r.c.Walk(basedir)
 	for {
@@ -503,7 +483,7 @@ func (r *SFTP) List(ctx context.Context, t backend.FileType, fn func(backend.Fil
 				debug.Log("ignoring non-existing directory")
 				return nil
 			}
-			return walker.Err()
+			return errors.Wrapf(walker.Err(), "Walk %v", basedir)
 		}
 
 		if walker.Path() == basedir {
@@ -552,7 +532,7 @@ func (r *SFTP) Close() error {
 		return nil
 	}
 
-	err := r.c.Close()
+	err := errors.Wrap(r.c.Close(), "Close")
 	debug.Log("Close returned error %v", err)
 
 	// wait for closeTimeout before killing the process
@@ -572,22 +552,26 @@ func (r *SFTP) Close() error {
 }
 
 func (r *SFTP) deleteRecursive(ctx context.Context, name string) error {
-	entries, err := r.ReadDir(ctx, name)
+	entries, err := r.c.ReadDir(name)
 	if err != nil {
-		return errors.Wrap(err, "ReadDir")
+		return errors.Wrapf(err, "ReadDir %v", name)
 	}
 
 	for _, fi := range entries {
-		itemName := r.Join(name, fi.Name())
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		itemName := path.Join(name, fi.Name())
 		if fi.IsDir() {
 			err := r.deleteRecursive(ctx, itemName)
 			if err != nil {
-				return errors.Wrap(err, "ReadDir")
+				return err
 			}
 
 			err = r.c.RemoveDirectory(itemName)
 			if err != nil {
-				return errors.Wrap(err, "RemoveDirectory")
+				return errors.Wrapf(err, "RemoveDirectory %v", itemName)
 			}
 
 			continue
@@ -595,7 +579,7 @@ func (r *SFTP) deleteRecursive(ctx context.Context, name string) error {
 
 		err := r.c.Remove(itemName)
 		if err != nil {
-			return errors.Wrap(err, "ReadDir")
+			return errors.Wrapf(err, "Remove %v", itemName)
 		}
 	}
 
@@ -606,3 +590,9 @@ func (r *SFTP) deleteRecursive(ctx context.Context, name string) error {
 func (r *SFTP) Delete(ctx context.Context) error {
 	return r.deleteRecursive(ctx, r.p)
 }
+
+// Warmup not implemented
+func (r *SFTP) Warmup(_ context.Context, _ []backend.Handle) ([]backend.Handle, error) {
+	return []backend.Handle{}, nil
+}
+func (r *SFTP) WarmupWait(_ context.Context, _ []backend.Handle) error { return nil }
