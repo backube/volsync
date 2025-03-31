@@ -107,13 +107,10 @@ func Open(ctx context.Context, cfg Config, rt http.RoundTripper) (backend.Backen
 	}
 
 	be := &b2Backend{
-		client: client,
-		bucket: bucket,
-		cfg:    cfg,
-		Layout: &layout.DefaultLayout{
-			Join: path.Join,
-			Path: cfg.Prefix,
-		},
+		client:       client,
+		bucket:       bucket,
+		cfg:          cfg,
+		Layout:       layout.NewDefaultLayout(cfg.Prefix, path.Join),
 		listMaxItems: defaultListMaxItems,
 		canDelete:    true,
 	}
@@ -143,13 +140,10 @@ func Create(ctx context.Context, cfg Config, rt http.RoundTripper) (backend.Back
 	}
 
 	be := &b2Backend{
-		client: client,
-		bucket: bucket,
-		cfg:    cfg,
-		Layout: &layout.DefaultLayout{
-			Join: path.Join,
-			Path: cfg.Prefix,
-		},
+		client:       client,
+		bucket:       bucket,
+		cfg:          cfg,
+		Layout:       layout.NewDefaultLayout(cfg.Prefix, path.Join),
 		listMaxItems: defaultListMaxItems,
 	}
 	return be, nil
@@ -160,18 +154,16 @@ func (be *b2Backend) SetListMaxItems(i int) {
 	be.listMaxItems = i
 }
 
-func (be *b2Backend) Connections() uint {
-	return be.cfg.Connections
+func (be *b2Backend) Properties() backend.Properties {
+	return backend.Properties{
+		Connections:      be.cfg.Connections,
+		HasAtomicReplace: true,
+	}
 }
 
 // Hasher may return a hash function for calculating a content hash for the backend
 func (be *b2Backend) Hasher() hash.Hash {
 	return nil
-}
-
-// HasAtomicReplace returns whether Save() can atomically replace files
-func (be *b2Backend) HasAtomicReplace() bool {
-	return true
 }
 
 // IsNotExist returns true if the error is caused by a non-existing file.
@@ -341,3 +333,9 @@ func (be *b2Backend) Delete(ctx context.Context) error {
 
 // Close does nothing
 func (be *b2Backend) Close() error { return nil }
+
+// Warmup not implemented
+func (be *b2Backend) Warmup(_ context.Context, _ []backend.Handle) ([]backend.Handle, error) {
+	return []backend.Handle{}, nil
+}
+func (be *b2Backend) WarmupWait(_ context.Context, _ []backend.Handle) error { return nil }

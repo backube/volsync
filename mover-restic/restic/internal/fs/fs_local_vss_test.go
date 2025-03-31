@@ -1,16 +1,22 @@
+//go:build windows
 // +build windows
 
 package fs
 
 import (
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
-	ole "github.com/go-ole/go-ole"
+	"github.com/go-ole/go-ole"
 	"github.com/restic/restic/internal/options"
+	rtest "github.com/restic/restic/internal/test"
 )
 
 func matchStrings(ptrs []string, strs []string) bool {
@@ -120,10 +126,10 @@ func TestVSSConfig(t *testing.T) {
 func TestParseMountPoints(t *testing.T) {
 	volumeMatch := regexp.MustCompile(`^\\\\\?\\Volume\{[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\}\\$`)
 
-	// It's not a good idea to test functions based on GetVolumeNameForVolumeMountPoint by calling
-	// GetVolumeNameForVolumeMountPoint itself, but we have restricted test environment:
+	// It's not a good idea to test functions based on getVolumeNameForVolumeMountPoint by calling
+	// getVolumeNameForVolumeMountPoint itself, but we have restricted test environment:
 	// cannot manage volumes and can only be sure that the mount point C:\ exists
-	sysVolume, err := GetVolumeNameForVolumeMountPoint("C:")
+	sysVolume, err := getVolumeNameForVolumeMountPoint("C:")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,4 +288,54 @@ func TestParseProvider(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestVSSFS(t *testing.T) {
+	if runtime.GOOS != "windows" || HasSufficientPrivilegesForVSS() != nil {
+		t.Skip("vss fs test can only be run on windows with admin privileges")
+	}
+
+	cfg, err := ParseVSSConfig(options.Options{})
+	rtest.OK(t, err)
+
+	errorHandler := func(item string, err error) {
+		t.Fatalf("unexpected error (%v)", err)
+	}
+	messageHandler := func(msg string, args ...interface{}) {
+		if strings.HasPrefix(msg, "creating VSS snapshot for") || strings.HasPrefix(msg, "successfully created snapshot") {
+			return
+		}
+		t.Fatalf("unexpected message (%s)", fmt.Sprintf(msg, args))
+	}
+
+	localVss := NewLocalVss(errorHandler, messageHandler, cfg)
+	defer localVss.DeleteSnapshots()
+
+	tempdir := t.TempDir()
+	tempfile := filepath.Join(tempdir, "file")
+	rtest.OK(t, os.WriteFile(tempfile, []byte("example"), 0o600))
+
+	// trigger snapshot creation and
+	// capture FI while file still exists (should already be within the snapshot)
+	origFi, err := localVss.Lstat(tempfile)
+	rtest.OK(t, err)
+
+	// remove original file
+	rtest.OK(t, os.Remove(tempfile))
+
+	lstatFi, err := localVss.Lstat(tempfile)
+	rtest.OK(t, err)
+	rtest.Equals(t, origFi.Mode, lstatFi.Mode)
+
+	f, err := localVss.OpenFile(tempfile, os.O_RDONLY, false)
+	rtest.OK(t, err)
+	data, err := io.ReadAll(f)
+	rtest.OK(t, err)
+	rtest.Equals(t, "example", string(data), "unexpected file content")
+
+	node, err := f.ToNode(false)
+	rtest.OK(t, err)
+	rtest.Equals(t, node.Mode, lstatFi.Mode)
+
+	rtest.OK(t, f.Close())
 }

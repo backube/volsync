@@ -16,12 +16,16 @@ import (
 	"github.com/restic/restic/internal/ui/termstatus"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
-var cmdPrune = &cobra.Command{
-	Use:   "prune [flags]",
-	Short: "Remove unneeded data from the repository",
-	Long: `
+func newPruneCommand() *cobra.Command {
+	var opts PruneOptions
+
+	cmd := &cobra.Command{
+		Use:   "prune [flags]",
+		Short: "Remove unneeded data from the repository",
+		Long: `
 The "prune" command checks the repository and removes data that is not
 referenced and therefore not needed any more.
 
@@ -32,13 +36,19 @@ Exit status is 0 if the command was successful.
 Exit status is 1 if there was any error.
 Exit status is 10 if the repository does not exist.
 Exit status is 11 if the repository is already locked.
+Exit status is 12 if the password is incorrect.
 `,
-	DisableAutoGenTag: true,
-	RunE: func(cmd *cobra.Command, _ []string) error {
-		term, cancel := setupTermstatus()
-		defer cancel()
-		return runPrune(cmd.Context(), pruneOptions, globalOptions, term)
-	},
+		GroupID:           cmdGroupDefault,
+		DisableAutoGenTag: true,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			term, cancel := setupTermstatus()
+			defer cancel()
+			return runPrune(cmd.Context(), opts, globalOptions, term)
+		},
+	}
+
+	opts.AddFlags(cmd.Flags())
+	return cmd
 }
 
 // PruneOptions collects all options for the cleanup command.
@@ -57,25 +67,24 @@ type PruneOptions struct {
 	RepackCacheableOnly bool
 	RepackSmall         bool
 	RepackUncompressed  bool
+
+	SmallPackSize  string
+	SmallPackBytes uint64
 }
 
-var pruneOptions PruneOptions
-
-func init() {
-	cmdRoot.AddCommand(cmdPrune)
-	f := cmdPrune.Flags()
-	f.BoolVarP(&pruneOptions.DryRun, "dry-run", "n", false, "do not modify the repository, just print what would be done")
-	f.StringVarP(&pruneOptions.UnsafeNoSpaceRecovery, "unsafe-recover-no-free-space", "", "", "UNSAFE, READ THE DOCUMENTATION BEFORE USING! Try to recover a repository stuck with no free space. Do not use without trying out 'prune --max-repack-size 0' first.")
-	addPruneOptions(cmdPrune, &pruneOptions)
+func (opts *PruneOptions) AddFlags(f *pflag.FlagSet) {
+	opts.AddLimitedFlags(f)
+	f.BoolVarP(&opts.DryRun, "dry-run", "n", false, "do not modify the repository, just print what would be done")
+	f.StringVarP(&opts.UnsafeNoSpaceRecovery, "unsafe-recover-no-free-space", "", "", "UNSAFE, READ THE DOCUMENTATION BEFORE USING! Try to recover a repository stuck with no free space. Do not use without trying out 'prune --max-repack-size 0' first.")
 }
 
-func addPruneOptions(c *cobra.Command, pruneOptions *PruneOptions) {
-	f := c.Flags()
-	f.StringVar(&pruneOptions.MaxUnused, "max-unused", "5%", "tolerate given `limit` of unused data (absolute value in bytes with suffixes k/K, m/M, g/G, t/T, a value in % or the word 'unlimited')")
-	f.StringVar(&pruneOptions.MaxRepackSize, "max-repack-size", "", "maximum `size` to repack (allowed suffixes: k/K, m/M, g/G, t/T)")
-	f.BoolVar(&pruneOptions.RepackCacheableOnly, "repack-cacheable-only", false, "only repack packs which are cacheable")
-	f.BoolVar(&pruneOptions.RepackSmall, "repack-small", false, "repack pack files below 80% of target pack size")
-	f.BoolVar(&pruneOptions.RepackUncompressed, "repack-uncompressed", false, "repack all uncompressed data")
+func (opts *PruneOptions) AddLimitedFlags(f *pflag.FlagSet) {
+	f.StringVar(&opts.MaxUnused, "max-unused", "5%", "tolerate given `limit` of unused data (absolute value in bytes with suffixes k/K, m/M, g/G, t/T, a value in % or the word 'unlimited')")
+	f.StringVar(&opts.MaxRepackSize, "max-repack-size", "", "stop after repacking this much data in total (allowed suffixes for `size`: k/K, m/M, g/G, t/T)")
+	f.BoolVar(&opts.RepackCacheableOnly, "repack-cacheable-only", false, "only repack packs which are cacheable")
+	f.BoolVar(&opts.RepackSmall, "repack-small", false, "repack pack files below 80% of target pack size")
+	f.BoolVar(&opts.RepackUncompressed, "repack-uncompressed", false, "repack all uncompressed data")
+	f.StringVar(&opts.SmallPackSize, "repack-smaller-than", "", "pack `below-limit` packfiles (allowed suffixes: k/K, m/M)")
 }
 
 func verifyPruneOptions(opts *PruneOptions) error {
@@ -134,6 +143,15 @@ func verifyPruneOptions(opts *PruneOptions) error {
 		}
 	}
 
+	if opts.SmallPackSize != "" {
+		size, err := ui.ParseBytes(opts.SmallPackSize)
+		if err != nil {
+			return errors.Fatalf("invalid number of bytes %q for --repack-smaller-than: %v", opts.SmallPackSize, err)
+		}
+		opts.SmallPackBytes = uint64(size)
+		opts.RepackSmall = true
+	}
+
 	return nil
 }
 
@@ -147,7 +165,11 @@ func runPrune(ctx context.Context, opts PruneOptions, gopts GlobalOptions, term 
 		return errors.Fatal("disabled compression and `--repack-uncompressed` are mutually exclusive")
 	}
 
-	ctx, repo, unlock, err := openWithExclusiveLock(ctx, gopts, false)
+	if gopts.NoLock && !opts.DryRun {
+		return errors.Fatal("--no-lock is only applicable in combination with --dry-run for prune command")
+	}
+
+	ctx, repo, unlock, err := openWithExclusiveLock(ctx, gopts, opts.DryRun && gopts.NoLock)
 	if err != nil {
 		return err
 	}
@@ -165,7 +187,7 @@ func runPrune(ctx context.Context, opts PruneOptions, gopts GlobalOptions, term 
 }
 
 func runPruneWithRepo(ctx context.Context, opts PruneOptions, gopts GlobalOptions, repo *repository.Repository, ignoreSnapshots restic.IDSet, term *termstatus.Terminal) error {
-	if repo.Cache == nil {
+	if repo.Cache() == nil {
 		Print("warning: running prune without a cache, this may be very slow!\n")
 	}
 
@@ -185,6 +207,7 @@ func runPruneWithRepo(ctx context.Context, opts PruneOptions, gopts GlobalOption
 
 		MaxUnusedBytes: opts.maxUnusedBytes,
 		MaxRepackBytes: opts.MaxRepackBytes,
+		SmallPackBytes: opts.SmallPackBytes,
 
 		RepackCacheableOnly: opts.RepackCacheableOnly,
 		RepackSmall:         opts.RepackSmall,

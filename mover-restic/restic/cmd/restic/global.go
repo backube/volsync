@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -29,25 +30,23 @@ import (
 	"github.com/restic/restic/internal/backend/sftp"
 	"github.com/restic/restic/internal/backend/swift"
 	"github.com/restic/restic/internal/debug"
-	"github.com/restic/restic/internal/fs"
 	"github.com/restic/restic/internal/options"
 	"github.com/restic/restic/internal/repository"
 	"github.com/restic/restic/internal/restic"
 	"github.com/restic/restic/internal/textfile"
 	"github.com/restic/restic/internal/ui/termstatus"
+	"github.com/spf13/pflag"
 
 	"github.com/restic/restic/internal/errors"
-
-	"os/exec"
 
 	"golang.org/x/term"
 )
 
-// ErrNoRepository is used to report if opening a repsitory failed due
+// ErrNoRepository is used to report if opening a repository failed due
 // to a missing backend storage location or config file
 var ErrNoRepository = errors.New("repository does not exist")
 
-var version = "0.17.0"
+var version = "0.18.0"
 
 // TimeFormat is the format used for all timestamps printed by restic.
 const TimeFormat = "2006-01-02 15:04:05"
@@ -96,12 +95,97 @@ type GlobalOptions struct {
 	extended options.Options
 }
 
-var globalOptions = GlobalOptions{
-	stdout: os.Stdout,
-	stderr: os.Stderr,
+func (opts *GlobalOptions) AddFlags(f *pflag.FlagSet) {
+	f.StringVarP(&opts.Repo, "repo", "r", "", "`repository` to backup to or restore from (default: $RESTIC_REPOSITORY)")
+	f.StringVarP(&opts.RepositoryFile, "repository-file", "", "", "`file` to read the repository location from (default: $RESTIC_REPOSITORY_FILE)")
+	f.StringVarP(&opts.PasswordFile, "password-file", "p", "", "`file` to read the repository password from (default: $RESTIC_PASSWORD_FILE)")
+	f.StringVarP(&opts.KeyHint, "key-hint", "", "", "`key` ID of key to try decrypting first (default: $RESTIC_KEY_HINT)")
+	f.StringVarP(&opts.PasswordCommand, "password-command", "", "", "shell `command` to obtain the repository password from (default: $RESTIC_PASSWORD_COMMAND)")
+	f.BoolVarP(&opts.Quiet, "quiet", "q", false, "do not output comprehensive progress report")
+	// use empty parameter name as `-v, --verbose n` instead of the correct `--verbose=n` is confusing
+	f.CountVarP(&opts.Verbose, "verbose", "v", "be verbose (specify multiple times or a level using --verbose=n``, max level/times is 2)")
+	f.BoolVar(&opts.NoLock, "no-lock", false, "do not lock the repository, this allows some operations on read-only repositories")
+	f.DurationVar(&opts.RetryLock, "retry-lock", 0, "retry to lock the repository if it is already locked, takes a value like 5m or 2h (default: no retries)")
+	f.BoolVarP(&opts.JSON, "json", "", false, "set output mode to JSON for commands that support it")
+	f.StringVar(&opts.CacheDir, "cache-dir", "", "set the cache `directory`. (default: use system default cache directory)")
+	f.BoolVar(&opts.NoCache, "no-cache", false, "do not use a local cache")
+	f.StringSliceVar(&opts.RootCertFilenames, "cacert", nil, "`file` to load root certificates from (default: use system certificates or $RESTIC_CACERT)")
+	f.StringVar(&opts.TLSClientCertKeyFilename, "tls-client-cert", "", "path to a `file` containing PEM encoded TLS client certificate and private key (default: $RESTIC_TLS_CLIENT_CERT)")
+	f.BoolVar(&opts.InsecureNoPassword, "insecure-no-password", false, "use an empty password for the repository, must be passed to every restic command (insecure)")
+	f.BoolVar(&opts.InsecureTLS, "insecure-tls", false, "skip TLS certificate verification when connecting to the repository (insecure)")
+	f.BoolVar(&opts.CleanupCache, "cleanup-cache", false, "auto remove old cache directories")
+	f.Var(&opts.Compression, "compression", "compression mode (only available for repository format version 2), one of (auto|off|max) (default: $RESTIC_COMPRESSION)")
+	f.BoolVar(&opts.NoExtraVerify, "no-extra-verify", false, "skip additional verification of data before upload (see documentation)")
+	f.IntVar(&opts.Limits.UploadKb, "limit-upload", 0, "limits uploads to a maximum `rate` in KiB/s. (default: unlimited)")
+	f.IntVar(&opts.Limits.DownloadKb, "limit-download", 0, "limits downloads to a maximum `rate` in KiB/s. (default: unlimited)")
+	f.UintVar(&opts.PackSize, "pack-size", 0, "set target pack `size` in MiB, created pack files may be larger (default: $RESTIC_PACK_SIZE)")
+	f.StringSliceVarP(&opts.Options, "option", "o", []string{}, "set extended option (`key=value`, can be specified multiple times)")
+	f.StringVar(&opts.HTTPUserAgent, "http-user-agent", "", "set a http user agent for outgoing http requests")
+	f.DurationVar(&opts.StuckRequestTimeout, "stuck-request-timeout", 5*time.Minute, "`duration` after which to retry stuck requests")
+
+	opts.Repo = os.Getenv("RESTIC_REPOSITORY")
+	opts.RepositoryFile = os.Getenv("RESTIC_REPOSITORY_FILE")
+	opts.PasswordFile = os.Getenv("RESTIC_PASSWORD_FILE")
+	opts.KeyHint = os.Getenv("RESTIC_KEY_HINT")
+	opts.PasswordCommand = os.Getenv("RESTIC_PASSWORD_COMMAND")
+	if os.Getenv("RESTIC_CACERT") != "" {
+		opts.RootCertFilenames = strings.Split(os.Getenv("RESTIC_CACERT"), ",")
+	}
+	opts.TLSClientCertKeyFilename = os.Getenv("RESTIC_TLS_CLIENT_CERT")
+	comp := os.Getenv("RESTIC_COMPRESSION")
+	if comp != "" {
+		// ignore error as there's no good way to handle it
+		_ = opts.Compression.Set(comp)
+	}
+	// parse target pack size from env, on error the default value will be used
+	targetPackSize, _ := strconv.ParseUint(os.Getenv("RESTIC_PACK_SIZE"), 10, 32)
+	opts.PackSize = uint(targetPackSize)
+
+	if os.Getenv("RESTIC_HTTP_USER_AGENT") != "" {
+		opts.HTTPUserAgent = os.Getenv("RESTIC_HTTP_USER_AGENT")
+	}
 }
 
-func init() {
+func (opts *GlobalOptions) PreRun(needsPassword bool) error {
+	// set verbosity, default is one
+	opts.verbosity = 1
+	if opts.Quiet && opts.Verbose > 0 {
+		return errors.Fatal("--quiet and --verbose cannot be specified at the same time")
+	}
+
+	switch {
+	case opts.Verbose >= 2:
+		opts.verbosity = 3
+	case opts.Verbose > 0:
+		opts.verbosity = 2
+	case opts.Quiet:
+		opts.verbosity = 0
+	}
+
+	// parse extended options
+	extendedOpts, err := options.Parse(opts.Options)
+	if err != nil {
+		return err
+	}
+	opts.extended = extendedOpts
+	if !needsPassword {
+		return nil
+	}
+	pwd, err := resolvePassword(opts, "RESTIC_PASSWORD")
+	if err != nil {
+		return errors.Fatal(fmt.Sprintf("Resolving password failed: %v\n", err))
+	}
+	opts.password = pwd
+	return nil
+}
+
+var globalOptions = GlobalOptions{
+	stdout:   os.Stdout,
+	stderr:   os.Stderr,
+	backends: collectBackends(),
+}
+
+func collectBackends() *location.Registry {
 	backends := location.NewRegistry()
 	backends.Register(azure.NewFactory())
 	backends.Register(b2.NewFactory())
@@ -112,58 +196,7 @@ func init() {
 	backends.Register(s3.NewFactory())
 	backends.Register(sftp.NewFactory())
 	backends.Register(swift.NewFactory())
-	globalOptions.backends = backends
-
-	f := cmdRoot.PersistentFlags()
-	f.StringVarP(&globalOptions.Repo, "repo", "r", "", "`repository` to backup to or restore from (default: $RESTIC_REPOSITORY)")
-	f.StringVarP(&globalOptions.RepositoryFile, "repository-file", "", "", "`file` to read the repository location from (default: $RESTIC_REPOSITORY_FILE)")
-	f.StringVarP(&globalOptions.PasswordFile, "password-file", "p", "", "`file` to read the repository password from (default: $RESTIC_PASSWORD_FILE)")
-	f.StringVarP(&globalOptions.KeyHint, "key-hint", "", "", "`key` ID of key to try decrypting first (default: $RESTIC_KEY_HINT)")
-	f.StringVarP(&globalOptions.PasswordCommand, "password-command", "", "", "shell `command` to obtain the repository password from (default: $RESTIC_PASSWORD_COMMAND)")
-	f.BoolVarP(&globalOptions.Quiet, "quiet", "q", false, "do not output comprehensive progress report")
-	// use empty parameter name as `-v, --verbose n` instead of the correct `--verbose=n` is confusing
-	f.CountVarP(&globalOptions.Verbose, "verbose", "v", "be verbose (specify multiple times or a level using --verbose=n``, max level/times is 2)")
-	f.BoolVar(&globalOptions.NoLock, "no-lock", false, "do not lock the repository, this allows some operations on read-only repositories")
-	f.DurationVar(&globalOptions.RetryLock, "retry-lock", 0, "retry to lock the repository if it is already locked, takes a value like 5m or 2h (default: no retries)")
-	f.BoolVarP(&globalOptions.JSON, "json", "", false, "set output mode to JSON for commands that support it")
-	f.StringVar(&globalOptions.CacheDir, "cache-dir", "", "set the cache `directory`. (default: use system default cache directory)")
-	f.BoolVar(&globalOptions.NoCache, "no-cache", false, "do not use a local cache")
-	f.StringSliceVar(&globalOptions.RootCertFilenames, "cacert", nil, "`file` to load root certificates from (default: use system certificates or $RESTIC_CACERT)")
-	f.StringVar(&globalOptions.TLSClientCertKeyFilename, "tls-client-cert", "", "path to a `file` containing PEM encoded TLS client certificate and private key (default: $RESTIC_TLS_CLIENT_CERT)")
-	f.BoolVar(&globalOptions.InsecureNoPassword, "insecure-no-password", false, "use an empty password for the repository, must be passed to every restic command (insecure)")
-	f.BoolVar(&globalOptions.InsecureTLS, "insecure-tls", false, "skip TLS certificate verification when connecting to the repository (insecure)")
-	f.BoolVar(&globalOptions.CleanupCache, "cleanup-cache", false, "auto remove old cache directories")
-	f.Var(&globalOptions.Compression, "compression", "compression mode (only available for repository format version 2), one of (auto|off|max) (default: $RESTIC_COMPRESSION)")
-	f.BoolVar(&globalOptions.NoExtraVerify, "no-extra-verify", false, "skip additional verification of data before upload (see documentation)")
-	f.IntVar(&globalOptions.Limits.UploadKb, "limit-upload", 0, "limits uploads to a maximum `rate` in KiB/s. (default: unlimited)")
-	f.IntVar(&globalOptions.Limits.DownloadKb, "limit-download", 0, "limits downloads to a maximum `rate` in KiB/s. (default: unlimited)")
-	f.UintVar(&globalOptions.PackSize, "pack-size", 0, "set target pack `size` in MiB, created pack files may be larger (default: $RESTIC_PACK_SIZE)")
-	f.StringSliceVarP(&globalOptions.Options, "option", "o", []string{}, "set extended option (`key=value`, can be specified multiple times)")
-	f.StringVar(&globalOptions.HTTPUserAgent, "http-user-agent", "", "set a http user agent for outgoing http requests")
-	// Use our "generate" command instead of the cobra provided "completion" command
-	cmdRoot.CompletionOptions.DisableDefaultCmd = true
-
-	globalOptions.Repo = os.Getenv("RESTIC_REPOSITORY")
-	globalOptions.RepositoryFile = os.Getenv("RESTIC_REPOSITORY_FILE")
-	globalOptions.PasswordFile = os.Getenv("RESTIC_PASSWORD_FILE")
-	globalOptions.KeyHint = os.Getenv("RESTIC_KEY_HINT")
-	globalOptions.PasswordCommand = os.Getenv("RESTIC_PASSWORD_COMMAND")
-	if os.Getenv("RESTIC_CACERT") != "" {
-		globalOptions.RootCertFilenames = strings.Split(os.Getenv("RESTIC_CACERT"), ",")
-	}
-	globalOptions.TLSClientCertKeyFilename = os.Getenv("RESTIC_TLS_CLIENT_CERT")
-	comp := os.Getenv("RESTIC_COMPRESSION")
-	if comp != "" {
-		// ignore error as there's no good way to handle it
-		_ = globalOptions.Compression.Set(comp)
-	}
-	// parse target pack size from env, on error the default value will be used
-	targetPackSize, _ := strconv.ParseUint(os.Getenv("RESTIC_PACK_SIZE"), 10, 32)
-	globalOptions.PackSize = uint(targetPackSize)
-
-	if os.Getenv("RESTIC_HTTP_USER_AGENT") != "" {
-		globalOptions.HTTPUserAgent = os.Getenv("RESTIC_HTTP_USER_AGENT")
-	}
+	return backends
 }
 
 func stdinIsTerminal() bool {
@@ -254,7 +287,7 @@ func Warnf(format string, args ...interface{}) {
 }
 
 // resolvePassword determines the password to be used for opening the repository.
-func resolvePassword(opts GlobalOptions, envStr string) (string, error) {
+func resolvePassword(opts *GlobalOptions, envStr string) (string, error) {
 	if opts.PasswordFile != "" && opts.PasswordCommand != "" {
 		return "", errors.Fatalf("Password file and command are mutually exclusive options")
 	}
@@ -269,7 +302,7 @@ func resolvePassword(opts GlobalOptions, envStr string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return (strings.TrimSpace(string(output))), nil
+		return strings.TrimSpace(string(output)), nil
 	}
 	if opts.PasswordFile != "" {
 		return loadPasswordFromFile(opts.PasswordFile)
@@ -308,7 +341,7 @@ func readPasswordTerminal(ctx context.Context, in *os.File, out *os.File, prompt
 	fd := int(out.Fd())
 	state, err := term.GetState(fd)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "unable to get terminal state: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "unable to get terminal state: %v\n", err)
 		return "", err
 	}
 
@@ -317,16 +350,22 @@ func readPasswordTerminal(ctx context.Context, in *os.File, out *os.File, prompt
 
 	go func() {
 		defer close(done)
-		fmt.Fprint(out, prompt)
+		_, err = fmt.Fprint(out, prompt)
+		if err != nil {
+			return
+		}
 		buf, err = term.ReadPassword(int(in.Fd()))
-		fmt.Fprintln(out)
+		if err != nil {
+			return
+		}
+		_, err = fmt.Fprintln(out)
 	}()
 
 	select {
 	case <-ctx.Done():
 		err := term.Restore(fd, state)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "unable to restore terminal state: %v\n", err)
+			_, _ = fmt.Fprintf(os.Stderr, "unable to restore terminal state: %v\n", err)
 		}
 		return "", ctx.Err()
 	case <-done:
@@ -364,7 +403,9 @@ func ReadPassword(ctx context.Context, opts GlobalOptions, prompt string) (strin
 		password, err = readPasswordTerminal(ctx, os.Stdin, os.Stderr, prompt)
 	} else {
 		password, err = readPassword(os.Stdin)
-		Verbosef("reading repository password from stdin\n")
+		if stdoutIsTerminal() {
+			Verbosef("reading repository password from stdin\n")
+		}
 	}
 
 	if err != nil {
@@ -439,26 +480,6 @@ func OpenRepository(ctx context.Context, opts GlobalOptions) (*repository.Reposi
 		return nil, err
 	}
 
-	report := func(msg string, err error, d time.Duration) {
-		if d >= 0 {
-			Warnf("%v returned error, retrying after %v: %v\n", msg, d, err)
-		} else {
-			Warnf("%v failed: %v\n", msg, err)
-		}
-	}
-	success := func(msg string, retries int) {
-		Warnf("%v operation successful after %d retries\n", msg, retries)
-	}
-	be = retry.New(be, 15*time.Minute, report, success)
-
-	// wrap backend if a test specified a hook
-	if opts.backendTestHook != nil {
-		be, err = opts.backendTestHook(be)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	s, err := repository.New(be, repository.Options{
 		Compression:   opts.Compression,
 		PackSize:      opts.PackSize * 1024 * 1024,
@@ -493,7 +514,7 @@ func OpenRepository(ctx context.Context, opts GlobalOptions) (*repository.Reposi
 		}
 	}
 	if err != nil {
-		if errors.IsFatal(err) {
+		if errors.IsFatal(err) || errors.Is(err, repository.ErrNoKeyFound) {
 			return nil, err
 		}
 		return nil, errors.Fatalf("%s", err)
@@ -547,7 +568,7 @@ func OpenRepository(ctx context.Context, opts GlobalOptions) (*repository.Reposi
 		}
 		for _, item := range oldCacheDirs {
 			dir := filepath.Join(c.Base, item.Name())
-			err = fs.RemoveAll(dir)
+			err = os.RemoveAll(dir)
 			if err != nil {
 				Warnf("unable to remove %v: %v\n", dir, err)
 			}
@@ -629,12 +650,31 @@ func innerOpen(ctx context.Context, s string, gopts GlobalOptions, opts options.
 		}
 	}
 
+	report := func(msg string, err error, d time.Duration) {
+		if d >= 0 {
+			Warnf("%v returned error, retrying after %v: %v\n", msg, d, err)
+		} else {
+			Warnf("%v failed: %v\n", msg, err)
+		}
+	}
+	success := func(msg string, retries int) {
+		Warnf("%v operation successful after %d retries\n", msg, retries)
+	}
+	be = retry.New(be, 15*time.Minute, report, success)
+
+	// wrap backend if a test specified a hook
+	if gopts.backendTestHook != nil {
+		be, err = gopts.backendTestHook(be)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return be, nil
 }
 
 // Open the backend specified by a location config.
 func open(ctx context.Context, s string, gopts GlobalOptions, opts options.Options) (backend.Backend, error) {
-
 	be, err := innerOpen(ctx, s, gopts, opts, false)
 	if err != nil {
 		return nil, err

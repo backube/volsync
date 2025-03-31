@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"path"
 	"strings"
 
 	"github.com/restic/restic/internal/backend"
@@ -66,7 +65,7 @@ func Open(_ context.Context, cfg Config, rt http.RoundTripper) (*Backend, error)
 	be := &Backend{
 		url:         cfg.URL,
 		client:      http.Client{Transport: rt},
-		Layout:      &layout.RESTLayout{URL: url, Join: path.Join},
+		Layout:      layout.NewRESTLayout(url),
 		connections: cfg.Connections,
 	}
 
@@ -117,19 +116,17 @@ func Create(ctx context.Context, cfg Config, rt http.RoundTripper) (*Backend, er
 	return be, nil
 }
 
-func (b *Backend) Connections() uint {
-	return b.connections
+func (b *Backend) Properties() backend.Properties {
+	return backend.Properties{
+		Connections: b.connections,
+		// rest-server prevents overwriting
+		HasAtomicReplace: false,
+	}
 }
 
 // Hasher may return a hash function for calculating a content hash for the backend
 func (b *Backend) Hasher() hash.Hash {
 	return nil
-}
-
-// HasAtomicReplace returns whether Save() can atomically replace files
-func (b *Backend) HasAtomicReplace() bool {
-	// rest-server prevents overwriting
-	return false
 }
 
 // Save stores data in the backend at the handle.
@@ -142,6 +139,12 @@ func (b *Backend) Save(ctx context.Context, h backend.Handle, rd backend.RewindR
 		http.MethodPost, b.Filename(h), io.NopCloser(rd))
 	if err != nil {
 		return errors.WithStack(err)
+	}
+	req.GetBody = func() (io.ReadCloser, error) {
+		if err := rd.Rewind(); err != nil {
+			return nil, err
+		}
+		return io.NopCloser(rd), nil
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
 	req.Header.Set("Accept", ContentTypeV2)
@@ -434,3 +437,9 @@ func (b *Backend) Close() error {
 func (b *Backend) Delete(ctx context.Context) error {
 	return util.DefaultDelete(ctx, b)
 }
+
+// Warmup not implemented
+func (b *Backend) Warmup(_ context.Context, _ []backend.Handle) ([]backend.Handle, error) {
+	return []backend.Handle{}, nil
+}
+func (b *Backend) WarmupWait(_ context.Context, _ []backend.Handle) error { return nil }

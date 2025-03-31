@@ -1,0 +1,11 @@
+Enhancement: Add snapshot summary statistics to rewritten snapshots
+
+The `rewrite` command now supports a `--snapshot-summary` option to add
+statistics data to snapshots. Only two fields in the summary will be non-zero:
+`TotalFilesProcessed` and `TotalBytesProcessed`.
+
+For snapshots rewritten using the `--exclude` options, the summary
+statistics are updated accordingly.
+
+https://github.com/restic/restic/issues/4942
+https://github.com/restic/restic/pull/5185

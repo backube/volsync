@@ -1,0 +1,6 @@
+Enhancement: Enable compression for ZIP archives in `dump` command
+
+The `dump` command now compresses ZIP archives using the DEFLATE algorithm,
+reducing the size of exported archives.
+
+https://github.com/restic/restic/pull/5054

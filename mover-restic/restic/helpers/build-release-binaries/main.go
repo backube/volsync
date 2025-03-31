@@ -106,7 +106,9 @@ func build(sourceDir, outputDir, goos, goarch string) (filename string) {
 	}
 	outputFile := filepath.Join(outputDir, filename)
 
-	tags := "selfupdate"
+	// disable_grpc_modules is necessary to reduce the binary size since cloud.google.com/go/storage v1.44.0
+	// see https://github.com/googleapis/google-cloud-go/issues/11448
+	tags := "selfupdate,disable_grpc_modules"
 	if opts.Tags != "" {
 		tags += "," + opts.Tags
 	}
@@ -243,14 +245,15 @@ func buildTargets(sourceDir, outputDir string, targets map[string][]string) {
 }
 
 var defaultBuildTargets = map[string][]string{
-	"aix":     {"ppc64"},
-	"darwin":  {"amd64", "arm64"},
-	"freebsd": {"386", "amd64", "arm"},
-	"linux":   {"386", "amd64", "arm", "arm64", "ppc64le", "mips", "mipsle", "mips64", "mips64le", "riscv64", "s390x"},
-	"netbsd":  {"386", "amd64"},
-	"openbsd": {"386", "amd64"},
-	"windows": {"386", "amd64"},
-	"solaris": {"amd64"},
+	"aix":       {"ppc64"},
+	"darwin":    {"amd64", "arm64"},
+	"dragonfly": {"amd64"},
+	"freebsd":   {"386", "amd64", "arm"},
+	"linux":     {"386", "amd64", "arm", "arm64", "ppc64le", "mips", "mipsle", "mips64", "mips64le", "riscv64", "s390x"},
+	"netbsd":    {"386", "amd64"},
+	"openbsd":   {"386", "amd64"},
+	"windows":   {"386", "amd64"},
+	"solaris":   {"amd64"},
 }
 
 func downloadModules(sourceDir string) {

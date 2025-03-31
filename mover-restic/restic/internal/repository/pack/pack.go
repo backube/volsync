@@ -163,6 +163,27 @@ func makeHeader(blobs []restic.Blob) ([]byte, error) {
 	return buf, nil
 }
 
+// Merge merges another packer into the current packer. Both packers must not be
+// finalized yet.
+func (p *Packer) Merge(other *Packer, otherData io.Reader) error {
+	other.m.Lock()
+	defer other.m.Unlock()
+
+	for _, blob := range other.blobs {
+		data := make([]byte, blob.Length)
+		_, err := io.ReadFull(otherData, data)
+		if err != nil {
+			return err
+		}
+
+		if _, err := p.Add(blob.Type, blob.ID, data, int(blob.UncompressedLength)); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // Size returns the number of bytes written so far.
 func (p *Packer) Size() uint {
 	p.m.Lock()
@@ -213,6 +234,11 @@ const (
 	MaxHeaderSize = 16*1024*1024 + headerLengthSize
 	// number of header entries to download as part of header-length request
 	eagerEntries = 15
+)
+
+var (
+	// MaxHeaderEntries is the number of entries a pack file can contain at most
+	MaxHeaderEntries = (MaxHeaderSize - headerSize) / entrySize
 )
 
 // readRecords reads up to bufsize bytes from the underlying ReaderAt, returning

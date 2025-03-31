@@ -53,12 +53,14 @@ import (
 
 // config contains the configuration for the program to build.
 var config = Config{
-	Name:             "restic",                                 // name of the program executable and directory
-	Namespace:        "github.com/restic/restic",               // subdir of GOPATH, e.g. "github.com/foo/bar"
-	Main:             "./cmd/restic",                           // package name for the main package
-	DefaultBuildTags: []string{"selfupdate"},                   // specify build tags which are always used
-	Tests:            []string{"./..."},                        // tests to run
-	MinVersion:       GoVersion{Major: 1, Minor: 18, Patch: 0}, // minimum Go version supported
+	Name:      "restic",                   // name of the program executable and directory
+	Namespace: "github.com/restic/restic", // subdir of GOPATH, e.g. "github.com/foo/bar"
+	Main:      "./cmd/restic",             // package name for the main package
+	// disable_grpc_modules is necessary to reduce the binary size since cloud.google.com/go/storage v1.44.0
+	// see https://github.com/googleapis/google-cloud-go/issues/11448
+	DefaultBuildTags: []string{"selfupdate", "disable_grpc_modules"}, // specify build tags which are always used
+	Tests:            []string{"./..."},                              // tests to run
+	MinVersion:       GoVersion{Major: 1, Minor: 23, Patch: 0},       // minimum Go version supported
 }
 
 // Config configures the build.
@@ -298,19 +300,21 @@ func (v GoVersion) AtLeast(other GoVersion) bool {
 		return true
 	}
 
+	if v.Major > other.Major {
+		return true
+	}
 	if v.Major < other.Major {
 		return false
 	}
 
+	if v.Minor > other.Minor {
+		return true
+	}
 	if v.Minor < other.Minor {
 		return false
 	}
 
-	if v.Patch < other.Patch {
-		return false
-	}
-
-	return true
+	return v.Patch >= other.Patch
 }
 
 func (v GoVersion) String() string {
@@ -378,12 +382,6 @@ func main() {
 			showUsage(os.Stderr)
 			os.Exit(1)
 		}
-	}
-
-	solarisMinVersion := GoVersion{Major: 1, Minor: 20, Patch: 0}
-	if env["GOARCH"] == "solaris" && !goVersion.AtLeast(solarisMinVersion) {
-		fmt.Fprintf(os.Stderr, "Detected version %s is too old, restic requires at least %s for Solaris\n", goVersion, solarisMinVersion)
-		os.Exit(1)
 	}
 
 	verbosePrintf("detected Go version %v\n", goVersion)

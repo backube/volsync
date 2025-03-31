@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/restic/restic/internal/debug"
 	"github.com/restic/restic/internal/errors"
@@ -16,14 +17,19 @@ import (
 	"github.com/restic/restic/internal/walker"
 )
 
-var cmdFind = &cobra.Command{
-	Use:   "find [flags] PATTERN...",
-	Short: "Find a file, a directory or restic IDs",
-	Long: `
+func newFindCommand() *cobra.Command {
+	var opts FindOptions
+
+	cmd := &cobra.Command{
+		Use:   "find [flags] PATTERN...",
+		Short: "Find a file, a directory or restic IDs",
+		Long: `
 The "find" command searches for files or directories in snapshots stored in the
 repo.
-It can also be used to search for restic blobs or trees for troubleshooting.`,
-	Example: `restic find config.json
+It can also be used to search for restic blobs or trees for troubleshooting.
+The default sort option for the snapshots is youngest to oldest. To sort the
+output from oldest to youngest specify --reverse.`,
+		Example: `restic find config.json
 restic find --json "*.yml" "*.json"
 restic find --json --blob 420f620f b46ebe8a ddd38656
 restic find --show-pack-id --blob 420f620f
@@ -37,11 +43,17 @@ Exit status is 0 if the command was successful.
 Exit status is 1 if there was any error.
 Exit status is 10 if the repository does not exist.
 Exit status is 11 if the repository is already locked.
+Exit status is 12 if the password is incorrect.
 `,
-	DisableAutoGenTag: true,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return runFind(cmd.Context(), findOptions, globalOptions, args)
-	},
+		GroupID:           cmdGroupDefault,
+		DisableAutoGenTag: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runFind(cmd.Context(), opts, globalOptions, args)
+		},
+	}
+
+	opts.AddFlags(cmd.Flags())
+	return cmd
 }
 
 // FindOptions bundles all options for the find command.
@@ -54,27 +66,24 @@ type FindOptions struct {
 	CaseInsensitive    bool
 	ListLong           bool
 	HumanReadable      bool
+	Reverse            bool
 	restic.SnapshotFilter
 }
 
-var findOptions FindOptions
+func (opts *FindOptions) AddFlags(f *pflag.FlagSet) {
+	f.StringVarP(&opts.Oldest, "oldest", "O", "", "oldest modification date/time")
+	f.StringVarP(&opts.Newest, "newest", "N", "", "newest modification date/time")
+	f.StringArrayVarP(&opts.Snapshots, "snapshot", "s", nil, "snapshot `id` to search in (can be given multiple times)")
+	f.BoolVar(&opts.BlobID, "blob", false, "pattern is a blob-ID")
+	f.BoolVar(&opts.TreeID, "tree", false, "pattern is a tree-ID")
+	f.BoolVar(&opts.PackID, "pack", false, "pattern is a pack-ID")
+	f.BoolVar(&opts.ShowPackID, "show-pack-id", false, "display the pack-ID the blobs belong to (with --blob or --tree)")
+	f.BoolVarP(&opts.CaseInsensitive, "ignore-case", "i", false, "ignore case for pattern")
+	f.BoolVarP(&opts.Reverse, "reverse", "R", false, "reverse sort order oldest to newest")
+	f.BoolVarP(&opts.ListLong, "long", "l", false, "use a long listing format showing size and mode")
+	f.BoolVar(&opts.HumanReadable, "human-readable", false, "print sizes in human readable format")
 
-func init() {
-	cmdRoot.AddCommand(cmdFind)
-
-	f := cmdFind.Flags()
-	f.StringVarP(&findOptions.Oldest, "oldest", "O", "", "oldest modification date/time")
-	f.StringVarP(&findOptions.Newest, "newest", "N", "", "newest modification date/time")
-	f.StringArrayVarP(&findOptions.Snapshots, "snapshot", "s", nil, "snapshot `id` to search in (can be given multiple times)")
-	f.BoolVar(&findOptions.BlobID, "blob", false, "pattern is a blob-ID")
-	f.BoolVar(&findOptions.TreeID, "tree", false, "pattern is a tree-ID")
-	f.BoolVar(&findOptions.PackID, "pack", false, "pattern is a pack-ID")
-	f.BoolVar(&findOptions.ShowPackID, "show-pack-id", false, "display the pack-ID the blobs belong to (with --blob or --tree)")
-	f.BoolVarP(&findOptions.CaseInsensitive, "ignore-case", "i", false, "ignore case for pattern")
-	f.BoolVarP(&findOptions.ListLong, "long", "l", false, "use a long listing format showing size and mode")
-	f.BoolVar(&findOptions.HumanReadable, "human-readable", false, "print sizes in human readable format")
-
-	initMultiSnapshotFilter(f, &findOptions.SnapshotFilter, true)
+	initMultiSnapshotFilter(f, &opts.SnapshotFilter, true)
 }
 
 type findPattern struct {
@@ -296,7 +305,7 @@ func (f *Finder) findInSnapshot(ctx context.Context, sn *restic.Snapshot) error 
 		}
 
 		var errIfNoMatch error
-		if node.Type == "dir" {
+		if node.Type == restic.NodeTypeDir {
 			var childMayMatch bool
 			for _, pat := range f.pat.pattern {
 				mayMatch, err := filter.ChildMatch(pat, normalizedNodepath)
@@ -334,6 +343,26 @@ func (f *Finder) findInSnapshot(ctx context.Context, sn *restic.Snapshot) error 
 	}})
 }
 
+func (f *Finder) findTree(treeID restic.ID, nodepath string) error {
+	found := false
+	if _, ok := f.treeIDs[treeID.String()]; ok {
+		found = true
+	} else if _, ok := f.treeIDs[treeID.Str()]; ok {
+		found = true
+	}
+	if found {
+		f.out.PrintObject("tree", treeID.String(), nodepath, "", f.out.newsn)
+		f.itemsFound++
+		// Terminate if we have found all trees (and we are not
+		// looking for blobs)
+		if f.itemsFound >= len(f.treeIDs) && f.blobIDs == nil {
+			// Return an error to terminate the Walk
+			return errors.New("OK")
+		}
+	}
+	return nil
+}
+
 func (f *Finder) findIDs(ctx context.Context, sn *restic.Snapshot) error {
 	debug.Log("searching IDs in snapshot %s", sn.ID())
 
@@ -352,31 +381,26 @@ func (f *Finder) findIDs(ctx context.Context, sn *restic.Snapshot) error {
 		}
 
 		if node == nil {
+			if nodepath == "/" {
+				if err := f.findTree(parentTreeID, "/"); err != nil {
+					return err
+				}
+			}
 			return nil
 		}
 
 		if node.Type == "dir" && f.treeIDs != nil {
-			treeID := node.Subtree
-			found := false
-			if _, ok := f.treeIDs[treeID.Str()]; ok {
-				found = true
-			} else if _, ok := f.treeIDs[treeID.String()]; ok {
-				found = true
-			}
-			if found {
-				f.out.PrintObject("tree", treeID.String(), nodepath, "", sn)
-				f.itemsFound++
-				// Terminate if we have found all trees (and we are not
-				// looking for blobs)
-				if f.itemsFound >= len(f.treeIDs) && f.blobIDs == nil {
-					// Return an error to terminate the Walk
-					return errors.New("OK")
-				}
+			if err := f.findTree(*node.Subtree, nodepath); err != nil {
+				return err
 			}
 		}
 
-		if node.Type == "file" && f.blobIDs != nil {
+		if node.Type == restic.NodeTypeFile && f.blobIDs != nil {
 			for _, id := range node.Content {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+
 				idStr := id.String()
 				if _, ok := f.blobIDs[idStr]; !ok {
 					// Look for short ID form
@@ -620,7 +644,10 @@ func runFind(ctx context.Context, opts FindOptions, gopts GlobalOptions, args []
 	}
 
 	sort.Slice(filteredSnapshots, func(i, j int) bool {
-		return filteredSnapshots[i].Time.Before(filteredSnapshots[j].Time)
+		if opts.Reverse {
+			return filteredSnapshots[i].Time.Before(filteredSnapshots[j].Time)
+		}
+		return filteredSnapshots[i].Time.After(filteredSnapshots[j].Time)
 	})
 
 	for _, sn := range filteredSnapshots {

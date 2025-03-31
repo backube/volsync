@@ -346,13 +346,13 @@ var (
 	depth        = 3
 )
 
-func createFilledRepo(t testing.TB, snapshots int, version uint) restic.Repository {
-	repo, _ := repository.TestRepositoryWithVersion(t, version)
+func createFilledRepo(t testing.TB, snapshots int, version uint) (restic.Repository, restic.Unpacked[restic.FileType]) {
+	repo, unpacked, _ := repository.TestRepositoryWithVersion(t, version)
 
 	for i := 0; i < snapshots; i++ {
 		restic.TestCreateSnapshot(t, repo, snapshotTime.Add(time.Duration(i)*time.Second), depth)
 	}
-	return repo
+	return repo, unpacked
 }
 
 func TestIndexSave(t *testing.T) {
@@ -362,15 +362,15 @@ func TestIndexSave(t *testing.T) {
 func testIndexSave(t *testing.T, version uint) {
 	for _, test := range []struct {
 		name  string
-		saver func(idx *index.MasterIndex, repo restic.Repository) error
+		saver func(idx *index.MasterIndex, repo restic.Unpacked[restic.FileType]) error
 	}{
-		{"rewrite no-op", func(idx *index.MasterIndex, repo restic.Repository) error {
+		{"rewrite no-op", func(idx *index.MasterIndex, repo restic.Unpacked[restic.FileType]) error {
 			return idx.Rewrite(context.TODO(), repo, nil, nil, nil, index.MasterIndexRewriteOpts{})
 		}},
-		{"rewrite skip-all", func(idx *index.MasterIndex, repo restic.Repository) error {
+		{"rewrite skip-all", func(idx *index.MasterIndex, repo restic.Unpacked[restic.FileType]) error {
 			return idx.Rewrite(context.TODO(), repo, nil, restic.NewIDSet(), nil, index.MasterIndexRewriteOpts{})
 		}},
-		{"SaveFallback", func(idx *index.MasterIndex, repo restic.Repository) error {
+		{"SaveFallback", func(idx *index.MasterIndex, repo restic.Unpacked[restic.FileType]) error {
 			err := restic.ParallelRemove(context.TODO(), repo, idx.IDs(), restic.IndexFile, nil, nil)
 			if err != nil {
 				return nil
@@ -379,7 +379,7 @@ func testIndexSave(t *testing.T, version uint) {
 		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			repo := createFilledRepo(t, 3, version)
+			repo, unpacked := createFilledRepo(t, 3, version)
 
 			idx := index.NewMasterIndex()
 			rtest.OK(t, idx.Load(context.TODO(), repo, nil, nil))
@@ -388,7 +388,7 @@ func testIndexSave(t *testing.T, version uint) {
 				blobs[pb] = struct{}{}
 			}))
 
-			rtest.OK(t, test.saver(idx, repo))
+			rtest.OK(t, test.saver(idx, unpacked))
 			idx = index.NewMasterIndex()
 			rtest.OK(t, idx.Load(context.TODO(), repo, nil, nil))
 
@@ -411,7 +411,7 @@ func TestIndexSavePartial(t *testing.T) {
 }
 
 func testIndexSavePartial(t *testing.T, version uint) {
-	repo := createFilledRepo(t, 3, version)
+	repo, unpacked := createFilledRepo(t, 3, version)
 
 	// capture blob list before adding fourth snapshot
 	idx := index.NewMasterIndex()
@@ -424,14 +424,14 @@ func testIndexSavePartial(t *testing.T, version uint) {
 	// add+remove new snapshot and track its pack files
 	packsBefore := listPacks(t, repo)
 	sn := restic.TestCreateSnapshot(t, repo, snapshotTime.Add(time.Duration(4)*time.Second), depth)
-	rtest.OK(t, repo.RemoveUnpacked(context.TODO(), restic.SnapshotFile, *sn.ID()))
+	rtest.OK(t, repo.RemoveUnpacked(context.TODO(), restic.WriteableSnapshotFile, *sn.ID()))
 	packsAfter := listPacks(t, repo)
 	newPacks := packsAfter.Sub(packsBefore)
 
 	// rewrite index and remove pack files of new snapshot
 	idx = index.NewMasterIndex()
 	rtest.OK(t, idx.Load(context.TODO(), repo, nil, nil))
-	rtest.OK(t, idx.Rewrite(context.TODO(), repo, newPacks, nil, nil, index.MasterIndexRewriteOpts{}))
+	rtest.OK(t, idx.Rewrite(context.TODO(), unpacked, newPacks, nil, nil, index.MasterIndexRewriteOpts{}))
 
 	// check blobs
 	idx = index.NewMasterIndex()
@@ -446,7 +446,7 @@ func testIndexSavePartial(t *testing.T, version uint) {
 	rtest.Equals(t, 0, len(blobs), "saved index is missing blobs")
 
 	// remove pack files to make check happy
-	rtest.OK(t, restic.ParallelRemove(context.TODO(), repo, newPacks, restic.PackFile, nil, nil))
+	rtest.OK(t, restic.ParallelRemove(context.TODO(), unpacked, newPacks, restic.PackFile, nil, nil))
 
 	checker.TestCheckRepo(t, repo, false)
 }
@@ -458,4 +458,73 @@ func listPacks(t testing.TB, repo restic.Lister) restic.IDSet {
 		return nil
 	}))
 	return s
+}
+
+func TestRewriteOversizedIndex(t *testing.T) {
+	repo, unpacked, _ := repository.TestRepositoryWithVersion(t, 2)
+
+	const fullIndexCount = 1000
+
+	// replace index size checks for testing
+	originalIndexFull := index.Full
+	originalIndexOversized := index.Oversized
+	defer func() {
+		index.Full = originalIndexFull
+		index.Oversized = originalIndexOversized
+	}()
+	index.Full = func(idx *index.Index) bool {
+		return idx.Len(restic.DataBlob) > fullIndexCount
+	}
+	index.Oversized = func(idx *index.Index) bool {
+		return idx.Len(restic.DataBlob) > 2*fullIndexCount
+	}
+
+	var blobs []restic.Blob
+
+	// build oversized index
+	idx := index.NewIndex()
+	numPacks := 5
+	for p := 0; p < numPacks; p++ {
+		packID := restic.NewRandomID()
+		packBlobs := make([]restic.Blob, 0, fullIndexCount)
+
+		for i := 0; i < fullIndexCount; i++ {
+			blob := restic.Blob{
+				BlobHandle: restic.BlobHandle{
+					Type: restic.DataBlob,
+					ID:   restic.NewRandomID(),
+				},
+				Length: 100,
+				Offset: uint(i * 100),
+			}
+			packBlobs = append(packBlobs, blob)
+			blobs = append(blobs, blob)
+		}
+		idx.StorePack(packID, packBlobs)
+	}
+	idx.Finalize()
+
+	_, err := idx.SaveIndex(context.Background(), unpacked)
+	rtest.OK(t, err)
+
+	// construct master index for the oversized index
+	mi := index.NewMasterIndex()
+	rtest.OK(t, mi.Load(context.Background(), repo, nil, nil))
+
+	// rewrite the index
+	rtest.OK(t, mi.Rewrite(context.Background(), unpacked, nil, nil, nil, index.MasterIndexRewriteOpts{}))
+
+	// load the rewritten indexes
+	mi2 := index.NewMasterIndex()
+	rtest.OK(t, mi2.Load(context.Background(), repo, nil, nil))
+
+	// verify that blobs are still in the index
+	for _, blob := range blobs {
+		found := mi2.Has(blob.BlobHandle)
+		rtest.Assert(t, found, "blob %v missing after rewrite", blob.ID)
+	}
+
+	// check that multiple indexes were created
+	ids := mi2.IDs()
+	rtest.Assert(t, len(ids) > 1, "oversized index was not split into multiple indexes")
 }

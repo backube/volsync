@@ -25,7 +25,7 @@ type secondaryRepoOptions struct {
 	LegacyKeyHint         string
 }
 
-func initSecondaryRepoOptions(f *pflag.FlagSet, opts *secondaryRepoOptions, repoPrefix string, repoUsage string) {
+func (opts *secondaryRepoOptions) AddFlags(f *pflag.FlagSet, repoPrefix string, repoUsage string) {
 	f.StringVarP(&opts.LegacyRepo, "repo2", "", "", repoPrefix+" `repository` "+repoUsage+" (default: $RESTIC_REPOSITORY2)")
 	f.StringVarP(&opts.LegacyRepositoryFile, "repository-file2", "", "", "`file` from which to read the "+repoPrefix+" repository location "+repoUsage+" (default: $RESTIC_REPOSITORY_FILE2)")
 	f.StringVarP(&opts.LegacyPasswordFile, "password-file2", "", "", "`file` to read the "+repoPrefix+" repository password from (default: $RESTIC_PASSWORD_FILE2)")
@@ -50,7 +50,7 @@ func initSecondaryRepoOptions(f *pflag.FlagSet, opts *secondaryRepoOptions, repo
 	f.StringVarP(&opts.PasswordFile, "from-password-file", "", "", "`file` to read the source repository password from (default: $RESTIC_FROM_PASSWORD_FILE)")
 	f.StringVarP(&opts.KeyHint, "from-key-hint", "", "", "key ID of key to try decrypting the source repository first (default: $RESTIC_FROM_KEY_HINT)")
 	f.StringVarP(&opts.PasswordCommand, "from-password-command", "", "", "shell `command` to obtain the source repository password from (default: $RESTIC_FROM_PASSWORD_COMMAND)")
-	f.BoolVar(&opts.InsecureNoPassword, "from-insecure-no-password", false, "use an empty password for the source repository, must be passed to every restic command (insecure)")
+	f.BoolVar(&opts.InsecureNoPassword, "from-insecure-no-password", false, "use an empty password for the source repository (insecure)")
 
 	opts.Repo = os.Getenv("RESTIC_FROM_REPOSITORY")
 	opts.RepositoryFile = os.Getenv("RESTIC_FROM_REPOSITORY_FILE")
@@ -110,7 +110,7 @@ func fillSecondaryGlobalOpts(ctx context.Context, opts secondaryRepoOptions, gop
 	if opts.password != "" {
 		dstGopts.password = opts.password
 	} else {
-		dstGopts.password, err = resolvePassword(dstGopts, pwdEnv)
+		dstGopts.password, err = resolvePassword(&dstGopts, pwdEnv)
 		if err != nil {
 			return GlobalOptions{}, false, err
 		}

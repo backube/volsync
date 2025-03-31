@@ -94,7 +94,7 @@ func run(command string, args ...string) (*StdioConn, *sync.WaitGroup, chan stru
 		err = errW
 	}
 	if err != nil {
-		if util.IsErrDot(err) {
+		if errors.Is(err, exec.ErrDot) {
 			return nil, nil, nil, nil, errors.Errorf("cannot implicitly run relative executable %v found in current directory, use -o rclone.program=./<program> to override", cmd.Path)
 		}
 		return nil, nil, nil, nil, err
@@ -183,7 +183,7 @@ func newBackend(ctx context.Context, cfg Config, lim limiter.Limiter) (*Backend,
 	dialCount := 0
 	tr := &http2.Transport{
 		AllowHTTP: true, // this is not really HTTP, just stdin/stdout
-		DialTLS: func(network, address string, _ *tls.Config) (net.Conn, error) {
+		DialTLSContext: func(_ context.Context, network, address string, _ *tls.Config) (net.Conn, error) {
 			debug.Log("new connection requested, %v %v", network, address)
 			if dialCount > 0 {
 				// the connection to the child process is already closed
@@ -339,4 +339,10 @@ func (be *Backend) Close() error {
 	be.wg.Wait()
 	debug.Log("wait for rclone returned: %v", be.waitResult)
 	return be.waitResult
+}
+
+func (be *Backend) Properties() backend.Properties {
+	properties := be.Backend.Properties()
+	properties.HasFlakyErrors = true
+	return properties
 }

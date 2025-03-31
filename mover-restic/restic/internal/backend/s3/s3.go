@@ -8,9 +8,11 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/restic/restic/internal/backend"
 	"github.com/restic/restic/internal/backend/layout"
 	"github.com/restic/restic/internal/backend/location"
@@ -33,14 +35,27 @@ type Backend struct {
 // make sure that *Backend implements backend.Backend
 var _ backend.Backend = &Backend{}
 
+var archiveClasses = []string{"GLACIER", "DEEP_ARCHIVE"}
+
+type warmupStatus int
+
+const (
+	warmupStatusCold warmupStatus = iota
+	warmupStatusWarmingUp
+	warmupStatusWarm
+	warmupStatusLukewarm
+)
+
 func NewFactory() location.Factory {
 	return location.NewHTTPBackendFactory("s3", ParseConfig, location.NoPassword, Create, Open)
 }
 
-const defaultLayout = "default"
-
-func open(ctx context.Context, cfg Config, rt http.RoundTripper) (*Backend, error) {
+func open(cfg Config, rt http.RoundTripper) (*Backend, error) {
 	debug.Log("open, config %#v", cfg)
+
+	if cfg.EnableRestore && !feature.Flag.Enabled(feature.S3Restore) {
+		return nil, fmt.Errorf("feature flag `s3-restore` is required to use `-o s3.enable-restore=true`")
+	}
 
 	if cfg.KeyID == "" && cfg.Secret.String() != "" {
 		return nil, errors.Fatalf("unable to open S3 backend: Key ID ($AWS_ACCESS_KEY_ID) is empty")
@@ -83,14 +98,8 @@ func open(ctx context.Context, cfg Config, rt http.RoundTripper) (*Backend, erro
 	be := &Backend{
 		client: client,
 		cfg:    cfg,
+		Layout: layout.NewDefaultLayout(cfg.Prefix, path.Join),
 	}
-
-	l, err := layout.ParseLayout(ctx, be, cfg.Layout, defaultLayout, cfg.Prefix)
-	if err != nil {
-		return nil, err
-	}
-
-	be.Layout = l
 
 	return be, nil
 }
@@ -122,14 +131,11 @@ func getCredentials(cfg Config, tr http.RoundTripper) (*credentials.Credentials,
 		&credentials.EnvMinio{},
 		&credentials.FileAWSCredentials{},
 		&credentials.FileMinioClient{},
-		&credentials.IAM{
-			Client: &http.Client{
-				Transport: tr,
-			},
-		},
+		&credentials.IAM{},
 	})
+	client := &http.Client{Transport: tr}
 
-	c, err := creds.Get()
+	c, err := creds.GetWithContext(&credentials.CredContext{Client: client})
 	if err != nil {
 		return nil, errors.Wrap(err, "creds.Get")
 	}
@@ -138,12 +144,7 @@ func getCredentials(cfg Config, tr http.RoundTripper) (*credentials.Credentials,
 		// Fail if no credentials were found to prevent repeated attempts to (unsuccessfully) retrieve new credentials.
 		// The first attempt still has to timeout which slows down restic usage considerably. Thus, migrate towards forcing
 		// users to explicitly decide between authenticated and anonymous access.
-		if feature.Flag.Enabled(feature.ExplicitS3AnonymousAuth) {
-			return nil, fmt.Errorf("no credentials found. Use `-o s3.unsafe-anonymous-auth=true` for anonymous authentication")
-		}
-
-		debug.Log("using anonymous access for %#v", cfg.Endpoint)
-		creds = credentials.New(&credentials.Static{})
+		return nil, fmt.Errorf("no credentials found. Use `-o s3.unsafe-anonymous-auth=true` for anonymous authentication")
 	}
 
 	roleArn := os.Getenv("RESTIC_AWS_ASSUME_ROLE_ARN")
@@ -194,14 +195,14 @@ func getCredentials(cfg Config, tr http.RoundTripper) (*credentials.Credentials,
 
 // Open opens the S3 backend at bucket and region. The bucket is created if it
 // does not exist yet.
-func Open(ctx context.Context, cfg Config, rt http.RoundTripper) (backend.Backend, error) {
-	return open(ctx, cfg, rt)
+func Open(_ context.Context, cfg Config, rt http.RoundTripper) (backend.Backend, error) {
+	return open(cfg, rt)
 }
 
 // Create opens the S3 backend at bucket and region and creates the bucket if
 // it does not exist yet.
 func Create(ctx context.Context, cfg Config, rt http.RoundTripper) (backend.Backend, error) {
-	be, err := open(ctx, cfg, rt)
+	be, err := open(cfg, rt)
 	if err != nil {
 		return nil, errors.Wrap(err, "open")
 	}
@@ -257,90 +258,16 @@ func (be *Backend) IsPermanentError(err error) bool {
 	return false
 }
 
-// Join combines path components with slashes.
-func (be *Backend) Join(p ...string) string {
-	return path.Join(p...)
-}
-
-type fileInfo struct {
-	name    string
-	size    int64
-	mode    os.FileMode
-	modTime time.Time
-	isDir   bool
-}
-
-func (fi *fileInfo) Name() string       { return fi.name }    // base name of the file
-func (fi *fileInfo) Size() int64        { return fi.size }    // length in bytes for regular files; system-dependent for others
-func (fi *fileInfo) Mode() os.FileMode  { return fi.mode }    // file mode bits
-func (fi *fileInfo) ModTime() time.Time { return fi.modTime } // modification time
-func (fi *fileInfo) IsDir() bool        { return fi.isDir }   // abbreviation for Mode().IsDir()
-func (fi *fileInfo) Sys() interface{}   { return nil }        // underlying data source (can return nil)
-
-// ReadDir returns the entries for a directory.
-func (be *Backend) ReadDir(ctx context.Context, dir string) (list []os.FileInfo, err error) {
-	debug.Log("ReadDir(%v)", dir)
-
-	// make sure dir ends with a slash
-	if dir[len(dir)-1] != '/' {
-		dir += "/"
+func (be *Backend) Properties() backend.Properties {
+	return backend.Properties{
+		Connections:      be.cfg.Connections,
+		HasAtomicReplace: true,
 	}
-
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	debug.Log("using ListObjectsV1(%v)", be.cfg.ListObjectsV1)
-
-	for obj := range be.client.ListObjects(ctx, be.cfg.Bucket, minio.ListObjectsOptions{
-		Prefix:    dir,
-		Recursive: false,
-		UseV1:     be.cfg.ListObjectsV1,
-	}) {
-		if obj.Err != nil {
-			return nil, err
-		}
-
-		if obj.Key == "" {
-			continue
-		}
-
-		name := strings.TrimPrefix(obj.Key, dir)
-		// Sometimes s3 returns an entry for the dir itself. Ignore it.
-		if name == "" {
-			continue
-		}
-		entry := &fileInfo{
-			name:    name,
-			size:    obj.Size,
-			modTime: obj.LastModified,
-		}
-
-		if name[len(name)-1] == '/' {
-			entry.isDir = true
-			entry.mode = os.ModeDir | 0755
-			entry.name = name[:len(name)-1]
-		} else {
-			entry.mode = 0644
-		}
-
-		list = append(list, entry)
-	}
-
-	return list, nil
-}
-
-func (be *Backend) Connections() uint {
-	return be.cfg.Connections
 }
 
 // Hasher may return a hash function for calculating a content hash for the backend
 func (be *Backend) Hasher() hash.Hash {
 	return nil
-}
-
-// HasAtomicReplace returns whether Save() can atomically replace files
-func (be *Backend) HasAtomicReplace() bool {
-	return true
 }
 
 // Path returns the path in the bucket that is used for this backend.
@@ -352,9 +279,9 @@ func (be *Backend) Path() string {
 // For archive storage classes, only data files are stored using that class; metadata
 // must remain instantly accessible.
 func (be *Backend) useStorageClass(h backend.Handle) bool {
-	notArchiveClass := be.cfg.StorageClass != "GLACIER" && be.cfg.StorageClass != "DEEP_ARCHIVE"
 	isDataFile := h.Type == backend.PackFile && !h.IsMetadata
-	return isDataFile || notArchiveClass
+	isArchiveClass := slices.Contains(archiveClasses, be.cfg.StorageClass)
+	return !isArchiveClass || isDataFile
 }
 
 // Save stores data in the backend at the handle.
@@ -372,7 +299,7 @@ func (be *Backend) Save(ctx context.Context, h backend.Handle, rd backend.Rewind
 		opts.StorageClass = be.cfg.StorageClass
 	}
 
-	info, err := be.client.PutObject(ctx, be.cfg.Bucket, objName, io.NopCloser(rd), int64(rd.Length()), opts)
+	info, err := be.client.PutObject(ctx, be.cfg.Bucket, objName, io.NopCloser(rd), rd.Length(), opts)
 
 	// sanity check
 	if err == nil && info.Size != rd.Length() {
@@ -527,39 +454,147 @@ func (be *Backend) Delete(ctx context.Context) error {
 // Close does nothing
 func (be *Backend) Close() error { return nil }
 
-// Rename moves a file based on the new layout l.
-func (be *Backend) Rename(ctx context.Context, h backend.Handle, l layout.Layout) error {
-	debug.Log("Rename %v to %v", h, l)
-	oldname := be.Filename(h)
-	newname := l.Filename(h)
+// Warmup transitions handles from cold to hot storage if needed.
+func (be *Backend) Warmup(ctx context.Context, handles []backend.Handle) ([]backend.Handle, error) {
+	handlesWarmingUp := []backend.Handle{}
 
-	if oldname == newname {
-		debug.Log("  %v is already renamed", newname)
-		return nil
+	if be.cfg.EnableRestore {
+		for _, h := range handles {
+			filename := be.Filename(h)
+			isWarmingUp, err := be.requestRestore(ctx, filename)
+			if err != nil {
+				return handlesWarmingUp, err
+			}
+			if isWarmingUp {
+				debug.Log("s3 file is being restored: %s", filename)
+				handlesWarmingUp = append(handlesWarmingUp, h)
+			}
+		}
 	}
 
-	debug.Log("  %v -> %v", oldname, newname)
+	return handlesWarmingUp, nil
+}
 
-	src := minio.CopySrcOptions{
-		Bucket: be.cfg.Bucket,
-		Object: oldname,
-	}
-
-	dst := minio.CopyDestOptions{
-		Bucket: be.cfg.Bucket,
-		Object: newname,
-	}
-
-	_, err := be.client.CopyObject(ctx, dst, src)
-	if err != nil && be.IsNotExist(err) {
-		debug.Log("copy failed: %v, seems to already have been renamed", err)
-		return nil
-	}
-
+// requestRestore sends a glacier restore request on a given file.
+func (be *Backend) requestRestore(ctx context.Context, filename string) (bool, error) {
+	objectInfo, err := be.client.StatObject(ctx, be.cfg.Bucket, filename, minio.StatObjectOptions{})
 	if err != nil {
-		debug.Log("copy failed: %v", err)
-		return err
+		return false, err
 	}
 
-	return be.client.RemoveObject(ctx, be.cfg.Bucket, oldname, minio.RemoveObjectOptions{})
+	ws := be.getWarmupStatus(objectInfo)
+	switch ws {
+	case warmupStatusWarm:
+		return false, nil
+	case warmupStatusWarmingUp:
+		return true, nil
+	}
+
+	opts := minio.RestoreRequest{}
+	opts.SetDays(be.cfg.RestoreDays)
+	opts.SetGlacierJobParameters(minio.GlacierJobParameters{Tier: minio.TierType(be.cfg.RestoreTier)})
+
+	if err := be.client.RestoreObject(ctx, be.cfg.Bucket, filename, "", opts); err != nil {
+		var e minio.ErrorResponse
+		if errors.As(err, &e) {
+			switch e.Code {
+			case "InvalidObjectState":
+				return false, nil
+			case "RestoreAlreadyInProgress":
+				return true, nil
+			}
+		}
+		return false, err
+	}
+
+	isWarmingUp := ws != warmupStatusLukewarm
+	return isWarmingUp, nil
+}
+
+// getWarmupStatus returns the warmup status of the provided object.
+func (be *Backend) getWarmupStatus(objectInfo minio.ObjectInfo) warmupStatus {
+	// We can't use objectInfo.StorageClass to get the storage class of the
+	// object because this field is only set during ListObjects operations.
+	// The response header is the documented way to get the storage class
+	// for GetObject/StatObject operations.
+	storageClass := objectInfo.Metadata.Get("X-Amz-Storage-Class")
+	isArchiveClass := slices.Contains(archiveClasses, storageClass)
+	if !isArchiveClass {
+		return warmupStatusWarm
+	}
+
+	restore := objectInfo.Restore
+	if restore != nil {
+		if restore.OngoingRestore {
+			return warmupStatusWarmingUp
+		}
+
+		minExpiryTime := time.Now().Add(time.Duration(be.cfg.RestoreDays) * 24 * time.Hour)
+		expiryTime := restore.ExpiryTime
+		if !expiryTime.IsZero() {
+			if minExpiryTime.Before(expiryTime) {
+				return warmupStatusWarm
+			}
+			return warmupStatusLukewarm
+		}
+	}
+
+	return warmupStatusCold
+}
+
+// WarmupWait waits until all handles are in hot storage.
+func (be *Backend) WarmupWait(ctx context.Context, handles []backend.Handle) error {
+	timeoutCtx, timeoutCtxCancel := context.WithTimeout(ctx, be.cfg.RestoreTimeout)
+	defer timeoutCtxCancel()
+
+	if be.cfg.EnableRestore {
+		for _, h := range handles {
+			filename := be.Filename(h)
+			err := be.waitForRestore(timeoutCtx, filename)
+			if err != nil {
+				return err
+			}
+			debug.Log("s3 file is restored: %s", filename)
+		}
+	}
+
+	return nil
+}
+
+// waitForRestore waits for a given file to be restored.
+func (be *Backend) waitForRestore(ctx context.Context, filename string) error {
+	for {
+		var objectInfo minio.ObjectInfo
+
+		// Restore requests can last many hours, therefore network may fail
+		// temporarily. We don't need to die in such even.
+		b := backoff.WithMaxRetries(backoff.NewExponentialBackOff(), 10)
+		b = backoff.WithContext(b, ctx)
+		err := backoff.Retry(
+			func() (err error) {
+				objectInfo, err = be.client.StatObject(ctx, be.cfg.Bucket, filename, minio.StatObjectOptions{})
+				return
+			},
+			b,
+		)
+		if err != nil {
+			return err
+		}
+
+		ws := be.getWarmupStatus(objectInfo)
+		switch ws {
+		case warmupStatusLukewarm:
+			fallthrough
+		case warmupStatusWarm:
+			return nil
+		case warmupStatusCold:
+			return errors.New("waiting on S3 handle that is not warming up")
+		}
+
+		select {
+		case <-time.After(1 * time.Minute):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 }

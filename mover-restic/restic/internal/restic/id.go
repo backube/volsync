@@ -2,11 +2,10 @@ package restic
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
-
-	"crypto/sha256"
 )
 
 // Hash returns the ID for data.
