@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Restic updated to v0.18.0
 - Syncthing updated to v1.29.3
 
+### Fixed
+
+- Fix restic cache PVC name collision if replicationsource and
+  replicationdestination have the same name and are in the same
+  namespace
+
 ## [v0.12.1]
 
 ### Security

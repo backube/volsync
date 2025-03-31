@@ -225,7 +225,7 @@
       kubernetes.core.k8s_info:
         api_version: v1
         kind: PersistentVolumeClaim
-        name: volsync-restore-thisisavery-very-very-very-longnameevenlongerthan63chars2-cache
+        name: volsync-dst-restore-thisisavery-very-very-very-longnameevenlongerthan63chars2-cache
         namespace: "{{ namespace }}"
       register: cachepvcreloaded
 
