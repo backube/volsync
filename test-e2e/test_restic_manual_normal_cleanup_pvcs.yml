@@ -207,7 +207,7 @@
       kubernetes.core.k8s_info:
         api_version: v1
         kind: PersistentVolumeClaim
-        name: volsync-restore-cache
+        name: volsync-dst-restore-cache
         namespace: "{{ namespace }}"
       register: cachepvc
       until: >
@@ -300,7 +300,7 @@
       kubernetes.core.k8s_info:
         api_version: v1
         kind: PersistentVolumeClaim
-        name: volsync-restore-cache
+        name: volsync-dst-restore-cache
         namespace: "{{ namespace }}"
       register: cachepvcreloaded
 

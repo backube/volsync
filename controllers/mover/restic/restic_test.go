@@ -40,11 +40,12 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	"k8s.io/utils/ptr"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
-	"github.com/backube/volsync/controllers/mover"
+	vsmover "github.com/backube/volsync/controllers/mover"
 	"github.com/backube/volsync/controllers/utils"
 )
 
@@ -239,7 +240,7 @@ var _ = Describe("Restic properly registers", func() {
 
 		It("is added to the mover catalog", func() {
 			found := false
-			for _, v := range mover.Catalog {
+			for _, v := range vsmover.Catalog {
 				if _, ok := v.(*Builder); ok {
 					found = true
 				}
@@ -622,6 +623,78 @@ var _ = Describe("Restic as a source", func() {
 					cache, err := mover.ensureCache(ctx, dataPVC, false)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(*cache.Spec.StorageClassName).To(Equal(cachesc))
+				})
+			})
+
+			Context("old cache name migration", func() {
+				var oldCache *corev1.PersistentVolumeClaim
+				When("The cache PVC with the old name exists", func() {
+					BeforeEach(func() {
+						sc := "some-storage"
+						oldCache = &corev1.PersistentVolumeClaim{
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      vsmover.VolSyncPrefix + rs.GetName() + "-cache",
+								Namespace: rs.GetNamespace(),
+							},
+							Spec: corev1.PersistentVolumeClaimSpec{
+								AccessModes: []corev1.PersistentVolumeAccessMode{
+									corev1.ReadWriteOnce,
+								},
+								Resources: corev1.VolumeResourceRequirements{
+									Requests: corev1.ResourceList{
+										"storage": resource.MustParse("1Gi"),
+									},
+								},
+								StorageClassName: &sc,
+							},
+						}
+					})
+
+					JustBeforeEach(func() {
+						Expect(k8sClient.Create(ctx, oldCache)).To(Succeed())
+					})
+
+					When("The old cache pvc is not owned by this VolSync RS", func() {
+						It("Should not delete the old cache PVC and still create the new one", func() {
+							cache, err := mover.ensureCache(ctx, dataPVC, false)
+							Expect(err).ToNot(HaveOccurred())
+							Expect(cache.GetName()).To(ContainSubstring("-cache"))
+							Expect(cache.GetName()).To(ContainSubstring("-src-"))
+
+							// Check that old cache pvc is still there
+							Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(oldCache), oldCache)).To(Succeed())
+							Expect(oldCache.GetDeletionTimestamp().IsZero()).To(BeTrue()) // Not marked for deletion
+						})
+					})
+
+					When("The old cache PVC was owned by this VolSync RS", func() {
+						JustBeforeEach(func() {
+							// Need to do this after the RS has been created
+							Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(oldCache), oldCache)).To(Succeed())
+							Expect(ctrl.SetControllerReference(rs, oldCache, k8sClient.Scheme())).To(Succeed())
+							Expect(k8sClient.Update(ctx, oldCache)).To(Succeed())
+						})
+
+						It("Should delete the old cache pvc and still create the new one", func() {
+							cache, err := mover.ensureCache(ctx, dataPVC, false)
+							Expect(err).ToNot(HaveOccurred())
+							Expect(cache.GetName()).To(ContainSubstring("-cache"))
+							Expect(cache.GetName()).To(ContainSubstring("-src-"))
+
+							// Check that old cache pvc was deleted
+							err = k8sClient.Get(ctx, client.ObjectKeyFromObject(oldCache), oldCache)
+							if err == nil {
+								// Should be marked for deletion
+								Expect(oldCache.GetDeletionTimestamp().IsZero()).To(BeFalse())
+							} else {
+								Expect(kerrors.IsNotFound(err)).To(BeTrue())
+							}
+
+							// Should be able to reconcile again
+							_, err = mover.ensureCache(ctx, dataPVC, false)
+							Expect(err).ToNot(HaveOccurred())
+						})
+					})
 				})
 			})
 		})
@@ -1829,6 +1902,32 @@ var _ = Describe("Restic as a destination", func() {
 			mover, _ = m.(*Mover)
 			Expect(mover).NotTo(BeNil())
 		})
+
+		Context("Restic cache is created correctly", func() {
+			var dataPVC *corev1.PersistentVolumeClaim
+			BeforeEach(func() {
+				am := corev1.ReadWriteMany
+				rd.Spec.Restic.AccessModes = []corev1.PersistentVolumeAccessMode{
+					am,
+				}
+				destVolCap := resource.MustParse("6Gi")
+				rd.Spec.Restic.Capacity = &destVolCap
+			})
+
+			JustBeforeEach(func() {
+				var err error
+				dataPVC, err = mover.ensureDestinationPVC(ctx)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("Should create old cache pvc", func() {
+				cache, err := mover.ensureCache(ctx, dataPVC, false)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(cache.GetName()).To(ContainSubstring("-cache"))
+				Expect(cache.GetName()).To(ContainSubstring("-dst-"))
+			})
+		})
+
 		When("no destination volume is supplied", func() {
 			var destVolCap resource.Quantity
 			var am corev1.PersistentVolumeAccessMode

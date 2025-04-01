@@ -37,6 +37,7 @@ import (
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	vserrors "github.com/backube/volsync/controllers/errors"
@@ -214,10 +215,49 @@ func (m *Mover) ensureCache(ctx context.Context,
 		return nil, err
 	}
 
+	err = m.migrationCleanupObsoleteCachePVC(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	// Allocate cache volume
-	cacheName := mover.VolSyncPrefix + m.owner.GetName() + "-cache"
+	dir := "src"
+	if !m.isSource {
+		dir = "dst"
+	}
+	cacheName := mover.VolSyncPrefix + dir + "-" + m.owner.GetName() + "-cache"
 	m.logger.Info("allocating cache volume", "PVC", cacheName, "isTemporary", isTemporary)
 	return cacheVh.EnsureNewPVC(ctx, m.logger, cacheName, isTemporary)
+}
+
+// Old names for the cache PVC were common between source & dest - our new name will include -src or -dst
+// to avoid collisions - migrate by cleanup old cache PVC if it exists
+// (see issue: https://github.com/backube/volsync/issues/1575)
+func (m *Mover) migrationCleanupObsoleteCachePVC(ctx context.Context) error {
+	obsCachePVC := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      mover.VolSyncPrefix + m.owner.GetName() + "-cache",
+			Namespace: m.owner.GetNamespace(),
+		},
+	}
+	err := m.client.Get(ctx, client.ObjectKeyFromObject(obsCachePVC), obsCachePVC)
+	if err == nil {
+		// the cache PVC (with old obsolete name) still exists, remove it but only if it is owned by this CR
+		isOwnedByUs, err := ctrlutil.HasOwnerReference(obsCachePVC.GetOwnerReferences(), m.owner, m.client.Scheme())
+		if err != nil {
+			return err
+		}
+		if !isOwnedByUs {
+			// Do not delete, not owned by this VolSync CR
+			return nil
+		}
+
+		m.logger.Info("deleting old cache volume, a new one will be created", "old cachePVC", obsCachePVC.GetName())
+		_ = m.client.Delete(ctx, obsCachePVC, client.PropagationPolicy(metav1.DeletePropagationBackground))
+		return nil
+	}
+
+	return client.IgnoreNotFound(err)
 }
 
 func (m *Mover) ensureSourcePVC(ctx context.Context) (*corev1.PersistentVolumeClaim, error) {
