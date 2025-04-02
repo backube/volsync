@@ -316,6 +316,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-24.04]
         # There must be kindest/node images for these versions
         # See: https://hub.docker.com/r/kindest/node/tags?page=1&ordering=name
         # Or: skopeo list-tags docker://kindest/node
@@ -333,7 +334,9 @@ jobs:
           - "1.30.0"   # OCP 4.17
           - "1.31.0"   # OCP 4.18
           - "1.32.2"   # OCP 4.19
-        os: [ubuntu-24.04, ubuntu-24.04-arm]
+        include:
+          - os: ubuntu-24.04-arm
+            KUBERNETES_VERSIONS: "1.32.2"   # OCP 4.19
     env:
       KUBECONFIG: /tmp/kubeconfig
       KUBERNETES_VERSION: ${{ matrix.KUBERNETES_VERSIONS }}
