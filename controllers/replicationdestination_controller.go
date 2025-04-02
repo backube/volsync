@@ -85,7 +85,7 @@ func (r *ReplicationDestinationReconciler) Reconcile(ctx context.Context, req ct
 	logger := r.Log.WithValues("replicationdestination", req.NamespacedName)
 	// Get CR instance
 	inst := &volsyncv1alpha1.ReplicationDestination{}
-	if err := r.Client.Get(ctx, req.NamespacedName, inst); err != nil {
+	if err := r.Get(ctx, req.NamespacedName, inst); err != nil {
 		if !kerrors.IsNotFound(err) {
 			logger.Error(err, "Failed to get Destination")
 		}

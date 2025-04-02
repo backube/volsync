@@ -243,7 +243,7 @@ func (m *Mover) ensureConfigPVC(
 	dataPVC *corev1.PersistentVolumeClaim,
 ) (*corev1.PersistentVolumeClaim, error) {
 	// default capacity if none was specified
-	var capacity *resource.Quantity = m.configCapacity
+	var capacity = m.configCapacity
 	if capacity == nil {
 		capDefault := resource.MustParse(configCapacity)
 		capacity = &capDefault
@@ -417,7 +417,7 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 
 		deployment.Spec.Template = corev1.PodTemplateSpec{}
 		utils.SetOwnedByVolSync(&deployment.Spec.Template)
-		deployment.Spec.Template.ObjectMeta.Name = deployment.Name
+		deployment.Spec.Template.Name = deployment.Name
 		utils.AddAllLabels(&deployment.Spec.Template, m.serviceSelector())
 
 		podSpec := &deployment.Spec.Template.Spec

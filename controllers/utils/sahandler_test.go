@@ -336,9 +336,10 @@ var _ = Describe("sahandler tests", func() {
 				Expect(len(secretsList.Items)).To(Equal(2))
 
 				for i := range secretsList.Items {
-					if secretsList.Items[i].Name == expectedCopiedSecretNameA {
+					switch secretsList.Items[i].Name {
+					case expectedCopiedSecretNameA:
 						copiedSecretA = &secretsList.Items[i]
-					} else if secretsList.Items[i].Name == expectedCopiedSecretNameC {
+					case expectedCopiedSecretNameC:
 						copiedSecretC = &secretsList.Items[i]
 					}
 				}
@@ -442,9 +443,10 @@ var _ = Describe("sahandler tests", func() {
 					Expect(len(secretsList.Items)).To(Equal(2))
 
 					for i := range secretsList.Items {
-						if secretsList.Items[i].Name == expectedCopiedSecretNameA {
+						switch secretsList.Items[i].Name {
+						case expectedCopiedSecretNameA:
 							copiedSecretA = &secretsList.Items[i]
-						} else if secretsList.Items[i].Name == expectedCopiedSecretNameC {
+						case expectedCopiedSecretNameC:
 							copiedSecretC = &secretsList.Items[i]
 						}
 					}

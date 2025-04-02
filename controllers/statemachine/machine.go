@@ -145,8 +145,8 @@ func doCleanupState(ctx context.Context, r ReplicationMachine, l logr.Logger) (c
 			}
 
 			timeToNext := timeToNextSync(r)
-			switch {
-			case timeToNext == nil:
+			switch timeToNext {
+			case nil:
 				return ctrl.Result{}, nil
 			default:
 				return ctrl.Result{RequeueAfter: *timeToNext}, nil

@@ -68,7 +68,7 @@ func syncthingNeedsReconfigure(
 	syncthing *api.Syncthing,
 ) bool {
 	// check if the syncthing nodelist diverges from the current syncthing devices
-	var newDevices map[string]v1alpha1.SyncthingPeer = map[string]v1alpha1.SyncthingPeer{
+	var newDevices = map[string]v1alpha1.SyncthingPeer{
 		// initialize the map with the self node
 		syncthing.MyID(): {
 			ID:      syncthing.MyID(),
@@ -86,7 +86,7 @@ func syncthingNeedsReconfigure(
 	}
 
 	// create a map for current devices
-	var currentDevs map[string]v1alpha1.SyncthingPeer = map[string]v1alpha1.SyncthingPeer{
+	var currentDevs = map[string]v1alpha1.SyncthingPeer{
 		// initialize the map with the self node
 		syncthing.MyID(): {
 			ID:      syncthing.MyID(),

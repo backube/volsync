@@ -97,7 +97,7 @@ var _ sm.ReplicationMachine = &rsMachine{}
 func (r *ReplicationSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Log.WithValues("replicationsource", req.NamespacedName)
 	inst := &volsyncv1alpha1.ReplicationSource{}
-	if err := r.Client.Get(ctx, req.NamespacedName, inst); err != nil {
+	if err := r.Get(ctx, req.NamespacedName, inst); err != nil {
 		if kerrors.IsNotFound(err) {
 			logger.Error(err, "Failed to get Source")
 		}

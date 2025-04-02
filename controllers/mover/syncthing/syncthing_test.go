@@ -450,7 +450,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 				Expect(returnedPVC).NotTo(BeNil())
 
 				// create a fake PVC
-				var nonexistentPVCName string = "this-name-clearly-doesnt-exist"
+				var nonexistentPVCName = "this-name-clearly-doesnt-exist"
 				mover.dataPVCName = &nonexistentPVCName
 				returnedPVC, err = mover.ensureDataPVC(ctx)
 				Expect(err).To(HaveOccurred())
@@ -926,7 +926,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 			var sa *corev1.ServiceAccount
 			var deployment *appsv1.Deployment
 			var apiService *corev1.Service
-			var apiKey string = "test"
+			var apiKey = "test"
 
 			// nolint:dupl
 			JustBeforeEach(func() {
@@ -1144,7 +1144,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 						}
 
 						// validate that the deployment exposes API & data ports
-						var portNames []string = []string{apiPortName, dataPortName}
+						var portNames = []string{apiPortName, dataPortName}
 
 						// make sure the above ports exist in container's ports
 						for _, port := range stContainer.Ports {
@@ -1178,13 +1178,14 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 
 						checked := 0
 						for _, volume := range deployment.Spec.Template.Spec.Volumes {
-							if volume.Name == configVolumeName {
+							switch volume.Name {
+							case configVolumeName:
 								Expect(volume.PersistentVolumeClaim.ClaimName).To(Equal(configPVC.Name))
 								checked++
-							} else if volume.Name == dataVolumeName {
+							case dataVolumeName:
 								Expect(volume.PersistentVolumeClaim.ClaimName).To(Equal(srcPVC.Name))
 								checked++
-							} else if volume.Name == certVolumeName {
+							case certVolumeName:
 								// check that the TLS certificates are properly loaded
 								Expect(volume.Secret.SecretName).To(Equal(apiSecret.Name))
 
@@ -1200,7 +1201,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 								}
 								Expect(httpsKeysChecked).To(Equal(len(httpsItems)))
 								checked++
-							} else if volume.Name == tempVolumeName {
+							case tempVolumeName:
 								checked++
 							}
 						}
@@ -1209,11 +1210,12 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 
 						// make sure that both deployment's specified volumes are being mounted by the container
 						for _, mount := range stContainer.VolumeMounts {
-							if mount.Name == configVolumeName {
+							switch mount.Name {
+							case configVolumeName:
 								Expect(mount.MountPath).To(Equal(configDirMountPath))
-							} else if mount.Name == dataVolumeName {
+							case dataVolumeName:
 								Expect(mount.MountPath).To(Equal(dataDirMountPath))
-							} else if mount.Name == certVolumeName {
+							case certVolumeName:
 								Expect(mount.MountPath).To(Equal(certDirMountPath))
 							}
 						}
@@ -1494,7 +1496,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 							newAPIService, err := mover.ensureAPIService(ctx, deployment)
 							Expect(err).NotTo(HaveOccurred())
 							Expect(newAPIService).NotTo(BeNil())
-							Expect(newAPIService.ObjectMeta.Name).To(Equal(apiService.ObjectMeta.Name))
+							Expect(newAPIService.Name).To(Equal(apiService.Name))
 						})
 					})
 				})
@@ -1884,7 +1886,7 @@ var _ = Describe("Syncthing utils", func() {
 	})
 	Context("TLS Certificates are generated", func() {
 		It("generates them without fault", func() {
-			var apiAddress string = "my.real.api.address"
+			var apiAddress = "my.real.api.address"
 			certPEM, certKeyPEM, err := generateTLSCertificatesForSyncthing(apiAddress)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(certPEM.Bytes()).ToNot(BeEmpty())

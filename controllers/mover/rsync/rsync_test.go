@@ -810,16 +810,17 @@ var _ = Describe("Rsync as a source", func() {
 					foundDotSSHMount := false
 					foundTmpMount := false
 					for _, volMount := range c.VolumeMounts {
-						if volMount.Name == dataVolumeName {
+						switch volMount.Name {
+						case dataVolumeName:
 							foundDataVolumeMount = true
 							Expect(volMount.MountPath).To(Equal(mountPath))
-						} else if volMount.Name == "keys" {
+						case "keys":
 							foundSSHSecretVolumeMount = true
 							Expect(volMount.MountPath).To(Equal("/keys"))
-						} else if volMount.Name == "tempsshdir" {
+						case "tempsshdir":
 							foundDotSSHMount = true
 							Expect(volMount.MountPath).To(Equal("/root/.ssh"))
-						} else if volMount.Name == "tempdir" {
+						case "tempdir":
 							foundTmpMount = true
 							Expect(volMount.MountPath).To(Equal("/tmp"))
 						}
@@ -855,19 +856,20 @@ var _ = Describe("Rsync as a source", func() {
 					foundDotSSHVolume := false
 					foundTmpVolume := false
 					for _, vol := range volumes {
-						if vol.Name == dataVolumeName {
+						switch vol.Name {
+						case dataVolumeName:
 							foundDataVolume = true
 							Expect(vol.VolumeSource.PersistentVolumeClaim).ToNot(BeNil())
 							Expect(vol.VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(pvc.GetName()))
 							Expect(vol.VolumeSource.PersistentVolumeClaim.ReadOnly).To(Equal(false))
-						} else if vol.Name == "keys" {
+						case "keys":
 							foundSSHSecretVolume = true
 							Expect(vol.VolumeSource.Secret).ToNot(BeNil())
 							Expect(vol.VolumeSource.Secret.SecretName).To(Equal(sshKeysSecret.GetName()))
-						} else if vol.Name == "tempsshdir" {
+						case "tempsshdir":
 							foundDotSSHVolume = true
 							Expect(vol.VolumeSource.EmptyDir).ToNot(BeNil())
-						} else if vol.Name == "tempdir" {
+						case "tempdir":
 							foundTmpVolume = true
 							Expect(vol.VolumeSource.EmptyDir).ToNot(BeNil())
 						}
@@ -897,16 +899,17 @@ var _ = Describe("Rsync as a source", func() {
 						foundDotSSHMount := false
 						foundTmpMount := false
 						for _, volMount := range c.VolumeMounts {
-							if volMount.Name == dataVolumeName {
+							switch volMount.Name {
+							case dataVolumeName:
 								foundDataVolumeMount = true
 								Expect(volMount.MountPath).To(Equal(mountPath))
-							} else if volMount.Name == "keys" {
+							case "keys":
 								foundSSHSecretVolumeMount = true
 								Expect(volMount.MountPath).To(Equal("/keys"))
-							} else if volMount.Name == "tempsshdir" {
+							case "tempsshdir":
 								foundDotSSHMount = true
 								Expect(volMount.MountPath).To(Equal("/root/.ssh"))
-							} else if volMount.Name == "tempdir" {
+							case "tempdir":
 								foundTmpMount = true
 								Expect(volMount.MountPath).To(Equal("/tmp"))
 							}

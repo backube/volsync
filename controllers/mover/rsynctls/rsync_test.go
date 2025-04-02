@@ -1210,13 +1210,14 @@ var _ = Describe("RsyncTLS as a source", func() {
 					foundTLSSecretVolumeMount := false
 					foundTmpMount := false
 					for _, volMount := range c.VolumeMounts {
-						if volMount.Name == dataVolumeName {
+						switch volMount.Name {
+						case dataVolumeName:
 							foundDataVolumeMount = true
 							Expect(volMount.MountPath).To(Equal(mountPath))
-						} else if volMount.Name == "keys" {
+						case "keys":
 							foundTLSSecretVolumeMount = true
 							Expect(volMount.MountPath).To(Equal("/keys"))
-						} else if volMount.Name == "tempdir" {
+						case "tempdir":
 							foundTmpMount = true
 							Expect(volMount.MountPath).To(Equal("/tmp"))
 						}
@@ -1242,16 +1243,17 @@ var _ = Describe("RsyncTLS as a source", func() {
 					foundTLSSecretVolume := false
 					foundTmpVolume := false
 					for _, vol := range volumes {
-						if vol.Name == dataVolumeName {
+						switch vol.Name {
+						case dataVolumeName:
 							foundDataVolume = true
 							Expect(vol.VolumeSource.PersistentVolumeClaim).ToNot(BeNil())
 							Expect(vol.VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(pvc.GetName()))
 							Expect(vol.VolumeSource.PersistentVolumeClaim.ReadOnly).To(Equal(false))
-						} else if vol.Name == "keys" {
+						case "keys":
 							foundTLSSecretVolume = true
 							Expect(vol.VolumeSource.Secret).ToNot(BeNil())
 							Expect(vol.VolumeSource.Secret.SecretName).To(Equal(tlsKeySecret.GetName()))
-						} else if vol.Name == "tempdir" {
+						case "tempdir":
 							foundTmpVolume = true
 							Expect(vol.VolumeSource.EmptyDir).ToNot(BeNil())
 						}
@@ -1280,13 +1282,14 @@ var _ = Describe("RsyncTLS as a source", func() {
 						foundTLSSecretVolumeMount := false
 						foundTmpMount := false
 						for _, volMount := range c.VolumeMounts {
-							if volMount.Name == dataVolumeName {
+							switch volMount.Name {
+							case dataVolumeName:
 								foundDataVolumeMount = true
 								Expect(volMount.MountPath).To(Equal(mountPath))
-							} else if volMount.Name == "keys" {
+							case "keys":
 								foundTLSSecretVolumeMount = true
 								Expect(volMount.MountPath).To(Equal("/keys"))
-							} else if volMount.Name == "tempdir" {
+							case "tempdir":
 								foundTmpMount = true
 								Expect(volMount.MountPath).To(Equal("/tmp"))
 							}
