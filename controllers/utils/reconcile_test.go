@@ -79,7 +79,7 @@ var _ = Describe("CreateOrUpdateDeleteOnImmutableErr", func() {
 
 				job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
 
-				job.Spec.Template.ObjectMeta.Name = "jobpod1"
+				job.Spec.Template.Name = "jobpod1"
 				job.Spec.Template.Labels = map[string]string{
 					"podlabela": "aa",
 					"podlabelb": "bb",

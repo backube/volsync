@@ -96,10 +96,11 @@ func CreateSyncthingTestServer(state *Syncthing, serverAPIKey string) *httptest.
 		}
 		switch r.URL.Path {
 		case ConfigEndpoint:
-			if r.Method == "GET" {
+			switch r.Method {
+			case "GET":
 				resBytes, _ := json.Marshal(state.Configuration)
 				fmt.Fprintln(w, string(resBytes))
-			} else if r.Method == "PUT" {
+			case "PUT":
 				err := json.NewDecoder(r.Body).Decode(&state.Configuration)
 				if err != nil {
 					http.Error(w, "Error decoding request body", http.StatusBadRequest)

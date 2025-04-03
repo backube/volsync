@@ -343,7 +343,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 		}
 		utils.SetOwnedByVolSync(job)
 		utils.MarkForCleanup(m.owner, job)
-		job.Spec.Template.ObjectMeta.Name = job.Name
+		job.Spec.Template.Name = job.Name
 		utils.SetOwnedByVolSync(&job.Spec.Template)
 		backoffLimit := int32(8)
 		job.Spec.BackoffLimit = &backoffLimit

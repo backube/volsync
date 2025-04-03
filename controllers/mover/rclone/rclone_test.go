@@ -1484,13 +1484,14 @@ var _ = Describe("Rclone as a source", func() {
 					foundRcloneSecretVolumeMount := false
 					foundTempMount := false
 					for _, volMount := range c.VolumeMounts {
-						if volMount.Name == dataVolumeName {
+						switch volMount.Name {
+						case dataVolumeName:
 							foundDataVolumeMount = true
 							Expect(volMount.MountPath).To(Equal(mountPath))
-						} else if volMount.Name == rcloneSecret {
+						case rcloneSecret:
 							foundRcloneSecretVolumeMount = true
 							Expect(volMount.MountPath).To(Equal("/rclone-config/"))
-						} else if volMount.Name == "tempdir" {
+						case "tempdir":
 							foundTempMount = true
 							Expect(volMount.MountPath).To(Equal("/tmp"))
 						}
@@ -1514,16 +1515,17 @@ var _ = Describe("Rclone as a source", func() {
 					foundRcloneSecretVolume := false
 					foundTemp := false
 					for _, vol := range volumes {
-						if vol.Name == dataVolumeName {
+						switch vol.Name {
+						case dataVolumeName:
 							foundDataVolume = true
 							Expect(vol.VolumeSource.PersistentVolumeClaim).ToNot(BeNil())
 							Expect(vol.VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(sPVC.GetName()))
 							Expect(vol.VolumeSource.PersistentVolumeClaim.ReadOnly).To(Equal(false))
-						} else if vol.Name == rcloneSecret {
+						case rcloneSecret:
 							foundRcloneSecretVolume = true
 							Expect(vol.VolumeSource.Secret).ToNot(BeNil())
 							Expect(vol.VolumeSource.Secret.SecretName).To(Equal(testRcloneConfig))
-						} else if vol.Name == "tempdir" {
+						case "tempdir":
 							foundTemp = true
 							Expect(vol.EmptyDir).ToNot(BeNil())
 						}

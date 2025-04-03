@@ -229,7 +229,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 						When("A Storage Class is specified", func() {
 							scName := "mysc"
 							BeforeEach(func() {
-								rd.Spec.Rclone.ReplicationDestinationVolumeOptions.StorageClassName = &scName
+								rd.Spec.Rclone.StorageClassName = &scName
 							})
 							It("Is used in the destination PVC", func() {
 								// gets the pvcs used by the job spec
@@ -473,7 +473,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 					When("When a VolumeSnapshotClass is specified", func() {
 						vscName := "MyVolumeSnapshotClass"
 						BeforeEach(func() {
-							rd.Spec.Rclone.ReplicationDestinationVolumeOptions.VolumeSnapshotClassName = &vscName
+							rd.Spec.Rclone.VolumeSnapshotClassName = &vscName
 						})
 
 						It("is used as the VSC for the Snapshot", func() {
@@ -734,7 +734,7 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 					When(fmt.Sprintf("copyMethod of %s is specified for Rclone", directCopyMethodTypes[i]), func() {
 						directCopyMethodType := directCopyMethodTypes[i]
 						BeforeEach(func() {
-							rs.Spec.Rclone.ReplicationSourceVolumeOptions.CopyMethod = directCopyMethodType
+							rs.Spec.Rclone.CopyMethod = directCopyMethodType
 						})
 
 						When("No schedule is provided to ReplicationSource", func() {
@@ -775,7 +775,7 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 
 				When("copyMethod of Clone is specified", func() {
 					BeforeEach(func() {
-						rs.Spec.Rclone.ReplicationSourceVolumeOptions.CopyMethod = volsyncv1alpha1.CopyMethodClone
+						rs.Spec.Rclone.CopyMethod = volsyncv1alpha1.CopyMethodClone
 					})
 
 					//nolint:dupl
@@ -816,7 +816,7 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 
 			When("copyMethod of Snapshot is specified", func() {
 				BeforeEach(func() {
-					rs.Spec.Rclone.ReplicationSourceVolumeOptions.CopyMethod = volsyncv1alpha1.CopyMethodSnapshot
+					rs.Spec.Rclone.CopyMethod = volsyncv1alpha1.CopyMethodSnapshot
 
 					// Set a schedule
 					var schedule = "0 0 1 1 *"

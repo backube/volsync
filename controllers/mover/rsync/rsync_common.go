@@ -57,10 +57,10 @@ func (d *rsyncSvcDescription) Reconcile(l logr.Logger) error {
 		}
 		utils.SetOwnedByVolSync(d.Service)
 
-		if d.Service.ObjectMeta.Annotations == nil {
-			d.Service.ObjectMeta.Annotations = map[string]string{}
+		if d.Service.Annotations == nil {
+			d.Service.Annotations = map[string]string{}
 		}
-		updateAnnotationsOrDefault(d.Service.ObjectMeta.Annotations, d.Annotations)
+		updateAnnotationsOrDefault(d.Service.Annotations, d.Annotations)
 
 		if d.Type != nil {
 			d.Service.Spec.Type = *d.Type

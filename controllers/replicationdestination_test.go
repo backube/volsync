@@ -248,7 +248,7 @@ var _ = Describe("ReplicationDestination", func() {
 		Context("when a SC is specified", func() {
 			scName := "mysc"
 			BeforeEach(func() {
-				rd.Spec.Rsync.ReplicationDestinationVolumeOptions.StorageClassName = &scName
+				rd.Spec.Rsync.StorageClassName = &scName
 			})
 			It("is used in the PVC", func() {
 				job := &batchv1.Job{}

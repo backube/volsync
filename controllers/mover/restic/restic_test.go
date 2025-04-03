@@ -1380,12 +1380,13 @@ var _ = Describe("Restic as a source", func() {
 					foundDataVolume := false
 					foundCacheVolume := false
 					for _, vol := range volumes {
-						if vol.Name == dataVolumeName {
+						switch vol.Name {
+						case dataVolumeName:
 							foundDataVolume = true
 							Expect(vol.VolumeSource.PersistentVolumeClaim).ToNot(BeNil())
 							Expect(vol.VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(sPVC.GetName()))
 							Expect(vol.VolumeSource.PersistentVolumeClaim.ReadOnly).To(Equal(false))
-						} else if vol.Name == resticCache {
+						case resticCache:
 							foundCacheVolume = true
 							Expect(vol.VolumeSource.PersistentVolumeClaim).ToNot(BeNil())
 							Expect(vol.VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(cache.GetName()))
@@ -1712,7 +1713,7 @@ var _ = Describe("Restic as a source", func() {
 					j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).NotTo(BeNil())
-					Expect(mover.sourceStatus.LastPruned.Time.After(lastMonth.Time))
+					Expect(mover.sourceStatus.LastPruned.After(lastMonth.Time))
 				})
 			})
 

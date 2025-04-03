@@ -29,7 +29,6 @@ import (
 	volumepopulatorv1beta1 "github.com/kubernetes-csi/volume-data-source-validator/client/apis/volumepopulator/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -204,7 +203,7 @@ func (r *VolumePopulatorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	// Get PVC CR instance
 	pvc := &corev1.PersistentVolumeClaim{}
-	if err := r.Client.Get(ctx, req.NamespacedName, pvc); err != nil {
+	if err := r.Get(ctx, req.NamespacedName, pvc); err != nil {
 		if !kerrors.IsNotFound(err) {
 			logger.Error(err, "Failed to get PVC")
 		}
@@ -290,9 +289,9 @@ func (r *VolumePopulatorReconciler) checkStorageClass(ctx context.Context, logge
 				Name: storageClassName,
 			},
 		}
-		err := r.Client.Get(ctx, client.ObjectKeyFromObject(storageClass), storageClass)
+		err := r.Get(ctx, client.ObjectKeyFromObject(storageClass), storageClass)
 		if err != nil {
-			if !errors.IsNotFound(err) {
+			if !kerrors.IsNotFound(err) {
 				return false, "", &vpResult{ctrl.Result{}, err}
 			}
 			logger.Error(err, "StorageClass not found, cannot populate volume yet")
@@ -331,7 +330,7 @@ func (r *VolumePopulatorReconciler) reconcilePVCPrime(ctx context.Context, logge
 		// be ok if replicationdestination is missing - so only error out here if RD doesn't exist
 		rd, err := r.getReplicationDestinationFromDataSourceRef(ctx, logger, pvc)
 		if err != nil {
-			if !errors.IsNotFound(err) {
+			if !kerrors.IsNotFound(err) {
 				return nil, &vpResult{ctrl.Result{}, err}
 			}
 			logger.Error(err, "ReplicationDestination not found, cannot populate volume yet")
@@ -400,7 +399,7 @@ func (r *VolumePopulatorReconciler) reconcilePVCPrime(ctx context.Context, logge
 		utils.SetOwnedByVolSync(pvcPrime)                      // Set created-by volsync label
 
 		logger.Info("Creating temp populator pvc from snapshot", "volpop pvc name", pvcPrime.GetName())
-		err = r.Client.Create(ctx, pvcPrime)
+		err = r.Create(ctx, pvcPrime)
 		if err != nil {
 			r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, volsyncv1alpha1.EvRVolPopPVCCreationError,
 				"Failed to create populator PVC: %s", err)
@@ -426,9 +425,9 @@ func (r *VolumePopulatorReconciler) rebindPVClaim(ctx context.Context, logger lo
 			Name: pvcPrime.Spec.VolumeName,
 		},
 	}
-	err := r.Client.Get(ctx, client.ObjectKeyFromObject(pv), pv)
+	err := r.Get(ctx, client.ObjectKeyFromObject(pv), pv)
 	if err != nil {
-		if !errors.IsNotFound(err) {
+		if !kerrors.IsNotFound(err) {
 			return &vpResult{ctrl.Result{}, err}
 		}
 		// We'll get called again later when the PV exists
@@ -464,7 +463,7 @@ func (r *VolumePopulatorReconciler) rebindPVClaim(ctx context.Context, logger lo
 			return &vpResult{ctrl.Result{}, err}
 		}
 		logger.Info("Patching PV claim", "pv name", pv.Name)
-		err = r.Client.Patch(ctx, pv, client.RawPatch(types.StrategicMergePatchType, patchData))
+		err = r.Patch(ctx, pv, client.RawPatch(types.StrategicMergePatchType, patchData))
 		if err != nil {
 			return &vpResult{ctrl.Result{}, err}
 		}
@@ -653,7 +652,7 @@ func filterRequestsOnlyUnboundPVCs(pvcList *corev1.PersistentVolumeClaimList) []
 
 func isPVCBoundToVolume(pvc *corev1.PersistentVolumeClaim) bool {
 	// If pvc.Spec.VolumeName is set, PVC is bound to a volume already
-	return "" != pvc.Spec.VolumeName
+	return pvc.Spec.VolumeName != ""
 }
 
 func (r VolumePopulatorReconciler) getReplicationDestinationFromDataSourceRef(ctx context.Context, logger logr.Logger,
@@ -671,10 +670,10 @@ func (r VolumePopulatorReconciler) getReplicationDestinationFromDataSourceRef(ct
 			Namespace: rdNamespace,
 		},
 	}
-	err := r.Client.Get(ctx,
+	err := r.Get(ctx,
 		client.ObjectKeyFromObject(replicationDestinationForVolPop), replicationDestinationForVolPop)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if kerrors.IsNotFound(err) {
 			logger.Error(err, "Unable to populate volume - replicationdestination not found",
 				"name", rdName, "namespace", rdNamespace)
 		}
@@ -705,7 +704,7 @@ func (r *VolumePopulatorReconciler) cleanup(ctx context.Context, logger logr.Log
 		}
 
 		if updated {
-			if err := r.Client.Update(ctx, &snap); err != nil {
+			if err := r.Update(ctx, &snap); err != nil {
 				logger.Error(err, "Failed to update labels on snapshot")
 				return err
 			}
@@ -715,7 +714,7 @@ func (r *VolumePopulatorReconciler) cleanup(ctx context.Context, logger logr.Log
 	// If PVC' still exists, delete it
 	if pvcPrime != nil && pvcPrime.GetDeletionTimestamp().IsZero() {
 		logger.Info("Cleanup - deleting temp volume populator PVC", "volpop pvc name", pvcPrime.GetName())
-		if err := r.Client.Delete(ctx, pvcPrime); err != nil {
+		if err := r.Delete(ctx, pvcPrime); err != nil {
 			return err
 		}
 	}
@@ -730,12 +729,12 @@ func (r *VolumePopulatorReconciler) validateSnapshotAndLabel(ctx context.Context
 	logger = logger.WithValues("snapshot name", snapshotName, "namespace", namespace)
 
 	snapshot := &snapv1.VolumeSnapshot{}
-	err := r.Client.Get(ctx, types.NamespacedName{
+	err := r.Get(ctx, types.NamespacedName{
 		Name:      snapshotName,
 		Namespace: namespace,
 	}, snapshot)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if kerrors.IsNotFound(err) {
 			logger.Error(err, "VolumeSnapshot not found")
 		}
 		return nil, err
@@ -748,7 +747,7 @@ func (r *VolumePopulatorReconciler) validateSnapshotAndLabel(ctx context.Context
 	updated := utils.AddLabel(snapshot, snapInUseLabelKey, snapInUseLabelVal)
 
 	if updated {
-		if err := r.Client.Update(ctx, snapshot); err != nil {
+		if err := r.Update(ctx, snapshot); err != nil {
 			logger.Error(err, "Failed to label snapshot")
 			return nil, err
 		}
@@ -799,7 +798,7 @@ func (r *VolumePopulatorReconciler) listSnapshotsUsedByVolPopForPVC(ctx context.
 		client.InNamespace(pvc.GetNamespace()),
 	}
 	snapList := &snapv1.VolumeSnapshotList{}
-	err = r.Client.List(ctx, snapList, listOptions...)
+	err = r.List(ctx, snapList, listOptions...)
 	if err != nil {
 		return nil, err
 	}
@@ -814,7 +813,7 @@ func (r *VolumePopulatorReconciler) ensureOwnerReferenceOnSnapshot(ctx context.C
 		return err
 	}
 	if updated {
-		return r.Client.Update(ctx, snapshot)
+		return r.Update(ctx, snapshot)
 	}
 	// No update required
 	return nil
@@ -848,7 +847,7 @@ func GetVolumePopulatorPVCPrime(ctx context.Context, c client.Client,
 	}
 	err := c.Get(ctx, client.ObjectKeyFromObject(pvcPrime), pvcPrime)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if kerrors.IsNotFound(err) {
 			return nil, nil // Return nil if not found, no error
 		}
 		return nil, err
