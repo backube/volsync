@@ -481,8 +481,9 @@ jobs:
     needs: push-gate
     uses: ./.github/workflows/registry-push.yml
     with:
-      artifact-name: volsync-operator-amd64
+      artifact-name: volsync-operator
       image-name: quay.io/backube/volsync
+      multiarch: true
     secrets:
       registry-username: ${{ secrets.REGISTRY_USERNAME }}
       registry-password: ${{ secrets.REGISTRY_PASSWORD }}
