@@ -23,6 +23,11 @@ on:  # yamllint disable-line rule:truthy
         description: Name of the container image to push
         required: true
         type: string
+      multiarch:
+        description: Whether the image is multi-architecture
+        required: false
+        default: false
+        type: boolean
     secrets:
       registry-username:
         description: Username for the image registry
@@ -34,17 +39,56 @@ on:  # yamllint disable-line rule:truthy
 jobs:
   push-to-registry:
     runs-on: ubuntu-latest
+
+    # Local registry is reqruied till https://github.com/docker/cli/issues/3350 is solved.
+    services:
+      registry:
+        image: registry:3.0.0
+        ports:
+          - 5000:5000
+
     steps:
+
       - name: Load container artifact
         uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
         with:
           name: ${{ inputs.artifact-name }}
           path: /tmp
+        if: ${{ !inputs.multiarch }}
 
       - name: Import container image
         run: |
           docker load -i /tmp/${{ inputs.image-filename }}
           docker inspect ${{ inputs.image-name }}
+          LOCAL_IMAGE=localhost:5000/${{ inputs.image-name }}
+          docker tag ${{ inputs.image-name }} $LOCAL_IMAGE
+          docker push $LOCAL_IMAGE
+        if: ${{ !inputs.multiarch }}
+
+      - name: Load container artifact
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+        with:
+          pattern: ${{ inputs.artifact-name }}-*
+          path: /tmp
+        if: ${{ inputs.multiarch }}
+
+      - name: Import and merge container image
+        run: |
+          MANIFEST=""
+          for i in /tmp/${{ inputs.artifact-name }}-*/${{ inputs.image-filename }}; do
+            docker load -i $i
+            docker inspect ${{ inputs.image-name }}:latest
+            ARCH_TAG=$(basename $(dirname $i))
+            SINGLE_IMAGE=localhost:5000/${{ inputs.image-name }}:$ARCH_TAG
+            docker tag ${{ inputs.image-name }} $SINGLE_IMAGE
+            docker push $SINGLE_IMAGE
+            MANIFEST="$MANIFEST --amend $SINGLE_IMAGE"
+          done
+          LOCAL_IMAGE=localhost:5000/${{ inputs.image-name }}
+          docker manifest create --insecure $LOCAL_IMAGE $MANIFEST
+          docker manifest push $LOCAL_IMAGE
+          docker manifest inspect $LOCAL_IMAGE
+        if: ${{ inputs.multiarch }}
 
       - name: Login to registry
         # If the registry server is specified in the image name, we use that.
@@ -52,13 +96,13 @@ jobs:
         run: |
           [[ "${{ inputs.image-name }}" =~ ^([^/]+)/[^/]+/[^/]+ ]] && REGISTRY="${BASH_REMATCH[1]}" || REGISTRY="docker.io"
           echo "Attempting docker login to: ${REGISTRY}"
-          echo "${{ secrets.registry-password }}" | docker login -u "${{ secrets.registry-username }}" --password-stdin ${REGISTRY}
+          skopeo login -u "${{ secrets.registry-username }}" -p "${{ secrets.registry-password }}" ${REGISTRY}
 
       # If we're on the default branch, we push to :latest
       - name: Push to registry (as :latest)
         if: github.ref_name == github.event.repository.default_branch
         run: |
-          docker push "${{ inputs.image-name }}"
+          skopeo copy --multi-arch all --src-tls-verify=false docker://localhost:5000/${{ inputs.image-name }} "docker://${{ inputs.image-name }}"
 
       # if we're on a non-default branch, push to that ref name
       - name: Push to registry (branch)
@@ -67,8 +111,7 @@ jobs:
         run: |
           TAG="${{ github.ref_name }}"
           echo "Pushing to $TAG"
-          docker tag "${{ inputs.image-name }}" "${{ inputs.image-name }}:${TAG}"
-          docker push "${{ inputs.image-name }}:${TAG}"
+          skopeo copy --multi-arch all --src-tls-verify=false docker://localhost:5000/${{ inputs.image-name }} "docker://${{ inputs.image-name }}:${TAG}"
 
       # if we're on a tag, strip the leading "v" and push to that ref name
       - name: Push to registry (tag)
@@ -77,5 +120,4 @@ jobs:
           [[ "${{ github.ref_name }}" =~ ^v([0-9]+.*) ]] || exit 0
           TAG="${BASH_REMATCH[1]}"
           echo "Pushing to $TAG"
-          docker tag "${{ inputs.image-name }}" "${{ inputs.image-name }}:${TAG}"
-          docker push "${{ inputs.image-name }}:${TAG}"
+          skopeo copy --multi-arch all --src-tls-verify=false docker://localhost:5000/${{ inputs.image-name }} "docker://${{ inputs.image-name }}:${TAG}"
