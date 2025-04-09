@@ -32,6 +32,10 @@
 
 ### Release an updated CLI plugin to krew
 
+Update: These steps should now be automated after creating a release in github
+See details in the [release.yml](.github/workflows/release.yml) github workflow.
+The steps are left below for reference.
+
 * After tagging the release, build the cli and updated krew manifest. This will
   create the `kubectl-volsync.tar.gz` file and update the hash in the
   [volsync.yaml](kubectl-volsync/volsync.yaml) file.:  
