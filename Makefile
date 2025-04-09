@@ -304,11 +304,6 @@ $(CONTROLLER_GEN): $(LOCALBIN)
 	fi
 	test -s $(CONTROLLER_GEN) || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
 
-#.PHONY: controller-gen
-#controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary.
-#$(CONTROLLER_GEN): $(LOCALBIN)
-#	$(call go-install-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen,$(CONTROLLER_TOOLS_VERSION))
-
 .PHONY: kustomize
 KUSTOMIZE := $(LOCALBIN)/kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
@@ -319,28 +314,12 @@ $(KUSTOMIZE): $(LOCALBIN)
 ##	rm -f $(KUSTOMIZE); \
 ##fi
 	test -s $(KUSTOMIZE) || GOBIN=$(LOCALBIN) go install sigs.k8s.io/kustomize/kustomize/v5@$(KUSTOMIZE_VERSION)
-#$(call go-install-tool,$(KUSTOMIZE),sigs.k8s.io/kustomize/kustomize/v5,$(KUSTOMIZE_VERSION))
-
-#.PHONY: setup-envtest
-#setup-envtest: envtest ## Download the binaries required for ENVTEST in the local bin directory.
-#	@echo "Setting up envtest binaries for Kubernetes version $(ENVTEST_K8S_VERSION)..."
-#	@$(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path || { \
-#		echo "Error: Failed to set up envtest binaries for version $(ENVTEST_K8S_VERSION)."; \
-#		exit 1; \
-#	}
 
 .PHONY: envtest
 ENVTEST := $(LOCALBIN)/setup-envtest
 envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
 $(ENVTEST): $(LOCALBIN)
 	test -s $@ || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@$(ENVTEST_VERSION)
-#	test -s $@ || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
-#$(call go-install-tool,$(ENVTEST),sigs.k8s.io/controller-runtime/tools/setup-envtest,$(ENVTEST_VERSION))
-
-#golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
-#$(GOLANGCI_LINT): $(LOCALBIN)
-#	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
-
 
 .PHONY: yq
 YQ := $(LOCALBIN)/yq
