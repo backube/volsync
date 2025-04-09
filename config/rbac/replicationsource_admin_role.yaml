@@ -10,6 +10,10 @@ kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/name: volsync
+    app.kubernetes.io/instance: replicationsource-admin-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: volsync
+    app.kubernetes.io/part-of: volsync
     app.kubernetes.io/managed-by: kustomize
   name: replicationsource-admin-role
 rules:

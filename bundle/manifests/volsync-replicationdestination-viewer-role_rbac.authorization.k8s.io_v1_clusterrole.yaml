@@ -5,13 +5,23 @@ metadata:
   labels:
     app.kubernetes.io/component: rbac
     app.kubernetes.io/created-by: volsync
-    app.kubernetes.io/instance: metrics-reader
+    app.kubernetes.io/instance: replicationdestination-viewer-role
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: volsync
     app.kubernetes.io/part-of: volsync
-  name: volsync-metrics-reader
+  name: volsync-replicationdestination-viewer-role
 rules:
-- nonResourceURLs:
-  - /metrics
+- apiGroups:
+  - volsync.backube
+  resources:
+  - replicationdestinations
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - volsync.backube
+  resources:
+  - replicationdestinations/status
   verbs:
   - get
