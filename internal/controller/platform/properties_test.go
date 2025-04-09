@@ -49,7 +49,7 @@ var _ = Describe("A cluster w/o StorageContextConstraints", func() {
 
 	It("EnsureVolSyncMoverSCCIfOpenShift should not fail", func() {
 		// In main.go this will be embedded - but for tests, read in the file manually
-		sccRaw, err := os.ReadFile("../../config/openshift/mover_scc.yaml")
+		sccRaw, err := os.ReadFile("../../../cmd/openshift/mover_scc.yaml")
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(EnsureVolSyncMoverSCCIfOpenShift(ctx, k8sClient, logger,
@@ -141,7 +141,7 @@ var _ = Describe("A cluster w/ StorageContextConstraints", func() {
 		BeforeEach(func() {
 			// In main.go this will be embedded - but for tests, read in the file manually
 			var err error
-			sccRaw, err = os.ReadFile("../../config/openshift/mover_scc.yaml")
+			sccRaw, err = os.ReadFile("../../../cmd/openshift/mover_scc.yaml")
 			Expect(err).NotTo(HaveOccurred())
 		})
 

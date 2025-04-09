@@ -58,10 +58,10 @@ var _ = BeforeSuite(func() {
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			// VolSync CRDs
-			filepath.Join("..", "..", "config", "crd", "bases"),
+			filepath.Join("..", "..", "..", "config", "crd", "bases"),
 
 			// Snapshot CRDs
-			filepath.Join("..", "..", "hack", "crds"),
+			filepath.Join("..", "..", "..", "hack", "crds"),
 		},
 		ErrorIfCRDPathMissing: true,
 	}
