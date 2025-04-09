@@ -23,15 +23,14 @@ COPY go.sum go.sum
 RUN go mod download
 
 # Copy the go source
-COPY *.go ./
+COPY cmd/ cmd/
 COPY api/ api/
-COPY controllers/ controllers/
-COPY config/openshift config/openshift
+COPY internal/ internal/
 
 # Build
 ARG version_arg="(unknown)"
 ARG tags_arg=""
-RUN go build -a -o manager -ldflags "-X=main.volsyncVersion=${version_arg}" -tags "${tags_arg}" .
+RUN go build -a -o manager -ldflags "-X=main.volsyncVersion=${version_arg}" -tags "${tags_arg}" ./cmd/main.go
 
 
 ######################################################################
