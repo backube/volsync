@@ -1,0 +1,24 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: volsync
+    app.kubernetes.io/instance: metrics-auth-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: volsync
+    app.kubernetes.io/part-of: volsync
+    app.kubernetes.io/managed-by: kustomize
+  name: metrics-auth-role
+rules:
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
