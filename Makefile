@@ -201,7 +201,7 @@ test-krew: krew-plugin-manifest
 
 .PHONY: build
 build: manifests generate lint ## Build manager binary.
-	go build -o bin/manager -ldflags -X=main.volsyncVersion=$(BUILD_VERSION) $(GOBUILDTAGS) ./cmd/main.go
+	go build -o bin/manager -ldflags -X=main.volsyncVersion=$(BUILD_VERSION) $(GOBUILDTAGS) ./cmd/...
 
 .PHONY: cli
 cli: bin/kubectl-volsync ## Build VolSync kubectl plugin
@@ -211,7 +211,7 @@ bin/kubectl-volsync: lint
 
 .PHONY: run
 run: manifests generate lint  ## Run a controller from your host.
-	go run -ldflags -X=main.volsyncVersion=$(BUILD_VERSION) $(GOBUILDTAGS) .
+	go run -ldflags -X=main.volsyncVersion=$(BUILD_VERSION) $(GOBUILDTAGS) ./cmd/...
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.

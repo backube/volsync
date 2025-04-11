@@ -30,7 +30,7 @@ COPY internal/ internal/
 # Build
 ARG version_arg="(unknown)"
 ARG tags_arg=""
-RUN go build -a -o manager -ldflags "-X=main.volsyncVersion=${version_arg}" -tags "${tags_arg}" ./cmd/main.go
+RUN go build -a -o manager -ldflags "-X=main.volsyncVersion=${version_arg}" -tags "${tags_arg}" ./cmd/...
 
 
 ######################################################################
