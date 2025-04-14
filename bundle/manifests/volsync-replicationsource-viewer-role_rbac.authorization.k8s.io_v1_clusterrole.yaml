@@ -1,0 +1,27 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: volsync
+    app.kubernetes.io/instance: replicationsource-viewer-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: volsync
+    app.kubernetes.io/part-of: volsync
+  name: volsync-replicationsource-viewer-role
+rules:
+- apiGroups:
+  - volsync.backube
+  resources:
+  - replicationsources
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - volsync.backube
+  resources:
+  - replicationsources/status
+  verbs:
+  - get

@@ -10,14 +10,20 @@ include ./version.mk
 
 # Helper software versions
 CONTROLLER_TOOLS_VERSION := v0.16.3
-ENVTEST_K8S_VERSION = 1.31.0
 GOLANGCI_VERSION := v2.0.2
 HELM_VERSION := v3.17.3
 KUBECTL_VERSION := v1.32.2
 KUSTOMIZE_VERSION := v5.6.0
-OPERATOR_SDK_VERSION := v1.31.0
+OPERATOR_SDK_VERSION := v1.33.0
 PIPENV_VERSION := 2024.4.1
 YQ_VERSION := v4.45.1
+#ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
+ENVTEST_VERSION ?= $(shell go list -m -f "{{ .Version }}" sigs.k8s.io/controller-runtime | awk -F'[v.]' '{printf "release-%d.%d", $$2, $$3}')
+#ENVTEST_K8S_VERSION is the version of Kubernetes to use for setting up ENVTEST binaries (i.e. 1.31)
+ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
+
+## Tool Binaries
+KUBECTL ?= kubectl
 
 #
 # Build tags - can use tags here to exclude building specific movers.
@@ -107,6 +113,12 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
+# CONTAINER_TOOL defines the container tool to be used for building images.
+# Be aware that the target commands are only tested with Docker which is
+# scaffolded by default. However, you might want to replace it to use other
+# tools. (i.e. podman)
+CONTAINER_TOOL ?= docker
+
 # Setting SHELL to bash allows bash commands to be executed by recipes.
 # Options are set to exit when a recipe line exits non-zero or a piped command fails.
 SHELL = /usr/bin/env bash -o pipefail
@@ -119,7 +131,7 @@ all: build
 
 # The help target prints out all targets with their descriptions organized
 # beneath their categories. The categories are represented by '##@' and the
-# target descriptions by '##'. The awk commands is responsible for reading the
+# target descriptions by '##'. The awk command is responsible for reading the
 # entire set of makefiles included in this invocation, looking for lines of the
 # file as xyz: ## something, and then pretty-format the target and help. Then,
 # if there's a line with ##@ something, that gets pretty-printed as a category.
@@ -181,15 +193,15 @@ test-e2e: ## Run e2e tests. Requires cluster w/ VolSync + minio already installe
 
 .PHONY: test-krew
 test-krew: krew-plugin-manifest
-	kubectl krew install -v=4 --manifest=kubectl-volsync/volsync.yaml --archive=bin/kubectl-volsync.tar.gz
-	kubectl volsync --version
-	kubectl krew uninstall volsync
+	$(KUBECTL) krew install -v=4 --manifest=kubectl-volsync/volsync.yaml --archive=bin/kubectl-volsync.tar.gz
+	$(KUBECTL) volsync --version
+	$(KUBECTL) krew uninstall volsync
 
 ##@ Build
 
 .PHONY: build
 build: manifests generate lint ## Build manager binary.
-	go build -o bin/manager -ldflags -X=main.volsyncVersion=$(BUILD_VERSION) $(GOBUILDTAGS) .
+	go build -o bin/manager -ldflags -X=main.volsyncVersion=$(BUILD_VERSION) $(GOBUILDTAGS) ./cmd/...
 
 .PHONY: cli
 cli: bin/kubectl-volsync ## Build VolSync kubectl plugin
@@ -199,32 +211,41 @@ bin/kubectl-volsync: lint
 
 .PHONY: run
 run: manifests generate lint  ## Run a controller from your host.
-	go run -ldflags -X=main.volsyncVersion=$(BUILD_VERSION) $(GOBUILDTAGS) .
+	go run -ldflags -X=main.volsyncVersion=$(BUILD_VERSION) $(GOBUILDTAGS) ./cmd/...
 
+# If you wish to build the manager image targeting other platforms you can use the --platform flag.
+# (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
+# More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
-docker-build:  ## Build docker image with the manager.
-	docker build --build-arg "builddate_arg=$(BUILDDATE)" --build-arg "version_arg=$(BUILD_VERSION)" $(CONTAINERBUILDTAGS) -t ${IMG} .
+docker-build: ## Build docker image with the manager.
+	$(CONTAINER_TOOL) build --build-arg "builddate_arg=$(BUILDDATE)" --build-arg "version_arg=$(BUILD_VERSION)" $(CONTAINERBUILDTAGS) -t ${IMG} .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
-	docker push ${IMG}
+	$(CONTAINER_TOOL) push ${IMG}
 
-# PLATFORMS defines the target platforms for  the manager image be build to provide support to multiple
+# PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
-# - able to use docker buildx . More info: https://docs.docker.com/build/buildx/
-# - have enable BuildKit, More info: https://docs.docker.com/develop/develop-images/build_enhancements/
-# - be able to push the image for your registry (i.e. if you do not inform a valid value via IMG=<myregistry/image:<tag>> then the export will fail)
-# To properly provided solutions that supports more than one platform you should use this option.
+# - be able to use docker buildx. More info: https://docs.docker.com/build/buildx/
+# - have enabled BuildKit. More info: https://docs.docker.com/develop/develop-images/build_enhancements/
+# - be able to push the image to your registry (i.e. if you do not set a valid value via IMG=<myregistry/image:<tag>> then the export will fail)
+# To adequately provide solutions that are compatible with multiple platforms, you should consider using this option.
 PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
 .PHONY: docker-buildx
 docker-buildx: test ## Build and push docker image for the manager for cross-platform support
 	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
 	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
-	- docker buildx create --name project-v3-builder
-	docker buildx use project-v3-builder
-	- docker buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
-	- docker buildx rm project-v3-builder
+	- $(CONTAINER_TOOL) buildx create --name volsync-builder
+	$(CONTAINER_TOOL) buildx use volsync-builder
+	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
+	- $(CONTAINER_TOOL) buildx rm volsync-builder
 	rm Dockerfile.cross
+
+.PHONY: build-installer
+build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
+	mkdir -p dist
+	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+	$(KUSTOMIZE) build config/default > dist/install.yaml
 
 .PHONY: krew-plugin-manifest
 krew-plugin-manifest: yq bin/kubectl-volsync ## Build & package the kubectl plugin & update the krew manifest
@@ -242,31 +263,31 @@ endif
 
 .PHONY: install
 install: manifests kustomize ## Install CRDs into the K8s cluster specified in ~/.kube/config.
-	$(KUSTOMIZE) build config/crd | kubectl apply -f -
+	$(KUSTOMIZE) build config/crd | $(KUBECTL) apply -f -
 
 .PHONY: uninstall
 uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	$(KUSTOMIZE) build config/crd | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
+	$(KUSTOMIZE) build config/crd | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
 
 .PHONY: deploy
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/default | kubectl apply -f -
+	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
 
 .PHONY: deploy-openshift
 deploy-openshift: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/openshift | kubectl apply -f -
+	$(KUSTOMIZE) build config/openshift | $(KUBECTL) apply -f -
 
 .PHONY: undeploy
 undeploy: manifests kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	$(KUSTOMIZE) build config/default | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
+	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
 
 .PHONY: undeploy-openshift
 undeploy-openshift: manifests kustomize ## Undeploy controller to the K8s cluster specified in ~/.kube/config.
-	$(KUSTOMIZE) build config/openshift | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
+	$(KUSTOMIZE) build config/openshift | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
 
-##@ Build Dependencies
+##@ Dependencies
 
 ## Location to install dependencies to
 LOCALBIN ?= $(shell pwd)/bin
@@ -298,7 +319,7 @@ $(KUSTOMIZE): $(LOCALBIN)
 ENVTEST := $(LOCALBIN)/setup-envtest
 envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
 $(ENVTEST): $(LOCALBIN)
-	test -s $@ || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+	test -s $@ || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@$(ENVTEST_VERSION)
 
 .PHONY: yq
 YQ := $(LOCALBIN)/yq
@@ -420,3 +441,19 @@ OPERATOR_SDK_URL := https://github.com/operator-framework/operator-sdk/releases/
 operator-sdk: $(OPERATOR_SDK) ## Download operator-sdk
 $(OPERATOR_SDK): $(LOCALBIN)
 	test -s $@ || $(call download-tool,$(OPERATOR_SDK),$(OPERATOR_SDK_URL))
+
+# go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
+# $1 - target path with name of binary
+# $2 - package url which can be installed
+# $3 - specific version of package
+#define go-install-tool
+#@[ -f "$(1)-$(3)" ] || { \
+#set -e; \
+#package=$(2)@$(3) ;\
+#echo "Downloading $${package}" ;\
+#rm -f $(1) || true ;\
+#GOBIN=$(LOCALBIN) go install $${package} ;\
+#mv $(1) $(1)-$(3) ;\
+#} ;\
+#ln -sf $(1)-$(3) $(1)
+#endef

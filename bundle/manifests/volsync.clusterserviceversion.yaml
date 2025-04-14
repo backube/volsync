@@ -55,10 +55,10 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2025-03-27T19:56:52Z"
+    createdAt: "2025-04-09T20:22:31Z"
     olm.skipRange: '>=0.4.0 <0.13.0'
-    operators.operatorframework.io/builder: operator-sdk-v1.31.0
-    operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
+    operators.operatorframework.io/builder: operator-sdk-v1.33.0
+    operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
   name: volsync.v0.13.0
   namespace: placeholder
 spec:
@@ -325,7 +325,7 @@ spec:
           app.kubernetes.io/created-by: volsync
           app.kubernetes.io/instance: controller-manager
           app.kubernetes.io/managed-by: kustomize
-          app.kubernetes.io/name: deployment
+          app.kubernetes.io/name: volsync
           app.kubernetes.io/part-of: volsync
           control-plane: controller-manager
         name: volsync-controller-manager
@@ -333,6 +333,7 @@ spec:
           replicas: 1
           selector:
             matchLabels:
+              app.kubernetes.io/name: volsync
               control-plane: controller-manager
           strategy: {}
           template:
@@ -340,7 +341,7 @@ spec:
               annotations:
                 kubectl.kubernetes.io/default-container: manager
               labels:
-                app.kubernetes.io/part-of: volsync
+                app.kubernetes.io/name: volsync
                 control-plane: controller-manager
             spec:
               containers:

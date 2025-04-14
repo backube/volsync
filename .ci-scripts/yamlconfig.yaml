@@ -5,8 +5,8 @@ extends: default
 ignore: |
   bundle/**
   config/**
-  controllers/test/scc-crd.yml
-  controllers/test/populator.storage.k8s.io_volumepopulators.yaml
+  internal/controller/test/scc-crd.yml
+  internal/controller/test/populator.storage.k8s.io_volumepopulators.yaml
   custom-scorecard-tests/**
   hack/crds/*
   helm/volsync/**
