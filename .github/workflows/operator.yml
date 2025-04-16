@@ -19,6 +19,7 @@ env:
   OPERATOR_IMAGE: "quay.io/backube/volsync"
   CUSTOM_SCORECARD_IMAGE: "quay.io/backube/volsync-custom-scorecard-tests"
   DOCKER_BUILDKIT: "1"
+  FFWD_RELEASE_BRANCH: "release-0.13" # set to "" to skip ffwding from main to this branch
 
 jobs:
   lint:
@@ -456,6 +457,42 @@ jobs:
     steps:
       - name: Success
         run: echo "Previous steps were successful"
+
+  # This job is to optionally ffwd the main branch to a release branch
+  ffwd-to-release-br:
+    name: Fast forward release branch
+    needs: e2e-success
+    if: >
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      (github.ref == 'refs/heads/main')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Skip ffwd job check
+        if: ${{ env.FFWD_RELEASE_BRANCH == '' }}
+        run: |
+          echo "Skipping ffwding, no FFWD_RELEASE_BRANCH specified"
+
+      - name: Checkout source
+        if: ${{ env.FFWD_RELEASE_BRANCH != '' }}
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # Fetch whole history so we can see all commits
+          fetch-depth: 0
+
+      - name: ffwd
+        if: ${{ env.FFWD_RELEASE_BRANCH != '' }}
+        run: |
+          echo "ffwding $FFWD_RELEASE_BRANCH to latest from main ..."
+          git config user.name "ffwd workflow"
+          git config user.email ""
+          git fetch origin $FFWD_RELEASE_BRANCH
+          git checkout $FFWD_RELEASE_BRANCH
+          git merge origin/main --ff-only
+          git push origin $FFWD_RELEASE_BRANCH
+          echo "ffwding complete."
 
   # This is a dummy job that gates whether the container image artifacts should
   # be pushed to the registry. It is only here so that the "if" clause doesn't
