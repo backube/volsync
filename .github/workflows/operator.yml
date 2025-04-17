@@ -89,8 +89,8 @@ jobs:
           echo "DEF_BRANCH_NAME: $DEF_BRANCH_NAME"
 
           CUST_IMG_TAG=$TGT_BRANCH_NAME
-          # For main use "latest"
-          if [ "$TGT_BRANCH_NAME" == "$DEF_BRANCH_NAME" ]; then
+          # For main or the ffwing branch (will match main), use "latest"
+          if [ "$TGT_BRANCH_NAME" == "$DEF_BRANCH_NAME" ] || [ "$TGT_BRANCH_NAME" == "$FFWD_RELEASE_BRANCH" ]; then
             CUST_IMG_TAG="latest"
           fi
 
