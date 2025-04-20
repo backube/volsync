@@ -61,7 +61,7 @@ require (
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
-	github.com/google/pprof v0.0.0-20241210010833-40e02aabc2ad // indirect
+	github.com/google/pprof 24c5476c6587 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/greatroar/blobloom v0.8.0 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
