@@ -11,6 +11,7 @@ ignore: |
   hack/crds/*
   helm/volsync/**
   .krew.yaml
+  .tekton/*
 rules:
   comments:  # renovate-bot dosen't put 2 spaces before the version number
     ignore: |
