@@ -50,6 +50,9 @@ WORKDIR /workspace/rclone
 # Make sure the Rclone version tag matches the git hash we're expecting
 RUN /bin/bash -c "[[ $(git rev-list -n 1 HEAD) == ${RCLONE_GIT_HASH} ]]"
 
+# Remove link flag that strips symbols so that we can verify crypto libs
+RUN sed -i 's/--ldflags "-s /--ldflags "/g' Makefile
+
 RUN GOTAGS=${BUILD_TAGS} make rclone
 
 # Verify that FIPS crypto libs are accessible
@@ -63,6 +66,9 @@ COPY /mover-restic/restic ./restic
 COPY /mover-restic/minio-go ./minio-go
 
 WORKDIR /workspace/restic
+
+# Preserve symbols so that we can verify crypto libs
+RUN sed -i 's/preserveSymbols := false/preserveSymbols := true/g' build.go
 
 RUN go run build.go --enable-cgo --tags ${BUILD_TAGS}
 
