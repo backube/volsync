@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Restic updated to v0.18.0
-- Syncthing updated to v1.29.3
+- Syncthing updated to v1.29.5
 
 ### Fixed
 
@@ -18,7 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   replicationdestination have the same name and are in the same
   namespace
 
-## [v0.12.1]
+### Security
+
+- kube-rbac-proxy upgraded to v0.19.2
+
+## [0.12.1]
 
 ### Security
 
