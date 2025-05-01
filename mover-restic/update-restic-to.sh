@@ -57,7 +57,6 @@ log "Updating minio-go source to tag: $MINIO_GO_TAG"
 update_repo_to "$MINIO_GO_REPOSITORY" "$MINIO_GO_TAG" minio-go
 
 
-
 ############################################################
 ## Patch minio-go
 ############################################################
@@ -65,6 +64,8 @@ update_repo_to "$MINIO_GO_REPOSITORY" "$MINIO_GO_TAG" minio-go
 cd minio-go
 # Remove sha256-simd library
 find . -name '*.go' -exec sed -ri 's|github.com/minio/sha256-simd|crypto/sha256|' {} \;
+# Downstream builder needs to pre-fetch files with cachi2 and cannot handle go 1.22 (needs go 1.22.0 for the toolchain)
+sed -i 's|go 1.22$|go 1.22.0|' go.mod
 # Clean up modules and verify
 go mod tidy
 if grep sha256-simd go.sum; then
