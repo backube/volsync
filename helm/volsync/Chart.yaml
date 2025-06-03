@@ -24,10 +24,16 @@ annotations: # https://artifacthub.io/docs/topics/annotations/helm/
   # Changelog for current chart & app version
   # Kinds: added, changed, deprecated, removed, fixed, and security
   artifacthub.io/changes: |
+    - kind: added
+      description: Multi-arch volsync image published in quay.io, will include amd64 as usual as well as arm64
+    - kind: changed
+      description: Syncthing updated to v1.29.6
+    - kind: changed
+      description: Restic updated to v0.18.0
+    - kind: fixed
+      description: Fix restic cache PVC name collision if replicationsource and replicationdestination have the same name and are in the same namespace
     - kind: security
-      description: Update golang.org/x/crypto to v0.36.0 for CVE-2025-22869
-    - kind: security
-      description: Update golang.org/x/oauth2 to v0.28.0 for CVE-2025-22868
+      description: kube-rbac-proxy upgraded to v0.19.2
   artifacthub.io/crds: |
     - kind: ReplicationDestination
       version: v1alpha1
@@ -54,10 +60,10 @@ kubeVersion: "^1.20.0-0"
 # This is the chart version. This version number should be incremented each time
 # you make changes to the chart and its templates, including the app version.
 # Versions are expected to follow Semantic Versioning (https://semver.org/)
-version: "0.13.0-rc.1"
+version: "0.13.0-rc.2"
 
 # This is the version number of the application being deployed. This version
 # number should be incremented each time you make changes to the application.
 # Versions are not expected to follow Semantic Versioning. They should reflect
 # the version the application is using. It is recommended to use it with quotes.
-appVersion: "0.13.0-rc.1"
+appVersion: "0.13.0-rc.2"
