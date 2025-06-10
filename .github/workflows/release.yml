@@ -2,10 +2,10 @@
 # yamllint disable rule:line-length
 
 name: publish assets after release
-on:  # yamllint disable-line rule:truthy
+on: # yamllint disable-line rule:truthy
   release:
     types: [published] # triggers on release and pre-release
-  workflow_dispatch:  # Useful for testing, but not necessary
+  workflow_dispatch: # Useful for testing, but not necessary
 
 permissions:
   contents: write
@@ -68,6 +68,8 @@ jobs:
         run: make test-krew # Will build the plugin and output to bin/kubectl-volsync.tar.gz
 
       - name: Attach kubectl-volsync asset to release
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           cp bin/kubectl-volsync.tar.gz bin/kubectl-volsync-linux-${{ env.ARCH }}.tar.gz
           gh release upload ${{github.event.release.tag_name}} bin/kubectl-volsync-linux-${{ env.ARCH }}.tar.gz
