@@ -27,7 +27,7 @@ annotations: # https://artifacthub.io/docs/topics/annotations/helm/
     - kind: added
       description: Multi-arch volsync image published in quay.io, will include amd64 as usual as well as arm64
     - kind: changed
-      description: Syncthing updated to v1.29.6
+      description: Syncthing updated to v1.29.7
     - kind: changed
       description: Restic updated to v0.18.0
     - kind: fixed
@@ -60,10 +60,10 @@ kubeVersion: "^1.20.0-0"
 # This is the chart version. This version number should be incremented each time
 # you make changes to the chart and its templates, including the app version.
 # Versions are expected to follow Semantic Versioning (https://semver.org/)
-version: "0.13.0-rc.2"
+version: "0.13.0-rc.3"
 
 # This is the version number of the application being deployed. This version
 # number should be incremented each time you make changes to the application.
 # Versions are not expected to follow Semantic Versioning. They should reflect
 # the version the application is using. It is recommended to use it with quotes.
-appVersion: "0.13.0-rc.2"
+appVersion: "0.13.0-rc.3"
