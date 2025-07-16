@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Syncthing updated to v1.30.0
+
+## 0.13.0
+
+### Changed
+
 - Restic updated to v0.18.0
 - Syncthing updated to v1.29.7
 
@@ -371,7 +377,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for rsync & rclone replication
 - Helm chart to deploy operator
 
-[Unreleased]: https://github.com/backube/volsync/compare/release-0.12...HEAD
+[Unreleased]: https://github.com/backube/volsync/compare/release-0.13...HEAD
+[0.13.0]: https://github.com/backube/volsync/compare/release-0.12...v0.13.0
 [0.12.1]: https://github.com/backube/volsync/compare/release-0.12.0...v0.12.1
 [0.12.0]: https://github.com/backube/volsync/compare/release-0.11..v0.12.0
 [0.11.0]: https://github.com/backube/volsync/compare/release-0.10..v0.11.0
