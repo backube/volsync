@@ -20,13 +20,8 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/klog/v2"
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -34,15 +29,15 @@ import (
 
 type migrationSync struct {
 	mr *migrationRelationship
-	// Address is the remote address to connect to for replication.
-	DestAddr string
 	// Source volume to be migrated
 	Source string
 	// client object to communicate with a cluster
 	client client.Client
+	// Local Port to use for stunnel (only applies for rsync-tls)
+	StunnelLocalPort int32
 }
 
-// migrationCreateCmd represents the create command
+// migrationSyncCmd represents the create command
 var migrationSyncCmd = &cobra.Command{
 	Use:   "rsync",
 	Short: i18n.T("Rsync data from source to destination"),
@@ -70,11 +65,14 @@ func init() {
 	initmigrationSyncCmd(migrationSyncCmd)
 }
 
-func initmigrationSyncCmd(migrationCreateCmd *cobra.Command) {
-	migrationCmd.AddCommand(migrationCreateCmd)
+func initmigrationSyncCmd(migrationSyncCmd *cobra.Command) {
+	migrationCmd.AddCommand(migrationSyncCmd)
 
-	migrationCreateCmd.Flags().String("source", "", "source volume to be migrated")
-	cobra.CheckErr(migrationCreateCmd.MarkFlagRequired("source"))
+	migrationSyncCmd.Flags().String("source", "", "source volume to be migrated")
+	cobra.CheckErr(migrationSyncCmd.MarkFlagRequired("source"))
+
+	migrationSyncCmd.Flags().Int32("stunnellocalport", defaultLocalStunnelPort,
+		"if using rsyncl-tls, stunnel will need to run locally. Set this to override the default local port used")
 }
 
 func (ms *migrationSync) Run(ctx context.Context) error {
@@ -90,29 +88,7 @@ func (ms *migrationSync) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to access the source volume, %w", err)
 	}
 
-	var sshKeyDir *string
-	defer func() {
-		// Remove the directory containing secrets
-		if sshKeyDir != nil {
-			if err = os.RemoveAll(*sshKeyDir); err != nil {
-				klog.Infof("failed to remove temporary directory with ssh keys (%s): %v",
-					*sshKeyDir, err)
-			}
-		}
-	}()
-	// Retrieve Secrets/keys
-	sshKeyDir, err = ms.retrieveSecrets(ctx)
-	if err != nil {
-		return err
-	}
-
-	// Do rysnc
-	err = ms.runRsync(ctx, *sshKeyDir)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return ms.mr.mh.RunMigration(ctx, ms.client, ms.Source, ms.mr.data.Destination, ms.StunnelLocalPort)
 }
 
 func newMigrationSync(cmd *cobra.Command) (*migrationSync, error) {
@@ -123,79 +99,12 @@ func newMigrationSync(cmd *cobra.Command) (*migrationSync, error) {
 	}
 	ms.Source = source
 
+	// Allow users to specify different local stunnel port
+	sTunnelLocalPort, err := cmd.Flags().GetInt32("stunnellocalport")
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch stunnellocalport, %w", err)
+	}
+	ms.StunnelLocalPort = sTunnelLocalPort
+
 	return ms, nil
-}
-
-//nolint:funlen
-func (ms *migrationSync) retrieveSecrets(ctx context.Context) (*string, error) {
-	klog.Infof("Extracting ReplicationDestination secrets")
-	mrd := ms.mr.data.Destination
-	rd, err := mrd.waitForRDStatus(ctx, ms.client)
-	if err != nil {
-		return nil, err
-	}
-	ms.DestAddr = *rd.Status.Rsync.Address
-	sshKeysSecret := rd.Status.Rsync.SSHKeys
-	sshSecret := &corev1.Secret{}
-	nsName := types.NamespacedName{
-		Namespace: mrd.Namespace,
-		Name:      *sshKeysSecret,
-	}
-	err = ms.client.Get(ctx, nsName, sshSecret)
-	if err != nil {
-		return nil, fmt.Errorf("error retrieving destination sshSecret %s: %w", *sshKeysSecret, err)
-	}
-
-	sshKeydir, err := os.MkdirTemp("", "sshkeys")
-	if err != nil {
-		return nil, fmt.Errorf("unable to create temporary directory %w", err)
-	}
-
-	filename := filepath.Join(sshKeydir, "source")
-	err = os.WriteFile(filename, sshSecret.Data["source"], 0600)
-	if err != nil {
-		return &sshKeydir, fmt.Errorf("unable to write to the file, %w", err)
-	}
-
-	filename = filepath.Join(sshKeydir, "source.pub")
-	err = os.WriteFile(filename, sshSecret.Data["source.pub"], 0600)
-	if err != nil {
-		return &sshKeydir, fmt.Errorf("unable to write to the file, %w", err)
-	}
-
-	filename = filepath.Join(sshKeydir, "destination.pub")
-	destinationPub := fmt.Sprintf("%s %s", ms.DestAddr,
-		sshSecret.Data["destination.pub"])
-	err = os.WriteFile(filename, []byte(destinationPub), 0600)
-	if err != nil {
-		return &sshKeydir, fmt.Errorf("unable to write to the file, %w", err)
-	}
-
-	return &sshKeydir, nil
-}
-
-func (ms *migrationSync) runRsync(ctx context.Context, sshKeydir string) error {
-	sshKey := filepath.Join(sshKeydir, "source")
-	knownHostfile := filepath.Join(sshKeydir, "destination.pub")
-	ssh := fmt.Sprintf("ssh -i %s -o UserKnownHostsFile=%s -o StrictHostKeyChecking=yes",
-		sshKey, knownHostfile)
-	dest := fmt.Sprintf("root@%s:.", ms.DestAddr)
-
-	cmd := exec.CommandContext(ctx, "rsync", "-aAhHSxze", ssh, "--delete",
-		"--itemize-changes", "--info=stats2,misc2", ms.Source, dest)
-
-	cmd.Stderr = os.Stderr
-	cmd.Stdout = os.Stdout
-	klog.Infof("Migrating Data from \"%s\" to \"%s\\%s\\%s\"", ms.Source, ms.mr.data.Destination.Cluster,
-		ms.mr.data.Destination.Namespace, ms.mr.data.Destination.PVCName)
-	err := cmd.Start()
-	if err != nil {
-		return fmt.Errorf("failed to run =%w", err)
-	}
-	err = cmd.Wait()
-	if err != nil {
-		return fmt.Errorf("command finished with an error, %w", err)
-	}
-
-	return nil
 }
