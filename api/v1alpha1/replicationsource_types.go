@@ -224,6 +224,80 @@ type ReplicationSourceResticStatus struct {
 	LastUnlocked string `json:"lastUnlocked,omitempty"`
 }
 
+// KopiaRetainPolicy defines the retention policy for Kopia backups
+type KopiaRetainPolicy struct {
+	// Hourly defines the number of snapshots to be kept hourly
+	//+optional
+	Hourly *int32 `json:"hourly,omitempty"`
+	// Daily defines the number of snapshots to be kept daily
+	//+optional
+	Daily *int32 `json:"daily,omitempty"`
+	// Weekly defines the number of snapshots to be kept weekly
+	//+optional
+	Weekly *int32 `json:"weekly,omitempty"`
+	// Monthly defines the number of snapshots to be kept monthly
+	//+optional
+	Monthly *int32 `json:"monthly,omitempty"`
+	// Yearly defines the number of snapshots to be kept yearly
+	//+optional
+	Yearly *int32 `json:"yearly,omitempty"`
+}
+
+// KopiaActions defines pre/post snapshot actions
+type KopiaActions struct {
+	// BeforeSnapshot defines a command to run before snapshot
+	//+optional
+	BeforeSnapshot string `json:"beforeSnapshot,omitempty"`
+	// AfterSnapshot defines a command to run after snapshot
+	//+optional
+	AfterSnapshot string `json:"afterSnapshot,omitempty"`
+}
+
+type ReplicationSourceKopiaCA CustomCASpec
+
+// ReplicationSourceKopiaSpec defines the field for kopia in replicationSource.
+type ReplicationSourceKopiaSpec struct {
+	ReplicationSourceVolumeOptions `json:",inline"`
+	// Repository is the secret name containing repository info
+	Repository string `json:"repository,omitempty"`
+	// customCA is a custom CA that will be used to verify the remote
+	CustomCA ReplicationSourceKopiaCA `json:"customCA,omitempty"`
+	// Retain define the retention policy
+	//+optional
+	Retain *KopiaRetainPolicy `json:"retain,omitempty"`
+	// Compression defines the compression algorithm. Options: zstd, gzip, s2, none
+	//+optional
+	Compression string `json:"compression,omitempty"`
+	// Parallelism defines the number of parallel upload streams
+	//+optional
+	Parallelism *int32 `json:"parallelism,omitempty"`
+	// cacheCapacity can be used to set the size of the kopia metadata cache volume
+	//+optional
+	CacheCapacity *resource.Quantity `json:"cacheCapacity,omitempty"`
+	// cacheStorageClassName can be used to set the StorageClass of the kopia
+	// metadata cache volume
+	//+optional
+	CacheStorageClassName *string `json:"cacheStorageClassName,omitempty"`
+	// CacheAccessModes can be used to set the accessModes of kopia metadata cache volume
+	//+optional
+	CacheAccessModes []corev1.PersistentVolumeAccessMode `json:"cacheAccessModes,omitempty"`
+	// MaintenanceIntervalDays define how often to run maintenance
+	//+optional
+	MaintenanceIntervalDays *int32 `json:"maintenanceIntervalDays,omitempty"`
+	// Actions defines pre/post snapshot actions
+	//+optional
+	Actions *KopiaActions `json:"actions,omitempty"`
+
+	MoverConfig `json:",inline"`
+}
+
+// ReplicationSourceKopiaStatus defines the field for ReplicationSourceStatus in ReplicationSourceStatus
+type ReplicationSourceKopiaStatus struct {
+	// lastMaintenance in the object holding the time of last maintenance
+	//+optional
+	LastMaintenance *metav1.Time `json:"lastMaintenance,omitempty"`
+}
+
 // define the Syncthing field
 type ReplicationSourceSyncthingSpec struct {
 	// List of Syncthing peers to be connected for syncing
@@ -267,6 +341,9 @@ type ReplicationSourceSpec struct {
 	// syncthing defines the configuration when using Syncthing-based replication.
 	//+optional
 	Syncthing *ReplicationSourceSyncthingSpec `json:"syncthing,omitempty"`
+	// kopia defines the configuration when using Kopia-based replication.
+	//+optional
+	Kopia *ReplicationSourceKopiaSpec `json:"kopia,omitempty"`
 	// external defines the configuration when using an external replication
 	// provider.
 	//+optional
@@ -341,6 +418,9 @@ type ReplicationSourceStatus struct {
 	// contains status information when Syncthing-based replication is used.
 	//+optional
 	Syncthing *ReplicationSourceSyncthingStatus `json:"syncthing,omitempty"`
+	// kopia contains status information for Kopia-based replication.
+	//+optional
+	Kopia *ReplicationSourceKopiaStatus `json:"kopia,omitempty"`
 }
 
 // A ReplicationSource is a VolSync resource that you can use to define the source PVC and replication mover type,

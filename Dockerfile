@@ -62,6 +62,22 @@ RUN go run build.go --enable-cgo
 
 
 ######################################################################
+# Build kopia
+FROM golang-builder AS kopia-builder
+
+ARG KOPIA_VERSION="v0.18.1"
+ARG KOPIA_GIT_HASH="dae9a11bb3b1c7fc7d4b4a6d39b7e7e6b6b8a5dc"
+
+RUN git clone --depth 1 -b ${KOPIA_VERSION} https://github.com/kopia/kopia.git
+WORKDIR /workspace/kopia
+
+# Make sure we have the correct Kopia release
+RUN /bin/bash -c "[[ $(git rev-list -n 1 HEAD) == ${KOPIA_GIT_HASH} ]]"
+
+RUN go build -o kopia
+
+
+######################################################################
 # Build syncthing
 FROM golang-builder AS syncthing-builder
 
@@ -145,6 +161,12 @@ COPY --from=restic-builder /workspace/restic/restic /usr/local/bin/restic
 COPY /mover-restic/entry.sh \
      /mover-restic/
 RUN chmod a+rx /mover-restic/*.sh
+
+##### kopia
+COPY --from=kopia-builder /workspace/kopia/kopia /usr/local/bin/kopia
+COPY /mover-kopia/entry.sh \
+     /mover-kopia/
+RUN chmod a+rx /mover-kopia/*.sh
 
 ##### rsync (ssh)
 COPY /mover-rsync/source.sh \
