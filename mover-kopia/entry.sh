@@ -110,6 +110,31 @@ function check_contents {
     fi
 }
 
+# Apply policy configuration if available
+function apply_policy_config {
+    if [[ -n "${KOPIA_CONFIG_PATH}" && -d "${KOPIA_CONFIG_PATH}" ]]; then
+        echo "=== Applying policy configuration ==="
+        
+        # Apply global policy if available
+        if [[ -n "${KOPIA_GLOBAL_POLICY_FILE}" && -f "${KOPIA_GLOBAL_POLICY_FILE}" ]]; then
+            echo "Importing global policy from ${KOPIA_GLOBAL_POLICY_FILE}"
+            if "${KOPIA[@]}" policy import --from-file "${KOPIA_GLOBAL_POLICY_FILE}" --delete-other-policies "(global)"; then
+                echo "Global policy imported successfully"
+            else
+                echo "Warning: Failed to import global policy, continuing with default policies"
+            fi
+        fi
+        
+        # Apply repository configuration if available  
+        if [[ -n "${KOPIA_REPOSITORY_CONFIG_FILE}" && -f "${KOPIA_REPOSITORY_CONFIG_FILE}" ]]; then
+            echo "Applying repository configuration from ${KOPIA_REPOSITORY_CONFIG_FILE}"
+            # Repository configuration typically includes settings like enableActions
+            # This would need to be parsed and applied appropriately
+            echo "Note: Repository configuration parsing not yet implemented, file found at ${KOPIA_REPOSITORY_CONFIG_FILE}"
+        fi
+    fi
+}
+
 # Connect to or create the repository
 function ensure_connected {
     echo "=== Connecting to repository ==="
@@ -134,6 +159,9 @@ function ensure_connected {
     
     set -e
     rm -f "$outfile"
+    
+    # Apply policy configuration after connection
+    apply_policy_config
 }
 
 function create_repository {

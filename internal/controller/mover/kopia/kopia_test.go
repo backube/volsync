@@ -25,12 +25,12 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/spf13/viper"
-	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
@@ -89,7 +89,7 @@ var _ = Describe("Kopia", func() {
 				},
 			}
 
-			m, err := b.FromSource(k8sClient, logger, &record.FakeRecorder{}, rs, false)
+			m, err := b.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs, false)
 			Expect(err).To(BeNil())
 			Expect(m).To(BeNil())
 
@@ -100,7 +100,7 @@ var _ = Describe("Kopia", func() {
 				},
 			}
 
-			m, err = b.FromDestination(k8sClient, logger, &record.FakeRecorder{}, rd, false)
+			m, err = b.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd, false)
 			Expect(err).To(BeNil())
 			Expect(m).To(BeNil())
 		})
@@ -125,10 +125,10 @@ var _ = Describe("Kopia", func() {
 						},
 					},
 				},
-				Status: volsyncv1alpha1.ReplicationSourceStatus{},
+				Status: &volsyncv1alpha1.ReplicationSourceStatus{},
 			}
 
-			m, err := b.FromSource(k8sClient, logger, &record.FakeRecorder{}, rs, false)
+			m, err := b.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs, false)
 			Expect(err).To(BeNil())
 			Expect(m).NotTo(BeNil())
 			Expect(m.Name()).To(Equal("kopia"))
@@ -153,10 +153,10 @@ var _ = Describe("Kopia", func() {
 						},
 					},
 				},
-				Status: volsyncv1alpha1.ReplicationDestinationStatus{},
+				Status: &volsyncv1alpha1.ReplicationDestinationStatus{},
 			}
 
-			m, err := b.FromDestination(k8sClient, logger, &record.FakeRecorder{}, rd, false)
+			m, err := b.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd, false)
 			Expect(err).To(BeNil())
 			Expect(m).NotTo(BeNil())
 			Expect(m.Name()).To(Equal("kopia"))
