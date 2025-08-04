@@ -71,6 +71,36 @@ function check_var_defined {
     fi
 }
 
+# Execute pre/post snapshot actions following Kopia's native approach
+# execute_action "action_command" "action_type"
+function execute_action {
+    local action_command="$1"
+    local action_type="$2"
+    
+    if [[ -z "${action_command}" ]]; then
+        return 0
+    fi
+    
+    echo "Running ${action_type} action: ${action_command}"
+    
+    # Execute the command following Kopia's native approach
+    # Kopia natively supports actions without command restrictions
+    # Security is handled through:
+    # 1. Container security context (non-root, limited capabilities)
+    # 2. User responsibility for action content  
+    # 3. Actions must be explicitly configured by users
+    # 4. Container isolation limits potential damage
+    
+    # Execute with timeout for safety and proper error handling
+    if ! timeout 300 bash -c "${action_command}"; then
+        echo "ERROR: ${action_type} action failed or timed out after 300 seconds"
+        return 1
+    fi
+    
+    echo "${action_type} action completed successfully"
+    return 0
+}
+
 function check_contents {
     echo "== Checking directory for content ==="
     DIR_CONTENTS="$(ls -A "${DATA_DIR}" --ignore="lost+found")"
@@ -155,8 +185,10 @@ function do_backup {
     
     # Run before-snapshot action if specified
     if [[ -n "${KOPIA_BEFORE_SNAPSHOT}" ]]; then
-        echo "Running before-snapshot action: ${KOPIA_BEFORE_SNAPSHOT}"
-        eval "${KOPIA_BEFORE_SNAPSHOT}"
+        if ! execute_action "${KOPIA_BEFORE_SNAPSHOT}" "before-snapshot"; then
+            echo "ERROR: Before-snapshot action failed"
+            exit 1
+        fi
     fi
     
     # Create snapshot
@@ -164,8 +196,10 @@ function do_backup {
     
     # Run after-snapshot action if specified
     if [[ -n "${KOPIA_AFTER_SNAPSHOT}" ]]; then
-        echo "Running after-snapshot action: ${KOPIA_AFTER_SNAPSHOT}"
-        eval "${KOPIA_AFTER_SNAPSHOT}"
+        if ! execute_action "${KOPIA_AFTER_SNAPSHOT}" "after-snapshot"; then
+            echo "WARNING: After-snapshot action failed, but snapshot was created successfully"
+            # Don't exit here since the snapshot was already created
+        fi
     fi
 }
 
