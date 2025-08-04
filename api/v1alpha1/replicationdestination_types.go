@@ -196,6 +196,9 @@ type ReplicationDestinationSpec struct {
 	// restic defines the configuration when using Restic-based replication.
 	//+optional
 	Restic *ReplicationDestinationResticSpec `json:"restic,omitempty"`
+	// kopia defines the configuration when using Kopia-based replication.
+	//+optional
+	Kopia *ReplicationDestinationKopiaSpec `json:"kopia,omitempty"`
 	// external defines the configuration when using an external replication
 	// provider.
 	//+optional
@@ -260,6 +263,43 @@ type ReplicationDestinationResticSpec struct {
 	// Defaults to false.
 	//+optional
 	EnableFileDeletion bool `json:"enableFileDeletion,omitempty"`
+
+	MoverConfig `json:",inline"`
+}
+
+type ReplicationDestinationKopiaCA CustomCASpec
+
+// ReplicationDestinationKopiaSpec defines the field for kopia in replicationDestination.
+type ReplicationDestinationKopiaSpec struct {
+	ReplicationDestinationVolumeOptions `json:",inline"`
+	// Repository is the secret name containing repository info
+	Repository string `json:"repository,omitempty"`
+	// customCA is a custom CA that will be used to verify the remote
+	CustomCA ReplicationDestinationKopiaCA `json:"customCA,omitempty"`
+	// cacheCapacity can be used to set the size of the kopia metadata cache volume
+	//+optional
+	CacheCapacity *resource.Quantity `json:"cacheCapacity,omitempty"`
+	// cacheStorageClassName can be used to set the StorageClass of the kopia
+	// metadata cache volume
+	//+optional
+	CacheStorageClassName *string `json:"cacheStorageClassName,omitempty"`
+	// accessModes can be used to set the accessModes of kopia metadata cache volume
+	//+optional
+	CacheAccessModes []corev1.PersistentVolumeAccessMode `json:"cacheAccessModes,omitempty"`
+	// Set this to true to delete the kopia cache PVC (dynamically provisioned
+	// by VolSync) at the end of each successful ReplicationDestination sync iteration.
+	// Cache PVCs will always be deleted if the owning ReplicationDestination is
+	// removed, even if this setting is false.
+	// The default is false.
+	//+optional
+	CleanupCachePVC bool `json:"cleanupCachePVC,omitempty"`
+	// RestoreAsOf refers to the backup that is most recent as of that time.
+	// +kubebuilder:validation:Format="date-time"
+	//+optional
+	RestoreAsOf *string `json:"restoreAsOf,omitempty"`
+	// Shallow defines the shallow restore depth (only restore recent snapshots)
+	//+optional
+	Shallow *int32 `json:"shallow,omitempty"`
 
 	MoverConfig `json:",inline"`
 }
