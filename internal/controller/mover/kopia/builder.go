@@ -22,6 +22,7 @@ package kopia
 import (
 	"flag"
 	"fmt"
+	"strings"
 
 	"github.com/go-logr/logr"
 	"github.com/spf13/viper"
@@ -121,8 +122,15 @@ func (kb *Builder) FromSource(client client.Client, logger logr.Logger,
 
 	isSource := true
 
+	// Generate username and hostname for multi-tenancy
+	username := generateUsername(source.Spec.Kopia.Username)
+	hostname := generateHostname(source.Spec.Kopia.Hostname, source.GetNamespace(), source.GetName())
+
 	saHandler := utils.NewSAHandler(client, source, isSource, privileged,
 		source.Spec.Kopia.MoverServiceAccount)
+
+	// Initialize metrics
+	metrics := newKopiaMetrics()
 
 	return &Mover{
 		client:                client,
@@ -142,6 +150,10 @@ func (kb *Builder) FromSource(client client.Client, logger logr.Logger,
 		customCASpec:          volsyncv1alpha1.CustomCASpec(source.Spec.Kopia.CustomCA),
 		policyConfig:          source.Spec.Kopia.PolicyConfig,
 		privileged:            privileged,
+		metrics:               metrics,
+		username:              username,
+		hostname:              hostname,
+		sourcePathOverride:    source.Spec.Kopia.SourcePathOverride,
 		maintenanceInterval:   source.Spec.Kopia.MaintenanceIntervalDays,
 		retainPolicy:          source.Spec.Kopia.Retain,
 		compression:           source.Spec.Kopia.Compression,
@@ -177,8 +189,15 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 
 	isSource := false
 
+	// Generate username and hostname for multi-tenancy
+	username := generateUsername(destination.Spec.Kopia.Username)
+	hostname := generateHostname(destination.Spec.Kopia.Hostname, destination.GetNamespace(), destination.GetName())
+
 	saHandler := utils.NewSAHandler(client, destination, isSource, privileged,
 		destination.Spec.Kopia.MoverServiceAccount)
+
+	// Initialize metrics
+	metrics := newKopiaMetrics()
 
 	return &Mover{
 		client:                client,
@@ -200,9 +219,51 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		customCASpec:          volsyncv1alpha1.CustomCASpec(destination.Spec.Kopia.CustomCA),
 		policyConfig:          destination.Spec.Kopia.PolicyConfig,
 		privileged:            privileged,
+		metrics:               metrics,
+		username:              username,
+		hostname:              hostname,
 		restoreAsOf:           destination.Spec.Kopia.RestoreAsOf,
 		shallow:               destination.Spec.Kopia.Shallow,
 		latestMoverStatus:     destination.Status.LatestMoverStatus,
 		moverConfig:           destination.Spec.Kopia.MoverConfig,
 	}, nil
+}
+
+// generateUsername returns the username for Kopia identity
+// If specified, uses the provided username, otherwise defaults to "volsync"
+func generateUsername(username *string) string {
+	if username != nil && *username != "" {
+		return *username
+	}
+	return "volsync"
+}
+
+// generateHostname returns the hostname for Kopia identity
+// If specified, uses the provided hostname, otherwise defaults to "<namespace>-<name>"
+func generateHostname(hostname *string, namespace, name string) string {
+	if hostname != nil && *hostname != "" {
+		return *hostname
+	}
+	
+	// Generate default hostname from namespace and resource name
+	// Replace any characters that aren't allowed in Kopia hostnames
+	defaultHostname := fmt.Sprintf("%s-%s", namespace, name)
+	// Replace underscores and other invalid characters with hyphens
+	defaultHostname = strings.ReplaceAll(defaultHostname, "_", "-")
+	// Remove any invalid characters (only allow alphanumeric, dots, and hyphens)
+	validHostname := ""
+	for _, r := range defaultHostname {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '-' {
+			validHostname += string(r)
+		}
+	}
+	
+	// Ensure hostname doesn't start or end with a hyphen or dot
+	validHostname = strings.Trim(validHostname, "-.")
+	
+	if validHostname == "" {
+		return "volsync-default"
+	}
+	
+	return validHostname
 }

@@ -290,6 +290,22 @@ type ReplicationSourceKopiaSpec struct {
 	// PolicyConfig defines configuration for Kopia policy files
 	//+optional
 	PolicyConfig *KopiaPolicySpec `json:"policyConfig,omitempty"`
+	// Username override for Kopia repository access.
+	// If not specified, defaults to "volsync"
+	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$"
+	//+optional
+	Username *string `json:"username,omitempty"`
+	// Hostname override for Kopia repository access.
+	// If not specified, defaults to "<namespace>-<replicationsource-name>"
+	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$"
+	//+optional
+	Hostname *string `json:"hostname,omitempty"`
+	// SourcePathOverride allows specifying a different path name in the snapshot
+	// than the actual filesystem path being backed up. This is useful when backing up
+	// from temporary mounts or snapshots while preserving the original path identity.
+	// +kubebuilder:validation:Pattern="^/.*"
+	//+optional
+	SourcePathOverride *string `json:"sourcePathOverride,omitempty"`
 
 	MoverConfig `json:",inline"`
 }
