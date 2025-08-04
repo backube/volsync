@@ -1,11 +1,13 @@
 #! /bin/bash
 
 echo "Starting container"
+echo
 
 set -e -o pipefail
 
 echo "VolSync kopia container version: ${version:-unknown}"
-echo  "$@"
+echo "$@"
+echo
 
 SCRIPT_FULLPATH="$(realpath "$0")"
 SCRIPT="$(basename "$SCRIPT_FULLPATH")"
@@ -48,17 +50,52 @@ if [[ $DEBUG_MOVER -eq 1 && "$SCRIPT_DIR" != "/tmp" ]]; then
 fi
 
 declare -a KOPIA
-KOPIA=("kopia")
+# Set both cache and log directories to writable mounted location
+export KOPIA_CACHE_DIRECTORY="${KOPIA_CACHE_DIR}"
+export KOPIA_LOG_DIR="${KOPIA_CACHE_DIR}/logs"
+
+# Create necessary directories upfront
+mkdir -p "${KOPIA_CACHE_DIR}/logs"
+chmod 755 "${KOPIA_CACHE_DIR}/logs"
+
+# DEBUG: Show environment and directory setup
+echo "=== DEBUG: Environment Setup ==="
+echo "HOME: ${HOME}"
+echo "KOPIA_CACHE_DIR: ${KOPIA_CACHE_DIR}"
+echo "KOPIA_CACHE_DIRECTORY: ${KOPIA_CACHE_DIRECTORY}"
+echo "KOPIA_LOG_DIR: ${KOPIA_LOG_DIR}"
+echo "Current user: $(whoami)"
+echo "Current working directory: $(pwd)"
+echo "Cache directory writable: $(test -w ${KOPIA_CACHE_DIR} && echo 'Yes' || echo 'No')"
+echo "Log directory exists: $(test -d ${KOPIA_LOG_DIR} && echo 'Yes' || echo 'No')"
+echo "Contents of cache directory: $(ls -la ${KOPIA_CACHE_DIR} 2>/dev/null || echo 'Directory does not exist')"
+echo ""
+echo "=== ENVIRONMENT VARIABLES STATUS ==="
+echo "KOPIA_REPOSITORY: ${KOPIA_REPOSITORY:+[SET]}${KOPIA_REPOSITORY:-[NOT SET]}"
+echo "KOPIA_PASSWORD: ${KOPIA_PASSWORD:+[SET]}${KOPIA_PASSWORD:-[NOT SET]}"
+echo "KOPIA_S3_BUCKET: ${KOPIA_S3_BUCKET:+[SET]}${KOPIA_S3_BUCKET:-[NOT SET]}"
+echo "KOPIA_S3_ENDPOINT: ${KOPIA_S3_ENDPOINT:+[SET]}${KOPIA_S3_ENDPOINT:-[NOT SET]}"
+echo "KOPIA_S3_DISABLE_TLS: ${KOPIA_S3_DISABLE_TLS:+[SET]}${KOPIA_S3_DISABLE_TLS:-[NOT SET]}"
+echo "AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:+[SET]}${AWS_ACCESS_KEY_ID:-[NOT SET]}"
+echo "AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:+[SET]}${AWS_SECRET_ACCESS_KEY:-[NOT SET]}"
+echo "AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:+[SET]}${AWS_DEFAULT_REGION:-[NOT SET]}"
+echo "=== END DEBUG ==="
+echo ""
+
+KOPIA=("kopia" "--config-file=${KOPIA_CACHE_DIR}/kopia.config" "--log-dir=${KOPIA_CACHE_DIR}/logs")
 if [[ -n "${CUSTOM_CA}" ]]; then
     echo "Using custom CA."
     export KOPIA_CA_CERT="${CUSTOM_CA}"
 fi
 
+echo "=== Kopia Version ==="
 "${KOPIA[@]}" --version
+echo "====================="
 
 # Print an error message and exit
 # error rc "message"
 function error {
+    echo ""  # Add blank line before error
     echo "ERROR: $2"
     exit "$1"
 }
@@ -140,28 +177,108 @@ function ensure_connected {
     echo "=== Connecting to repository ==="
     set +e  # Don't exit on command failure
     
-    # Try to connect to existing repository
-    outfile=$(mktemp -q)
-    timeout 10s "${KOPIA[@]}" repository status > /dev/null 2>"$outfile"
-    rc=$?
-    
-    if [[ $rc -ne 0 ]]; then
+    # Try to connect to existing repository (let errors display naturally)
+    if ! timeout 10s "${KOPIA[@]}" repository status >/dev/null; then
         echo "Repository not connected, attempting to connect or create..."
-        # Try to connect first
-        "${KOPIA[@]}" repository connect from-config --config-file /credentials/repository.config 2>"$outfile" || {
-            # If connect fails, try to create a new repository
-            echo "Creating new repository..."
-            create_repository
-        }
+        echo ""
+        
+        # Try to connect first (if config exists)
+        if [[ -f /credentials/repository.config ]]; then
+            echo "Attempting to connect from config file..."
+            if ! "${KOPIA[@]}" repository connect from-config --config-file /credentials/repository.config; then
+                echo "Config connection failed, trying direct connection..."
+                echo ""
+                if ! connect_repository; then
+                    echo "Direct connection failed, creating new repository..."
+                    echo ""
+                    create_repository
+                fi
+            fi
+        else
+            # No config file, try direct connection
+            echo "Attempting to connect to existing repository..."
+            if ! connect_repository; then
+                echo "Connection failed, creating new repository..."
+                echo ""
+                create_repository
+            fi
+        fi
     else
         echo "Repository already connected"
     fi
     
     set -e
-    rm -f "$outfile"
+    echo ""
+    
+    # Set cache directory after successful connection
+    echo "=== Setting cache directory ==="
+    "${KOPIA[@]}" cache set --cache-directory="${KOPIA_CACHE_DIR}"
+    echo "Cache directory configured successfully"
+    echo ""
     
     # Apply policy configuration after connection
     apply_policy_config
+}
+
+function connect_repository {
+    echo "=== Connecting to existing repository ==="
+    
+    # Determine repository type from environment variables and connect
+    if [[ -n "${KOPIA_S3_BUCKET}" ]]; then
+        echo "Connecting to S3 repository"
+        echo ""
+        echo "=== S3 Connection Debug ==="
+        echo "KOPIA_S3_BUCKET: ${KOPIA_S3_BUCKET:+[SET]}${KOPIA_S3_BUCKET:-[NOT SET]}"
+        echo "KOPIA_S3_ENDPOINT: ${KOPIA_S3_ENDPOINT:+[SET]}${KOPIA_S3_ENDPOINT:-[NOT SET]}"
+        echo "AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:+[SET]}${AWS_ACCESS_KEY_ID:-[NOT SET]}"
+        echo "AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:+[SET]}${AWS_SECRET_ACCESS_KEY:-[NOT SET]}"
+        echo "KOPIA_REPOSITORY: ${KOPIA_REPOSITORY:+[SET]}${KOPIA_REPOSITORY:-[NOT SET]}"
+        echo "KOPIA_S3_DISABLE_TLS: ${KOPIA_S3_DISABLE_TLS:+[SET]}${KOPIA_S3_DISABLE_TLS:-[NOT SET]}"
+        echo "KOPIA_PASSWORD: ${KOPIA_PASSWORD:+[SET]}${KOPIA_PASSWORD:-[NOT SET]}"
+        
+        S3_CONNECT_CMD=("${KOPIA[@]}" repository connect s3 \
+            --bucket="${KOPIA_S3_BUCKET}" \
+            --endpoint="${KOPIA_S3_ENDPOINT:-s3.amazonaws.com}" \
+            --access-key="${AWS_ACCESS_KEY_ID}" \
+            --secret-access-key="${AWS_SECRET_ACCESS_KEY}")
+        
+        # Extract prefix from KOPIA_REPOSITORY (e.g., s3://bucket/prefix -> prefix)
+        if [[ "${KOPIA_REPOSITORY}" =~ s3://[^/]+/(.+) ]]; then
+            S3_PREFIX="${BASH_REMATCH[1]}"
+            echo "Using S3 prefix: ${S3_PREFIX}"
+            S3_CONNECT_CMD+=(--prefix="${S3_PREFIX}")
+        else
+            echo "No S3 prefix detected in KOPIA_REPOSITORY"
+        fi
+        
+        # Add disable TLS flag if specified
+        if [[ "${KOPIA_S3_DISABLE_TLS}" == "true" ]]; then
+            echo "Adding --disable-tls flag"
+            S3_CONNECT_CMD+=(--disable-tls)
+        fi
+        
+        echo "=== End S3 Connection Debug ==="
+        echo ""
+        echo "Executing connection command..."
+        "${S3_CONNECT_CMD[@]}"
+    elif [[ -n "${KOPIA_AZURE_CONTAINER}" ]]; then
+        echo "Connecting to Azure repository"
+        "${KOPIA[@]}" repository connect azure \
+            --container="${KOPIA_AZURE_CONTAINER}" \
+            --storage-account="${KOPIA_AZURE_STORAGE_ACCOUNT}" \
+            --storage-key="${KOPIA_AZURE_STORAGE_KEY}"
+    elif [[ -n "${KOPIA_GCS_BUCKET}" ]]; then
+        echo "Connecting to GCS repository"
+        "${KOPIA[@]}" repository connect gcs \
+            --bucket="${KOPIA_GCS_BUCKET}" \
+            --credentials-file="${GOOGLE_APPLICATION_CREDENTIALS}"
+    elif [[ -n "${KOPIA_FS_PATH}" ]]; then
+        echo "Connecting to filesystem repository"
+        "${KOPIA[@]}" repository connect filesystem --path="${KOPIA_FS_PATH}"
+    else
+        echo "No repository configuration found for connecting"
+        return 1
+    fi
 }
 
 function create_repository {
@@ -170,11 +287,43 @@ function create_repository {
     # Determine repository type from environment variables
     if [[ -n "${KOPIA_S3_BUCKET}" ]]; then
         echo "Creating S3 repository"
-        "${KOPIA[@]}" repository create s3 \
+        echo ""
+        echo "=== S3 Creation Debug ==="
+        echo "KOPIA_S3_BUCKET: ${KOPIA_S3_BUCKET:+[SET]}${KOPIA_S3_BUCKET:-[NOT SET]}"
+        echo "KOPIA_S3_ENDPOINT: ${KOPIA_S3_ENDPOINT:+[SET]}${KOPIA_S3_ENDPOINT:-[NOT SET]}"
+        echo "AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:+[SET]}${AWS_ACCESS_KEY_ID:-[NOT SET]}"
+        echo "AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:+[SET]}${AWS_SECRET_ACCESS_KEY:-[NOT SET]}"
+        echo "KOPIA_REPOSITORY: ${KOPIA_REPOSITORY:+[SET]}${KOPIA_REPOSITORY:-[NOT SET]}"
+        echo "KOPIA_S3_DISABLE_TLS: ${KOPIA_S3_DISABLE_TLS:+[SET]}${KOPIA_S3_DISABLE_TLS:-[NOT SET]}"
+        echo "KOPIA_PASSWORD: ${KOPIA_PASSWORD:+[SET]}${KOPIA_PASSWORD:-[NOT SET]}"
+        echo "KOPIA_CACHE_DIR: ${KOPIA_CACHE_DIR:+[SET]}${KOPIA_CACHE_DIR:-[NOT SET]}"
+        
+        S3_CREATE_CMD=("${KOPIA[@]}" repository create s3 \
             --bucket="${KOPIA_S3_BUCKET}" \
             --endpoint="${KOPIA_S3_ENDPOINT:-s3.amazonaws.com}" \
             --access-key="${AWS_ACCESS_KEY_ID}" \
-            --secret-access-key="${AWS_SECRET_ACCESS_KEY}"
+            --secret-access-key="${AWS_SECRET_ACCESS_KEY}" \
+            --cache-directory="${KOPIA_CACHE_DIR}")
+        
+        # Extract prefix from KOPIA_REPOSITORY (e.g., s3://bucket/prefix -> prefix)
+        if [[ "${KOPIA_REPOSITORY}" =~ s3://[^/]+/(.+) ]]; then
+            S3_PREFIX="${BASH_REMATCH[1]}"
+            echo "Using S3 prefix: ${S3_PREFIX}"
+            S3_CREATE_CMD+=(--prefix="${S3_PREFIX}")
+        else
+            echo "No S3 prefix detected in KOPIA_REPOSITORY"
+        fi
+        
+        # Add disable TLS flag if specified
+        if [[ "${KOPIA_S3_DISABLE_TLS}" == "true" ]]; then
+            echo "Adding --disable-tls flag"
+            S3_CREATE_CMD+=(--disable-tls)
+        fi
+        
+        echo "=== End S3 Creation Debug ==="
+        echo ""
+        echo "Executing creation command..."
+        "${S3_CREATE_CMD[@]}"
     elif [[ -n "${KOPIA_AZURE_CONTAINER}" ]]; then
         echo "Creating Azure repository"
         "${KOPIA[@]}" repository create azure \
@@ -201,10 +350,9 @@ function do_backup {
     declare -a SNAPSHOT_CMD
     SNAPSHOT_CMD=("${KOPIA[@]}" "snapshot" "create" "${DATA_DIR}")
     
-    # Add compression if specified
-    if [[ -n "${KOPIA_COMPRESSION}" ]]; then
-        SNAPSHOT_CMD+=(--compression="${KOPIA_COMPRESSION}")
-    fi
+    # Add compression algorithm if specified
+    # Note: compression is typically set at repository level during creation
+    # For now, skipping per-snapshot compression to avoid compatibility issues
     
     # Add parallelism if specified
     if [[ -n "${KOPIA_PARALLELISM}" ]]; then
@@ -310,10 +458,15 @@ for var in KOPIA_PASSWORD \
     check_var_defined $var
 done
 
-# Set cache directory if specified
-if [[ -n "${CACHE_DIR}" ]]; then
-    export KOPIA_CACHE_DIRECTORY="${CACHE_DIR}"
+# Validate cache directory is writable
+if [[ ! -w "${KOPIA_CACHE_DIR}" ]]; then
+    error 1 "Cache directory ${KOPIA_CACHE_DIR} is not writable"
 fi
+
+echo "Cache directory validation passed"
+echo ""
+
+# Cache directory already configured above
 
 # Set password
 export KOPIA_PASSWORD
@@ -334,7 +487,7 @@ elif [[ "${DIRECTION}" == "destination" ]]; then
     do_restore
     sync -f "${DATA_DIR}"
 else
-    # Legacy mode - execute operations based on arguments
+    # Execute operations based on arguments (current VolSync approach)
     for op in "$@"; do
         case $op in
             "backup")
