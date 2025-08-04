@@ -1,0 +1,261 @@
+---
+- hosts: localhost
+  tags:
+    - e2e
+    - kopia
+    - policy-config
+    - unprivileged
+  vars:
+    kopia_secret_name: kopia-secret-policy
+    policy_configmap_name: kopia-policy-configmap
+  tasks:
+    - include_role:
+        name: create_namespace
+
+    - include_role:
+        name: gather_cluster_info
+
+    # We're running everything as a normal user
+    - name: Define podSecurityContext
+      ansible.builtin.set_fact:
+        podSecurityContext:
+          fsGroup: 5678
+          runAsGroup: 5678
+          runAsNonRoot: true
+          runAsUser: 1234
+          seccompProfile:
+            type: RuntimeDefault
+      when: not cluster_info.is_openshift
+
+    - include_role:
+        name: create_kopia_secret
+      vars:
+        use_tls: false
+
+    - name: Create policy ConfigMap
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: "{{ policy_configmap_name }}"
+            namespace: "{{ namespace }}"
+          data:
+            global-policy.json: |
+              {
+                "compression": {
+                  "compressorName": "zstd",
+                  "minSize": 1024
+                },
+                "retention": {
+                  "keepLatest": 3,
+                  "keepDaily": 5
+                },
+                "files": {
+                  "ignore": [
+                    "*.tmp",
+                    ".DS_Store"
+                  ],
+                  "ignoreCacheDirectories": true
+                },
+                "upload": {
+                  "maxParallelFileReads": 4,
+                  "parallelUploads": 2
+                }
+              }
+            repository.config: |
+              {
+                "enableActions": true,
+                "caching": {
+                  "maxCacheSize": 1073741824
+                }
+              }
+
+    - name: Create source PVC
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          kind: PersistentVolumeClaim
+          apiVersion: v1
+          metadata:
+            name: data-source
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 1Gi
+
+    - name: Create destination PVC (for later restore)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          kind: PersistentVolumeClaim
+          apiVersion: v1
+          metadata:
+            name: data-dest
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 1Gi
+
+    - name: Ensure both PVCs are provisioned in same zone
+      include_role:
+        name: compare_pvc_data
+      vars:
+        pvc1_name: data-source
+        pvc2_name: data-dest
+
+    - name: Write data into the source PVC
+      include_role:
+        name: write_to_pvc
+      vars:
+        data: 'policy-config-test-data'
+        path: '/datafile'
+        pvc_name: 'data-source'
+
+    - name: Backup data from source volume with policy config (w/ mSC)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationSource
+          metadata:
+            name: source
+            namespace: "{{ namespace }}"
+          spec:
+            sourcePVC: data-source
+            trigger:
+              manual: policy-once
+            kopia:
+              repository: "{{ kopia_secret_name }}"
+              # Policy configuration from ConfigMap
+              policyConfig:
+                configMapName: "{{ policy_configmap_name }}"
+                globalPolicyFilename: "global-policy.json"
+                repositoryConfigFilename: "repository.config"
+              # Standard fields (will be overridden by policy where applicable)
+              retain:
+                daily: 1
+              compression: s2
+              copyMethod: Snapshot
+              cacheCapacity: 1Gi
+              moverSecurityContext: "{{ podSecurityContext }}"
+      when: podSecurityContext is defined
+
+    - name: Backup data from source volume with policy config (w/o mSC)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationSource
+          metadata:
+            name: source
+            namespace: "{{ namespace }}"
+          spec:
+            sourcePVC: data-source
+            trigger:
+              manual: policy-once
+            kopia:
+              repository: "{{ kopia_secret_name }}"
+              # Policy configuration from ConfigMap
+              policyConfig:
+                configMapName: "{{ policy_configmap_name }}"
+                globalPolicyFilename: "global-policy.json"
+                repositoryConfigFilename: "repository.config"
+              # Standard fields (will be overridden by policy where applicable)
+              retain:
+                daily: 1
+              compression: s2
+              copyMethod: Snapshot
+              cacheCapacity: 1Gi
+      when: podSecurityContext is not defined
+
+    - name: Wait for sync to complete
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationSource
+        name: source
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastManualSync is defined and
+        res.resources[0].status.lastManualSync=="policy-once"
+      delay: 10
+      retries: 60
+
+    - name: Restore data to destination with policy config (w/ mSC)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationDestination
+          metadata:
+            name: restore
+            namespace: "{{ namespace }}"
+          spec:
+            trigger:
+              manual: restore-policy-once
+            kopia:
+              repository: "{{ kopia_secret_name }}"
+              # Same policy configuration for consistency
+              policyConfig:
+                configMapName: "{{ policy_configmap_name }}"
+                globalPolicyFilename: "global-policy.json"
+                repositoryConfigFilename: "repository.config"
+              destinationPVC: data-dest
+              copyMethod: Direct
+              cacheCapacity: 1Gi
+              moverSecurityContext: "{{ podSecurityContext }}"
+      when: podSecurityContext is defined
+
+    - name: Restore data to destination with policy config (w/o mSC)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationDestination
+          metadata:
+            name: restore
+            namespace: "{{ namespace }}"
+          spec:
+            trigger:
+              manual: restore-policy-once
+            kopia:
+              repository: "{{ kopia_secret_name }}"
+              # Same policy configuration for consistency
+              policyConfig:
+                configMapName: "{{ policy_configmap_name }}"
+                globalPolicyFilename: "global-policy.json"
+                repositoryConfigFilename: "repository.config"
+              destinationPVC: data-dest
+              copyMethod: Direct
+              cacheCapacity: 1Gi
+      when: podSecurityContext is not defined
+
+    - name: Wait for restore to complete
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationDestination
+        name: restore
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastManualSync is defined and
+        res.resources[0].status.lastManualSync=="restore-policy-once"
+      delay: 10
+      retries: 60
+
+    - name: Verify contents of PVC
+      include_role:
+        name: compare_pvc_data
+      vars:
+        pvc1_name: data-source
+        pvc2_name: data-dest
