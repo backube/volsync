@@ -253,7 +253,6 @@ function connect_repository {
         
         # Add disable TLS flag if specified
         if [[ "${KOPIA_S3_DISABLE_TLS}" == "true" ]]; then
-            echo "Adding --disable-tls flag"
             S3_CONNECT_CMD+=(--disable-tls)
         fi
         
@@ -316,7 +315,6 @@ function create_repository {
         
         # Add disable TLS flag if specified
         if [[ "${KOPIA_S3_DISABLE_TLS}" == "true" ]]; then
-            echo "Adding --disable-tls flag"
             S3_CREATE_CMD+=(--disable-tls)
         fi
         
