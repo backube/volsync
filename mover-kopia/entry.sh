@@ -79,6 +79,9 @@ echo "KOPIA_S3_DISABLE_TLS: ${KOPIA_S3_DISABLE_TLS:+[SET]}${KOPIA_S3_DISABLE_TLS
 echo "AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:+[SET]}${AWS_ACCESS_KEY_ID:-[NOT SET]}"
 echo "AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:+[SET]}${AWS_SECRET_ACCESS_KEY:-[NOT SET]}"
 echo "AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:+[SET]}${AWS_DEFAULT_REGION:-[NOT SET]}"
+echo "KOPIA_OVERRIDE_USERNAME: ${KOPIA_OVERRIDE_USERNAME:+[SET]}${KOPIA_OVERRIDE_USERNAME:-[NOT SET]}"
+echo "KOPIA_OVERRIDE_HOSTNAME: ${KOPIA_OVERRIDE_HOSTNAME:+[SET]}${KOPIA_OVERRIDE_HOSTNAME:-[NOT SET]}"
+echo "KOPIA_SOURCE_PATH_OVERRIDE: ${KOPIA_SOURCE_PATH_OVERRIDE:+[SET]}${KOPIA_SOURCE_PATH_OVERRIDE:-[NOT SET]}"
 echo "=== END DEBUG ==="
 echo ""
 
@@ -144,6 +147,21 @@ function check_contents {
     if [ -z "${DIR_CONTENTS}" ]; then
         echo "== Directory is empty skipping backup ==="
         exit 0
+    fi
+}
+
+# Add username/hostname overrides to command array if specified
+# add_user_overrides command_array_name
+function add_user_overrides {
+    local -n cmd_array=$1
+    
+    if [[ -n "${KOPIA_OVERRIDE_USERNAME}" ]]; then
+        echo "Using username override: ${KOPIA_OVERRIDE_USERNAME}"
+        cmd_array+=(--override-username="${KOPIA_OVERRIDE_USERNAME}")
+    fi
+    if [[ -n "${KOPIA_OVERRIDE_HOSTNAME}" ]]; then
+        echo "Using hostname override: ${KOPIA_OVERRIDE_HOSTNAME}"
+        cmd_array+=(--override-hostname="${KOPIA_OVERRIDE_HOSTNAME}")
     fi
 }
 
@@ -245,8 +263,14 @@ function connect_repository {
         # Extract prefix from KOPIA_REPOSITORY (e.g., s3://bucket/prefix -> prefix)
         if [[ "${KOPIA_REPOSITORY}" =~ s3://[^/]+/(.+) ]]; then
             S3_PREFIX="${BASH_REMATCH[1]}"
-            echo "Using S3 prefix: ${S3_PREFIX}"
-            S3_CONNECT_CMD+=(--prefix="${S3_PREFIX}")
+            # Validate S3 prefix for security
+            if [[ "${S3_PREFIX}" =~ ^[a-zA-Z0-9._/-]+$ ]] && [[ ! "${S3_PREFIX}" =~ \.\. ]]; then
+                echo "Using S3 prefix: ${S3_PREFIX}"
+                S3_CONNECT_CMD+=(--prefix="${S3_PREFIX}")
+            else
+                echo "ERROR: Invalid S3 prefix format. Only alphanumeric, dots, dashes, underscores and forward slashes allowed"
+                return 1
+            fi
         else
             echo "No S3 prefix detected in KOPIA_REPOSITORY"
         fi
@@ -256,24 +280,33 @@ function connect_repository {
             S3_CONNECT_CMD+=(--disable-tls)
         fi
         
+        # Add username/hostname overrides if specified
+        add_user_overrides S3_CONNECT_CMD
+        
         echo "=== End S3 Connection Debug ==="
         echo ""
         echo "Executing connection command..."
         "${S3_CONNECT_CMD[@]}"
     elif [[ -n "${KOPIA_AZURE_CONTAINER}" ]]; then
         echo "Connecting to Azure repository"
-        "${KOPIA[@]}" repository connect azure \
+        AZURE_CONNECT_CMD=("${KOPIA[@]}" repository connect azure \
             --container="${KOPIA_AZURE_CONTAINER}" \
             --storage-account="${KOPIA_AZURE_STORAGE_ACCOUNT}" \
-            --storage-key="${KOPIA_AZURE_STORAGE_KEY}"
+            --storage-key="${KOPIA_AZURE_STORAGE_KEY}")
+        add_user_overrides AZURE_CONNECT_CMD
+        "${AZURE_CONNECT_CMD[@]}"
     elif [[ -n "${KOPIA_GCS_BUCKET}" ]]; then
         echo "Connecting to GCS repository"
-        "${KOPIA[@]}" repository connect gcs \
+        GCS_CONNECT_CMD=("${KOPIA[@]}" repository connect gcs \
             --bucket="${KOPIA_GCS_BUCKET}" \
-            --credentials-file="${GOOGLE_APPLICATION_CREDENTIALS}"
+            --credentials-file="${GOOGLE_APPLICATION_CREDENTIALS}")
+        add_user_overrides GCS_CONNECT_CMD
+        "${GCS_CONNECT_CMD[@]}"
     elif [[ -n "${KOPIA_FS_PATH}" ]]; then
         echo "Connecting to filesystem repository"
-        "${KOPIA[@]}" repository connect filesystem --path="${KOPIA_FS_PATH}"
+        FS_CONNECT_CMD=("${KOPIA[@]}" repository connect filesystem --path="${KOPIA_FS_PATH}")
+        add_user_overrides FS_CONNECT_CMD
+        "${FS_CONNECT_CMD[@]}"
     else
         echo "No repository configuration found for connecting"
         return 1
@@ -307,8 +340,14 @@ function create_repository {
         # Extract prefix from KOPIA_REPOSITORY (e.g., s3://bucket/prefix -> prefix)
         if [[ "${KOPIA_REPOSITORY}" =~ s3://[^/]+/(.+) ]]; then
             S3_PREFIX="${BASH_REMATCH[1]}"
-            echo "Using S3 prefix: ${S3_PREFIX}"
-            S3_CREATE_CMD+=(--prefix="${S3_PREFIX}")
+            # Validate S3 prefix for security
+            if [[ "${S3_PREFIX}" =~ ^[a-zA-Z0-9._/-]+$ ]] && [[ ! "${S3_PREFIX}" =~ \.\. ]]; then
+                echo "Using S3 prefix: ${S3_PREFIX}"
+                S3_CREATE_CMD+=(--prefix="${S3_PREFIX}")
+            else
+                echo "ERROR: Invalid S3 prefix format. Only alphanumeric, dots, dashes, underscores and forward slashes allowed"
+                return 1
+            fi
         else
             echo "No S3 prefix detected in KOPIA_REPOSITORY"
         fi
@@ -318,24 +357,33 @@ function create_repository {
             S3_CREATE_CMD+=(--disable-tls)
         fi
         
+        # Add username/hostname overrides if specified
+        add_user_overrides S3_CREATE_CMD
+        
         echo "=== End S3 Creation Debug ==="
         echo ""
         echo "Executing creation command..."
         "${S3_CREATE_CMD[@]}"
     elif [[ -n "${KOPIA_AZURE_CONTAINER}" ]]; then
         echo "Creating Azure repository"
-        "${KOPIA[@]}" repository create azure \
+        AZURE_CREATE_CMD=("${KOPIA[@]}" repository create azure \
             --container="${KOPIA_AZURE_CONTAINER}" \
             --storage-account="${KOPIA_AZURE_STORAGE_ACCOUNT}" \
-            --storage-key="${KOPIA_AZURE_STORAGE_KEY}"
+            --storage-key="${KOPIA_AZURE_STORAGE_KEY}")
+        add_user_overrides AZURE_CREATE_CMD
+        "${AZURE_CREATE_CMD[@]}"
     elif [[ -n "${KOPIA_GCS_BUCKET}" ]]; then
         echo "Creating GCS repository"
-        "${KOPIA[@]}" repository create gcs \
+        GCS_CREATE_CMD=("${KOPIA[@]}" repository create gcs \
             --bucket="${KOPIA_GCS_BUCKET}" \
-            --credentials-file="${GOOGLE_APPLICATION_CREDENTIALS}"
+            --credentials-file="${GOOGLE_APPLICATION_CREDENTIALS}")
+        add_user_overrides GCS_CREATE_CMD
+        "${GCS_CREATE_CMD[@]}"
     elif [[ -n "${KOPIA_FS_PATH}" ]]; then
         echo "Creating filesystem repository"
-        "${KOPIA[@]}" repository create filesystem --path="${KOPIA_FS_PATH}"
+        FS_CREATE_CMD=("${KOPIA[@]}" repository create filesystem --path="${KOPIA_FS_PATH}")
+        add_user_overrides FS_CREATE_CMD
+        "${FS_CREATE_CMD[@]}"
     else
         error 1 "No repository configuration found"
     fi
@@ -355,6 +403,12 @@ function do_backup {
     # Add parallelism if specified
     if [[ -n "${KOPIA_PARALLELISM}" ]]; then
         SNAPSHOT_CMD+=(--parallel="${KOPIA_PARALLELISM}")
+    fi
+    
+    # Add source path override if specified
+    if [[ -n "${KOPIA_SOURCE_PATH_OVERRIDE}" ]]; then
+        echo "Using source path override: ${KOPIA_SOURCE_PATH_OVERRIDE}"
+        SNAPSHOT_CMD+=(--override-source="${KOPIA_SOURCE_PATH_OVERRIDE}")
     fi
     
     # Run before-snapshot action if specified
@@ -414,16 +468,20 @@ function do_retention {
 function select_snapshot_to_restore {
     echo "Selecting snapshot to restore"
     
+    # List snapshots for the specific data directory path
+    # This ensures we get snapshots for the correct username@hostname:/path
+    local snapshot_list_cmd=("${KOPIA[@]}" snapshot list "${DATA_DIR}" --json)
+    
     # List snapshots and find the appropriate one
     if [[ -n "${KOPIA_RESTORE_AS_OF}" ]]; then
         echo "Restoring as of: ${KOPIA_RESTORE_AS_OF}"
-        "${KOPIA[@]}" snapshot list --json | jq -r ".[] | select(.startTime <= \"${KOPIA_RESTORE_AS_OF}\") | .id" | head -1
+        "${snapshot_list_cmd[@]}" | jq -r ".[] | select(.startTime <= \"${KOPIA_RESTORE_AS_OF}\") | .id" | head -1
     elif [[ -n "${KOPIA_SHALLOW}" ]]; then
         echo "Shallow restore, showing last ${KOPIA_SHALLOW} snapshots"
-        "${KOPIA[@]}" snapshot list --json | jq -r ".[0:${KOPIA_SHALLOW}][] | .id" | head -1
+        "${snapshot_list_cmd[@]}" | jq -r ".[0:${KOPIA_SHALLOW}][] | .id" | head -1
     else
         # Get latest snapshot
-        "${KOPIA[@]}" snapshot list --json | jq -r ".[0].id"
+        "${snapshot_list_cmd[@]}" | jq -r ".[0].id"
     fi
 }
 
