@@ -287,6 +287,9 @@ type ReplicationSourceKopiaSpec struct {
 	// Actions defines pre/post snapshot actions
 	//+optional
 	Actions *KopiaActions `json:"actions,omitempty"`
+	// PolicyConfig defines configuration for Kopia policy files
+	//+optional
+	PolicyConfig *KopiaPolicySpec `json:"policyConfig,omitempty"`
 
 	MoverConfig `json:",inline"`
 }

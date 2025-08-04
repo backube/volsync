@@ -1351,6 +1351,32 @@ spec:
                         users who want to override the service account normally used by the mover.
                         The service account needs to exist in the same namespace as this CR.
                       type: string
+                    policyConfig:
+                      description: PolicyConfig defines configuration for Kopia policy files
+                      properties:
+                        configMapName:
+                          description: |-
+                            The name of a ConfigMap that contains Kopia policy configuration files
+                            If ConfigMapName is used then SecretName should not be set
+                          type: string
+                        globalPolicyFilename:
+                          description: |-
+                            GlobalPolicyFilename specifies the filename for the global policy configuration.
+                            This file should contain a JSON policy configuration that will be applied globally.
+                            Defaults to "global-policy.json" if not specified.
+                          type: string
+                        repositoryConfigFilename:
+                          description: |-
+                            RepositoryConfigFilename specifies the filename for the repository configuration.
+                            This file should contain repository-specific settings like actions enablement.
+                            Defaults to "repository.config" if not specified.
+                          type: string
+                        secretName:
+                          description: |-
+                            The name of a Secret that contains Kopia policy configuration files
+                            If SecretName is used then ConfigMapName should not be set
+                          type: string
+                      type: object
                     repository:
                       description: Repository is the secret name containing repository info
                       type: string

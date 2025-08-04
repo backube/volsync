@@ -300,6 +300,9 @@ type ReplicationDestinationKopiaSpec struct {
 	// Shallow defines the shallow restore depth (only restore recent snapshots)
 	//+optional
 	Shallow *int32 `json:"shallow,omitempty"`
+	// PolicyConfig defines configuration for Kopia policy files
+	//+optional
+	PolicyConfig *KopiaPolicySpec `json:"policyConfig,omitempty"`
 
 	MoverConfig `json:",inline"`
 }

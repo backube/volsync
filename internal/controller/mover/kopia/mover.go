@@ -36,7 +36,6 @@ import (
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	vserrors "github.com/backube/volsync/internal/controller/errors"
@@ -46,14 +45,17 @@ import (
 )
 
 const (
-	kopiaCacheMountPath = "/cache"
-	mountPath           = "/data"
-	dataVolumeName      = "data"
-	kopiaCache          = "cache"
-	kopiaCAMountPath    = "/customCA"
-	kopiaCAFilename     = "ca.crt"
-	credentialDir       = "/credentials"
-	gcsCredentialFile   = "gcs.json"
+	kopiaCacheMountPath     = "/cache"
+	mountPath               = "/data"
+	dataVolumeName          = "data"
+	kopiaCache              = "cache"
+	kopiaCAMountPath        = "/customCA"
+	kopiaCAFilename         = "ca.crt"
+	credentialDir           = "/credentials"
+	gcsCredentialFile       = "gcs.json"
+	kopiaPolicyMountPath    = "/kopia-config"
+	defaultGlobalPolicyFile = "global-policy.json"
+	defaultRepoConfigFile   = "repository.config"
 )
 
 // Mover is the reconciliation logic for the Kopia-based data mover.
@@ -73,6 +75,7 @@ type Mover struct {
 	paused                bool
 	mainPVCName           *string
 	customCASpec          volsyncv1alpha1.CustomCASpec
+	policyConfig          *volsyncv1alpha1.KopiaPolicySpec
 	privileged            bool
 	latestMoverStatus     *volsyncv1alpha1.MoverStatus
 	moverConfig           volsyncv1alpha1.MoverConfig
@@ -107,75 +110,20 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 		return mover.Complete(), nil
 	}
 
-	var err error
-	// Allocate temporary data PVC
-	var dataPVC *corev1.PersistentVolumeClaim
-	if m.isSource {
-		dataPVC, err = m.ensureSourcePVC(ctx)
-	} else {
-		dataPVC, err = m.ensureDestinationPVC(ctx)
-	}
-	if dataPVC == nil || err != nil {
-		return mover.InProgress(), err
-	}
-
-	// Allocate cache volume
-	// cleanupCachePVC will always be false for replicationsources - it's only set in the builder FromDestination()
-	cachePVC, err := m.ensureCache(ctx, dataPVC, m.cleanupCachePVC)
-	if cachePVC == nil || err != nil {
-		return mover.InProgress(), err
-	}
-
-	// Prepare ServiceAccount
-	sa, err := m.saHandler.Reconcile(ctx, m.logger)
-	if sa == nil || err != nil {
-		return mover.InProgress(), err
-	}
-
-	// Validate Repository Secret
-	repo, err := m.validateRepository(ctx)
-	if repo == nil || err != nil {
-		return mover.InProgress(), err
-	}
-
-	// Validate custom CA if in spec
-	customCAObj, err := utils.ValidateCustomCA(ctx, m.client, m.logger,
-		m.owner.GetNamespace(), m.customCASpec)
-	// nil customCAObj is ok (indicates we're not using a custom CA)
+	// Setup prerequisites
+	dataPVC, cachePVC, sa, repo, customCAObj, policyConfigObj, err := m.setupPrerequisites(ctx)
 	if err != nil {
 		return mover.InProgress(), err
 	}
 
-	// Start mover Job
-	job, err := m.ensureJob(ctx, cachePVC, dataPVC, sa, repo, customCAObj)
+	// Start and monitor job
+	job, err := m.ensureJob(ctx, cachePVC, dataPVC, sa, repo, customCAObj, policyConfigObj)
 	if job == nil || err != nil {
 		return mover.InProgress(), err
 	}
 
-	// Job handling - check for completion or failure
-	if job.Status.Failed > 0 {
-		// Job has failed - this should have been handled in ensureJob, 
-		// but we check here too for safety
-		return mover.InProgress(), nil
-	}
-
-	// Stop here if the job hasn't completed yet
-	if job.Status.Succeeded == 0 {
-		return mover.InProgress(), nil
-	}
-
-	// Job completed successfully
-	// On the destination, preserve the image and return it
-	if !m.isSource {
-		image, err := m.vh.EnsureImage(ctx, m.logger, dataPVC)
-		if image == nil || err != nil {
-			return mover.InProgress(), err
-		}
-		return mover.CompleteWithImage(image), nil
-	}
-
-	// On the source, just signal completion
-	return mover.Complete(), nil
+	// Handle job completion
+	return m.handleJobCompletion(ctx, job, dataPVC)
 }
 
 func (m *Mover) Cleanup(ctx context.Context) (mover.Result, error) {
@@ -302,11 +250,25 @@ func (m *Mover) validateRepository(ctx context.Context) (*corev1.Secret, error) 
 	return secret, nil
 }
 
+func (m *Mover) validatePolicyConfig(ctx context.Context) (utils.CustomCAObject, error) {
+	if m.policyConfig == nil {
+		return nil, nil
+	}
 
-//nolint:funlen
+	// Convert KopiaPolicySpec to CustomCASpec for reuse of validation logic
+	policyCASpec := volsyncv1alpha1.CustomCASpec{
+		SecretName:    m.policyConfig.SecretName,
+		ConfigMapName: m.policyConfig.ConfigMapName,
+		// We don't need to specify a Key since we'll mount the entire ConfigMap/Secret
+	}
+
+	return utils.ValidateCustomCA(ctx, m.client, m.logger,
+		m.owner.GetNamespace(), policyCASpec)
+}
+
 func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolumeClaim,
 	dataPVC *corev1.PersistentVolumeClaim, sa *corev1.ServiceAccount, repo *corev1.Secret,
-	customCAObj utils.CustomCAObject) (*batchv1.Job, error) {
+	customCAObj utils.CustomCAObject, policyConfigObj utils.CustomCAObject) (*batchv1.Job, error) {
 	dir := "src"
 	if !m.isSource {
 		dir = "dst"
@@ -321,236 +283,402 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 	logger := m.logger.WithValues("job", client.ObjectKeyFromObject(job))
 
 	_, err := utils.CreateOrUpdateDeleteOnImmutableErr(ctx, m.client, job, logger, func() error {
-		if err := ctrl.SetControllerReference(m.owner, job, m.client.Scheme()); err != nil {
-			logger.Error(err, utils.ErrUnableToSetControllerRef)
-			return err
-		}
-		utils.SetOwnedByVolSync(job)
-		utils.MarkForCleanup(m.owner, job)
-		job.Spec.Template.Name = job.Name
-		utils.SetOwnedByVolSync(&job.Spec.Template)
-		backoffLimit := int32(8)
-		job.Spec.BackoffLimit = &backoffLimit
-		parallelism := int32(1)
-		if m.paused {
-			parallelism = int32(0)
-		}
-		job.Spec.Parallelism = &parallelism
-
-		readOnlyVolume := false
-		var actions []string
-		if m.isSource {
-			actions = []string{"backup"}
-			// Set read-only for volume in source mover job spec if the PVC only supports read-only
-			readOnlyVolume = utils.PvcIsReadOnly(dataPVC)
-		} else {
-			actions = []string{"restore"}
-		}
-		logger.Info("job actions", "actions", actions)
-		podSpec := &job.Spec.Template.Spec
-
-		envVars := []corev1.EnvVar{
-			{Name: "DATA_DIR", Value: mountPath},
-			{Name: "KOPIA_CACHE_DIR", Value: kopiaCacheMountPath},
-			// We populate environment variables from the kopia repo
-			// Secret. They are taken 1-for-1 from the Secret into env vars.
-			// Mandatory variables are needed to define the repository
-			// location and its password.
-			utils.EnvFromSecret(repo.Name, "KOPIA_REPOSITORY", false),
-			utils.EnvFromSecret(repo.Name, "KOPIA_PASSWORD", false),
-
-			// Optional variables based on what backend is used for kopia
-			utils.EnvFromSecret(repo.Name, "AWS_ACCESS_KEY_ID", true),
-			utils.EnvFromSecret(repo.Name, "AWS_SECRET_ACCESS_KEY", true),
-			utils.EnvFromSecret(repo.Name, "AWS_SESSION_TOKEN", true),
-			utils.EnvFromSecret(repo.Name, "AWS_DEFAULT_REGION", true),
-			utils.EnvFromSecret(repo.Name, "AWS_PROFILE", true),
-			utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_NAME", true),
-			utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_KEY", true),
-			utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_SAS", true),
-			utils.EnvFromSecret(repo.Name, "AZURE_ENDPOINT_SUFFIX", true),
-			utils.EnvFromSecret(repo.Name, "GOOGLE_PROJECT_ID", true),
-		}
-
-		// Add source/destination specific environment variables
-		if m.isSource {
-			if m.compression != "" {
-				envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_COMPRESSION", Value: m.compression})
-			}
-			if m.parallelism != nil {
-				envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_PARALLELISM", Value: strconv.Itoa(int(*m.parallelism))})
-			}
-			// Add retention policy
-			if m.retainPolicy != nil {
-				if m.retainPolicy.Hourly != nil {
-					envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_RETAIN_HOURLY", Value: strconv.Itoa(int(*m.retainPolicy.Hourly))})
-				}
-				if m.retainPolicy.Daily != nil {
-					envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_RETAIN_DAILY", Value: strconv.Itoa(int(*m.retainPolicy.Daily))})
-				}
-				if m.retainPolicy.Weekly != nil {
-					envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_RETAIN_WEEKLY", Value: strconv.Itoa(int(*m.retainPolicy.Weekly))})
-				}
-				if m.retainPolicy.Monthly != nil {
-					envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_RETAIN_MONTHLY", Value: strconv.Itoa(int(*m.retainPolicy.Monthly))})
-				}
-				if m.retainPolicy.Yearly != nil {
-					envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_RETAIN_YEARLY", Value: strconv.Itoa(int(*m.retainPolicy.Yearly))})
-				}
-			}
-			// Add actions
-			if m.actions != nil {
-				if m.actions.BeforeSnapshot != "" {
-					envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_BEFORE_SNAPSHOT", Value: m.actions.BeforeSnapshot})
-				}
-				if m.actions.AfterSnapshot != "" {
-					envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_AFTER_SNAPSHOT", Value: m.actions.AfterSnapshot})
-				}
-			}
-		} else {
-			if m.restoreAsOf != nil {
-				envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_RESTORE_AS_OF", Value: *m.restoreAsOf})
-			}
-			if m.shallow != nil {
-				envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_SHALLOW", Value: strconv.Itoa(int(*m.shallow))})
-			}
-		}
-
-		// Cluster-wide proxy settings
-		envVars = utils.AppendEnvVarsForClusterWideProxy(envVars)
-
-		// Run mover in debug mode if required
-		envVars = utils.AppendDebugMoverEnvVar(m.owner, envVars)
-
-		podSpec.Containers = []corev1.Container{{
-			Name:    "kopia",
-			Env:     envVars,
-			Command: []string{"/mover-kopia/entry.sh"},
-			Args:    actions,
-			Image:   m.containerImage,
-			SecurityContext: &corev1.SecurityContext{
-				AllowPrivilegeEscalation: ptr.To(false),
-				Capabilities: &corev1.Capabilities{
-					Drop: []corev1.Capability{"ALL"},
-				},
-				Privileged:             ptr.To(false),
-				ReadOnlyRootFilesystem: ptr.To(true),
-			},
-			VolumeMounts: []corev1.VolumeMount{
-				{Name: dataVolumeName, MountPath: mountPath, ReadOnly: readOnlyVolume},
-				{Name: "tempdir", MountPath: "/tmp"},
-			},
-		}}
-		podSpec.RestartPolicy = corev1.RestartPolicyNever
-		podSpec.ServiceAccountName = sa.Name
-		podSpec.Volumes = []corev1.Volume{
-			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
-				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-					ClaimName: dataPVC.Name,
-					ReadOnly:  readOnlyVolume,
-				}},
-			},
-			{Name: "tempdir", VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{
-					Medium: corev1.StorageMediumMemory,
-				}},
-			},
-		}
-
-		// Add cache volume if specified
-		if cachePVC != nil {
-			podSpec.Containers[0].VolumeMounts = append(podSpec.Containers[0].VolumeMounts, corev1.VolumeMount{
-				Name:      kopiaCache,
-				MountPath: kopiaCacheMountPath,
-			})
-			podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
-				Name: kopiaCache, VolumeSource: corev1.VolumeSource{
-					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-						ClaimName: cachePVC.Name,
-					}},
-			})
-		}
-
-		if m.vh.IsCopyMethodDirect() {
-			affinity, err := utils.AffinityFromVolume(ctx, m.client, logger, dataPVC)
-			if err != nil {
-				logger.Error(err, "unable to determine proper affinity", "PVC", client.ObjectKeyFromObject(dataPVC))
-				return err
-			}
-			podSpec.NodeSelector = affinity.NodeSelector
-			podSpec.Tolerations = affinity.Tolerations
-		}
-		if customCAObj != nil {
-			// Tell mover where to find the cert
-			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
-				Name:  "CUSTOM_CA",
-				Value: path.Join(kopiaCAMountPath, kopiaCAFilename),
-			})
-			// Mount the custom CA certificate
-			podSpec.Containers[0].VolumeMounts =
-				append(podSpec.Containers[0].VolumeMounts, corev1.VolumeMount{
-					Name:      "custom-ca",
-					MountPath: kopiaCAMountPath,
-				})
-			podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
-				Name:         "custom-ca",
-				VolumeSource: customCAObj.GetVolumeSource(kopiaCAFilename),
-			})
-		}
-		// We handle GOOGLE_APPLICATION_CREDENTIALS specially...
-		// kopia expects it to be an env var pointing to a file w/ the
-		// credentials, but we have users provide the actual file data in the
-		// Secret under that key name. The following code sets the env var to be
-		// what kopia expects, then mounts just that Secret key into the
-		// container, pointed to by the env var.
-		if _, ok := repo.Data["GOOGLE_APPLICATION_CREDENTIALS"]; ok {
-			container := &podSpec.Containers[0]
-			// Tell kopia where to look for the credential file
-			container.Env = append(container.Env, corev1.EnvVar{
-				Name:  "GOOGLE_APPLICATION_CREDENTIALS",
-				Value: path.Join(credentialDir, gcsCredentialFile),
-			})
-			// Mount the credential file
-			container.VolumeMounts =
-				append(container.VolumeMounts, corev1.VolumeMount{
-					Name:      "gcs-credentials",
-					MountPath: credentialDir,
-				})
-			podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
-				Name: "gcs-credentials",
-				VolumeSource: corev1.VolumeSource{
-					Secret: &corev1.SecretVolumeSource{
-						SecretName: repo.Name,
-						Items: []corev1.KeyToPath{
-							{Key: "GOOGLE_APPLICATION_CREDENTIALS", Path: gcsCredentialFile},
-						},
-					},
-				},
-			})
-		}
-
-		// Update the job securityContext, podLabels and resourceRequirements from moverConfig (if specified)
-		utils.UpdatePodTemplateSpecFromMoverConfig(&job.Spec.Template, m.moverConfig, corev1.ResourceRequirements{})
-
-		if m.privileged {
-			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
-				Name:  "PRIVILEGED_MOVER",
-				Value: "1",
-			})
-			podSpec.Containers[0].SecurityContext.Capabilities.Add = []corev1.Capability{
-				"DAC_OVERRIDE", // Read/write all files
-				"CHOWN",        // chown files
-				"FOWNER",       // Set permission bits & times
-			}
-			podSpec.Containers[0].SecurityContext.RunAsUser = ptr.To[int64](0)
-		} else {
-			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
-				Name:  "PRIVILEGED_MOVER",
-				Value: "0",
-			})
-		}
-		return nil
+		return m.configureJobSpec(ctx, job, cachePVC, dataPVC, sa, repo, customCAObj, policyConfigObj, logger)
 	})
+	return m.handleJobStatus(ctx, job, logger, err)
+}
+
+// configureJobSpec configures the job specification with all required settings
+func (m *Mover) configureJobSpec(ctx context.Context, job *batchv1.Job, cachePVC *corev1.PersistentVolumeClaim,
+	dataPVC *corev1.PersistentVolumeClaim, sa *corev1.ServiceAccount, repo *corev1.Secret,
+	customCAObj utils.CustomCAObject, policyConfigObj utils.CustomCAObject, logger logr.Logger) error {
+	if err := ctrl.SetControllerReference(m.owner, job, m.client.Scheme()); err != nil {
+		logger.Error(err, utils.ErrUnableToSetControllerRef)
+		return err
+	}
+
+	m.setupJobMetadata(job)
+	readOnlyVolume, actions := m.determineJobActions(dataPVC)
+	logger.Info("job actions", "actions", actions)
+
+	podSpec := &job.Spec.Template.Spec
+	envVars := m.buildEnvironmentVariables(repo)
+	m.configureContainer(podSpec, envVars, actions, readOnlyVolume, sa)
+	m.configureBasicVolumes(podSpec, dataPVC, readOnlyVolume)
+	m.configureCacheVolume(podSpec, cachePVC)
+
+	if err := m.configureAffinity(ctx, podSpec, dataPVC, logger); err != nil {
+		return err
+	}
+
+	m.configureCustomCA(podSpec, customCAObj)
+	m.configurePolicyConfig(podSpec, policyConfigObj)
+	m.configureGoogleCredentials(podSpec, repo)
+
+	// Update the job securityContext, podLabels and resourceRequirements from moverConfig (if specified)
+	utils.UpdatePodTemplateSpecFromMoverConfig(&job.Spec.Template, m.moverConfig, corev1.ResourceRequirements{})
+
+	m.configureSecurityContext(podSpec)
+	return nil
+}
+
+// setupJobMetadata sets up basic job metadata and configuration
+func (m *Mover) setupJobMetadata(job *batchv1.Job) {
+	utils.SetOwnedByVolSync(job)
+	utils.MarkForCleanup(m.owner, job)
+	job.Spec.Template.Name = job.Name
+	utils.SetOwnedByVolSync(&job.Spec.Template)
+	backoffLimit := int32(8)
+	job.Spec.BackoffLimit = &backoffLimit
+	parallelism := int32(1)
+	if m.paused {
+		parallelism = int32(0)
+	}
+	job.Spec.Parallelism = &parallelism
+}
+
+// determineJobActions determines job actions and volume access mode
+func (m *Mover) determineJobActions(dataPVC *corev1.PersistentVolumeClaim) (bool, []string) {
+	readOnlyVolume := false
+	var actions []string
+	if m.isSource {
+		actions = []string{"backup"}
+		// Set read-only for volume in source mover job spec if the PVC only supports read-only
+		readOnlyVolume = utils.PvcIsReadOnly(dataPVC)
+	} else {
+		actions = []string{"restore"}
+	}
+	return readOnlyVolume, actions
+}
+
+// buildEnvironmentVariables creates the base environment variables for the container
+func (m *Mover) buildEnvironmentVariables(repo *corev1.Secret) []corev1.EnvVar {
+	envVars := []corev1.EnvVar{
+		{Name: "DATA_DIR", Value: mountPath},
+		{Name: "KOPIA_CACHE_DIR", Value: kopiaCacheMountPath},
+		// We populate environment variables from the kopia repo
+		// Secret. They are taken 1-for-1 from the Secret into env vars.
+		// Mandatory variables are needed to define the repository
+		// location and its password.
+		utils.EnvFromSecret(repo.Name, "KOPIA_REPOSITORY", false),
+		utils.EnvFromSecret(repo.Name, "KOPIA_PASSWORD", false),
+
+		// Optional variables based on what backend is used for kopia
+		utils.EnvFromSecret(repo.Name, "AWS_ACCESS_KEY_ID", true),
+		utils.EnvFromSecret(repo.Name, "AWS_SECRET_ACCESS_KEY", true),
+		utils.EnvFromSecret(repo.Name, "AWS_SESSION_TOKEN", true),
+		utils.EnvFromSecret(repo.Name, "AWS_DEFAULT_REGION", true),
+		utils.EnvFromSecret(repo.Name, "AWS_PROFILE", true),
+		utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_NAME", true),
+		utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_KEY", true),
+		utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_SAS", true),
+		utils.EnvFromSecret(repo.Name, "AZURE_ENDPOINT_SUFFIX", true),
+		utils.EnvFromSecret(repo.Name, "GOOGLE_PROJECT_ID", true),
+	}
+
+	// Add source/destination specific environment variables
+	envVars = m.addSourceDestinationEnvVars(envVars)
+
+	// Cluster-wide proxy settings
+	envVars = utils.AppendEnvVarsForClusterWideProxy(envVars)
+
+	// Run mover in debug mode if required
+	envVars = utils.AppendDebugMoverEnvVar(m.owner, envVars)
+
+	return envVars
+}
+
+// addSourceDestinationEnvVars adds environment variables specific to source or destination
+func (m *Mover) addSourceDestinationEnvVars(envVars []corev1.EnvVar) []corev1.EnvVar {
+	if m.isSource {
+		return m.addSourceEnvVars(envVars)
+	}
+	return m.addDestinationEnvVars(envVars)
+}
+
+// addSourceEnvVars adds source-specific environment variables
+func (m *Mover) addSourceEnvVars(envVars []corev1.EnvVar) []corev1.EnvVar {
+	if m.compression != "" {
+		envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_COMPRESSION", Value: m.compression})
+	}
+	if m.parallelism != nil {
+		envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_PARALLELISM", Value: strconv.Itoa(int(*m.parallelism))})
+	}
+
+	// Add retention policy
+	envVars = m.addRetentionPolicyEnvVars(envVars)
+
+	// Add actions
+	envVars = m.addActionsEnvVars(envVars)
+
+	return envVars
+}
+
+// addDestinationEnvVars adds destination-specific environment variables
+func (m *Mover) addDestinationEnvVars(envVars []corev1.EnvVar) []corev1.EnvVar {
+	if m.restoreAsOf != nil {
+		envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_RESTORE_AS_OF", Value: *m.restoreAsOf})
+	}
+	if m.shallow != nil {
+		envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_SHALLOW", Value: strconv.Itoa(int(*m.shallow))})
+	}
+	return envVars
+}
+
+// addRetentionPolicyEnvVars adds retention policy environment variables
+func (m *Mover) addRetentionPolicyEnvVars(envVars []corev1.EnvVar) []corev1.EnvVar {
+	if m.retainPolicy == nil {
+		return envVars
+	}
+
+	if m.retainPolicy.Hourly != nil {
+		envVars = append(envVars, corev1.EnvVar{
+			Name: "KOPIA_RETAIN_HOURLY", Value: strconv.Itoa(int(*m.retainPolicy.Hourly))})
+	}
+	if m.retainPolicy.Daily != nil {
+		envVars = append(envVars, corev1.EnvVar{
+			Name: "KOPIA_RETAIN_DAILY", Value: strconv.Itoa(int(*m.retainPolicy.Daily))})
+	}
+	if m.retainPolicy.Weekly != nil {
+		envVars = append(envVars, corev1.EnvVar{
+			Name: "KOPIA_RETAIN_WEEKLY", Value: strconv.Itoa(int(*m.retainPolicy.Weekly))})
+	}
+	if m.retainPolicy.Monthly != nil {
+		envVars = append(envVars, corev1.EnvVar{
+			Name: "KOPIA_RETAIN_MONTHLY", Value: strconv.Itoa(int(*m.retainPolicy.Monthly))})
+	}
+	if m.retainPolicy.Yearly != nil {
+		envVars = append(envVars, corev1.EnvVar{
+			Name: "KOPIA_RETAIN_YEARLY", Value: strconv.Itoa(int(*m.retainPolicy.Yearly))})
+	}
+	return envVars
+}
+
+// addActionsEnvVars adds action environment variables
+func (m *Mover) addActionsEnvVars(envVars []corev1.EnvVar) []corev1.EnvVar {
+	if m.actions == nil {
+		return envVars
+	}
+
+	if m.actions.BeforeSnapshot != "" {
+		envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_BEFORE_SNAPSHOT", Value: m.actions.BeforeSnapshot})
+	}
+	if m.actions.AfterSnapshot != "" {
+		envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_AFTER_SNAPSHOT", Value: m.actions.AfterSnapshot})
+	}
+	return envVars
+}
+
+// configureContainer sets up the main container configuration
+func (m *Mover) configureContainer(podSpec *corev1.PodSpec, envVars []corev1.EnvVar,
+	actions []string, readOnlyVolume bool, sa *corev1.ServiceAccount) {
+	podSpec.Containers = []corev1.Container{{
+		Name:    "kopia",
+		Env:     envVars,
+		Command: []string{"/mover-kopia/entry.sh"},
+		Args:    actions,
+		Image:   m.containerImage,
+		SecurityContext: &corev1.SecurityContext{
+			AllowPrivilegeEscalation: ptr.To(false),
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{"ALL"},
+			},
+			Privileged:             ptr.To(false),
+			ReadOnlyRootFilesystem: ptr.To(true),
+		},
+		VolumeMounts: []corev1.VolumeMount{
+			{Name: dataVolumeName, MountPath: mountPath, ReadOnly: readOnlyVolume},
+			{Name: "tempdir", MountPath: "/tmp"},
+		},
+	}}
+	podSpec.RestartPolicy = corev1.RestartPolicyNever
+	podSpec.ServiceAccountName = sa.Name
+}
+
+// configureBasicVolumes sets up basic volumes for the pod
+func (m *Mover) configureBasicVolumes(podSpec *corev1.PodSpec,
+	dataPVC *corev1.PersistentVolumeClaim, readOnlyVolume bool) {
+	podSpec.Volumes = []corev1.Volume{
+		{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
+			PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+				ClaimName: dataPVC.Name,
+				ReadOnly:  readOnlyVolume,
+			}},
+		},
+		{Name: "tempdir", VolumeSource: corev1.VolumeSource{
+			EmptyDir: &corev1.EmptyDirVolumeSource{
+				Medium: corev1.StorageMediumMemory,
+			}},
+		},
+	}
+}
+
+// configureCacheVolume adds cache volume if specified
+func (m *Mover) configureCacheVolume(podSpec *corev1.PodSpec, cachePVC *corev1.PersistentVolumeClaim) {
+	if cachePVC == nil {
+		return
+	}
+
+	podSpec.Containers[0].VolumeMounts = append(podSpec.Containers[0].VolumeMounts, corev1.VolumeMount{
+		Name:      kopiaCache,
+		MountPath: kopiaCacheMountPath,
+	})
+	podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
+		Name: kopiaCache, VolumeSource: corev1.VolumeSource{
+			PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+				ClaimName: cachePVC.Name,
+			}},
+	})
+}
+
+// configureAffinity sets up node affinity if using direct copy method
+func (m *Mover) configureAffinity(ctx context.Context, podSpec *corev1.PodSpec,
+	dataPVC *corev1.PersistentVolumeClaim, logger logr.Logger) error {
+	if !m.vh.IsCopyMethodDirect() {
+		return nil
+	}
+
+	affinity, err := utils.AffinityFromVolume(ctx, m.client, logger, dataPVC)
+	if err != nil {
+		logger.Error(err, "unable to determine proper affinity", "PVC", client.ObjectKeyFromObject(dataPVC))
+		return err
+	}
+	podSpec.NodeSelector = affinity.NodeSelector
+	podSpec.Tolerations = affinity.Tolerations
+	return nil
+}
+
+// configureCustomCA sets up custom CA configuration if specified
+func (m *Mover) configureCustomCA(podSpec *corev1.PodSpec, customCAObj utils.CustomCAObject) {
+	if customCAObj == nil {
+		return
+	}
+
+	// Tell mover where to find the cert
+	podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
+		Name:  "CUSTOM_CA",
+		Value: path.Join(kopiaCAMountPath, kopiaCAFilename),
+	})
+	// Mount the custom CA certificate
+	podSpec.Containers[0].VolumeMounts =
+		append(podSpec.Containers[0].VolumeMounts, corev1.VolumeMount{
+			Name:      "custom-ca",
+			MountPath: kopiaCAMountPath,
+		})
+	podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
+		Name:         "custom-ca",
+		VolumeSource: customCAObj.GetVolumeSource(kopiaCAFilename),
+	})
+}
+
+// configurePolicyConfig sets up policy configuration if specified
+func (m *Mover) configurePolicyConfig(podSpec *corev1.PodSpec, policyConfigObj utils.CustomCAObject) {
+	if policyConfigObj == nil {
+		return
+	}
+
+	// Add environment variables to tell the mover where to find policy files
+	podSpec.Containers[0].Env = append(podSpec.Containers[0].Env,
+		corev1.EnvVar{
+			Name:  "KOPIA_CONFIG_PATH",
+			Value: kopiaPolicyMountPath,
+		},
+	)
+
+	// Add filenames if specified, otherwise use defaults
+	globalPolicyFile := defaultGlobalPolicyFile
+	if m.policyConfig.GlobalPolicyFilename != "" {
+		globalPolicyFile = m.policyConfig.GlobalPolicyFilename
+	}
+	repoConfigFile := defaultRepoConfigFile
+	if m.policyConfig.RepositoryConfigFilename != "" {
+		repoConfigFile = m.policyConfig.RepositoryConfigFilename
+	}
+
+	podSpec.Containers[0].Env = append(podSpec.Containers[0].Env,
+		corev1.EnvVar{
+			Name:  "KOPIA_GLOBAL_POLICY_FILE",
+			Value: path.Join(kopiaPolicyMountPath, globalPolicyFile),
+		},
+		corev1.EnvVar{
+			Name:  "KOPIA_REPOSITORY_CONFIG_FILE",
+			Value: path.Join(kopiaPolicyMountPath, repoConfigFile),
+		},
+	)
+
+	// Mount the policy configuration files volume
+	podSpec.Containers[0].VolumeMounts =
+		append(podSpec.Containers[0].VolumeMounts, corev1.VolumeMount{
+			Name:      "kopia-config",
+			MountPath: kopiaPolicyMountPath,
+		})
+	podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
+		Name:         "kopia-config",
+		VolumeSource: policyConfigObj.GetVolumeSource(""),
+	})
+}
+
+// configureGoogleCredentials sets up Google Application Credentials if present
+func (m *Mover) configureGoogleCredentials(podSpec *corev1.PodSpec, repo *corev1.Secret) {
+	// We handle GOOGLE_APPLICATION_CREDENTIALS specially...
+	// kopia expects it to be an env var pointing to a file w/ the
+	// credentials, but we have users provide the actual file data in the
+	// Secret under that key name. The following code sets the env var to be
+	// what kopia expects, then mounts just that Secret key into the
+	// container, pointed to by the env var.
+	if _, ok := repo.Data["GOOGLE_APPLICATION_CREDENTIALS"]; !ok {
+		return
+	}
+
+	container := &podSpec.Containers[0]
+	// Tell kopia where to look for the credential file
+	container.Env = append(container.Env, corev1.EnvVar{
+		Name:  "GOOGLE_APPLICATION_CREDENTIALS",
+		Value: path.Join(credentialDir, gcsCredentialFile),
+	})
+	// Mount the credential file
+	container.VolumeMounts =
+		append(container.VolumeMounts, corev1.VolumeMount{
+			Name:      "gcs-credentials",
+			MountPath: credentialDir,
+		})
+	podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
+		Name: "gcs-credentials",
+		VolumeSource: corev1.VolumeSource{
+			Secret: &corev1.SecretVolumeSource{
+				SecretName: repo.Name,
+				Items: []corev1.KeyToPath{
+					{Key: "GOOGLE_APPLICATION_CREDENTIALS", Path: gcsCredentialFile},
+				},
+			},
+		},
+	})
+}
+
+// configureSecurityContext sets up security context for privileged/non-privileged mode
+func (m *Mover) configureSecurityContext(podSpec *corev1.PodSpec) {
+	if m.privileged {
+		podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
+			Name:  "PRIVILEGED_MOVER",
+			Value: "1",
+		})
+		podSpec.Containers[0].SecurityContext.Capabilities.Add = []corev1.Capability{
+			"DAC_OVERRIDE", // Read/write all files
+			"CHOWN",        // chown files
+			"FOWNER",       // Set permission bits & times
+		}
+		podSpec.Containers[0].SecurityContext.RunAsUser = ptr.To[int64](0)
+	} else {
+		podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
+			Name:  "PRIVILEGED_MOVER",
+			Value: "0",
+		})
+	}
+}
+
+// handleJobStatus handles job status checking and completion logic
+func (m *Mover) handleJobStatus(ctx context.Context, job *batchv1.Job,
+	logger logr.Logger, err error) (*batchv1.Job, error) {
 	// If Job had failed, delete it so it can be recreated
 	if job.Status.Failed >= *job.Spec.BackoffLimit {
 		// Update status with mover logs from failed job
@@ -589,6 +717,87 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 	return job, nil
 }
 
+// setupPrerequisites handles the setup of all required resources before running the job
+func (m *Mover) setupPrerequisites(ctx context.Context) (*corev1.PersistentVolumeClaim,
+	*corev1.PersistentVolumeClaim, *corev1.ServiceAccount, *corev1.Secret,
+	utils.CustomCAObject, utils.CustomCAObject, error) {
+	// Allocate temporary data PVC
+	var dataPVC *corev1.PersistentVolumeClaim
+	var err error
+	if m.isSource {
+		dataPVC, err = m.ensureSourcePVC(ctx)
+	} else {
+		dataPVC, err = m.ensureDestinationPVC(ctx)
+	}
+	if dataPVC == nil || err != nil {
+		return nil, nil, nil, nil, nil, nil, err
+	}
+
+	// Allocate cache volume
+	// cleanupCachePVC will always be false for replicationsources - it's only set in the builder FromDestination()
+	cachePVC, err := m.ensureCache(ctx, dataPVC, m.cleanupCachePVC)
+	if cachePVC == nil || err != nil {
+		return nil, nil, nil, nil, nil, nil, err
+	}
+
+	// Prepare ServiceAccount
+	sa, err := m.saHandler.Reconcile(ctx, m.logger)
+	if sa == nil || err != nil {
+		return nil, nil, nil, nil, nil, nil, err
+	}
+
+	// Validate Repository Secret
+	repo, err := m.validateRepository(ctx)
+	if repo == nil || err != nil {
+		return nil, nil, nil, nil, nil, nil, err
+	}
+
+	// Validate custom CA if in spec
+	customCAObj, err := utils.ValidateCustomCA(ctx, m.client, m.logger,
+		m.owner.GetNamespace(), m.customCASpec)
+	// nil customCAObj is ok (indicates we're not using a custom CA)
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, err
+	}
+
+	// Validate policy config if in spec
+	policyConfigObj, err := m.validatePolicyConfig(ctx)
+	// nil policyConfigObj is ok (indicates we're not using custom policies)
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, err
+	}
+
+	return dataPVC, cachePVC, sa, repo, customCAObj, policyConfigObj, nil
+}
+
+// handleJobCompletion processes job status and handles completion logic
+func (m *Mover) handleJobCompletion(ctx context.Context, job *batchv1.Job,
+	dataPVC *corev1.PersistentVolumeClaim) (mover.Result, error) {
+	// Job handling - check for completion or failure
+	if job.Status.Failed > 0 {
+		// Job has failed - this should have been handled in ensureJob,
+		// but we check here too for safety
+		return mover.InProgress(), nil
+	}
+
+	// Stop here if the job hasn't completed yet
+	if job.Status.Succeeded == 0 {
+		return mover.InProgress(), nil
+	}
+
+	// Job completed successfully
+	// On the destination, preserve the image and return it
+	if !m.isSource {
+		image, err := m.vh.EnsureImage(ctx, m.logger, dataPVC)
+		if image == nil || err != nil {
+			return mover.InProgress(), err
+		}
+		return mover.CompleteWithImage(image), nil
+	}
+
+	// On the source, just signal completion
+	return mover.Complete(), nil
+}
 
 func (m *Mover) shouldRunMaintenance() bool {
 	if m.maintenanceInterval == nil || *m.maintenanceInterval <= 0 {
