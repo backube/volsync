@@ -620,6 +620,411 @@ Restore issues
 
 **Solution**: Ensure the destination PVC has sufficient space and appropriate permissions. Check that the ``copyMethod`` is set correctly for your use case.
 
+Advanced policy configuration
+===============================
+
+VolSync supports Kopia's advanced policy-based configuration system, allowing users to define comprehensive backup policies using ConfigMaps or Secrets. This enables fine-grained control over Kopia's behavior including compression, retention, ignore patterns, error handling, and more.
+
+Overview of Kopia policies
+---------------------------
+
+Kopia uses a hierarchical policy system with four levels:
+
+1. **Global Policy** - Applies to all snapshots in the repository
+2. **Per-Host Policy (@host)** - Applies to all snapshots from a specific machine  
+3. **Per-User Policy (user@host)** - Applies to all snapshots from a specific user
+4. **Per-Directory Policy (user@host:path)** - Applies to specific directories
+
+More specific policies override less specific ones (Directory → User → Host → Global).
+
+VolSync currently supports global policy configuration, which provides comprehensive control over backup behavior across the entire repository.
+
+Policy configuration options
+-----------------------------
+
+The ``policyConfig`` field allows you to specify ConfigMaps or Secrets containing Kopia policy JSON files:
+
+.. code-block:: yaml
+
+   kopia:
+     repository: kopia-config
+     policyConfig:
+       # Use either configMapName OR secretName, not both
+       configMapName: kopia-policies
+       # secretName: kopia-policy-secret
+       
+       # Optional: customize filenames (defaults shown)
+       globalPolicyFilename: global-policy.json
+       repositoryConfigFilename: repository.config
+
+``configMapName``
+   The name of a ConfigMap containing policy configuration files. Use this for non-sensitive policy data.
+
+``secretName``
+   The name of a Secret containing policy configuration files. Use this for policies containing sensitive information like scripts or credentials.
+
+``globalPolicyFilename``
+   The filename for the global policy configuration within the ConfigMap/Secret. Defaults to ``global-policy.json``.
+
+``repositoryConfigFilename``
+   The filename for repository-specific settings within the ConfigMap/Secret. Defaults to ``repository.config``.
+
+Creating policy files
+----------------------
+
+Global policy file format
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The global policy file should be in JSON format and can include comprehensive backup settings:
+
+.. code-block:: json
+
+   {
+     "compression": {
+       "compressorName": "zstd",
+       "minSize": 1024,
+       "maxSize": 1048576
+     },
+     "retention": {
+       "keepLatest": 10,
+       "keepHourly": 24,
+       "keepDaily": 30,
+       "keepWeekly": 4,
+       "keepMonthly": 12,
+       "keepAnnual": 3
+     },
+     "files": {
+       "ignore": [
+         ".DS_Store",
+         "Thumbs.db",
+         "*.tmp",
+         "*.log",
+         "node_modules/",
+         ".git/",
+         "__pycache__/"
+       ],
+       "ignoreCacheDirectories": true,
+       "noParentIgnoreRules": false
+     },
+     "errorHandling": {
+       "ignoreFileErrors": false,
+       "ignoreDirectoryErrors": false
+     },
+     "upload": {
+       "maxParallelFileReads": 16,
+       "maxParallelSnapshots": 4,
+       "parallelUploads": 8
+     },
+     "actions": {
+       "beforeSnapshotRoot": {
+         "script": "sync && echo 3 > /proc/sys/vm/drop_caches",
+         "timeout": "5m",
+         "mode": "essential"
+       },
+       "afterSnapshotRoot": {
+         "script": "echo 'Backup completed'",
+         "timeout": "2m",
+         "mode": "optional"
+       }
+     }
+   }
+
+Repository configuration file format
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The repository configuration file controls repository-wide settings:
+
+.. code-block:: json
+
+   {
+     "storage": {
+       "type": "s3"
+     },
+     "caching": {
+       "maxCacheSize": 1073741824,
+       "maxListCacheDuration": 600
+     },
+     "enableActions": true,
+     "compression": {
+       "onlyCompress": ["*.txt", "*.log"],
+       "neverCompress": ["*.jpg", "*.png", "*.mp4"],
+       "minSize": 1024,
+       "maxSize": 1073741824
+     }
+   }
+
+Policy configuration examples
+-----------------------------
+
+Basic policy configuration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Create a ConfigMap with comprehensive backup policies:
+
+.. code-block:: yaml
+
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: kopia-policies
+   data:
+     global-policy.json: |
+       {
+         "compression": {
+           "compressorName": "zstd",
+           "minSize": 1024
+         },
+         "retention": {
+           "keepLatest": 5,
+           "keepDaily": 14,
+           "keepWeekly": 8,
+           "keepMonthly": 6
+         },
+         "files": {
+           "ignore": [
+             "*.log",
+             "*.tmp",
+             ".cache/",
+             "node_modules/"
+           ],
+           "ignoreCacheDirectories": true
+         }
+       }
+     repository.config: |
+       {
+         "enableActions": true,
+         "caching": {
+           "maxCacheSize": 2147483648
+         }
+       }
+
+Use the policy configuration in a ReplicationSource:
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: app-backup-with-policies
+   spec:
+     sourcePVC: app-data
+     trigger:
+       schedule: "0 2 * * *"  # Daily at 2 AM
+     kopia:
+       repository: kopia-config
+       policyConfig:
+         configMapName: kopia-policies
+       # Standard fields still work as fallbacks
+       cacheCapacity: 5Gi
+       copyMethod: Snapshot
+
+Advanced policy with actions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For applications requiring specific pre/post backup actions:
+
+.. code-block:: yaml
+
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: kopia-database-policies
+   data:
+     global-policy.json: |
+       {
+         "compression": {
+           "compressorName": "zstd"
+         },
+         "retention": {
+           "keepLatest": 3,
+           "keepDaily": 7,
+           "keepWeekly": 4
+         },
+         "actions": {
+           "beforeSnapshotRoot": {
+             "script": "mysqldump --single-transaction --all-databases > /data/backup.sql",
+             "timeout": "10m",
+             "mode": "essential"
+           },
+           "afterSnapshotRoot": {
+             "script": "rm -f /data/backup.sql",
+             "timeout": "1m",
+             "mode": "optional"
+           }
+         },
+         "files": {
+           "ignore": [
+             "*.log",
+             "mysql-bin.*"
+           ]
+         }
+       }
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: database-backup
+   spec:
+     sourcePVC: mysql-data
+     trigger:
+       schedule: "0 1 * * *"
+     kopia:
+       repository: kopia-config
+       policyConfig:
+         configMapName: kopia-database-policies
+       copyMethod: Clone
+
+Environment-specific policies
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Different policies for development and production environments:
+
+.. code-block:: yaml
+
+   # Development policies (faster, less retention)
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: kopia-dev-policies
+   data:
+     global-policy.json: |
+       {
+         "compression": {
+           "compressorName": "s2"  # Faster compression
+         },
+         "retention": {
+           "keepLatest": 3,
+           "keepDaily": 7
+         },
+         "upload": {
+           "parallelUploads": 2
+         }
+       }
+
+   ---
+   # Production policies (better compression, longer retention)
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: kopia-prod-policies
+   data:
+     global-policy.json: |
+       {
+         "compression": {
+           "compressorName": "zstd"  # Better compression
+         },
+         "retention": {
+           "keepLatest": 10,
+           "keepDaily": 30,
+           "keepWeekly": 12,
+           "keepMonthly": 12,
+           "keepAnnual": 5
+         },
+         "upload": {
+           "parallelUploads": 8
+         }
+       }
+
+Using policies with ReplicationDestination
+------------------------------------------
+
+Policy configuration can also be used with ReplicationDestination for restore operations:
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: restore-with-policies
+   spec:
+     trigger:
+       manual: restore-once
+     kopia:
+       repository: kopia-config
+       policyConfig:
+         configMapName: kopia-policies
+       destinationPVC: restored-data
+       copyMethod: Direct
+
+Policy precedence and interaction
+---------------------------------
+
+When both policy files and VolSync spec fields are provided:
+
+1. **Policy files take precedence** for settings they define
+2. **VolSync spec fields act as fallbacks** for undefined policy settings  
+3. **Repository-level settings** override both for repository-wide configurations
+
+For example, if both ``policyConfig`` and spec-level ``retain`` are specified:
+
+.. code-block:: yaml
+
+   kopia:
+     policyConfig:
+       configMapName: kopia-policies  # Contains retention: {"keepDaily": 14}
+     retain:
+       daily: 7   # This becomes fallback since policy defines keepDaily
+       weekly: 4  # This is used since policy doesn't define keepWeekly
+
+Troubleshooting policy configuration
+------------------------------------
+
+Verifying policy application
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Check if policies are being applied correctly:
+
+.. code-block:: console
+
+   # Check the ConfigMap contents
+   $ kubectl get configmap kopia-policies -o yaml
+   
+   # View job logs to see policy import messages
+   $ kubectl logs <replicationsource-job-name>
+
+Common policy issues
+~~~~~~~~~~~~~~~~~~~~
+
+**Invalid JSON format**
+   Policy files must be valid JSON. Use a JSON validator to check syntax.
+
+**Missing policy files**
+   Ensure the specified filenames exist in the ConfigMap/Secret with the correct names.
+
+**Policy import failures**
+   Check job logs for specific error messages about policy import failures.
+
+**ConfigMap/Secret not found**
+   Verify the ConfigMap or Secret exists in the same namespace as the ReplicationSource/ReplicationDestination.
+
+**Actions not executing**
+   Ensure ``enableActions`` is set to ``true`` in the repository configuration file.
+
+Best practices for policy management
+------------------------------------
+
+1. **Use ConfigMaps** for non-sensitive policy data
+2. **Use Secrets** for policies containing sensitive scripts or configurations  
+3. **Test policies** in development environments before production use
+4. **Version control** your policy configurations
+5. **Document policy changes** and their expected impact
+6. **Monitor backup success** after implementing new policies
+7. **Use meaningful names** for ConfigMaps/Secrets to identify their purpose
+8. **Validate JSON** before creating ConfigMaps/Secrets
+
+Security considerations
+-----------------------
+
+Policy files can contain executable scripts in the ``actions`` section. Consider these security aspects:
+
+* **Validate script content** before deploying policies
+* **Use Secrets** for policies containing sensitive information
+* **Apply appropriate RBAC** to ConfigMaps/Secrets containing policies
+* **Monitor policy changes** through change management processes
+* **Limit script complexity** to reduce potential security risks
+
 Kopia-specific features
 =======================
 
@@ -669,6 +1074,9 @@ These actions run inside the source PVC container and can be used to:
 * Create consistent application snapshots  
 * Pause application writes
 * Clean up temporary files after backup
+
+.. note::
+   For more advanced action configuration, consider using the ``policyConfig`` option which allows defining actions with timeouts, error handling modes, and more sophisticated scripting capabilities.
 
 Concurrent Access
 -----------------
