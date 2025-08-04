@@ -369,11 +369,20 @@ func (m *Mover) buildEnvironmentVariables(repo *corev1.Secret) []corev1.EnvVar {
 		utils.EnvFromSecret(repo.Name, "AWS_SESSION_TOKEN", true),
 		utils.EnvFromSecret(repo.Name, "AWS_DEFAULT_REGION", true),
 		utils.EnvFromSecret(repo.Name, "AWS_PROFILE", true),
+		utils.EnvFromSecret(repo.Name, "KOPIA_S3_BUCKET", true),
+		utils.EnvFromSecret(repo.Name, "KOPIA_S3_ENDPOINT", true),
+		utils.EnvFromSecret(repo.Name, "KOPIA_S3_DISABLE_TLS", true),
 		utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_NAME", true),
 		utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_KEY", true),
 		utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_SAS", true),
 		utils.EnvFromSecret(repo.Name, "AZURE_ENDPOINT_SUFFIX", true),
 		utils.EnvFromSecret(repo.Name, "GOOGLE_PROJECT_ID", true),
+		utils.EnvFromSecret(repo.Name, "KOPIA_AZURE_CONTAINER", true),
+		utils.EnvFromSecret(repo.Name, "KOPIA_AZURE_STORAGE_ACCOUNT", true),
+		utils.EnvFromSecret(repo.Name, "KOPIA_AZURE_STORAGE_KEY", true),
+		utils.EnvFromSecret(repo.Name, "KOPIA_GCS_BUCKET", true),
+		utils.EnvFromSecret(repo.Name, "GOOGLE_APPLICATION_CREDENTIALS", true),
+		utils.EnvFromSecret(repo.Name, "KOPIA_FS_PATH", true),
 	}
 
 	// Add source/destination specific environment variables
