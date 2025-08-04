@@ -86,6 +86,23 @@ The path used in the ``KOPIA_REPOSITORY`` is the s3 bucket but can optionally
 contain a folder name within the bucket as well. This can be useful
 if multiple PVCs are to be backed up to the same S3 bucket.
 
+**S3 Nested Path Configuration**
+
+VolSync's Kopia mover supports complex nested paths within S3 buckets. When you specify a repository URL like ``s3://bucket/path1/path2/path3``, the mover automatically:
+
+1. Extracts the bucket name (``bucket``)
+2. Extracts the prefix path (``path1/path2/path3``)  
+3. Configures Kopia to use the prefix appropriately
+
+This enables sophisticated repository organization:
+
+.. code-block:: yaml
+
+  # Different applications using the same bucket
+  KOPIA_REPOSITORY: s3://company-backups/production/database/mysql-primary
+  KOPIA_REPOSITORY: s3://company-backups/production/database/postgresql-secondary
+  KOPIA_REPOSITORY: s3://company-backups/staging/application/web-frontend
+
 As an example one kopia-config secret could use:
 
 .. code-block:: yaml
@@ -132,6 +149,32 @@ S3-compatible storage (AWS S3, MinIO, etc.)
      # Optional: specify region
      AWS_REGION: us-west-2
 
+**Alternative S3 Configuration**
+
+You can also use the new Kopia-specific S3 environment variables for more explicit configuration:
+
+.. code-block:: yaml
+
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: kopia-config
+   type: Opaque
+   stringData:
+     KOPIA_REPOSITORY: s3://my-bucket/backups
+     KOPIA_PASSWORD: my-secure-password
+     # Kopia-specific S3 variables
+     KOPIA_S3_BUCKET: my-bucket
+     KOPIA_S3_ENDPOINT: minio.example.com:9000
+     KOPIA_S3_DISABLE_TLS: "true"  # For HTTP endpoints
+     # Standard AWS credentials
+     AWS_ACCESS_KEY_ID: AKIAIOSFODNN7EXAMPLE
+     AWS_SECRET_ACCESS_KEY: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+     AWS_DEFAULT_REGION: us-west-2
+
+.. note::
+   The ``KOPIA_S3_*`` variables provide more explicit control over S3 configuration and support nested repository paths. When using ``KOPIA_REPOSITORY: s3://my-bucket/path1/path2``, Kopia will automatically extract the prefix (``path1/path2``) and configure the repository accordingly.
+
 Filesystem storage
 ~~~~~~~~~~~~~~~~~~
 
@@ -174,6 +217,36 @@ Google Cloud Storage
          "token_uri": "https://oauth2.googleapis.com/token"
        }
 
+**Alternative GCS Configuration**
+
+You can also use the new Kopia-specific GCS environment variables:
+
+.. code-block:: yaml
+
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: kopia-config
+   type: Opaque
+   stringData:
+     KOPIA_REPOSITORY: gcs://my-gcs-bucket/backups
+     KOPIA_PASSWORD: my-secure-password
+     # Kopia-specific GCS variables
+     KOPIA_GCS_BUCKET: my-gcs-bucket
+     GOOGLE_PROJECT_ID: my-project
+     # Service account credentials (JSON content, not file path)
+     GOOGLE_APPLICATION_CREDENTIALS: |
+       {
+         "type": "service_account",
+         "project_id": "my-project",
+         "private_key_id": "key-id",
+         "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
+         "client_email": "backup-service@my-project.iam.gserviceaccount.com",
+         "client_id": "123456789",
+         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+         "token_uri": "https://oauth2.googleapis.com/token"
+       }
+
 Azure Blob Storage
 ~~~~~~~~~~~~~~~~~~
 
@@ -187,10 +260,112 @@ Azure Blob Storage
    stringData:
      KOPIA_REPOSITORY: azure://container/backups
      KOPIA_PASSWORD: my-secure-password
+     # Standard Azure credentials
      AZURE_STORAGE_ACCOUNT: mystorageaccount
      AZURE_STORAGE_KEY: storage-key-here
      # Alternative: using SAS token
      # AZURE_STORAGE_SAS_TOKEN: sv=2020-08-04&ss=bfqt&srt=sco&sp=rwdlacupx&se=2021-01-01T00:00:00Z&st=2020-01-01T00:00:00Z&spr=https,http&sig=signature
+
+**Alternative Azure Configuration**
+
+You can also use the new Kopia-specific Azure environment variables:
+
+.. code-block:: yaml
+
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: kopia-config
+   type: Opaque
+   stringData:
+     KOPIA_REPOSITORY: azure://container/backups
+     KOPIA_PASSWORD: my-secure-password
+     # Kopia-specific Azure variables
+     KOPIA_AZURE_CONTAINER: container
+     KOPIA_AZURE_STORAGE_ACCOUNT: mystorageaccount
+     KOPIA_AZURE_STORAGE_KEY: storage-key-here
+     # Optional: Azure endpoint suffix for non-public clouds
+     AZURE_ENDPOINT_SUFFIX: core.windows.net
+     # Optional: Account name and key (alternative naming)
+     AZURE_ACCOUNT_NAME: mystorageaccount
+     AZURE_ACCOUNT_KEY: storage-key-here
+     # Optional: SAS token authentication
+     AZURE_ACCOUNT_SAS: sv=2020-08-04&ss=bfqt&srt=sco&sp=rwdlacupx
+
+Environment Variables Reference
+-------------------------------
+
+VolSync's Kopia mover supports a comprehensive set of environment variables for configuring different storage backends and repository settings:
+
+**Core Kopia Variables**
+
+``KOPIA_REPOSITORY``
+   The repository URL specifying the storage backend and path (required)
+
+``KOPIA_PASSWORD``
+   The repository encryption password (required)
+
+**S3-Compatible Storage Variables**
+
+``AWS_ACCESS_KEY_ID``, ``AWS_SECRET_ACCESS_KEY``
+   Standard AWS S3 credentials
+
+``AWS_S3_ENDPOINT``
+   S3 endpoint URL for non-AWS S3 services
+
+``AWS_DEFAULT_REGION``, ``AWS_REGION``
+   AWS region for the S3 bucket
+
+``AWS_PROFILE``
+   AWS profile to use for authentication
+
+``KOPIA_S3_BUCKET``
+   S3 bucket name (alternative to extracting from KOPIA_REPOSITORY)
+
+``KOPIA_S3_ENDPOINT``
+   S3 endpoint hostname and port (alternative to AWS_S3_ENDPOINT)
+
+``KOPIA_S3_DISABLE_TLS``
+   Set to "true" to disable TLS for HTTP-only S3 endpoints
+
+**Azure Blob Storage Variables**
+
+``AZURE_STORAGE_ACCOUNT``, ``KOPIA_AZURE_STORAGE_ACCOUNT``
+   Azure storage account name
+
+``AZURE_STORAGE_KEY``, ``KOPIA_AZURE_STORAGE_KEY``
+   Azure storage account key
+
+``AZURE_STORAGE_SAS_TOKEN``
+   Azure SAS token for authentication
+
+``AZURE_ACCOUNT_NAME``, ``AZURE_ACCOUNT_KEY``, ``AZURE_ACCOUNT_SAS``
+   Alternative Azure credential variable names
+
+``AZURE_ENDPOINT_SUFFIX``
+   Azure endpoint suffix for non-public clouds
+
+``KOPIA_AZURE_CONTAINER``
+   Azure blob container name
+
+**Google Cloud Storage Variables**
+
+``GOOGLE_APPLICATION_CREDENTIALS``
+   Google service account credentials (JSON content)
+
+``GOOGLE_PROJECT_ID``
+   Google Cloud project ID
+
+``KOPIA_GCS_BUCKET``
+   GCS bucket name
+
+**Filesystem Storage Variables**
+
+``KOPIA_FS_PATH``
+   Filesystem path for local or network-attached storage repositories
+
+.. note::
+   Environment variables are displayed securely in mover logs as ``[SET]`` or ``[NOT SET]`` to prevent credential exposure while providing configuration visibility for troubleshooting.
 
 Configuring backup
 ==================
@@ -234,6 +409,8 @@ replication method.
        #storageClassName: my-sc-name
        # The VSC to use if the copy method is Snapshot (default if omitted)
        #volumeSnapshotClassName: my-vsc-name
+       # Override the source path name in snapshots (optional)
+       #sourcePathOverride: /var/lib/postgresql/data
 
 Backup options
 --------------
@@ -304,6 +481,416 @@ retain
 
    When more than the specified number of backups are present in the repository,
    they will be removed during the next maintenance operation.
+sourcePathOverride
+   This optional field allows you to override the source path name that appears
+   in Kopia snapshots. When specified, it must be an absolute path (starting with
+   ``/``). This is useful for maintaining consistent snapshot naming when the actual
+   filesystem path differs from the logical application path. See the
+   :ref:`source-path-override` section for detailed usage examples.
+
+.. _source-path-override:
+
+Source Path Override
+====================
+
+The ``sourcePathOverride`` field provides a powerful way to control how your backup source paths appear in Kopia snapshots. This feature allows you to use a different path name in snapshots than the actual filesystem path where the data is stored, enabling better organization and consistency in your backup repository.
+
+Purpose and Benefits
+--------------------
+
+By default, Kopia uses the actual mount point of your PVC as the source path in snapshots. However, there are many scenarios where you might want to override this behavior:
+
+**Consistency Across Environments**: Maintain the same logical path across different clusters or environments, even when the underlying storage configuration differs.
+
+**Application-Centric Naming**: Use paths that reflect the application's perspective rather than Kubernetes' internal mount points.
+
+**Simplified Organization**: Create clean, predictable snapshot names that make backup management easier.
+
+**Migration Support**: Preserve original application paths when migrating workloads between different storage systems.
+
+Common Use Cases
+----------------
+
+Database Backups
+~~~~~~~~~~~~~~~~~
+
+Database applications often expect data to be located at specific standard paths. When backing up database data, you can preserve these logical paths regardless of where Kubernetes mounts the PVC:
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: postgres-backup
+   spec:
+     sourcePVC: postgres-data
+     trigger:
+       schedule: "0 2 * * *"
+     kopia:
+       repository: kopia-config
+       # Data is mounted at /data in the pod, but we want snapshots 
+       # to show the standard PostgreSQL data directory path
+       sourcePathOverride: /var/lib/postgresql/data
+       retain:
+         daily: 7
+         weekly: 4
+       copyMethod: Clone
+
+In this example, even though the PVC might be mounted at ``/data`` inside the container, the Kopia snapshots will show the path as ``/var/lib/postgresql/data``, making it clear that this is PostgreSQL data and maintaining consistency with standard PostgreSQL installations.
+
+Application Configuration Backups
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When backing up application configurations, you may want to preserve the logical application paths:
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: app-config-backup
+   spec:
+     sourcePVC: app-config
+     trigger:
+       schedule: "0 1 * * *"
+     kopia:
+       repository: kopia-config
+       # PVC mounted at /config, but we want to preserve the app's perspective
+       sourcePathOverride: /opt/myapp/config
+       retain:
+         daily: 14
+         monthly: 6
+       copyMethod: Snapshot
+
+This ensures that when you view snapshots or perform restores, the paths reflect where the application expects to find its configuration files.
+
+Filesystem Snapshot Backups
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When backing up data from storage system snapshots or temporary mounts, you can preserve the original filesystem paths:
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: filesystem-backup
+   spec:
+     sourcePVC: snapshot-mount
+     trigger:
+       schedule: "0 3 * * *"
+     kopia:
+       repository: kopia-config
+       # Backup from temporary snapshot mount but preserve original path
+       sourcePathOverride: /home/users
+       retain:
+         daily: 30
+         weekly: 12
+       copyMethod: Direct
+
+This is particularly useful when backing up data from storage system snapshots where the data is temporarily mounted for backup purposes, but you want to maintain the original filesystem structure in your backup repository.
+
+Clean Snapshot Organization
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Create well-organized backup repositories with predictable path structures:
+
+.. code-block:: yaml
+
+   # Application data backup
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: webapp-data-backup
+   spec:
+     sourcePVC: webapp-storage
+     trigger:
+       schedule: "*/6 * * * *"
+     kopia:
+       repository: kopia-config
+       sourcePathOverride: /applications/webapp/data
+       copyMethod: Clone
+
+   ---
+   # Log data backup  
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: webapp-logs-backup
+   spec:
+     sourcePVC: webapp-logs
+     trigger:
+       schedule: "0 4 * * *"
+     kopia:
+       repository: kopia-config
+       sourcePathOverride: /applications/webapp/logs
+       copyMethod: Direct
+
+This approach creates a logical hierarchy in your backup repository that makes it easy to understand what each snapshot contains, regardless of the actual Kubernetes PVC mount points.
+
+Integration with Multi-Tenancy
+-------------------------------
+
+The ``sourcePathOverride`` feature works seamlessly with Kopia's built-in multi-tenancy features, which use username and hostname to organize snapshots. VolSync automatically configures these based on the Kubernetes namespace and ReplicationSource name:
+
+**Default Behavior** (without sourcePathOverride):
+  Snapshots appear as: ``<namespace>@<replicationsource-name>:/actual/mount/path``
+
+**With sourcePathOverride**:
+  Snapshots appear as: ``<namespace>@<replicationsource-name>:/your/custom/path``
+
+This provides excellent isolation and organization across multiple applications and namespaces while maintaining meaningful path names:
+
+.. code-block:: yaml
+
+   # Namespace: production
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: mysql-primary
+   spec:
+     sourcePVC: mysql-data
+     kopia:
+       repository: kopia-config
+       sourcePathOverride: /var/lib/mysql
+       # Results in snapshots like: production@mysql-primary:/var/lib/mysql
+
+   ---
+   # Namespace: staging  
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: mysql-primary
+   spec:
+     sourcePVC: mysql-data
+     kopia:
+       repository: kopia-config
+       sourcePathOverride: /var/lib/mysql
+       # Results in snapshots like: staging@mysql-primary:/var/lib/mysql
+
+Both applications can use the same repository and the same logical path, but they remain completely isolated due to the namespace-based user identification.
+
+Technical Implementation
+------------------------
+
+The ``sourcePathOverride`` feature is implemented using Kopia's ``--override-source`` flag, which provides native support for custom source paths. This ensures compatibility with all Kopia features and maintains the integrity of the backup repository.
+
+**Key Technical Details**:
+
+- Must be an absolute path (starting with ``/``)
+- Only applies to ReplicationSource (backup operations)
+- Not used for ReplicationDestination (restore operations use repository metadata)
+- Compatible with all repository backends (S3, Azure, GCS, filesystem)
+- Works with all copy methods (Direct, Clone, Snapshot)
+- Integrates with Kopia policies and actions
+
+Configuration Examples
+-----------------------
+
+Basic Path Override
+~~~~~~~~~~~~~~~~~~~
+
+Simple override for cleaner snapshot naming:
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: data-backup
+   spec:
+     sourcePVC: application-data
+     trigger:
+       schedule: "0 */4 * * *"
+     kopia:
+       repository: kopia-config
+       sourcePathOverride: /app/data
+       retain:
+         hourly: 6
+         daily: 7
+
+Multi-Application Environment
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Organize multiple applications in a single repository:
+
+.. code-block:: yaml
+
+   # Frontend application
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: frontend-backup
+     namespace: web-tier
+   spec:
+     sourcePVC: frontend-data
+     kopia:
+       repository: shared-backup-config
+       sourcePathOverride: /services/frontend/data
+
+   ---
+   # Backend API
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: api-backup
+     namespace: api-tier
+   spec:
+     sourcePVC: api-data
+     kopia:
+       repository: shared-backup-config
+       sourcePathOverride: /services/api/data
+
+   ---
+   # Database
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: database-backup
+     namespace: data-tier
+   spec:
+     sourcePVC: postgres-data
+     kopia:
+       repository: shared-backup-config
+       sourcePathOverride: /services/database/postgresql
+
+This creates a well-organized repository structure where snapshots clearly indicate which service they belong to, making backup management much easier.
+
+Path Override with Actions
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Combine path override with pre/post snapshot actions:
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: mysql-backup
+   spec:
+     sourcePVC: mysql-data
+     trigger:
+       schedule: "0 2 * * *"
+     kopia:
+       repository: kopia-config
+       sourcePathOverride: /var/lib/mysql
+       actions:
+         beforeSnapshot: "mysqldump --single-transaction --all-databases > /var/lib/mysql/backup.sql"
+         afterSnapshot: "rm -f /var/lib/mysql/backup.sql"
+       retain:
+         daily: 7
+         weekly: 4
+
+Advanced Configuration with Policies
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Use path override with policy-based configuration:
+
+.. code-block:: yaml
+
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: database-backup-policies
+   data:
+     global-policy.json: |
+       {
+         "compression": {
+           "compressorName": "zstd"
+         },
+         "retention": {
+           "keepDaily": 14,
+           "keepWeekly": 8,
+           "keepMonthly": 6
+         },
+         "files": {
+           "ignore": [
+             "*.log",
+             "*.tmp",
+             "mysql-bin.*"
+           ]
+         },
+         "actions": {
+           "beforeSnapshotRoot": {
+             "script": "mysqldump --single-transaction --all-databases > /var/lib/mysql/full-backup.sql",
+             "timeout": "15m",
+             "mode": "essential"
+           },
+           "afterSnapshotRoot": {
+             "script": "rm -f /var/lib/mysql/full-backup.sql",
+             "timeout": "2m",
+             "mode": "optional"
+           }
+         }
+       }
+
+   ---
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: mysql-backup-with-policies
+   spec:
+     sourcePVC: mysql-data
+     trigger:
+       schedule: "0 2 * * *"
+     kopia:
+       repository: kopia-config
+       sourcePathOverride: /var/lib/mysql
+       policyConfig:
+         configMapName: database-backup-policies
+       copyMethod: Clone
+
+Best Practices
+--------------
+
+**Use Meaningful Paths**: Choose paths that clearly indicate the type of data being backed up and its purpose. Use standard application paths when possible (e.g., ``/var/lib/postgresql/data`` for PostgreSQL).
+
+**Maintain Consistency**: Use the same path override across all environments (development, staging, production) for the same application to ensure consistency.
+
+**Consider Restoration**: While restore operations don't use the override path directly, having logical snapshot names makes it much easier to identify the correct snapshot to restore.
+
+**Organize by Function**: Group related applications under common path prefixes (e.g., ``/services/frontend``, ``/services/backend``, ``/services/database``).
+
+**Document Your Strategy**: Maintain documentation of your path override strategy so team members understand the organization scheme.
+
+**Test Restore Scenarios**: Verify that your path override strategy doesn't complicate restore procedures, especially in disaster recovery scenarios.
+
+Troubleshooting
+---------------
+
+**Invalid Path Format**
+
+The most common issue is using relative paths instead of absolute paths:
+
+.. code-block:: yaml
+
+   # Incorrect - relative path
+   sourcePathOverride: var/lib/mysql
+   
+   # Correct - absolute path
+   sourcePathOverride: /var/lib/mysql
+
+**Path Override Not Appearing**
+
+If your path override doesn't appear in snapshots, verify:
+
+1. The field is correctly specified in the ReplicationSource
+2. The ReplicationSource is using the Kopia mover (not Restic or another mover)
+3. Check the mover job logs for any override-related messages
+
+**Snapshot Identification**
+
+To verify that your path override is working, examine the Kopia repository:
+
+.. code-block:: console
+
+   # List snapshots to see the override paths
+   $ kubectl exec -it <kopia-job-pod> -- kopia snapshot list
+   
+   # Look for your custom path in the snapshot listings
+   $ kubectl logs <replicationsource-job-pod> | grep -i override
+
+The path override feature provides powerful flexibility for organizing and managing your Kopia backups within VolSync, enabling you to create clean, consistent, and meaningful backup repositories regardless of the underlying Kubernetes storage configuration.
 
 Performing a restore
 ====================
@@ -498,6 +1085,24 @@ Repository connection issues
 
 For S3-compatible storage, ensure the endpoint URL is correct and accessible from the cluster.
 
+**Problem**: Repository connection fails with endpoint or TLS errors.
+
+**Solution**: Check the mover job logs for secure environment variable status. The logs will show which variables are ``[SET]`` or ``[NOT SET]`` without exposing actual values:
+
+.. code-block:: console
+
+   $ kubectl logs <kopia-job-pod-name>
+   
+   === ENVIRONMENT VARIABLES STATUS ===
+   KOPIA_REPOSITORY: [SET]
+   KOPIA_PASSWORD: [SET]  
+   KOPIA_S3_BUCKET: [SET]
+   KOPIA_S3_ENDPOINT: [SET]
+   AWS_ACCESS_KEY_ID: [SET]
+   AWS_SECRET_ACCESS_KEY: [NOT SET]  # This indicates a missing credential
+
+For S3 endpoints using HTTP (not HTTPS), ensure ``KOPIA_S3_DISABLE_TLS: "true"`` is set in your Secret.
+
 **Problem**: Repository initialization fails.
 
 **Solution**: Ensure the storage backend is accessible and the bucket/container exists:
@@ -519,9 +1124,33 @@ Cache volume issues
    kopia:
      cacheCapacity: 5Gi  # Increase from default 1Gi
 
+The cache volume stores repository metadata and must be sized appropriately for your repository. Larger repositories with many snapshots require more cache space.
+
 **Problem**: Cache PVC remains after ReplicationDestination is deleted.
 
-**Solution**: Set ``cleanupCachePVC: true`` in your ReplicationDestination to automatically clean up cache volumes.
+**Solution**: Set ``cleanupCachePVC: true`` in your ReplicationDestination to automatically clean up cache volumes:
+
+.. code-block:: yaml
+
+   kopia:
+     cleanupCachePVC: true
+
+**Problem**: Cache volume uses wrong StorageClass or access modes.
+
+**Solution**: Explicitly configure cache volume settings:
+
+.. code-block:: yaml
+
+   kopia:
+     cacheCapacity: 2Gi
+     cacheStorageClassName: fast-ssd
+     cacheAccessModes:
+       - ReadWriteOnce
+
+The cache volume configuration follows this priority:
+1. Explicitly set ``cacheStorageClassName`` and ``cacheAccessModes``
+2. ReplicationSource/ReplicationDestination ``storageClassName`` and ``accessModes``  
+3. Source PVC ``storageClassName`` and ``accessModes``
 
 Performance issues
 ------------------
@@ -577,6 +1206,55 @@ Snapshot consistency issues
 **Problem**: Actions fail or time out.
 
 **Solution**: Ensure commands are compatible with the container environment and have appropriate timeouts. Actions run in a basic shell environment within the data container.
+
+Debugging and logging
+---------------------
+
+**Secure Environment Variable Logging**
+
+VolSync's Kopia mover provides secure logging of environment variables to help with troubleshooting without exposing sensitive credentials:
+
+.. code-block:: console
+
+   $ kubectl logs <kopia-job-pod-name> | grep "ENVIRONMENT VARIABLES STATUS" -A 10
+   
+   === ENVIRONMENT VARIABLES STATUS ===
+   KOPIA_REPOSITORY: [SET]
+   KOPIA_PASSWORD: [SET]
+   KOPIA_S3_BUCKET: [SET]
+   KOPIA_S3_ENDPOINT: [SET]
+   AWS_ACCESS_KEY_ID: [SET]
+   AWS_SECRET_ACCESS_KEY: [SET]
+
+This output helps identify missing configuration without revealing actual credential values.
+
+**Cache and Log Directory Information**
+
+The mover logs also provide detailed information about cache and log directory setup:
+
+.. code-block:: console
+
+   === DEBUG: Environment Setup ===
+   KOPIA_CACHE_DIR: /tmp/kopia-cache
+   KOPIA_CACHE_DIRECTORY: /tmp/kopia-cache
+   KOPIA_LOG_DIR: /tmp/kopia-cache/logs
+   Cache directory writable: Yes
+   Log directory exists: Yes
+
+This helps diagnose cache volume mounting and permission issues.
+
+**Connection Debug Information**
+
+For S3 repositories, the mover provides detailed connection debugging:
+
+.. code-block:: console
+
+   === S3 Connection Debug ===
+   KOPIA_S3_BUCKET: [SET]
+   KOPIA_S3_ENDPOINT: [SET]
+   KOPIA_S3_DISABLE_TLS: [SET]
+
+This helps identify S3-specific configuration issues without exposing credentials.
 
 Repository maintenance issues
 -----------------------------
@@ -1064,6 +1742,16 @@ Best practices for policy management
 Security considerations
 -----------------------
 
+VolSync's Kopia mover includes several security features and considerations:
+
+**Secure Credential Handling**
+
+* Environment variables containing credentials are never logged in plaintext
+* Mover logs show ``[SET]`` or ``[NOT SET]`` status for troubleshooting without credential exposure
+* Connection debugging information excludes sensitive values while providing configuration visibility
+
+**Policy Configuration Security**
+
 Policy files can contain executable scripts in the ``actions`` section. Consider these security aspects:
 
 * **Validate script content** before deploying policies
@@ -1071,6 +1759,13 @@ Policy files can contain executable scripts in the ``actions`` section. Consider
 * **Apply appropriate RBAC** to ConfigMaps/Secrets containing policies
 * **Monitor policy changes** through change management processes
 * **Limit script complexity** to reduce potential security risks
+
+**Repository Access Security**
+
+* Repository passwords should be unique per repository for isolation
+* Use separate repository paths even when Kopia supports concurrent access
+* Consider using SAS tokens or temporary credentials for cloud storage when possible
+* Regularly rotate storage backend credentials according to your security policies
 
 Policy configuration quick reference
 ====================================
@@ -1230,3 +1925,43 @@ Unlike some other backup tools, Kopia supports multiple clients safely accessing
 the same repository. This means multiple VolSync instances can backup to the
 same repository path without corruption, making it easier to manage centralized
 backup repositories.
+
+What's New in VolSync Kopia Implementation
+===========================================
+
+VolSync's Kopia mover includes several enhancements over the basic Kopia functionality:
+
+**Enhanced Environment Variable Support**
+
+* **S3-specific variables**: ``KOPIA_S3_BUCKET``, ``KOPIA_S3_ENDPOINT``, ``KOPIA_S3_DISABLE_TLS``
+* **Azure-specific variables**: ``KOPIA_AZURE_CONTAINER``, ``KOPIA_AZURE_STORAGE_ACCOUNT``, ``KOPIA_AZURE_STORAGE_KEY``
+* **GCS-specific variables**: ``KOPIA_GCS_BUCKET``, ``GOOGLE_PROJECT_ID``
+* **Automatic prefix extraction**: Support for nested repository paths like ``s3://bucket/path1/path2/path3``
+
+**Security and Debugging Improvements**
+
+* **Secure credential logging**: Environment variables show ``[SET]``/``[NOT SET]`` status without exposing values
+* **Comprehensive debug output**: Connection, cache, and environment information for troubleshooting
+* **Enhanced error reporting**: Clear identification of configuration issues
+
+**Advanced Cache Management**
+
+* **Flexible cache configuration**: Control cache size, StorageClass, and access modes
+* **Automatic cleanup**: Optional cache PVC cleanup with ``cleanupCachePVC`` setting
+* **Intelligent defaults**: Cache configuration inherits from source PVC settings when not specified
+
+**Policy-Based Configuration**
+
+* **ConfigMap/Secret-based policies**: Store comprehensive Kopia policies in Kubernetes resources
+* **Global policy support**: Repository-wide policy configuration for advanced features
+* **Action integration**: Pre/post snapshot actions with timeout and error handling
+* **Backward compatibility**: Existing VolSync configurations continue to work with policy enhancements
+
+**Repository Management**
+
+* **Automatic initialization**: Repositories are created automatically on first backup
+* **Concurrent access support**: Safe multi-client repository access with proper isolation
+* **Maintenance scheduling**: Configurable maintenance intervals for repository optimization
+* **Advanced retention**: Sophisticated retention policies through policy configuration
+
+These enhancements make VolSync's Kopia mover suitable for enterprise backup scenarios while maintaining ease of use for simple configurations.
