@@ -1,6 +1,6 @@
 ######################################################################
 # Establish a common builder image for all golang-based images
-FROM golang:1.23 AS golang-builder
+FROM golang:1.24 AS golang-builder
 USER root
 WORKDIR /workspace
 # We don't vendor modules. Enforce that behavior
@@ -65,8 +65,8 @@ RUN go run build.go --enable-cgo
 # Build kopia
 FROM golang-builder AS kopia-builder
 
-ARG KOPIA_VERSION="v0.18.1"
-ARG KOPIA_GIT_HASH="dae9a11bb3b1c7fc7d4b4a6d39b7e7e6b6b8a5dc"
+ARG KOPIA_VERSION="v0.21.1"
+ARG KOPIA_GIT_HASH="0733cb4d2a731dbb92d927f66230694e014f4df2"
 
 RUN git clone --depth 1 -b ${KOPIA_VERSION} https://github.com/kopia/kopia.git
 WORKDIR /workspace/kopia
