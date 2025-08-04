@@ -303,6 +303,16 @@ type ReplicationDestinationKopiaSpec struct {
 	// PolicyConfig defines configuration for Kopia policy files
 	//+optional
 	PolicyConfig *KopiaPolicySpec `json:"policyConfig,omitempty"`
+	// Username override for Kopia repository access.
+	// If not specified, defaults to "volsync"
+	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$"
+	//+optional
+	Username *string `json:"username,omitempty"`
+	// Hostname override for Kopia repository access.
+	// If not specified, defaults to "<namespace>-<replicationsource-name>"
+	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$"
+	//+optional
+	Hostname *string `json:"hostname,omitempty"`
 
 	MoverConfig `json:",inline"`
 }
