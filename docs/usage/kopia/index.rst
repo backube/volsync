@@ -657,6 +657,9 @@ The ``policyConfig`` field allows you to specify ConfigMaps or Secrets containin
        globalPolicyFilename: global-policy.json
        repositoryConfigFilename: repository.config
 
+.. note::
+   The ``policyConfig`` field is available for both ReplicationSource and ReplicationDestination objects, allowing policy-driven configuration for both backup and restore operations.
+
 ``configMapName``
    The name of a ConfigMap containing policy configuration files. Use this for non-sensitive policy data.
 
@@ -753,6 +756,9 @@ The repository configuration file controls repository-wide settings:
      }
    }
 
+.. note::
+   The ``enableActions`` setting in the repository configuration is required for pre/post snapshot actions defined in policies to execute. Without this setting, action scripts will be ignored even if defined in the global policy.
+
 Policy configuration examples
 -----------------------------
 
@@ -817,6 +823,41 @@ Use the policy configuration in a ReplicationSource:
        # Standard fields still work as fallbacks
        cacheCapacity: 5Gi
        copyMethod: Snapshot
+
+Migration from basic configuration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can gradually migrate from basic VolSync configuration to policy-based configuration while maintaining backward compatibility:
+
+**Before (Basic Configuration)**:
+
+.. code-block:: yaml
+
+   kopia:
+     repository: kopia-config
+     retain:
+       daily: 7
+       weekly: 4
+     compression: zstd
+     parallelism: 2
+
+**After (Policy-Based Configuration)**:
+
+.. code-block:: yaml
+
+   kopia:
+     repository: kopia-config
+     # Add policy configuration
+     policyConfig:
+       configMapName: kopia-policies
+     # Keep existing fields as fallbacks
+     retain:
+       daily: 7
+       weekly: 4  
+     compression: zstd
+     parallelism: 2
+
+This approach allows incremental adoption of policy-based configuration while ensuring existing backups continue to work.
 
 Advanced policy with actions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -983,24 +1024,30 @@ Check if policies are being applied correctly:
    
    # View job logs to see policy import messages
    $ kubectl logs <replicationsource-job-name>
+   
+   # Look for policy import success/failure messages
+   $ kubectl logs <replicationsource-job-name> | grep -i policy
 
 Common policy issues
 ~~~~~~~~~~~~~~~~~~~~
 
 **Invalid JSON format**
-   Policy files must be valid JSON. Use a JSON validator to check syntax.
+   Policy files must be valid JSON. Use a JSON validator to check syntax before creating ConfigMaps/Secrets.
 
 **Missing policy files**
-   Ensure the specified filenames exist in the ConfigMap/Secret with the correct names.
+   Ensure the specified filenames exist in the ConfigMap/Secret with the correct names. Default filenames are ``global-policy.json`` and ``repository.config``.
 
 **Policy import failures**
-   Check job logs for specific error messages about policy import failures.
+   Check job logs for specific error messages about policy import failures. Common issues include invalid policy syntax or conflicting policy settings.
 
 **ConfigMap/Secret not found**
-   Verify the ConfigMap or Secret exists in the same namespace as the ReplicationSource/ReplicationDestination.
+   Verify the ConfigMap or Secret exists in the same namespace as the ReplicationSource/ReplicationDestination. Policy resources must be in the same namespace as the VolSync resources.
 
 **Actions not executing**
-   Ensure ``enableActions`` is set to ``true`` in the repository configuration file.
+   Ensure ``enableActions`` is set to ``true`` in the repository configuration file. Actions defined in policies will be silently ignored if repository-level actions are disabled.
+
+**Policy precedence confusion**
+   Remember that policy file settings override VolSync spec fields. If unexpected behavior occurs, check both policy files and spec fields to understand which settings are taking precedence.
 
 Best practices for policy management
 ------------------------------------
@@ -1024,6 +1071,104 @@ Policy files can contain executable scripts in the ``actions`` section. Consider
 * **Apply appropriate RBAC** to ConfigMaps/Secrets containing policies
 * **Monitor policy changes** through change management processes
 * **Limit script complexity** to reduce potential security risks
+
+Policy configuration quick reference
+====================================
+
+Field reference
+---------------
+
+.. code-block:: yaml
+
+   kopia:
+     repository: kopia-config
+     policyConfig:
+       # Required: specify either configMapName OR secretName
+       configMapName: my-policies     # ConfigMap containing policy files
+       secretName: my-policy-secret   # Secret containing policy files
+       
+       # Optional: custom filenames (defaults shown)
+       globalPolicyFilename: global-policy.json      # Global policy file
+       repositoryConfigFilename: repository.config   # Repository config file
+
+Global policy structure
+-----------------------
+
+.. code-block:: json
+
+   {
+     "compression": {
+       "compressorName": "zstd|gzip|s2|none",
+       "minSize": 1024,
+       "maxSize": 1048576
+     },
+     "retention": {
+       "keepLatest": 10,
+       "keepHourly": 24,
+       "keepDaily": 30,
+       "keepWeekly": 4,
+       "keepMonthly": 12,
+       "keepAnnual": 3
+     },
+     "files": {
+       "ignore": ["*.tmp", "*.log", ".cache/"],
+       "ignoreCacheDirectories": true,
+       "noParentIgnoreRules": false
+     },
+     "errorHandling": {
+       "ignoreFileErrors": false,
+       "ignoreDirectoryErrors": false
+     },
+     "upload": {
+       "maxParallelFileReads": 16,
+       "maxParallelSnapshots": 4,
+       "parallelUploads": 8
+     },
+     "actions": {
+       "beforeSnapshotRoot": {
+         "script": "sync && echo 3 > /proc/sys/vm/drop_caches",
+         "timeout": "5m",
+         "mode": "essential|optional"
+       }
+     }
+   }
+
+Repository configuration structure
+----------------------------------
+
+.. code-block:: json
+
+   {
+     "enableActions": true,
+     "caching": {
+       "maxCacheSize": 1073741824,
+       "maxListCacheDuration": 600
+     },
+     "compression": {
+       "onlyCompress": ["*.txt", "*.log"],
+       "neverCompress": ["*.jpg", "*.png", "*.mp4"],
+       "minSize": 1024,
+       "maxSize": 1073741824
+     }
+   }
+
+Common use cases
+----------------
+
+**Basic policy setup**:
+  Use ``configMapName`` with comprehensive retention and compression settings
+
+**Database backups**:
+  Use policy actions for consistent snapshots with ``beforeSnapshot`` commands
+
+**Multi-environment**:
+  Create separate ConfigMaps for dev, staging, and production policies
+
+**Sensitive configurations**:
+  Use ``secretName`` for policies containing scripts or credentials
+
+**Migration**:
+  Add ``policyConfig`` while keeping existing spec fields as fallbacks
 
 Kopia-specific features
 =======================
