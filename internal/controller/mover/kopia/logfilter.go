@@ -29,14 +29,14 @@ var kopiaRegex = regexp.MustCompile(
 		`^\s*([rR]estored)\s.+([fF]iles)|` +
 		`^\s*([sS]uccessfully)|` +
 		`^\s*([cC]onnected to repository)|` +
-		`^\s*([rR]epository)\s.+([oO]pened)|` +
+		`^\s*([rR]epository)\s+([oO]pened)|` +
 		`^\s*([mM]aintenance)|` +
 		`^\s*([cC]ompression)|` +
 		`^\s*([nN]o changes)|` +
 		`^\s*([sS]kipping)|` +
 		`(KOPIA_OPTIONS)|` +
 		`([iI]nitialize [rR]epository)|` +
-		`^\s*([fF]atal)|` +
+		`^\s*([fF][aA][tT][aA][lL]).*|` +
 		`^\s*(ERROR)|` +
 		`^\s*([kK]opia completed in)`)
 
