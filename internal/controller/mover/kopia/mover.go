@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/prometheus/client_golang/prometheus"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumesnapshot/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -79,7 +80,12 @@ type Mover struct {
 	privileged            bool
 	latestMoverStatus     *volsyncv1alpha1.MoverStatus
 	moverConfig           volsyncv1alpha1.MoverConfig
+	metrics               kopiaMetrics
+	// User identity for multi-tenancy
+	username              string
+	hostname              string
 	// Source-only fields
+	sourcePathOverride    *string
 	maintenanceInterval *int32
 	retainPolicy        *volsyncv1alpha1.KopiaRetainPolicy
 	compression         string
@@ -110,20 +116,51 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 		return mover.Complete(), nil
 	}
 
+	// Record operation start time for metrics
+	operationStart := time.Now()
+	operation := "backup"
+	if !m.isSource {
+		operation = "restore"
+	}
+
+	// Track repository connectivity
+	labels := m.getMetricLabels("")
+	m.metrics.RepositoryConnectivity.With(labels).Set(1) // Assume connected initially
+
 	// Setup prerequisites
 	dataPVC, cachePVC, sa, repo, customCAObj, policyConfigObj, err := m.setupPrerequisites(ctx)
 	if err != nil {
+		// Repository connectivity issue or configuration error
+		m.metrics.RepositoryConnectivity.With(labels).Set(0)
+		m.recordOperationFailure(operation, "prerequisites_failed")
 		return mover.InProgress(), err
 	}
 
 	// Start and monitor job
 	job, err := m.ensureJob(ctx, cachePVC, dataPVC, sa, repo, customCAObj, policyConfigObj)
 	if job == nil || err != nil {
+		m.recordOperationFailure(operation, "job_creation_failed")
 		return mover.InProgress(), err
 	}
 
 	// Handle job completion
-	return m.handleJobCompletion(ctx, job, dataPVC)
+	result, err := m.handleJobCompletion(ctx, job, dataPVC)
+	
+	// Record metrics based on job completion
+	if err != nil {
+		m.recordOperationFailure(operation, "job_execution_failed")
+	} else if result.Completed {
+		// Job completed successfully
+		duration := time.Since(operationStart)
+		m.recordOperationSuccess(operation, duration)
+		
+		// Record maintenance if applicable
+		if m.isSource && m.shouldRunMaintenance() {
+			m.recordMaintenanceOperation()
+		}
+	}
+	
+	return result, err
 }
 
 func (m *Mover) Cleanup(ctx context.Context) (mover.Result, error) {
@@ -391,6 +428,16 @@ func (m *Mover) buildEnvironmentVariables(repo *corev1.Secret) []corev1.EnvVar {
 	// Cluster-wide proxy settings
 	envVars = utils.AppendEnvVarsForClusterWideProxy(envVars)
 
+	// Add username and hostname overrides for multi-tenancy
+	envVars = append(envVars, corev1.EnvVar{
+		Name:  "KOPIA_OVERRIDE_USERNAME",
+		Value: m.username,
+	})
+	envVars = append(envVars, corev1.EnvVar{
+		Name:  "KOPIA_OVERRIDE_HOSTNAME",
+		Value: m.hostname,
+	})
+
 	// Run mover in debug mode if required
 	envVars = utils.AppendDebugMoverEnvVar(m.owner, envVars)
 
@@ -412,6 +459,9 @@ func (m *Mover) addSourceEnvVars(envVars []corev1.EnvVar) []corev1.EnvVar {
 	}
 	if m.parallelism != nil {
 		envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_PARALLELISM", Value: strconv.Itoa(int(*m.parallelism))})
+	}
+	if m.sourcePathOverride != nil {
+		envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_SOURCE_PATH_OVERRIDE", Value: *m.sourcePathOverride})
 	}
 
 	// Add retention policy
@@ -688,6 +738,15 @@ func (m *Mover) configureSecurityContext(podSpec *corev1.PodSpec) {
 // handleJobStatus handles job status checking and completion logic
 func (m *Mover) handleJobStatus(ctx context.Context, job *batchv1.Job,
 	logger logr.Logger, err error) (*batchv1.Job, error) {
+	// Record job retries if there are failures
+	if job.Status.Failed > 0 && job.Status.Failed < *job.Spec.BackoffLimit {
+		operation := "backup"
+		if !m.isSource {
+			operation = "restore"
+		}
+		m.recordJobRetry(operation, "job_pod_failure")
+	}
+
 	// If Job had failed, delete it so it can be recreated
 	if job.Status.Failed >= *job.Spec.BackoffLimit {
 		// Update status with mover logs from failed job
@@ -730,6 +789,12 @@ func (m *Mover) handleJobStatus(ctx context.Context, job *batchv1.Job,
 func (m *Mover) setupPrerequisites(ctx context.Context) (*corev1.PersistentVolumeClaim,
 	*corev1.PersistentVolumeClaim, *corev1.ServiceAccount, *corev1.Secret,
 	utils.CustomCAObject, utils.CustomCAObject, error) {
+	
+	// Record cache metrics
+	m.recordCacheMetrics()
+	
+	// Record policy compliance
+	m.recordPolicyCompliance()
 	// Allocate temporary data PVC
 	var dataPVC *corev1.PersistentVolumeClaim
 	var err error
@@ -758,6 +823,7 @@ func (m *Mover) setupPrerequisites(ctx context.Context) (*corev1.PersistentVolum
 	// Validate Repository Secret
 	repo, err := m.validateRepository(ctx)
 	if repo == nil || err != nil {
+		m.recordConfigurationError("repository_validation_failed")
 		return nil, nil, nil, nil, nil, nil, err
 	}
 
@@ -766,6 +832,7 @@ func (m *Mover) setupPrerequisites(ctx context.Context) (*corev1.PersistentVolum
 		m.owner.GetNamespace(), m.customCASpec)
 	// nil customCAObj is ok (indicates we're not using a custom CA)
 	if err != nil {
+		m.recordConfigurationError("custom_ca_validation_failed")
 		return nil, nil, nil, nil, nil, nil, err
 	}
 
@@ -773,6 +840,7 @@ func (m *Mover) setupPrerequisites(ctx context.Context) (*corev1.PersistentVolum
 	policyConfigObj, err := m.validatePolicyConfig(ctx)
 	// nil policyConfigObj is ok (indicates we're not using custom policies)
 	if err != nil {
+		m.recordConfigurationError("policy_config_validation_failed")
 		return nil, nil, nil, nil, nil, nil, err
 	}
 
@@ -821,4 +889,143 @@ func (m *Mover) shouldRunMaintenance() bool {
 	nextMaintenance := lastMaintenance.Add(time.Duration(*m.maintenanceInterval) * 24 * time.Hour)
 
 	return time.Now().After(nextMaintenance)
+}
+
+// recordOperationSuccess records metrics for successful operations
+func (m *Mover) recordOperationSuccess(operation string, duration time.Duration) {
+	labels := m.getMetricLabels(operation)
+	
+	m.metrics.OperationSuccess.With(labels).Inc()
+	m.metrics.OperationDuration.With(labels).Observe(duration.Seconds())
+	
+	// Record snapshot creation success for backup operations
+	if operation == "backup" {
+		m.metrics.SnapshotCreationSuccess.With(labels).Inc()
+	}
+}
+
+// recordOperationFailure records metrics for failed operations
+func (m *Mover) recordOperationFailure(operation, failureReason string) {
+	labels := m.getMetricLabels(operation)
+	labels["failure_reason"] = failureReason
+	
+	m.metrics.OperationFailure.With(labels).Inc()
+	
+	// Record snapshot creation failure for backup operations
+	if operation == "backup" {
+		m.metrics.SnapshotCreationFailure.With(labels).Inc()
+	}
+}
+
+// recordMaintenanceOperation records metrics for maintenance operations
+func (m *Mover) recordMaintenanceOperation() {
+	labels := m.getMetricLabels("maintenance")
+	labels["maintenance_type"] = "scheduled"
+	
+	m.metrics.MaintenanceOperations.With(labels).Inc()
+}
+
+// recordJobRetry records metrics for job retries
+func (m *Mover) recordJobRetry(operation, retryReason string) {
+	labels := m.getMetricLabels(operation)
+	labels["retry_reason"] = retryReason
+	
+	m.metrics.JobRetries.With(labels).Inc()
+}
+
+// recordCustomActionExecution records metrics for custom action execution
+func (m *Mover) recordCustomActionExecution(actionType string, duration time.Duration, success bool) {
+	labels := m.getMetricLabels("backup") // Actions are only for source/backup
+	labels["action_type"] = actionType
+	
+	m.metrics.CustomActionsExecuted.With(labels).Inc()
+	m.metrics.CustomActionsDuration.With(labels).Observe(duration.Seconds())
+}
+
+// recordCacheMetrics records cache-related metrics
+func (m *Mover) recordCacheMetrics() {
+	if m.cacheCapacity == nil {
+		return
+	}
+	
+	labels := m.getMetricLabels("")
+	
+	// Record cache size (convert resource.Quantity to bytes)
+	cacheSizeBytes := m.cacheCapacity.Value()
+	m.metrics.CacheSize.With(labels).Set(float64(cacheSizeBytes))
+}
+
+// recordPolicyCompliance records policy compliance metrics
+func (m *Mover) recordPolicyCompliance() {
+	labels := m.getMetricLabels("")
+	
+	// Check retention policy compliance (simplified)
+	if m.retainPolicy != nil {
+		retentionLabels := prometheus.Labels{}
+		for k, v := range labels {
+			retentionLabels[k] = v
+		}
+		
+		// Mark retention policies as compliant if configured
+		if m.retainPolicy.Hourly != nil {
+			retentionLabels["retention_type"] = "hourly"
+			m.metrics.RetentionCompliance.With(retentionLabels).Set(1)
+		}
+		if m.retainPolicy.Daily != nil {
+			retentionLabels["retention_type"] = "daily"
+			m.metrics.RetentionCompliance.With(retentionLabels).Set(1)
+		}
+		if m.retainPolicy.Weekly != nil {
+			retentionLabels["retention_type"] = "weekly"
+			m.metrics.RetentionCompliance.With(retentionLabels).Set(1)
+		}
+		if m.retainPolicy.Monthly != nil {
+			retentionLabels["retention_type"] = "monthly"
+			m.metrics.RetentionCompliance.With(retentionLabels).Set(1)
+		}
+		if m.retainPolicy.Yearly != nil {
+			retentionLabels["retention_type"] = "yearly"
+			m.metrics.RetentionCompliance.With(retentionLabels).Set(1)
+		}
+	}
+	
+	// Check policy configuration compliance
+	policyLabels := prometheus.Labels{}
+	for k, v := range labels {
+		policyLabels[k] = v
+	}
+	
+	if m.policyConfig != nil {
+		policyLabels["policy_type"] = "global"
+		m.metrics.PolicyCompliance.With(policyLabels).Set(1)
+	}
+}
+
+// recordConfigurationError records configuration error metrics
+func (m *Mover) recordConfigurationError(errorType string) {
+	labels := m.getMetricLabels("")
+	labels["error_type"] = errorType
+	
+	m.metrics.ConfigurationErrors.With(labels).Inc()
+}
+
+// getMetricLabels returns the base metric labels for this mover instance
+func (m *Mover) getMetricLabels(operation string) prometheus.Labels {
+	role := "source"
+	if !m.isSource {
+		role = "destination"
+	}
+	
+	labels := prometheus.Labels{
+		"obj_name":      m.owner.GetName(),
+		"obj_namespace": m.owner.GetNamespace(),
+		"role":          role,
+		"repository":    m.repositoryName,
+	}
+	
+	if operation != "" {
+		labels["operation"] = operation
+	}
+	
+	return labels
 }
