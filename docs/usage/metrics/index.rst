@@ -42,8 +42,8 @@ role
    This contains the value of either "source" or "destination" depending on
    whether the CR is a ReplicationSource or a ReplicationDestination.
 method
-   This indicates the synchronization method being used. Currently, "rsync" or
-   "rclone".
+   This indicates the synchronization method being used. Currently, "rsync",
+   "rclone", or "kopia".
 
 As an example, the below raw data comes from a single rsync-based relationship
 that is replicating data using the ReplicationSource ``dsrc`` in the ``srcns``
@@ -267,3 +267,250 @@ need to be adjusted.
     selector:
       matchLabels:
         control-plane: volsync-controller
+
+
+Kopia-specific metrics
+======================
+
+In addition to the standard VolSync metrics above, the Kopia mover provides
+comprehensive metrics for monitoring backup and restore operations, repository
+health, and performance characteristics. These metrics use the
+``volsync_kopia`` namespace to distinguish them from general VolSync metrics.
+
+Common Kopia labels
+-------------------
+
+All Kopia-specific metrics include these additional labels beyond the standard
+VolSync labels:
+
+repository
+   Name of the Kopia repository
+operation
+   Type of operation being performed (backup, restore, maintenance)
+
+Kopia metrics categories
+------------------------
+
+Backup/Restore Performance Metrics
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+volsync_kopia_operation_duration_seconds
+   **Type:** Summary
+   
+   Duration of Kopia operations (backup, restore, maintenance) in seconds.
+   Use for monitoring operation performance trends, setting SLA alerts for
+   backup/restore times, and identifying performance degradation.
+
+volsync_kopia_data_processed_bytes
+   **Type:** Summary
+   
+   Amount of data processed during Kopia operations in bytes. Use for tracking
+   data growth over time, capacity planning for storage backends, and
+   correlating data size with operation duration.
+
+volsync_kopia_data_transfer_rate_bytes_per_second
+   **Type:** Summary
+   
+   Data transfer rate during Kopia operations in bytes per second. Use for
+   monitoring network performance, detecting bandwidth constraints, and
+   comparing performance across different repositories.
+
+volsync_kopia_compression_ratio
+   **Type:** Summary
+   
+   Compression ratio achieved during backup operations
+   (compressed_size/original_size). Use for monitoring compression
+   effectiveness, optimizing compression settings, and estimating storage
+   savings.
+
+volsync_kopia_operation_success_total
+   **Type:** Counter
+   
+   Total number of successful Kopia operations. Use for calculating success
+   rates, tracking operation volume, and generating availability reports.
+
+volsync_kopia_operation_failure_total
+   **Type:** Counter
+   
+   Total number of failed Kopia operations with additional ``failure_reason``
+   label indicating the cause:
+   
+   * ``prerequisites_failed``: Repository connectivity or configuration issues
+   * ``job_creation_failed``: Kubernetes job creation failure  
+   * ``job_execution_failed``: Job runtime failure
+
+Repository Health Metrics
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+volsync_kopia_repository_connectivity
+   **Type:** Gauge
+   
+   Repository connectivity status (1 if connected, 0 if not). Use for alerting
+   on repository connectivity issues, monitoring repository availability, and
+   tracking uptime statistics.
+
+volsync_kopia_maintenance_operations_total
+   **Type:** Counter
+   
+   Total number of repository maintenance operations performed with
+   ``maintenance_type`` label (scheduled, manual). Use for tracking maintenance
+   operation frequency, verifying maintenance scheduling, and monitoring
+   repository health activities.
+
+volsync_kopia_maintenance_duration_seconds
+   **Type:** Summary
+   
+   Duration of repository maintenance operations in seconds. Use for monitoring
+   maintenance performance, planning maintenance windows, and detecting
+   maintenance issues.
+
+volsync_kopia_repository_size_bytes
+   **Type:** Gauge
+   
+   Total size of the Kopia repository in bytes. Use for monitoring repository
+   growth, capacity planning, and cost optimization for cloud storage.
+
+volsync_kopia_repository_objects_total
+   **Type:** Gauge
+   
+   Total number of objects in the Kopia repository. Use for tracking repository
+   complexity, monitoring deduplication effectiveness, and performance
+   correlation analysis.
+
+Snapshot Management Metrics
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+volsync_kopia_snapshot_count
+   **Type:** Gauge
+   
+   Current number of snapshots in the repository. Use for monitoring snapshot
+   accumulation, verifying retention policy effectiveness, and capacity
+   planning.
+
+volsync_kopia_snapshot_creation_success_total
+   **Type:** Counter
+   
+   Total number of successful snapshot creations. Use for tracking backup
+   success rates, generating backup reports, and monitoring backup reliability.
+
+volsync_kopia_snapshot_creation_failure_total
+   **Type:** Counter
+   
+   Total number of failed snapshot creations with ``failure_reason`` label.
+   Use for alerting on backup failures, troubleshooting backup issues, and
+   tracking backup reliability trends.
+
+volsync_kopia_snapshot_size_bytes
+   **Type:** Summary
+   
+   Size of individual snapshots in bytes. Use for monitoring snapshot size
+   distribution, identifying data growth patterns, and optimizing backup
+   strategies.
+
+volsync_kopia_deduplication_ratio
+   **Type:** Summary
+   
+   Deduplication efficiency ratio (deduplicated_size/original_size). Use for
+   monitoring deduplication effectiveness, optimizing storage efficiency, and
+   calculating storage savings.
+
+volsync_kopia_retention_compliance
+   **Type:** Gauge
+   
+   Retention policy compliance status (1 if compliant, 0 if not) with
+   ``retention_type`` label (hourly, daily, weekly, monthly, yearly). Use for
+   monitoring retention policy compliance, alerting on retention violations,
+   and auditing backup retention.
+
+Cache and Performance Metrics
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+volsync_kopia_cache_hit_rate
+   **Type:** Gauge
+   
+   Cache hit rate as a percentage (0-100). Use for monitoring cache
+   effectiveness, optimizing cache configuration, and performance
+   troubleshooting.
+
+volsync_kopia_cache_size_bytes
+   **Type:** Gauge
+   
+   Current size of the Kopia cache in bytes. Use for monitoring cache
+   utilization, optimizing cache capacity allocation, and tracking cache
+   growth.
+
+volsync_kopia_parallel_operations_active
+   **Type:** Gauge
+   
+   Number of currently active parallel operations. Use for monitoring
+   parallelism utilization, detecting resource contention, and optimizing
+   parallelism settings.
+
+volsync_kopia_job_retries_total
+   **Type:** Counter
+   
+   Total number of job retries due to failures with ``retry_reason`` label
+   (``job_pod_failure``). Use for monitoring job reliability, identifying
+   transient vs persistent issues, and optimizing retry strategies.
+
+volsync_kopia_queue_depth
+   **Type:** Gauge
+   
+   Current depth of the operation queue. Use for monitoring operation queuing,
+   detecting processing bottlenecks, and optimizing queue processing.
+
+Policy and Configuration Metrics
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+volsync_kopia_policy_compliance
+   **Type:** Gauge
+   
+   Policy compliance status (1 if compliant, 0 if not) with ``policy_type``
+   label (global, retention, compression). Use for monitoring policy
+   compliance, alerting on policy violations, and auditing configuration
+   compliance.
+
+volsync_kopia_configuration_errors_total
+   **Type:** Counter
+   
+   Total number of configuration errors encountered with ``error_type`` label:
+   
+   * ``repository_validation_failed``: Repository secret validation failure
+   * ``custom_ca_validation_failed``: Custom CA configuration failure
+   * ``policy_config_validation_failed``: Policy configuration failure
+
+volsync_kopia_custom_actions_executed_total
+   **Type:** Counter
+   
+   Total number of custom actions executed with ``action_type`` label
+   (before_snapshot, after_snapshot). Use for monitoring custom action usage,
+   tracking action execution frequency, and verifying action configuration.
+
+volsync_kopia_custom_actions_duration_seconds
+   **Type:** Summary
+   
+   Duration of custom action execution in seconds. Use for monitoring action
+   performance, optimizing action scripts, and detecting action timeouts.
+
+Kopia alerting recommendations
+------------------------------
+
+Critical Alerts
+~~~~~~~~~~~~~~~~
+
+* ``volsync_kopia_repository_connectivity == 0`` - Repository unreachable
+* ``rate(volsync_kopia_operation_failure_total[5m]) > 0.1`` - High failure rate
+* ``volsync_kopia_retention_compliance == 0`` - Retention policy violation
+
+Warning Alerts
+~~~~~~~~~~~~~~~
+
+* ``volsync_kopia_operation_duration_seconds{quantile="0.9"} > 3600`` - Slow operations (>1 hour)
+* ``rate(volsync_kopia_job_retries_total[10m]) > 0.05`` - Increased retry rate
+* ``volsync_kopia_cache_hit_rate < 50`` - Poor cache performance
+
+Informational Alerts
+~~~~~~~~~~~~~~~~~~~~~
+
+* ``increase(volsync_kopia_maintenance_operations_total[24h]) == 0`` - No maintenance in 24h
+* ``volsync_kopia_repository_size_bytes > 1e12`` - Repository size > 1TB
