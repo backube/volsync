@@ -40,8 +40,8 @@ jobs:
           cd docs
           ./setup-env.sh
           . ../.venv/bin/activate
-          # Build with relaxed warnings for GitHub Pages deployment
-          sphinx-build -M html "." "_build" -E -n --keep-going || true
+          # Build with relaxed warnings for GitHub Pages deployment (override -W flag)
+          SPHINXOPTS="-E -n --keep-going" make html
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
