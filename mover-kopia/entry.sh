@@ -453,7 +453,8 @@ function connect_repository {
     echo "=== Connecting to existing repository ==="
     
     # Determine repository type from environment variables and connect
-    if [[ -n "${KOPIA_S3_BUCKET}" ]]; then
+    # Check both explicit KOPIA_S3_BUCKET and s3:// repository URL pattern
+    if [[ -n "${KOPIA_S3_BUCKET}" ]] || [[ "${KOPIA_REPOSITORY}" =~ ^s3:// ]]; then
         echo "Connecting to S3 repository"
         echo ""
         echo "=== S3 Connection Debug ==="
@@ -465,8 +466,25 @@ function connect_repository {
         echo "KOPIA_S3_DISABLE_TLS: ${KOPIA_S3_DISABLE_TLS:+[SET]}${KOPIA_S3_DISABLE_TLS:-[NOT SET]}"
         echo "KOPIA_PASSWORD: ${KOPIA_PASSWORD:+[SET]}${KOPIA_PASSWORD:-[NOT SET]}"
         
+        # Extract bucket name from repository URL if not explicitly set
+        local S3_BUCKET="${KOPIA_S3_BUCKET}"
+        if [[ -z "${S3_BUCKET}" ]] && [[ "${KOPIA_REPOSITORY}" =~ ^s3://([a-z0-9][a-z0-9.-]{1,61}[a-z0-9])/?(.*)$ ]]; then
+            S3_BUCKET="${BASH_REMATCH[1]}"
+            # Validate S3 bucket name format
+            if [[ "${S3_BUCKET}" =~ \.\. ]] || [[ "${S3_BUCKET}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                echo "ERROR: Invalid S3 bucket name format"
+                return 1
+            fi
+            echo "Extracted S3 bucket from repository URL: ${S3_BUCKET}"
+        fi
+        
+        if [[ -z "${S3_BUCKET}" ]]; then
+            echo "ERROR: Could not determine S3 bucket name"
+            return 1
+        fi
+        
         S3_CONNECT_CMD=("${KOPIA[@]}" repository connect s3 \
-            --bucket="${KOPIA_S3_BUCKET}" \
+            --bucket="${S3_BUCKET}" \
             --endpoint="${KOPIA_S3_ENDPOINT:-s3.amazonaws.com}" \
             --access-key="${AWS_ACCESS_KEY_ID}" \
             --secret-access-key="${AWS_SECRET_ACCESS_KEY}")
@@ -580,7 +598,8 @@ function create_repository {
     echo "=== Creating repository ==="
     
     # Determine repository type from environment variables
-    if [[ -n "${KOPIA_S3_BUCKET}" ]]; then
+    # Check both explicit KOPIA_S3_BUCKET and s3:// repository URL pattern
+    if [[ -n "${KOPIA_S3_BUCKET}" ]] || [[ "${KOPIA_REPOSITORY}" =~ ^s3:// ]]; then
         echo "Creating S3 repository"
         echo ""
         echo "=== S3 Creation Debug ==="
@@ -593,8 +612,25 @@ function create_repository {
         echo "KOPIA_PASSWORD: ${KOPIA_PASSWORD:+[SET]}${KOPIA_PASSWORD:-[NOT SET]}"
         echo "KOPIA_CACHE_DIR: ${KOPIA_CACHE_DIR:+[SET]}${KOPIA_CACHE_DIR:-[NOT SET]}"
         
+        # Extract bucket name from repository URL if not explicitly set
+        local S3_BUCKET="${KOPIA_S3_BUCKET}"
+        if [[ -z "${S3_BUCKET}" ]] && [[ "${KOPIA_REPOSITORY}" =~ ^s3://([a-z0-9][a-z0-9.-]{1,61}[a-z0-9])/?(.*)$ ]]; then
+            S3_BUCKET="${BASH_REMATCH[1]}"
+            # Validate S3 bucket name format
+            if [[ "${S3_BUCKET}" =~ \.\. ]] || [[ "${S3_BUCKET}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                echo "ERROR: Invalid S3 bucket name format"
+                return 1
+            fi
+            echo "Extracted S3 bucket from repository URL: ${S3_BUCKET}"
+        fi
+        
+        if [[ -z "${S3_BUCKET}" ]]; then
+            echo "ERROR: Could not determine S3 bucket name"
+            return 1
+        fi
+        
         S3_CREATE_CMD=("${KOPIA[@]}" repository create s3 \
-            --bucket="${KOPIA_S3_BUCKET}" \
+            --bucket="${S3_BUCKET}" \
             --endpoint="${KOPIA_S3_ENDPOINT:-s3.amazonaws.com}" \
             --access-key="${AWS_ACCESS_KEY_ID}" \
             --secret-access-key="${AWS_SECRET_ACCESS_KEY}" \
