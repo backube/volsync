@@ -340,9 +340,18 @@ var _ = Describe("Kopia", func() {
 		var secret *corev1.Secret
 
 		BeforeEach(func() {
+			// Create a mock owner object for testing
+			mockOwner := &volsyncv1alpha1.ReplicationSource{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-rs",
+					Namespace: ns.Name,
+				},
+			}
+
 			mover = &Mover{
 				username: "test-user",
 				hostname: "test-host",
+				owner:    mockOwner,
 			}
 			secret = &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{

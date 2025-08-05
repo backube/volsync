@@ -24,6 +24,8 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
 
 // TestCredentialConfigurationUnit performs unit tests for credential configuration
@@ -170,8 +172,8 @@ func TestCredentialConfigurationUnit(t *testing.T) {
 
 // TestEnvironmentVariables tests that all required environment variables are included
 func TestEnvironmentVariables(t *testing.T) {
-	// Create a mock owner for the mover
-	owner := &corev1.Secret{
+	// Create a mock owner for the mover - use ReplicationSource which is the correct type
+	owner := &volsyncv1alpha1.ReplicationSource{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-owner",
 			Namespace: "test-namespace",
