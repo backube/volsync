@@ -288,6 +288,16 @@ func (in *ReplicationDestinationKopiaSpec) DeepCopyInto(out *ReplicationDestinat
 		*out = new(KopiaPolicySpec)
 		**out = **in
 	}
+	if in.Username != nil {
+		in, out := &in.Username, &out.Username
+		*out = new(string)
+		**out = **in
+	}
+	if in.Hostname != nil {
+		in, out := &in.Hostname, &out.Hostname
+		*out = new(string)
+		**out = **in
+	}
 	in.MoverConfig.DeepCopyInto(&out.MoverConfig)
 }
 
@@ -893,6 +903,21 @@ func (in *ReplicationSourceKopiaSpec) DeepCopyInto(out *ReplicationSourceKopiaSp
 	if in.PolicyConfig != nil {
 		in, out := &in.PolicyConfig, &out.PolicyConfig
 		*out = new(KopiaPolicySpec)
+		**out = **in
+	}
+	if in.Username != nil {
+		in, out := &in.Username, &out.Username
+		*out = new(string)
+		**out = **in
+	}
+	if in.Hostname != nil {
+		in, out := &in.Hostname, &out.Hostname
+		*out = new(string)
+		**out = **in
+	}
+	if in.SourcePathOverride != nil {
+		in, out := &in.SourcePathOverride, &out.SourcePathOverride
+		*out = new(string)
 		**out = **in
 	}
 	in.MoverConfig.DeepCopyInto(&out.MoverConfig)

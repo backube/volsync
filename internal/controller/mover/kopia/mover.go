@@ -27,8 +27,8 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/prometheus/client_golang/prometheus"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumesnapshot/v1"
+	"github.com/prometheus/client_golang/prometheus"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -82,10 +82,10 @@ type Mover struct {
 	moverConfig           volsyncv1alpha1.MoverConfig
 	metrics               kopiaMetrics
 	// User identity for multi-tenancy
-	username              string
-	hostname              string
+	username string
+	hostname string
 	// Source-only fields
-	sourcePathOverride    *string
+	sourcePathOverride  *string
 	maintenanceInterval *int32
 	retainPolicy        *volsyncv1alpha1.KopiaRetainPolicy
 	compression         string
@@ -145,7 +145,7 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 
 	// Handle job completion
 	result, err := m.handleJobCompletion(ctx, job, dataPVC)
-	
+
 	// Record metrics based on job completion
 	if err != nil {
 		m.recordOperationFailure(operation, "job_execution_failed")
@@ -153,13 +153,13 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 		// Job completed successfully
 		duration := time.Since(operationStart)
 		m.recordOperationSuccess(operation, duration)
-		
+
 		// Record maintenance if applicable
 		if m.isSource && m.shouldRunMaintenance() {
 			m.recordMaintenanceOperation()
 		}
 	}
-	
+
 	return result, err
 }
 
@@ -789,10 +789,10 @@ func (m *Mover) handleJobStatus(ctx context.Context, job *batchv1.Job,
 func (m *Mover) setupPrerequisites(ctx context.Context) (*corev1.PersistentVolumeClaim,
 	*corev1.PersistentVolumeClaim, *corev1.ServiceAccount, *corev1.Secret,
 	utils.CustomCAObject, utils.CustomCAObject, error) {
-	
+
 	// Record cache metrics
 	m.recordCacheMetrics()
-	
+
 	// Record policy compliance
 	m.recordPolicyCompliance()
 	// Allocate temporary data PVC
@@ -894,10 +894,10 @@ func (m *Mover) shouldRunMaintenance() bool {
 // recordOperationSuccess records metrics for successful operations
 func (m *Mover) recordOperationSuccess(operation string, duration time.Duration) {
 	labels := m.getMetricLabels(operation)
-	
+
 	m.metrics.OperationSuccess.With(labels).Inc()
 	m.metrics.OperationDuration.With(labels).Observe(duration.Seconds())
-	
+
 	// Record snapshot creation success for backup operations
 	if operation == "backup" {
 		m.metrics.SnapshotCreationSuccess.With(labels).Inc()
@@ -908,9 +908,9 @@ func (m *Mover) recordOperationSuccess(operation string, duration time.Duration)
 func (m *Mover) recordOperationFailure(operation, failureReason string) {
 	labels := m.getMetricLabels(operation)
 	labels["failure_reason"] = failureReason
-	
+
 	m.metrics.OperationFailure.With(labels).Inc()
-	
+
 	// Record snapshot creation failure for backup operations
 	if operation == "backup" {
 		m.metrics.SnapshotCreationFailure.With(labels).Inc()
@@ -921,7 +921,7 @@ func (m *Mover) recordOperationFailure(operation, failureReason string) {
 func (m *Mover) recordMaintenanceOperation() {
 	labels := m.getMetricLabels("maintenance")
 	labels["maintenance_type"] = "scheduled"
-	
+
 	m.metrics.MaintenanceOperations.With(labels).Inc()
 }
 
@@ -929,7 +929,7 @@ func (m *Mover) recordMaintenanceOperation() {
 func (m *Mover) recordJobRetry(operation, retryReason string) {
 	labels := m.getMetricLabels(operation)
 	labels["retry_reason"] = retryReason
-	
+
 	m.metrics.JobRetries.With(labels).Inc()
 }
 
@@ -937,7 +937,7 @@ func (m *Mover) recordJobRetry(operation, retryReason string) {
 func (m *Mover) recordCustomActionExecution(actionType string, duration time.Duration, success bool) {
 	labels := m.getMetricLabels("backup") // Actions are only for source/backup
 	labels["action_type"] = actionType
-	
+
 	m.metrics.CustomActionsExecuted.With(labels).Inc()
 	m.metrics.CustomActionsDuration.With(labels).Observe(duration.Seconds())
 }
@@ -947,9 +947,9 @@ func (m *Mover) recordCacheMetrics() {
 	if m.cacheCapacity == nil {
 		return
 	}
-	
+
 	labels := m.getMetricLabels("")
-	
+
 	// Record cache size (convert resource.Quantity to bytes)
 	cacheSizeBytes := m.cacheCapacity.Value()
 	m.metrics.CacheSize.With(labels).Set(float64(cacheSizeBytes))
@@ -958,14 +958,14 @@ func (m *Mover) recordCacheMetrics() {
 // recordPolicyCompliance records policy compliance metrics
 func (m *Mover) recordPolicyCompliance() {
 	labels := m.getMetricLabels("")
-	
+
 	// Check retention policy compliance (simplified)
 	if m.retainPolicy != nil {
 		retentionLabels := prometheus.Labels{}
 		for k, v := range labels {
 			retentionLabels[k] = v
 		}
-		
+
 		// Mark retention policies as compliant if configured
 		if m.retainPolicy.Hourly != nil {
 			retentionLabels["retention_type"] = "hourly"
@@ -988,13 +988,13 @@ func (m *Mover) recordPolicyCompliance() {
 			m.metrics.RetentionCompliance.With(retentionLabels).Set(1)
 		}
 	}
-	
+
 	// Check policy configuration compliance
 	policyLabels := prometheus.Labels{}
 	for k, v := range labels {
 		policyLabels[k] = v
 	}
-	
+
 	if m.policyConfig != nil {
 		policyLabels["policy_type"] = "global"
 		m.metrics.PolicyCompliance.With(policyLabels).Set(1)
@@ -1005,7 +1005,7 @@ func (m *Mover) recordPolicyCompliance() {
 func (m *Mover) recordConfigurationError(errorType string) {
 	labels := m.getMetricLabels("")
 	labels["error_type"] = errorType
-	
+
 	m.metrics.ConfigurationErrors.With(labels).Inc()
 }
 
@@ -1015,17 +1015,17 @@ func (m *Mover) getMetricLabels(operation string) prometheus.Labels {
 	if !m.isSource {
 		role = "destination"
 	}
-	
+
 	labels := prometheus.Labels{
 		"obj_name":      m.owner.GetName(),
 		"obj_namespace": m.owner.GetNamespace(),
 		"role":          role,
 		"repository":    m.repositoryName,
 	}
-	
+
 	if operation != "" {
 		labels["operation"] = operation
 	}
-	
+
 	return labels
 }
