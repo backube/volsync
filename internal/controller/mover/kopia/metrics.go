@@ -33,19 +33,19 @@ const (
 // kopiaMetrics holds references to the Kopia-specific metric vectors
 type kopiaMetrics struct {
 	// Backup/Restore Performance Metrics
-	OperationDuration     *prometheus.SummaryVec
-	DataProcessed         *prometheus.SummaryVec
-	DataTransferRate      *prometheus.SummaryVec
-	CompressionRatio      *prometheus.SummaryVec
-	OperationSuccess      *prometheus.CounterVec
-	OperationFailure      *prometheus.CounterVec
+	OperationDuration *prometheus.SummaryVec
+	DataProcessed     *prometheus.SummaryVec
+	DataTransferRate  *prometheus.SummaryVec
+	CompressionRatio  *prometheus.SummaryVec
+	OperationSuccess  *prometheus.CounterVec
+	OperationFailure  *prometheus.CounterVec
 
 	// Repository Health Metrics
-	RepositoryConnectivity  *prometheus.GaugeVec
-	MaintenanceOperations   *prometheus.CounterVec
-	MaintenanceDuration     *prometheus.SummaryVec
-	RepositorySize          *prometheus.GaugeVec
-	RepositoryObjects       *prometheus.GaugeVec
+	RepositoryConnectivity *prometheus.GaugeVec
+	MaintenanceOperations  *prometheus.CounterVec
+	MaintenanceDuration    *prometheus.SummaryVec
+	RepositorySize         *prometheus.GaugeVec
+	RepositoryObjects      *prometheus.GaugeVec
 
 	// Snapshot Management Metrics
 	SnapshotCount           *prometheus.GaugeVec
@@ -56,17 +56,17 @@ type kopiaMetrics struct {
 	RetentionCompliance     *prometheus.GaugeVec
 
 	// Cache and Performance Metrics
-	CacheHitRate            *prometheus.GaugeVec
-	CacheSize               *prometheus.GaugeVec
-	ParallelOperations      *prometheus.GaugeVec
-	JobRetries              *prometheus.CounterVec
-	QueueDepth              *prometheus.GaugeVec
+	CacheHitRate       *prometheus.GaugeVec
+	CacheSize          *prometheus.GaugeVec
+	ParallelOperations *prometheus.GaugeVec
+	JobRetries         *prometheus.CounterVec
+	QueueDepth         *prometheus.GaugeVec
 
 	// Policy and Configuration Metrics
-	PolicyCompliance        *prometheus.GaugeVec
-	ConfigurationErrors     *prometheus.CounterVec
-	CustomActionsExecuted   *prometheus.CounterVec
-	CustomActionsDuration   *prometheus.SummaryVec
+	PolicyCompliance      *prometheus.GaugeVec
+	ConfigurationErrors   *prometheus.CounterVec
+	CustomActionsExecuted *prometheus.CounterVec
+	CustomActionsDuration *prometheus.SummaryVec
 }
 
 var (
@@ -337,12 +337,12 @@ var (
 func newKopiaMetrics() kopiaMetrics {
 	return kopiaMetrics{
 		// Backup/Restore Performance Metrics
-		OperationDuration:    operationDuration,
-		DataProcessed:        dataProcessed,
-		DataTransferRate:     dataTransferRate,
-		CompressionRatio:     compressionRatio,
-		OperationSuccess:     operationSuccess,
-		OperationFailure:     operationFailure,
+		OperationDuration: operationDuration,
+		DataProcessed:     dataProcessed,
+		DataTransferRate:  dataTransferRate,
+		CompressionRatio:  compressionRatio,
+		OperationSuccess:  operationSuccess,
+		OperationFailure:  operationFailure,
 
 		// Repository Health Metrics
 		RepositoryConnectivity: repositoryConnectivity,

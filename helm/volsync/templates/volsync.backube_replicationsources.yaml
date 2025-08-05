@@ -152,6 +152,12 @@ spec:
                             If SecretName is used then ConfigMapName should not be set
                           type: string
                       type: object
+                    hostname:
+                      description: |-
+                        Hostname override for Kopia repository access.
+                        If not specified, defaults to "<namespace>-<replicationsource-name>"
+                      pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$
+                      type: string
                     maintenanceIntervalDays:
                       description: MaintenanceIntervalDays define how often to run maintenance
                       format: int32
@@ -1401,10 +1407,23 @@ spec:
                           format: int32
                           type: integer
                       type: object
+                    sourcePathOverride:
+                      description: |-
+                        SourcePathOverride allows specifying a different path name in the snapshot
+                        than the actual filesystem path being backed up. This is useful when backing up
+                        from temporary mounts or snapshots while preserving the original path identity.
+                      pattern: ^/.*
+                      type: string
                     storageClassName:
                       description: |-
                         storageClassName can be used to override the StorageClass of the PiT
                         image.
+                      type: string
+                    username:
+                      description: |-
+                        Username override for Kopia repository access.
+                        If not specified, defaults to "volsync"
+                      pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$
                       type: string
                     volumeSnapshotClassName:
                       description: |-

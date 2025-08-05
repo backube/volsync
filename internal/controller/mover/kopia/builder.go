@@ -244,7 +244,7 @@ func generateHostname(hostname *string, namespace, name string) string {
 	if hostname != nil && *hostname != "" {
 		return *hostname
 	}
-	
+
 	// Generate default hostname from namespace and resource name
 	// Replace any characters that aren't allowed in Kopia hostnames
 	defaultHostname := fmt.Sprintf("%s-%s", namespace, name)
@@ -257,13 +257,13 @@ func generateHostname(hostname *string, namespace, name string) string {
 			validHostname += string(r)
 		}
 	}
-	
+
 	// Ensure hostname doesn't start or end with a hyphen or dot
 	validHostname = strings.Trim(validHostname, "-.")
-	
+
 	if validHostname == "" {
 		return "volsync-default"
 	}
-	
+
 	return validHostname
 }
