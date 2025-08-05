@@ -1,5 +1,12 @@
 # VolSync
 
+> **Note**: This is a fork of [backube/volsync](https://github.com/backube/volsync). For installation from this fork, use:
+> ```bash
+> helm repo add volsync-fork https://perfectra1n.github.io/volsync/charts
+> helm install --create-namespace -n volsync-system volsync volsync-fork/volsync
+> ```
+> Also, the documentation is hosted in the [GitHub Pages documentation](https://perfectra1n.github.io/volsync/) (Fork documentation mirror)
+
 VolSync asynchronously replicates Kubernetes persistent volumes between clusters
 using either [rsync](https://rsync.samba.org/) or [rclone](https://rclone.org/).
 It also supports creating backups of persistent volumes via
@@ -38,7 +45,6 @@ More detailed information on installation and usage can be found in the
 ## Helpful links
 
 * [VolSync documentation](https://volsync.readthedocs.io)
-  * [GitHub Pages documentation](https://perfectra1n.github.io/volsync/) (Fork documentation mirror)
 * [Changelog](CHANGELOG.md)
 * [Contributing guidelines](https://github.com/backube/.github/blob/master/CONTRIBUTING.md)
 * [Organization code of conduct](https://github.com/backube/.github/blob/master/CODE_OF_CONDUCT.md)
