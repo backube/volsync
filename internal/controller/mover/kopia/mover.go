@@ -415,6 +415,8 @@ func (m *Mover) buildRepositoryEnvironmentVariables(repo *corev1.Secret) []corev
 		// Mandatory variables are needed to define the repository location and its password
 		utils.EnvFromSecret(repo.Name, "KOPIA_REPOSITORY", false),
 		utils.EnvFromSecret(repo.Name, "KOPIA_PASSWORD", false),
+		// Optional manual configuration for advanced repository settings
+		utils.EnvFromSecret(repo.Name, "KOPIA_MANUAL_CONFIG", true),
 	}
 }
 

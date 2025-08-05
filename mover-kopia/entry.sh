@@ -82,6 +82,7 @@ echo "AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:+[SET]}${AWS_DEFAULT_REGION:-[NOT
 echo "KOPIA_OVERRIDE_USERNAME: ${KOPIA_OVERRIDE_USERNAME:+[SET]}${KOPIA_OVERRIDE_USERNAME:-[NOT SET]}"
 echo "KOPIA_OVERRIDE_HOSTNAME: ${KOPIA_OVERRIDE_HOSTNAME:+[SET]}${KOPIA_OVERRIDE_HOSTNAME:-[NOT SET]}"
 echo "KOPIA_SOURCE_PATH_OVERRIDE: ${KOPIA_SOURCE_PATH_OVERRIDE:+[SET]}${KOPIA_SOURCE_PATH_OVERRIDE:-[NOT SET]}"
+echo "KOPIA_MANUAL_CONFIG: ${KOPIA_MANUAL_CONFIG:+[SET]}${KOPIA_MANUAL_CONFIG:-[NOT SET]}"
 echo ""
 echo "=== Additional Backend Environment Variables ==="
 echo "KOPIA_B2_BUCKET: ${KOPIA_B2_BUCKET:+[SET]}${KOPIA_B2_BUCKET:-[NOT SET]}"
@@ -184,6 +185,149 @@ function add_user_overrides {
     fi
 }
 
+# Apply manual repository configuration from JSON if provided
+function apply_manual_config {
+    if [[ -n "${KOPIA_MANUAL_CONFIG}" ]]; then
+        echo "=== Applying manual repository configuration ==="
+        echo "Manual configuration provided, parsing JSON..."
+        
+        # Validate JSON syntax first
+        if ! echo "${KOPIA_MANUAL_CONFIG}" | jq . >/dev/null 2>&1; then
+            echo "ERROR: Invalid JSON in KOPIA_MANUAL_CONFIG"
+            echo "Falling back to automatic configuration"
+            return 1
+        fi
+        
+        # Parse and validate manual configuration
+        local manual_config="${KOPIA_MANUAL_CONFIG}"
+        
+        # Extract configuration sections
+        local encryption_config
+        local compression_config
+        local splitter_config
+        local caching_config
+        
+        encryption_config=$(echo "${manual_config}" | jq -r '.encryption // empty')
+        compression_config=$(echo "${manual_config}" | jq -r '.compression // empty')
+        splitter_config=$(echo "${manual_config}" | jq -r '.splitter // empty')
+        caching_config=$(echo "${manual_config}" | jq -r '.caching // empty')
+        
+        echo "Parsed configuration sections:"
+        echo "  Encryption: ${encryption_config:+[SET]}${encryption_config:-[NOT SET]}"
+        echo "  Compression: ${compression_config:+[SET]}${compression_config:-[NOT SET]}"
+        echo "  Splitter: ${splitter_config:+[SET]}${splitter_config:-[NOT SET]}"
+        echo "  Caching: ${caching_config:+[SET]}${caching_config:-[NOT SET]}"
+        
+        # Store manual configuration for repository creation/connection
+        export KOPIA_MANUAL_ENCRYPTION_CONFIG="${encryption_config}"
+        export KOPIA_MANUAL_COMPRESSION_CONFIG="${compression_config}"
+        export KOPIA_MANUAL_SPLITTER_CONFIG="${splitter_config}"
+        export KOPIA_MANUAL_CACHING_CONFIG="${caching_config}"
+        
+        echo "Manual configuration parsed and exported successfully"
+        echo "Configuration will be applied during repository creation/connection"
+        return 0
+    else
+        echo "No manual configuration provided, using automatic settings"
+        return 0
+    fi
+}
+
+# Add manual configuration parameters to repository creation command
+# add_manual_config_params command_array_name
+function add_manual_config_params {
+    local -n cmd_array=$1
+    
+    if [[ -n "${KOPIA_MANUAL_CONFIG}" ]]; then
+        echo "Applying manual configuration parameters to repository command..."
+        
+        # Apply encryption configuration
+        if [[ -n "${KOPIA_MANUAL_ENCRYPTION_CONFIG}" && "${KOPIA_MANUAL_ENCRYPTION_CONFIG}" != "null" ]]; then
+            local encryption_algorithm
+            encryption_algorithm=$(echo "${KOPIA_MANUAL_ENCRYPTION_CONFIG}" | jq -r '.algorithm // empty')
+            
+            if [[ -n "${encryption_algorithm}" && "${encryption_algorithm}" != "null" ]]; then
+                # Validate encryption algorithm against allowed values
+                case "${encryption_algorithm}" in
+                    "CHACHA20-POLY1305"|"AES256-GCM"|"AES192-GCM"|"AES128-GCM")
+                        echo "  Using encryption algorithm: ${encryption_algorithm}"
+                        cmd_array+=(--encryption="${encryption_algorithm}")
+                        ;;
+                    *)
+                        echo "  WARNING: Unsupported encryption algorithm '${encryption_algorithm}', using default"
+                        ;;
+                esac
+            fi
+        fi
+        
+        # Apply compression configuration
+        if [[ -n "${KOPIA_MANUAL_COMPRESSION_CONFIG}" && "${KOPIA_MANUAL_COMPRESSION_CONFIG}" != "null" ]]; then
+            local compression_algorithm
+            local compression_min_size
+            local compression_max_size
+            
+            compression_algorithm=$(echo "${KOPIA_MANUAL_COMPRESSION_CONFIG}" | jq -r '.algorithm // empty')
+            compression_min_size=$(echo "${KOPIA_MANUAL_COMPRESSION_CONFIG}" | jq -r '.minSize // empty')
+            compression_max_size=$(echo "${KOPIA_MANUAL_COMPRESSION_CONFIG}" | jq -r '.maxSize // empty')
+            
+            if [[ -n "${compression_algorithm}" && "${compression_algorithm}" != "null" ]]; then
+                # Validate compression algorithm against common Kopia options
+                case "${compression_algorithm}" in
+                    "ZSTD-FASTEST"|"ZSTD-FAST"|"ZSTD-DEFAULT"|"ZSTD-BETTER"|"ZSTD-BEST"|"S2-DEFAULT"|"S2-BETTER"|"S2-BEST"|"DEFLATE-DEFAULT"|"DEFLATE-BEST-SPEED"|"DEFLATE-BEST-COMPRESSION"|"none")
+                        echo "  Using compression algorithm: ${compression_algorithm}"
+                        cmd_array+=(--compression="${compression_algorithm}")
+                        ;;
+                    *)
+                        echo "  WARNING: Unsupported compression algorithm '${compression_algorithm}', using default"
+                        ;;
+                esac
+            fi
+            
+            if [[ -n "${compression_min_size}" && "${compression_min_size}" != "null" ]]; then
+                if [[ "${compression_min_size}" =~ ^[0-9]+$ ]]; then
+                    echo "  Using compression minimum size: ${compression_min_size}"
+                    cmd_array+=(--compression-min-size="${compression_min_size}")
+                else
+                    echo "  WARNING: Invalid compression min size '${compression_min_size}', must be numeric"
+                fi
+            fi
+            
+            if [[ -n "${compression_max_size}" && "${compression_max_size}" != "null" ]]; then
+                if [[ "${compression_max_size}" =~ ^[0-9]+$ ]]; then
+                    echo "  Using compression maximum size: ${compression_max_size}"
+                    cmd_array+=(--compression-max-size="${compression_max_size}")
+                else
+                    echo "  WARNING: Invalid compression max size '${compression_max_size}', must be numeric"
+                fi
+            fi
+        fi
+        
+        # Apply splitter configuration
+        if [[ -n "${KOPIA_MANUAL_SPLITTER_CONFIG}" && "${KOPIA_MANUAL_SPLITTER_CONFIG}" != "null" ]]; then
+            local splitter_algorithm
+            splitter_algorithm=$(echo "${KOPIA_MANUAL_SPLITTER_CONFIG}" | jq -r '.algorithm // empty')
+            
+            if [[ -n "${splitter_algorithm}" && "${splitter_algorithm}" != "null" ]]; then
+                # Validate splitter algorithm against common Kopia options
+                case "${splitter_algorithm}" in
+                    "DYNAMIC-4M-BUZHASH"|"DYNAMIC-8M-BUZHASH"|"DYNAMIC-16M-BUZHASH"|"DYNAMIC-32M-BUZHASH"|"FIXED-1M"|"FIXED-2M"|"FIXED-4M"|"FIXED-8M"|"FIXED-16M"|"FIXED-32M")
+                        echo "  Using splitter algorithm: ${splitter_algorithm}"
+                        cmd_array+=(--object-splitter="${splitter_algorithm}")
+                        ;;
+                    *)
+                        echo "  WARNING: Unsupported splitter algorithm '${splitter_algorithm}', using default"
+                        ;;
+                esac
+            fi
+        fi
+        
+        # Note: Caching configuration is typically applied post-repository creation
+        # via 'kopia cache set' commands, which we handle in ensure_connected
+        
+        echo "Manual configuration parameters applied to repository command"
+    fi
+}
+
 # Apply policy configuration if available
 function apply_policy_config {
     if [[ -n "${KOPIA_CONFIG_PATH}" && -d "${KOPIA_CONFIG_PATH}" ]]; then
@@ -212,6 +356,9 @@ function apply_policy_config {
 # Connect to or create the repository
 function ensure_connected {
     echo "=== Connecting to repository ==="
+    
+    # Apply manual configuration first (parses JSON and sets environment variables)
+    apply_manual_config
     
     # Try to connect to existing repository (let errors display naturally)
     if ! timeout 10s "${KOPIA[@]}" repository status >/dev/null 2>&1; then
@@ -272,7 +419,27 @@ function ensure_connected {
     
     # Set cache directory after successful connection
     echo "=== Setting cache directory ==="
-    if ! "${KOPIA[@]}" cache set --cache-directory="${KOPIA_CACHE_DIR}"; then
+    declare -a CACHE_CMD
+    CACHE_CMD=("${KOPIA[@]}" cache set --cache-directory="${KOPIA_CACHE_DIR}")
+    
+    # Apply manual cache configuration if specified
+    if [[ -n "${KOPIA_MANUAL_CACHING_CONFIG}" && "${KOPIA_MANUAL_CACHING_CONFIG}" != "null" ]]; then
+        echo "Applying manual cache configuration..."
+        
+        local max_cache_size
+        max_cache_size=$(echo "${KOPIA_MANUAL_CACHING_CONFIG}" | jq -r '.maxCacheSize // empty')
+        
+        if [[ -n "${max_cache_size}" && "${max_cache_size}" != "null" ]]; then
+            if [[ "${max_cache_size}" =~ ^[0-9]+$ ]]; then
+                echo "  Using maximum cache size: ${max_cache_size} bytes"
+                CACHE_CMD+=(--max-size="${max_cache_size}")
+            else
+                echo "  WARNING: Invalid cache max size '${max_cache_size}', must be numeric in bytes"
+            fi
+        fi
+    fi
+    
+    if ! "${CACHE_CMD[@]}"; then
         error 1 "Failed to set cache directory"
     fi
     echo "Cache directory configured successfully"
@@ -456,6 +623,9 @@ function create_repository {
         # Add username/hostname overrides if specified
         add_user_overrides S3_CREATE_CMD
         
+        # Add manual configuration parameters if specified
+        add_manual_config_params S3_CREATE_CMD
+        
         echo "=== End S3 Creation Debug ==="
         echo ""
         echo "Executing creation command..."
@@ -467,6 +637,7 @@ function create_repository {
             --storage-account="${KOPIA_AZURE_STORAGE_ACCOUNT}" \
             --storage-key="${KOPIA_AZURE_STORAGE_KEY}")
         add_user_overrides AZURE_CREATE_CMD
+        add_manual_config_params AZURE_CREATE_CMD
         "${AZURE_CREATE_CMD[@]}"
     elif [[ -n "${KOPIA_GCS_BUCKET}" ]]; then
         echo "Creating GCS repository"
@@ -474,11 +645,13 @@ function create_repository {
             --bucket="${KOPIA_GCS_BUCKET}" \
             --credentials-file="${GOOGLE_APPLICATION_CREDENTIALS}")
         add_user_overrides GCS_CREATE_CMD
+        add_manual_config_params GCS_CREATE_CMD
         "${GCS_CREATE_CMD[@]}"
     elif [[ -n "${KOPIA_FS_PATH}" ]]; then
         echo "Creating filesystem repository"
         FS_CREATE_CMD=("${KOPIA[@]}" repository create filesystem --path="${KOPIA_FS_PATH}")
         add_user_overrides FS_CREATE_CMD
+        add_manual_config_params FS_CREATE_CMD
         "${FS_CREATE_CMD[@]}"
     elif [[ -n "${KOPIA_B2_BUCKET}" ]]; then
         echo "Creating Backblaze B2 repository"
@@ -487,6 +660,7 @@ function create_repository {
             --key-id="${B2_ACCOUNT_ID}" \
             --key="${B2_APPLICATION_KEY}")
         add_user_overrides B2_CREATE_CMD
+        add_manual_config_params B2_CREATE_CMD
         "${B2_CREATE_CMD[@]}"
     elif [[ -n "${WEBDAV_URL}" ]]; then
         echo "Creating WebDAV repository"
@@ -495,6 +669,7 @@ function create_repository {
             --username="${WEBDAV_USERNAME}" \
             --password="${WEBDAV_PASSWORD}")
         add_user_overrides WEBDAV_CREATE_CMD
+        add_manual_config_params WEBDAV_CREATE_CMD
         "${WEBDAV_CREATE_CMD[@]}"
     elif [[ -n "${SFTP_HOST}" ]]; then
         echo "Creating SFTP repository"
@@ -512,6 +687,7 @@ function create_repository {
             SFTP_CREATE_CMD+=(--keyfile="${SFTP_KEY_FILE}")
         fi
         add_user_overrides SFTP_CREATE_CMD
+        add_manual_config_params SFTP_CREATE_CMD
         "${SFTP_CREATE_CMD[@]}"
     elif [[ -n "${RCLONE_REMOTE_PATH}" ]]; then
         echo "Creating Rclone repository"
@@ -524,6 +700,7 @@ function create_repository {
             RCLONE_CREATE_CMD+=(--rclone-config="${RCLONE_CONFIG}")
         fi
         add_user_overrides RCLONE_CREATE_CMD
+        add_manual_config_params RCLONE_CREATE_CMD
         "${RCLONE_CREATE_CMD[@]}"
     elif [[ -n "${GOOGLE_DRIVE_FOLDER_ID}" ]]; then
         echo "Creating Google Drive repository"
@@ -531,6 +708,7 @@ function create_repository {
             --folder-id="${GOOGLE_DRIVE_FOLDER_ID}" \
             --credentials-file="${GOOGLE_DRIVE_CREDENTIALS}")
         add_user_overrides GDRIVE_CREATE_CMD
+        add_manual_config_params GDRIVE_CREATE_CMD
         "${GDRIVE_CREATE_CMD[@]}"
     else
         error 1 "No repository configuration found"

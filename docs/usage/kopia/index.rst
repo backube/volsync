@@ -704,6 +704,9 @@ VolSync's Kopia mover supports a comprehensive set of environment variables for 
 ``KOPIA_PASSWORD``
    The repository encryption password (required)
 
+``KOPIA_MANUAL_CONFIG``
+   JSON configuration object for manual repository configuration. When provided, overrides VolSync's automatic repository format configuration. See the :ref:`manual-repository-configuration` section for detailed usage.
+
 **S3-Compatible Storage Variables**
 
 ``AWS_ACCESS_KEY_ID``, ``AWS_SECRET_ACCESS_KEY``
@@ -1895,6 +1898,10 @@ Consider reducing ``parallelism`` to lower the API request rate or upgrading to 
 
 Consider using Google Cloud Storage instead for very large backup files.
 
+**Manual Repository Configuration Issues**
+
+For troubleshooting problems specific to manual repository configuration, see the :ref:`manual-repository-configuration` section, which includes detailed troubleshooting guidance for configuration validation errors, performance issues, and migration problems.
+
 Advanced policy configuration
 ===============================
 
@@ -2562,3 +2569,1232 @@ VolSync's Kopia mover includes several enhancements over the basic Kopia functio
 * **Advanced retention**: Sophisticated retention policies through policy configuration
 
 These enhancements make VolSync's Kopia mover suitable for enterprise backup scenarios while maintaining ease of use for simple configurations.
+
+.. _manual-repository-configuration:
+
+Advanced manual repository configuration
+=========================================
+
+VolSync's Kopia mover supports advanced manual repository configuration through the ``KOPIA_MANUAL_CONFIG`` environment variable. This feature allows experienced users to override VolSync's automatic repository configuration while preserving multi-tenancy and maintaining compatibility with all supported storage backends.
+
+Overview and use cases
+-----------------------
+
+Manual repository configuration provides direct control over Kopia's internal repository settings, enabling fine-tuned customization beyond what VolSync's standard configuration options provide.
+
+**When to use manual configuration:**
+
+* **Custom encryption algorithms**: Specify CHACHA20-POLY1305 or other algorithms not exposed through standard options
+* **Advanced compression settings**: Configure compression with specific size thresholds and algorithm variants
+* **Performance optimization**: Fine-tune splitting algorithms, parallelism, and caching for specific workloads
+* **Storage optimization**: Balance compression ratio vs. speed for different storage backends and network conditions
+* **Enterprise compliance**: Meet specific security or performance requirements mandated by organizational policies
+
+**When to use automatic configuration:**
+
+Manual configuration adds complexity and requires deep Kopia knowledge. Use VolSync's standard configuration for:
+
+* Standard backup scenarios with common requirements
+* Development and testing environments
+* Initial deployments where standard settings are sufficient
+* Teams without dedicated backup administration expertise
+
+Multi-tenancy preservation
+--------------------------
+
+Manual repository configuration works seamlessly with VolSync's multi-tenancy features. VolSync automatically isolates backups using the pattern ``<namespace>@<replicationsource-name>`` regardless of manual configuration settings. This ensures:
+
+* **Complete isolation** between different applications and namespaces
+* **Shared repository access** with automatic user separation
+* **Consistent security model** across automatic and manual configurations
+* **Simplified administration** with namespace-based access control
+
+For example, manual configuration applied to these ReplicationSources:
+
+.. code-block:: yaml
+
+   # Namespace: production, ReplicationSource: mysql-primary
+   # Results in: production@mysql-primary:/<source-path>
+   
+   # Namespace: staging, ReplicationSource: mysql-primary  
+   # Results in: staging@mysql-primary:/<source-path>
+
+Both can use identical manual configurations while remaining completely isolated in the same repository.
+
+Configuration format and structure
+----------------------------------
+
+The ``KOPIA_MANUAL_CONFIG`` environment variable expects a JSON configuration object that directly maps to Kopia's repository format configuration. This configuration is applied during repository initialization and affects all subsequent backup operations.
+
+Basic configuration structure
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: json
+
+   {
+     "encryption": {
+       "algorithm": "CHACHA20-POLY1305"
+     },
+     "compression": {
+       "algorithm": "ZSTD-BEST",
+       "minSize": 1024,
+       "maxSize": 1048576
+     },
+     "splitter": {
+       "algorithm": "DYNAMIC-4M-BUZHASH"
+     },
+     "caching": {
+       "maxCacheSize": 2147483648
+     }
+   }
+
+Complete configuration examples
+-------------------------------
+
+Basic manual configuration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A simple example showing how to enable manual configuration alongside standard VolSync settings:
+
+.. code-block:: yaml
+
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: kopia-manual-config
+   type: Opaque
+   stringData:
+     # Standard VolSync repository configuration (still required)
+     KOPIA_REPOSITORY: s3://my-bucket/backups
+     KOPIA_PASSWORD: my-secure-password
+     AWS_ACCESS_KEY_ID: AKIAIOSFODNN7EXAMPLE
+     AWS_SECRET_ACCESS_KEY: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+
+     # Manual repository configuration
+     KOPIA_MANUAL_CONFIG: |
+       {
+         "encryption": {
+           "algorithm": "CHACHA20-POLY1305"
+         },
+         "compression": {
+           "algorithm": "ZSTD-BEST",
+           "minSize": 1024,
+           "maxSize": 1048576
+         },
+         "splitter": {
+           "algorithm": "DYNAMIC-4M-BUZHASH"
+         },
+         "caching": {
+           "maxCacheSize": 2147483648
+         }
+       }
+
+   ---
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: app-backup-manual
+   spec:
+     sourcePVC: app-data
+     trigger:
+       schedule: "0 2 * * *"
+     kopia:
+       repository: kopia-manual-config
+       retain:
+         daily: 7
+         weekly: 4
+       copyMethod: Clone
+
+High-performance configuration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Optimized for fast networks and high-throughput scenarios:
+
+.. code-block:: yaml
+
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: kopia-performance-config
+   type: Opaque
+   stringData:
+     KOPIA_REPOSITORY: s3://high-speed-bucket/backups
+     KOPIA_PASSWORD: secure-password
+     AWS_ACCESS_KEY_ID: AKIAIOSFODNN7EXAMPLE
+     AWS_SECRET_ACCESS_KEY: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+     
+     KOPIA_MANUAL_CONFIG: |
+       {
+         "encryption": {
+           "algorithm": "AES256-GCM"
+         },
+         "compression": {
+           "algorithm": "S2-PARALLEL-8",
+           "minSize": 4096,
+           "maxSize": 8388608
+         },
+         "splitter": {
+           "algorithm": "DYNAMIC-16M-BUZHASH"
+         },
+         "caching": {
+           "maxCacheSize": 8589934592
+         }
+       }
+
+   ---
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: high-performance-backup
+   spec:
+     sourcePVC: large-dataset
+     trigger:
+       schedule: "0 1 * * *"
+     kopia:
+       repository: kopia-performance-config
+       parallelism: 8
+       moverResources:
+         limits:
+           cpu: "4"
+           memory: 8Gi
+         requests:
+           cpu: "2"
+           memory: 4Gi
+       copyMethod: Clone
+
+Maximum compression configuration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Optimized for slow networks or expensive storage:
+
+.. code-block:: yaml
+
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: kopia-compression-config
+   type: Opaque
+   stringData:
+     KOPIA_REPOSITORY: azure://container/backups
+     KOPIA_PASSWORD: secure-password
+     AZURE_STORAGE_ACCOUNT: mystorageaccount
+     AZURE_STORAGE_KEY: storage-key-here
+     
+     KOPIA_MANUAL_CONFIG: |
+       {
+         "encryption": {
+           "algorithm": "AES256-GCM"
+         },
+         "compression": {
+           "algorithm": "ZSTD-BEST",
+           "minSize": 512,
+           "maxSize": 2097152
+         },
+         "splitter": {
+           "algorithm": "DYNAMIC-1M-BUZHASH"
+         },
+         "caching": {
+           "maxCacheSize": 1073741824
+         }
+       }
+
+Security-focused configuration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Optimized for maximum security with strongest encryption:
+
+.. code-block:: yaml
+
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: kopia-security-config
+   type: Opaque
+   stringData:
+     KOPIA_REPOSITORY: gcs://secure-bucket/backups
+     KOPIA_PASSWORD: ultra-secure-password
+     GOOGLE_APPLICATION_CREDENTIALS: |
+       {
+         "type": "service_account",
+         "project_id": "security-project",
+         "private_key_id": "key-id",
+         "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
+         "client_email": "backup-service@security-project.iam.gserviceaccount.com",
+         "client_id": "123456789",
+         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+         "token_uri": "https://oauth2.googleapis.com/token"
+       }
+     
+     KOPIA_MANUAL_CONFIG: |
+       {
+         "encryption": {
+           "algorithm": "CHACHA20-POLY1305"
+         },
+         "compression": {
+           "algorithm": "ZSTD-DEFAULT",
+           "minSize": 2048,
+           "maxSize": 524288
+         },
+         "splitter": {
+           "algorithm": "DYNAMIC-2M-BUZHASH"
+         },
+         "caching": {
+           "maxCacheSize": 536870912
+         }
+       }
+
+Development vs production configurations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Different optimizations for different environments:
+
+.. code-block:: yaml
+
+   # Development configuration - speed optimized
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: kopia-dev-config
+     namespace: development
+   type: Opaque
+   stringData:
+     KOPIA_REPOSITORY: filesystem:///mnt/dev-backups
+     KOPIA_PASSWORD: dev-password
+     
+     KOPIA_MANUAL_CONFIG: |
+       {
+         "encryption": {
+           "algorithm": "AES128-GCM"
+         },
+         "compression": {
+           "algorithm": "S2-DEFAULT",
+           "minSize": 8192,
+           "maxSize": 4194304
+         },
+         "splitter": {
+           "algorithm": "DYNAMIC-8M-BUZHASH"
+         },
+         "caching": {
+           "maxCacheSize": 1073741824
+         }
+       }
+
+   ---
+   # Production configuration - reliability optimized
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: kopia-prod-config
+     namespace: production
+   type: Opaque
+   stringData:
+     KOPIA_REPOSITORY: s3://production-backups/secure
+     KOPIA_PASSWORD: production-secure-password
+     AWS_ACCESS_KEY_ID: AKIAIOSFODNN7EXAMPLE
+     AWS_SECRET_ACCESS_KEY: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+     
+     KOPIA_MANUAL_CONFIG: |
+       {
+         "encryption": {
+           "algorithm": "CHACHA20-POLY1305"
+         },
+         "compression": {
+           "algorithm": "ZSTD-DEFAULT",
+           "minSize": 1024,
+           "maxSize": 1048576
+         },
+         "splitter": {
+           "algorithm": "DYNAMIC-4M-BUZHASH"
+         },
+         "caching": {
+           "maxCacheSize": 4294967296
+         }
+       }
+
+Configuration reference
+-----------------------
+
+Encryption algorithms
+~~~~~~~~~~~~~~~~~~~~~
+
+**CHACHA20-POLY1305** (Recommended)
+   Modern authenticated encryption algorithm with excellent performance on systems without AES hardware acceleration. Provides strong security and is resistant to timing attacks.
+
+**AES256-GCM** 
+   Industry-standard AES encryption with 256-bit keys. Excellent performance on systems with AES-NI hardware acceleration. Widely supported and well-audited.
+
+**AES192-GCM**
+   AES encryption with 192-bit keys. Provides a balance between security and performance. Less common than AES256 but still secure.
+
+**AES128-GCM**
+   AES encryption with 128-bit keys. Fastest AES variant while maintaining strong security. Suitable for high-performance scenarios where encryption overhead must be minimized.
+
+.. code-block:: json
+
+   {
+     "encryption": {
+       "algorithm": "CHACHA20-POLY1305"
+     }
+   }
+
+Compression algorithms
+~~~~~~~~~~~~~~~~~~~~~~
+
+**ZSTD Variants** (Recommended for most use cases)
+
+``ZSTD-FASTEST``
+   Prioritizes speed over compression ratio. Best for high-throughput scenarios with fast storage.
+
+``ZSTD-FAST``
+   Good balance of speed and compression. Suitable for most real-time backup scenarios.
+
+``ZSTD-DEFAULT``
+   Standard ZSTD compression. Excellent balance of compression ratio and speed for general use.
+
+``ZSTD-BETTER``
+   Higher compression ratio at the cost of increased CPU usage. Good for slower networks or expensive storage.
+
+``ZSTD-BEST``
+   Maximum compression ratio. Use for long-term storage or bandwidth-constrained scenarios.
+
+**S2 Variants** (Optimized for speed)
+
+``S2-DEFAULT``
+   Fast compression with reasonable ratios. Good alternative when CPU is limited.
+
+``S2-BETTER``
+   Improved compression ratio while maintaining good speed characteristics.
+
+``S2-PARALLEL-4``, ``S2-PARALLEL-8``, ``S2-PARALLEL-16``
+   Parallel S2 compression using multiple threads. Excellent for multi-core systems with high data throughput.
+
+**Other Algorithms**
+
+``DEFLATE-DEFAULT``, ``DEFLATE-BEST-SPEED``, ``DEFLATE-BEST-COMPRESSION``
+   Standard deflate compression. Compatible but generally slower than ZSTD or S2.
+
+``none``
+   No compression. Use for already compressed data (images, videos) or when CPU resources are extremely limited.
+
+.. code-block:: json
+
+   {
+     "compression": {
+       "algorithm": "ZSTD-DEFAULT",
+       "minSize": 1024,
+       "maxSize": 1048576
+     }
+   }
+
+``minSize``
+   Files smaller than this size (in bytes) won't be compressed. Avoids compression overhead for small files.
+
+``maxSize``
+   Files larger than this size (in bytes) won't be compressed. Prevents excessive memory usage on very large files.
+
+Splitting algorithms
+~~~~~~~~~~~~~~~~~~~~
+
+Splitting algorithms determine how Kopia divides data into chunks for deduplication and storage.
+
+**DYNAMIC Variants** (Recommended)
+
+``DYNAMIC-1M-BUZHASH``, ``DYNAMIC-2M-BUZHASH``, ``DYNAMIC-4M-BUZHASH``, ``DYNAMIC-8M-BUZHASH``, ``DYNAMIC-16M-BUZHASH``, ``DYNAMIC-32M-BUZHASH``
+   Dynamic content-based chunking using the BUZHASH algorithm. Numbers indicate average chunk size. Dynamic chunking provides excellent deduplication by creating chunk boundaries based on content rather than fixed positions.
+
+**FIXED Variants**
+
+``FIXED-1M``, ``FIXED-2M``, ``FIXED-4M``, ``FIXED-8M``, ``FIXED-16M``, ``FIXED-32M``
+   Fixed-size chunking. Simpler but provides less effective deduplication since chunks are created at fixed intervals regardless of content.
+
+**Choosing chunk sizes:**
+
+* **1M-2M**: Better deduplication, higher metadata overhead, suitable for datasets with high redundancy
+* **4M-8M**: Balanced approach suitable for most scenarios  
+* **16M-32M**: Lower metadata overhead, less effective deduplication, suitable for unique large files
+
+.. code-block:: json
+
+   {
+     "splitter": {
+       "algorithm": "DYNAMIC-4M-BUZHASH"
+     }
+   }
+
+Caching settings
+~~~~~~~~~~~~~~~~
+
+Cache configuration affects both performance and memory usage during backup and restore operations.
+
+``maxCacheSize``
+   Maximum cache size in bytes. Larger caches improve performance by reducing repeated reads from the repository but consume more memory.
+
+**Recommended cache sizes:**
+
+* **Small repositories** (< 100GB): 512MB - 1GB
+* **Medium repositories** (100GB - 1TB): 1GB - 4GB  
+* **Large repositories** (1TB+): 4GB - 8GB
+* **Enterprise repositories** (10TB+): 8GB+
+
+.. code-block:: json
+
+   {
+     "caching": {
+       "maxCacheSize": 2147483648
+     }
+   }
+
+Integration with existing features
+----------------------------------
+
+Backend compatibility
+~~~~~~~~~~~~~~~~~~~~~
+
+Manual repository configuration is fully compatible with all supported storage backends:
+
+**S3-Compatible Storage**
+   Works with AWS S3, MinIO, and other S3-compatible services. Manual configuration affects repository format, not connection parameters.
+
+**Azure Blob Storage**
+   Full compatibility with both access key and SAS token authentication methods.
+
+**Google Cloud Storage**
+   Compatible with both service account and user credentials authentication.
+
+**Backblaze B2**
+   Full compatibility with B2's cost-effective storage for long-term backups.
+
+**WebDAV**
+   Works with any WebDAV-compatible storage including NAS devices and cloud services.
+
+**SFTP**
+   Compatible with both password and SSH key authentication methods.
+
+**Rclone**
+   Works with any of Rclone's 40+ supported cloud storage providers.
+
+**Google Drive**
+   Full compatibility with both personal and Google Workspace accounts.
+
+**Filesystem**
+   Compatible with local and network-mounted filesystems.
+
+VolSync feature integration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Manual configuration integrates seamlessly with existing VolSync features:
+
+**Retention Policies**
+   Standard VolSync retention settings (``hourly``, ``daily``, ``weekly``, ``monthly``, ``yearly``) work normally with manual configuration.
+
+**Copy Methods**
+   All copy methods (``Direct``, ``Clone``, ``Snapshot``) are fully supported.
+
+**Actions and Hooks**
+   Pre/post snapshot actions continue to work normally with manual repository configuration.
+
+**Policy Configuration**
+   Manual repository configuration can be combined with policy-based configuration for comprehensive control.
+
+**Multi-tenancy**
+   Automatic namespace-based isolation is preserved regardless of manual configuration settings.
+
+**Cache Management**
+   VolSync's cache volume management works normally. Manual caching settings in ``KOPIA_MANUAL_CONFIG`` affect repository-level caching, while VolSync manages the cache volume lifecycle.
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: integrated-backup
+   spec:
+     sourcePVC: app-data
+     trigger:
+       schedule: "0 2 * * *"
+     kopia:
+       repository: kopia-manual-config  # Contains KOPIA_MANUAL_CONFIG
+       retain:                          # Standard retention works
+         daily: 7
+         weekly: 4
+       actions:                         # Actions work normally
+         beforeSnapshot: "sync"
+       policyConfig:                    # Can combine with policies
+         configMapName: kopia-policies
+       cacheCapacity: 5Gi              # VolSync cache management
+       copyMethod: Clone                # All copy methods supported
+
+Backward compatibility
+~~~~~~~~~~~~~~~~~~~~~~
+
+Manual configuration maintains full backward compatibility:
+
+**Existing Repositories**
+   Repositories created with automatic configuration continue to work normally. Manual configuration only affects new repositories.
+
+**Migration Path**
+   You can migrate from automatic to manual configuration by creating a new repository with manual settings and transferring data.
+
+**Standard Configuration Fallback**
+   If ``KOPIA_MANUAL_CONFIG`` is invalid or missing, VolSync falls back to automatic configuration without error.
+
+**Mixed Environments**
+   Some ReplicationSources can use manual configuration while others use automatic configuration within the same cluster.
+
+Migration guide
+---------------
+
+Migrating from automatic to manual configuration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Step 1: Plan your configuration**
+
+Determine the manual settings you need based on your requirements:
+
+.. code-block:: console
+
+   # Identify current repository settings
+   $ kubectl exec -it <current-kopia-job-pod> -- kopia repository status
+   
+   # Review current performance characteristics
+   $ kubectl logs <replicationsource-job> | grep -i performance
+
+**Step 2: Create manual configuration Secret**
+
+Create a new Secret with your manual configuration:
+
+.. code-block:: yaml
+
+   apiVersion: v1
+   kind: Secret  
+   metadata:
+     name: kopia-manual-config
+   type: Opaque
+   stringData:
+     # Copy existing connection settings
+     KOPIA_REPOSITORY: s3://my-bucket/backups-manual  # Use new path
+     KOPIA_PASSWORD: my-secure-password
+     AWS_ACCESS_KEY_ID: AKIAIOSFODNN7EXAMPLE
+     AWS_SECRET_ACCESS_KEY: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+     
+     # Add manual configuration
+     KOPIA_MANUAL_CONFIG: |
+       {
+         "encryption": {
+           "algorithm": "CHACHA20-POLY1305"
+         },
+         "compression": {
+           "algorithm": "ZSTD-DEFAULT",
+           "minSize": 1024,
+           "maxSize": 1048576
+         },
+         "splitter": {
+           "algorithm": "DYNAMIC-4M-BUZHASH"
+         },
+         "caching": {
+           "maxCacheSize": 2147483648
+         }
+       }
+
+**Step 3: Test manual configuration**
+
+Create a test ReplicationSource to validate the manual configuration:
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: test-manual-backup
+   spec:
+     sourcePVC: test-data
+     trigger:
+       manual: test-manual-config
+     kopia:
+       repository: kopia-manual-config
+       retain:
+         daily: 3
+       copyMethod: Clone
+
+.. code-block:: console
+
+   # Trigger test backup
+   $ kubectl patch replicationsource test-manual-backup --type merge -p '{"spec":{"trigger":{"manual":"test-run-1"}}}'
+   
+   # Monitor test results
+   $ kubectl get replicationsource test-manual-backup -o yaml
+   $ kubectl logs <test-job-pod>
+
+**Step 4: Update production ReplicationSource**
+
+Once testing is successful, update your production ReplicationSource:
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: production-backup
+   spec:
+     sourcePVC: production-data
+     trigger:
+       schedule: "0 2 * * *"
+     kopia:
+       repository: kopia-manual-config  # Updated to use manual config
+       retain:
+         daily: 7
+         weekly: 4
+       copyMethod: Clone
+
+**Step 5: Clean up old repository (optional)**
+
+After confirming manual configuration works correctly:
+
+.. code-block:: console
+
+   # Verify new backups are working
+   $ kubectl get replicationsource production-backup -o yaml
+   
+   # Optional: Clean up old automatic repository if no longer needed
+   # Note: This permanently deletes backup data
+
+Rolling back to automatic configuration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you need to revert to automatic configuration:
+
+**Step 1: Create automatic configuration Secret**
+
+.. code-block:: yaml
+
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: kopia-automatic-config
+   type: Opaque
+   stringData:
+     # Standard automatic configuration (no KOPIA_MANUAL_CONFIG)
+     KOPIA_REPOSITORY: s3://my-bucket/backups-auto
+     KOPIA_PASSWORD: my-secure-password
+     AWS_ACCESS_KEY_ID: AKIAIOSFODNN7EXAMPLE
+     AWS_SECRET_ACCESS_KEY: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+
+**Step 2: Update ReplicationSource**
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: production-backup
+   spec:
+     sourcePVC: production-data
+     trigger:
+       schedule: "0 2 * * *"
+     kopia:
+       repository: kopia-automatic-config  # Reverted to automatic
+       compression: zstd                   # Use VolSync standard options
+       parallelism: 2
+       retain:
+         daily: 7
+         weekly: 4
+       copyMethod: Clone
+
+Performance considerations
+--------------------------
+
+Choosing optimal settings
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Network Characteristics**
+
+*High-bandwidth, low-latency networks:*
+* Use larger chunk sizes (8M-16M) to reduce overhead
+* Higher parallelism for concurrent uploads
+* Faster compression algorithms (S2-PARALLEL-*)
+
+*Low-bandwidth, high-latency networks:*
+* Maximum compression (ZSTD-BEST) to reduce transfer size
+* Smaller chunk sizes (1M-2M) for better error recovery
+* Lower parallelism to avoid overwhelming the connection
+
+**Storage Backend Performance**
+
+*High-performance storage (NVMe, fast SAN):*
+* Larger cache sizes to take advantage of fast storage
+* Higher compression levels since CPU is often the bottleneck
+* Larger chunk sizes to match storage block sizes
+
+*Network-attached or cloud storage:*
+* Moderate cache sizes to balance performance and cost
+* Balanced compression to avoid CPU bottlenecks
+* Chunk sizes aligned with backend optimal transfer sizes
+
+**System Resources**
+
+*CPU-limited systems:*
+* Fast compression algorithms (S2-DEFAULT, ZSTD-FASTEST)
+* Larger chunk sizes to reduce processing overhead
+* Smaller cache sizes to reduce memory pressure
+
+*Memory-limited systems:*
+* Smaller cache sizes (512MB-1GB)
+* Sequential operations (parallelism: 1)
+* Smaller chunk sizes to avoid large memory allocations
+
+*I/O-limited systems:*
+* Maximum compression to reduce I/O volume
+* Larger cache sizes if memory allows
+* Optimize chunk sizes for storage characteristics
+
+Performance monitoring and tuning
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Monitor backup performance metrics to optimize configuration:
+
+.. code-block:: console
+
+   # Monitor backup job performance
+   $ kubectl logs <replicationsource-job> | grep -E "(duration|throughput|compression)"
+   
+   # Check resource usage
+   $ kubectl top pods -l app.kubernetes.io/name=volsync
+   
+   # Review VolSync metrics
+   $ kubectl get replicationsource <name> -o yaml | grep -A 10 lastSyncDuration
+
+**Key metrics to monitor:**
+
+* **Backup duration**: Total time from start to completion
+* **Throughput**: Data transfer rate to storage backend  
+* **Compression ratio**: Effectiveness of compression settings
+* **Memory usage**: Peak memory consumption during backup
+* **CPU utilization**: Processing overhead for compression and encryption
+* **Cache hit ratio**: Effectiveness of cache configuration
+
+**Tuning recommendations:**
+
+*If backups are slow:*
+1. Increase parallelism
+2. Use faster compression (S2-DEFAULT)
+3. Increase cache size
+4. Use larger chunk sizes
+
+*If backups consume too much CPU:*
+1. Use faster compression algorithms
+2. Reduce parallelism
+3. Increase chunk sizes
+4. Consider disabling compression for already-compressed data
+
+*If backups use too much memory:*
+1. Reduce cache size
+2. Use smaller chunk sizes
+3. Reduce parallelism
+4. Use memory-efficient compression (S2-DEFAULT)
+
+*If storage costs are high:*
+1. Use maximum compression (ZSTD-BEST)
+2. Optimize chunk sizes for deduplication
+3. Enable compression for all file types
+4. Use smaller minimum compression thresholds
+
+Security considerations
+-----------------------
+
+Configuration validation
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Manual repository configuration undergoes validation to prevent security issues:
+
+**JSON Validation**
+   Configuration must be valid JSON. Malformed JSON causes backup failure with clear error messages.
+
+**Algorithm Validation**  
+   Only supported encryption and compression algorithms are accepted. Unknown algorithms cause initialization failure.
+
+**Parameter Range Checking**
+   Size parameters (minSize, maxSize, maxCacheSize) are validated against reasonable ranges to prevent resource exhaustion.
+
+**Injection Prevention**
+   Configuration values are sanitized to prevent command injection or other security vulnerabilities.
+
+Best practices for secure configuration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Strong Encryption**
+   Always use strong encryption algorithms. ``CHACHA20-POLY1305`` or ``AES256-GCM`` are recommended for production use.
+
+**Repository Password Security**
+   Use unique, strong passwords for each repository. Consider using password managers or secret management systems.
+
+**Access Control**
+   Apply appropriate RBAC policies to Secrets containing manual configuration. Limit access to authorized personnel only.
+
+**Configuration Auditing**
+   Maintain audit logs of manual configuration changes. Use version control for configuration templates.
+
+**Separation of Environments**
+   Use different configurations and repositories for development, staging, and production environments.
+
+.. code-block:: yaml
+
+   # Example secure configuration with strong encryption
+   KOPIA_MANUAL_CONFIG: |
+     {
+       "encryption": {
+         "algorithm": "CHACHA20-POLY1305"
+       },
+       "compression": {
+         "algorithm": "ZSTD-DEFAULT",
+         "minSize": 1024,
+         "maxSize": 1048576
+       },
+       "splitter": {
+         "algorithm": "DYNAMIC-4M-BUZHASH"
+       },
+       "caching": {
+         "maxCacheSize": 2147483648
+       }
+     }
+
+Multi-tenancy security
+~~~~~~~~~~~~~~~~~~~~~~
+
+Manual configuration preserves VolSync's security model:
+
+**Namespace Isolation**
+   Backups remain isolated by namespace regardless of manual configuration. Users cannot access data from other namespaces.
+
+**Repository Access Control**
+   Manual configuration doesn't affect repository access control. Standard Kopia user/host isolation remains in effect.
+
+**Credential Management**
+   Storage backend credentials remain separate from repository configuration. Manual configuration doesn't expose storage credentials.
+
+**Audit Trail**
+   All backup operations maintain proper audit trails showing which namespace and ReplicationSource performed each operation.
+
+Troubleshooting
+---------------
+
+Configuration validation errors
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Problem**: Backup fails with "invalid manual configuration" error.
+
+**Solution**: Validate your JSON configuration:
+
+.. code-block:: console
+
+   # Test JSON validity
+   $ echo '$KOPIA_MANUAL_CONFIG' | jq .
+   
+   # Check for common issues:
+   # - Missing quotes around string values
+   # - Trailing commas in JSON objects
+   # - Incorrect algorithm names
+   # - Invalid size values
+
+**Problem**: "unsupported algorithm" errors.
+
+**Solution**: Verify algorithm names match supported values exactly:
+
+.. code-block:: json
+
+   {
+     "encryption": {
+       "algorithm": "CHACHA20-POLY1305"  // Correct case and spelling
+     },
+     "compression": {
+       "algorithm": "ZSTD-DEFAULT"       // Not "zstd-default"
+     }
+   }
+
+Repository initialization failures
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Problem**: Manual configuration causes repository creation to fail.
+
+**Solution**: Check configuration compatibility:
+
+1. Ensure all parameters are within valid ranges
+2. Verify encryption algorithm is supported by your Kopia version
+3. Check that chunk sizes are reasonable (not too small or too large)
+4. Validate cache sizes don't exceed system memory
+
+.. code-block:: console
+
+   # Check job logs for specific errors
+   $ kubectl logs <replicationsource-job> | grep -i "manual config"
+   
+   # Look for validation messages
+   $ kubectl logs <replicationsource-job> | grep -E "(validation|algorithm|configuration)"
+
+Performance issues with manual configuration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Problem**: Backups are slower with manual configuration than automatic.
+
+**Solution**: Optimize settings for your environment:
+
+1. **Check compression overhead**: Try faster algorithms like ``S2-DEFAULT``
+2. **Verify chunk size**: Smaller chunks increase overhead, larger chunks may reduce deduplication
+3. **Monitor cache effectiveness**: Increase cache size if you have available memory
+4. **Review parallelism**: Manual configuration doesn't override VolSync parallelism settings
+
+.. code-block:: console
+
+   # Compare performance metrics
+   $ kubectl logs <replicationsource-job> | grep -E "(duration|throughput|chunks)"
+
+Configuration conflicts
+~~~~~~~~~~~~~~~~~~~~~~~
+
+**Problem**: Manual configuration seems to be ignored.
+
+**Solution**: Verify configuration precedence:
+
+1. **Check JSON validity**: Invalid JSON causes fallback to automatic configuration
+2. **Verify Secret mounting**: Ensure the Secret is properly referenced and accessible
+3. **Review logs**: Look for configuration parsing or application messages
+
+.. code-block:: console
+
+   # Verify Secret exists and is accessible
+   $ kubectl get secret <kopia-config-name> -o yaml
+   
+   # Check if manual config is detected
+   $ kubectl logs <replicationsource-job> | grep -i "manual"
+
+**Problem**: Some settings from manual configuration don't seem to apply.
+
+**Solution**: Understand that some manual settings only affect new repositories:
+
+* Manual configuration applies during repository initialization
+* Existing repositories retain their original format settings
+* Create a new repository path to apply different manual configuration
+
+Migration and compatibility issues
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Problem**: Cannot restore from repository with manual configuration.
+
+**Solution**: Ensure restore compatibility:
+
+1. **Use same repository Secret**: ReplicationDestination must reference the same repository configuration
+2. **Verify repository access**: Manual configuration doesn't affect restore operations, only repository creation
+3. **Check cache settings**: Ensure adequate cache size for restore operations
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: restore-manual-backup
+   spec:
+     trigger:
+       manual: restore-once
+     kopia:
+       repository: kopia-manual-config  # Same Secret as backup
+       destinationPVC: restored-data
+       copyMethod: Direct
+
+**Problem**: Cannot share repository between automatic and manual configurations.
+
+**Solution**: Manual and automatic configurations create incompatible repository formats:
+
+* Repositories created with manual configuration can only be used with the same manual configuration
+* Create separate repository paths for different configuration types
+* Plan migration carefully to avoid compatibility issues
+
+Debugging manual configuration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Enable detailed logging to troubleshoot manual configuration issues:
+
+.. code-block:: console
+
+   # Check environment variable status
+   $ kubectl logs <replicationsource-job> | grep "KOPIA_MANUAL_CONFIG"
+   
+   # Look for manual configuration processing
+   $ kubectl logs <replicationsource-job> | grep -A 10 -B 10 "manual"
+   
+   # Review repository initialization
+   $ kubectl logs <replicationsource-job> | grep -E "(repository|initialization|format)"
+
+**Expected log messages for successful manual configuration:**
+
+.. code-block:: console
+
+   KOPIA_MANUAL_CONFIG: [SET]
+   Processing manual repository configuration
+   Repository format applied: {encryption: CHACHA20-POLY1305, compression: ZSTD-DEFAULT}
+   Repository initialized successfully with manual configuration
+
+Best practices
+--------------
+
+Configuration management
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Version Control**
+   Store manual configuration templates in version control systems. Track changes to configuration with proper commit messages and review processes.
+
+**Environment Consistency**
+   Use consistent manual configuration across similar environments. Maintain separate configurations for development, staging, and production with documented differences.
+
+**Configuration Templates**
+   Create reusable configuration templates for common scenarios (high-performance, maximum compression, security-focused).
+
+.. code-block:: yaml
+
+   # Template: High-performance configuration
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: kopia-performance-template
+   type: Opaque
+   stringData:
+     KOPIA_MANUAL_CONFIG: |
+       {
+         "encryption": {
+           "algorithm": "AES256-GCM"
+         },
+         "compression": {
+           "algorithm": "S2-PARALLEL-8",
+           "minSize": 4096,
+           "maxSize": 8388608
+         },
+         "splitter": {
+           "algorithm": "DYNAMIC-16M-BUZHASH"
+         },
+         "caching": {
+           "maxCacheSize": 8589934592
+         }
+       }
+
+Testing methodology
+~~~~~~~~~~~~~~~~~~~
+
+**Validation Process**
+
+1. **Syntax Validation**: Verify JSON syntax before deployment
+2. **Compatibility Testing**: Test with small datasets before production use
+3. **Performance Benchmarking**: Compare manual vs automatic configuration performance
+4. **Recovery Testing**: Verify backup and restore operations work correctly
+
+.. code-block:: console
+
+   # JSON syntax validation
+   $ cat manual-config.json | jq empty && echo "Valid JSON" || echo "Invalid JSON"
+   
+   # Test manual configuration with small dataset
+   $ kubectl create -f test-replicationsource.yaml
+   $ kubectl patch replicationsource test-backup --type merge -p '{"spec":{"trigger":{"manual":"test-run"}}}'
+
+**Performance Testing**
+
+.. code-block:: console
+
+   # Create test dataset
+   $ kubectl run test-data-generator --image=busybox --rm -it -- sh -c "
+     mkdir -p /data/test
+     for i in \$(seq 1 100); do
+       dd if=/dev/urandom of=/data/test/file\$i bs=1M count=10
+     done
+   "
+   
+   # Time backup operations
+   $ time kubectl patch replicationsource test-backup --type merge -p '{"spec":{"trigger":{"manual":"perf-test"}}}'
+
+Monitoring and validation
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Regular Health Checks**
+
+Monitor manual configuration effectiveness:
+
+.. code-block:: console
+
+   # Check backup success rates
+   $ kubectl get replicationsource -o custom-columns=NAME:.metadata.name,STATUS:.status.lastSyncTime,DURATION:.status.lastSyncDuration
+   
+   # Monitor resource usage trends
+   $ kubectl top pods -l app.kubernetes.io/name=volsync --sort-by=memory
+   
+   # Review backup sizes and compression ratios
+   $ kubectl logs <replicationsource-job> | grep -E "(compressed|ratio|size)"
+
+**Automated Validation**
+
+Implement automated checks for configuration health:
+
+.. code-block:: yaml
+
+   # Example monitoring ConfigMap
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: backup-monitoring
+   data:
+     check-config.sh: |
+       #!/bin/bash
+       # Validate manual configuration JSON
+       echo "$KOPIA_MANUAL_CONFIG" | jq empty || exit 1
+       
+       # Check required algorithms are supported
+       echo "$KOPIA_MANUAL_CONFIG" | jq -e '.encryption.algorithm' || exit 1
+       echo "$KOPIA_MANUAL_CONFIG" | jq -e '.compression.algorithm' || exit 1
+       
+       # Validate cache size is reasonable
+       CACHE_SIZE=$(echo "$KOPIA_MANUAL_CONFIG" | jq -r '.caching.maxCacheSize // 0')
+       if [ "$CACHE_SIZE" -gt 17179869184 ]; then  # 16GB limit
+         echo "Cache size too large: $CACHE_SIZE"
+         exit 1
+       fi
+
+Documentation and knowledge sharing
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Configuration Documentation**
+
+Document your manual configuration decisions:
+
+.. code-block:: yaml
+
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: kopia-production-config
+     annotations:
+       description: "Production backup configuration optimized for security and reliability"
+       performance-profile: "balanced"
+       security-level: "high"
+       last-updated: "2024-01-15"
+       updated-by: "backup-admin@company.com"
+   type: Opaque
+   stringData:
+     # Configuration rationale documented in comments
+     KOPIA_MANUAL_CONFIG: |
+       {
+         "_comment": "CHACHA20-POLY1305 chosen for modern security without AES-NI dependency",
+         "encryption": {
+           "algorithm": "CHACHA20-POLY1305"
+         },
+         "_comment": "ZSTD-DEFAULT provides good balance of compression and speed",
+         "compression": {
+           "algorithm": "ZSTD-DEFAULT",
+           "minSize": 1024,
+           "maxSize": 1048576
+         },
+         "_comment": "4M chunks balance deduplication effectiveness and metadata overhead",
+         "splitter": {
+           "algorithm": "DYNAMIC-4M-BUZHASH"
+         },
+         "_comment": "2GB cache sized for expected repository metadata volume",
+         "caching": {
+           "maxCacheSize": 2147483648
+         }
+       }
+
