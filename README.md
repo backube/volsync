@@ -1,10 +1,15 @@
 # VolSync
 
-> **Note**: This is a fork of [backube/volsync](https://github.com/backube/volsync). For installation from this fork, use:
+> **Note**: This is a fork of [backube/volsync](https://github.com/backube/volsync). For installation of the Helm Chart from this fork, use:
 > ```bash
 > helm repo add volsync-fork https://perfectra1n.github.io/volsync/charts
 > helm install --create-namespace -n volsync-system volsync volsync-fork/volsync
 > ```
+> Specify the mover image(s), for at least Kopia, [here](https://github.com/perfectra1n/volsync/blob/0532cc29596bc054060889fec8cd5bb263370e76/helm/volsync/values.yaml#L40) in the Helm chart values, and specify the image to be:
+> ```
+> ghcr.io/perfectra1n/volsync:latest
+> ```
+>
 > Also, the documentation is hosted in the [GitHub Pages documentation](https://perfectra1n.github.io/volsync/) (Fork documentation mirror)
 
 VolSync asynchronously replicates Kubernetes persistent volumes between clusters
