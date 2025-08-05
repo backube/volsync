@@ -483,9 +483,12 @@ function connect_repository {
             return 1
         fi
         
+        # Use KOPIA_S3_ENDPOINT if set, otherwise fall back to AWS_S3_ENDPOINT, otherwise use default
+        local S3_ENDPOINT="${KOPIA_S3_ENDPOINT:-${AWS_S3_ENDPOINT:-s3.amazonaws.com}}"
+        
         S3_CONNECT_CMD=("${KOPIA[@]}" repository connect s3 \
             --bucket="${S3_BUCKET}" \
-            --endpoint="${KOPIA_S3_ENDPOINT:-s3.amazonaws.com}" \
+            --endpoint="${S3_ENDPOINT}" \
             --access-key="${AWS_ACCESS_KEY_ID}" \
             --secret-access-key="${AWS_SECRET_ACCESS_KEY}")
         
@@ -504,8 +507,8 @@ function connect_repository {
             echo "No S3 prefix detected in KOPIA_REPOSITORY"
         fi
         
-        # Add disable TLS flag if specified
-        if [[ "${KOPIA_S3_DISABLE_TLS}" == "true" ]]; then
+        # Add disable TLS flag if specified (support both naming conventions)
+        if [[ "${KOPIA_S3_DISABLE_TLS}" == "true" ]] || [[ "${AWS_S3_DISABLE_TLS}" == "true" ]]; then
             S3_CONNECT_CMD+=(--disable-tls)
         fi
         
@@ -629,9 +632,12 @@ function create_repository {
             return 1
         fi
         
+        # Use KOPIA_S3_ENDPOINT if set, otherwise fall back to AWS_S3_ENDPOINT, otherwise use default
+        local S3_ENDPOINT="${KOPIA_S3_ENDPOINT:-${AWS_S3_ENDPOINT:-s3.amazonaws.com}}"
+        
         S3_CREATE_CMD=("${KOPIA[@]}" repository create s3 \
             --bucket="${S3_BUCKET}" \
-            --endpoint="${KOPIA_S3_ENDPOINT:-s3.amazonaws.com}" \
+            --endpoint="${S3_ENDPOINT}" \
             --access-key="${AWS_ACCESS_KEY_ID}" \
             --secret-access-key="${AWS_SECRET_ACCESS_KEY}" \
             --cache-directory="${KOPIA_CACHE_DIR}")
@@ -651,8 +657,8 @@ function create_repository {
             echo "No S3 prefix detected in KOPIA_REPOSITORY"
         fi
         
-        # Add disable TLS flag if specified
-        if [[ "${KOPIA_S3_DISABLE_TLS}" == "true" ]]; then
+        # Add disable TLS flag if specified (support both naming conventions)
+        if [[ "${KOPIA_S3_DISABLE_TLS}" == "true" ]] || [[ "${AWS_S3_DISABLE_TLS}" == "true" ]]; then
             S3_CREATE_CMD+=(--disable-tls)
         fi
         

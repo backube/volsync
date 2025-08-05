@@ -435,24 +435,34 @@ func (m *Mover) buildBackendEnvironmentVariables(repo *corev1.Secret) []corev1.E
 // buildAWSEnvironmentVariables creates AWS S3 backend environment variables
 func (m *Mover) buildAWSEnvironmentVariables(repo *corev1.Secret) []corev1.EnvVar {
 	return []corev1.EnvVar{
+		// AWS standard variables
 		utils.EnvFromSecret(repo.Name, "AWS_ACCESS_KEY_ID", true),
 		utils.EnvFromSecret(repo.Name, "AWS_SECRET_ACCESS_KEY", true),
 		utils.EnvFromSecret(repo.Name, "AWS_SESSION_TOKEN", true),
 		utils.EnvFromSecret(repo.Name, "AWS_DEFAULT_REGION", true),
+		utils.EnvFromSecret(repo.Name, "AWS_REGION", true),
 		utils.EnvFromSecret(repo.Name, "AWS_PROFILE", true),
+		utils.EnvFromSecret(repo.Name, "AWS_S3_ENDPOINT", true),
+		// Kopia-specific S3 variables (support both naming conventions)
 		utils.EnvFromSecret(repo.Name, "KOPIA_S3_BUCKET", true),
 		utils.EnvFromSecret(repo.Name, "KOPIA_S3_ENDPOINT", true),
 		utils.EnvFromSecret(repo.Name, "KOPIA_S3_DISABLE_TLS", true),
+		utils.EnvFromSecret(repo.Name, "AWS_S3_DISABLE_TLS", true), // Support AWS prefix too
 	}
 }
 
 // buildAzureEnvironmentVariables creates Azure backend environment variables
 func (m *Mover) buildAzureEnvironmentVariables(repo *corev1.Secret) []corev1.EnvVar {
 	return []corev1.EnvVar{
+		// Azure standard variables
 		utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_NAME", true),
 		utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_KEY", true),
 		utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_SAS", true),
 		utils.EnvFromSecret(repo.Name, "AZURE_ENDPOINT_SUFFIX", true),
+		utils.EnvFromSecret(repo.Name, "AZURE_STORAGE_ACCOUNT", true),
+		utils.EnvFromSecret(repo.Name, "AZURE_STORAGE_KEY", true),
+		utils.EnvFromSecret(repo.Name, "AZURE_STORAGE_SAS_TOKEN", true),
+		// Kopia-specific Azure variables (support both naming conventions)
 		utils.EnvFromSecret(repo.Name, "KOPIA_AZURE_CONTAINER", true),
 		utils.EnvFromSecret(repo.Name, "KOPIA_AZURE_STORAGE_ACCOUNT", true),
 		utils.EnvFromSecret(repo.Name, "KOPIA_AZURE_STORAGE_KEY", true),
@@ -462,12 +472,15 @@ func (m *Mover) buildAzureEnvironmentVariables(repo *corev1.Secret) []corev1.Env
 // buildGoogleEnvironmentVariables creates Google Cloud backend environment variables
 func (m *Mover) buildGoogleEnvironmentVariables(repo *corev1.Secret) []corev1.EnvVar {
 	return []corev1.EnvVar{
+		// Google Cloud standard variables
 		utils.EnvFromSecret(repo.Name, "GOOGLE_PROJECT_ID", true),
-		utils.EnvFromSecret(repo.Name, "KOPIA_GCS_BUCKET", true),
 		utils.EnvFromSecret(repo.Name, "GOOGLE_APPLICATION_CREDENTIALS", true),
-		utils.EnvFromSecret(repo.Name, "KOPIA_FS_PATH", true),
 		utils.EnvFromSecret(repo.Name, "GOOGLE_DRIVE_FOLDER_ID", true),
 		utils.EnvFromSecret(repo.Name, "GOOGLE_DRIVE_CREDENTIALS", true),
+		// Kopia-specific GCS variables (support both naming conventions)
+		utils.EnvFromSecret(repo.Name, "KOPIA_GCS_BUCKET", true),
+		utils.EnvFromSecret(repo.Name, "GCS_BUCKET", true), // Support standard GCS prefix
+		utils.EnvFromSecret(repo.Name, "KOPIA_FS_PATH", true),
 	}
 }
 
