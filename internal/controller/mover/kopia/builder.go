@@ -101,6 +101,21 @@ func (kb *Builder) FromSource(client client.Client, logger logr.Logger,
 		return nil, nil
 	}
 
+	// Initialize status fields
+	kb.initializeSourceStatus(source)
+
+	// Create volume handler
+	vh, err := kb.createVolumeHandlerForSource(client, eventRecorder, source)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create and return the mover
+	return kb.createSourceMover(client, logger, eventRecorder, source, vh, privileged)
+}
+
+// initializeSourceStatus initializes the status fields for the ReplicationSource
+func (kb *Builder) initializeSourceStatus(source *volsyncv1alpha1.ReplicationSource) {
 	// Create ReplicationSourceKopiaStatus to write kopia status
 	if source.Status.Kopia == nil {
 		source.Status.Kopia = &volsyncv1alpha1.ReplicationSourceKopiaStatus{}
@@ -109,17 +124,24 @@ func (kb *Builder) FromSource(client client.Client, logger logr.Logger,
 	if source.Status.LatestMoverStatus == nil {
 		source.Status.LatestMoverStatus = &volsyncv1alpha1.MoverStatus{}
 	}
+}
 
-	vh, err := volumehandler.NewVolumeHandler(
+// createVolumeHandlerForSource creates a volume handler for the ReplicationSource
+func (kb *Builder) createVolumeHandlerForSource(client client.Client,
+	eventRecorder events.EventRecorder,
+	source *volsyncv1alpha1.ReplicationSource) (*volumehandler.VolumeHandler, error) {
+	return volumehandler.NewVolumeHandler(
 		volumehandler.WithClient(client),
 		volumehandler.WithRecorder(eventRecorder),
 		volumehandler.WithOwner(source),
 		volumehandler.FromSource(&source.Spec.Kopia.ReplicationSourceVolumeOptions),
 	)
-	if err != nil {
-		return nil, err
-	}
+}
 
+// createSourceMover creates the Mover instance for a ReplicationSource
+func (kb *Builder) createSourceMover(client client.Client, logger logr.Logger,
+	eventRecorder events.EventRecorder, source *volsyncv1alpha1.ReplicationSource,
+	vh *volumehandler.VolumeHandler, privileged bool) (*Mover, error) {
 	isSource := true
 
 	// Generate username and hostname for multi-tenancy

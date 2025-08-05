@@ -82,6 +82,25 @@ echo "AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:+[SET]}${AWS_DEFAULT_REGION:-[NOT
 echo "KOPIA_OVERRIDE_USERNAME: ${KOPIA_OVERRIDE_USERNAME:+[SET]}${KOPIA_OVERRIDE_USERNAME:-[NOT SET]}"
 echo "KOPIA_OVERRIDE_HOSTNAME: ${KOPIA_OVERRIDE_HOSTNAME:+[SET]}${KOPIA_OVERRIDE_HOSTNAME:-[NOT SET]}"
 echo "KOPIA_SOURCE_PATH_OVERRIDE: ${KOPIA_SOURCE_PATH_OVERRIDE:+[SET]}${KOPIA_SOURCE_PATH_OVERRIDE:-[NOT SET]}"
+echo ""
+echo "=== Additional Backend Environment Variables ==="
+echo "KOPIA_B2_BUCKET: ${KOPIA_B2_BUCKET:+[SET]}${KOPIA_B2_BUCKET:-[NOT SET]}"
+echo "B2_ACCOUNT_ID: ${B2_ACCOUNT_ID:+[SET]}${B2_ACCOUNT_ID:-[NOT SET]}"
+echo "B2_APPLICATION_KEY: ${B2_APPLICATION_KEY:+[SET]}${B2_APPLICATION_KEY:-[NOT SET]}"
+echo "WEBDAV_URL: ${WEBDAV_URL:+[SET]}${WEBDAV_URL:-[NOT SET]}"
+echo "WEBDAV_USERNAME: ${WEBDAV_USERNAME:+[SET]}${WEBDAV_USERNAME:-[NOT SET]}"
+echo "WEBDAV_PASSWORD: ${WEBDAV_PASSWORD:+[SET]}${WEBDAV_PASSWORD:-[NOT SET]}"
+echo "SFTP_HOST: ${SFTP_HOST:+[SET]}${SFTP_HOST:-[NOT SET]}"
+echo "SFTP_PORT: ${SFTP_PORT:+[SET]}${SFTP_PORT:-[NOT SET]}"
+echo "SFTP_USERNAME: ${SFTP_USERNAME:+[SET]}${SFTP_USERNAME:-[NOT SET]}"
+echo "SFTP_PASSWORD: ${SFTP_PASSWORD:+[SET]}${SFTP_PASSWORD:-[NOT SET]}"
+echo "SFTP_PATH: ${SFTP_PATH:+[SET]}${SFTP_PATH:-[NOT SET]}"
+echo "SFTP_KEY_FILE: ${SFTP_KEY_FILE:+[SET]}${SFTP_KEY_FILE:-[NOT SET]}"
+echo "RCLONE_REMOTE_PATH: ${RCLONE_REMOTE_PATH:+[SET]}${RCLONE_REMOTE_PATH:-[NOT SET]}"
+echo "RCLONE_EXE: ${RCLONE_EXE:+[SET]}${RCLONE_EXE:-[NOT SET]}"
+echo "RCLONE_CONFIG: ${RCLONE_CONFIG:+[SET]}${RCLONE_CONFIG:-[NOT SET]}"
+echo "GOOGLE_DRIVE_FOLDER_ID: ${GOOGLE_DRIVE_FOLDER_ID:+[SET]}${GOOGLE_DRIVE_FOLDER_ID:-[NOT SET]}"
+echo "GOOGLE_DRIVE_CREDENTIALS: ${GOOGLE_DRIVE_CREDENTIALS:+[SET]}${GOOGLE_DRIVE_CREDENTIALS:-[NOT SET]}"
 echo "=== END DEBUG ==="
 echo ""
 
@@ -307,6 +326,58 @@ function connect_repository {
         FS_CONNECT_CMD=("${KOPIA[@]}" repository connect filesystem --path="${KOPIA_FS_PATH}")
         add_user_overrides FS_CONNECT_CMD
         "${FS_CONNECT_CMD[@]}"
+    elif [[ -n "${KOPIA_B2_BUCKET}" ]]; then
+        echo "Connecting to Backblaze B2 repository"
+        B2_CONNECT_CMD=("${KOPIA[@]}" repository connect b2 \
+            --bucket="${KOPIA_B2_BUCKET}" \
+            --key-id="${B2_ACCOUNT_ID}" \
+            --key="${B2_APPLICATION_KEY}")
+        add_user_overrides B2_CONNECT_CMD
+        "${B2_CONNECT_CMD[@]}"
+    elif [[ -n "${WEBDAV_URL}" ]]; then
+        echo "Connecting to WebDAV repository"
+        WEBDAV_CONNECT_CMD=("${KOPIA[@]}" repository connect webdav \
+            --url="${WEBDAV_URL}" \
+            --username="${WEBDAV_USERNAME}" \
+            --password="${WEBDAV_PASSWORD}")
+        add_user_overrides WEBDAV_CONNECT_CMD
+        "${WEBDAV_CONNECT_CMD[@]}"
+    elif [[ -n "${SFTP_HOST}" ]]; then
+        echo "Connecting to SFTP repository"
+        SFTP_CONNECT_CMD=("${KOPIA[@]}" repository connect sftp \
+            --host="${SFTP_HOST}" \
+            --username="${SFTP_USERNAME}" \
+            --path="${SFTP_PATH}")
+        if [[ -n "${SFTP_PORT}" ]]; then
+            SFTP_CONNECT_CMD+=(--port="${SFTP_PORT}")
+        fi
+        if [[ -n "${SFTP_PASSWORD}" ]]; then
+            SFTP_CONNECT_CMD+=(--password="${SFTP_PASSWORD}")
+        fi
+        if [[ -n "${SFTP_KEY_FILE}" ]]; then
+            SFTP_CONNECT_CMD+=(--keyfile="${SFTP_KEY_FILE}")
+        fi
+        add_user_overrides SFTP_CONNECT_CMD
+        "${SFTP_CONNECT_CMD[@]}"
+    elif [[ -n "${RCLONE_REMOTE_PATH}" ]]; then
+        echo "Connecting to Rclone repository"
+        RCLONE_CONNECT_CMD=("${KOPIA[@]}" repository connect rclone \
+            --remote-path="${RCLONE_REMOTE_PATH}")
+        if [[ -n "${RCLONE_EXE}" ]]; then
+            RCLONE_CONNECT_CMD+=(--rclone-exe="${RCLONE_EXE}")
+        fi
+        if [[ -n "${RCLONE_CONFIG}" ]]; then
+            RCLONE_CONNECT_CMD+=(--rclone-config="${RCLONE_CONFIG}")
+        fi
+        add_user_overrides RCLONE_CONNECT_CMD
+        "${RCLONE_CONNECT_CMD[@]}"
+    elif [[ -n "${GOOGLE_DRIVE_FOLDER_ID}" ]]; then
+        echo "Connecting to Google Drive repository"
+        GDRIVE_CONNECT_CMD=("${KOPIA[@]}" repository connect gdrive \
+            --folder-id="${GOOGLE_DRIVE_FOLDER_ID}" \
+            --credentials-file="${GOOGLE_DRIVE_CREDENTIALS}")
+        add_user_overrides GDRIVE_CONNECT_CMD
+        "${GDRIVE_CONNECT_CMD[@]}"
     else
         echo "No repository configuration found for connecting"
         return 1
@@ -384,6 +455,58 @@ function create_repository {
         FS_CREATE_CMD=("${KOPIA[@]}" repository create filesystem --path="${KOPIA_FS_PATH}")
         add_user_overrides FS_CREATE_CMD
         "${FS_CREATE_CMD[@]}"
+    elif [[ -n "${KOPIA_B2_BUCKET}" ]]; then
+        echo "Creating Backblaze B2 repository"
+        B2_CREATE_CMD=("${KOPIA[@]}" repository create b2 \
+            --bucket="${KOPIA_B2_BUCKET}" \
+            --key-id="${B2_ACCOUNT_ID}" \
+            --key="${B2_APPLICATION_KEY}")
+        add_user_overrides B2_CREATE_CMD
+        "${B2_CREATE_CMD[@]}"
+    elif [[ -n "${WEBDAV_URL}" ]]; then
+        echo "Creating WebDAV repository"
+        WEBDAV_CREATE_CMD=("${KOPIA[@]}" repository create webdav \
+            --url="${WEBDAV_URL}" \
+            --username="${WEBDAV_USERNAME}" \
+            --password="${WEBDAV_PASSWORD}")
+        add_user_overrides WEBDAV_CREATE_CMD
+        "${WEBDAV_CREATE_CMD[@]}"
+    elif [[ -n "${SFTP_HOST}" ]]; then
+        echo "Creating SFTP repository"
+        SFTP_CREATE_CMD=("${KOPIA[@]}" repository create sftp \
+            --host="${SFTP_HOST}" \
+            --username="${SFTP_USERNAME}" \
+            --path="${SFTP_PATH}")
+        if [[ -n "${SFTP_PORT}" ]]; then
+            SFTP_CREATE_CMD+=(--port="${SFTP_PORT}")
+        fi
+        if [[ -n "${SFTP_PASSWORD}" ]]; then
+            SFTP_CREATE_CMD+=(--password="${SFTP_PASSWORD}")
+        fi
+        if [[ -n "${SFTP_KEY_FILE}" ]]; then
+            SFTP_CREATE_CMD+=(--keyfile="${SFTP_KEY_FILE}")
+        fi
+        add_user_overrides SFTP_CREATE_CMD
+        "${SFTP_CREATE_CMD[@]}"
+    elif [[ -n "${RCLONE_REMOTE_PATH}" ]]; then
+        echo "Creating Rclone repository"
+        RCLONE_CREATE_CMD=("${KOPIA[@]}" repository create rclone \
+            --remote-path="${RCLONE_REMOTE_PATH}")
+        if [[ -n "${RCLONE_EXE}" ]]; then
+            RCLONE_CREATE_CMD+=(--rclone-exe="${RCLONE_EXE}")
+        fi
+        if [[ -n "${RCLONE_CONFIG}" ]]; then
+            RCLONE_CREATE_CMD+=(--rclone-config="${RCLONE_CONFIG}")
+        fi
+        add_user_overrides RCLONE_CREATE_CMD
+        "${RCLONE_CREATE_CMD[@]}"
+    elif [[ -n "${GOOGLE_DRIVE_FOLDER_ID}" ]]; then
+        echo "Creating Google Drive repository"
+        GDRIVE_CREATE_CMD=("${KOPIA[@]}" repository create gdrive \
+            --folder-id="${GOOGLE_DRIVE_FOLDER_ID}" \
+            --credentials-file="${GOOGLE_DRIVE_CREDENTIALS}")
+        add_user_overrides GDRIVE_CREATE_CMD
+        "${GDRIVE_CREATE_CMD[@]}"
     else
         error 1 "No repository configuration found"
     fi

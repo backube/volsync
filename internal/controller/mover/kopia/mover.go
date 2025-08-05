@@ -57,6 +57,7 @@ const (
 	kopiaPolicyMountPath    = "/kopia-config"
 	defaultGlobalPolicyFile = "global-policy.json"
 	defaultRepoConfigFile   = "repository.config"
+	operationBackup         = "backup"
 )
 
 // Mover is the reconciliation logic for the Kopia-based data mover.
@@ -118,7 +119,7 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 
 	// Record operation start time for metrics
 	operationStart := time.Now()
-	operation := "backup"
+	operation := operationBackup
 	if !m.isSource {
 		operation = "restore"
 	}
@@ -351,6 +352,7 @@ func (m *Mover) configureJobSpec(ctx context.Context, job *batchv1.Job, cachePVC
 	m.configureCustomCA(podSpec, customCAObj)
 	m.configurePolicyConfig(podSpec, policyConfigObj)
 	m.configureGoogleCredentials(podSpec, repo)
+	m.configureSSHCredentials(podSpec, repo)
 
 	// Update the job securityContext, podLabels and resourceRequirements from moverConfig (if specified)
 	utils.UpdatePodTemplateSpecFromMoverConfig(&job.Spec.Template, m.moverConfig, corev1.ResourceRequirements{})
@@ -379,7 +381,7 @@ func (m *Mover) determineJobActions(dataPVC *corev1.PersistentVolumeClaim) (bool
 	readOnlyVolume := false
 	var actions []string
 	if m.isSource {
-		actions = []string{"backup"}
+		actions = []string{operationBackup}
 		// Set read-only for volume in source mover job spec if the PVC only supports read-only
 		readOnlyVolume = utils.PvcIsReadOnly(dataPVC)
 	} else {
@@ -420,6 +422,33 @@ func (m *Mover) buildEnvironmentVariables(repo *corev1.Secret) []corev1.EnvVar {
 		utils.EnvFromSecret(repo.Name, "KOPIA_GCS_BUCKET", true),
 		utils.EnvFromSecret(repo.Name, "GOOGLE_APPLICATION_CREDENTIALS", true),
 		utils.EnvFromSecret(repo.Name, "KOPIA_FS_PATH", true),
+
+		// Backblaze B2 backend environment variables
+		utils.EnvFromSecret(repo.Name, "B2_ACCOUNT_ID", true),
+		utils.EnvFromSecret(repo.Name, "B2_APPLICATION_KEY", true),
+		utils.EnvFromSecret(repo.Name, "KOPIA_B2_BUCKET", true),
+
+		// WebDAV backend environment variables
+		utils.EnvFromSecret(repo.Name, "WEBDAV_URL", true),
+		utils.EnvFromSecret(repo.Name, "WEBDAV_USERNAME", true),
+		utils.EnvFromSecret(repo.Name, "WEBDAV_PASSWORD", true),
+
+		// SFTP backend environment variables
+		utils.EnvFromSecret(repo.Name, "SFTP_HOST", true),
+		utils.EnvFromSecret(repo.Name, "SFTP_PORT", true),
+		utils.EnvFromSecret(repo.Name, "SFTP_USERNAME", true),
+		utils.EnvFromSecret(repo.Name, "SFTP_PASSWORD", true),
+		utils.EnvFromSecret(repo.Name, "SFTP_PATH", true),
+		utils.EnvFromSecret(repo.Name, "SFTP_KEY_FILE", true),
+
+		// Rclone backend environment variables
+		utils.EnvFromSecret(repo.Name, "RCLONE_REMOTE_PATH", true),
+		utils.EnvFromSecret(repo.Name, "RCLONE_EXE", true),
+		utils.EnvFromSecret(repo.Name, "RCLONE_CONFIG", true),
+
+		// Google Drive backend environment variables
+		utils.EnvFromSecret(repo.Name, "GOOGLE_DRIVE_FOLDER_ID", true),
+		utils.EnvFromSecret(repo.Name, "GOOGLE_DRIVE_CREDENTIALS", true),
 	}
 
 	// Add source/destination specific environment variables
@@ -679,39 +708,133 @@ func (m *Mover) configurePolicyConfig(podSpec *corev1.PodSpec, policyConfigObj u
 
 // configureGoogleCredentials sets up Google Application Credentials if present
 func (m *Mover) configureGoogleCredentials(podSpec *corev1.PodSpec, repo *corev1.Secret) {
-	// We handle GOOGLE_APPLICATION_CREDENTIALS specially...
-	// kopia expects it to be an env var pointing to a file w/ the
-	// credentials, but we have users provide the actual file data in the
-	// Secret under that key name. The following code sets the env var to be
-	// what kopia expects, then mounts just that Secret key into the
-	// container, pointed to by the env var.
-	if _, ok := repo.Data["GOOGLE_APPLICATION_CREDENTIALS"]; !ok {
-		return
-	}
-
 	container := &podSpec.Containers[0]
-	// Tell kopia where to look for the credential file
-	container.Env = append(container.Env, corev1.EnvVar{
-		Name:  "GOOGLE_APPLICATION_CREDENTIALS",
-		Value: path.Join(credentialDir, gcsCredentialFile),
-	})
-	// Mount the credential file
-	container.VolumeMounts =
-		append(container.VolumeMounts, corev1.VolumeMount{
-			Name:      "gcs-credentials",
-			MountPath: credentialDir,
+
+	// Handle GCS credentials
+	if _, ok := repo.Data["GOOGLE_APPLICATION_CREDENTIALS"]; ok {
+		// We handle GOOGLE_APPLICATION_CREDENTIALS specially...
+		// kopia expects it to be an env var pointing to a file w/ the
+		// credentials, but we have users provide the actual file data in the
+		// Secret under that key name. The following code sets the env var to be
+		// what kopia expects, then mounts just that Secret key into the
+		// container, pointed to by the env var.
+
+		// Tell kopia where to look for the credential file
+		container.Env = append(container.Env, corev1.EnvVar{
+			Name:  "GOOGLE_APPLICATION_CREDENTIALS",
+			Value: path.Join(credentialDir, gcsCredentialFile),
 		})
-	podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
-		Name: "gcs-credentials",
-		VolumeSource: corev1.VolumeSource{
-			Secret: &corev1.SecretVolumeSource{
-				SecretName: repo.Name,
-				Items: []corev1.KeyToPath{
-					{Key: "GOOGLE_APPLICATION_CREDENTIALS", Path: gcsCredentialFile},
+		// Mount the credential file
+		container.VolumeMounts =
+			append(container.VolumeMounts, corev1.VolumeMount{
+				Name:      "gcs-credentials",
+				MountPath: credentialDir,
+			})
+		podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
+			Name: "gcs-credentials",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: repo.Name,
+					Items: []corev1.KeyToPath{
+						{Key: "GOOGLE_APPLICATION_CREDENTIALS", Path: gcsCredentialFile},
+					},
 				},
 			},
-		},
-	})
+		})
+	}
+
+	// Handle Google Drive credentials
+	if _, ok := repo.Data["GOOGLE_DRIVE_CREDENTIALS"]; ok {
+		// Similar handling for Google Drive credentials
+		driveCredentialFile := "gdrive.json"
+
+		// Tell kopia where to look for the Google Drive credential file
+		container.Env = append(container.Env, corev1.EnvVar{
+			Name:  "GOOGLE_DRIVE_CREDENTIALS",
+			Value: path.Join(credentialDir, driveCredentialFile),
+		})
+
+		// Mount the Google Drive credential file (use same credential dir)
+		// Check if we already added the credential dir mount
+		credentialMountExists := false
+		for _, mount := range container.VolumeMounts {
+			if mount.MountPath == credentialDir {
+				credentialMountExists = true
+				break
+			}
+		}
+
+		if !credentialMountExists {
+			container.VolumeMounts =
+				append(container.VolumeMounts, corev1.VolumeMount{
+					Name:      "gdrive-credentials",
+					MountPath: credentialDir,
+				})
+		}
+
+		// Add or update the volume for Google Drive credentials
+		volumeExists := false
+		for i, vol := range podSpec.Volumes {
+			if vol.Name == "gcs-credentials" || vol.Name == "gdrive-credentials" {
+				// Update existing volume to include both credential files
+				if vol.VolumeSource.Secret != nil {
+					vol.VolumeSource.Secret.Items = append(vol.VolumeSource.Secret.Items,
+						corev1.KeyToPath{Key: "GOOGLE_DRIVE_CREDENTIALS", Path: driveCredentialFile})
+					podSpec.Volumes[i] = vol
+					volumeExists = true
+					break
+				}
+			}
+		}
+
+		if !volumeExists {
+			podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
+				Name: "gdrive-credentials",
+				VolumeSource: corev1.VolumeSource{
+					Secret: &corev1.SecretVolumeSource{
+						SecretName: repo.Name,
+						Items: []corev1.KeyToPath{
+							{Key: "GOOGLE_DRIVE_CREDENTIALS", Path: driveCredentialFile},
+						},
+					},
+				},
+			})
+		}
+	}
+}
+
+// configureSSHCredentials sets up SSH key files for SFTP backend if present
+func (m *Mover) configureSSHCredentials(podSpec *corev1.PodSpec, repo *corev1.Secret) {
+	// Handle SFTP key files
+	if _, ok := repo.Data["SFTP_KEY_FILE"]; ok {
+		container := &podSpec.Containers[0]
+		sshKeyFile := "sftp_key"
+
+		// Tell kopia where to look for the SSH key file
+		container.Env = append(container.Env, corev1.EnvVar{
+			Name:  "SFTP_KEY_FILE",
+			Value: path.Join(credentialDir, sshKeyFile),
+		})
+
+		// Mount the SSH key file
+		container.VolumeMounts =
+			append(container.VolumeMounts, corev1.VolumeMount{
+				Name:      "sftp-credentials",
+				MountPath: credentialDir,
+			})
+		podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
+			Name: "sftp-credentials",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: repo.Name,
+					Items: []corev1.KeyToPath{
+						{Key: "SFTP_KEY_FILE", Path: sshKeyFile},
+					},
+					DefaultMode: ptr.To[int32](0600), // SSH keys need restrictive permissions
+				},
+			},
+		})
+	}
 }
 
 // configureSecurityContext sets up security context for privileged/non-privileged mode
@@ -740,7 +863,7 @@ func (m *Mover) handleJobStatus(ctx context.Context, job *batchv1.Job,
 	logger logr.Logger, err error) (*batchv1.Job, error) {
 	// Record job retries if there are failures
 	if job.Status.Failed > 0 && job.Status.Failed < *job.Spec.BackoffLimit {
-		operation := "backup"
+		operation := operationBackup
 		if !m.isSource {
 			operation = "restore"
 		}
@@ -789,7 +912,6 @@ func (m *Mover) handleJobStatus(ctx context.Context, job *batchv1.Job,
 func (m *Mover) setupPrerequisites(ctx context.Context) (*corev1.PersistentVolumeClaim,
 	*corev1.PersistentVolumeClaim, *corev1.ServiceAccount, *corev1.Secret,
 	utils.CustomCAObject, utils.CustomCAObject, error) {
-
 	// Record cache metrics
 	m.recordCacheMetrics()
 
@@ -899,7 +1021,7 @@ func (m *Mover) recordOperationSuccess(operation string, duration time.Duration)
 	m.metrics.OperationDuration.With(labels).Observe(duration.Seconds())
 
 	// Record snapshot creation success for backup operations
-	if operation == "backup" {
+	if operation == operationBackup {
 		m.metrics.SnapshotCreationSuccess.With(labels).Inc()
 	}
 }
@@ -912,7 +1034,7 @@ func (m *Mover) recordOperationFailure(operation, failureReason string) {
 	m.metrics.OperationFailure.With(labels).Inc()
 
 	// Record snapshot creation failure for backup operations
-	if operation == "backup" {
+	if operation == operationBackup {
 		m.metrics.SnapshotCreationFailure.With(labels).Inc()
 	}
 }
@@ -934,8 +1056,8 @@ func (m *Mover) recordJobRetry(operation, retryReason string) {
 }
 
 // recordCustomActionExecution records metrics for custom action execution
-func (m *Mover) recordCustomActionExecution(actionType string, duration time.Duration, success bool) {
-	labels := m.getMetricLabels("backup") // Actions are only for source/backup
+func (m *Mover) recordCustomActionExecution(actionType string, duration time.Duration, _ bool) {
+	labels := m.getMetricLabels(operationBackup) // Actions are only for source/backup
 	labels["action_type"] = actionType
 
 	m.metrics.CustomActionsExecuted.With(labels).Inc()
