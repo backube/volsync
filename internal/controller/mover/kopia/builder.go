@@ -111,7 +111,7 @@ func (kb *Builder) FromSource(client client.Client, logger logr.Logger,
 	}
 
 	// Create and return the mover
-	return kb.createSourceMover(client, logger, eventRecorder, source, vh, privileged)
+	return kb.createSourceMover(client, logger, eventRecorder, source, vh, privileged), nil
 }
 
 // initializeSourceStatus initializes the status fields for the ReplicationSource
@@ -141,7 +141,7 @@ func (kb *Builder) createVolumeHandlerForSource(client client.Client,
 // createSourceMover creates the Mover instance for a ReplicationSource
 func (kb *Builder) createSourceMover(client client.Client, logger logr.Logger,
 	eventRecorder events.EventRecorder, source *volsyncv1alpha1.ReplicationSource,
-	vh *volumehandler.VolumeHandler, privileged bool) (*Mover, error) {
+	vh *volumehandler.VolumeHandler, privileged bool) *Mover {
 	isSource := true
 
 	// Generate username and hostname for multi-tenancy
@@ -184,7 +184,7 @@ func (kb *Builder) createSourceMover(client client.Client, logger logr.Logger,
 		sourceStatus:          source.Status.Kopia,
 		latestMoverStatus:     source.Status.LatestMoverStatus,
 		moverConfig:           source.Spec.Kopia.MoverConfig,
-	}, nil
+	}
 }
 
 func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,

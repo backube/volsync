@@ -212,44 +212,69 @@ function apply_policy_config {
 # Connect to or create the repository
 function ensure_connected {
     echo "=== Connecting to repository ==="
-    set +e  # Don't exit on command failure
     
     # Try to connect to existing repository (let errors display naturally)
-    if ! timeout 10s "${KOPIA[@]}" repository status >/dev/null; then
+    if ! timeout 10s "${KOPIA[@]}" repository status >/dev/null 2>&1; then
         echo "Repository not connected, attempting to connect or create..."
         echo ""
+        
+        # Disable exit on error for connection attempts
+        set +e
         
         # Try to connect first (if config exists)
         if [[ -f /credentials/repository.config ]]; then
             echo "Attempting to connect from config file..."
-            if ! "${KOPIA[@]}" repository connect from-config --config-file /credentials/repository.config; then
+            "${KOPIA[@]}" repository connect from-config --config-file /credentials/repository.config
+            local config_result=$?
+            
+            if [[ $config_result -ne 0 ]]; then
                 echo "Config connection failed, trying direct connection..."
                 echo ""
-                if ! connect_repository; then
+                connect_repository
+                local direct_result=$?
+                
+                if [[ $direct_result -ne 0 ]]; then
                     echo "Direct connection failed, creating new repository..."
                     echo ""
                     create_repository
+                    local create_result=$?
+                    if [[ $create_result -ne 0 ]]; then
+                        set -e  # Re-enable exit on error
+                        error 1 "Failed to create repository"
+                    fi
                 fi
             fi
         else
             # No config file, try direct connection
             echo "Attempting to connect to existing repository..."
-            if ! connect_repository; then
+            connect_repository
+            local direct_result=$?
+            
+            if [[ $direct_result -ne 0 ]]; then
                 echo "Connection failed, creating new repository..."
                 echo ""
                 create_repository
+                local create_result=$?
+                if [[ $create_result -ne 0 ]]; then
+                    set -e  # Re-enable exit on error
+                    error 1 "Failed to create repository"
+                fi
             fi
         fi
+        
+        # Re-enable exit on error
+        set -e
     else
         echo "Repository already connected"
     fi
     
-    set -e
     echo ""
     
     # Set cache directory after successful connection
     echo "=== Setting cache directory ==="
-    "${KOPIA[@]}" cache set --cache-directory="${KOPIA_CACHE_DIR}"
+    if ! "${KOPIA[@]}" cache set --cache-directory="${KOPIA_CACHE_DIR}"; then
+        error 1 "Failed to set cache directory"
+    fi
     echo "Cache directory configured successfully"
     echo ""
     
@@ -537,13 +562,16 @@ function do_backup {
     # Run before-snapshot action if specified
     if [[ -n "${KOPIA_BEFORE_SNAPSHOT}" ]]; then
         if ! execute_action "${KOPIA_BEFORE_SNAPSHOT}" "before-snapshot"; then
-            echo "ERROR: Before-snapshot action failed"
-            exit 1
+            error 1 "Before-snapshot action failed"
         fi
     fi
     
-    # Create snapshot
-    "${SNAPSHOT_CMD[@]}"
+    # Create snapshot with error handling
+    if ! "${SNAPSHOT_CMD[@]}"; then
+        error 1 "Failed to create snapshot"
+    fi
+    
+    echo "Snapshot created successfully"
     
     # Run after-snapshot action if specified
     if [[ -n "${KOPIA_AFTER_SNAPSHOT}" ]]; then
@@ -556,7 +584,12 @@ function do_backup {
 
 function do_maintenance {
     echo "=== Starting maintenance ==="
-    "${KOPIA[@]}" maintenance run --full
+    if ! "${KOPIA[@]}" maintenance run --full; then
+        echo "Warning: Maintenance operation failed, but continuing"
+        # Don't fail the entire operation for maintenance issues
+        return 0
+    fi
+    echo "Maintenance completed successfully"
 }
 
 function do_retention {
@@ -584,7 +617,14 @@ function do_retention {
     
     # Apply policy if any retention options are set
     if [[ ${#POLICY_CMD[@]} -gt 4 ]]; then
-        "${POLICY_CMD[@]}"
+        if ! "${POLICY_CMD[@]}"; then
+            echo "Warning: Failed to set retention policy, continuing with defaults"
+            # Don't fail the entire operation for policy setting issues
+        else
+            echo "Retention policy applied successfully"
+        fi
+    else
+        echo "No retention policy settings specified, using defaults"
     fi
 }
 
@@ -618,15 +658,26 @@ function do_restore {
     if [[ -z ${snapshot_id} ]]; then
         echo "No eligible snapshots found"
         echo "=== No data will be restored ==="
-        return
+        return 0
     fi
     
     echo "Selected snapshot with id: ${snapshot_id}"
     
-    # Restore the snapshot
-    pushd "${DATA_DIR}"
-    "${KOPIA[@]}" snapshot restore "${snapshot_id}" .
-    popd
+    # Restore the snapshot with proper error handling
+    if ! pushd "${DATA_DIR}" >/dev/null; then
+        error 1 "Failed to change to data directory: ${DATA_DIR}"
+    fi
+    
+    if ! "${KOPIA[@]}" snapshot restore "${snapshot_id}" .; then
+        popd >/dev/null || true
+        error 1 "Failed to restore snapshot: ${snapshot_id}"
+    fi
+    
+    if ! popd >/dev/null; then
+        echo "Warning: Failed to return to original directory"
+    fi
+    
+    echo "Snapshot restore completed successfully"
 }
 
 echo "Testing mandatory env variables"

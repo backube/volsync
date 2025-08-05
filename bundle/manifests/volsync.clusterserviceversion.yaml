@@ -55,7 +55,7 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2025-08-05T01:41:48Z"
+    createdAt: "2025-08-05T20:35:46Z"
     olm.skipRange: '>=0.4.0 <0.14.0'
     operators.operatorframework.io/builder: operator-sdk-v1.33.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4

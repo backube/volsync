@@ -351,8 +351,7 @@ func (m *Mover) configureJobSpec(ctx context.Context, job *batchv1.Job, cachePVC
 
 	m.configureCustomCA(podSpec, customCAObj)
 	m.configurePolicyConfig(podSpec, policyConfigObj)
-	m.configureGoogleCredentials(podSpec, repo)
-	m.configureSSHCredentials(podSpec, repo)
+	m.configureCredentials(podSpec, repo)
 
 	// Update the job securityContext, podLabels and resourceRequirements from moverConfig (if specified)
 	utils.UpdatePodTemplateSpecFromMoverConfig(&job.Spec.Template, m.moverConfig, corev1.ResourceRequirements{})
@@ -392,17 +391,48 @@ func (m *Mover) determineJobActions(dataPVC *corev1.PersistentVolumeClaim) (bool
 
 // buildEnvironmentVariables creates the base environment variables for the container
 func (m *Mover) buildEnvironmentVariables(repo *corev1.Secret) []corev1.EnvVar {
-	envVars := []corev1.EnvVar{
+	envVars := m.buildBasicEnvironmentVariables()
+	envVars = append(envVars, m.buildRepositoryEnvironmentVariables(repo)...)
+	envVars = append(envVars, m.buildBackendEnvironmentVariables(repo)...)
+	envVars = m.addSourceDestinationEnvVars(envVars)
+	envVars = utils.AppendEnvVarsForClusterWideProxy(envVars)
+	envVars = m.addIdentityEnvironmentVariables(envVars)
+	envVars = utils.AppendDebugMoverEnvVar(m.owner, envVars)
+	return envVars
+}
+
+// buildBasicEnvironmentVariables creates basic environment variables
+func (m *Mover) buildBasicEnvironmentVariables() []corev1.EnvVar {
+	return []corev1.EnvVar{
 		{Name: "DATA_DIR", Value: mountPath},
 		{Name: "KOPIA_CACHE_DIR", Value: kopiaCacheMountPath},
-		// We populate environment variables from the kopia repo
-		// Secret. They are taken 1-for-1 from the Secret into env vars.
-		// Mandatory variables are needed to define the repository
-		// location and its password.
+	}
+}
+
+// buildRepositoryEnvironmentVariables creates repository-related environment variables
+func (m *Mover) buildRepositoryEnvironmentVariables(repo *corev1.Secret) []corev1.EnvVar {
+	return []corev1.EnvVar{
+		// Mandatory variables are needed to define the repository location and its password
 		utils.EnvFromSecret(repo.Name, "KOPIA_REPOSITORY", false),
 		utils.EnvFromSecret(repo.Name, "KOPIA_PASSWORD", false),
+	}
+}
 
-		// Optional variables based on what backend is used for kopia
+// buildBackendEnvironmentVariables creates backend-specific environment variables
+func (m *Mover) buildBackendEnvironmentVariables(repo *corev1.Secret) []corev1.EnvVar {
+	envVars := m.buildAWSEnvironmentVariables(repo)
+	envVars = append(envVars, m.buildAzureEnvironmentVariables(repo)...)
+	envVars = append(envVars, m.buildGoogleEnvironmentVariables(repo)...)
+	envVars = append(envVars, m.buildB2EnvironmentVariables(repo)...)
+	envVars = append(envVars, m.buildWebDAVEnvironmentVariables(repo)...)
+	envVars = append(envVars, m.buildSFTPEnvironmentVariables(repo)...)
+	envVars = append(envVars, m.buildRcloneEnvironmentVariables(repo)...)
+	return envVars
+}
+
+// buildAWSEnvironmentVariables creates AWS S3 backend environment variables
+func (m *Mover) buildAWSEnvironmentVariables(repo *corev1.Secret) []corev1.EnvVar {
+	return []corev1.EnvVar{
 		utils.EnvFromSecret(repo.Name, "AWS_ACCESS_KEY_ID", true),
 		utils.EnvFromSecret(repo.Name, "AWS_SECRET_ACCESS_KEY", true),
 		utils.EnvFromSecret(repo.Name, "AWS_SESSION_TOKEN", true),
@@ -411,66 +441,85 @@ func (m *Mover) buildEnvironmentVariables(repo *corev1.Secret) []corev1.EnvVar {
 		utils.EnvFromSecret(repo.Name, "KOPIA_S3_BUCKET", true),
 		utils.EnvFromSecret(repo.Name, "KOPIA_S3_ENDPOINT", true),
 		utils.EnvFromSecret(repo.Name, "KOPIA_S3_DISABLE_TLS", true),
+	}
+}
+
+// buildAzureEnvironmentVariables creates Azure backend environment variables
+func (m *Mover) buildAzureEnvironmentVariables(repo *corev1.Secret) []corev1.EnvVar {
+	return []corev1.EnvVar{
 		utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_NAME", true),
 		utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_KEY", true),
 		utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_SAS", true),
 		utils.EnvFromSecret(repo.Name, "AZURE_ENDPOINT_SUFFIX", true),
-		utils.EnvFromSecret(repo.Name, "GOOGLE_PROJECT_ID", true),
 		utils.EnvFromSecret(repo.Name, "KOPIA_AZURE_CONTAINER", true),
 		utils.EnvFromSecret(repo.Name, "KOPIA_AZURE_STORAGE_ACCOUNT", true),
 		utils.EnvFromSecret(repo.Name, "KOPIA_AZURE_STORAGE_KEY", true),
+	}
+}
+
+// buildGoogleEnvironmentVariables creates Google Cloud backend environment variables
+func (m *Mover) buildGoogleEnvironmentVariables(repo *corev1.Secret) []corev1.EnvVar {
+	return []corev1.EnvVar{
+		utils.EnvFromSecret(repo.Name, "GOOGLE_PROJECT_ID", true),
 		utils.EnvFromSecret(repo.Name, "KOPIA_GCS_BUCKET", true),
 		utils.EnvFromSecret(repo.Name, "GOOGLE_APPLICATION_CREDENTIALS", true),
 		utils.EnvFromSecret(repo.Name, "KOPIA_FS_PATH", true),
+		utils.EnvFromSecret(repo.Name, "GOOGLE_DRIVE_FOLDER_ID", true),
+		utils.EnvFromSecret(repo.Name, "GOOGLE_DRIVE_CREDENTIALS", true),
+	}
+}
 
-		// Backblaze B2 backend environment variables
+// buildB2EnvironmentVariables creates Backblaze B2 backend environment variables
+func (m *Mover) buildB2EnvironmentVariables(repo *corev1.Secret) []corev1.EnvVar {
+	return []corev1.EnvVar{
 		utils.EnvFromSecret(repo.Name, "B2_ACCOUNT_ID", true),
 		utils.EnvFromSecret(repo.Name, "B2_APPLICATION_KEY", true),
 		utils.EnvFromSecret(repo.Name, "KOPIA_B2_BUCKET", true),
+	}
+}
 
-		// WebDAV backend environment variables
+// buildWebDAVEnvironmentVariables creates WebDAV backend environment variables
+func (m *Mover) buildWebDAVEnvironmentVariables(repo *corev1.Secret) []corev1.EnvVar {
+	return []corev1.EnvVar{
 		utils.EnvFromSecret(repo.Name, "WEBDAV_URL", true),
 		utils.EnvFromSecret(repo.Name, "WEBDAV_USERNAME", true),
 		utils.EnvFromSecret(repo.Name, "WEBDAV_PASSWORD", true),
+	}
+}
 
-		// SFTP backend environment variables
+// buildSFTPEnvironmentVariables creates SFTP backend environment variables
+func (m *Mover) buildSFTPEnvironmentVariables(repo *corev1.Secret) []corev1.EnvVar {
+	return []corev1.EnvVar{
 		utils.EnvFromSecret(repo.Name, "SFTP_HOST", true),
 		utils.EnvFromSecret(repo.Name, "SFTP_PORT", true),
 		utils.EnvFromSecret(repo.Name, "SFTP_USERNAME", true),
 		utils.EnvFromSecret(repo.Name, "SFTP_PASSWORD", true),
 		utils.EnvFromSecret(repo.Name, "SFTP_PATH", true),
 		utils.EnvFromSecret(repo.Name, "SFTP_KEY_FILE", true),
+	}
+}
 
-		// Rclone backend environment variables
+// buildRcloneEnvironmentVariables creates Rclone backend environment variables
+func (m *Mover) buildRcloneEnvironmentVariables(repo *corev1.Secret) []corev1.EnvVar {
+	return []corev1.EnvVar{
 		utils.EnvFromSecret(repo.Name, "RCLONE_REMOTE_PATH", true),
 		utils.EnvFromSecret(repo.Name, "RCLONE_EXE", true),
 		utils.EnvFromSecret(repo.Name, "RCLONE_CONFIG", true),
-
-		// Google Drive backend environment variables
-		utils.EnvFromSecret(repo.Name, "GOOGLE_DRIVE_FOLDER_ID", true),
-		utils.EnvFromSecret(repo.Name, "GOOGLE_DRIVE_CREDENTIALS", true),
 	}
+}
 
-	// Add source/destination specific environment variables
-	envVars = m.addSourceDestinationEnvVars(envVars)
-
-	// Cluster-wide proxy settings
-	envVars = utils.AppendEnvVarsForClusterWideProxy(envVars)
-
-	// Add username and hostname overrides for multi-tenancy
-	envVars = append(envVars, corev1.EnvVar{
-		Name:  "KOPIA_OVERRIDE_USERNAME",
-		Value: m.username,
-	})
-	envVars = append(envVars, corev1.EnvVar{
-		Name:  "KOPIA_OVERRIDE_HOSTNAME",
-		Value: m.hostname,
-	})
-
-	// Run mover in debug mode if required
-	envVars = utils.AppendDebugMoverEnvVar(m.owner, envVars)
-
-	return envVars
+// addIdentityEnvironmentVariables adds username and hostname overrides for multi-tenancy
+func (m *Mover) addIdentityEnvironmentVariables(envVars []corev1.EnvVar) []corev1.EnvVar {
+	return append(envVars,
+		corev1.EnvVar{
+			Name:  "KOPIA_OVERRIDE_USERNAME",
+			Value: m.username,
+		},
+		corev1.EnvVar{
+			Name:  "KOPIA_OVERRIDE_HOSTNAME",
+			Value: m.hostname,
+		},
+	)
 }
 
 // addSourceDestinationEnvVars adds environment variables specific to source or destination
@@ -706,131 +755,73 @@ func (m *Mover) configurePolicyConfig(podSpec *corev1.PodSpec, policyConfigObj u
 	})
 }
 
-// configureGoogleCredentials sets up Google Application Credentials if present
-func (m *Mover) configureGoogleCredentials(podSpec *corev1.PodSpec, repo *corev1.Secret) {
+// configureCredentials sets up all credential files in a unified manner to avoid mount conflicts
+func (m *Mover) configureCredentials(podSpec *corev1.PodSpec, repo *corev1.Secret) {
 	container := &podSpec.Containers[0]
+	credentialItems := []corev1.KeyToPath{}
+	hasCredentials := false
 
-	// Handle GCS credentials
+	// Collect all credential files that exist in the secret
 	if _, ok := repo.Data["GOOGLE_APPLICATION_CREDENTIALS"]; ok {
-		// We handle GOOGLE_APPLICATION_CREDENTIALS specially...
-		// kopia expects it to be an env var pointing to a file w/ the
-		// credentials, but we have users provide the actual file data in the
-		// Secret under that key name. The following code sets the env var to be
-		// what kopia expects, then mounts just that Secret key into the
-		// container, pointed to by the env var.
-
-		// Tell kopia where to look for the credential file
+		// GCS credentials - kopia expects this to be an env var pointing to a file
+		// We mount the file data from the secret to the expected location
 		container.Env = append(container.Env, corev1.EnvVar{
 			Name:  "GOOGLE_APPLICATION_CREDENTIALS",
 			Value: path.Join(credentialDir, gcsCredentialFile),
 		})
-		// Mount the credential file
-		container.VolumeMounts =
-			append(container.VolumeMounts, corev1.VolumeMount{
-				Name:      "gcs-credentials",
-				MountPath: credentialDir,
-			})
-		podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
-			Name: "gcs-credentials",
-			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{
-					SecretName: repo.Name,
-					Items: []corev1.KeyToPath{
-						{Key: "GOOGLE_APPLICATION_CREDENTIALS", Path: gcsCredentialFile},
-					},
-				},
-			},
+		credentialItems = append(credentialItems, corev1.KeyToPath{
+			Key:  "GOOGLE_APPLICATION_CREDENTIALS",
+			Path: gcsCredentialFile,
 		})
+		hasCredentials = true
 	}
 
-	// Handle Google Drive credentials
 	if _, ok := repo.Data["GOOGLE_DRIVE_CREDENTIALS"]; ok {
-		// Similar handling for Google Drive credentials
+		// Google Drive credentials
 		driveCredentialFile := "gdrive.json"
-
-		// Tell kopia where to look for the Google Drive credential file
 		container.Env = append(container.Env, corev1.EnvVar{
 			Name:  "GOOGLE_DRIVE_CREDENTIALS",
 			Value: path.Join(credentialDir, driveCredentialFile),
 		})
-
-		// Mount the Google Drive credential file (use same credential dir)
-		// Check if we already added the credential dir mount
-		credentialMountExists := false
-		for _, mount := range container.VolumeMounts {
-			if mount.MountPath == credentialDir {
-				credentialMountExists = true
-				break
-			}
-		}
-
-		if !credentialMountExists {
-			container.VolumeMounts =
-				append(container.VolumeMounts, corev1.VolumeMount{
-					Name:      "gdrive-credentials",
-					MountPath: credentialDir,
-				})
-		}
-
-		// Add or update the volume for Google Drive credentials
-		volumeExists := false
-		for i, vol := range podSpec.Volumes {
-			if vol.Name == "gcs-credentials" || vol.Name == "gdrive-credentials" {
-				// Update existing volume to include both credential files
-				if vol.VolumeSource.Secret != nil {
-					vol.VolumeSource.Secret.Items = append(vol.VolumeSource.Secret.Items,
-						corev1.KeyToPath{Key: "GOOGLE_DRIVE_CREDENTIALS", Path: driveCredentialFile})
-					podSpec.Volumes[i] = vol
-					volumeExists = true
-					break
-				}
-			}
-		}
-
-		if !volumeExists {
-			podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
-				Name: "gdrive-credentials",
-				VolumeSource: corev1.VolumeSource{
-					Secret: &corev1.SecretVolumeSource{
-						SecretName: repo.Name,
-						Items: []corev1.KeyToPath{
-							{Key: "GOOGLE_DRIVE_CREDENTIALS", Path: driveCredentialFile},
-						},
-					},
-				},
-			})
-		}
+		credentialItems = append(credentialItems, corev1.KeyToPath{
+			Key:  "GOOGLE_DRIVE_CREDENTIALS",
+			Path: driveCredentialFile,
+		})
+		hasCredentials = true
 	}
-}
 
-// configureSSHCredentials sets up SSH key files for SFTP backend if present
-func (m *Mover) configureSSHCredentials(podSpec *corev1.PodSpec, repo *corev1.Secret) {
-	// Handle SFTP key files
 	if _, ok := repo.Data["SFTP_KEY_FILE"]; ok {
-		container := &podSpec.Containers[0]
+		// SFTP SSH key file
 		sshKeyFile := "sftp_key"
-
-		// Tell kopia where to look for the SSH key file
 		container.Env = append(container.Env, corev1.EnvVar{
 			Name:  "SFTP_KEY_FILE",
 			Value: path.Join(credentialDir, sshKeyFile),
 		})
+		credentialItems = append(credentialItems, corev1.KeyToPath{
+			Key:  "SFTP_KEY_FILE",
+			Path: sshKeyFile,
+			Mode: ptr.To[int32](0600), // SSH keys need restrictive permissions
+		})
+		hasCredentials = true
+	}
 
-		// Mount the SSH key file
-		container.VolumeMounts =
-			append(container.VolumeMounts, corev1.VolumeMount{
-				Name:      "sftp-credentials",
-				MountPath: credentialDir,
-			})
+	// Mount all credential files in a single volume if any credentials exist
+	if hasCredentials {
+		// Add the volume mount for credentials
+		container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
+			Name:      "credentials",
+			MountPath: credentialDir,
+			ReadOnly:  true,
+		})
+
+		// Create the volume with all credential files
 		podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
-			Name: "sftp-credentials",
+			Name: "credentials",
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
-					SecretName: repo.Name,
-					Items: []corev1.KeyToPath{
-						{Key: "SFTP_KEY_FILE", Path: sshKeyFile},
-					},
-					DefaultMode: ptr.To[int32](0600), // SSH keys need restrictive permissions
+					SecretName:  repo.Name,
+					Items:       credentialItems,
+					DefaultMode: ptr.To[int32](0400), // Default read-only for security
 				},
 			},
 		})
@@ -1053,15 +1044,6 @@ func (m *Mover) recordJobRetry(operation, retryReason string) {
 	labels["retry_reason"] = retryReason
 
 	m.metrics.JobRetries.With(labels).Inc()
-}
-
-// recordCustomActionExecution records metrics for custom action execution
-func (m *Mover) recordCustomActionExecution(actionType string, duration time.Duration, _ bool) {
-	labels := m.getMetricLabels(operationBackup) // Actions are only for source/backup
-	labels["action_type"] = actionType
-
-	m.metrics.CustomActionsExecuted.With(labels).Inc()
-	m.metrics.CustomActionsDuration.With(labels).Observe(duration.Seconds())
 }
 
 // recordCacheMetrics records cache-related metrics

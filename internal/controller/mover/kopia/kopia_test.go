@@ -163,6 +163,249 @@ var _ = Describe("Kopia", func() {
 		})
 	})
 
+	Context("Kopia credential configuration", func() {
+		var mover *Mover
+		var podSpec *corev1.PodSpec
+		var secret *corev1.Secret
+
+		BeforeEach(func() {
+			// Setup basic mover and pod spec for testing
+			mover = &Mover{}
+			podSpec = &corev1.PodSpec{
+				Containers: []corev1.Container{{
+					Name:  "kopia",
+					Image: "test-image",
+					Env:   []corev1.EnvVar{},
+				}},
+				Volumes: []corev1.Volume{},
+			}
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-secret",
+					Namespace: ns.Name,
+				},
+				Data: map[string][]byte{},
+			}
+		})
+
+		It("should configure GCS credentials only", func() {
+			secret.Data["GOOGLE_APPLICATION_CREDENTIALS"] = []byte(`{"type": "service_account"}`)
+
+			mover.configureCredentials(podSpec, secret)
+
+			// Check environment variable is set
+			Expect(podSpec.Containers[0].Env).To(ContainElement(corev1.EnvVar{
+				Name:  "GOOGLE_APPLICATION_CREDENTIALS",
+				Value: "/credentials/gcs.json",
+			}))
+
+			// Check volume mount exists
+			Expect(podSpec.Containers[0].VolumeMounts).To(ContainElement(corev1.VolumeMount{
+				Name:      "credentials",
+				MountPath: "/credentials",
+				ReadOnly:  true,
+			}))
+
+			// Check volume exists with correct items
+			Expect(podSpec.Volumes).To(HaveLen(1))
+			Expect(podSpec.Volumes[0].Name).To(Equal("credentials"))
+			Expect(podSpec.Volumes[0].VolumeSource.Secret).NotTo(BeNil())
+			Expect(podSpec.Volumes[0].VolumeSource.Secret.SecretName).To(Equal("test-secret"))
+			Expect(podSpec.Volumes[0].VolumeSource.Secret.Items).To(ContainElement(corev1.KeyToPath{
+				Key:  "GOOGLE_APPLICATION_CREDENTIALS",
+				Path: "gcs.json",
+			}))
+		})
+
+		It("should configure SFTP credentials only", func() {
+			secret.Data["SFTP_KEY_FILE"] = []byte("ssh-private-key-content")
+
+			mover.configureCredentials(podSpec, secret)
+
+			// Check environment variable is set
+			Expect(podSpec.Containers[0].Env).To(ContainElement(corev1.EnvVar{
+				Name:  "SFTP_KEY_FILE",
+				Value: "/credentials/sftp_key",
+			}))
+
+			// Check volume mount exists
+			Expect(podSpec.Containers[0].VolumeMounts).To(ContainElement(corev1.VolumeMount{
+				Name:      "credentials",
+				MountPath: "/credentials",
+				ReadOnly:  true,
+			}))
+
+			// Check volume exists with correct items and SSH key permissions
+			Expect(podSpec.Volumes).To(HaveLen(1))
+			Expect(podSpec.Volumes[0].VolumeSource.Secret.Items).To(ContainElement(corev1.KeyToPath{
+				Key:  "SFTP_KEY_FILE",
+				Path: "sftp_key",
+				Mode: ptr.To[int32](0600),
+			}))
+		})
+
+		It("should configure multiple credentials without conflicts", func() {
+			secret.Data["GOOGLE_APPLICATION_CREDENTIALS"] = []byte(`{"type": "service_account"}`)
+			secret.Data["GOOGLE_DRIVE_CREDENTIALS"] = []byte(`{"type": "oauth2"}`)
+			secret.Data["SFTP_KEY_FILE"] = []byte("ssh-private-key-content")
+
+			mover.configureCredentials(podSpec, secret)
+
+			// Check all environment variables are set
+			Expect(podSpec.Containers[0].Env).To(ContainElement(corev1.EnvVar{
+				Name:  "GOOGLE_APPLICATION_CREDENTIALS",
+				Value: "/credentials/gcs.json",
+			}))
+			Expect(podSpec.Containers[0].Env).To(ContainElement(corev1.EnvVar{
+				Name:  "GOOGLE_DRIVE_CREDENTIALS",
+				Value: "/credentials/gdrive.json",
+			}))
+			Expect(podSpec.Containers[0].Env).To(ContainElement(corev1.EnvVar{
+				Name:  "SFTP_KEY_FILE",
+				Value: "/credentials/sftp_key",
+			}))
+
+			// Check only one volume mount exists (no conflicts)
+			credentialMounts := 0
+			for _, mount := range podSpec.Containers[0].VolumeMounts {
+				if mount.MountPath == "/credentials" {
+					credentialMounts++
+				}
+			}
+			Expect(credentialMounts).To(Equal(1), "Should have exactly one credential mount")
+
+			// Check only one volume exists with all credential files
+			Expect(podSpec.Volumes).To(HaveLen(1))
+			volume := podSpec.Volumes[0]
+			Expect(volume.Name).To(Equal("credentials"))
+			Expect(volume.VolumeSource.Secret.Items).To(HaveLen(3))
+			Expect(volume.VolumeSource.Secret.Items).To(ContainElement(corev1.KeyToPath{
+				Key:  "GOOGLE_APPLICATION_CREDENTIALS",
+				Path: "gcs.json",
+			}))
+			Expect(volume.VolumeSource.Secret.Items).To(ContainElement(corev1.KeyToPath{
+				Key:  "GOOGLE_DRIVE_CREDENTIALS",
+				Path: "gdrive.json",
+			}))
+			Expect(volume.VolumeSource.Secret.Items).To(ContainElement(corev1.KeyToPath{
+				Key:  "SFTP_KEY_FILE",
+				Path: "sftp_key",
+				Mode: ptr.To[int32](0600),
+			}))
+		})
+
+		It("should not configure credentials when none exist", func() {
+			// Empty secret data
+			mover.configureCredentials(podSpec, secret)
+
+			// Check no environment variables are added
+			for _, env := range podSpec.Containers[0].Env {
+				Expect(env.Name).NotTo(Equal("GOOGLE_APPLICATION_CREDENTIALS"))
+				Expect(env.Name).NotTo(Equal("GOOGLE_DRIVE_CREDENTIALS"))
+				Expect(env.Name).NotTo(Equal("SFTP_KEY_FILE"))
+			}
+
+			// Check no volume mounts are added
+			for _, mount := range podSpec.Containers[0].VolumeMounts {
+				Expect(mount.MountPath).NotTo(Equal("/credentials"))
+			}
+
+			// Check no volumes are added
+			Expect(podSpec.Volumes).To(HaveLen(0))
+		})
+
+		It("should set proper file permissions", func() {
+			secret.Data["GOOGLE_APPLICATION_CREDENTIALS"] = []byte(`{"type": "service_account"}`)
+			secret.Data["SFTP_KEY_FILE"] = []byte("ssh-private-key-content")
+
+			mover.configureCredentials(podSpec, secret)
+
+			volume := podSpec.Volumes[0]
+			// Check default mode is set to read-only for security
+			Expect(volume.VolumeSource.Secret.DefaultMode).To(Equal(ptr.To[int32](0400)))
+
+			// Check SSH key has more restrictive permissions
+			for _, item := range volume.Secret.Items {
+				if item.Path == "sftp_key" {
+					Expect(item.Mode).To(Equal(ptr.To[int32](0600)))
+				} else {
+					Expect(item.Mode).To(BeNil()) // Uses default mode
+				}
+			}
+		})
+	})
+
+	Context("Kopia environment variables", func() {
+		var mover *Mover
+		var secret *corev1.Secret
+
+		BeforeEach(func() {
+			mover = &Mover{
+				username: "test-user",
+				hostname: "test-host",
+			}
+			secret = &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-secret",
+				},
+				Data: map[string][]byte{
+					"KOPIA_REPOSITORY": []byte("s3://test-bucket/path"),
+					"KOPIA_PASSWORD":   []byte("test-password"),
+				},
+			}
+		})
+
+		It("should include username and hostname overrides", func() {
+			envVars := mover.buildEnvironmentVariables(secret)
+
+			Expect(envVars).To(ContainElement(corev1.EnvVar{
+				Name:  "KOPIA_OVERRIDE_USERNAME",
+				Value: "test-user",
+			}))
+			Expect(envVars).To(ContainElement(corev1.EnvVar{
+				Name:  "KOPIA_OVERRIDE_HOSTNAME",
+				Value: "test-host",
+			}))
+		})
+
+		It("should include all backend environment variables", func() {
+			envVars := mover.buildEnvironmentVariables(secret)
+
+			// Check mandatory variables
+			found := false
+			for _, env := range envVars {
+				if env.Name == "KOPIA_REPOSITORY" {
+					found = true
+					break
+				}
+			}
+			Expect(found).To(BeTrue(), "KOPIA_REPOSITORY should be present")
+
+			// Check some backend-specific variables are included
+			backendVars := []string{
+				"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "KOPIA_S3_BUCKET",
+				"AZURE_ACCOUNT_NAME", "AZURE_ACCOUNT_KEY", "KOPIA_AZURE_CONTAINER",
+				"KOPIA_GCS_BUCKET", "GOOGLE_APPLICATION_CREDENTIALS",
+				"KOPIA_B2_BUCKET", "B2_ACCOUNT_ID", "B2_APPLICATION_KEY",
+				"WEBDAV_URL", "WEBDAV_USERNAME", "WEBDAV_PASSWORD",
+				"SFTP_HOST", "SFTP_USERNAME", "SFTP_KEY_FILE",
+				"RCLONE_REMOTE_PATH", "RCLONE_EXE", "RCLONE_CONFIG",
+				"GOOGLE_DRIVE_FOLDER_ID", "GOOGLE_DRIVE_CREDENTIALS",
+			}
+
+			for _, varName := range backendVars {
+				found := false
+				for _, env := range envVars {
+					if env.Name == varName {
+						found = true
+						break
+					}
+				}
+				Expect(found).To(BeTrue(), "Backend variable %s should be present", varName)
+			}
+		})
+	})
+
 	Context("Kopia log filter", func() {
 		It("should filter kopia log lines", func() {
 			// Test lines that should be included
