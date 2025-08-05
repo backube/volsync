@@ -1126,11 +1126,8 @@ func (m *Mover) getMetricLabels(operation string) prometheus.Labels {
 		"obj_name":      m.owner.GetName(),
 		"obj_namespace": m.owner.GetNamespace(),
 		"role":          role,
+		"operation":     operation, // Always include operation, even if empty
 		"repository":    m.repositoryName,
-	}
-
-	if operation != "" {
-		labels["operation"] = operation
 	}
 
 	return labels
