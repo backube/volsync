@@ -830,6 +830,84 @@ VolSync's Kopia mover supports a comprehensive set of environment variables for 
 .. note::
    Environment variables are displayed securely in mover logs as ``[SET]`` or ``[NOT SET]`` to prevent credential exposure while providing configuration visibility for troubleshooting.
 
+Multi-tenancy and shared repositories
+======================================
+
+Multiple ReplicationSource and ReplicationDestination objects can safely share
+the same Kopia repository through VolSync's identity-based isolation mechanism.
+Each resource is assigned a unique identity in the format ``username@hostname``
+that ensures snapshots are properly isolated between different workloads.
+
+Identity generation
+-------------------
+
+By default, VolSync automatically generates identities using:
+
+- **Username**: ``source`` (for all ReplicationSource and ReplicationDestination objects)
+- **Hostname**: ``namespace-name`` (derived from the Kubernetes namespace and resource name)
+
+This results in identities like ``source@my-app-backup-job`` that are unique
+within a cluster and provide clear operational visibility.
+
+Custom identities
+------------------
+
+For advanced use cases or cross-cluster scenarios, you can override the default
+identity generation:
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: database-backup
+     namespace: production
+   spec:
+     kopia:
+       repository: shared-backup-repo
+       username: "prod-db"           # Custom username
+       hostname: "cluster-west"      # Custom hostname
+       # ... other configuration
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: database-restore
+     namespace: staging
+   spec:
+     kopia:
+       repository: shared-backup-repo
+       username: "prod-db"           # Must match source username
+       hostname: "cluster-west"      # Must match source hostname  
+       # ... other configuration
+
+.. important::
+   When restoring from snapshots created by a ReplicationSource, the
+   ReplicationDestination **must use the same username and hostname** as the
+   source that created the snapshots.
+
+Best practices for shared repositories
+---------------------------------------
+
+**Within a single cluster**: The default identity generation (``source@namespace-name``)
+provides sufficient uniqueness and clear operational visibility.
+
+**Across multiple clusters**: Use custom usernames that include cluster or
+environment identifiers to prevent identity collisions:
+
+.. code-block:: yaml
+
+   spec:
+     kopia:
+       username: "prod-cluster-west"
+       hostname: "database-backup"
+
+**Security considerations**: All users sharing a repository must be trusted, as
+Kopia's architecture allows repository-level access. For completely isolated
+backups between untrusted parties, use separate repositories.
+
 Configuring backup
 ==================
 

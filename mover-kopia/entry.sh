@@ -165,7 +165,7 @@ function execute_action {
 }
 
 function check_contents {
-    echo "== Checking directory for content ==="
+    echo "=== Checking directory for content ==="
     DIR_CONTENTS="$(ls -A "${DATA_DIR}" --ignore="lost+found")"
     if [ -z "${DIR_CONTENTS}" ]; then
         echo "== Directory is empty skipping backup ==="
@@ -856,8 +856,10 @@ function do_backup {
         fi
     fi
     
-    # Create snapshot with error handling
-    if ! "${SNAPSHOT_CMD[@]}"; then
+    # Create snapshot with error handling - ensure real-time progress output
+    # Execute with explicit file descriptor handling to ensure real-time output
+    echo "Snapshotting ${KOPIA_OVERRIDE_USERNAME:-$(whoami)}@${KOPIA_OVERRIDE_HOSTNAME:-$(hostname)}:${KOPIA_SOURCE_PATH_OVERRIDE:-$DATA_DIR} ..."
+    if ! "${SNAPSHOT_CMD[@]}" </dev/null; then
         error 1 "Failed to create snapshot"
     fi
     

@@ -285,7 +285,7 @@ func getMultiTenancyTestCases() []multiTenancyTestCase {
 			replicationSource: "app-backup",
 			customUsername:    nil,
 			customHostname:    nil,
-			expectedUsername:  "volsync",
+			expectedUsername:  "source",
 			expectedHostname:  "production-app-backup",
 		},
 		{
@@ -303,7 +303,7 @@ func getMultiTenancyTestCases() []multiTenancyTestCase {
 			replicationSource: "logs",
 			customUsername:    nil,
 			customHostname:    ptr.To("dev-cluster"),
-			expectedUsername:  "volsync",
+			expectedUsername:  "source",
 			expectedHostname:  "dev-cluster",
 		},
 		{
@@ -321,7 +321,7 @@ func getMultiTenancyTestCases() []multiTenancyTestCase {
 			replicationSource: "app_backup_job",
 			customUsername:    nil,
 			customHostname:    nil,
-			expectedUsername:  "volsync",
+			expectedUsername:  "source",
 			expectedHostname:  "my-namespace-app-backup-job", // underscores converted to hyphens
 		},
 	}

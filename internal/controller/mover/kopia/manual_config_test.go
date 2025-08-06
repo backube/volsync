@@ -453,9 +453,9 @@ func getMultiTenancyManualConfigTestCases() []multiTenancyManualConfigTestCase {
 			name:             "default multi-tenancy",
 			namespace:        "production",
 			sourceName:       "app-backup",
-			username:         "volsync",
+			username:         "source",
 			hostname:         "production-app-backup",
-			expectedUsername: "volsync",
+			expectedUsername: "source",
 			expectedHostname: "production-app-backup",
 		},
 		{

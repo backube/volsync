@@ -252,12 +252,12 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 }
 
 // generateUsername returns the username for Kopia identity
-// If specified, uses the provided username, otherwise defaults to "volsync"
+// If specified, uses the provided username, otherwise defaults to "source"
 func generateUsername(username *string) string {
 	if username != nil && *username != "" {
 		return *username
 	}
-	return "volsync"
+	return "source"
 }
 
 // generateHostname returns the hostname for Kopia identity
