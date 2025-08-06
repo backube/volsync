@@ -24,7 +24,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	
+
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
 
@@ -179,7 +179,7 @@ func TestEnvironmentVariables(t *testing.T) {
 			Namespace: "test-namespace",
 		},
 	}
-	
+
 	mover := &Mover{
 		username: "test-user",
 		hostname: "test-host",
@@ -219,13 +219,19 @@ func TestEnvironmentVariables(t *testing.T) {
 	// Check that all backend environment variables are included
 	requiredBackendVars := []string{
 		"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "KOPIA_S3_BUCKET",
+		"KOPIA_S3_ENDPOINT", "AWS_S3_ENDPOINT", "KOPIA_S3_DISABLE_TLS", "AWS_S3_DISABLE_TLS",
+		"AWS_REGION", "AWS_DEFAULT_REGION", "AWS_SESSION_TOKEN", "AWS_PROFILE",
 		"AZURE_ACCOUNT_NAME", "AZURE_ACCOUNT_KEY", "KOPIA_AZURE_CONTAINER",
-		"KOPIA_GCS_BUCKET", "GOOGLE_APPLICATION_CREDENTIALS",
+		"KOPIA_AZURE_STORAGE_ACCOUNT", "AZURE_STORAGE_ACCOUNT",
+		"KOPIA_AZURE_STORAGE_KEY", "AZURE_STORAGE_KEY", "AZURE_STORAGE_SAS_TOKEN",
+		"AZURE_ACCOUNT_SAS", "AZURE_ENDPOINT_SUFFIX",
+		"KOPIA_GCS_BUCKET", "GOOGLE_APPLICATION_CREDENTIALS", "GOOGLE_PROJECT_ID",
 		"KOPIA_B2_BUCKET", "B2_ACCOUNT_ID", "B2_APPLICATION_KEY",
 		"WEBDAV_URL", "WEBDAV_USERNAME", "WEBDAV_PASSWORD",
-		"SFTP_HOST", "SFTP_USERNAME", "SFTP_KEY_FILE",
+		"SFTP_HOST", "SFTP_USERNAME", "SFTP_KEY_FILE", "SFTP_PORT", "SFTP_PASSWORD", "SFTP_PATH",
 		"RCLONE_REMOTE_PATH", "RCLONE_EXE", "RCLONE_CONFIG",
 		"GOOGLE_DRIVE_FOLDER_ID", "GOOGLE_DRIVE_CREDENTIALS",
+		"KOPIA_FS_PATH",
 	}
 
 	for _, requiredVar := range requiredBackendVars {
