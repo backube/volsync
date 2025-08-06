@@ -72,13 +72,16 @@ echo "Contents of cache directory: $(ls -la ${KOPIA_CACHE_DIR} 2>/dev/null || ec
 echo ""
 echo "=== ENVIRONMENT VARIABLES STATUS ==="
 echo "KOPIA_REPOSITORY: ${KOPIA_REPOSITORY:+[SET]}${KOPIA_REPOSITORY:-[NOT SET]}"
-echo "KOPIA_PASSWORD: ${KOPIA_PASSWORD:+[SET]}${KOPIA_PASSWORD:-[NOT SET]}"
+echo "KOPIA_PASSWORD: $([ -n "${KOPIA_PASSWORD}" ] && echo "[SET]" || echo "[NOT SET]")"
 echo "KOPIA_S3_BUCKET: ${KOPIA_S3_BUCKET:+[SET]}${KOPIA_S3_BUCKET:-[NOT SET]}"
 echo "KOPIA_S3_ENDPOINT: ${KOPIA_S3_ENDPOINT:+[SET]}${KOPIA_S3_ENDPOINT:-[NOT SET]}"
+echo "AWS_S3_ENDPOINT: ${AWS_S3_ENDPOINT:+[SET]}${AWS_S3_ENDPOINT:-[NOT SET]}"
 echo "KOPIA_S3_DISABLE_TLS: ${KOPIA_S3_DISABLE_TLS:+[SET]}${KOPIA_S3_DISABLE_TLS:-[NOT SET]}"
-echo "AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:+[SET]}${AWS_ACCESS_KEY_ID:-[NOT SET]}"
-echo "AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:+[SET]}${AWS_SECRET_ACCESS_KEY:-[NOT SET]}"
+echo "AWS_S3_DISABLE_TLS: ${AWS_S3_DISABLE_TLS:+[SET]}${AWS_S3_DISABLE_TLS:-[NOT SET]}"
+echo "AWS_ACCESS_KEY_ID: $([ -n "${AWS_ACCESS_KEY_ID}" ] && echo "[SET]" || echo "[NOT SET]")"
+echo "AWS_SECRET_ACCESS_KEY: $([ -n "${AWS_SECRET_ACCESS_KEY}" ] && echo "[SET]" || echo "[NOT SET]")"
 echo "AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:+[SET]}${AWS_DEFAULT_REGION:-[NOT SET]}"
+echo "AWS_REGION: ${AWS_REGION:+[SET]}${AWS_REGION:-[NOT SET]}"
 echo "KOPIA_OVERRIDE_USERNAME: ${KOPIA_OVERRIDE_USERNAME:+[SET]}${KOPIA_OVERRIDE_USERNAME:-[NOT SET]}"
 echo "KOPIA_OVERRIDE_HOSTNAME: ${KOPIA_OVERRIDE_HOSTNAME:+[SET]}${KOPIA_OVERRIDE_HOSTNAME:-[NOT SET]}"
 echo "KOPIA_SOURCE_PATH_OVERRIDE: ${KOPIA_SOURCE_PATH_OVERRIDE:+[SET]}${KOPIA_SOURCE_PATH_OVERRIDE:-[NOT SET]}"
@@ -87,14 +90,14 @@ echo ""
 echo "=== Additional Backend Environment Variables ==="
 echo "KOPIA_B2_BUCKET: ${KOPIA_B2_BUCKET:+[SET]}${KOPIA_B2_BUCKET:-[NOT SET]}"
 echo "B2_ACCOUNT_ID: ${B2_ACCOUNT_ID:+[SET]}${B2_ACCOUNT_ID:-[NOT SET]}"
-echo "B2_APPLICATION_KEY: ${B2_APPLICATION_KEY:+[SET]}${B2_APPLICATION_KEY:-[NOT SET]}"
+echo "B2_APPLICATION_KEY: $([ -n "${B2_APPLICATION_KEY}" ] && echo "[SET]" || echo "[NOT SET]")"
 echo "WEBDAV_URL: ${WEBDAV_URL:+[SET]}${WEBDAV_URL:-[NOT SET]}"
 echo "WEBDAV_USERNAME: ${WEBDAV_USERNAME:+[SET]}${WEBDAV_USERNAME:-[NOT SET]}"
-echo "WEBDAV_PASSWORD: ${WEBDAV_PASSWORD:+[SET]}${WEBDAV_PASSWORD:-[NOT SET]}"
+echo "WEBDAV_PASSWORD: $([ -n "${WEBDAV_PASSWORD}" ] && echo "[SET]" || echo "[NOT SET]")"
 echo "SFTP_HOST: ${SFTP_HOST:+[SET]}${SFTP_HOST:-[NOT SET]}"
 echo "SFTP_PORT: ${SFTP_PORT:+[SET]}${SFTP_PORT:-[NOT SET]}"
 echo "SFTP_USERNAME: ${SFTP_USERNAME:+[SET]}${SFTP_USERNAME:-[NOT SET]}"
-echo "SFTP_PASSWORD: ${SFTP_PASSWORD:+[SET]}${SFTP_PASSWORD:-[NOT SET]}"
+echo "SFTP_PASSWORD: $([ -n "${SFTP_PASSWORD}" ] && echo "[SET]" || echo "[NOT SET]")"
 echo "SFTP_PATH: ${SFTP_PATH:+[SET]}${SFTP_PATH:-[NOT SET]}"
 echo "SFTP_KEY_FILE: ${SFTP_KEY_FILE:+[SET]}${SFTP_KEY_FILE:-[NOT SET]}"
 echo "RCLONE_REMOTE_PATH: ${RCLONE_REMOTE_PATH:+[SET]}${RCLONE_REMOTE_PATH:-[NOT SET]}"
@@ -460,11 +463,13 @@ function connect_repository {
         echo "=== S3 Connection Debug ==="
         echo "KOPIA_S3_BUCKET: ${KOPIA_S3_BUCKET:+[SET]}${KOPIA_S3_BUCKET:-[NOT SET]}"
         echo "KOPIA_S3_ENDPOINT: ${KOPIA_S3_ENDPOINT:+[SET]}${KOPIA_S3_ENDPOINT:-[NOT SET]}"
-        echo "AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:+[SET]}${AWS_ACCESS_KEY_ID:-[NOT SET]}"
-        echo "AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:+[SET]}${AWS_SECRET_ACCESS_KEY:-[NOT SET]}"
+        echo "AWS_S3_ENDPOINT: ${AWS_S3_ENDPOINT:+[SET]}${AWS_S3_ENDPOINT:-[NOT SET]}"
+        echo "AWS_ACCESS_KEY_ID: $([ -n "${AWS_ACCESS_KEY_ID}" ] && echo "[SET]" || echo "[NOT SET]")"
+        echo "AWS_SECRET_ACCESS_KEY: $([ -n "${AWS_SECRET_ACCESS_KEY}" ] && echo "[SET]" || echo "[NOT SET]")"
         echo "KOPIA_REPOSITORY: ${KOPIA_REPOSITORY:+[SET]}${KOPIA_REPOSITORY:-[NOT SET]}"
         echo "KOPIA_S3_DISABLE_TLS: ${KOPIA_S3_DISABLE_TLS:+[SET]}${KOPIA_S3_DISABLE_TLS:-[NOT SET]}"
-        echo "KOPIA_PASSWORD: ${KOPIA_PASSWORD:+[SET]}${KOPIA_PASSWORD:-[NOT SET]}"
+        echo "AWS_S3_DISABLE_TLS: ${AWS_S3_DISABLE_TLS:+[SET]}${AWS_S3_DISABLE_TLS:-[NOT SET]}"
+        echo "KOPIA_PASSWORD: $([ -n "${KOPIA_PASSWORD}" ] && echo "[SET]" || echo "[NOT SET]")"
         
         # Extract bucket name from repository URL if not explicitly set
         local S3_BUCKET="${KOPIA_S3_BUCKET}"
@@ -485,6 +490,10 @@ function connect_repository {
         
         # Use KOPIA_S3_ENDPOINT if set, otherwise fall back to AWS_S3_ENDPOINT, otherwise use default
         local S3_ENDPOINT="${KOPIA_S3_ENDPOINT:-${AWS_S3_ENDPOINT:-s3.amazonaws.com}}"
+        
+        # Strip protocol from endpoint if present (Kopia expects hostname only)
+        S3_ENDPOINT=$(echo "${S3_ENDPOINT}" | sed 's|^https\?://||')
+        echo "Resolved S3_ENDPOINT: ${S3_ENDPOINT}"
         
         S3_CONNECT_CMD=("${KOPIA[@]}" repository connect s3 \
             --bucket="${S3_BUCKET}" \
@@ -608,11 +617,13 @@ function create_repository {
         echo "=== S3 Creation Debug ==="
         echo "KOPIA_S3_BUCKET: ${KOPIA_S3_BUCKET:+[SET]}${KOPIA_S3_BUCKET:-[NOT SET]}"
         echo "KOPIA_S3_ENDPOINT: ${KOPIA_S3_ENDPOINT:+[SET]}${KOPIA_S3_ENDPOINT:-[NOT SET]}"
-        echo "AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:+[SET]}${AWS_ACCESS_KEY_ID:-[NOT SET]}"
-        echo "AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:+[SET]}${AWS_SECRET_ACCESS_KEY:-[NOT SET]}"
+        echo "AWS_S3_ENDPOINT: ${AWS_S3_ENDPOINT:+[SET]}${AWS_S3_ENDPOINT:-[NOT SET]}"
+        echo "AWS_ACCESS_KEY_ID: $([ -n "${AWS_ACCESS_KEY_ID}" ] && echo "[SET]" || echo "[NOT SET]")"
+        echo "AWS_SECRET_ACCESS_KEY: $([ -n "${AWS_SECRET_ACCESS_KEY}" ] && echo "[SET]" || echo "[NOT SET]")"
         echo "KOPIA_REPOSITORY: ${KOPIA_REPOSITORY:+[SET]}${KOPIA_REPOSITORY:-[NOT SET]}"
         echo "KOPIA_S3_DISABLE_TLS: ${KOPIA_S3_DISABLE_TLS:+[SET]}${KOPIA_S3_DISABLE_TLS:-[NOT SET]}"
-        echo "KOPIA_PASSWORD: ${KOPIA_PASSWORD:+[SET]}${KOPIA_PASSWORD:-[NOT SET]}"
+        echo "AWS_S3_DISABLE_TLS: ${AWS_S3_DISABLE_TLS:+[SET]}${AWS_S3_DISABLE_TLS:-[NOT SET]}"
+        echo "KOPIA_PASSWORD: $([ -n "${KOPIA_PASSWORD}" ] && echo "[SET]" || echo "[NOT SET]")"
         echo "KOPIA_CACHE_DIR: ${KOPIA_CACHE_DIR:+[SET]}${KOPIA_CACHE_DIR:-[NOT SET]}"
         
         # Extract bucket name from repository URL if not explicitly set
@@ -634,6 +645,10 @@ function create_repository {
         
         # Use KOPIA_S3_ENDPOINT if set, otherwise fall back to AWS_S3_ENDPOINT, otherwise use default
         local S3_ENDPOINT="${KOPIA_S3_ENDPOINT:-${AWS_S3_ENDPOINT:-s3.amazonaws.com}}"
+        
+        # Strip protocol from endpoint if present (Kopia expects hostname only)
+        S3_ENDPOINT=$(echo "${S3_ENDPOINT}" | sed 's|^https\?://||')
+        echo "Resolved S3_ENDPOINT: ${S3_ENDPOINT}"
         
         S3_CREATE_CMD=("${KOPIA[@]}" repository create s3 \
             --bucket="${S3_BUCKET}" \
