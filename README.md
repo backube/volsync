@@ -1,17 +1,126 @@
 # VolSync
 
-> **Note**: This is a fork of [backube/volsync](https://github.com/backube/volsync). For installation of the Helm Chart from this fork, use:
-> ```bash
-> helm repo add volsync-fork https://perfectra1n.github.io/volsync/charts
-> helm install --create-namespace -n volsync-system volsync volsync-fork/volsync
-> ```
-> Specify the mover image(s), for at least Kopia, [here](https://github.com/perfectra1n/volsync/blob/0532cc29596bc054060889fec8cd5bb263370e76/helm/volsync/values.yaml#L40) in the Helm chart values, and specify the image to be:
-> ```
-> ghcr.io/perfectra1n/volsync:latest
-> ```
->
-> Also, the documentation is hosted in the [GitHub Pages documentation](https://perfectra1n.github.io/volsync/) (Fork documentation mirror)
 
+## Fork Notes
+**Note**: This is a fork of [backube/volsync](https://github.com/backube/volsync). For installation of the Helm Chart from this fork, use:
+```bash
+helm repo add volsync-fork https://perfectra1n.github.io/volsync/charts
+helm install --create-namespace -n volsync-system volsync volsync-fork/volsync
+```
+Specify the mover image(s), for at least Kopia, [here](https://github.com/perfectra1n/volsync/blob/0532cc29596bc054060889fec8cd5bb263370e76/helm/volsync/values.yaml#L40) in the Helm chart values, and specify the image to be:
+```
+ghcr.io/perfectra1n/volsync:latest
+```
+
+Also, the documentation is hosted in the [GitHub Pages documentation](https://perfectra1n.github.io/volsync/) (Fork documentation mirror)
+
+As an example, this is my Argo Helm Chart release:
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: volsync
+  namespace: argocd
+
+spec:
+  project: default
+  source:
+    chart: volsync
+    repoURL: https://perfectra1n.github.io/volsync/charts/
+    targetRevision: "0.15.1"
+    helm:
+      values: |
+        manageCRDs: true
+        metrics:
+          disableAuth: true
+        image:
+          repository: ghcr.io/perfectra1n/volsync
+          tag: "0.15.7"
+          image: ""
+        kopia:
+          repository: ghcr.io/perfectra1n/volsync
+          tag: "0.15.7"
+          image: ""
+        rclone:
+          repository: ghcr.io/perfectra1n/volsync
+          # Overrides the image tag whose default is the chart appVersion.
+          tag: "0.15.1"
+          image: ""
+        restic:
+          repository: ghcr.io/perfectra1n/volsync
+          # Overrides the image tag whose default is the chart appVersion.
+          tag: "0.15.1"
+          image: ""
+        rsync:
+          repository: ghcr.io/perfectra1n/volsync
+          # Overrides the image tag whose default is the chart appVersion.
+          tag: "0.15.1"
+          image: ""
+        rsync-tls:
+          repository: ghcr.io/perfectra1n/volsync
+          # Overrides the image tag whose default is the chart appVersion.
+          tag: "0.15.1"
+          image: ""
+        syncthing:
+          repository: ghcr.io/perfectra1n/volsync
+          # Overrides the image tag whose default is the chart appVersion.
+          tag: "0.15.1"
+          image: ""
+```
+
+Then a `ReplicationSource` example:
+```yaml
+apiVersion: volsync.backube/v1alpha1
+kind: ReplicationSource
+metadata:
+  name: homepage-kopia
+  namespace: apps
+spec:
+  sourcePVC: homepage-icons
+  trigger:
+    schedule: "0 */4 * * *"
+  kopia:
+    copyMethod: Direct
+    repository: volsync-kopia-repo
+    username: homepage-kopia
+    volumeSnapshotClassName: "main-truenas-iscsi-vsc"
+    retain:
+      weekly: 2
+      monthly: 4
+    moverSecurityContext:
+      runAsUser: 0
+      runAsGroup: 0
+      fsGroup: 0
+```
+
+And a `repository` example:
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: volsync-kopia-repo
+  namespace: storage
+  annotations:
+    replicator.v1.mittwald.de/replicate-to: "asdf,asdf,asdf"
+type: Opaque
+stringData:
+  # The repository url
+  KOPIA_REPOSITORY: s3://kopia-volsync-backups/backups
+  # The repository encryption key
+  KOPIA_PASSWORD: "kopiapassword"
+  AWS_ACCESS_KEY_ID: "kopia-volsync-user"
+  AWS_SECRET_ACCESS_KEY: "minio-user-password"
+  # For non-AWS S3 (MinIO, etc.)
+  AWS_S3_ENDPOINT: s3.example.com
+  KOPIA_S3_ENDPOINT: s3.example.com
+  # Optional: specify region
+  AWS_REGION: us-east-1
+
+```
+
+Again, the documentation is hosted in the [GitHub Pages documentation](https://perfectra1n.github.io/volsync/) (Fork documentation mirror)
+
+## Overview
 VolSync asynchronously replicates Kubernetes persistent volumes between clusters
 using either [rsync](https://rsync.samba.org/) or [rclone](https://rclone.org/).
 It also supports creating backups of persistent volumes via
