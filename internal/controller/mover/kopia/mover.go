@@ -229,6 +229,25 @@ func (m *Mover) getDestinationPVCName() (bool, string) {
 
 func (m *Mover) ensureCache(ctx context.Context,
 	dataPVC *corev1.PersistentVolumeClaim, isTemporary bool) (*corev1.PersistentVolumeClaim, error) {
+	// Determine cache configuration strategy:
+	// 1. Pure fallback: No configuration at all -> EmptyDir with default size limit
+	// 2. Capacity-only: Only cacheCapacity specified -> EmptyDir with specified size limit  
+	// 3. Full PVC: StorageClass or AccessModes specified -> PVC
+	
+	hasPVCConfig := m.cacheStorageClassName != nil || m.cacheAccessModes != nil
+	hasCapacityOnly := m.cacheCapacity != nil && !hasPVCConfig
+	hasNoCacheConfig := m.cacheCapacity == nil && !hasPVCConfig
+	
+	// Use EmptyDir fallback for scenarios 1 and 2
+	if hasNoCacheConfig || hasCapacityOnly {
+		if hasNoCacheConfig {
+			m.logger.V(1).Info("No cache configuration specified, will use EmptyDir volume with default size limit")
+		} else {
+			m.logger.V(1).Info("Cache capacity only specified, will use EmptyDir volume with size limit", "capacity", m.cacheCapacity.String())
+		}
+		return nil, nil
+	}
+
 	// Create a separate vh for the Kopia cache volume that's based on the main
 	// vh, but override options where necessary.
 	cacheConfig := []volumehandler.VHOption{
@@ -665,22 +684,52 @@ func (m *Mover) configureBasicVolumes(podSpec *corev1.PodSpec,
 	}
 }
 
-// configureCacheVolume adds cache volume if specified
+// configureCacheVolume adds cache volume - either PVC or EmptyDir fallback
 func (m *Mover) configureCacheVolume(podSpec *corev1.PodSpec, cachePVC *corev1.PersistentVolumeClaim) {
-	if cachePVC == nil {
-		return
-	}
-
+	// Always add the volume mount for cache
 	podSpec.Containers[0].VolumeMounts = append(podSpec.Containers[0].VolumeMounts, corev1.VolumeMount{
 		Name:      kopiaCache,
 		MountPath: kopiaCacheMountPath,
 	})
-	podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
-		Name: kopiaCache, VolumeSource: corev1.VolumeSource{
-			PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-				ClaimName: cachePVC.Name,
-			}},
-	})
+
+	var cacheVolume corev1.Volume
+	if cachePVC != nil {
+		// Use PVC when cache is configured
+		m.logger.V(1).Info("Using PVC for Kopia cache", "pvc", cachePVC.Name)
+		cacheVolume = corev1.Volume{
+			Name: kopiaCache,
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: cachePVC.Name,
+				},
+			},
+		}
+	} else {
+		// Use EmptyDir as fallback - this handles both no-config and capacity-only scenarios
+		m.logger.V(1).Info("Using EmptyDir for Kopia cache")
+		emptyDirSource := &corev1.EmptyDirVolumeSource{}
+		
+		// Set size limit based on configuration
+		if m.cacheCapacity != nil {
+			// User specified capacity - use it for EmptyDir size limit
+			m.logger.V(1).Info("Setting EmptyDir size limit from user configuration", "capacity", m.cacheCapacity.String())
+			emptyDirSource.SizeLimit = m.cacheCapacity
+		} else {
+			// No capacity specified - set a reasonable default to prevent unbounded usage
+			defaultLimit := resource.MustParse("8Gi")
+			m.logger.V(1).Info("Setting default EmptyDir size limit to prevent unbounded usage", "defaultCapacity", defaultLimit.String())
+			emptyDirSource.SizeLimit = &defaultLimit
+		}
+		
+		cacheVolume = corev1.Volume{
+			Name: kopiaCache,
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: emptyDirSource,
+			},
+		}
+	}
+
+	podSpec.Volumes = append(podSpec.Volumes, cacheVolume)
 }
 
 // configureAffinity sets up node affinity if using direct copy method
@@ -937,8 +986,9 @@ func (m *Mover) setupPrerequisites(ctx context.Context) (*corev1.PersistentVolum
 
 	// Allocate cache volume
 	// cleanupCachePVC will always be false for replicationsources - it's only set in the builder FromDestination()
+	// cachePVC can be nil when using EmptyDir fallback
 	cachePVC, err := m.ensureCache(ctx, dataPVC, m.cleanupCachePVC)
-	if cachePVC == nil || err != nil {
+	if err != nil {
 		return nil, nil, nil, nil, nil, nil, err
 	}
 

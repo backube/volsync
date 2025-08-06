@@ -976,14 +976,34 @@ cacheCapacity
    This determines the size of the Kopia metadata cache volume. This volume
    contains cached metadata from the backup repository. It must be large enough
    to hold the repository metadata. The default is ``1 Gi``.
+
+   **Cache Volume Behavior:**
+
+   - **When specified**: A PersistentVolumeClaim is created with the specified capacity
+   - **When not specified**: An EmptyDir volume is used as fallback, providing temporary cache storage
+
+   .. important::
+      With EmptyDir fallback, cache contents are lost when the pod restarts, which may
+      impact performance for subsequent backup operations as the cache needs to be rebuilt.
+
 cacheStorageClassName
    This is the name of the StorageClass that should be used when provisioning
    the cache volume. It defaults to ``.spec.storageClassName``, then to the name
    of the StorageClass used by the source PVC.
+
+   .. note::
+      This setting only applies when ``cacheCapacity`` is specified. EmptyDir volumes
+      do not use StorageClasses.
+
 cacheAccessModes
    This is the access mode(s) that should be used to provision the cache volume.
    It defaults to ``.spec.accessModes``, then to the access modes used by the
    source PVC.
+
+   .. note::
+      This setting only applies when ``cacheCapacity`` is specified. EmptyDir volumes
+      do not use access modes.
+
 compression
    This specifies the compression algorithm to use. Options are:
    
@@ -1498,14 +1518,34 @@ cacheCapacity
    This determines the size of the Kopia metadata cache volume. This volume
    contains cached metadata from the backup repository. It must be large enough
    to hold the repository metadata. The default is ``1 Gi``.
+
+   **Cache Volume Behavior:**
+
+   - **When specified**: A PersistentVolumeClaim is created with the specified capacity
+   - **When not specified**: An EmptyDir volume is used as fallback, providing temporary cache storage
+
+   .. important::
+      With EmptyDir fallback, cache contents are lost when the pod restarts, which may
+      impact performance for subsequent restore operations as the cache needs to be rebuilt.
+
 cacheStorageClassName
    This is the name of the StorageClass that should be used when provisioning
    the cache volume. It defaults to ``.spec.storageClassName``, then to the name
    of the StorageClass used by the source PVC.
+
+   .. note::
+      This setting only applies when ``cacheCapacity`` is specified. EmptyDir volumes
+      do not use StorageClasses.
+
 cacheAccessModes
    This is the access mode(s) that should be used to provision the cache volume.
    It defaults to ``.spec.accessModes``, then to the access modes used by the
    source PVC.
+
+   .. note::
+      This setting only applies when ``cacheCapacity`` is specified. EmptyDir volumes
+      do not use access modes.
+
 cleanupCachePVC
    This optional boolean determines if the cache PVC should be cleaned up at
    the end of the restore. Cache PVCs will always be deleted if the owning
@@ -1692,6 +1732,120 @@ The cache volume configuration follows this priority:
 1. Explicitly set ``cacheStorageClassName`` and ``cacheAccessModes``
 2. ReplicationSource/ReplicationDestination ``storageClassName`` and ``accessModes``  
 3. Source PVC ``storageClassName`` and ``accessModes``
+
+**Problem**: Backups are slow after pod restarts without explicit cache configuration.
+
+**Cause**: EmptyDir cache fallback rebuilds cache from scratch on every pod restart.
+
+**Solution**: Add persistent cache for better performance:
+
+.. code-block:: yaml
+
+   kopia:
+     cacheCapacity: 2Gi  # Enables persistent cache
+
+**Problem**: Unexpected EmptyDir usage when cache configuration was expected.
+
+**Cause**: Missing ``cacheCapacity`` field triggers EmptyDir fallback.
+
+**Solution**: Explicitly specify cache capacity:
+
+.. code-block:: yaml
+
+   kopia:
+     cacheCapacity: 1Gi  # Minimum for persistent cache
+
+**Problem**: Large repository operations fail with EmptyDir cache.
+
+**Cause**: EmptyDir volumes may have limited space or face node memory pressure.
+
+**Solution**: Use persistent cache for large repositories:
+
+.. code-block:: yaml
+
+   kopia:
+     cacheCapacity: 5Gi
+     cacheStorageClassName: fast-ssd
+
+Cache volume behavior and performance
+-------------------------------------
+
+Understanding the cache volume behavior is crucial for optimal Kopia performance and resource management.
+
+**PersistentVolumeClaim vs EmptyDir**
+
+VolSync now uses an intelligent cache fallback strategy:
+
+- **When ``cacheCapacity`` is specified**: A PersistentVolumeClaim is created with persistent storage
+- **When ``cacheCapacity`` is omitted**: An EmptyDir volume provides temporary cache storage
+
+**Performance implications**
+
+*Using PersistentVolumeClaim (recommended for production):*
+
+.. code-block:: yaml
+
+   kopia:
+     cacheCapacity: 2Gi
+     cacheStorageClassName: fast-ssd  # Optional
+
+- Cache survives pod restarts and reschedules
+- Subsequent backups and restores are faster due to cached repository metadata
+- Better performance for large repositories with many snapshots
+- Recommended for production workloads with regular backup schedules
+
+*Using EmptyDir fallback (suitable for testing or one-off operations):*
+
+.. code-block:: yaml
+
+   kopia:
+     # No cacheCapacity specified - uses EmptyDir
+
+- No persistent storage required - reduces resource usage
+- Cache is rebuilt on each pod restart, impacting performance
+- Suitable for testing, development, or infrequent backup operations
+- May impact large repository operations due to repeated metadata fetching
+
+**Configuration examples**
+
+*Minimal configuration for development:*
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: dev-backup
+   spec:
+     sourcePVC: dev-data
+     kopia:
+       repository: kopia-config
+       # Uses EmptyDir cache automatically
+
+*Production configuration with persistent cache:*
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: prod-backup
+   spec:
+     sourcePVC: prod-data
+     kopia:
+       repository: kopia-config
+       cacheCapacity: 5Gi
+       cacheStorageClassName: fast-ssd
+
+**Migration considerations**
+
+Existing configurations remain unchanged:
+
+- ReplicationSource/ReplicationDestination objects with explicit ``cacheCapacity`` continue using PVCs
+- Objects without ``cacheCapacity`` automatically benefit from EmptyDir fallback
+- No action required for existing deployments
+
+For improved performance, consider adding ``cacheCapacity`` to frequently used backup jobs.
 
 Performance issues
 ------------------
