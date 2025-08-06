@@ -11,99 +11,99 @@ metadata:
     component: kopia-mover
 spec:
   groups:
-  - name: volsync-kopia-critical
-    rules:
-    - alert: KopiaRepositoryDown
-      expr: volsync_kopia_repository_connectivity == 0
-      for: 2m
-      labels:
-        severity: critical
-      annotations:
-        summary: "Kopia repository is unreachable"
-        description: "Repository {{ $labels.repository }} for {{ $labels.obj_name }}/{{ $labels.obj_namespace }} has been unreachable for more than 2 minutes."
+    - name: volsync-kopia-critical
+      rules:
+        - alert: KopiaRepositoryDown
+          expr: volsync_kopia_repository_connectivity == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Kopia repository is unreachable"
+            description: "Repository {{ $labels.repository }} for {{ $labels.obj_name }}/{{ $labels.obj_namespace }} has been unreachable for more than 2 minutes."
 
-    - alert: KopiaHighFailureRate
-      expr: rate(volsync_kopia_operation_failure_total[5m]) > 0.1
-      for: 5m
-      labels:
-        severity: critical
-      annotations:
-        summary: "High Kopia operation failure rate"
-        description: "{{ $labels.obj_name }}/{{ $labels.obj_namespace }} has a failure rate of {{ $value | humanizePercentage }} for {{ $labels.operation }} operations."
+        - alert: KopiaHighFailureRate
+          expr: rate(volsync_kopia_operation_failure_total[5m]) > 0.1
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "High Kopia operation failure rate"
+            description: "{{ $labels.obj_name }}/{{ $labels.obj_namespace }} has a failure rate of {{ $value | humanizePercentage }} for {{ $labels.operation }} operations."
 
-    - alert: KopiaRetentionViolation
-      expr: volsync_kopia_retention_compliance == 0
-      for: 10m
-      labels:
-        severity: critical
-      annotations:
-        summary: "Kopia retention policy violation"
-        description: "{{ $labels.retention_type }} retention policy is not compliant for {{ $labels.obj_name }}/{{ $labels.obj_namespace }}."
+        - alert: KopiaRetentionViolation
+          expr: volsync_kopia_retention_compliance == 0
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Kopia retention policy violation"
+            description: "{{ $labels.retention_type }} retention policy is not compliant for {{ $labels.obj_name }}/{{ $labels.obj_namespace }}."
 
-  - name: volsync-kopia-warning
-    rules:
-    - alert: KopiaSlowOperations
-      expr: histogram_quantile(0.9, rate(volsync_kopia_operation_duration_seconds_bucket[10m])) > 3600
-      for: 10m
-      labels:
-        severity: warning
-      annotations:
-        summary: "Kopia operations are slow"
-        description: "90th percentile of {{ $labels.operation }} operations for {{ $labels.obj_name }}/{{ $labels.obj_namespace }} is {{ $value | humanizeDuration }}."
+    - name: volsync-kopia-warning
+      rules:
+        - alert: KopiaSlowOperations
+          expr: histogram_quantile(0.9, rate(volsync_kopia_operation_duration_seconds_bucket[10m])) > 3600
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kopia operations are slow"
+            description: "90th percentile of {{ $labels.operation }} operations for {{ $labels.obj_name }}/{{ $labels.obj_namespace }} is {{ $value | humanizeDuration }}."
 
-    - alert: KopiaHighRetryRate
-      expr: rate(volsync_kopia_job_retries_total[10m]) > 0.05
-      for: 15m
-      labels:
-        severity: warning
-      annotations:
-        summary: "High Kopia job retry rate"
-        description: "{{ $labels.obj_name }}/{{ $labels.obj_namespace }} has {{ $value }} retries per second due to {{ $labels.retry_reason }}."
+        - alert: KopiaHighRetryRate
+          expr: rate(volsync_kopia_job_retries_total[10m]) > 0.05
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High Kopia job retry rate"
+            description: "{{ $labels.obj_name }}/{{ $labels.obj_namespace }} has {{ $value }} retries per second due to {{ $labels.retry_reason }}."
 
-    - alert: KopiaPoorCachePerformance
-      expr: volsync_kopia_cache_hit_rate < 50
-      for: 15m
-      labels:
-        severity: warning
-      annotations:
-        summary: "Poor Kopia cache performance"
-        description: "Cache hit rate for {{ $labels.obj_name }}/{{ $labels.obj_namespace }} is {{ $value }}%, which is below the 50% threshold."
+        - alert: KopiaPoorCachePerformance
+          expr: volsync_kopia_cache_hit_rate < 50
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Poor Kopia cache performance"
+            description: "Cache hit rate for {{ $labels.obj_name }}/{{ $labels.obj_namespace }} is {{ $value }}%, which is below the 50% threshold."
 
-    - alert: KopiaConfigurationErrors
-      expr: increase(volsync_kopia_configuration_errors_total[1h]) > 0
-      for: 0m
-      labels:
-        severity: warning
-      annotations:
-        summary: "Kopia configuration errors detected"
-        description: "{{ $labels.obj_name }}/{{ $labels.obj_namespace }} has configuration errors of type {{ $labels.error_type }}."
+        - alert: KopiaConfigurationErrors
+          expr: increase(volsync_kopia_configuration_errors_total[1h]) > 0
+          for: 0m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kopia configuration errors detected"
+            description: "{{ $labels.obj_name }}/{{ $labels.obj_namespace }} has configuration errors of type {{ $labels.error_type }}."
 
-  - name: volsync-kopia-info
-    rules:
-    - alert: KopiaNoMaintenance
-      expr: increase(volsync_kopia_maintenance_operations_total[24h]) == 0
-      for: 25h
-      labels:
-        severity: info
-      annotations:
-        summary: "No Kopia maintenance in 24 hours"
-        description: "{{ $labels.obj_name }}/{{ $labels.obj_namespace }} has not performed maintenance in over 24 hours."
+    - name: volsync-kopia-info
+      rules:
+        - alert: KopiaNoMaintenance
+          expr: increase(volsync_kopia_maintenance_operations_total[24h]) == 0
+          for: 25h
+          labels:
+            severity: info
+          annotations:
+            summary: "No Kopia maintenance in 24 hours"
+            description: "{{ $labels.obj_name }}/{{ $labels.obj_namespace }} has not performed maintenance in over 24 hours."
 
-    - alert: KopiaLargeRepository
-      expr: volsync_kopia_repository_size_bytes > 1e12
-      for: 0m
-      labels:
-        severity: info
-      annotations:
-        summary: "Large Kopia repository"
-        description: "Repository {{ $labels.repository }} for {{ $labels.obj_name }}/{{ $labels.obj_namespace }} is {{ $value | humanizeBytes }} in size."
+        - alert: KopiaLargeRepository
+          expr: volsync_kopia_repository_size_bytes > 1e12
+          for: 0m
+          labels:
+            severity: info
+          annotations:
+            summary: "Large Kopia repository"
+            description: "Repository {{ $labels.repository }} for {{ $labels.obj_name }}/{{ $labels.obj_namespace }} is {{ $value | humanizeBytes }} in size."
 
 ---
 # Example Grafana dashboard queries for VolSync Kopia metrics
 
 # Operation Success Rate (%)
-# sum(rate(volsync_kopia_operation_success_total[5m])) by (obj_name, obj_namespace, operation) / 
-# (sum(rate(volsync_kopia_operation_success_total[5m])) by (obj_name, obj_namespace, operation) + 
+# sum(rate(volsync_kopia_operation_success_total[5m])) by (obj_name, obj_namespace, operation) /
+# (sum(rate(volsync_kopia_operation_success_total[5m])) by (obj_name, obj_namespace, operation) +
 #  sum(rate(volsync_kopia_operation_failure_total[5m])) by (obj_name, obj_namespace, operation)) * 100
 
 # Average Operation Duration (seconds)
