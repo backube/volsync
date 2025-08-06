@@ -231,19 +231,20 @@ func (m *Mover) ensureCache(ctx context.Context,
 	dataPVC *corev1.PersistentVolumeClaim, isTemporary bool) (*corev1.PersistentVolumeClaim, error) {
 	// Determine cache configuration strategy:
 	// 1. Pure fallback: No configuration at all -> EmptyDir with default size limit
-	// 2. Capacity-only: Only cacheCapacity specified -> EmptyDir with specified size limit  
+	// 2. Capacity-only: Only cacheCapacity specified -> EmptyDir with specified size limit
 	// 3. Full PVC: StorageClass or AccessModes specified -> PVC
-	
+
 	hasPVCConfig := m.cacheStorageClassName != nil || m.cacheAccessModes != nil
 	hasCapacityOnly := m.cacheCapacity != nil && !hasPVCConfig
 	hasNoCacheConfig := m.cacheCapacity == nil && !hasPVCConfig
-	
+
 	// Use EmptyDir fallback for scenarios 1 and 2
 	if hasNoCacheConfig || hasCapacityOnly {
 		if hasNoCacheConfig {
 			m.logger.V(1).Info("No cache configuration specified, will use EmptyDir volume with default size limit")
 		} else {
-			m.logger.V(1).Info("Cache capacity only specified, will use EmptyDir volume with size limit", "capacity", m.cacheCapacity.String())
+			m.logger.V(1).Info("Cache capacity only specified, will use EmptyDir volume with size limit",
+				"capacity", m.cacheCapacity.String())
 		}
 		return nil, nil
 	}
@@ -708,7 +709,7 @@ func (m *Mover) configureCacheVolume(podSpec *corev1.PodSpec, cachePVC *corev1.P
 		// Use EmptyDir as fallback - this handles both no-config and capacity-only scenarios
 		m.logger.V(1).Info("Using EmptyDir for Kopia cache")
 		emptyDirSource := &corev1.EmptyDirVolumeSource{}
-		
+
 		// Set size limit based on configuration
 		if m.cacheCapacity != nil {
 			// User specified capacity - use it for EmptyDir size limit
@@ -717,10 +718,11 @@ func (m *Mover) configureCacheVolume(podSpec *corev1.PodSpec, cachePVC *corev1.P
 		} else {
 			// No capacity specified - set a reasonable default to prevent unbounded usage
 			defaultLimit := resource.MustParse("8Gi")
-			m.logger.V(1).Info("Setting default EmptyDir size limit to prevent unbounded usage", "defaultCapacity", defaultLimit.String())
+			m.logger.V(1).Info("Setting default EmptyDir size limit to prevent unbounded usage",
+				"defaultCapacity", defaultLimit.String())
 			emptyDirSource.SizeLimit = &defaultLimit
 		}
-		
+
 		cacheVolume = corev1.Volume{
 			Name: kopiaCache,
 			VolumeSource: corev1.VolumeSource{
@@ -1113,15 +1115,62 @@ func (m *Mover) recordJobRetry(operation, retryReason string) {
 
 // recordCacheMetrics records cache-related metrics
 func (m *Mover) recordCacheMetrics() {
-	if m.cacheCapacity == nil {
-		return
-	}
-
 	labels := m.getMetricLabels("")
 
-	// Record cache size (convert resource.Quantity to bytes)
-	cacheSizeBytes := m.cacheCapacity.Value()
-	m.metrics.CacheSize.With(labels).Set(float64(cacheSizeBytes))
+	// Determine cache configuration strategy and record metrics accordingly
+	hasPVCConfig := m.cacheStorageClassName != nil || m.cacheAccessModes != nil
+	hasCapacityOnly := m.cacheCapacity != nil && !hasPVCConfig
+	hasNoCacheConfig := m.cacheCapacity == nil && !hasPVCConfig
+
+	// Record cache type being used
+	cacheTypeLabels := make(prometheus.Labels)
+	for k, v := range labels {
+		cacheTypeLabels[k] = v
+	}
+
+	if hasNoCacheConfig || hasCapacityOnly {
+		// Using EmptyDir
+		cacheTypeLabels["cache_type"] = "emptydir"
+		m.metrics.CacheType.With(cacheTypeLabels).Set(1)
+
+		// Reset PVC type to 0
+		pvcTypeLabels := make(prometheus.Labels)
+		for k, v := range labels {
+			pvcTypeLabels[k] = v
+		}
+		pvcTypeLabels["cache_type"] = "pvc"
+		m.metrics.CacheType.With(pvcTypeLabels).Set(0)
+
+		// Record EmptyDir cache size
+		var cacheSizeBytes int64
+		if m.cacheCapacity != nil {
+			// User-specified capacity for EmptyDir
+			cacheSizeBytes = m.cacheCapacity.Value()
+		} else {
+			// Default 8Gi limit for EmptyDir
+			defaultLimit := resource.MustParse("8Gi")
+			cacheSizeBytes = defaultLimit.Value()
+		}
+		m.metrics.CacheSize.With(labels).Set(float64(cacheSizeBytes))
+	} else {
+		// Using PVC
+		cacheTypeLabels["cache_type"] = "pvc"
+		m.metrics.CacheType.With(cacheTypeLabels).Set(1)
+
+		// Reset EmptyDir type to 0
+		emptyDirTypeLabels := make(prometheus.Labels)
+		for k, v := range labels {
+			emptyDirTypeLabels[k] = v
+		}
+		emptyDirTypeLabels["cache_type"] = "emptydir"
+		m.metrics.CacheType.With(emptyDirTypeLabels).Set(0)
+
+		// Record PVC cache size (if capacity is specified)
+		if m.cacheCapacity != nil {
+			cacheSizeBytes := m.cacheCapacity.Value()
+			m.metrics.CacheSize.With(labels).Set(float64(cacheSizeBytes))
+		}
+	}
 }
 
 // recordPolicyCompliance records policy compliance metrics

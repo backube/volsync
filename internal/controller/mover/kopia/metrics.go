@@ -58,6 +58,7 @@ type kopiaMetrics struct {
 	// Cache and Performance Metrics
 	CacheHitRate       *prometheus.GaugeVec
 	CacheSize          *prometheus.GaugeVec
+	CacheType          *prometheus.GaugeVec
 	ParallelOperations *prometheus.GaugeVec
 	JobRetries         *prometheus.CounterVec
 	QueueDepth         *prometheus.GaugeVec
@@ -267,6 +268,15 @@ var (
 		kopiaMetricLabels,
 	)
 
+	cacheType = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name:      "cache_type",
+			Namespace: kopiaMetricsNamespace,
+			Help:      "Cache type being used (1 for the active type, 0 for inactive)",
+		},
+		append(kopiaMetricLabels, "cache_type"), // pvc, emptydir
+	)
+
 	parallelOperations = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name:      "parallel_operations_active",
@@ -362,6 +372,7 @@ func newKopiaMetrics() kopiaMetrics {
 		// Cache and Performance Metrics
 		CacheHitRate:       cacheHitRate,
 		CacheSize:          cacheSize,
+		CacheType:          cacheType,
 		ParallelOperations: parallelOperations,
 		JobRetries:         jobRetries,
 		QueueDepth:         queueDepth,
@@ -403,6 +414,7 @@ func init() {
 		// Cache and Performance Metrics
 		cacheHitRate,
 		cacheSize,
+		cacheType,
 		parallelOperations,
 		jobRetries,
 		queueDepth,

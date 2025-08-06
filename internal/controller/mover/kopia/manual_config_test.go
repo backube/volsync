@@ -127,7 +127,12 @@ func testManualConfigEnvironment(t *testing.T, tt manualConfigEnvTestCase) {
 	verifyManualConfigPresence(t, tt, secret, envVars)
 }
 
-func verifyManualConfigPresence(t *testing.T, tt manualConfigEnvTestCase, secret *corev1.Secret, envVars []corev1.EnvVar) {
+func verifyManualConfigPresence(
+	t *testing.T,
+	tt manualConfigEnvTestCase,
+	secret *corev1.Secret,
+	envVars []corev1.EnvVar,
+) {
 	found := false
 	var actualValue string
 	for _, env := range envVars {
@@ -186,6 +191,15 @@ type manualConfigValidationTestCase struct {
 }
 
 func getManualConfigValidationTestCases() []manualConfigValidationTestCase {
+	var cases []manualConfigValidationTestCase
+
+	cases = append(cases, getValidConfigTestCases()...)
+	cases = append(cases, getEdgeCaseConfigTestCases()...)
+
+	return cases
+}
+
+func getValidConfigTestCases() []manualConfigValidationTestCase {
 	return []manualConfigValidationTestCase{
 		{
 			name:        "valid encryption config",
@@ -222,6 +236,11 @@ func getManualConfigValidationTestCases() []manualConfigValidationTestCase {
 			expectValid: true,
 			description: "Complete configuration with all sections",
 		},
+	}
+}
+
+func getEdgeCaseConfigTestCases() []manualConfigValidationTestCase {
+	return []manualConfigValidationTestCase{
 		{
 			name:        "invalid JSON syntax",
 			config:      `{"encryption":{"algorithm":"CHACHA20-POLY1305"`,
@@ -288,6 +307,16 @@ type backendCompatibilityTestCase struct {
 }
 
 func getBackendCompatibilityTestCases(manualConfig string) []backendCompatibilityTestCase {
+	var cases []backendCompatibilityTestCase
+
+	cases = append(cases, getCloudBackendCompatibilityTestCases(manualConfig)...)
+	cases = append(cases, getProtocolBackendCompatibilityTestCases(manualConfig)...)
+	cases = append(cases, getFilesystemBackendCompatibilityTestCase(manualConfig))
+
+	return cases
+}
+
+func getCloudBackendCompatibilityTestCases(manualConfig string) []backendCompatibilityTestCase {
 	return []backendCompatibilityTestCase{
 		{
 			name: "S3 backend",
@@ -328,6 +357,11 @@ func getBackendCompatibilityTestCases(manualConfig string) []backendCompatibilit
 				kopiaManualConfigKey: []byte(manualConfig),
 			},
 		},
+	}
+}
+
+func getProtocolBackendCompatibilityTestCases(manualConfig string) []backendCompatibilityTestCase {
+	return []backendCompatibilityTestCase{
 		{
 			name: "WebDAV backend",
 			secretData: map[string][]byte{
@@ -350,14 +384,17 @@ func getBackendCompatibilityTestCases(manualConfig string) []backendCompatibilit
 				kopiaManualConfigKey: []byte(manualConfig),
 			},
 		},
-		{
-			name: "Filesystem backend",
-			secretData: map[string][]byte{
-				"KOPIA_REPOSITORY":   []byte("filesystem:///mnt/backup"),
-				"KOPIA_PASSWORD":     []byte("password"),
-				"KOPIA_FS_PATH":      []byte("/mnt/backup"),
-				kopiaManualConfigKey: []byte(manualConfig),
-			},
+	}
+}
+
+func getFilesystemBackendCompatibilityTestCase(manualConfig string) backendCompatibilityTestCase {
+	return backendCompatibilityTestCase{
+		name: "Filesystem backend",
+		secretData: map[string][]byte{
+			"KOPIA_REPOSITORY":   []byte("filesystem:///mnt/backup"),
+			"KOPIA_PASSWORD":     []byte("password"),
+			"KOPIA_FS_PATH":      []byte("/mnt/backup"),
+			kopiaManualConfigKey: []byte(manualConfig),
 		},
 	}
 }

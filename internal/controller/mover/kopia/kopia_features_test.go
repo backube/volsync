@@ -49,51 +49,78 @@ type backendTestCase struct {
 }
 
 func getBackendTestCases() []backendTestCase {
+	var cases []backendTestCase
+
+	cases = append(cases, getCloudBackendTestCases()...)
+	cases = append(cases, getProtocolBackendTestCases()...)
+	cases = append(cases, getFilesystemBackendTestCase())
+
+	return cases
+}
+
+func getCloudBackendTestCases() []backendTestCase {
+	var cases []backendTestCase
+
+	cases = append(cases, getAWSS3BackendTestCase())
+	cases = append(cases, getAzureBackendTestCase())
+	cases = append(cases, getGoogleCloudTestCases()...)
+	cases = append(cases, getBackblazeB2BackendTestCase())
+
+	return cases
+}
+
+func getAWSS3BackendTestCase() backendTestCase {
+	return backendTestCase{
+		name: "S3 backend with all variables",
+		secretData: map[string][]byte{
+			"KOPIA_REPOSITORY":      []byte("s3://my-bucket/path"),
+			"KOPIA_PASSWORD":        []byte("password"),
+			"AWS_ACCESS_KEY_ID":     []byte("AKIAIOSFODNN7EXAMPLE"),
+			"AWS_SECRET_ACCESS_KEY": []byte("wJalrXUtnFEMI/K7MDENG"),
+			"AWS_SESSION_TOKEN":     []byte("session-token"),
+			"AWS_DEFAULT_REGION":    []byte("us-west-2"),
+			"AWS_PROFILE":           []byte("default"),
+			"KOPIA_S3_BUCKET":       []byte("my-bucket"),
+			"KOPIA_S3_ENDPOINT":     []byte("s3.amazonaws.com"),
+			"KOPIA_S3_DISABLE_TLS":  []byte("false"),
+		},
+		requiredEnvVars: []string{"KOPIA_REPOSITORY", "KOPIA_PASSWORD"},
+		optionalEnvVars: []string{
+			"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+			"AWS_DEFAULT_REGION", "AWS_PROFILE", "KOPIA_S3_BUCKET",
+			"KOPIA_S3_ENDPOINT", "AWS_S3_ENDPOINT", "KOPIA_S3_DISABLE_TLS", "AWS_S3_DISABLE_TLS",
+			"AWS_REGION",
+		},
+	}
+}
+
+func getAzureBackendTestCase() backendTestCase {
+	return backendTestCase{
+		name: "Azure Blob Storage with all variables",
+		secretData: map[string][]byte{
+			"KOPIA_REPOSITORY":            []byte("azure://container/path"),
+			"KOPIA_PASSWORD":              []byte("password"),
+			"AZURE_ACCOUNT_NAME":          []byte("myaccount"),
+			"AZURE_ACCOUNT_KEY":           []byte("account-key"),
+			"AZURE_ACCOUNT_SAS":           []byte("sas-token"),
+			"AZURE_ENDPOINT_SUFFIX":       []byte("core.windows.net"),
+			"KOPIA_AZURE_CONTAINER":       []byte("container"),
+			"KOPIA_AZURE_STORAGE_ACCOUNT": []byte("myaccount"),
+			"KOPIA_AZURE_STORAGE_KEY":     []byte("storage-key"),
+		},
+		requiredEnvVars: []string{"KOPIA_REPOSITORY", "KOPIA_PASSWORD"},
+		optionalEnvVars: []string{
+			"AZURE_ACCOUNT_NAME", "AZURE_ACCOUNT_KEY", "AZURE_ACCOUNT_SAS",
+			"AZURE_ENDPOINT_SUFFIX", "KOPIA_AZURE_CONTAINER",
+			"KOPIA_AZURE_STORAGE_ACCOUNT", "AZURE_STORAGE_ACCOUNT",
+			"KOPIA_AZURE_STORAGE_KEY", "AZURE_STORAGE_KEY",
+			"AZURE_STORAGE_SAS_TOKEN",
+		},
+	}
+}
+
+func getGoogleCloudTestCases() []backendTestCase {
 	return []backendTestCase{
-		{
-			name: "S3 backend with all variables",
-			secretData: map[string][]byte{
-				"KOPIA_REPOSITORY":      []byte("s3://my-bucket/path"),
-				"KOPIA_PASSWORD":        []byte("password"),
-				"AWS_ACCESS_KEY_ID":     []byte("AKIAIOSFODNN7EXAMPLE"),
-				"AWS_SECRET_ACCESS_KEY": []byte("wJalrXUtnFEMI/K7MDENG"),
-				"AWS_SESSION_TOKEN":     []byte("session-token"),
-				"AWS_DEFAULT_REGION":    []byte("us-west-2"),
-				"AWS_PROFILE":           []byte("default"),
-				"KOPIA_S3_BUCKET":       []byte("my-bucket"),
-				"KOPIA_S3_ENDPOINT":     []byte("s3.amazonaws.com"),
-				"KOPIA_S3_DISABLE_TLS":  []byte("false"),
-			},
-			requiredEnvVars: []string{"KOPIA_REPOSITORY", "KOPIA_PASSWORD"},
-			optionalEnvVars: []string{
-				"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
-				"AWS_DEFAULT_REGION", "AWS_PROFILE", "KOPIA_S3_BUCKET",
-				"KOPIA_S3_ENDPOINT", "AWS_S3_ENDPOINT", "KOPIA_S3_DISABLE_TLS", "AWS_S3_DISABLE_TLS",
-				"AWS_REGION",
-			},
-		},
-		{
-			name: "Azure Blob Storage with all variables",
-			secretData: map[string][]byte{
-				"KOPIA_REPOSITORY":            []byte("azure://container/path"),
-				"KOPIA_PASSWORD":              []byte("password"),
-				"AZURE_ACCOUNT_NAME":          []byte("myaccount"),
-				"AZURE_ACCOUNT_KEY":           []byte("account-key"),
-				"AZURE_ACCOUNT_SAS":           []byte("sas-token"),
-				"AZURE_ENDPOINT_SUFFIX":       []byte("core.windows.net"),
-				"KOPIA_AZURE_CONTAINER":       []byte("container"),
-				"KOPIA_AZURE_STORAGE_ACCOUNT": []byte("myaccount"),
-				"KOPIA_AZURE_STORAGE_KEY":     []byte("storage-key"),
-			},
-			requiredEnvVars: []string{"KOPIA_REPOSITORY", "KOPIA_PASSWORD"},
-			optionalEnvVars: []string{
-				"AZURE_ACCOUNT_NAME", "AZURE_ACCOUNT_KEY", "AZURE_ACCOUNT_SAS",
-				"AZURE_ENDPOINT_SUFFIX", "KOPIA_AZURE_CONTAINER",
-				"KOPIA_AZURE_STORAGE_ACCOUNT", "AZURE_STORAGE_ACCOUNT",
-				"KOPIA_AZURE_STORAGE_KEY", "AZURE_STORAGE_KEY",
-				"AZURE_STORAGE_SAS_TOKEN",
-			},
-		},
 		{
 			name: "Google Cloud Storage with all variables",
 			secretData: map[string][]byte{
@@ -111,17 +138,36 @@ func getBackendTestCases() []backendTestCase {
 			},
 		},
 		{
-			name: "Backblaze B2 with all variables",
+			name: "Google Drive with all variables",
 			secretData: map[string][]byte{
-				"KOPIA_REPOSITORY":   []byte("b2://my-bucket/path"),
-				"KOPIA_PASSWORD":     []byte("password"),
-				"B2_ACCOUNT_ID":      []byte("account-id"),
-				"B2_APPLICATION_KEY": []byte("app-key"),
-				"KOPIA_B2_BUCKET":    []byte("my-bucket"),
+				"KOPIA_REPOSITORY":         []byte("gdrive://folder-id"),
+				"KOPIA_PASSWORD":           []byte("password"),
+				"GOOGLE_DRIVE_FOLDER_ID":   []byte("folder-id"),
+				"GOOGLE_DRIVE_CREDENTIALS": []byte(`{"type":"oauth2"}`),
 			},
 			requiredEnvVars: []string{"KOPIA_REPOSITORY", "KOPIA_PASSWORD"},
-			optionalEnvVars: []string{"B2_ACCOUNT_ID", "B2_APPLICATION_KEY", "KOPIA_B2_BUCKET"},
+			optionalEnvVars: []string{"GOOGLE_DRIVE_FOLDER_ID", "GOOGLE_DRIVE_CREDENTIALS"},
 		},
+	}
+}
+
+func getBackblazeB2BackendTestCase() backendTestCase {
+	return backendTestCase{
+		name: "Backblaze B2 with all variables",
+		secretData: map[string][]byte{
+			"KOPIA_REPOSITORY":   []byte("b2://my-bucket/path"),
+			"KOPIA_PASSWORD":     []byte("password"),
+			"B2_ACCOUNT_ID":      []byte("account-id"),
+			"B2_APPLICATION_KEY": []byte("app-key"),
+			"KOPIA_B2_BUCKET":    []byte("my-bucket"),
+		},
+		requiredEnvVars: []string{"KOPIA_REPOSITORY", "KOPIA_PASSWORD"},
+		optionalEnvVars: []string{"B2_ACCOUNT_ID", "B2_APPLICATION_KEY", "KOPIA_B2_BUCKET"},
+	}
+}
+
+func getProtocolBackendTestCases() []backendTestCase {
+	return []backendTestCase{
 		{
 			name: "WebDAV with all variables",
 			secretData: map[string][]byte{
@@ -164,27 +210,19 @@ func getBackendTestCases() []backendTestCase {
 			requiredEnvVars: []string{"KOPIA_REPOSITORY", "KOPIA_PASSWORD"},
 			optionalEnvVars: []string{"RCLONE_REMOTE_PATH", "RCLONE_EXE", "RCLONE_CONFIG"},
 		},
-		{
-			name: "Google Drive with all variables",
-			secretData: map[string][]byte{
-				"KOPIA_REPOSITORY":         []byte("gdrive://folder-id"),
-				"KOPIA_PASSWORD":           []byte("password"),
-				"GOOGLE_DRIVE_FOLDER_ID":   []byte("folder-id"),
-				"GOOGLE_DRIVE_CREDENTIALS": []byte(`{"type":"oauth2"}`),
-			},
-			requiredEnvVars: []string{"KOPIA_REPOSITORY", "KOPIA_PASSWORD"},
-			optionalEnvVars: []string{"GOOGLE_DRIVE_FOLDER_ID", "GOOGLE_DRIVE_CREDENTIALS"},
+	}
+}
+
+func getFilesystemBackendTestCase() backendTestCase {
+	return backendTestCase{
+		name: "Filesystem with all variables",
+		secretData: map[string][]byte{
+			"KOPIA_REPOSITORY": []byte("filesystem:///mnt/backup"),
+			"KOPIA_PASSWORD":   []byte("password"),
+			"KOPIA_FS_PATH":    []byte("/mnt/backup"),
 		},
-		{
-			name: "Filesystem with all variables",
-			secretData: map[string][]byte{
-				"KOPIA_REPOSITORY": []byte("filesystem:///mnt/backup"),
-				"KOPIA_PASSWORD":   []byte("password"),
-				"KOPIA_FS_PATH":    []byte("/mnt/backup"),
-			},
-			requiredEnvVars: []string{"KOPIA_REPOSITORY", "KOPIA_PASSWORD"},
-			optionalEnvVars: []string{"KOPIA_FS_PATH"},
-		},
+		requiredEnvVars: []string{"KOPIA_REPOSITORY", "KOPIA_PASSWORD"},
+		optionalEnvVars: []string{"KOPIA_FS_PATH"},
 	}
 }
 
@@ -369,7 +407,11 @@ func testMultiTenancyFeature(t *testing.T, tt multiTenancyTestCase) {
 	verifyOverrideEnvironmentVariables(t, tt.expectedUsername, tt.expectedHostname, envVars)
 }
 
-func verifyOverrideEnvironmentVariables(t *testing.T, expectedUsername, expectedHostname string, envVars []corev1.EnvVar) {
+func verifyOverrideEnvironmentVariables(
+	t *testing.T,
+	expectedUsername, expectedHostname string,
+	envVars []corev1.EnvVar,
+) {
 	var actualUsername, actualHostname string
 	for _, env := range envVars {
 		if env.Name == "KOPIA_OVERRIDE_USERNAME" {
@@ -687,7 +729,11 @@ func testCompressionAndParallelism(t *testing.T, tt compressionParallelismTestCa
 	verifyCompressionParallelismVariables(t, tt.expectedCompression, tt.expectedParallelism, envVars)
 }
 
-func verifyCompressionParallelismVariables(t *testing.T, expectedCompression, expectedParallelism string, envVars []corev1.EnvVar) {
+func verifyCompressionParallelismVariables(
+	t *testing.T,
+	expectedCompression, expectedParallelism string,
+	envVars []corev1.EnvVar,
+) {
 	var actualCompression, actualParallelism string
 	for _, env := range envVars {
 		if env.Name == "KOPIA_COMPRESSION" {
