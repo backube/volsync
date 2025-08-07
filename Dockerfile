@@ -133,6 +133,7 @@ WORKDIR /
 RUN microdnf --refresh update -y && \
     microdnf --nodocs --setopt=install_weak_deps=0 install -y \
         acl             `# rclone - getfacl/setfacl` \
+        jq              `# kopia - JSON parsing in entry.sh` \
         openssh         `# rsync/ssh - ssh key generation in operator` \
         openssh-clients `# rsync/ssh - ssh client` \
         openssh-server  `# rsync/ssh - ssh server` \
