@@ -60,6 +60,10 @@ const (
 
 	// Annotation on ReplicationSource or ReplicationDestination to enable running the mover job in debug mode
 	EnableDebugMoverAnnotation = "volsync.backube/enable-debug-mover"
+
+	// Finalizers used to ensure controlled cleanup of resources
+	ReplicationSourceFinalizer      = "volsync.backube/replication-source-cleanup"
+	ReplicationDestinationFinalizer = "volsync.backube/replication-destination-cleanup"
 )
 
 const (
@@ -148,7 +152,6 @@ type CustomCASpec struct {
 	// The key within the Secret or ConfigMap containing the CA certificate
 	Key string `json:"key,omitempty"`
 }
-
 
 // KopiaPolicySpec defines configuration for Kopia policy files
 type KopiaPolicySpec struct {

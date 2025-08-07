@@ -315,7 +315,7 @@ func (m *Mover) validatePolicyConfig(ctx context.Context) (utils.CustomCAObject,
 		return nil, nil
 	}
 
-	// Validate JSON format if repositoryConfig is specified  
+	// Validate JSON format if repositoryConfig is specified
 	if m.policyConfig.RepositoryConfig != nil && *m.policyConfig.RepositoryConfig != "" {
 		if !json.Valid([]byte(*m.policyConfig.RepositoryConfig)) {
 			return nil, fmt.Errorf("invalid JSON in repositoryConfig")

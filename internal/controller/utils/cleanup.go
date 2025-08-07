@@ -20,7 +20,10 @@ package utils
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumesnapshot/v1"
@@ -28,7 +31,12 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/tools/events"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
+	"github.com/backube/volsync/internal/controller/mover"
 )
 
 // MarkForCleanup marks the provided "obj" to be deleted at the end of the
@@ -325,4 +333,93 @@ func IsSnapshot(image *corev1.TypedLocalObjectReference) bool {
 		return false
 	}
 	return true
+}
+
+// MoverCleanupObject represents an object that can be cleaned up by movers
+type MoverCleanupObject interface {
+	client.Object
+}
+
+// MoverFactory creates a mover for cleanup operations
+type MoverFactory func(
+	obj MoverCleanupObject,
+	c client.Client,
+	logger logr.Logger,
+	er events.EventRecorder,
+	privilegedMoverOk bool,
+) (mover.Mover, error)
+
+// CleanupMoverResources handles cleanup of mover-specific resources for any replication object
+func CleanupMoverResources(ctx context.Context, obj MoverCleanupObject, c client.Client, logger logr.Logger,
+	eventRecorder events.EventRecorder, moverFactory MoverFactory) (ctrl.Result, error) {
+	// Check if privileged movers are allowed via namespace annotation
+	privilegedMoverOk, err := PrivilegedMoversOk(ctx, c, logger, obj.GetNamespace())
+	if err != nil {
+		logger.Error(err, "Failed to check privileged mover permissions during cleanup")
+		// Continue with cleanup even if this check fails
+	}
+
+	// Try to create mover for cleanup - this might fail if mover is not found, which is ok during deletion
+	dataMover, err := moverFactory(obj, c, logger, eventRecorder, privilegedMoverOk)
+
+	if err != nil && !errors.Is(err, mover.ErrNoMoverFound) {
+		logger.Error(err, "Failed to create mover during deletion, but continuing cleanup")
+	}
+
+	// If we have a mover, try to clean up mover-specific resources
+	if dataMover != nil {
+		result, cleanupErr := dataMover.Cleanup(ctx)
+		if cleanupErr != nil {
+			logger.Error(cleanupErr, "Error during mover cleanup")
+			return ctrl.Result{RequeueAfter: time.Second * 30}, cleanupErr
+		}
+
+		// If cleanup is not complete, requeue
+		if !result.Completed {
+			logger.Info("Mover cleanup in progress, requeuing")
+			return ctrl.Result{RequeueAfter: time.Second * 10}, nil
+		}
+	}
+
+	return ctrl.Result{}, nil
+}
+
+// CreateReplicationDestinationMoverFactory creates a pre-built mover factory for ReplicationDestination cleanup
+func CreateReplicationDestinationMoverFactory() MoverFactory {
+	return func(obj MoverCleanupObject, c client.Client, logger logr.Logger,
+		er events.EventRecorder, privilegedMoverOk bool) (mover.Mover, error) {
+		if obj == nil {
+			return nil, errors.New("object is nil")
+		}
+		rd, ok := obj.(*volsyncv1alpha1.ReplicationDestination)
+		if !ok {
+			return nil, fmt.Errorf("object is not a ReplicationDestination, got %T", obj)
+		}
+		// Create destination machine using the destination mover catalog
+		dataMover, err := mover.GetDestinationMoverFromCatalog(c, logger, er, rd, privilegedMoverOk)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get destination mover from catalog: %w", err)
+		}
+		return dataMover, nil
+	}
+}
+
+// CreateReplicationSourceMoverFactory creates a pre-built mover factory for ReplicationSource cleanup
+func CreateReplicationSourceMoverFactory() MoverFactory {
+	return func(obj MoverCleanupObject, c client.Client, logger logr.Logger,
+		er events.EventRecorder, privilegedMoverOk bool) (mover.Mover, error) {
+		if obj == nil {
+			return nil, errors.New("object is nil")
+		}
+		rs, ok := obj.(*volsyncv1alpha1.ReplicationSource)
+		if !ok {
+			return nil, fmt.Errorf("object is not a ReplicationSource, got %T", obj)
+		}
+		// Create source machine using the source mover catalog
+		dataMover, err := mover.GetSourceMoverFromCatalog(c, logger, er, rs, privilegedMoverOk)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get source mover from catalog: %w", err)
+		}
+		return dataMover, nil
+	}
 }

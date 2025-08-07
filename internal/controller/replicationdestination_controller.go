@@ -38,6 +38,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/internal/controller/mover"
@@ -99,6 +100,27 @@ func (r *ReplicationDestinationReconciler) Reconcile(ctx context.Context, req ct
 	var result ctrl.Result
 	var err error
 
+	// Handle deletion - check if resource is being deleted
+	if !inst.GetDeletionTimestamp().IsZero() {
+		logger.Info("ReplicationDestination is being deleted, starting cleanup")
+		return r.handleDeletion(ctx, inst, logger)
+	}
+
+	// Add finalizer if not present
+	if !controllerutil.ContainsFinalizer(inst, volsyncv1alpha1.ReplicationDestinationFinalizer) {
+		controllerutil.AddFinalizer(inst, volsyncv1alpha1.ReplicationDestinationFinalizer)
+		if err := r.Update(ctx, inst); err != nil {
+			if kerrors.IsConflict(err) {
+				return ctrl.Result{RequeueAfter: time.Second}, nil
+			}
+			logger.Error(err, "Failed to add finalizer")
+			return ctrl.Result{}, err
+		}
+		logger.Info("Added finalizer to ReplicationDestination")
+		// Requeue to continue with normal processing after adding finalizer
+		return ctrl.Result{Requeue: true}, nil
+	}
+
 	// Check if any volume snapshots are marked with do-not-delete label and remove ownership if so
 	err = utils.RelinquishOwnedSnapshotsWithDoNotDeleteLabel(ctx, r.Client, logger, inst)
 	if err != nil {
@@ -150,6 +172,111 @@ func (r *ReplicationDestinationReconciler) Reconcile(ctx context.Context, req ct
 		err = statusErr
 	}
 	return result, err
+}
+
+// handleDeletion handles the deletion of a ReplicationDestination by cleaning up owned resources
+// and removing the finalizer once cleanup is complete
+func (r *ReplicationDestinationReconciler) handleDeletion(ctx context.Context,
+	inst *volsyncv1alpha1.ReplicationDestination, logger logr.Logger) (ctrl.Result, error) {
+	if !controllerutil.ContainsFinalizer(inst, volsyncv1alpha1.ReplicationDestinationFinalizer) {
+		// Finalizer not present, nothing to clean up
+		return ctrl.Result{}, nil
+	}
+
+	logger.Info("Cleaning up ReplicationDestination resources")
+
+	// Handle snapshot ownership relinquishment
+	if err := r.relinquishSnapshotOwnership(ctx, inst, logger); err != nil {
+		logger.Error(err, "Error relinquishing snapshot ownership, but continuing with cleanup")
+	}
+
+	// Perform mover-specific cleanup
+	result, err := r.cleanupMoverResources(ctx, inst, logger)
+	if err != nil {
+		return result, err
+	}
+	if result.Requeue || result.RequeueAfter > 0 {
+		return result, nil
+	}
+
+	// Clean up remaining owned resources
+	if err := r.cleanupOwnedResources(ctx, inst, logger); err != nil {
+		return r.handleCleanupError(ctx, inst, logger, err, "Resource cleanup error during deletion")
+	}
+
+	// Remove finalizer and complete deletion
+	return r.removeFinalizer(ctx, inst, logger)
+}
+
+// relinquishSnapshotOwnership handles relinquishing ownership of snapshots with do-not-delete label
+func (r *ReplicationDestinationReconciler) relinquishSnapshotOwnership(ctx context.Context,
+	inst *volsyncv1alpha1.ReplicationDestination, logger logr.Logger) error {
+	err := utils.RelinquishOwnedSnapshotsWithDoNotDeleteLabel(ctx, r.Client, logger, inst)
+	if err != nil {
+		logger.Error(err, "Error relinquishing snapshot ownership during cleanup")
+	}
+	return err
+}
+
+// cleanupMoverResources handles cleanup of mover-specific resources
+func (r *ReplicationDestinationReconciler) cleanupMoverResources(ctx context.Context,
+	inst *volsyncv1alpha1.ReplicationDestination, logger logr.Logger) (ctrl.Result, error) {
+	// Use shared utility function with pre-built destination mover factory
+	moverFactory := utils.CreateReplicationDestinationMoverFactory()
+	eventRecorder := record.NewEventRecorderAdapter(mover.NewEventRecorderLogger(r.EventRecorder))
+	result, err := utils.CleanupMoverResources(ctx, inst, r.Client, logger, eventRecorder, moverFactory)
+	if err != nil {
+		return r.handleCleanupError(ctx, inst, logger, err, "Cleanup error during deletion")
+	}
+	return result, nil
+}
+
+// cleanupOwnedResources cleans up owned Kubernetes resources
+func (r *ReplicationDestinationReconciler) cleanupOwnedResources(ctx context.Context,
+	inst *volsyncv1alpha1.ReplicationDestination, logger logr.Logger) error {
+	cleanupTypes := []client.Object{
+		&batchv1.Job{},
+		&corev1.PersistentVolumeClaim{},
+		&corev1.Secret{},
+		&corev1.Service{},
+		&corev1.ServiceAccount{},
+		&rbacv1.Role{},
+		&rbacv1.RoleBinding{},
+		&snapv1.VolumeSnapshot{},
+	}
+
+	return utils.CleanupObjects(ctx, r.Client, logger, inst, cleanupTypes)
+}
+
+// handleCleanupError handles cleanup errors by updating status and requeuing
+func (r *ReplicationDestinationReconciler) handleCleanupError(ctx context.Context,
+	inst *volsyncv1alpha1.ReplicationDestination, logger logr.Logger, err error, message string) (ctrl.Result, error) {
+	logger.Error(err, message)
+	// Update status to indicate cleanup error but don't fail deletion
+	apimeta.SetStatusCondition(&inst.Status.Conditions, metav1.Condition{
+		Type:    volsyncv1alpha1.ConditionSynchronizing,
+		Status:  metav1.ConditionFalse,
+		Reason:  volsyncv1alpha1.SynchronizingReasonCleanup,
+		Message: fmt.Sprintf("%s: %v", message, err),
+	})
+	// Update status and requeue to retry cleanup
+	if statusErr := r.Client.Status().Update(ctx, inst); statusErr != nil {
+		logger.Error(statusErr, "Failed to update status during cleanup")
+	}
+	return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+}
+
+// removeFinalizer removes the finalizer and completes the deletion process
+func (r *ReplicationDestinationReconciler) removeFinalizer(ctx context.Context,
+	inst *volsyncv1alpha1.ReplicationDestination, logger logr.Logger) (ctrl.Result, error) {
+	controllerutil.RemoveFinalizer(inst, volsyncv1alpha1.ReplicationDestinationFinalizer)
+	if err := r.Update(ctx, inst); err != nil {
+		logger.Error(err, "Failed to remove finalizer")
+		return ctrl.Result{}, err
+	}
+
+	logger.Info("ReplicationDestination cleanup completed successfully")
+	return ctrl.Result{}, nil
 }
 
 func (r *ReplicationDestinationReconciler) SetupWithManager(mgr ctrl.Manager) error {
