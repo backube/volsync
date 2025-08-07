@@ -323,8 +323,8 @@ func getMultiTenancyTestCases() []multiTenancyTestCase {
 			replicationSource: "app-backup",
 			customUsername:    nil,
 			customHostname:    nil,
-			expectedUsername:  "source",
-			expectedHostname:  "production-app-backup",
+			expectedUsername:  "app-backup-production", // Now includes namespace
+			expectedHostname:  "production",
 		},
 		{
 			name:              "custom username only",
@@ -333,7 +333,7 @@ func getMultiTenancyTestCases() []multiTenancyTestCase {
 			customUsername:    ptr.To("custom-user"),
 			customHostname:    nil,
 			expectedUsername:  "custom-user",
-			expectedHostname:  "staging-database",
+			expectedHostname:  "staging",
 		},
 		{
 			name:              "custom hostname only",
@@ -341,7 +341,7 @@ func getMultiTenancyTestCases() []multiTenancyTestCase {
 			replicationSource: "logs",
 			customUsername:    nil,
 			customHostname:    ptr.To("dev-cluster"),
-			expectedUsername:  "source",
+			expectedUsername:  "logs-dev", // Now includes namespace
 			expectedHostname:  "dev-cluster",
 		},
 		{
@@ -359,16 +359,16 @@ func getMultiTenancyTestCases() []multiTenancyTestCase {
 			replicationSource: "app_backup_job",
 			customUsername:    nil,
 			customHostname:    nil,
-			expectedUsername:  "source",
-			expectedHostname:  "my-namespace-app-backup-job", // underscores converted to hyphens
+			expectedUsername:  "app_backup_job-my-namespace", // Now includes sanitized namespace
+			expectedHostname:  "my-namespace",                // namespace-first logic uses just namespace when no PVC
 		},
 	}
 }
 
 func testMultiTenancyFeature(t *testing.T, tt multiTenancyTestCase) {
-	// Test with ReplicationSource
-	username := generateUsername(tt.customUsername)
-	hostname := generateHostname(tt.customHostname, tt.namespace, tt.replicationSource)
+	// Test with ReplicationSource - for backward compatibility test with nil PVC name
+	username := generateUsername(tt.customUsername, tt.replicationSource, tt.namespace)
+	hostname := generateHostname(tt.customHostname, nil, tt.namespace, tt.replicationSource)
 
 	if username != tt.expectedUsername {
 		t.Errorf("Expected username %s, got %s", tt.expectedUsername, username)

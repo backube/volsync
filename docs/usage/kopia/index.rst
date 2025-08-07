@@ -833,80 +833,721 @@ VolSync's Kopia mover supports a comprehensive set of environment variables for 
 Multi-tenancy and shared repositories
 ======================================
 
-Multiple ReplicationSource and ReplicationDestination objects can safely share
-the same Kopia repository through VolSync's identity-based isolation mechanism.
-Each resource is assigned a unique identity in the format ``username@hostname``
-that ensures snapshots are properly isolated between different workloads.
+The VolSync Kopia mover implements multi-tenancy through the automatic generation of unique usernames and hostnames for each backup client. This ensures that multiple ReplicationSources and ReplicationDestinations can safely share the same Kopia repository without conflicts.
 
-Identity generation
--------------------
+Each Kopia client requires a unique identity consisting of:
 
-By default, VolSync automatically generates identities using:
+- **Username**: Identifies the tenant/user in the repository
+- **Hostname**: Identifies the specific host/instance within that tenant
 
-- **Username**: ``source`` (for all ReplicationSource and ReplicationDestination objects)
-- **Hostname**: ``namespace-name`` (derived from the Kubernetes namespace and resource name)
+**Enhanced Multi-Tenancy with Namespace-First Hostnames**
 
-This results in identities like ``source@my-app-backup-job`` that are unique
-within a cluster and provide clear operational visibility.
+VolSync's hostname generation now prioritizes **namespace-based identification**, providing superior multi-tenant isolation by:
 
-Custom identities
-------------------
+- **Grouping backups by namespace**: All backups from the same namespace share a common hostname prefix, making it easier to identify and manage tenant-specific data
+- **Improving access control**: Repository administrators can implement namespace-based policies more effectively
+- **Simplifying troubleshooting**: Issues can be quickly isolated to specific namespaces/tenants
+- **Reducing naming conflicts**: Namespace-first approach minimizes hostname collisions between different tenants using similar PVC names
 
-For advanced use cases or cross-cluster scenarios, you can override the default
-identity generation:
+When multiple clients connect to the same repository with different identities, Kopia can:
+
+- Maintain separate snapshot histories per tenant (namespace)
+- Apply different retention policies based on namespace patterns
+- Prevent conflicts during concurrent operations across tenants
+- Enable namespace-based repository access control
+
+Understanding identity generation
+---------------------------------
+
+VolSync automatically generates usernames and hostnames based on your Kubernetes resources. The generation logic prioritizes user customization while providing sensible defaults optimized for multi-tenant environments that ensure uniqueness and compatibility.
+
+Username generation logic
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The username generation follows this priority order:
+
+1. **Custom Username (Highest Priority)**
+   
+   If ``spec.kopia.username`` is specified, it is used exactly as provided without any sanitization or modification.
+
+2. **Default Username Generation**
+   
+   When no custom username is provided, VolSync generates one from the ReplicationSource/ReplicationDestination name:
+   
+   a. **With Namespace**: If the combined length of ``{objectName}-{namespace}`` ≤ 50 characters, use this format
+   b. **Object Name Only**: If the combined name is too long, use just the sanitized object name
+   c. **Sanitization**: Remove invalid characters and apply character restrictions
+   d. **Fallback**: Use "volsync-default" if sanitization results in an empty string
+
+Username examples
+~~~~~~~~~~~~~~~~~
 
 .. code-block:: yaml
 
+   # Example 1: Custom username (no modifications applied)
    apiVersion: volsync.backube/v1alpha1
    kind: ReplicationSource
    metadata:
-     name: database-backup
+     name: app-backup
      namespace: production
    spec:
      kopia:
-       repository: shared-backup-repo
-       username: "prod-db"           # Custom username
-       hostname: "cluster-west"      # Custom hostname
-       # ... other configuration
+       username: "backup-user@company.com"  # Used exactly as-is
+       # Generated username: backup-user@company.com
+
+---
 
 .. code-block:: yaml
 
+   # Example 2: Default generation with namespace
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: app-data
+     namespace: prod
+   spec:
+     kopia:
+       # No username specified
+       # Generated username: app-data-prod (≤50 chars)
+
+---
+
+.. code-block:: yaml
+
+   # Example 3: Long names - object name only
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: very-long-application-backup-with-detailed-name
+     namespace: production-environment
+   spec:
+     kopia:
+       # Combined length > 50 chars
+       # Generated username: very-long-application-backup-with-detailed-name
+
+---
+
+.. code-block:: yaml
+
+   # Example 4: Special characters sanitized
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: app@service.backup
+     namespace: dev-test
+   spec:
+     kopia:
+       # Special chars removed: @ and . are invalid
+       # Generated username: appservicebackup-dev-test
+
+Hostname generation logic
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The hostname generation follows this priority order, designed to optimize multi-tenancy by prioritizing namespace-based identification:
+
+1. **Custom Hostname (Highest Priority)**
+   
+   If ``spec.kopia.hostname`` is specified, it is used exactly as provided without modification.
+
+2. **Namespace-Based Hostname**
+   
+   Use the namespace as the primary identifier to improve multi-tenant isolation:
+   
+   - Start with the resource's namespace name
+   - **Append PVC name if total length ≤ 50 characters**:
+     
+     - **ReplicationSource**: Appends ``spec.sourcePVC`` if specified
+     - **ReplicationDestination**: Appends ``spec.kopia.destinationPVC`` if specified
+   
+   - **Use namespace-only if combined length > 50 characters**
+   - **Format**: ``{namespace}`` or ``{namespace}-{pvc-name}`` (when space allows)
+
+3. **Fallback Hostname**
+   
+   If namespace is empty or becomes empty after sanitization, use the format ``namespace-{name}``
+
+4. **Sanitization**
+   
+   For all generated hostnames:
+   
+   - Replace underscores with hyphens
+   - Remove invalid characters (only alphanumeric, dots, and hyphens allowed)
+   - Trim leading/trailing hyphens and dots
+   - Use "volsync-default" if sanitization results in empty string
+
+Hostname examples
+~~~~~~~~~~~~~~~~~
+
+.. code-block:: yaml
+
+   # Example 1: Custom hostname (unchanged behavior)
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: db-backup
+     namespace: production
+   spec:
+     sourcePVC: mysql-data
+     kopia:
+       hostname: "mysql-primary.production.local"  # Used exactly as-is
+       # Generated hostname: mysql-primary.production.local
+
+---
+
+.. code-block:: yaml
+
+   # Example 2: Namespace-first hostname with PVC appended
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: app-backup
+     namespace: prod
+   spec:
+     sourcePVC: app-data
+     kopia:
+       # No hostname specified
+       # Combined length: "prod" (4) + "-" (1) + "app-data" (8) = 13 chars ≤ 50
+       # Generated hostname: prod-app-data
+
+---
+
+.. code-block:: yaml
+
+   # Example 3: Namespace-only when combined length exceeds 50 characters
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: app-backup
+     namespace: production-environment
+   spec:
+     sourcePVC: long-application-storage-pvc-name-v2
+     kopia:
+       # No hostname specified
+       # Combined would be: "production-environment-long-application-storage-pvc-name-v2" = 69 chars > 50
+       # Generated hostname: production-environment (namespace only)
+
+---
+
+.. code-block:: yaml
+
+   # Example 4: Namespace-only when no PVC specified
    apiVersion: volsync.backube/v1alpha1
    kind: ReplicationDestination
    metadata:
-     name: database-restore
-     namespace: staging
+     name: restore-job
+     namespace: development
    spec:
      kopia:
-       repository: shared-backup-repo
-       username: "prod-db"           # Must match source username
-       hostname: "cluster-west"      # Must match source hostname  
-       # ... other configuration
+       # No destinationPVC specified
+       # Generated hostname: development (namespace only)
+
+---
+
+.. code-block:: yaml
+
+   # Example 5: Sanitization with namespace-first approach
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: app-backup
+     namespace: staging_env
+   spec:
+     sourcePVC: data_storage_pvc
+     kopia:
+       # No hostname specified
+       # Namespace "staging_env" → "staging-env" (underscore replaced)
+       # PVC "data_storage_pvc" → "data-storage-pvc" (underscores replaced)
+       # Generated hostname: staging-env-data-storage-pvc
+
+---
+
+.. code-block:: yaml
+
+   # Example 6: Fallback to namespace-name format (edge case)
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: backup-job
+     namespace: ""  # Invalid/empty namespace (edge case)
+   spec:
+     sourcePVC: app-data
+     kopia:
+       # No hostname specified
+       # Empty namespace triggers fallback
+       # Generated hostname: namespace-backup-job
+
+Character sanitization rules
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Username Sanitization**
+
+**Allowed Characters**: ``a-z``, ``A-Z``, ``0-9``, ``-`` (hyphen), ``_`` (underscore)
+
+**Sanitization Process**:
+
+1. Remove all characters not in the allowed set
+2. Trim leading and trailing hyphens and underscores
+3. If result is empty, use "volsync-default"
+
+**Examples**:
+
+============================================  ==========================
+Original Name                                Sanitized Username
+============================================  ==========================
+``app-backup``                              ``app-backup`` (no change)
+``app_backup_job``                          ``app_backup_job`` (no change)  
+``app@service.com``                         ``appservicecom``
+``-special-chars-``                         ``special-chars``
+``@#$%``                                    ``volsync-default``
+============================================  ==========================
+
+**Hostname Sanitization**
+
+**Allowed Characters**: ``a-z``, ``A-Z``, ``0-9``, ``.`` (dot), ``-`` (hyphen)
+
+**Sanitization Process**:
+
+1. Replace underscores (``_``) with hyphens (``-``)
+2. Remove all characters not in the allowed set
+3. Trim leading and trailing hyphens and dots
+4. If result is empty, use "volsync-default"
+
+**Examples**:
+
+============================================  ==========================
+Original Name                                Sanitized Hostname  
+============================================  ==========================
+``app-storage-pvc``                         ``app-storage-pvc`` (no change)
+``app_storage_pvc``                         ``app-storage-pvc`` (underscores replaced)
+``mysql.primary.host``                      ``mysql.primary.host`` (no change)
+``host@domain.com``                         ``hostdomain.com``
+``--.invalid.--``                           ``invalid``
+``___``                                     ``volsync-default``
+============================================  ==========================
+
+Customization guide
+--------------------
+
+When to use custom values
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Custom Username**:
+
+- **Multi-tenant environments**: Use meaningful tenant identifiers like ``tenant-a``, ``dept-finance``
+- **Email-based identification**: ``user@company.com`` (will be preserved exactly)
+- **Legacy compatibility**: Match existing Kopia repository users
+- **Regulatory compliance**: Meet specific naming requirements
+
+**Custom Hostname**:
+
+- **Infrastructure alignment**: Match actual hostnames like ``web01.prod.company.com``
+- **Logical grouping**: ``primary-db``, ``backup-replica``, ``cache-layer``
+- **Environment consistency**: ``app.production``, ``app.staging``, ``app.development``
+
+Configuration examples
+~~~~~~~~~~~~~~~~~~~~~~
+
+**Scenario 1: Multi-Environment Setup**
+
+.. code-block:: yaml
+
+   # Production environment
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: webapp-backup
+     namespace: production
+   spec:
+     kopia:
+       username: "webapp-prod"
+       hostname: "webapp.production.cluster"
+   ---
+   # Staging environment  
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: webapp-backup
+     namespace: staging  
+   spec:
+     kopia:
+       username: "webapp-staging"
+       hostname: "webapp.staging.cluster"
+
+**Scenario 2: Department-Based Tenancy**
+
+.. code-block:: yaml
+
+   # Finance department backup
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: accounting-db
+     namespace: finance
+   spec:
+     kopia:
+       username: "finance-dept"
+       hostname: "accounting-primary"
+   ---
+   # HR department backup
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: employee-db
+     namespace: hr
+   spec:
+     kopia:
+       username: "hr-dept" 
+       hostname: "hr-primary"
+
+**Scenario 3: Application-Centric Naming**
+
+.. code-block:: yaml
+
+   # Database backup
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: postgres-backup
+     namespace: databases
+   spec:
+     sourcePVC: postgres-data
+     kopia:
+       username: "db-postgres"
+       # hostname will be: databases-postgres-data (namespace-first with PVC)
+   ---
+   # Application data backup
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: app-files
+     namespace: web-tier
+   spec:
+     sourcePVC: webapp-uploads
+     kopia:
+       username: "web-uploads"
+       # hostname will be: web-tier-webapp-uploads (namespace-first with PVC)
+
+Real-world examples
+~~~~~~~~~~~~~~~~~~~
+
+**Example 1: E-commerce Platform**
+
+A multi-tenant e-commerce platform with separate backups for each customer:
+
+.. code-block:: yaml
+
+   # Customer A's backup
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: customer-a-store
+     namespace: tenant-customer-a
+   spec:
+     sourcePVC: store-data-pvc
+     kopia:
+       username: "customer-a"
+       hostname: "store-frontend"
+   ---
+   # Customer B's backup  
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: customer-b-store
+     namespace: tenant-customer-b
+   spec:
+     sourcePVC: store-data-pvc
+     kopia:
+       username: "customer-b"
+       hostname: "store-frontend"
+
+**Result**: Each customer gets separate snapshots in the shared repository, identified by unique username but can share logical hostnames.
+
+**Example 2: Development Workflow**
+
+Development team with multiple environment backups showcasing namespace-first hostname generation:
+
+.. code-block:: yaml
+
+   # Development environment - automatic naming
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: app-db
+     namespace: development
+   spec:
+     sourcePVC: postgresql-dev
+     kopia:
+       # Generated username: app-db-development (≤50 chars)
+       # Generated hostname: development-postgresql-dev (namespace-first)
+   ---
+   # Production environment - custom naming
+   apiVersion: volsync.backube/v1alpha1  
+   kind: ReplicationSource
+   metadata:
+     name: app-db
+     namespace: production
+   spec:
+     sourcePVC: postgresql-prod
+     kopia:
+       username: "prod-database"
+       hostname: "postgres.prod.company.com"
+
+**Result**: Clear namespace-based separation between environments. Development backups are automatically grouped under "development-*" hostnames, making it easy to identify and manage environment-specific snapshots. Production uses custom descriptive names for critical systems.
+
+**Example 3: Legacy Migration**
+
+Migrating from existing Kopia setup to VolSync while preserving identities:
+
+.. code-block:: yaml
+
+   # Preserve existing Kopia identities
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: migrated-backup
+     namespace: legacy-apps
+   spec:
+     sourcePVC: old-app-data
+     kopia:
+       username: "legacy-user@company.local"  # Existing Kopia username
+       hostname: "legacy-server.company.local"  # Existing Kopia hostname
+
+**Result**: Seamless migration without disrupting existing backup history.
+
+Troubleshooting
+~~~~~~~~~~~~~~~
+
+**Common Issues**
+
+**Issue 1: Repository Access Conflicts**
+
+*Problem*: Multiple backups seem to interfere with each other
+
+*Solution*: Verify that username/hostname combinations are unique:
+
+.. code-block:: bash
+
+   # Check generated identities
+   kubectl describe replicationsource my-backup -n my-namespace
+   
+   # Look for these fields in the status:
+   # status.kopia.lastSnapshotId
+   # status.latestMoverStatus.logs (contains identity info)
+
+**Issue 2: Unexpected Hostname After Namespace-First Update**
+
+*Problem*: Generated hostnames changed from PVC-based to namespace-based after VolSync update
+
+*Explanation*: VolSync now prioritizes namespace-first hostname generation for better multi-tenancy
+
+*New Behavior*:
+- Hostnames start with namespace: ``{namespace}`` or ``{namespace}-{pvc-name}``
+- PVC name is appended only if total length ≤ 50 characters
+- This improves tenant isolation and reduces naming conflicts
+
+*Examples of Changes*:
+
+.. code-block:: yaml
+
+   # Before: hostname was "app-data"  
+   # After: hostname is "production-app-data" (namespace + PVC)
+   namespace: production
+   sourcePVC: app-data
+   
+   # Before: hostname was "very-long-pvc-name"
+   # After: hostname is "production-environment" (namespace only, PVC dropped)
+   namespace: production-environment  
+   sourcePVC: very-long-pvc-name
+
+*Migration Guidance*:
+- If you need consistent hostnames across updates, specify custom ``spec.kopia.hostname``
+- Repository snapshots remain accessible; only new snapshots use the new hostname format
+- Consider this an opportunity to improve your backup organization
+
+**Issue 3: Understanding Length-Based PVC Inclusion**
+
+*Problem*: PVC name sometimes appears in hostname, sometimes doesn't
+
+*Explanation*: VolSync uses a 50-character limit to determine hostname format
+
+*Debug Steps*:
+
+1. Calculate combined namespace + PVC length:
+
+   .. code-block:: bash
+   
+      # Check if PVC will be included
+      NAMESPACE="your-namespace"
+      PVC_NAME="your-pvc"
+      COMBINED="${NAMESPACE}-${PVC_NAME}"
+      echo "Combined length: $(echo -n "$COMBINED" | wc -c)"
+      if [ $(echo -n "$COMBINED" | wc -c) -le 50 ]; then
+          echo "Hostname will be: $COMBINED"
+      else
+          echo "Hostname will be: $NAMESPACE (PVC dropped)"
+      fi
+
+**Issue 4: Unexpected Username/Hostname Format**
+
+*Problem*: Generated names don't match expectations
+
+*Debug Steps*:
+
+1. Check username length (uses different logic than hostname):
+
+   .. code-block:: bash
+   
+      # Calculate combined length for username generation
+      echo -n "object-name-namespace" | wc -c
+      
+      # If > 50 characters, only object name will be used
+
+2. Verify special characters are being sanitized:
+
+   .. code-block:: bash
+   
+      # Original: app@service.com
+      # Generated: appservicecom
+
+3. Check for leading/trailing separators:
+
+   .. code-block:: bash
+   
+      # Original: -app-backup-
+      # Generated: app-backup
+
+**Issue 5: Empty Generated Names**
+
+*Problem*: Names become "volsync-default" after sanitization
+
+*Cause*: Original name contains only invalid characters
+
+*Solution*: Provide custom username/hostname or use valid characters in resource names
+
+**Issue 6: PVC Not Found in Hostname (Updated Behavior)**
+
+*Problem*: Expected PVC name doesn't appear in generated hostname
+
+*Explanation*: With namespace-first generation, PVC names are included conditionally
+
+*Debug Steps*:
+
+1. Check if PVC should appear based on new logic:
+
+   .. code-block:: bash
+   
+      # PVC appears in hostname only if:
+      # 1. PVC is specified in the spec
+      # 2. Combined namespace-pvc length ≤ 50 characters
+      
+      NAMESPACE="your-namespace" 
+      PVC_NAME="your-pvc"
+      echo "Namespace length: $(echo -n "$NAMESPACE" | wc -c)"
+      echo "PVC length: $(echo -n "$PVC_NAME" | wc -c)" 
+      echo "Combined length: $(echo -n "$NAMESPACE-$PVC_NAME" | wc -c)"
+
+2. Verify PVC specification in resource:
+
+   .. code-block:: yaml
+   
+      # For ReplicationSource - uses spec.sourcePVC
+      spec:
+        sourcePVC: "actual-pvc-name"  # May appear in hostname if length allows
+      
+      # For ReplicationDestination - uses spec.kopia.destinationPVC  
+      spec:
+        kopia:
+          destinationPVC: "target-pvc-name"  # May appear in hostname if length allows
+
+**Character Validation Patterns**
+
+The API enforces validation patterns for custom usernames and hostnames:
+
+**Pattern**: ``^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$``
+
+**Requirements**:
+
+- Must start and end with alphanumeric character
+- Middle characters can include ``.``, ``_``, ``-``
+- Single character names are allowed
+- Cannot be empty
+
+**Valid Examples**:
+
+- ``user1``
+- ``backup-user`` 
+- ``tenant.backup_job``
+- ``a`` (single character)
+
+**Invalid Examples**:
+
+- ``-backup-user`` (starts with hyphen)
+- ``backup-user-`` (ends with hyphen)
+- ``.backup.user.`` (starts/ends with dot)
+- ``backup user`` (contains space)
+- ```` (empty string)
+
+Best practices for shared repositories
+--------------------------------------
+
+**Naming Strategies**
+
+**Environment-Based**:
+
+.. code-block:: yaml
+
+   # Pattern: {app}-{env}
+   spec:
+     kopia:
+       username: "webapp-prod"
+       hostname: "web01.production"
+
+**Department-Based**:
+
+.. code-block:: yaml
+
+   # Pattern: {dept}-{resource}
+   spec:
+     kopia:
+       username: "finance-database"
+       hostname: "accounting-primary"
+
+**Function-Based**:
+
+.. code-block:: yaml
+
+   # Pattern: {function}-{instance}
+   spec:
+     kopia:
+       username: "backup-agent"
+       hostname: "web-tier-01"
+
+**Security Considerations**
+
+**Username Security**:
+
+- Use descriptive but not sensitive information
+- Avoid including secrets or passwords
+- Consider audit trail requirements
+- Plan for username rotation if needed
+
+**Hostname Security**:
+
+- Avoid exposing internal network topology
+- Use logical rather than physical hostnames when possible
+- Consider using consistent patterns across environments
+
+**Repository Access Control**:
+
+- Implement repository-level access controls when available
+- Use separate repositories for different security contexts
+- Monitor repository access patterns
+- Regular repository maintenance and cleanup
 
 .. important::
    When restoring from snapshots created by a ReplicationSource, the
    ReplicationDestination **must use the same username and hostname** as the
    source that created the snapshots.
-
-Best practices for shared repositories
----------------------------------------
-
-**Within a single cluster**: The default identity generation (``source@namespace-name``)
-provides sufficient uniqueness and clear operational visibility.
-
-**Across multiple clusters**: Use custom usernames that include cluster or
-environment identifiers to prevent identity collisions:
-
-.. code-block:: yaml
-
-   spec:
-     kopia:
-       username: "prod-cluster-west"
-       hostname: "database-backup"
-
-**Security considerations**: All users sharing a repository must be trusted, as
-Kopia's architecture allows repository-level access. For completely isolated
-backups between untrusted parties, use separate repositories.
 
 Configuring backup
 ==================
@@ -1253,13 +1894,13 @@ This approach creates a logical hierarchy in your backup repository that makes i
 Integration with Multi-Tenancy
 -------------------------------
 
-The ``sourcePathOverride`` feature works seamlessly with Kopia's built-in multi-tenancy features, which use username and hostname to organize snapshots. VolSync automatically configures these based on the Kubernetes namespace and ReplicationSource name:
+The ``sourcePathOverride`` feature works seamlessly with Kopia's built-in multi-tenancy features, which use username and hostname to organize snapshots. VolSync automatically configures these based on the comprehensive identity generation logic described in the Multi-tenancy section:
 
 **Default Behavior** (without sourcePathOverride):
-  Snapshots appear as: ``<namespace>@<replicationsource-name>:/actual/mount/path``
+  Snapshots appear as: ``<generated-username>@<generated-hostname>:/actual/mount/path``
 
 **With sourcePathOverride**:
-  Snapshots appear as: ``<namespace>@<replicationsource-name>:/your/custom/path``
+  Snapshots appear as: ``<generated-username>@<generated-hostname>:/your/custom/path``
 
 This provides excellent isolation and organization across multiple applications and namespaces while maintaining meaningful path names:
 
@@ -3453,7 +4094,7 @@ Manual configuration adds complexity and requires deep Kopia knowledge. Use VolS
 Multi-tenancy preservation
 --------------------------
 
-Manual repository configuration works seamlessly with VolSync's multi-tenancy features. VolSync automatically isolates backups using the pattern ``<namespace>@<replicationsource-name>`` regardless of manual configuration settings. This ensures:
+Manual repository configuration works seamlessly with VolSync's multi-tenancy features. VolSync automatically isolates backups using the comprehensive identity generation logic (see Multi-tenancy section) regardless of manual configuration settings. This ensures:
 
 * **Complete isolation** between different applications and namespaces
 * **Shared repository access** with automatic user separation

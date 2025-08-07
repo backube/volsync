@@ -44,6 +44,8 @@ const (
 	// If command line flag not set, the RELATED_IMAGE_ env var will be used
 	kopiaContainerImageFlag   = "kopia-container-image"
 	kopiaContainerImageEnvVar = "RELATED_IMAGE_KOPIA_CONTAINER"
+	// defaultUsername is the fallback username when sanitization results in empty string
+	defaultUsername = "volsync-default"
 )
 
 type Builder struct {
@@ -145,8 +147,9 @@ func (kb *Builder) createSourceMover(client client.Client, logger logr.Logger,
 	isSource := true
 
 	// Generate username and hostname for multi-tenancy
-	username := generateUsername(source.Spec.Kopia.Username)
-	hostname := generateHostname(source.Spec.Kopia.Hostname, source.GetNamespace(), source.GetName())
+	username := generateUsername(source.Spec.Kopia.Username, source.GetName(), source.GetNamespace())
+	hostname := generateHostname(source.Spec.Kopia.Hostname, &source.Spec.SourcePVC,
+		source.GetNamespace(), source.GetName())
 
 	saHandler := utils.NewSAHandler(client, source, isSource, privileged,
 		source.Spec.Kopia.MoverServiceAccount)
@@ -212,8 +215,9 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 	isSource := false
 
 	// Generate username and hostname for multi-tenancy
-	username := generateUsername(destination.Spec.Kopia.Username)
-	hostname := generateHostname(destination.Spec.Kopia.Hostname, destination.GetNamespace(), destination.GetName())
+	username := generateUsername(destination.Spec.Kopia.Username, destination.GetName(), destination.GetNamespace())
+	hostname := generateHostname(destination.Spec.Kopia.Hostname,
+		destination.Spec.Kopia.DestinationPVC, destination.GetNamespace(), destination.GetName())
 
 	saHandler := utils.NewSAHandler(client, destination, isSource, privileged,
 		destination.Spec.Kopia.MoverServiceAccount)
@@ -252,40 +256,136 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 }
 
 // generateUsername returns the username for Kopia identity
-// If specified, uses the provided username, otherwise defaults to "source"
-func generateUsername(username *string) string {
+// Priority order:
+// 1. If specified, uses the provided username as-is (highest priority)
+// 2. Sanitizes object name and appends namespace if combined length ≤ 50 chars
+// 3. Uses sanitized object name only if combined length > 50 chars
+// 4. Returns "volsync-default" if sanitized username is empty
+// Username rules: alphanumeric, hyphens, and underscores allowed
+// (More permissive than hostnames to maintain backward compatibility)
+func generateUsername(username *string, objectName string, namespace string) string {
 	if username != nil && *username != "" {
 		return *username
 	}
-	return "source"
+
+	// Sanitize the object name for username
+	// Username rules: alphanumeric, hyphens, and underscores allowed
+	// (More permissive than hostnames to maintain backward compatibility)
+	validObjectName := ""
+	for _, r := range objectName {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			validObjectName += string(r)
+		}
+	}
+
+	// Ensure object name doesn't start or end with a hyphen or underscore
+	validObjectName = strings.Trim(validObjectName, "-_")
+
+	if validObjectName == "" {
+		return defaultUsername
+	}
+
+	// Try to append namespace if there's room and namespace is valid
+	// Username approach: object-name-namespace for better identification
+	validNamespace := ""
+	for _, r := range namespace {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			validNamespace += string(r)
+		}
+	}
+	validNamespace = strings.Trim(validNamespace, "-_")
+
+	// Kopia usernames have practical length limits (typically ~50 chars is reasonable)
+	// If we can fit namespace with a separator, include it for better multi-tenancy
+	const maxUsernameLength = 50 // Maximum reasonable length for Kopia usernames
+	if validNamespace != "" {
+		candidateUsername := validObjectName + "-" + validNamespace
+		if len(candidateUsername) <= maxUsernameLength {
+			return candidateUsername
+		}
+	}
+
+	return validObjectName
 }
 
-// generateHostname returns the hostname for Kopia identity
-// If specified, uses the provided hostname, otherwise defaults to "<namespace>-<name>"
-func generateHostname(hostname *string, namespace, name string) string {
+// generateHostname returns the hostname for Kopia identity with namespace-first priority for better multi-tenancy
+// Priority order:
+// 1. Custom hostname (if provided) - highest priority, used as-is
+// 2. Namespace-based hostname - use namespace as the base
+// 3. Append PVC name if space allows - try to add PVC name if combined length is reasonable (≤50 characters)
+// 4. Fallback patterns:
+//   - If namespace + PVC too long, use just namespace
+//   - If namespace is empty/invalid, use "namespace-name" format as final fallback
+//
+// 5. Sanitization - alphanumeric, dots, hyphens; convert underscores
+func generateHostname(hostname *string, pvcName *string, namespace, name string) string {
 	if hostname != nil && *hostname != "" {
 		return *hostname
 	}
 
-	// Generate default hostname from namespace and resource name
-	// Replace any characters that aren't allowed in Kopia hostnames
-	defaultHostname := fmt.Sprintf("%s-%s", namespace, name)
-	// Replace underscores and other invalid characters with hyphens
-	defaultHostname = strings.ReplaceAll(defaultHostname, "_", "-")
+	// Sanitize namespace for hostname use
+	sanitizedNamespace := sanitizeForHostname(namespace)
+
+	// Sanitize PVC name for hostname use
+	var sanitizedPVC string
+	if pvcName != nil && *pvcName != "" {
+		sanitizedPVC = sanitizeForHostname(*pvcName)
+	}
+
+	const maxHostnameLength = 50 // Maximum reasonable length for Kopia hostnames
+	var defaultHostname string
+
+	// Priority 1: Use namespace as base (namespace-first approach)
+	if sanitizedNamespace != "" {
+		if sanitizedPVC != "" {
+			// Try to combine namespace + PVC if it fits within reasonable length
+			candidateHostname := sanitizedNamespace + "-" + sanitizedPVC
+			if len(candidateHostname) <= maxHostnameLength {
+				defaultHostname = candidateHostname
+			} else {
+				// If combined is too long, use just namespace for better multi-tenancy
+				defaultHostname = sanitizedNamespace
+			}
+		} else {
+			// No PVC name, use just namespace
+			defaultHostname = sanitizedNamespace
+		}
+	} else {
+		// Priority 2: Fallback to traditional namespace-name pattern if namespace is invalid
+		fallbackHostname := fmt.Sprintf("%s-%s", namespace, name)
+		defaultHostname = sanitizeForHostname(fallbackHostname)
+
+		// If the fallback also results in empty string, just use the sanitized object name
+		if defaultHostname == "" {
+			defaultHostname = sanitizeForHostname(name)
+		}
+	}
+
+	if defaultHostname == "" {
+		// Log when fallback is used for troubleshooting
+		// Note: In production, consider adding proper logging with context
+		return defaultUsername
+	}
+
+	return defaultHostname
+}
+
+// sanitizeForHostname sanitizes a string for use as a hostname
+// Hostname rules: alphanumeric, dots, and hyphens only
+// Replaces underscores with hyphens per hostname standards
+// Replaces underscores with hyphens, removes invalid characters, and trims separators
+func sanitizeForHostname(input string) string {
+	// Replace underscores with hyphens
+	sanitized := strings.ReplaceAll(input, "_", "-")
+
 	// Remove any invalid characters (only allow alphanumeric, dots, and hyphens)
-	validHostname := ""
-	for _, r := range defaultHostname {
+	validChars := ""
+	for _, r := range sanitized {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '-' {
-			validHostname += string(r)
+			validChars += string(r)
 		}
 	}
 
 	// Ensure hostname doesn't start or end with a hyphen or dot
-	validHostname = strings.Trim(validHostname, "-.")
-
-	if validHostname == "" {
-		return "volsync-default"
-	}
-
-	return validHostname
+	return strings.Trim(validChars, "-.")
 }
