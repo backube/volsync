@@ -21,7 +21,9 @@ package kopia
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"path"
 	"strconv"
 	"time"
@@ -313,15 +315,28 @@ func (m *Mover) validatePolicyConfig(ctx context.Context) (utils.CustomCAObject,
 		return nil, nil
 	}
 
-	// Convert KopiaPolicySpec to CustomCASpec for reuse of validation logic
-	policyCASpec := volsyncv1alpha1.CustomCASpec{
-		SecretName:    m.policyConfig.SecretName,
-		ConfigMapName: m.policyConfig.ConfigMapName,
-		// We don't need to specify a Key since we'll mount the entire ConfigMap/Secret
+	// Validate JSON format if repositoryConfig is specified  
+	if m.policyConfig.RepositoryConfig != nil && *m.policyConfig.RepositoryConfig != "" {
+		if !json.Valid([]byte(*m.policyConfig.RepositoryConfig)) {
+			return nil, fmt.Errorf("invalid JSON in repositoryConfig")
+		}
+		m.logger.V(1).Info("JSON validation passed for repositoryConfig")
 	}
 
-	return utils.ValidateCustomCA(ctx, m.client, m.logger,
-		m.owner.GetNamespace(), policyCASpec)
+	// Validate file-based configuration if specified
+	if m.policyConfig.SecretName != "" || m.policyConfig.ConfigMapName != "" {
+		// Convert KopiaPolicySpec to CustomCASpec for reuse of validation logic
+		policyCASpec := volsyncv1alpha1.CustomCASpec{
+			SecretName:    m.policyConfig.SecretName,
+			ConfigMapName: m.policyConfig.ConfigMapName,
+			// We don't need to specify a Key since we'll mount the entire ConfigMap/Secret
+		}
+
+		return utils.ValidateCustomCA(ctx, m.client, m.logger,
+			m.owner.GetNamespace(), policyCASpec)
+	}
+
+	return nil, nil
 }
 
 func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolumeClaim,
@@ -776,10 +791,33 @@ func (m *Mover) configureCustomCA(podSpec *corev1.PodSpec, customCAObj utils.Cus
 
 // configurePolicyConfig sets up policy configuration if specified
 func (m *Mover) configurePolicyConfig(podSpec *corev1.PodSpec, policyConfigObj utils.CustomCAObject) {
-	if policyConfigObj == nil {
-		return
+	// Handle structured repository configuration if specified
+	if m.policyConfig != nil && m.policyConfig.RepositoryConfig != nil {
+		m.configureStructuredRepositoryConfig(podSpec)
 	}
 
+	// Handle file-based policy configuration if specified
+	if policyConfigObj != nil {
+		m.configureFilePolicyConfig(podSpec, policyConfigObj)
+	}
+}
+
+// configureStructuredRepositoryConfig handles structured repository configuration
+func (m *Mover) configureStructuredRepositoryConfig(podSpec *corev1.PodSpec) {
+	// Pass the JSON string directly to the environment variable
+	if m.policyConfig.RepositoryConfig != nil && *m.policyConfig.RepositoryConfig != "" {
+		podSpec.Containers[0].Env = append(podSpec.Containers[0].Env,
+			corev1.EnvVar{
+				Name:  "KOPIA_STRUCTURED_REPOSITORY_CONFIG",
+				Value: *m.policyConfig.RepositoryConfig,
+			},
+		)
+		m.logger.V(1).Info("Added structured repository configuration to pod spec")
+	}
+}
+
+// configureFilePolicyConfig handles file-based policy configuration
+func (m *Mover) configureFilePolicyConfig(podSpec *corev1.PodSpec, policyConfigObj utils.CustomCAObject) {
 	// Add environment variables to tell the mover where to find policy files
 	podSpec.Containers[0].Env = append(podSpec.Containers[0].Env,
 		corev1.EnvVar{
@@ -790,11 +828,11 @@ func (m *Mover) configurePolicyConfig(podSpec *corev1.PodSpec, policyConfigObj u
 
 	// Add filenames if specified, otherwise use defaults
 	globalPolicyFile := defaultGlobalPolicyFile
-	if m.policyConfig.GlobalPolicyFilename != "" {
+	if m.policyConfig != nil && m.policyConfig.GlobalPolicyFilename != "" {
 		globalPolicyFile = m.policyConfig.GlobalPolicyFilename
 	}
 	repoConfigFile := defaultRepoConfigFile
-	if m.policyConfig.RepositoryConfigFilename != "" {
+	if m.policyConfig != nil && m.policyConfig.RepositoryConfigFilename != "" {
 		repoConfigFile = m.policyConfig.RepositoryConfigFilename
 	}
 

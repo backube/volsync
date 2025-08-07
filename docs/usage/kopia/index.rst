@@ -953,6 +953,56 @@ replication method.
        # Override the source path name in snapshots (optional)
        #sourcePathOverride: /var/lib/postgresql/data
 
+.. note::
+   The above example uses individual configuration fields. For more advanced use cases, you can also use the ``repositoryConfig`` field, which accepts a JSON string containing repository-wide Kopia configuration settings.
+
+Enhanced backup configuration with structured repository settings
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: yaml
+
+   ---
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: mydata-backup-enhanced
+   spec:
+     sourcePVC: mydata
+     trigger:
+       schedule: "*/30 * * * *"
+     kopia:
+       repository: kopia-config
+       # Repository configuration as JSON string
+       repositoryConfig: |
+         {
+           "throttlingLimits": {
+             "maxUploadSpeedBytesPerSecond": 104857600,
+             "concurrentWrites": 3,
+             "writeRequestsPerSecond": 50
+           },
+           "caching": {
+             "contentCacheSizeBytes": 2147483648,
+             "metadataCacheSizeBytes": 134217728
+           },
+           "compression": {
+             "algorithm": "zstd",
+             "level": 3,
+             "compressibleOnly": true
+           },
+           "enableActions": true,
+           "description": "Enhanced backup with performance tuning"
+         }
+       
+       # Traditional individual settings (still supported)
+       retain:
+         hourly: 6
+         daily: 7
+         weekly: 4
+         monthly: 6
+         yearly: 2
+       maintenanceIntervalDays: 7
+       copyMethod: Clone
+
 Backup options
 --------------
 
@@ -1036,6 +1086,17 @@ parallelism
 repository
    This is the name of the Secret (in the same Namespace) that holds the
    connection information for the backup repository.
+
+repositoryConfig
+   This field accepts a JSON string containing repository-wide configuration
+   settings. When specified, this field allows comprehensive control over
+   Kopia's behavior including throttling limits, caching parameters, compression
+   settings, and API server configuration. See the :ref:`structured-repository-configuration`
+   section for detailed usage and examples.
+
+   This field takes precedence over individual configuration fields and file-based
+   policy configuration, providing seamless integration with GitOps workflows.
+
 retain
    This has sub-fields for ``hourly``, ``daily``, ``weekly``, ``monthly``, and
    ``yearly`` that allow setting the number of each type of backup to retain.
@@ -2574,6 +2635,564 @@ Best practices for policy management
 6. **Monitor backup success** after implementing new policies
 7. **Use meaningful names** for ConfigMaps/Secrets to identify their purpose
 8. **Validate JSON** before creating ConfigMaps/Secrets
+
+.. _structured-repository-configuration:
+
+Repository configuration with JSON strings
+==========================================
+
+In addition to file-based policy configuration, VolSync supports repository configuration via JSON strings directly within the ReplicationSource and ReplicationDestination specifications. This provides a declarative way to configure repository-wide Kopia settings without managing separate ConfigMaps or Secrets.
+
+Overview
+--------
+
+The ``repositoryConfig`` field allows you to specify comprehensive Kopia repository settings as a JSON string within your VolSync resources. This configuration controls repository-wide behavior including throttling limits, caching settings, compression parameters, and API server configuration.
+
+Basic usage
+-----------
+
+Add repository configuration directly to your ReplicationSource or ReplicationDestination:
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: app-backup
+   spec:
+     sourcePVC: app-data
+     trigger:
+       schedule: "0 2 * * *"
+     kopia:
+       repository: kopia-config
+       repositoryConfig: |
+         {
+           "throttlingLimits": {
+             "maxUploadSpeedBytesPerSecond": 104857600,
+             "maxDownloadSpeedBytesPerSecond": 104857600,
+             "concurrentReads": 4,
+             "concurrentWrites": 2
+           },
+           "caching": {
+             "contentCacheSizeBytes": 2147483648,
+             "metadataCacheSizeBytes": 134217728
+           },
+           "compression": {
+             "algorithm": "zstd",
+             "level": 3
+           },
+           "enableActions": true
+         }
+
+Configuration sections
+----------------------
+
+The ``repositoryConfig`` field accepts a JSON string that can contain several configuration sections. The following examples show the JSON structure for each section:
+
+throttlingLimits
+~~~~~~~~~~~~~~~~
+
+Controls bandwidth and concurrency limits for repository operations:
+
+.. code-block:: yaml
+
+   repositoryConfig: |
+     {
+       "throttlingLimits": {
+         "maxUploadSpeedBytesPerSecond": 104857600,
+         "maxDownloadSpeedBytesPerSecond": 52428800,
+         "concurrentReads": 8,
+         "concurrentWrites": 4,
+         "listRequestsPerSecond": 10,
+         "readRequestsPerSecond": 100,
+         "writeRequestsPerSecond": 50
+       }
+     }
+
+**Use cases**:
+- Limit bandwidth usage on constrained network connections
+- Reduce load on storage backends with rate limiting
+- Optimize performance by tuning concurrency for different storage types
+
+caching
+~~~~~~~
+
+Configures repository caching behavior:
+
+.. code-block:: yaml
+
+   repositoryConfig: |
+     {
+       "caching": {
+         "cacheDirectory": "/tmp/kopia-cache",
+         "contentCacheSizeBytes": 2147483648,
+         "metadataCacheSizeBytes": 134217728,
+         "contentCacheDuration": 7200
+       }
+     }
+
+**Use cases**:
+- Improve performance for frequently accessed repositories
+- Reduce bandwidth usage through intelligent caching
+- Optimize backup speed for repositories with large metadata sets
+
+compression
+~~~~~~~~~~~
+
+Controls compression settings for repository data:
+
+.. code-block:: yaml
+
+   repositoryConfig: |
+     {
+       "compression": {
+         "algorithm": "zstd",
+         "level": 3,
+         "compressibleOnly": true,
+         "minSize": 1024,
+         "maxSize": 1073741824
+       }
+     }
+
+**Compression algorithms**:
+- ``zstd``: Best overall performance and compression ratio (recommended)
+- ``gzip``: Good compression, widely supported
+- ``s2``: Fastest compression with reasonable ratio
+- ``none``: No compression (fastest, largest size)
+
+apiServer
+~~~~~~~~~
+
+Configures the optional Kopia API server:
+
+.. code-block:: yaml
+
+   repositoryConfig: |
+     {
+       "apiServer": {
+         "enabled": true,
+         "listenAddress": "0.0.0.0",
+         "port": 51515,
+         "tls": {
+           "certFile": "/certs/server.crt",
+           "keyFile": "/certs/server.key",
+           "requireClientCert": false
+         },
+         "auth": {
+           "method": "password",
+           "password": "secure-api-password"
+         },
+         "enableCORS": true,
+         "corsAllowedOrigins": [
+           "https://kopia-ui.example.com",
+           "https://localhost:3000"
+         ]
+       }
+     }
+
+**Authentication methods**:
+- ``none``: No authentication (development only)
+- ``password``: Simple password authentication
+- ``htpasswd``: Apache htpasswd file authentication
+- ``oidc``: OpenID Connect authentication
+
+Additional settings
+~~~~~~~~~~~~~~~~~~~
+
+Other repository-wide configuration options:
+
+.. code-block:: yaml
+
+   repositoryConfig: |
+     {
+       "enableActions": true,
+       "readOnly": false,
+       "hostname": "backup-cluster-west",
+       "username": "production-backups",
+       "description": "Production application backups",
+       "disableInternalLog": false,
+       "timeZone": "America/New_York"
+     }
+
+Complete examples
+-----------------
+
+Comprehensive repository configuration for a production backup
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: production-database-backup
+   spec:
+     sourcePVC: database-data
+     trigger:
+       schedule: "0 1 * * *"  # Daily at 1 AM
+     kopia:
+       repository: kopia-production-config
+       repositoryConfig: |
+         {
+           "throttlingLimits": {
+             "maxUploadSpeedBytesPerSecond": 52428800,
+             "concurrentWrites": 2,
+             "writeRequestsPerSecond": 25
+           },
+           "caching": {
+             "contentCacheSizeBytes": 5368709120,
+             "metadataCacheSizeBytes": 268435456
+           },
+           "compression": {
+             "algorithm": "s2",
+             "compressibleOnly": true,
+             "minSize": 4096
+           },
+           "enableActions": true,
+           "timeZone": "UTC",
+           "description": "Production database daily backups"
+         }
+       
+       # Standard VolSync settings
+       retain:
+         daily: 7
+         weekly: 4
+         monthly: 12
+       copyMethod: Clone
+       cacheCapacity: 10Gi
+
+Repository configuration for restore operations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Using structured repository configuration in ReplicationDestination for optimal restore performance:
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: database-disaster-recovery
+   spec:
+     trigger:
+       manual: emergency-restore-202501
+     kopia:
+       repository: kopia-production-config
+       repositoryConfig: |
+         {
+           "throttlingLimits": {
+             "maxDownloadSpeedBytesPerSecond": 524288000,
+             "concurrentReads": 8,
+             "readRequestsPerSecond": 200
+           },
+           "caching": {
+             "contentCacheSizeBytes": 10737418240,
+             "metadataCacheSizeBytes": 1073741824,
+             "contentCacheDuration": 14400
+           },
+           "compression": {
+             "algorithm": "s2"
+           },
+           "hostname": "backup-cluster-west",
+           "username": "production-backups",
+           "timeZone": "UTC",
+           "description": "Disaster recovery restore operations"
+         }
+       
+       # Restore to specific PVC
+       destinationPVC: restored-database-data
+       copyMethod: Direct
+       
+       # Cache settings for restore performance
+       cacheCapacity: 20Gi
+       cleanupCachePVC: false  # Keep cache for subsequent operations
+       
+       # Restore from specific point in time if needed
+       # restoreAsOf: "2025-01-07T10:30:00Z"
+
+Cross-cluster restore configuration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Configure ReplicationDestination for restore from a different cluster's backup repository:
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination  
+   metadata:
+     name: cross-cluster-restore
+   spec:
+     trigger:
+       manual: restore-from-production
+     kopia:
+       repository: remote-kopia-config  # Different cluster's repository
+       repositoryConfig: |
+         {
+           "throttlingLimits": {
+             "maxDownloadSpeedBytesPerSecond": 104857600,
+             "concurrentReads": 4,
+             "listRequestsPerSecond": 5
+           },
+           "caching": {
+             "contentCacheSizeBytes": 2147483648,
+             "metadataCacheSizeBytes": 268435456
+           },
+           "hostname": "production-cluster-east",
+           "username": "app-backups",
+           "readOnly": true,
+           "description": "Cross-cluster disaster recovery"
+         }
+       
+       destinationPVC: restored-app-data
+       copyMethod: Direct
+       cacheCapacity: 5Gi
+
+Migration from file-based configuration
+----------------------------------------
+
+You can migrate from file-based repository configuration to structured configuration:
+
+**Before (File-based)**:
+
+.. code-block:: yaml
+
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: kopia-policies
+   data:
+     repository.config: |
+       {
+         "enableActions": true,
+         "caching": {
+           "maxCacheSize": 1073741824
+         },
+         "throttling": {
+           "maxUploadSpeed": 104857600
+         }
+       }
+
+.. code-block:: yaml
+
+   kopia:
+     repository: kopia-config
+     policyConfig:
+       configMapName: kopia-policies
+       repositoryConfigFilename: repository.config
+
+**After (JSON string)**:
+
+.. code-block:: yaml
+
+   kopia:
+     repository: kopia-config
+     repositoryConfig: |
+       {
+         "enableActions": true,
+         "caching": {
+           "contentCacheSizeBytes": 1073741824
+         },
+         "throttlingLimits": {
+           "maxUploadSpeedBytesPerSecond": 104857600
+         }
+       }
+
+**Benefits of JSON string configuration**:
+- No need to manage separate ConfigMaps/Secrets
+- All configuration contained within the resource specification
+- Better integration with GitOps workflows
+- Easier to template and manage with tools like Helm
+- Clear visibility of configuration within the resource specification
+
+Configuration precedence
+-------------------------
+
+When multiple configuration methods are used, VolSync follows this precedence order:
+
+1. **repositoryConfig JSON string** (highest precedence)
+2. **File-based policyConfig repository.config**
+3. **Individual VolSync spec fields** (lowest precedence)
+
+This means the repositoryConfig JSON string will override any file-based repository configuration, while individual spec fields serve as fallbacks.
+
+.. code-block:: yaml
+
+   kopia:
+     # Individual field (lowest precedence)
+     compression: "gzip"
+     
+     # File-based config (medium precedence)
+     policyConfig:
+       configMapName: kopia-policies  # Contains compression: "s2"
+     
+     # JSON string config (highest precedence)
+     repositoryConfig: |
+       {
+         "compression": {
+           "algorithm": "zstd"
+         }
+       }
+
+Performance tuning examples
+---------------------------
+
+High-throughput configuration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For environments with high-bandwidth connections and powerful storage:
+
+.. code-block:: yaml
+
+   repositoryConfig: |
+     {
+       "throttlingLimits": {
+         "maxUploadSpeedBytesPerSecond": 1073741824,
+         "maxDownloadSpeedBytesPerSecond": 1073741824,
+         "concurrentReads": 16,
+         "concurrentWrites": 8
+       },
+       "caching": {
+         "contentCacheSizeBytes": 10737418240
+       },
+       "compression": {
+         "algorithm": "s2",
+         "level": 1
+       }
+     }
+
+Bandwidth-constrained configuration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For environments with limited network bandwidth:
+
+.. code-block:: yaml
+
+   repositoryConfig: |
+     {
+       "throttlingLimits": {
+         "maxUploadSpeedBytesPerSecond": 10485760,
+         "concurrentWrites": 1,
+         "writeRequestsPerSecond": 10
+       },
+       "compression": {
+         "algorithm": "zstd",
+         "level": 9
+       },
+       "caching": {
+         "contentCacheSizeBytes": 1073741824
+       }
+     }
+
+Storage-optimized configuration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For minimizing storage costs with longer backup times:
+
+.. code-block:: yaml
+
+   repositoryConfig: |
+     {
+       "compression": {
+         "algorithm": "zstd",
+         "level": 9,
+         "compressibleOnly": false,
+         "minSize": 0
+       },
+       "throttlingLimits": {
+         "concurrentWrites": 1
+       },
+       "caching": {
+         "contentCacheSizeBytes": 536870912
+       }
+     }
+
+Validation and troubleshooting
+------------------------------
+
+Configuration validation
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+VolSync validates repositoryConfig against the Kubernetes schema. Common validation errors:
+
+**Invalid byte values**:
+
+.. code-block:: console
+
+   # Error: must be non-negative
+   contentCacheSizeBytes: -1
+
+**Invalid port numbers**:
+
+.. code-block:: console
+
+   # Error: must be between 1 and 65535
+   apiServer:
+     port: 70000
+
+**Invalid compression algorithms**:
+
+.. code-block:: console
+
+   # Error: must be one of: zstd, gzip, s2, none
+   compression:
+     algorithm: "invalid"
+
+Troubleshooting common issues
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Problem**: Repository configuration not applied
+
+**Solution**: Check for configuration precedence conflicts:
+
+.. code-block:: console
+
+   # Check if file-based config exists
+   $ kubectl get configmap kopia-policies -o yaml
+   
+   # Review resource specification for conflicts
+   $ kubectl get replicationsource source -o yaml
+
+**Problem**: Performance issues after configuration changes
+
+**Solution**: Monitor and adjust throttling limits:
+
+.. code-block:: yaml
+
+   # Start with conservative settings
+   repositoryConfig: |
+     {
+       "throttlingLimits": {
+         "concurrentWrites": 1,
+         "maxUploadSpeedBytesPerSecond": 10485760
+       }
+     }
+   
+   # Gradually increase based on monitoring
+
+**Problem**: Cache configuration ignored
+
+**Solution**: Ensure cache directory permissions and storage capacity:
+
+.. code-block:: yaml
+
+   repositoryConfig: |
+     {
+       "caching": {
+         "cacheDirectory": "/tmp/kopia-cache",
+         "contentCacheSizeBytes": 1073741824
+       }
+     }
+
+Best practices
+--------------
+
+1. **Start with conservative settings** and tune based on monitoring
+2. **Use JSON string configuration** for new deployments
+3. **Test configuration changes** in development environments first
+4. **Monitor backup performance** after configuration changes
+5. **Document configuration decisions** for operational teams
+6. **Use version control** to track configuration changes
+7. **Validate configurations** before applying to production
+8. **Consider storage backend characteristics** when tuning settings
 
 Security considerations
 -----------------------

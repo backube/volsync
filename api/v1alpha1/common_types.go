@@ -149,6 +149,7 @@ type CustomCASpec struct {
 	Key string `json:"key,omitempty"`
 }
 
+
 // KopiaPolicySpec defines configuration for Kopia policy files
 type KopiaPolicySpec struct {
 	// The name of a Secret that contains Kopia policy configuration files
@@ -170,6 +171,11 @@ type KopiaPolicySpec struct {
 	// Defaults to "repository.config" if not specified.
 	//+optional
 	RepositoryConfigFilename string `json:"repositoryConfigFilename,omitempty"`
+
+	// RepositoryConfig is a multiline JSON string containing Kopia repository configuration
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Optional
+	RepositoryConfig *string `json:"repositoryConfig,omitempty"`
 }
 
 type MoverConfig struct {

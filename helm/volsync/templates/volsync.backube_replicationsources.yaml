@@ -1368,6 +1368,9 @@ spec:
                             This file should contain a JSON policy configuration that will be applied globally.
                             Defaults to "global-policy.json" if not specified.
                           type: string
+                        repositoryConfig:
+                          description: RepositoryConfig is a multiline JSON string containing Kopia repository configuration
+                          type: string
                         repositoryConfigFilename:
                           description: |-
                             RepositoryConfigFilename specifies the filename for the repository configuration.
