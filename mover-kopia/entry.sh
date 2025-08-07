@@ -356,11 +356,41 @@ function apply_policy_config {
     fi
 }
 
+# Apply JSON repository configuration using kopia's native support
+function apply_json_repository_config {
+    if [[ -n "${KOPIA_STRUCTURED_REPOSITORY_CONFIG}" ]]; then
+        echo "=== Applying JSON repository configuration ==="
+        
+        # Validate JSON syntax
+        if ! echo "${KOPIA_STRUCTURED_REPOSITORY_CONFIG}" | jq . >/dev/null 2>&1; then
+            echo "ERROR: Invalid JSON in KOPIA_STRUCTURED_REPOSITORY_CONFIG"
+            return 1
+        fi
+        
+        echo "JSON configuration validated"
+        
+        # Write JSON to temp file for kopia native consumption
+        local temp_config="/tmp/kopia-repo-config.json"
+        echo "${KOPIA_STRUCTURED_REPOSITORY_CONFIG}" > "${temp_config}"
+        chmod 600 "${temp_config}"  # Secure the config file
+        
+        echo "JSON configuration ready for kopia native consumption ($(wc -c < "${temp_config}") bytes)"
+        
+        # Set environment variable for connection logic to use
+        export KOPIA_JSON_CONFIG_FILE="${temp_config}"
+        
+        echo "=== JSON configuration prepared ==="
+    fi
+}
+
 # Connect to or create the repository
 function ensure_connected {
     echo "=== Connecting to repository ==="
     
-    # Apply manual configuration first (parses JSON and sets environment variables)
+    # Apply JSON repository configuration first
+    apply_json_repository_config
+    
+    # Apply manual configuration (parses JSON and sets environment variables)
     apply_manual_config
     
     # Try to connect to existing repository (let errors display naturally)
@@ -371,7 +401,23 @@ function ensure_connected {
         # Disable exit on error for connection attempts
         set +e
         
-        # Try to connect first (if config exists)
+        # Try JSON config file first if available
+        if [[ -n "${KOPIA_JSON_CONFIG_FILE}" && -f "${KOPIA_JSON_CONFIG_FILE}" ]]; then
+            echo "Attempting to connect using JSON configuration file..."
+            "${KOPIA[@]}" repository connect from-config --file="${KOPIA_JSON_CONFIG_FILE}"
+            local json_result=$?
+            
+            if [[ $json_result -ne 0 ]]; then
+                echo "JSON config connection failed, trying other methods..."
+                echo ""
+            else
+                echo "JSON config connection successful"
+                set -e  # Re-enable exit on error
+                return 0
+            fi
+        fi
+        
+        # Try to connect from legacy config file
         if [[ -f /credentials/repository.config ]]; then
             echo "Attempting to connect from config file..."
             "${KOPIA[@]}" repository connect from-config --config-file /credentials/repository.config
