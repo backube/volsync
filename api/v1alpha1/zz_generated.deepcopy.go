@@ -288,6 +288,11 @@ func (in *ReplicationDestinationKopiaSpec) DeepCopyInto(out *ReplicationDestinat
 		*out = new(int32)
 		**out = **in
 	}
+	if in.Previous != nil {
+		in, out := &in.Previous, &out.Previous
+		*out = new(int32)
+		**out = **in
+	}
 	if in.PolicyConfig != nil {
 		in, out := &in.PolicyConfig, &out.PolicyConfig
 		*out = new(KopiaPolicySpec)

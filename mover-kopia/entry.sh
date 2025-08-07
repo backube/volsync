@@ -86,6 +86,9 @@ echo "KOPIA_OVERRIDE_USERNAME: $([ -n "${KOPIA_OVERRIDE_USERNAME}" ] && echo "[S
 echo "KOPIA_OVERRIDE_HOSTNAME: $([ -n "${KOPIA_OVERRIDE_HOSTNAME}" ] && echo "[SET]" || echo "[NOT SET]")"
 echo "KOPIA_SOURCE_PATH_OVERRIDE: $([ -n "${KOPIA_SOURCE_PATH_OVERRIDE}" ] && echo "[SET]" || echo "[NOT SET]")"
 echo "KOPIA_MANUAL_CONFIG: $([ -n "${KOPIA_MANUAL_CONFIG}" ] && echo "[SET]" || echo "[NOT SET]")"
+echo "KOPIA_RESTORE_AS_OF: $([ -n "${KOPIA_RESTORE_AS_OF}" ] && echo "[SET]" || echo "[NOT SET]")"
+echo "KOPIA_SHALLOW: $([ -n "${KOPIA_SHALLOW}" ] && echo "[SET]" || echo "[NOT SET]")"
+echo "KOPIA_PREVIOUS: $([ -n "${KOPIA_PREVIOUS}" ] && echo "[SET]" || echo "[NOT SET]")"
 echo ""
 echo "=== Additional Backend Environment Variables ==="
 echo "KOPIA_B2_BUCKET: $([ -n "${KOPIA_B2_BUCKET}" ] && echo "[SET]" || echo "[NOT SET]")"
@@ -973,16 +976,24 @@ function select_snapshot_to_restore {
     # This ensures we get snapshots for the correct username@hostname:/path
     local snapshot_list_cmd=("${KOPIA[@]}" snapshot list "${DATA_DIR}" --json)
     
+    # Get the base offset from KOPIA_PREVIOUS parameter (defaults to 0)
+    local -i previous_offset=${KOPIA_PREVIOUS-0}
+    
     # List snapshots and find the appropriate one
     if [[ -n "${KOPIA_RESTORE_AS_OF}" ]]; then
         echo "Restoring as of: ${KOPIA_RESTORE_AS_OF}"
-        "${snapshot_list_cmd[@]}" | jq -r ".[] | select(.startTime <= \"${KOPIA_RESTORE_AS_OF}\") | .id" | head -1
+        # For restore-as-of, we need to filter by time first, then apply offset
+        local filtered_snapshots
+        filtered_snapshots=$("${snapshot_list_cmd[@]}" | jq -r "[.[] | select(.startTime <= \"${KOPIA_RESTORE_AS_OF}\")] | .[${previous_offset}:${previous_offset}+1][] | .id")
+        echo "${filtered_snapshots}"
     elif [[ -n "${KOPIA_SHALLOW}" ]]; then
-        echo "Shallow restore, showing last ${KOPIA_SHALLOW} snapshots"
-        "${snapshot_list_cmd[@]}" | jq -r ".[0:${KOPIA_SHALLOW}][] | .id" | head -1
+        echo "Shallow restore, showing last ${KOPIA_SHALLOW} snapshots with previous offset ${previous_offset}"
+        # Apply previous offset within the shallow limit
+        "${snapshot_list_cmd[@]}" | jq -r ".[${previous_offset}:${KOPIA_SHALLOW}+${previous_offset}][] | .id" | head -1
     else
-        # Get latest snapshot
-        "${snapshot_list_cmd[@]}" | jq -r ".[0].id"
+        # Get snapshot with offset (0 = latest, 1 = previous, etc.)
+        echo "Using previous offset: ${previous_offset} (0=latest, 1=previous, etc.)"
+        "${snapshot_list_cmd[@]}" | jq -r ".[${previous_offset}].id"
     fi
 }
 

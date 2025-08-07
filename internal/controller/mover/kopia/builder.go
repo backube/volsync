@@ -250,6 +250,7 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		hostname:              hostname,
 		restoreAsOf:           destination.Spec.Kopia.RestoreAsOf,
 		shallow:               destination.Spec.Kopia.Shallow,
+		previous:              destination.Spec.Kopia.Previous,
 		latestMoverStatus:     destination.Status.LatestMoverStatus,
 		moverConfig:           destination.Spec.Kopia.MoverConfig,
 	}, nil

@@ -98,6 +98,7 @@ type Mover struct {
 	// Destination-only fields
 	restoreAsOf     *string
 	shallow         *int32
+	previous        *int32
 	cleanupTempPVC  bool
 	cleanupCachePVC bool
 }
@@ -608,6 +609,9 @@ func (m *Mover) addDestinationEnvVars(envVars []corev1.EnvVar) []corev1.EnvVar {
 	}
 	if m.shallow != nil {
 		envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_SHALLOW", Value: strconv.Itoa(int(*m.shallow))})
+	}
+	if m.previous != nil {
+		envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_PREVIOUS", Value: strconv.Itoa(int(*m.previous))})
 	}
 	return envVars
 }

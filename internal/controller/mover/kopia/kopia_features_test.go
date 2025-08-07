@@ -879,6 +879,7 @@ type destinationFeaturesTestCase struct {
 	name         string
 	restoreAsOf  *string
 	shallow      *int32
+	previous     *int32
 	expectedEnvs map[string]string
 }
 
@@ -913,6 +914,22 @@ func getDestinationFeaturesTestCases() []destinationFeaturesTestCase {
 				"KOPIA_SHALLOW":       "3",
 			},
 		},
+		{
+			name:     "previous restore",
+			previous: ptr.To[int32](1),
+			expectedEnvs: map[string]string{
+				"KOPIA_PREVIOUS": "1",
+			},
+		},
+		{
+			name:        "previous with restore as of",
+			restoreAsOf: ptr.To("2024-01-15T18:30:00Z"),
+			previous:    ptr.To[int32](2),
+			expectedEnvs: map[string]string{
+				"KOPIA_RESTORE_AS_OF": "2024-01-15T18:30:00Z",
+				"KOPIA_PREVIOUS":      "2",
+			},
+		},
 	}
 }
 
@@ -931,6 +948,7 @@ func testDestinationFeatures(t *testing.T, tt destinationFeaturesTestCase) {
 		isSource:    false, // Destination
 		restoreAsOf: tt.restoreAsOf,
 		shallow:     tt.shallow,
+		previous:    tt.previous,
 	}
 
 	secret := &corev1.Secret{
@@ -952,7 +970,7 @@ func testDestinationFeatures(t *testing.T, tt destinationFeaturesTestCase) {
 func verifyDestinationFeatureVariables(t *testing.T, expectedEnvs map[string]string, envVars []corev1.EnvVar) {
 	actualEnvs := make(map[string]string)
 	for _, env := range envVars {
-		if env.Name == "KOPIA_RESTORE_AS_OF" || env.Name == "KOPIA_SHALLOW" {
+		if env.Name == "KOPIA_RESTORE_AS_OF" || env.Name == "KOPIA_SHALLOW" || env.Name == "KOPIA_PREVIOUS" {
 			actualEnvs[env.Name] = env.Value
 		}
 	}
