@@ -196,6 +196,9 @@ type ReplicationDestinationSpec struct {
 	// restic defines the configuration when using Restic-based replication.
 	//+optional
 	Restic *ReplicationDestinationResticSpec `json:"restic,omitempty"`
+	// kopia defines the configuration when using Kopia-based replication.
+	//+optional
+	Kopia *ReplicationDestinationKopiaSpec `json:"kopia,omitempty"`
 	// external defines the configuration when using an external replication
 	// provider.
 	//+optional
@@ -264,6 +267,112 @@ type ReplicationDestinationResticSpec struct {
 	MoverConfig `json:",inline"`
 }
 
+type ReplicationDestinationKopiaCA CustomCASpec
+
+// KopiaSourceIdentity defines helper fields to identify the source of snapshots to restore
+type KopiaSourceIdentity struct {
+	// SourceName is the name of the ReplicationSource that created the snapshots
+	// +optional
+	SourceName string `json:"sourceName,omitempty"`
+	// SourceNamespace is the namespace of the ReplicationSource that created the snapshots
+	// If not specified, defaults to the namespace of this ReplicationDestination
+	// +optional
+	SourceNamespace string `json:"sourceNamespace,omitempty"`
+	// SourcePVCName is the name of the PVC that was backed up by the ReplicationSource.
+	// This is used to generate the exact same hostname/identity as the source.
+	// If not provided, VolSync will attempt to auto-discover it from the ReplicationSource.
+	// If auto-discovery fails, the destination PVC name will be used as a fallback.
+	// +optional
+	SourcePVCName string `json:"sourcePVCName,omitempty"`
+	// SourcePathOverride is the path override from the ReplicationSource.
+	// If not provided, VolSync will attempt to auto-discover it from the ReplicationSource.
+	// This allows the destination to restore from the correct snapshot path when the source
+	// used a different path name in the snapshot than the actual filesystem path.
+	// +kubebuilder:validation:Pattern="^/.*"
+	// +optional
+	SourcePathOverride *string `json:"sourcePathOverride,omitempty"`
+}
+
+// ReplicationDestinationKopiaSpec defines the field for kopia in replicationDestination.
+type ReplicationDestinationKopiaSpec struct {
+	ReplicationDestinationVolumeOptions `json:",inline"`
+	// Repository is the secret name containing repository info
+	Repository string `json:"repository,omitempty"`
+	// customCA is a custom CA that will be used to verify the remote
+	CustomCA ReplicationDestinationKopiaCA `json:"customCA,omitempty"`
+	// cacheCapacity can be used to set the size of the kopia metadata cache volume
+	//+optional
+	CacheCapacity *resource.Quantity `json:"cacheCapacity,omitempty"`
+	// cacheStorageClassName can be used to set the StorageClass of the kopia
+	// metadata cache volume
+	//+optional
+	CacheStorageClassName *string `json:"cacheStorageClassName,omitempty"`
+	// accessModes can be used to set the accessModes of kopia metadata cache volume
+	//+optional
+	CacheAccessModes []corev1.PersistentVolumeAccessMode `json:"cacheAccessModes,omitempty"`
+	// Set this to true to delete the kopia cache PVC (dynamically provisioned
+	// by VolSync) at the end of each successful ReplicationDestination sync iteration.
+	// Cache PVCs will always be deleted if the owning ReplicationDestination is
+	// removed, even if this setting is false.
+	// The default is false.
+	//+optional
+	CleanupCachePVC bool `json:"cleanupCachePVC,omitempty"`
+	// RestoreAsOf refers to the backup that is most recent as of that time.
+	// +kubebuilder:validation:Format="date-time"
+	//+optional
+	RestoreAsOf *string `json:"restoreAsOf,omitempty"`
+	// Shallow defines the shallow restore depth (only restore recent snapshots)
+	//+optional
+	Shallow *int32 `json:"shallow,omitempty"`
+	// Previous specifies the number of snapshots to skip before selecting one to restore from
+	//+optional
+	Previous *int32 `json:"previous,omitempty"`
+	// PolicyConfig defines configuration for Kopia policy files
+	//+optional
+	PolicyConfig *KopiaPolicySpec `json:"policyConfig,omitempty"`
+	// SourceIdentity provides an easy way to specify which ReplicationSource's snapshots to restore.
+	// When specified, it will be used to generate the username and hostname automatically.
+	// This is a helper field that simplifies configuration for users.
+	//+optional
+	SourceIdentity *KopiaSourceIdentity `json:"sourceIdentity,omitempty"`
+	// Username override for Kopia repository access.
+	// If not specified, defaults to "volsync"
+	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$"
+	//+optional
+	Username *string `json:"username,omitempty"`
+	// Hostname override for Kopia repository access.
+	// If not specified, defaults to "<namespace>-<replicationsource-name>"
+	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$"
+	//+optional
+	Hostname *string `json:"hostname,omitempty"`
+
+	MoverConfig `json:",inline"`
+}
+
+// KopiaIdentityInfo provides information about available Kopia snapshot identities
+type KopiaIdentityInfo struct {
+	// Identity is the username@hostname identifier
+	Identity string `json:"identity"`
+	// SnapshotCount is the number of snapshots for this identity
+	SnapshotCount int32 `json:"snapshotCount"`
+	// LatestSnapshot is the timestamp of the most recent snapshot
+	//+optional
+	LatestSnapshot *metav1.Time `json:"latestSnapshot,omitempty"`
+}
+
+// ReplicationDestinationKopiaStatus defines status information for Kopia-based replication.
+type ReplicationDestinationKopiaStatus struct {
+	// RequestedIdentity is the username@hostname that was requested for restore
+	//+optional
+	RequestedIdentity string `json:"requestedIdentity,omitempty"`
+	// SnapshotsFound is the number of snapshots found for the requested identity
+	//+optional
+	SnapshotsFound int32 `json:"snapshotsFound,omitempty"`
+	// AvailableIdentities lists the identities available in the repository
+	//+optional
+	AvailableIdentities []KopiaIdentityInfo `json:"availableIdentities,omitempty"`
+}
+
 // ReplicationDestinationStatus defines the observed state of ReplicationDestination
 type ReplicationDestinationStatus struct {
 	// lastSyncTime is the time of the most recent successful synchronization.
@@ -299,6 +408,9 @@ type ReplicationDestinationStatus struct {
 	// used.
 	//+optional
 	External map[string]string `json:"external,omitempty"`
+	// kopia contains status information for Kopia-based replication.
+	//+optional
+	Kopia *ReplicationDestinationKopiaStatus `json:"kopia,omitempty"`
 	// conditions represent the latest available observations of the
 	// destination's state.
 	Conditions []metav1.Condition `json:"conditions,omitempty"`

@@ -40,6 +40,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -111,6 +112,27 @@ func (r *ReplicationSourceReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	var result ctrl.Result
 	var err error
 
+	// Handle deletion - check if resource is being deleted
+	if !inst.GetDeletionTimestamp().IsZero() {
+		logger.Info("ReplicationSource is being deleted, starting cleanup")
+		return r.handleDeletion(ctx, inst, logger)
+	}
+
+	// Add finalizer if not present
+	if !controllerutil.ContainsFinalizer(inst, volsyncv1alpha1.ReplicationSourceFinalizer) {
+		controllerutil.AddFinalizer(inst, volsyncv1alpha1.ReplicationSourceFinalizer)
+		if err := r.Update(ctx, inst); err != nil {
+			if kerrors.IsConflict(err) {
+				return ctrl.Result{RequeueAfter: time.Second}, nil
+			}
+			logger.Error(err, "Failed to add finalizer")
+			return ctrl.Result{}, err
+		}
+		logger.Info("Added finalizer to ReplicationSource")
+		// Requeue to continue with normal processing after adding finalizer
+		return ctrl.Result{Requeue: true}, nil
+	}
+
 	// Check if privileged movers are allowed via namespace annotation
 	privilegedMoverOk, err := utils.PrivilegedMoversOk(ctx, r.Client, logger, inst.GetNamespace())
 	if err != nil {
@@ -156,6 +178,96 @@ func (r *ReplicationSourceReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		err = statusErr
 	}
 	return result, err
+}
+
+// handleDeletion handles the deletion of a ReplicationSource by cleaning up owned resources
+// and removing the finalizer once cleanup is complete
+func (r *ReplicationSourceReconciler) handleDeletion(ctx context.Context,
+	inst *volsyncv1alpha1.ReplicationSource, logger logr.Logger) (ctrl.Result, error) {
+	if !controllerutil.ContainsFinalizer(inst, volsyncv1alpha1.ReplicationSourceFinalizer) {
+		// Finalizer not present, nothing to clean up
+		return ctrl.Result{}, nil
+	}
+
+	logger.Info("Cleaning up ReplicationSource resources")
+
+	// Perform mover-specific cleanup
+	result, err := r.cleanupMoverResources(ctx, inst, logger)
+	if err != nil {
+		return result, err
+	}
+	if result.Requeue || result.RequeueAfter > 0 {
+		return result, nil
+	}
+
+	// Clean up remaining owned resources
+	if err := r.cleanupOwnedResources(ctx, inst, logger); err != nil {
+		return r.handleCleanupError(ctx, inst, logger, err, "Resource cleanup error during deletion")
+	}
+
+	// Remove finalizer and complete deletion
+	return r.removeFinalizer(ctx, inst, logger)
+}
+
+// cleanupMoverResources handles cleanup of mover-specific resources
+func (r *ReplicationSourceReconciler) cleanupMoverResources(ctx context.Context,
+	inst *volsyncv1alpha1.ReplicationSource, logger logr.Logger) (ctrl.Result, error) {
+	// Use shared utility function with pre-built source mover factory
+	moverFactory := utils.CreateReplicationSourceMoverFactory()
+	eventRecorder := record.NewEventRecorderAdapter(mover.NewEventRecorderLogger(r.EventRecorder))
+	result, err := utils.CleanupMoverResources(ctx, inst, r.Client, logger, eventRecorder, moverFactory)
+	if err != nil {
+		return r.handleCleanupError(ctx, inst, logger, err, "Cleanup error during deletion")
+	}
+	return result, nil
+}
+
+// cleanupOwnedResources cleans up owned Kubernetes resources
+func (r *ReplicationSourceReconciler) cleanupOwnedResources(ctx context.Context,
+	inst *volsyncv1alpha1.ReplicationSource, logger logr.Logger) error {
+	cleanupTypes := []client.Object{
+		&batchv1.Job{},
+		&corev1.PersistentVolumeClaim{},
+		&corev1.Secret{},
+		&corev1.Service{},
+		&corev1.ServiceAccount{},
+		&rbacv1.Role{},
+		&rbacv1.RoleBinding{},
+		&snapv1.VolumeSnapshot{},
+	}
+
+	return utils.CleanupObjects(ctx, r.Client, logger, inst, cleanupTypes)
+}
+
+// handleCleanupError handles cleanup errors by updating status and requeuing
+func (r *ReplicationSourceReconciler) handleCleanupError(ctx context.Context,
+	inst *volsyncv1alpha1.ReplicationSource, logger logr.Logger, err error, message string) (ctrl.Result, error) {
+	logger.Error(err, message)
+	// Update status to indicate cleanup error but don't fail deletion
+	apimeta.SetStatusCondition(&inst.Status.Conditions, metav1.Condition{
+		Type:    volsyncv1alpha1.ConditionSynchronizing,
+		Status:  metav1.ConditionFalse,
+		Reason:  volsyncv1alpha1.SynchronizingReasonCleanup,
+		Message: fmt.Sprintf("%s: %v", message, err),
+	})
+	// Update status and requeue to retry cleanup
+	if statusErr := r.Client.Status().Update(ctx, inst); statusErr != nil {
+		logger.Error(statusErr, "Failed to update status during cleanup")
+	}
+	return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+}
+
+// removeFinalizer removes the finalizer and completes the deletion process
+func (r *ReplicationSourceReconciler) removeFinalizer(ctx context.Context,
+	inst *volsyncv1alpha1.ReplicationSource, logger logr.Logger) (ctrl.Result, error) {
+	controllerutil.RemoveFinalizer(inst, volsyncv1alpha1.ReplicationSourceFinalizer)
+	if err := r.Update(ctx, inst); err != nil {
+		logger.Error(err, "Failed to remove finalizer")
+		return ctrl.Result{}, err
+	}
+
+	logger.Info("ReplicationSource cleanup completed successfully")
+	return ctrl.Result{}, nil
 }
 
 func (r *ReplicationSourceReconciler) SetupWithManager(mgr ctrl.Manager) error {

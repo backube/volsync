@@ -60,6 +60,10 @@ const (
 
 	// Annotation on ReplicationSource or ReplicationDestination to enable running the mover job in debug mode
 	EnableDebugMoverAnnotation = "volsync.backube/enable-debug-mover"
+
+	// Finalizers used to ensure controlled cleanup of resources
+	ReplicationSourceFinalizer      = "volsync.backube/replication-source-cleanup"
+	ReplicationDestinationFinalizer = "volsync.backube/replication-destination-cleanup"
 )
 
 const (
@@ -147,6 +151,34 @@ type CustomCASpec struct {
 
 	// The key within the Secret or ConfigMap containing the CA certificate
 	Key string `json:"key,omitempty"`
+}
+
+// KopiaPolicySpec defines configuration for Kopia policy files
+type KopiaPolicySpec struct {
+	// The name of a Secret that contains Kopia policy configuration files
+	// If SecretName is used then ConfigMapName should not be set
+	SecretName string `json:"secretName,omitempty"`
+
+	// The name of a ConfigMap that contains Kopia policy configuration files
+	// If ConfigMapName is used then SecretName should not be set
+	ConfigMapName string `json:"configMapName,omitempty"`
+
+	// GlobalPolicyFilename specifies the filename for the global policy configuration.
+	// This file should contain a JSON policy configuration that will be applied globally.
+	// Defaults to "global-policy.json" if not specified.
+	//+optional
+	GlobalPolicyFilename string `json:"globalPolicyFilename,omitempty"`
+
+	// RepositoryConfigFilename specifies the filename for the repository configuration.
+	// This file should contain repository-specific settings like actions enablement.
+	// Defaults to "repository.config" if not specified.
+	//+optional
+	RepositoryConfigFilename string `json:"repositoryConfigFilename,omitempty"`
+
+	// RepositoryConfig is a multiline JSON string containing Kopia repository configuration
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Optional
+	RepositoryConfig *string `json:"repositoryConfig,omitempty"`
 }
 
 type MoverConfig struct {
