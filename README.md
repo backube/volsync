@@ -92,7 +92,7 @@ spec:
       fsGroup: 0
 ```
 
-a `ReplicationDestination` example:
+a `ReplicationDestination` example (referencing the above `ReplicationSource`):
 ```yaml
 apiVersion: volsync.backube/v1alpha1
 kind: ReplicationDestination
@@ -105,8 +105,8 @@ spec:
   kopia:
     repository: volsync-kopia-repo
     sourceIdentity:
-      sourceName: webapp-backup
-      sourceNamespace: production
+      sourceName: homepage-kopia
+      sourceNamespace: apps
     destinationPVC: test-restore-data
     copyMethod: Direct
     storageClassName: "truenas-csi-iscsi"
