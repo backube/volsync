@@ -27,7 +27,7 @@ spec:
   source:
     chart: volsync
     repoURL: https://perfectra1n.github.io/volsync/charts/
-    targetRevision: "0.15.4"
+    targetRevision: "0.15.2"
     helm:
       values: |
         manageCRDs: true
@@ -35,11 +35,11 @@ spec:
           disableAuth: true
         image:
           repository: ghcr.io/perfectra1n/volsync
-          tag: "0.15.21"
+          tag: "0.15.12"
           image: ""
         kopia:
           repository: ghcr.io/perfectra1n/volsync
-          tag: "0.15.21"
+          tag: "0.15.12"
           image: ""
         rclone:
           repository: ghcr.io/perfectra1n/volsync
