@@ -50,9 +50,10 @@ import (
 
 const (
 	kopiaCacheMountPath     = "/cache"
-	mountPath               = "/data"
+	mountPath               = "/restore/data"
 	dataVolumeName          = "data"
 	kopiaCache              = "cache"
+	restoreVolumeName       = "restore"
 	kopiaCAMountPath        = "/customCA"
 	kopiaCAFilename         = "ca.crt"
 	credentialDir           = "/credentials"
@@ -680,6 +681,21 @@ func (m *Mover) addActionsEnvVars(envVars []corev1.EnvVar) []corev1.EnvVar {
 // configureContainer sets up the main container configuration
 func (m *Mover) configureContainer(podSpec *corev1.PodSpec, envVars []corev1.EnvVar,
 	actions []string, readOnlyVolume bool, sa *corev1.ServiceAccount) {
+	volumeMounts := []corev1.VolumeMount{
+		{Name: dataVolumeName, MountPath: mountPath, ReadOnly: readOnlyVolume},
+		{Name: "tempdir", MountPath: "/tmp"},
+	}
+
+	// For destination movers, add the /restore volume mount
+	// This is needed for Kopia's atomic file operations which create temp files
+	// at the parent directory of the restore path
+	if !m.isSource {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      restoreVolumeName,
+			MountPath: "/restore",
+		})
+	}
+
 	podSpec.Containers = []corev1.Container{{
 		Name:    "kopia",
 		Env:     envVars,
@@ -694,10 +710,7 @@ func (m *Mover) configureContainer(podSpec *corev1.PodSpec, envVars []corev1.Env
 			Privileged:             ptr.To(false),
 			ReadOnlyRootFilesystem: ptr.To(true),
 		},
-		VolumeMounts: []corev1.VolumeMount{
-			{Name: dataVolumeName, MountPath: mountPath, ReadOnly: readOnlyVolume},
-			{Name: "tempdir", MountPath: "/tmp"},
-		},
+		VolumeMounts: volumeMounts,
 	}}
 	podSpec.RestartPolicy = corev1.RestartPolicyNever
 	podSpec.ServiceAccountName = sa.Name
@@ -706,7 +719,7 @@ func (m *Mover) configureContainer(podSpec *corev1.PodSpec, envVars []corev1.Env
 // configureBasicVolumes sets up basic volumes for the pod
 func (m *Mover) configureBasicVolumes(podSpec *corev1.PodSpec,
 	dataPVC *corev1.PersistentVolumeClaim, readOnlyVolume bool) {
-	podSpec.Volumes = []corev1.Volume{
+	volumes := []corev1.Volume{
 		{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
 			PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 				ClaimName: dataPVC.Name,
@@ -719,6 +732,20 @@ func (m *Mover) configureBasicVolumes(podSpec *corev1.PodSpec,
 			}},
 		},
 	}
+
+	// For destination movers, add the restore volume to make /restore writable
+	// This is needed for Kopia's atomic file operations which create temp files
+	// at the parent directory of the restore path
+	if !m.isSource {
+		volumes = append(volumes, corev1.Volume{
+			Name: restoreVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
+		})
+	}
+
+	podSpec.Volumes = volumes
 }
 
 // configureCacheVolume adds cache volume - either PVC or EmptyDir fallback
