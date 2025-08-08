@@ -275,6 +275,7 @@ type KopiaSourceIdentity struct {
 	// +optional
 	SourceName string `json:"sourceName,omitempty"`
 	// SourceNamespace is the namespace of the ReplicationSource that created the snapshots
+	// If not specified, defaults to the namespace of this ReplicationDestination
 	// +optional
 	SourceNamespace string `json:"sourceNamespace,omitempty"`
 	// SourcePVCName is the name of the PVC that was backed up by the ReplicationSource.

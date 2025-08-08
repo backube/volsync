@@ -1411,7 +1411,9 @@ spec:
                           description: SourceName is the name of the ReplicationSource that created the snapshots
                           type: string
                         sourceNamespace:
-                          description: SourceNamespace is the namespace of the ReplicationSource that created the snapshots
+                          description: |-
+                            SourceNamespace is the namespace of the ReplicationSource that created the snapshots
+                            If not specified, defaults to the namespace of this ReplicationDestination
                           type: string
                         sourcePVCName:
                           description: |-

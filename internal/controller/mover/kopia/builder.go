@@ -227,8 +227,19 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 
 	// Check if sourceIdentity helper is provided and should be used
 	useSourceIdentity := destination.Spec.Kopia.SourceIdentity != nil &&
-		destination.Spec.Kopia.SourceIdentity.SourceName != "" &&
-		destination.Spec.Kopia.SourceIdentity.SourceNamespace != ""
+		destination.Spec.Kopia.SourceIdentity.SourceName != ""
+
+	// Default sourceNamespace to the destination's namespace if not provided
+	var sourceNamespace string
+	if useSourceIdentity {
+		if destination.Spec.Kopia.SourceIdentity.SourceNamespace != "" {
+			sourceNamespace = destination.Spec.Kopia.SourceIdentity.SourceNamespace
+		} else {
+			sourceNamespace = destination.GetNamespace()
+			logger.V(1).Info("Using destination namespace as sourceNamespace",
+				"namespace", sourceNamespace)
+		}
+	}
 
 	// Generate username with proper priority
 	if destination.Spec.Kopia.Username != nil && *destination.Spec.Kopia.Username != "" {
@@ -237,7 +248,7 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 	} else if useSourceIdentity {
 		// Use sourceIdentity to generate username
 		si := destination.Spec.Kopia.SourceIdentity
-		username = generateUsername(nil, si.SourceName, si.SourceNamespace)
+		username = generateUsername(nil, si.SourceName, sourceNamespace)
 	} else {
 		// Default generation from destination
 		username = generateUsername(nil, destination.GetName(), destination.GetNamespace())
@@ -251,7 +262,7 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		// Use sourceIdentity to generate hostname
 		si := destination.Spec.Kopia.SourceIdentity
 		var pvcNameToUse *string
-		
+
 		// Priority for PVC name:
 		// 1. Explicitly provided sourcePVCName
 		// 2. Auto-discovered from ReplicationSource
@@ -260,12 +271,12 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 			pvcNameToUse = &si.SourcePVCName
 		} else {
 			// Try to auto-discover the source PVC from the ReplicationSource
-			discoveredPVC := kb.discoverSourcePVC(client, si.SourceName, si.SourceNamespace, logger)
+			discoveredPVC := kb.discoverSourcePVC(client, si.SourceName, sourceNamespace, logger)
 			if discoveredPVC != "" {
 				pvcNameToUse = &discoveredPVC
 				logger.V(1).Info("Auto-discovered source PVC from ReplicationSource",
 					"sourceName", si.SourceName,
-					"sourceNamespace", si.SourceNamespace,
+					"sourceNamespace", sourceNamespace,
 					"discoveredPVC", discoveredPVC)
 			} else {
 				// Fallback to destination PVC if source PVC name not provided or discovered
@@ -275,7 +286,7 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 			}
 		}
 		hostname = generateHostname(nil, pvcNameToUse,
-			si.SourceNamespace, si.SourceName)
+			sourceNamespace, si.SourceName)
 	} else {
 		// Default generation from destination
 		hostname = generateHostname(nil, destination.Spec.Kopia.DestinationPVC,
