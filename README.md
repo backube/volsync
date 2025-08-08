@@ -27,7 +27,7 @@ spec:
   source:
     chart: volsync
     repoURL: https://perfectra1n.github.io/volsync/charts/
-    targetRevision: "0.15.1"
+    targetRevision: "0.15.2"
     helm:
       values: |
         manageCRDs: true
