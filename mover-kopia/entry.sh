@@ -1021,9 +1021,19 @@ function discover_available_snapshots {
 function select_snapshot_to_restore {
     echo "Selecting snapshot to restore" >&2
     
-    # List snapshots for the specific data directory path
-    # This ensures we get snapshots for the correct username@hostname:/path
-    local snapshot_list_cmd=("${KOPIA[@]}" snapshot list "${DATA_DIR}" --json)
+    # Build the full identity string for listing snapshots
+    # When using overrides, we need to specify the full identity: username@hostname:path
+    local identity_string=""
+    if [[ -n "${KOPIA_OVERRIDE_USERNAME}" ]] && [[ -n "${KOPIA_OVERRIDE_HOSTNAME}" ]]; then
+        identity_string="${KOPIA_OVERRIDE_USERNAME}@${KOPIA_OVERRIDE_HOSTNAME}:${DATA_DIR}"
+        echo "Looking for snapshots with identity: ${identity_string}" >&2
+    else
+        # No overrides, use default behavior
+        identity_string="${DATA_DIR}"
+    fi
+    
+    # List snapshots for the specific identity
+    local snapshot_list_cmd=("${KOPIA[@]}" snapshot list "${identity_string}" --json)
     
     # Get the base offset from KOPIA_PREVIOUS parameter (defaults to 0)
     local -i previous_offset=${KOPIA_PREVIOUS-0}
