@@ -579,6 +579,12 @@ function connect_repository {
             S3_PREFIX="${BASH_REMATCH[1]}"
             # Validate S3 prefix for security
             if [[ "${S3_PREFIX}" =~ ^[a-zA-Z0-9._/-]+$ ]] && [[ ! "${S3_PREFIX}" =~ \.\. ]]; then
+                # Ensure S3 prefix has a trailing slash for proper path separation
+                # This prevents ambiguous file paths in S3 storage
+                if [[ -n "${S3_PREFIX}" ]] && [[ ! "${S3_PREFIX}" =~ /$ ]]; then
+                    S3_PREFIX="${S3_PREFIX}/"
+                    echo "Added trailing slash to S3 prefix for proper path separation"
+                fi
                 echo "Using S3 prefix: ${S3_PREFIX}"
                 if [[ -n "${S3_PREFIX}" ]]; then
                     S3_CONNECT_CMD+=(--prefix="${S3_PREFIX}")
@@ -764,6 +770,12 @@ function create_repository {
             S3_PREFIX="${BASH_REMATCH[1]}"
             # Validate S3 prefix for security
             if [[ "${S3_PREFIX}" =~ ^[a-zA-Z0-9._/-]+$ ]] && [[ ! "${S3_PREFIX}" =~ \.\. ]]; then
+                # Ensure S3 prefix has a trailing slash for proper path separation
+                # This prevents ambiguous file paths in S3 storage
+                if [[ -n "${S3_PREFIX}" ]] && [[ ! "${S3_PREFIX}" =~ /$ ]]; then
+                    S3_PREFIX="${S3_PREFIX}/"
+                    echo "Added trailing slash to S3 prefix for proper path separation"
+                fi
                 echo "Using S3 prefix: ${S3_PREFIX}"
                 if [[ -n "${S3_PREFIX}" ]]; then
                     S3_CREATE_CMD+=(--prefix="${S3_PREFIX}")
@@ -1076,12 +1088,12 @@ function do_restore {
     echo "Selected snapshot with id: ${snapshot_id}"
     
     # Restore the snapshot with proper error handling
-    if ! pushd "${DATA_DIR}" >/dev/null; then
-        error 1 "Failed to change to data directory: ${DATA_DIR}"
-    fi
-    
-    if ! "${KOPIA[@]}" snapshot restore "${snapshot_id}" .; then
-        popd >/dev/null || true
+    # Note: We restore directly to ${DATA_DIR} instead of changing directory first
+    # to avoid issues with path construction in Kopia
+    # Use --write-files-atomically to avoid temporary .kopia-entry files in wrong locations
+    if ! "${KOPIA[@]}" snapshot restore "${snapshot_id}" "${DATA_DIR}" \
+        --write-files-atomically \
+        --ignore-permission-errors; then
         
         # If discovery mode is enabled and restore failed, show available snapshots
         if [[ "${KOPIA_DISCOVER_SNAPSHOTS}" == "true" ]]; then
@@ -1090,10 +1102,6 @@ function do_restore {
         fi
         
         error 1 "Failed to restore snapshot: ${snapshot_id}"
-    fi
-    
-    if ! popd >/dev/null; then
-        echo "Warning: Failed to return to original directory"
     fi
     
     echo "Snapshot restore completed successfully"
