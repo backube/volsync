@@ -1098,10 +1098,15 @@ function do_restore {
     echo "Selected snapshot with id: ${snapshot_id}"
     
     # Restore the snapshot with proper error handling
-    # Note: We restore directly to ${DATA_DIR} instead of changing directory first
-    # to avoid issues with path construction in Kopia
-    # Use --write-files-atomically to avoid temporary .kopia-entry files in wrong locations
-    if ! "${KOPIA[@]}" snapshot restore "${snapshot_id}" "${DATA_DIR}" \
+    # Change to the target directory first to avoid path construction issues
+    # when using --write-files-atomically (prevents //data.kopia-entry error)
+    if ! cd "${DATA_DIR}"; then
+        error 1 "Failed to change to data directory: ${DATA_DIR}"
+    fi
+    
+    # Restore to current directory (.) to ensure atomic temp files are created correctly
+    # The --write-files-atomically flag creates .kopia-entry temp files in the current dir
+    if ! "${KOPIA[@]}" snapshot restore "${snapshot_id}" . \
         --write-files-atomically \
         --ignore-permission-errors; then
         
