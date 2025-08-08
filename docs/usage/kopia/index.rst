@@ -79,7 +79,7 @@ including point-in-time recovery, previous snapshot selection, and leveraging
 enhanced error reporting for troubleshooting.
 
 See :doc:`restore-configuration` for restore operations, enhanced error reporting,
-and the ``sourceIdentity`` helper field.
+and the ``sourceIdentity`` helper field with auto-discovery.
 
 **4. Configure Multi-Tenancy (Optional)**
 
@@ -156,6 +156,7 @@ Here's a complete example showing how to set up a basic Kopia backup:
        sourceIdentity:
          sourceName: mydata-backup
          sourceNamespace: default
+         # sourcePVCName is optional - auto-discovered from ReplicationSource if not provided
        # Optionally use previous parameter to restore from older snapshots
        previous: 1  # Skip latest, use previous snapshot
 
@@ -189,7 +190,8 @@ The Kopia documentation has been organized into focused sections for easier navi
 
 :doc:`restore-configuration`
    Complete restore operations guide including enhanced error reporting, snapshot discovery,
-   ``sourceIdentity`` helper, ``previous`` parameter, point-in-time recovery, and restore options.
+   ``sourceIdentity`` helper with auto-discovery, ``previous`` parameter, point-in-time recovery,
+   and restore options.
 
 :doc:`troubleshooting`
    Comprehensive troubleshooting guide covering enhanced error reporting, snapshot discovery,

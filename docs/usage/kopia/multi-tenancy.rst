@@ -12,13 +12,6 @@ Each Kopia client requires a unique identity consisting of:
 - **Username**: Identifies the tenant/user in the repository
 - **Hostname**: Identifies the specific host/instance within that tenant
 
-.. note::
-   
-   **New in VolSync**: The ``sourceIdentity`` field in ReplicationDestination provides a 
-   simplified way to restore from a specific ReplicationSource's snapshots without manually 
-   configuring username and hostname. See :ref:`sourceIdentity in restore configuration 
-   <restore-configuration:Restoring from a Specific ReplicationSource (sourceIdentity)>` 
-   for detailed usage and examples.
 
 Enhanced Multi-Tenancy with Namespace-First Hostnames
 ------------------------------------------------------
@@ -417,6 +410,7 @@ match the source's identity:
        sourceIdentity:
          sourceName: my-backup
          sourceNamespace: my-namespace
+         # sourcePVCName: optional - auto-discovered if not provided
 
 **Issue 2: Unexpected Hostname After Namespace-First Update**
 
@@ -527,7 +521,7 @@ approach to restoring from specific sources in multi-tenant repositories:
        username: "webapp-backup-production"
        hostname: "production-webapp-pvc"
 
-**Simplified Approach (sourceIdentity)**
+**Simplified Approach (sourceIdentity with Auto-Discovery)**
 
 .. code-block:: yaml
 
@@ -541,7 +535,27 @@ approach to restoring from specific sources in multi-tenant repositories:
        sourceIdentity:
          sourceName: webapp-backup
          sourceNamespace: production
-       # VolSync automatically generates matching username/hostname
+         # sourcePVCName is optional - auto-discovered from ReplicationSource
+       # VolSync automatically:
+       # 1. Fetches the ReplicationSource configuration
+       # 2. Discovers the sourcePVC name from the source
+       # 3. Generates matching username/hostname
+
+**Approach with Explicit PVC Name**
+
+.. code-block:: yaml
+
+   # Optionally specify the source PVC name explicitly
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: restore-data
+   spec:
+     kopia:
+       sourceIdentity:
+         sourceName: webapp-backup
+         sourceNamespace: production
+         sourcePVCName: webapp-data  # Explicitly specify instead of auto-discovery
 
 This is especially useful in multi-tenant scenarios where:
 

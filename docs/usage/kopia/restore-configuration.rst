@@ -14,7 +14,7 @@ Restoring from a Specific ReplicationSource (sourceIdentity)
 
 When restoring data from a Kopia repository that contains backups from multiple sources, 
 you need to specify which source's snapshots to restore. The ``sourceIdentity`` field 
-provides a simplified way to do this.
+provides a simplified way to do this with automatic discovery of the source configuration.
 
 Understanding the Multi-Tenancy Challenge
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -33,13 +33,69 @@ The ``sourceIdentity`` field simplifies this by allowing you to specify just the
 ReplicationSource's name and namespace, and VolSync automatically generates the 
 matching username and hostname.
 
+How Identity Generation Works with sourceIdentity
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When you use ``sourceIdentity``, VolSync generates the identity as follows:
+
+**Username Generation**:
+
+The username is generated from the ``sourceName`` field using the same logic as the 
+ReplicationSource would use:
+
+- If the source has a custom username, that would need to be specified explicitly
+- Otherwise, uses the sanitized source name
+
+**Hostname Generation**:
+
+The hostname generation depends on whether ``sourcePVCName`` is provided:
+
+1. **With explicit sourcePVCName**:
+   
+   .. code-block:: yaml
+   
+      sourceIdentity:
+        sourceName: webapp-backup
+        sourceNamespace: production
+        sourcePVCName: webapp-data
+   
+   Generates: ``production-webapp-data`` (if combined length ≤ 50 characters)
+
+2. **With auto-discovery (sourcePVCName not provided)**:
+   
+   .. code-block:: yaml
+   
+      sourceIdentity:
+        sourceName: webapp-backup
+        sourceNamespace: production
+        # sourcePVCName will be fetched from the ReplicationSource
+   
+   VolSync will:
+   - Query the ReplicationSource ``webapp-backup`` in namespace ``production``
+   - Read its ``spec.sourcePVC`` field (e.g., ``webapp-data``)
+   - Generate: ``production-webapp-data`` (if combined length ≤ 50 characters)
+
+3. **Fallback for long names**:
+   
+   If the combined ``namespace-pvcname`` exceeds 50 characters, only the namespace is used.
+
+**Complete Identity Example**:
+
+For a ReplicationSource with:
+- Name: ``webapp-backup``
+- Namespace: ``production``
+- sourcePVC: ``webapp-data``
+
+The generated identity would be: ``webapp-backup@production-webapp-data``
+
 Using sourceIdentity
 ~~~~~~~~~~~~~~~~~~~~
 
-The ``sourceIdentity`` field accepts two parameters:
+The ``sourceIdentity`` field accepts three parameters:
 
-- ``sourceName``: The name of the ReplicationSource that created the backups
-- ``sourceNamespace``: The namespace where the ReplicationSource exists
+- ``sourceName`` (required): The name of the ReplicationSource that created the backups
+- ``sourceNamespace`` (required): The namespace where the ReplicationSource exists
+- ``sourcePVCName`` (optional): The name of the source PVC - auto-discovered if not provided
 
 **Example: Basic sourceIdentity usage**
 
@@ -64,12 +120,14 @@ The ``sourceIdentity`` field accepts two parameters:
 
 In this example, VolSync will automatically:
 
-1. Generate the username based on the source name (``webapp-backup``)
-2. Generate the hostname based on the namespace and PVC name from the source
-3. Connect to the repository using these generated credentials
-4. Restore from the snapshots created by that specific ReplicationSource
+1. Fetch the ReplicationSource configuration from ``webapp-backup`` in the ``production`` namespace
+2. Auto-discover the ``sourcePVC`` name from the ReplicationSource (if ``sourcePVCName`` not provided)
+3. Generate the username based on the source name (``webapp-backup``)
+4. Generate the hostname based on the namespace and discovered PVC name
+5. Connect to the repository using these generated credentials
+6. Restore from the snapshots created by that specific ReplicationSource
 
-**Example: Cross-namespace restore**
+**Example: Cross-namespace restore with auto-discovery**
 
 You can restore snapshots created in a different namespace:
 
@@ -91,6 +149,30 @@ You can restore snapshots created in a different namespace:
        sourceIdentity:
          sourceName: app-backup
          sourceNamespace: staging
+         # sourcePVCName automatically discovered from staging/app-backup ReplicationSource
+
+**Example: Explicit PVC name (bypassing auto-discovery)**
+
+You can explicitly specify the source PVC name if needed:
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: restore-specific-pvc
+     namespace: production
+   spec:
+     trigger:
+       manual: restore-once
+     kopia:
+       repository: kopia-config
+       destinationPVC: restored-data
+       copyMethod: Direct
+       sourceIdentity:
+         sourceName: multi-pvc-backup
+         sourceNamespace: production
+         sourcePVCName: specific-data-pvc  # Explicitly specify which PVC's snapshots to restore
 
 **Example: Combining sourceIdentity with previous parameter**
 
@@ -115,8 +197,44 @@ older snapshots from a specific source:
        sourceIdentity:
          sourceName: database-backup
          sourceNamespace: production
+         # Auto-discovery will fetch the PVC name from the source
        # Skip the latest snapshot, use the previous one
        previous: 1
+
+Auto-Discovery Feature Details
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The auto-discovery feature simplifies configuration by automatically fetching the source 
+PVC name from the ReplicationSource. This is particularly useful when:
+
+1. **You don't remember the exact PVC name**: No need to look up the source configuration
+2. **PVC names might change**: Auto-discovery always gets the current value
+3. **Reducing configuration errors**: Eliminates typos in PVC names
+4. **Simplifying documentation**: Restore procedures don't need to specify PVC names
+
+**How Auto-Discovery Works**
+
+When ``sourcePVCName`` is not provided in ``sourceIdentity``:
+
+1. VolSync queries the Kubernetes API for the specified ReplicationSource
+2. It reads the ``spec.sourcePVC`` field from the ReplicationSource
+3. This value is used to generate the hostname for identity matching
+4. If the ReplicationSource cannot be found or accessed, an error is reported
+
+**Auto-Discovery Requirements**
+
+- The ReplicationSource must exist in the specified namespace
+- The operator must have permission to read ReplicationSource resources
+- The ReplicationSource must have a ``spec.sourcePVC`` field defined
+
+**When to Use Explicit sourcePVCName**
+
+While auto-discovery is convenient, you might want to specify ``sourcePVCName`` explicitly when:
+
+1. **Cross-cluster restores**: The source cluster/ReplicationSource is not accessible
+2. **Performance optimization**: Avoid the API call to fetch the ReplicationSource
+3. **Historical restores**: Restoring from a source that no longer exists
+4. **Custom scenarios**: When you need to override the discovered value
 
 Fallback to Manual Username/Hostname
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -141,8 +259,9 @@ fields. When these are explicitly set, they take precedence over ``sourceIdentit
 Priority order for identity resolution:
 
 1. **Explicit username/hostname**: If specified, these are used exactly as provided
-2. **sourceIdentity**: If specified and no explicit username/hostname, generates them based on source
-3. **Default generation**: If none specified, generates based on ReplicationDestination name and namespace
+2. **sourceIdentity with explicit sourcePVCName**: Uses provided PVC name for hostname generation
+3. **sourceIdentity with auto-discovery**: Fetches PVC name from ReplicationSource
+4. **Default generation**: If none specified, generates based on ReplicationDestination name and namespace
 
 Enhanced Error Reporting and Discovery
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -507,6 +626,64 @@ The restore operation only needs to be performed once, so instead of using a
 cronspec-based schedule, a :doc:`manual trigger<../triggers>` is used. After the
 restore completes, the ReplicationDestination object can be deleted.
 
+Practical Auto-Discovery Example
+---------------------------------
+
+This example demonstrates how auto-discovery simplifies restore configuration:
+
+**Step 1: Create a ReplicationSource for backup**
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: webapp-backup
+     namespace: production
+   spec:
+     sourcePVC: webapp-persistent-data
+     trigger:
+       schedule: "0 */6 * * *"
+     kopia:
+       repository: kopia-config
+
+**Step 2: Restore using sourceIdentity with auto-discovery**
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: webapp-restore
+     namespace: production
+   spec:
+     trigger:
+       manual: restore-once
+     kopia:
+       repository: kopia-config
+       destinationPVC: webapp-data-restored
+       copyMethod: Direct
+       sourceIdentity:
+         sourceName: webapp-backup
+         sourceNamespace: production
+         # Note: sourcePVCName not specified - will be auto-discovered
+
+**Step 3: Verify the auto-discovery worked**
+
+.. code-block:: bash
+
+   # Check the requested identity
+   kubectl get replicationdestination webapp-restore -o jsonpath='{.status.kopia.requestedIdentity}'
+   # Output: webapp-backup@production-webapp-persistent-data
+   #         The PVC name "webapp-persistent-data" was auto-discovered
+
+**Benefits of this approach**:
+
+1. No need to remember or look up the PVC name
+2. Configuration remains valid even if the source PVC name changes
+3. Reduces configuration errors from typos
+4. Simplifies restore documentation and procedures
+
 Practical Debugging Example
 ---------------------------
 
@@ -714,13 +891,18 @@ repository
 sourceIdentity
    This optional field provides a simplified way to specify which ReplicationSource's 
    snapshots to restore. It automatically generates the correct username and hostname 
-   based on the source configuration.
+   based on the source configuration, with auto-discovery of the source PVC name.
    
    sourceName
-      The name of the ReplicationSource that created the snapshots to restore
+      The name of the ReplicationSource that created the snapshots to restore (required)
    
    sourceNamespace  
-      The namespace where the ReplicationSource exists
+      The namespace where the ReplicationSource exists (required)
+   
+   sourcePVCName
+      The name of the source PVC (optional). If not provided, VolSync will automatically 
+      fetch the ReplicationSource configuration and discover the PVC name from the 
+      ``spec.sourcePVC`` field. This auto-discovery simplifies configuration and reduces errors.
    
    When ``sourceIdentity`` is specified, it takes precedence over default identity 
    generation but is overridden by explicit ``username`` and ``hostname`` fields.

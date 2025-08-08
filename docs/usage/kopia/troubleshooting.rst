@@ -121,6 +121,7 @@ No Snapshots Found
       sourceIdentity:
         sourceName: webapp-backup     # Verify this matches exactly
         sourceNamespace: production    # Verify this matches exactly
+        # sourcePVCName: optional - auto-discovered if not provided
    
    **Source uses custom username/hostname**:
    
@@ -139,6 +140,59 @@ No Snapshots Found
    .. code-block:: bash
    
       kubectl get replicationsource <name> -o jsonpath='{.status.lastManualSync}'
+
+sourceIdentity Auto-Discovery Issues
+-------------------------------------
+
+**Error**: "Failed to fetch ReplicationSource for auto-discovery"
+
+**Symptoms**:
+
+- sourceIdentity specified without sourcePVCName
+- Auto-discovery fails to fetch the ReplicationSource
+
+**Common Causes**:
+
+1. **ReplicationSource doesn't exist**:
+   
+   Verify the source exists:
+   
+   .. code-block:: bash
+   
+      kubectl get replicationsource <sourceName> -n <sourceNamespace>
+   
+2. **Incorrect sourceName or sourceNamespace**:
+   
+   Double-check the spelling and namespace:
+   
+   .. code-block:: yaml
+   
+      sourceIdentity:
+        sourceName: webapp-backup  # Must match exactly
+        sourceNamespace: production  # Must match exactly
+   
+3. **Permission issues**:
+   
+   The operator may not have permission to read ReplicationSources in the target namespace.
+   
+4. **ReplicationSource has no sourcePVC**:
+   
+   Check if the source has a PVC defined:
+   
+   .. code-block:: bash
+   
+      kubectl get replicationsource <name> -n <namespace> -o jsonpath='{.spec.sourcePVC}'
+
+**Resolution**:
+
+Either fix the underlying issue or specify sourcePVCName explicitly:
+
+.. code-block:: yaml
+
+   sourceIdentity:
+     sourceName: webapp-backup
+     sourceNamespace: production
+     sourcePVCName: webapp-data  # Bypass auto-discovery
 
 Identity Mismatch Issues
 ------------------------
@@ -179,6 +233,7 @@ Identity Mismatch Issues
           sourceIdentity:
             sourceName: <exact-source-name>
             sourceNamespace: <exact-source-namespace>
+            # sourcePVCName: <optional - auto-discovered if omitted>
       
       # Option 2: Use explicit identity if source has custom values
       spec:
@@ -273,7 +328,9 @@ based on specific rules:
 **With sourceIdentity**:
 
 - Username: ``sourceName`` from sourceIdentity
-- Hostname: ``<sourceNamespace>-<source-pvc-name>``
+- Hostname: ``<sourceNamespace>-<sourcePVCName>``
+  - If ``sourcePVCName`` is provided: uses that value
+  - If not provided: auto-discovers from ReplicationSource's ``spec.sourcePVC``
 
 **With explicit username/hostname**:
 
@@ -360,6 +417,7 @@ snapshot availability:
        sourceIdentity:
          sourceName: myapp-backup
          sourceNamespace: production
+         # sourcePVCName: auto-discovered from ReplicationSource
        previous: 2  # Skip 2 snapshots
    
    status:
