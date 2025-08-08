@@ -96,7 +96,7 @@ func TestSourceIdentityGeneration(t *testing.T) {
 			expectedHostname: "restore-ns",
 		},
 		{
-			name: "sourceIdentity with PVC name in hostname",
+			name: "sourceIdentity with destination PVC name in hostname (no source PVC specified)",
 			destination: &volsyncv1alpha1.ReplicationDestination{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "restore-app",
@@ -117,6 +117,30 @@ func TestSourceIdentityGeneration(t *testing.T) {
 			},
 			expectedUsername: "webapp-prod",
 			expectedHostname: "prod-data-pvc",
+		},
+		{
+			name: "sourceIdentity with source PVC name generates matching hostname",
+			destination: &volsyncv1alpha1.ReplicationDestination{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "restore-app",
+					Namespace: "restore-ns",
+				},
+				Spec: volsyncv1alpha1.ReplicationDestinationSpec{
+					Kopia: &volsyncv1alpha1.ReplicationDestinationKopiaSpec{
+						Repository: "repo-secret",
+						ReplicationDestinationVolumeOptions: volsyncv1alpha1.ReplicationDestinationVolumeOptions{
+							DestinationPVC: ptr.To("restore-data-pvc"), // Different from source
+						},
+						SourceIdentity: &volsyncv1alpha1.KopiaSourceIdentity{
+							SourceName:      "webapp",
+							SourceNamespace: "prod",
+							SourcePVCName:   "original-data-pvc", // Source PVC name
+						},
+					},
+				},
+			},
+			expectedUsername: "webapp-prod",
+			expectedHostname: "prod-original-data-pvc", // Should use source PVC name
 		},
 		{
 			name: "partial sourceIdentity falls back to defaults",
@@ -163,7 +187,13 @@ func TestSourceIdentityGeneration(t *testing.T) {
 				tt.destination.Spec.Kopia.SourceIdentity.SourceName != "" &&
 				tt.destination.Spec.Kopia.SourceIdentity.SourceNamespace != "" {
 				si := tt.destination.Spec.Kopia.SourceIdentity
-				hostname = generateHostname(nil, tt.destination.Spec.Kopia.DestinationPVC,
+				var pvcNameToUse *string
+				if si.SourcePVCName != "" {
+					pvcNameToUse = &si.SourcePVCName
+				} else {
+					pvcNameToUse = tt.destination.Spec.Kopia.DestinationPVC
+				}
+				hostname = generateHostname(nil, pvcNameToUse,
 					si.SourceNamespace, si.SourceName)
 			}
 

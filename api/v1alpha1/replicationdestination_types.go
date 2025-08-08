@@ -277,6 +277,12 @@ type KopiaSourceIdentity struct {
 	// SourceNamespace is the namespace of the ReplicationSource that created the snapshots
 	// +optional
 	SourceNamespace string `json:"sourceNamespace,omitempty"`
+	// SourcePVCName is the name of the PVC that was backed up by the ReplicationSource.
+	// This is used to generate the exact same hostname/identity as the source.
+	// If not provided, VolSync will attempt to auto-discover it from the ReplicationSource.
+	// If auto-discovery fails, the destination PVC name will be used as a fallback.
+	// +optional
+	SourcePVCName string `json:"sourcePVCName,omitempty"`
 }
 
 // ReplicationDestinationKopiaSpec defines the field for kopia in replicationDestination.

@@ -20,12 +20,15 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package kopia
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"strings"
 
 	"github.com/go-logr/logr"
 	"github.com/spf13/viper"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -247,7 +250,31 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 	} else if useSourceIdentity {
 		// Use sourceIdentity to generate hostname
 		si := destination.Spec.Kopia.SourceIdentity
-		hostname = generateHostname(nil, destination.Spec.Kopia.DestinationPVC,
+		var pvcNameToUse *string
+		
+		// Priority for PVC name:
+		// 1. Explicitly provided sourcePVCName
+		// 2. Auto-discovered from ReplicationSource
+		// 3. Fallback to destination PVC
+		if si.SourcePVCName != "" {
+			pvcNameToUse = &si.SourcePVCName
+		} else {
+			// Try to auto-discover the source PVC from the ReplicationSource
+			discoveredPVC := kb.discoverSourcePVC(client, si.SourceName, si.SourceNamespace, logger)
+			if discoveredPVC != "" {
+				pvcNameToUse = &discoveredPVC
+				logger.V(1).Info("Auto-discovered source PVC from ReplicationSource",
+					"sourceName", si.SourceName,
+					"sourceNamespace", si.SourceNamespace,
+					"discoveredPVC", discoveredPVC)
+			} else {
+				// Fallback to destination PVC if source PVC name not provided or discovered
+				pvcNameToUse = destination.Spec.Kopia.DestinationPVC
+				logger.V(1).Info("Could not discover source PVC, using destination PVC for hostname",
+					"destinationPVC", destination.Spec.Kopia.DestinationPVC)
+			}
+		}
+		hostname = generateHostname(nil, pvcNameToUse,
 			si.SourceNamespace, si.SourceName)
 	} else {
 		// Default generation from destination
@@ -431,4 +458,68 @@ func sanitizeForHostname(input string) string {
 
 	// Ensure hostname doesn't start or end with a hyphen or dot
 	return strings.Trim(validChars, "-.")
+}
+
+// discoverSourcePVC attempts to discover the source PVC name from a ReplicationSource
+// in the specified namespace. This enables automatic hostname generation matching
+// the source's identity without requiring manual configuration.
+// Returns the source PVC name if found, empty string otherwise.
+func (kb *Builder) discoverSourcePVC(c client.Client, sourceName, sourceNamespace string, logger logr.Logger) string {
+	if sourceName == "" || sourceNamespace == "" {
+		logger.V(2).Info("Cannot discover source PVC: missing source name or namespace",
+			"sourceName", sourceName,
+			"sourceNamespace", sourceNamespace)
+		return ""
+	}
+
+	// Create a ReplicationSource object to fetch
+	source := &volsyncv1alpha1.ReplicationSource{}
+	namespacedName := types.NamespacedName{
+		Name:      sourceName,
+		Namespace: sourceNamespace,
+	}
+
+	// Attempt to get the ReplicationSource
+	ctx := context.Background()
+	err := c.Get(ctx, namespacedName, source)
+	if err != nil {
+		if kerrors.IsNotFound(err) {
+			logger.V(2).Info("ReplicationSource not found for auto-discovery",
+				"sourceName", sourceName,
+				"sourceNamespace", sourceNamespace)
+		} else if kerrors.IsForbidden(err) {
+			logger.V(2).Info("Permission denied accessing ReplicationSource for auto-discovery",
+				"sourceName", sourceName,
+				"sourceNamespace", sourceNamespace,
+				"error", err)
+		} else {
+			logger.V(2).Info("Failed to get ReplicationSource for auto-discovery",
+				"sourceName", sourceName,
+				"sourceNamespace", sourceNamespace,
+				"error", err)
+		}
+		return ""
+	}
+
+	// Check if this is a Kopia ReplicationSource
+	if source.Spec.Kopia == nil {
+		logger.V(2).Info("ReplicationSource does not use Kopia mover",
+			"sourceName", sourceName,
+			"sourceNamespace", sourceNamespace)
+		return ""
+	}
+
+	// Return the source PVC name
+	if source.Spec.SourcePVC != "" {
+		logger.V(1).Info("Successfully discovered source PVC from ReplicationSource",
+			"sourceName", sourceName,
+			"sourceNamespace", sourceNamespace,
+			"sourcePVC", source.Spec.SourcePVC)
+		return source.Spec.SourcePVC
+	}
+
+	logger.V(2).Info("ReplicationSource has no source PVC configured",
+		"sourceName", sourceName,
+		"sourceNamespace", sourceNamespace)
+	return ""
 }
