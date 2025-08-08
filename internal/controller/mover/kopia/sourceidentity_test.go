@@ -29,6 +29,7 @@ import (
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
 
+//nolint:funlen
 func TestSourceIdentityGeneration(t *testing.T) {
 	tests := []struct {
 		name             string

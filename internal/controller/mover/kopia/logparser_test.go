@@ -45,8 +45,10 @@ No snapshots found for user1@host1:/data
 Listing all available snapshot identities in the repository...
 Found snapshots in repository:
 
-{"id":"abc123","userName":"user2","hostName":"host2","path":"/data","startTime":"2024-01-01T10:00:00Z","endTime":"2024-01-01T10:05:00Z"}
-{"id":"def456","userName":"user3","hostName":"host3","path":"/data","startTime":"2024-01-01T11:00:00Z","endTime":"2024-01-01T11:05:00Z"}
+{"id":"abc123","userName":"user2","hostName":"host2","path":"/data",` +
+					`"startTime":"2024-01-01T10:00:00Z","endTime":"2024-01-01T10:05:00Z"}
+{"id":"def456","userName":"user3","hostName":"host3","path":"/data",` +
+					`"startTime":"2024-01-01T11:00:00Z","endTime":"2024-01-01T11:05:00Z"}
 
 Available identities (username@hostname combinations):
 user2@host2:/data - Last snapshot: 2024-01-01T10:05:00Z
@@ -94,37 +96,37 @@ user2@host2:/backup 2024-01-01 11:00:00
 		})
 	})
 
-	Describe("KopiaLogFilter", func() {
+	Describe("LogFilter", func() {
 		It("should include error messages", func() {
 			line := "ERROR: Failed to connect to repository"
-			result := KopiaLogFilter(line)
+			result := LogFilter(line)
 			Expect(result).NotTo(BeNil())
 			Expect(*result).To(Equal(line))
 		})
 
 		It("should include discovery mode headers", func() {
 			line := "=== Discovery Mode: Available Snapshots ==="
-			result := KopiaLogFilter(line)
+			result := LogFilter(line)
 			Expect(result).NotTo(BeNil())
 			Expect(*result).To(Equal(line))
 		})
 
 		It("should include snapshot listings", func() {
 			line := "user1@host1:/data 2024-01-01 10:00:00"
-			result := KopiaLogFilter(line)
+			result := LogFilter(line)
 			Expect(result).NotTo(BeNil())
 			Expect(*result).To(Equal(line))
 		})
 
 		It("should filter out unimportant lines", func() {
 			line := "Some random debug output"
-			result := KopiaLogFilter(line)
+			result := LogFilter(line)
 			Expect(result).To(BeNil())
 		})
 
 		It("should include JSON snapshot data", func() {
 			line := `{"id":"abc123","userName":"user1","hostName":"host1","path":"/data"}`
-			result := KopiaLogFilter(line)
+			result := LogFilter(line)
 			Expect(result).NotTo(BeNil())
 			Expect(*result).To(Equal(line))
 		})
@@ -136,8 +138,8 @@ user2@host2:/backup 2024-01-01 11:00:00
 // Additional unit tests using standard testing package
 func TestProcessJSONSnapshots(t *testing.T) {
 	tests := []struct {
-		name             string
-		jsonLines        []string
+		name               string
+		jsonLines          []string
 		expectedIdentities map[string]int32
 	}{
 		{

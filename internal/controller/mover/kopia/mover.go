@@ -992,14 +992,14 @@ func (m *Mover) handleJobStatus(ctx context.Context, job *batchv1.Job,
 		logFilter := utils.AllLines
 		if !m.isSource {
 			// Use Kopia-specific log filter for destinations to extract discovery info
-			logFilter = KopiaLogFilter
+			logFilter = LogFilter
 		}
 		utils.UpdateMoverStatusForFailedJob(ctx, m.logger, m.latestMoverStatus, job.GetName(), job.GetNamespace(),
 			logFilter)
 
 		// For destination jobs, parse logs for discovery information
 		if !m.isSource && m.destinationStatus != nil {
-			m.updateDestinationDiscoveryStatus(ctx, job)
+			m.updateDestinationDiscoveryStatus()
 		}
 
 		logger.Info("deleting job -- backoff limit reached")
@@ -1030,7 +1030,7 @@ func (m *Mover) handleJobStatus(ctx context.Context, job *batchv1.Job,
 	// Use Kopia-specific filter for better log extraction
 	logFilter := utils.AllLines
 	if !m.isSource {
-		logFilter = KopiaLogFilter
+		logFilter = LogFilter
 	}
 	utils.UpdateMoverStatusForSuccessfulJob(ctx, m.logger, m.latestMoverStatus, job.GetName(), job.GetNamespace(),
 		logFilter)
@@ -1108,7 +1108,7 @@ func (m *Mover) handleJobCompletion(ctx context.Context, job *batchv1.Job,
 	if job.Status.Failed > 0 {
 		// For destination jobs, parse logs for discovery information
 		if !m.isSource && m.destinationStatus != nil {
-			m.updateDestinationDiscoveryStatus(ctx, job)
+			m.updateDestinationDiscoveryStatus()
 		}
 		// Job has failed - this should have been handled in ensureJob,
 		// but we check here too for safety
@@ -1331,7 +1331,7 @@ func (m *Mover) getMetricLabels(operation string) prometheus.Labels {
 
 // updateDestinationDiscoveryStatus updates the destination status with discovery information
 // parsed from failed job logs
-func (m *Mover) updateDestinationDiscoveryStatus(ctx context.Context, job *batchv1.Job) {
+func (m *Mover) updateDestinationDiscoveryStatus() {
 	if m.destinationStatus == nil || m.latestMoverStatus == nil {
 		return
 	}

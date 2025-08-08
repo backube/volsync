@@ -190,6 +190,7 @@ func (kb *Builder) createSourceMover(client client.Client, logger logr.Logger,
 	}
 }
 
+//nolint:funlen
 func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 	eventRecorder events.EventRecorder,
 	destination *volsyncv1alpha1.ReplicationDestination, privileged bool) (mover.Mover, error) {

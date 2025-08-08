@@ -32,8 +32,8 @@ import (
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
 
-// KopiaSnapshotInfo represents a snapshot in Kopia's JSON output
-type KopiaSnapshotInfo struct {
+// SnapshotInfo represents a snapshot in Kopia's JSON output
+type SnapshotInfo struct {
 	ID          string    `json:"id"`
 	Source      string    `json:"source"`
 	Username    string    `json:"userName"`
@@ -46,6 +46,8 @@ type KopiaSnapshotInfo struct {
 
 // ParseKopiaDiscoveryOutput parses Kopia job output to extract discovery information
 // when snapshots cannot be found for the requested identity
+//
+//nolint:funlen,lll
 func ParseKopiaDiscoveryOutput(logs string) (requestedIdentity string, availableIdentities []volsyncv1alpha1.KopiaIdentityInfo, errorMsg string) {
 	lines := strings.Split(logs, "\n")
 	identityMap := make(map[string]*volsyncv1alpha1.KopiaIdentityInfo)
@@ -149,7 +151,7 @@ func ParseKopiaDiscoveryOutput(logs string) (requestedIdentity string, available
 // processJSONSnapshots processes JSON-formatted snapshot information
 func processJSONSnapshots(jsonLines []string, identityMap map[string]*volsyncv1alpha1.KopiaIdentityInfo) {
 	for _, line := range jsonLines {
-		var snapshot KopiaSnapshotInfo
+		var snapshot SnapshotInfo
 		if err := json.Unmarshal([]byte(line), &snapshot); err != nil {
 			continue
 		}
@@ -174,9 +176,9 @@ func processJSONSnapshots(jsonLines []string, identityMap map[string]*volsyncv1a
 	}
 }
 
-// KopiaLogFilter returns a filter function for Kopia mover logs
+// LogFilter returns a filter function for Kopia mover logs
 // It extracts meaningful error messages and discovery information
-func KopiaLogFilter(line string) *string {
+func LogFilter(line string) *string {
 	// Always include error messages
 	if strings.Contains(strings.ToLower(line), "error") ||
 		strings.Contains(strings.ToLower(line), "failed") ||
