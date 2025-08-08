@@ -1024,12 +1024,22 @@ function select_snapshot_to_restore {
     # Build the full identity string for listing snapshots
     # When using overrides, we need to specify the full identity: username@hostname:path
     local identity_string=""
+    # For restore operations, we need to look for snapshots with the original /data path
+    # even though we're restoring to /restore/data to work around atomic file issues
+    local snapshot_path="/data"
+    if [[ "${DATA_DIR}" == "/restore/data" ]]; then
+        echo "Note: Looking for snapshots with path /data (original path) even though restoring to ${DATA_DIR}" >&2
+        snapshot_path="/data"
+    else
+        snapshot_path="${DATA_DIR}"
+    fi
+    
     if [[ -n "${KOPIA_OVERRIDE_USERNAME}" ]] && [[ -n "${KOPIA_OVERRIDE_HOSTNAME}" ]]; then
-        identity_string="${KOPIA_OVERRIDE_USERNAME}@${KOPIA_OVERRIDE_HOSTNAME}:${DATA_DIR}"
+        identity_string="${KOPIA_OVERRIDE_USERNAME}@${KOPIA_OVERRIDE_HOSTNAME}:${snapshot_path}"
         echo "Looking for snapshots with identity: ${identity_string}" >&2
     else
         # No overrides, use default behavior
-        identity_string="${DATA_DIR}"
+        identity_string="${snapshot_path}"
     fi
     
     # List snapshots for the specific identity
