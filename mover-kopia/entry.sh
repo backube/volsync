@@ -579,11 +579,11 @@ function connect_repository {
             S3_PREFIX="${BASH_REMATCH[1]}"
             # Validate S3 prefix for security
             if [[ "${S3_PREFIX}" =~ ^[a-zA-Z0-9._/-]+$ ]] && [[ ! "${S3_PREFIX}" =~ \.\. ]]; then
-                # Ensure S3 prefix has a trailing slash for proper path separation
-                # This prevents ambiguous file paths in S3 storage
-                if [[ -n "${S3_PREFIX}" ]] && [[ ! "${S3_PREFIX}" =~ /$ ]]; then
-                    S3_PREFIX="${S3_PREFIX}/"
-                    echo "Added trailing slash to S3 prefix for proper path separation"
+                # Remove trailing slash from S3 prefix for consistency
+                # Kopia handles S3 paths correctly without trailing slashes
+                if [[ -n "${S3_PREFIX}" ]] && [[ "${S3_PREFIX}" =~ /$ ]]; then
+                    S3_PREFIX="${S3_PREFIX%/}"
+                    echo "Removed trailing slash from S3 prefix for consistency"
                 fi
                 echo "Using S3 prefix: ${S3_PREFIX}"
                 if [[ -n "${S3_PREFIX}" ]]; then
