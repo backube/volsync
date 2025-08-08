@@ -969,8 +969,45 @@ function do_retention {
     fi
 }
 
+# Function to discover available snapshots in the repository
+function discover_available_snapshots {
+    echo ""
+    echo "=== Discovery Mode: Available Snapshots ==="
+    
+    # List all snapshots in the repository (not just for our path)
+    echo "Listing all available snapshot identities in the repository..."
+    
+    # Use kopia snapshot list without path to see all snapshots
+    # Output in JSON for parsing by the controller
+    local all_snapshots
+    all_snapshots=$("${KOPIA[@]}" snapshot list --all --json 2>/dev/null || true)
+    
+    if [[ -n "${all_snapshots}" ]] && [[ "${all_snapshots}" != "[]" ]]; then
+        echo "Found snapshots in repository:"
+        echo ""
+        
+        # Output raw JSON for controller parsing
+        echo "${all_snapshots}" | jq -c '.[] | {id: .id, userName: .userName, hostName: .hostName, path: .path, startTime: .startTime, endTime: .endTime}' 2>/dev/null || true
+        
+        echo ""
+        echo "Available identities (username@hostname combinations):"
+        # Also provide human-readable summary
+        echo "${all_snapshots}" | jq -r '.[] | "\(.userName)@\(.hostName):\(.path) - Last snapshot: \(.endTime)"' | sort -u 2>/dev/null || true
+    else
+        echo "No snapshots found in the repository"
+        
+        # Try to list repository manifests for debugging
+        echo ""
+        echo "Repository status:"
+        "${KOPIA[@]}" repository status 2>&1 || true
+    fi
+    
+    echo "=== End Discovery Mode ==="
+    echo ""
+}
+
 function select_snapshot_to_restore {
-    echo "Selecting snapshot to restore"
+    echo "Selecting snapshot to restore" >&2
     
     # List snapshots for the specific data directory path
     # This ensures we get snapshots for the correct username@hostname:/path
@@ -995,18 +1032,18 @@ function select_snapshot_to_restore {
     
     # Parse the JSON output
     if [[ -n "${KOPIA_RESTORE_AS_OF}" ]]; then
-        echo "Restoring as of: ${KOPIA_RESTORE_AS_OF}"
+        echo "Restoring as of: ${KOPIA_RESTORE_AS_OF}" >&2
         # For restore-as-of, we need to filter by time first, then apply offset
         local filtered_snapshots
         filtered_snapshots=$(echo "${snapshot_output}" | jq -r "[.[] | select(.startTime <= \"${KOPIA_RESTORE_AS_OF}\")] | .[${previous_offset}:${previous_offset}+1][] | .id" 2>/dev/null || true)
         echo "${filtered_snapshots}"
     elif [[ -n "${KOPIA_SHALLOW}" ]]; then
-        echo "Shallow restore, showing last ${KOPIA_SHALLOW} snapshots with previous offset ${previous_offset}"
+        echo "Shallow restore, showing last ${KOPIA_SHALLOW} snapshots with previous offset ${previous_offset}" >&2
         # Apply previous offset within the shallow limit
         echo "${snapshot_output}" | jq -r ".[${previous_offset}:${KOPIA_SHALLOW}+${previous_offset}][] | .id" 2>/dev/null | head -1 || true
     else
         # Get snapshot with offset (0 = latest, 1 = previous, etc.)
-        echo "Using previous offset: ${previous_offset} (0=latest, 1=previous, etc.)"
+        echo "Using previous offset: ${previous_offset} (0=latest, 1=previous, etc.)" >&2
         echo "${snapshot_output}" | jq -r ".[${previous_offset}].id" 2>/dev/null || true
     fi
 }
@@ -1123,43 +1160,6 @@ else
         esac
     done
 fi
-
-# Function to discover available snapshots in the repository
-function discover_available_snapshots {
-    echo ""
-    echo "=== Discovery Mode: Available Snapshots ==="
-    
-    # List all snapshots in the repository (not just for our path)
-    echo "Listing all available snapshot identities in the repository..."
-    
-    # Use kopia snapshot list without path to see all snapshots
-    # Output in JSON for parsing by the controller
-    local all_snapshots
-    all_snapshots=$("${KOPIA[@]}" snapshot list --all --json 2>/dev/null || true)
-    
-    if [[ -n "${all_snapshots}" ]] && [[ "${all_snapshots}" != "[]" ]]; then
-        echo "Found snapshots in repository:"
-        echo ""
-        
-        # Output raw JSON for controller parsing
-        echo "${all_snapshots}" | jq -c '.[] | {id: .id, userName: .userName, hostName: .hostName, path: .path, startTime: .startTime, endTime: .endTime}' 2>/dev/null || true
-        
-        echo ""
-        echo "Available identities (username@hostname combinations):"
-        # Also provide human-readable summary
-        echo "${all_snapshots}" | jq -r '.[] | "\(.userName)@\(.hostName):\(.path) - Last snapshot: \(.endTime)"' | sort -u 2>/dev/null || true
-    else
-        echo "No snapshots found in the repository"
-        
-        # Try to list repository manifests for debugging
-        echo ""
-        echo "Repository status:"
-        "${KOPIA[@]}" repository status 2>&1 || true
-    fi
-    
-    echo "=== End Discovery Mode ==="
-    echo ""
-}
 
 echo "Kopia completed in $(( SECONDS - START_TIME ))s"
 echo "=== Done ==="
