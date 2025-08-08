@@ -284,6 +284,13 @@ type KopiaSourceIdentity struct {
 	// If auto-discovery fails, the destination PVC name will be used as a fallback.
 	// +optional
 	SourcePVCName string `json:"sourcePVCName,omitempty"`
+	// SourcePathOverride is the path override from the ReplicationSource.
+	// If not provided, VolSync will attempt to auto-discover it from the ReplicationSource.
+	// This allows the destination to restore from the correct snapshot path when the source
+	// used a different path name in the snapshot than the actual filesystem path.
+	// +kubebuilder:validation:Pattern="^/.*"
+	// +optional
+	SourcePathOverride *string `json:"sourcePathOverride,omitempty"`
 }
 
 // ReplicationDestinationKopiaSpec defines the field for kopia in replicationDestination.

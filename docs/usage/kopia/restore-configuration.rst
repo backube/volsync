@@ -236,6 +236,137 @@ While auto-discovery is convenient, you might want to specify ``sourcePVCName`` 
 3. **Historical restores**: Restoring from a source that no longer exists
 4. **Custom scenarios**: When you need to override the discovered value
 
+sourcePathOverride Auto-Discovery
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In addition to auto-discovering the source PVC name, VolSync can also automatically discover 
+and use the ``sourcePathOverride`` setting from the ReplicationSource. This ensures that 
+restore operations use the correct snapshot path when the source used a path override.
+
+**How sourcePathOverride Auto-Discovery Works**
+
+When using ``sourceIdentity``, VolSync can automatically discover the ``sourcePathOverride`` 
+from the ReplicationSource configuration:
+
+1. **Query the ReplicationSource**: VolSync fetches the ReplicationSource specified in ``sourceIdentity``
+2. **Extract sourcePathOverride**: If the ReplicationSource has ``spec.kopia.sourcePathOverride`` configured, 
+   VolSync automatically uses this value for the restore operation
+3. **Apply to restore**: The discovered ``sourcePathOverride`` is used to restore from the correct snapshot path
+
+**Priority Order for sourcePathOverride**
+
+VolSync resolves ``sourcePathOverride`` with the following priority:
+
+1. **Explicit sourcePathOverride in sourceIdentity**: Highest priority (manual override)
+2. **Auto-discovered from ReplicationSource**: Automatic discovery when not explicitly provided
+3. **No sourcePathOverride**: Standard restore without path override
+
+**Example: Auto-Discovery in Action**
+
+Consider this ReplicationSource with a path override:
+
+.. code-block:: yaml
+
+   # Original ReplicationSource that created the backup
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: webapp-backup
+     namespace: production
+   spec:
+     sourcePVC: webapp-data
+     kopia:
+       repository: kopia-config
+       # This path override was used during backup
+       sourcePathOverride: "/var/lib/webapp/data"
+
+When restoring with ``sourceIdentity``, the ``sourcePathOverride`` is automatically discovered:
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: webapp-restore
+     namespace: production
+   spec:
+     trigger:
+       manual: restore-once
+     kopia:
+       repository: kopia-config
+       destinationPVC: webapp-data-restored
+       copyMethod: Direct
+       sourceIdentity:
+         sourceName: webapp-backup
+         sourceNamespace: production
+         # No need to specify sourcePathOverride - it's auto-discovered!
+
+VolSync will automatically:
+
+1. Fetch the ``webapp-backup`` ReplicationSource from the ``production`` namespace
+2. Discover that it uses ``sourcePathOverride: "/var/lib/webapp/data"``
+3. Apply this path override during the restore operation
+4. Restore the data from the correct snapshot path
+
+**Manual Override of Auto-Discovery**
+
+You can override the auto-discovered ``sourcePathOverride`` by specifying it explicitly:
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: webapp-restore-override
+   spec:
+     kopia:
+       repository: kopia-config
+       destinationPVC: webapp-data-restored
+       copyMethod: Direct
+       sourceIdentity:
+         sourceName: webapp-backup
+         sourceNamespace: production
+         # Explicitly override the auto-discovered value
+         sourcePathOverride: "/custom/restore/path"
+
+**Cross-Environment Restore Example**
+
+Auto-discovery makes cross-environment restores seamless:
+
+.. code-block:: yaml
+
+   # Restore production data to staging, preserving the path override
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: restore-prod-to-staging
+     namespace: staging
+   spec:
+     trigger:
+       manual: restore-once
+     kopia:
+       repository: kopia-config
+       destinationPVC: staging-data
+       copyMethod: Direct
+       sourceIdentity:
+         sourceName: webapp-backup
+         sourceNamespace: production  # Cross-namespace restore
+         # Both PVC name and sourcePathOverride are auto-discovered
+
+This restore operation will:
+
+1. Discover the source PVC name from ``production/webapp-backup``
+2. Discover the ``sourcePathOverride`` from the same ReplicationSource
+3. Generate the correct identity: ``webapp-backup@production-webapp-data``
+4. Restore using the correct snapshot path override
+
+**Benefits of sourcePathOverride Auto-Discovery**
+
+1. **Simplified Configuration**: No need to manually specify path overrides
+2. **Error Reduction**: Eliminates mismatches between backup and restore path settings
+3. **Cross-Environment Compatibility**: Automatic path override preservation across environments
+4. **Maintenance Reduction**: Changes to source path overrides don't require destination updates
+
 Fallback to Manual Username/Hostname
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -891,7 +1022,8 @@ repository
 sourceIdentity
    This optional field provides a simplified way to specify which ReplicationSource's 
    snapshots to restore. It automatically generates the correct username and hostname 
-   based on the source configuration, with auto-discovery of the source PVC name.
+   based on the source configuration, with auto-discovery of the source PVC name and 
+   sourcePathOverride.
    
    sourceName
       The name of the ReplicationSource that created the snapshots to restore (required)
@@ -903,6 +1035,13 @@ sourceIdentity
       The name of the source PVC (optional). If not provided, VolSync will automatically 
       fetch the ReplicationSource configuration and discover the PVC name from the 
       ``spec.sourcePVC`` field. This auto-discovery simplifies configuration and reduces errors.
+   
+   sourcePathOverride
+      The path override to use for snapshot restoration (optional). If not provided, VolSync 
+      will automatically fetch the ReplicationSource configuration and discover the 
+      sourcePathOverride from the ``spec.kopia.sourcePathOverride`` field. When specified, 
+      this value overrides any auto-discovered path override. This ensures that restore 
+      operations use the correct snapshot path when the source used a path override.
    
    When ``sourceIdentity`` is specified, it takes precedence over default identity 
    generation but is overridden by explicit ``username`` and ``hostname`` fields.

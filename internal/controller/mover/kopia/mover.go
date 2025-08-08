@@ -631,6 +631,10 @@ func (m *Mover) addDestinationEnvVars(envVars []corev1.EnvVar) []corev1.EnvVar {
 	if m.previous != nil {
 		envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_PREVIOUS", Value: strconv.Itoa(int(*m.previous))})
 	}
+	// Pass sourcePathOverride to destination jobs for correct snapshot path restoration
+	if m.sourcePathOverride != nil {
+		envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_SOURCE_PATH_OVERRIDE", Value: *m.sourcePathOverride})
+	}
 	return envVars
 }
 

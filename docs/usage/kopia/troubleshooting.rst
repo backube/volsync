@@ -148,7 +148,7 @@ sourceIdentity Auto-Discovery Issues
 
 **Symptoms**:
 
-- sourceIdentity specified without sourcePVCName
+- sourceIdentity specified without sourcePVCName or sourcePathOverride
 - Auto-discovery fails to fetch the ReplicationSource
 
 **Common Causes**:
@@ -185,14 +185,15 @@ sourceIdentity Auto-Discovery Issues
 
 **Resolution**:
 
-Either fix the underlying issue or specify sourcePVCName explicitly:
+Either fix the underlying issue or specify the values explicitly:
 
 .. code-block:: yaml
 
    sourceIdentity:
      sourceName: webapp-backup
      sourceNamespace: production
-     sourcePVCName: webapp-data  # Bypass auto-discovery
+     sourcePVCName: webapp-data        # Bypass PVC auto-discovery
+     sourcePathOverride: "/app/data"   # Bypass path override auto-discovery
 
 Identity Mismatch Issues
 ------------------------
@@ -240,6 +241,181 @@ Identity Mismatch Issues
         kopia:
           username: <exact-username-from-source>
           hostname: <exact-hostname-from-source>
+
+sourcePathOverride Issues
+--------------------------
+
+**Error**: "No snapshots found" with correct identity but path override mismatch
+
+**Symptoms**:
+
+- Identity (username@hostname) matches between source and destination
+- ``snapshotsFound`` shows 0 despite having backups  
+- ``requestedIdentity`` appears correct
+
+**Common Causes**:
+
+1. **Source used sourcePathOverride but destination doesn't**:
+
+   The ReplicationSource created snapshots with a path override, but the restore 
+   operation isn't using the same path override.
+
+   **Debugging**:
+
+   Check if the source used a path override:
+
+   .. code-block:: bash
+
+      kubectl get replicationsource <source-name> -n <namespace> -o jsonpath='{.spec.kopia.sourcePathOverride}'
+
+   **Resolution**:
+
+   If the source used a path override, ensure the destination uses the same value:
+
+   .. code-block:: yaml
+
+      # Option 1: Use sourceIdentity auto-discovery (recommended)
+      sourceIdentity:
+        sourceName: <source-name>
+        sourceNamespace: <source-namespace>
+        # sourcePathOverride will be auto-discovered
+
+      # Option 2: Specify explicitly  
+      sourceIdentity:
+        sourceName: <source-name>
+        sourceNamespace: <source-namespace>
+        sourcePathOverride: "/path/from/source"
+
+2. **Incorrect sourcePathOverride value**:
+
+   The destination specifies a different path override than the source used.
+
+   **Resolution**:
+
+   .. code-block:: yaml
+
+      sourceIdentity:
+        sourceName: webapp-backup
+        sourceNamespace: production
+        # Remove explicit sourcePathOverride to use auto-discovery
+        # sourcePathOverride: "/wrong/path"  # Remove this line
+
+3. **Auto-discovery failed to find sourcePathOverride**:
+
+   The ReplicationSource exists but auto-discovery couldn't fetch the path override.
+
+   **Debugging**:
+
+   Check the ReplicationDestination status for discovery information:
+
+   .. code-block:: bash
+
+      kubectl get replicationdestination <name> -o yaml | grep -A 10 "status:"
+
+   **Resolution**:
+
+   Specify the path override explicitly:
+
+   .. code-block:: yaml
+
+      sourceIdentity:
+        sourceName: webapp-backup
+        sourceNamespace: production
+        sourcePathOverride: "/var/lib/myapp/data"  # Specify explicitly
+
+**Error**: "Data restored to wrong path" or "Application can't find data"
+
+**Symptoms**:
+
+- Restore completes successfully
+- Data exists in the destination PVC but at unexpected location
+- Application can't access the restored data
+
+**Common Causes**:
+
+1. **Missing sourcePathOverride during restore**:
+
+   The source used a path override, but the restore didn't apply the same override.
+
+   **Resolution**:
+
+   Ensure the restore uses the same path override:
+
+   .. code-block:: yaml
+
+      sourceIdentity:
+        sourceName: database-backup
+        sourceNamespace: production
+        # This will auto-discover the correct sourcePathOverride
+
+2. **Incorrect path override during restore**:
+
+   The restore used a different path override than the source.
+
+   **Verification**:
+
+   Compare the source and destination configurations:
+
+   .. code-block:: bash
+
+      # Check source path override
+      kubectl get replicationsource <source> -o jsonpath='{.spec.kopia.sourcePathOverride}'
+
+      # Check what the destination used (from logs)
+      kubectl logs -l volsync.backube/mover-job -n <namespace> | grep "source path override"
+
+**Error**: "Auto-discovery found unexpected sourcePathOverride"
+
+**Symptoms**:
+
+- Restore uses a different path than expected
+- Logs show auto-discovered path override that doesn't match expectations
+
+**Resolution**:
+
+Override auto-discovery by specifying the path explicitly:
+
+.. code-block:: yaml
+
+   sourceIdentity:
+     sourceName: webapp-backup
+     sourceNamespace: production
+     # Override auto-discovery with the desired path
+     sourcePathOverride: "/custom/restore/path"
+
+**Best Practices for sourcePathOverride**
+
+1. **Use auto-discovery when possible**:
+
+   .. code-block:: yaml
+
+      # Recommended: Let VolSync auto-discover the path override
+      sourceIdentity:
+        sourceName: webapp-backup
+        sourceNamespace: production
+        # No sourcePathOverride - will be auto-discovered
+
+2. **Document path overrides**:
+
+   Maintain documentation of which ReplicationSources use path overrides and why.
+
+3. **Verify path overrides match**:
+
+   Before creating restores, check the source configuration:
+
+   .. code-block:: bash
+
+      # Check if source uses path override
+      kubectl get replicationsource <source> -o yaml | grep sourcePathOverride
+
+4. **Test restore paths**:
+
+   Verify that restored data appears at the expected location:
+
+   .. code-block:: bash
+
+      # After restore, check data location
+      kubectl exec -it <test-pod> -- ls -la /expected/path/
 
 Repository Connection Issues
 ----------------------------
@@ -510,6 +686,41 @@ Quick Reference Commands
    
    # View mover logs
    kubectl logs -l "volsync.backube/mover-job" --tail=100
+
+Read-Only Root Filesystem Error
+================================
+
+**Error**: "unlinkat //data.kopia-entry: read-only file system"
+
+**Symptoms**:
+- Restore operations fail when using ``readOnlyRootFilesystem: true`` security setting
+- Error occurs during ``kopia snapshot restore`` command execution
+- Affects pods with restricted security contexts
+
+**Cause**:
+
+Kopia uses atomic file operations that create temporary files (`.kopia-entry`) during restore operations. When the root filesystem is read-only and data is mounted at `/data`, Kopia attempts to create these temporary files at `/data.kopia-entry`, which fails because the root directory (`/`) is read-only.
+
+**Resolution**:
+
+This issue has been fixed in recent versions of VolSync. The fix involves:
+
+1. **For destination (restore) operations**: Data is now mounted at `/restore/data` instead of `/data`
+2. **Additional volume**: An emptyDir volume is mounted at `/restore` to provide a writable directory for Kopia's temporary files
+3. **Result**: Kopia can now create its temporary `.kopia-entry` files at `/restore/data.kopia-entry` within the writable `/restore` directory
+
+**Note**: This change only affects destination (restore) operations. Source (backup) operations continue to use the `/data` mount path and are not affected by this issue.
+
+**Verification**:
+
+To verify you have the fix:
+
+1. Check your VolSync version - ensure you're using a version that includes this fix
+2. During restore operations, the mover pod should have:
+   - Data volume mounted at `/restore/data`
+   - An emptyDir volume mounted at `/restore`
+
+If you're still experiencing this issue, ensure your VolSync deployment is up to date.
 
 Getting Help
 ============

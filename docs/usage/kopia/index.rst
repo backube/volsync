@@ -52,6 +52,10 @@ actions, making it easier to ensure data consistency for applications like datab
 **Maintenance**: Kopia's maintenance operations (equivalent to Restic's prune)
 are more efficient and can run concurrently with backups.
 
+**Security**: The Kopia mover in VolSync supports enhanced security settings including
+``readOnlyRootFilesystem: true`` in pod security contexts, with automatic adjustments
+to handle Kopia's temporary file requirements during restore operations.
+
 Getting Started
 ===============
 
@@ -156,7 +160,7 @@ Here's a complete example showing how to set up a basic Kopia backup:
        sourceIdentity:
          sourceName: mydata-backup
          sourceNamespace: default
-         # sourcePVCName is optional - auto-discovered from ReplicationSource if not provided
+         # sourcePVCName and sourcePathOverride are optional - auto-discovered from ReplicationSource if not provided
        # Optionally use previous parameter to restore from older snapshots
        previous: 1  # Skip latest, use previous snapshot
 
@@ -186,17 +190,17 @@ The Kopia documentation has been organized into focused sections for easier navi
 
 :doc:`backup-configuration`
    Detailed backup setup including ReplicationSource configuration, scheduling,
-   source path overrides, and backup options.
+   sourcePath and sourcePathOverride features, and backup options.
 
 :doc:`restore-configuration`
    Complete restore operations guide including enhanced error reporting, snapshot discovery,
-   ``sourceIdentity`` helper with auto-discovery, ``previous`` parameter, point-in-time recovery,
-   and restore options.
+   ``sourceIdentity`` helper with auto-discovery of PVC names and sourcePathOverride, 
+   ``previous`` parameter, point-in-time recovery, and restore options.
 
 :doc:`troubleshooting`
    Comprehensive troubleshooting guide covering enhanced error reporting, snapshot discovery,
-   common error scenarios, identity mismatch issues, multi-tenant repository debugging,
-   and systematic debugging approaches.
+   common error scenarios, identity mismatch issues, sourcePathOverride troubleshooting,
+   multi-tenant repository debugging, and systematic debugging approaches.
 
 :doc:`custom-ca`
    Instructions for configuring custom certificate authorities for self-signed

@@ -224,6 +224,7 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 	// 2. sourceIdentity helper (generates from source info)
 	// 3. Default generation from destination name/namespace
 	var username, hostname string
+	var sourcePathOverride *string
 
 	// Check if sourceIdentity helper is provided and should be used
 	useSourceIdentity := destination.Spec.Kopia.SourceIdentity != nil &&
@@ -254,14 +255,23 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		username = generateUsername(nil, destination.GetName(), destination.GetNamespace())
 	}
 
-	// Generate hostname with proper priority
+	// Generate hostname and discover sourcePathOverride with proper priority
 	if destination.Spec.Kopia.Hostname != nil && *destination.Spec.Kopia.Hostname != "" {
 		// Explicit hostname has highest priority
 		hostname = *destination.Spec.Kopia.Hostname
 	} else if useSourceIdentity {
-		// Use sourceIdentity to generate hostname
+		// Use sourceIdentity to generate hostname and discover sourcePathOverride
 		si := destination.Spec.Kopia.SourceIdentity
 		var pvcNameToUse *string
+
+		// Priority for sourcePathOverride:
+		// 1. Explicitly provided sourcePathOverride in sourceIdentity
+		// 2. Auto-discovered from ReplicationSource
+		if si.SourcePathOverride != nil {
+			sourcePathOverride = si.SourcePathOverride
+			logger.V(1).Info("Using explicitly provided sourcePathOverride",
+				"sourcePathOverride", *sourcePathOverride)
+		}
 
 		// Priority for PVC name:
 		// 1. Explicitly provided sourcePVCName
@@ -270,19 +280,28 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		if si.SourcePVCName != "" {
 			pvcNameToUse = &si.SourcePVCName
 		} else {
-			// Try to auto-discover the source PVC from the ReplicationSource
-			discoveredPVC := kb.discoverSourcePVC(client, si.SourceName, sourceNamespace, logger)
-			if discoveredPVC != "" {
-				pvcNameToUse = &discoveredPVC
+			// Try to auto-discover the source info from the ReplicationSource
+			discoveredInfo := kb.discoverSourceInfo(client, si.SourceName, sourceNamespace, logger)
+			if discoveredInfo.pvcName != "" {
+				pvcNameToUse = &discoveredInfo.pvcName
 				logger.V(1).Info("Auto-discovered source PVC from ReplicationSource",
 					"sourceName", si.SourceName,
 					"sourceNamespace", sourceNamespace,
-					"discoveredPVC", discoveredPVC)
+					"discoveredPVC", discoveredInfo.pvcName)
 			} else {
 				// Fallback to destination PVC if source PVC name not provided or discovered
 				pvcNameToUse = destination.Spec.Kopia.DestinationPVC
 				logger.V(1).Info("Could not discover source PVC, using destination PVC for hostname",
 					"destinationPVC", destination.Spec.Kopia.DestinationPVC)
+			}
+
+			// Use discovered sourcePathOverride if not explicitly provided
+			if sourcePathOverride == nil && discoveredInfo.sourcePathOverride != nil {
+				sourcePathOverride = discoveredInfo.sourcePathOverride
+				logger.V(1).Info("Auto-discovered sourcePathOverride from ReplicationSource",
+					"sourceName", si.SourceName,
+					"sourceNamespace", sourceNamespace,
+					"sourcePathOverride", *sourcePathOverride)
 			}
 		}
 		hostname = generateHostname(nil, pvcNameToUse,
@@ -327,6 +346,7 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		metrics:               metrics,
 		username:              username,
 		hostname:              hostname,
+		sourcePathOverride:    sourcePathOverride,
 		restoreAsOf:           destination.Spec.Kopia.RestoreAsOf,
 		shallow:               destination.Spec.Kopia.Shallow,
 		previous:              destination.Spec.Kopia.Previous,
@@ -471,16 +491,23 @@ func sanitizeForHostname(input string) string {
 	return strings.Trim(validChars, "-.")
 }
 
-// discoverSourcePVC attempts to discover the source PVC name from a ReplicationSource
+// sourceDiscoveryInfo holds discovered information from a ReplicationSource
+type sourceDiscoveryInfo struct {
+	pvcName            string
+	sourcePathOverride *string
+}
+
+// discoverSourceInfo attempts to discover the source PVC name and sourcePathOverride from a ReplicationSource
 // in the specified namespace. This enables automatic hostname generation matching
 // the source's identity without requiring manual configuration.
-// Returns the source PVC name if found, empty string otherwise.
-func (kb *Builder) discoverSourcePVC(c client.Client, sourceName, sourceNamespace string, logger logr.Logger) string {
+// Returns a sourceDiscoveryInfo struct with discovered values.
+func (kb *Builder) discoverSourceInfo(c client.Client, sourceName, sourceNamespace string, logger logr.Logger) sourceDiscoveryInfo {
+	info := sourceDiscoveryInfo{}
 	if sourceName == "" || sourceNamespace == "" {
-		logger.V(2).Info("Cannot discover source PVC: missing source name or namespace",
+		logger.V(2).Info("Cannot discover source info: missing source name or namespace",
 			"sourceName", sourceName,
 			"sourceNamespace", sourceNamespace)
-		return ""
+		return info
 	}
 
 	// Create a ReplicationSource object to fetch
@@ -509,7 +536,7 @@ func (kb *Builder) discoverSourcePVC(c client.Client, sourceName, sourceNamespac
 				"sourceNamespace", sourceNamespace,
 				"error", err)
 		}
-		return ""
+		return info
 	}
 
 	// Check if this is a Kopia ReplicationSource
@@ -517,20 +544,40 @@ func (kb *Builder) discoverSourcePVC(c client.Client, sourceName, sourceNamespac
 		logger.V(2).Info("ReplicationSource does not use Kopia mover",
 			"sourceName", sourceName,
 			"sourceNamespace", sourceNamespace)
-		return ""
+		return info
 	}
 
-	// Return the source PVC name
+	// Discover the source PVC name
 	if source.Spec.SourcePVC != "" {
+		info.pvcName = source.Spec.SourcePVC
 		logger.V(1).Info("Successfully discovered source PVC from ReplicationSource",
 			"sourceName", sourceName,
 			"sourceNamespace", sourceNamespace,
 			"sourcePVC", source.Spec.SourcePVC)
-		return source.Spec.SourcePVC
+	} else {
+		logger.V(2).Info("ReplicationSource has no source PVC configured",
+			"sourceName", sourceName,
+			"sourceNamespace", sourceNamespace)
 	}
 
-	logger.V(2).Info("ReplicationSource has no source PVC configured",
-		"sourceName", sourceName,
-		"sourceNamespace", sourceNamespace)
-	return ""
+	// Discover the sourcePathOverride
+	if source.Spec.Kopia.SourcePathOverride != nil {
+		info.sourcePathOverride = source.Spec.Kopia.SourcePathOverride
+		logger.V(1).Info("Successfully discovered sourcePathOverride from ReplicationSource",
+			"sourceName", sourceName,
+			"sourceNamespace", sourceNamespace,
+			"sourcePathOverride", *source.Spec.Kopia.SourcePathOverride)
+	}
+
+	return info
+}
+
+// discoverSourcePVC attempts to discover the source PVC name from a ReplicationSource
+// in the specified namespace. This enables automatic hostname generation matching
+// the source's identity without requiring manual configuration.
+// Returns the source PVC name if found, empty string otherwise.
+// Deprecated: Use discoverSourceInfo instead for full discovery capabilities
+func (kb *Builder) discoverSourcePVC(c client.Client, sourceName, sourceNamespace string, logger logr.Logger) string {
+	info := kb.discoverSourceInfo(c, sourceName, sourceNamespace, logger)
+	return info.pvcName
 }

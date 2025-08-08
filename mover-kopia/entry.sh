@@ -1024,10 +1024,15 @@ function select_snapshot_to_restore {
     # Build the full identity string for listing snapshots
     # When using overrides, we need to specify the full identity: username@hostname:path
     local identity_string=""
-    # For restore operations, we need to look for snapshots with the original /data path
-    # even though we're restoring to /restore/data to work around atomic file issues
-    local snapshot_path="/data"
-    if [[ "${DATA_DIR}" == "/restore/data" ]]; then
+    # Check if source path override is specified
+    local snapshot_path=""
+    if [[ -n "${KOPIA_SOURCE_PATH_OVERRIDE}" ]]; then
+        # Use the source path override from the ReplicationSource
+        snapshot_path="${KOPIA_SOURCE_PATH_OVERRIDE}"
+        echo "Using source path override: ${snapshot_path}" >&2
+    elif [[ "${DATA_DIR}" == "/restore/data" ]]; then
+        # For restore operations, we need to look for snapshots with the original /data path
+        # even though we're restoring to /restore/data to work around atomic file issues
         echo "Note: Looking for snapshots with path /data (original path) even though restoring to ${DATA_DIR}" >&2
         snapshot_path="/data"
     else
@@ -1097,7 +1102,11 @@ function do_restore {
         
         # If discovery mode is enabled and no snapshots found, list available snapshots
         if [[ "${KOPIA_DISCOVER_SNAPSHOTS}" == "true" ]]; then
-            echo "No snapshots found for ${KOPIA_OVERRIDE_USERNAME:-$(whoami)}@${KOPIA_OVERRIDE_HOSTNAME:-$(hostname)}:${DATA_DIR}"
+            local search_path="${KOPIA_SOURCE_PATH_OVERRIDE:-/data}"
+            if [[ "${DATA_DIR}" != "/restore/data" ]] && [[ -z "${KOPIA_SOURCE_PATH_OVERRIDE}" ]]; then
+                search_path="${DATA_DIR}"
+            fi
+            echo "No snapshots found for ${KOPIA_OVERRIDE_USERNAME:-$(whoami)}@${KOPIA_OVERRIDE_HOSTNAME:-$(hostname)}:${search_path}"
             discover_available_snapshots
         fi
         
