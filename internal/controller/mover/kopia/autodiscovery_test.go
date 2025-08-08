@@ -23,9 +23,9 @@ import (
 	"context"
 	"errors"
 
+	"github.com/go-logr/logr"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/go-logr/logr"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -175,17 +175,18 @@ var _ = Describe("Kopia Auto-discovery", func() {
 			}
 
 			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(source).Build()
-			
+
 			// Build the mover
 			builder, err := newBuilder(nil, nil)
 			Expect(err).ToNot(HaveOccurred())
-			
+
 			mover, err := builder.FromDestination(c, logger, nil, destination, false)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(mover).ToNot(BeNil())
 
 			// Verify the hostname was generated using the discovered PVC name
-			kopiaMover := mover.(*Mover)
+			kopiaMover, ok := mover.(*Mover)
+			Expect(ok).To(BeTrue(), "mover should be of type *Mover")
 			// The hostname should be generated from namespace and discovered PVC name
 			expectedHostname := generateHostname(nil, ptr.To("app-data-pvc"), "production", "app-backup")
 			Expect(kopiaMover.hostname).To(Equal(expectedHostname))
@@ -228,16 +229,17 @@ var _ = Describe("Kopia Auto-discovery", func() {
 			}
 
 			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(source).Build()
-			
+
 			builder, err := newBuilder(nil, nil)
 			Expect(err).ToNot(HaveOccurred())
-			
+
 			mover, err := builder.FromDestination(c, logger, nil, destination, false)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(mover).ToNot(BeNil())
 
 			// Verify the explicit PVC name was used, not the discovered one
-			kopiaMover := mover.(*Mover)
+			kopiaMover, ok := mover.(*Mover)
+			Expect(ok).To(BeTrue(), "mover should be of type *Mover")
 			expectedHostname := generateHostname(nil, ptr.To("explicit-pvc"), "production", "app-backup")
 			Expect(kopiaMover.hostname).To(Equal(expectedHostname))
 		})
@@ -266,16 +268,17 @@ var _ = Describe("Kopia Auto-discovery", func() {
 			}
 
 			c := fake.NewClientBuilder().WithScheme(scheme).Build()
-			
+
 			builder, err := newBuilder(nil, nil)
 			Expect(err).ToNot(HaveOccurred())
-			
+
 			mover, err := builder.FromDestination(c, logger, nil, destination, false)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(mover).ToNot(BeNil())
 
 			// Verify fallback to destination PVC
-			kopiaMover := mover.(*Mover)
+			kopiaMover, ok := mover.(*Mover)
+			Expect(ok).To(BeTrue(), "mover should be of type *Mover")
 			expectedHostname := generateHostname(nil, ptr.To("fallback-pvc"), "production", "nonexistent")
 			Expect(kopiaMover.hostname).To(Equal(expectedHostname))
 		})
@@ -288,6 +291,6 @@ type mockClientWithError struct {
 	err error
 }
 
-func (m *mockClientWithError) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+func (m *mockClientWithError) Get(_ context.Context, _ client.ObjectKey, _ client.Object, _ ...client.GetOption) error {
 	return m.err
 }

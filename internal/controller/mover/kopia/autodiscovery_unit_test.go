@@ -36,6 +36,8 @@ import (
 )
 
 // TestDiscoverSourcePVC tests the auto-discovery functionality
+//
+//nolint:funlen
 func TestDiscoverSourcePVC(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := volsyncv1alpha1.AddToScheme(scheme); err != nil {
@@ -169,6 +171,8 @@ type mockClientWithErrorUnit struct {
 	err error
 }
 
-func (m *mockClientWithErrorUnit) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+func (m *mockClientWithErrorUnit) Get(
+	_ context.Context, _ client.ObjectKey, _ client.Object, _ ...client.GetOption,
+) error {
 	return m.err
 }
