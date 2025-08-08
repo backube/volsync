@@ -35,11 +35,11 @@ spec:
           disableAuth: true
         image:
           repository: ghcr.io/perfectra1n/volsync
-          tag: "0.15.7"
+          tag: "0.15.12"
           image: ""
         kopia:
           repository: ghcr.io/perfectra1n/volsync
-          tag: "0.15.7"
+          tag: "0.15.12"
           image: ""
         rclone:
           repository: ghcr.io/perfectra1n/volsync
@@ -83,10 +83,34 @@ spec:
     copyMethod: Direct
     repository: volsync-kopia-repo
     username: homepage-kopia
-    volumeSnapshotClassName: "main-truenas-iscsi-vsc"
     retain:
       weekly: 2
       monthly: 4
+    moverSecurityContext:
+      runAsUser: 0
+      runAsGroup: 0
+      fsGroup: 0
+```
+
+a `ReplicationDestination` example:
+```yaml
+apiVersion: volsync.backube/v1alpha1
+kind: ReplicationDestination
+metadata:
+  name: kopia-test-restore
+  namespace: test
+spec:
+  trigger:
+    manual: restore-test
+  kopia:
+    repository: volsync-kopia-repo
+    sourceIdentity:
+      sourceName: webapp-backup
+      sourceNamespace: production
+    destinationPVC: test-restore-data
+    copyMethod: Direct
+    storageClassName: "truenas-csi-iscsi"
+    previous: 1
     moverSecurityContext:
       runAsUser: 0
       runAsGroup: 0
