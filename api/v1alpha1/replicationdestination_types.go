@@ -269,6 +269,16 @@ type ReplicationDestinationResticSpec struct {
 
 type ReplicationDestinationKopiaCA CustomCASpec
 
+// KopiaSourceIdentity defines helper fields to identify the source of snapshots to restore
+type KopiaSourceIdentity struct {
+	// SourceName is the name of the ReplicationSource that created the snapshots
+	// +optional
+	SourceName string `json:"sourceName,omitempty"`
+	// SourceNamespace is the namespace of the ReplicationSource that created the snapshots
+	// +optional
+	SourceNamespace string `json:"sourceNamespace,omitempty"`
+}
+
 // ReplicationDestinationKopiaSpec defines the field for kopia in replicationDestination.
 type ReplicationDestinationKopiaSpec struct {
 	ReplicationDestinationVolumeOptions `json:",inline"`
@@ -306,6 +316,11 @@ type ReplicationDestinationKopiaSpec struct {
 	// PolicyConfig defines configuration for Kopia policy files
 	//+optional
 	PolicyConfig *KopiaPolicySpec `json:"policyConfig,omitempty"`
+	// SourceIdentity provides an easy way to specify which ReplicationSource's snapshots to restore.
+	// When specified, it will be used to generate the username and hostname automatically.
+	// This is a helper field that simplifies configuration for users.
+	//+optional
+	SourceIdentity *KopiaSourceIdentity `json:"sourceIdentity,omitempty"`
 	// Username override for Kopia repository access.
 	// If not specified, defaults to "volsync"
 	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$"
@@ -318,6 +333,30 @@ type ReplicationDestinationKopiaSpec struct {
 	Hostname *string `json:"hostname,omitempty"`
 
 	MoverConfig `json:",inline"`
+}
+
+// KopiaIdentityInfo provides information about available Kopia snapshot identities
+type KopiaIdentityInfo struct {
+	// Identity is the username@hostname identifier
+	Identity string `json:"identity"`
+	// SnapshotCount is the number of snapshots for this identity
+	SnapshotCount int32 `json:"snapshotCount"`
+	// LatestSnapshot is the timestamp of the most recent snapshot
+	//+optional
+	LatestSnapshot *metav1.Time `json:"latestSnapshot,omitempty"`
+}
+
+// ReplicationDestinationKopiaStatus defines status information for Kopia-based replication.
+type ReplicationDestinationKopiaStatus struct {
+	// RequestedIdentity is the username@hostname that was requested for restore
+	//+optional
+	RequestedIdentity string `json:"requestedIdentity,omitempty"`
+	// SnapshotsFound is the number of snapshots found for the requested identity
+	//+optional
+	SnapshotsFound int32 `json:"snapshotsFound,omitempty"`
+	// AvailableIdentities lists the identities available in the repository
+	//+optional
+	AvailableIdentities []KopiaIdentityInfo `json:"availableIdentities,omitempty"`
 }
 
 // ReplicationDestinationStatus defines the observed state of ReplicationDestination
@@ -355,6 +394,9 @@ type ReplicationDestinationStatus struct {
 	// used.
 	//+optional
 	External map[string]string `json:"external,omitempty"`
+	// kopia contains status information for Kopia-based replication.
+	//+optional
+	Kopia *ReplicationDestinationKopiaStatus `json:"kopia,omitempty"`
 	// conditions represent the latest available observations of the
 	// destination's state.
 	Conditions []metav1.Condition `json:"conditions,omitempty"`

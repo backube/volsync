@@ -1386,6 +1386,10 @@ spec:
                             If SecretName is used then ConfigMapName should not be set
                           type: string
                       type: object
+                    previous:
+                      description: Previous specifies the number of snapshots to skip before selecting one to restore from
+                      format: int32
+                      type: integer
                     repository:
                       description: Repository is the secret name containing repository info
                       type: string
@@ -1397,6 +1401,19 @@ spec:
                       description: Shallow defines the shallow restore depth (only restore recent snapshots)
                       format: int32
                       type: integer
+                    sourceIdentity:
+                      description: |-
+                        SourceIdentity provides an easy way to specify which ReplicationSource's snapshots to restore.
+                        When specified, it will be used to generate the username and hostname automatically.
+                        This is a helper field that simplifies configuration for users.
+                      properties:
+                        sourceName:
+                          description: SourceName is the name of the ReplicationSource that created the snapshots
+                          type: string
+                        sourceNamespace:
+                          description: SourceNamespace is the namespace of the ReplicationSource that created the snapshots
+                          type: string
+                      type: object
                     storageClassName:
                       description: |-
                         storageClassName can be used to specify the StorageClass of the
@@ -5523,6 +5540,38 @@ spec:
                     external contains provider-specific status information. For more details,
                     please see the documentation of the specific replication provider being
                     used.
+                  type: object
+                kopia:
+                  description: kopia contains status information for Kopia-based replication.
+                  properties:
+                    availableIdentities:
+                      description: AvailableIdentities lists the identities available in the repository
+                      items:
+                        description: KopiaIdentityInfo provides information about available Kopia snapshot identities
+                        properties:
+                          identity:
+                            description: Identity is the username@hostname identifier
+                            type: string
+                          latestSnapshot:
+                            description: LatestSnapshot is the timestamp of the most recent snapshot
+                            format: date-time
+                            type: string
+                          snapshotCount:
+                            description: SnapshotCount is the number of snapshots for this identity
+                            format: int32
+                            type: integer
+                        required:
+                          - identity
+                          - snapshotCount
+                        type: object
+                      type: array
+                    requestedIdentity:
+                      description: RequestedIdentity is the username@hostname that was requested for restore
+                      type: string
+                    snapshotsFound:
+                      description: SnapshotsFound is the number of snapshots found for the requested identity
+                      format: int32
+                      type: integer
                   type: object
                 lastManualSync:
                   description: lastManualSync is set to the last spec.trigger.manual when the manual sync is done.

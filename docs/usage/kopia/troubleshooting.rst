@@ -1,0 +1,464 @@
+=======================
+Troubleshooting Guide
+=======================
+
+.. contents:: Troubleshooting Kopia Operations
+   :local:
+
+This guide provides comprehensive troubleshooting information for Kopia-based backup
+and restore operations in VolSync, with a focus on the enhanced error reporting and
+snapshot discovery features.
+
+Understanding Enhanced Error Reporting
+======================================
+
+VolSync provides detailed error reporting when restore operations encounter issues.
+The enhanced error reporting system automatically provides diagnostic information to
+help you quickly identify and resolve problems.
+
+Key Status Fields
+-----------------
+
+When troubleshooting restore operations, these status fields provide critical information:
+
+**requestedIdentity**
+   Shows the exact username@hostname that VolSync is attempting to restore from.
+   This helps verify that the identity resolution is working as expected.
+
+**snapshotsFound**
+   Indicates the number of snapshots found for the requested identity.
+   A value of 0 indicates no matching snapshots were found.
+
+**availableIdentities**
+   Lists all identities available in the repository with their snapshot counts
+   and latest snapshot timestamps. This is particularly helpful when snapshots
+   aren't found for the requested identity.
+
+Checking Status Information
+----------------------------
+
+To view the complete status of a ReplicationDestination:
+
+.. code-block:: bash
+
+   # View full status
+   kubectl get replicationdestination <name> -o yaml
+
+   # Check specific status fields
+   kubectl get replicationdestination <name> -o jsonpath='{.status.kopia.requestedIdentity}'
+   kubectl get replicationdestination <name> -o jsonpath='{.status.kopia.snapshotsFound}'
+   
+   # View available identities
+   kubectl get replicationdestination <name> -o json | jq '.status.kopia.availableIdentities'
+
+Example Status Output
+---------------------
+
+When a restore operation cannot find snapshots, the status provides comprehensive information:
+
+.. code-block:: yaml
+
+   status:
+     conditions:
+     - type: Synchronizing
+       status: "False"
+       reason: SnapshotsNotFound
+       message: "No snapshots found for identity 'webapp-backup@production-webapp-data'. Available identities in repository: database-backup@production-postgres-data (30 snapshots, latest: 2024-01-20T11:00:00Z), app-backup@staging-app-data (7 snapshots, latest: 2024-01-19T22:00:00Z)"
+     kopia:
+       requestedIdentity: "webapp-backup@production-webapp-data"
+       snapshotsFound: 0
+       availableIdentities:
+       - identity: "database-backup@production-postgres-data"
+         snapshotCount: 30
+         latestSnapshot: "2024-01-20T11:00:00Z"
+       - identity: "app-backup@staging-app-data"
+         snapshotCount: 7
+         latestSnapshot: "2024-01-19T22:00:00Z"
+
+Common Error Scenarios and Solutions
+=====================================
+
+No Snapshots Found
+------------------
+
+**Error Message**: "No snapshots found for identity '<username>@<hostname>'"
+
+**Symptoms**:
+
+- ``snapshotsFound`` shows 0
+- Restore operation fails
+- ``availableIdentities`` shows other identities but not the requested one
+
+**Resolution Steps**:
+
+1. **Check available identities**
+   
+   Review what's actually in the repository:
+   
+   .. code-block:: bash
+   
+      kubectl get replicationdestination <name> -o yaml | grep -A 50 availableIdentities
+   
+2. **Verify source configuration**
+   
+   Check the ReplicationSource that created the backups:
+   
+   .. code-block:: bash
+   
+      # Find the source
+      kubectl get replicationsource -A | grep <source-name>
+      
+      # Check its configuration
+      kubectl get replicationsource <source-name> -n <namespace> -o yaml | grep -A 10 "kopia:"
+   
+3. **Common causes and fixes**:
+
+   **Incorrect sourceIdentity**:
+   
+   .. code-block:: yaml
+   
+      # Wrong namespace or name
+      sourceIdentity:
+        sourceName: webapp-backup     # Verify this matches exactly
+        sourceNamespace: production    # Verify this matches exactly
+   
+   **Source uses custom username/hostname**:
+   
+   If the ReplicationSource has custom identity fields, you must use them directly:
+   
+   .. code-block:: yaml
+   
+      # Instead of sourceIdentity, use:
+      username: "custom-user"
+      hostname: "custom-host"
+   
+   **No backups have been created yet**:
+   
+   Check if the ReplicationSource has successfully created any snapshots:
+   
+   .. code-block:: bash
+   
+      kubectl get replicationsource <name> -o jsonpath='{.status.lastManualSync}'
+
+Identity Mismatch Issues
+------------------------
+
+**Error**: Restored data is from the wrong source
+
+**Symptoms**:
+
+- Data restored successfully but from unexpected source
+- ``requestedIdentity`` doesn't match expectations
+
+**Debugging Process**:
+
+1. **Verify the requested identity**:
+   
+   .. code-block:: bash
+   
+      kubectl get replicationdestination <name> -o jsonpath='{.status.kopia.requestedIdentity}'
+   
+2. **Compare with source identity**:
+   
+   Check what identity the ReplicationSource is using:
+   
+   .. code-block:: bash
+   
+      # Check source status
+      kubectl get replicationsource <source-name> -o yaml | grep -A 5 "status:"
+   
+3. **Resolution**:
+   
+   Ensure identity configuration matches between source and destination:
+   
+   .. code-block:: yaml
+   
+      # Option 1: Use sourceIdentity for automatic matching
+      spec:
+        kopia:
+          sourceIdentity:
+            sourceName: <exact-source-name>
+            sourceNamespace: <exact-source-namespace>
+      
+      # Option 2: Use explicit identity if source has custom values
+      spec:
+        kopia:
+          username: <exact-username-from-source>
+          hostname: <exact-hostname-from-source>
+
+Repository Connection Issues
+----------------------------
+
+**Error**: "Failed to connect to repository"
+
+**Common Causes**:
+
+1. **Incorrect repository secret**:
+   
+   Verify the secret exists and contains correct values:
+   
+   .. code-block:: bash
+   
+      kubectl get secret kopia-config -o yaml
+   
+2. **Network connectivity**:
+   
+   Check if the repository endpoint is reachable from the cluster.
+   
+3. **Authentication failures**:
+   
+   Verify credentials in the repository secret are valid.
+
+**Resolution**:
+
+.. code-block:: yaml
+
+   # Ensure repository secret is correctly configured
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: kopia-config
+   stringData:
+     KOPIA_REPOSITORY: <correct-repository-url>
+     KOPIA_PASSWORD: <correct-password>
+     # Additional credentials as needed
+
+Multi-Tenant Repository Troubleshooting
+========================================
+
+Listing All Available Identities
+---------------------------------
+
+When working with multi-tenant repositories, use the ``availableIdentities`` status
+field to understand what's in the repository:
+
+.. code-block:: bash
+
+   # Create a temporary ReplicationDestination to discover identities
+   cat <<EOF | kubectl apply -f -
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: identity-discovery
+     namespace: default
+   spec:
+     trigger:
+       manual: discover
+     kopia:
+       repository: kopia-config
+       destinationPVC: temp-pvc
+       copyMethod: Direct
+   EOF
+   
+   # Wait for status to populate
+   sleep 10
+   
+   # List all identities
+   kubectl get replicationdestination identity-discovery -o json | jq '.status.kopia.availableIdentities'
+   
+   # Clean up
+   kubectl delete replicationdestination identity-discovery
+
+Understanding Identity Format
+-----------------------------
+
+Identities in Kopia follow the format ``username@hostname``. VolSync generates these
+based on specific rules:
+
+**Default Generation (no custom fields)**:
+
+- Username: ReplicationSource name
+- Hostname: ``<namespace>-<pvc-name>``
+
+**With sourceIdentity**:
+
+- Username: ``sourceName`` from sourceIdentity
+- Hostname: ``<sourceNamespace>-<source-pvc-name>``
+
+**With explicit username/hostname**:
+
+- Uses the exact values provided
+
+Debugging Identity Generation
+-----------------------------
+
+To understand how identities are being generated:
+
+1. **Check ReplicationSource configuration**:
+   
+   .. code-block:: bash
+   
+      kubectl get replicationsource <name> -o yaml | grep -E "(username|hostname|sourcePVC)"
+   
+2. **Verify ReplicationDestination resolution**:
+   
+   .. code-block:: bash
+   
+      kubectl get replicationdestination <name> -o jsonpath='{.status.kopia.requestedIdentity}'
+   
+3. **Common identity patterns**:
+   
+   .. code-block:: text
+   
+      # Default pattern
+      myapp-backup@production-myapp-data
+      
+      # With custom username
+      custom-user@production-myapp-data
+      
+      # With custom hostname
+      myapp-backup@custom-host
+      
+      # Fully custom
+      custom-user@custom-host
+
+Advanced Debugging Techniques
+==============================
+
+Examining Pod Logs
+------------------
+
+When errors occur, check the mover pod logs for detailed information:
+
+.. code-block:: bash
+
+   # Find the mover pod
+   kubectl get pods -l "volsync.backube/mover-job" -n <namespace>
+   
+   # View logs
+   kubectl logs <pod-name> -n <namespace>
+   
+   # Follow logs in real-time
+   kubectl logs -f <pod-name> -n <namespace>
+
+Common Log Messages
+-------------------
+
+**"No snapshots found matching criteria"**:
+
+Indicates the identity exists but no snapshots match the restore criteria
+(e.g., restoreAsOf timestamp).
+
+**"Unable to find snapshot source"**:
+
+The specified username@hostname doesn't exist in the repository.
+
+**"Repository not initialized"**:
+
+The repository hasn't been created yet or connection details are incorrect.
+
+Using Previous Parameter with Discovery
+----------------------------------------
+
+When using the ``previous`` parameter, the discovery features help verify
+snapshot availability:
+
+.. code-block:: yaml
+
+   spec:
+     kopia:
+       sourceIdentity:
+         sourceName: myapp-backup
+         sourceNamespace: production
+       previous: 2  # Skip 2 snapshots
+   
+   status:
+     kopia:
+       requestedIdentity: "myapp-backup@production-myapp-data"
+       snapshotsFound: 5  # Total snapshots available
+       # With previous: 2, will use the 3rd newest snapshot
+
+If ``snapshotsFound`` is less than or equal to ``previous``, the restore will fail:
+
+.. code-block:: yaml
+
+   status:
+     conditions:
+     - type: Synchronizing
+       status: "False"
+       reason: InsufficientSnapshots
+       message: "Requested snapshot index 2 but only 1 snapshots found for identity 'myapp-backup@production-myapp-data'"
+
+Best Practices for Troubleshooting
+===================================
+
+Preventive Measures
+--------------------
+
+1. **Document identity configuration**:
+   
+   Maintain documentation of custom username/hostname configurations used in
+   ReplicationSources.
+   
+2. **Test restore procedures regularly**:
+   
+   Periodically test restore operations in non-production environments.
+   
+3. **Monitor backup success**:
+   
+   Set up alerts for failed backup operations to ensure snapshots are being created.
+   
+4. **Use consistent naming**:
+   
+   Maintain consistent ReplicationSource names across environments.
+
+Systematic Debugging Approach
+------------------------------
+
+When encountering issues, follow this systematic approach:
+
+1. **Check status fields**:
+   
+   Start with ``requestedIdentity``, ``snapshotsFound``, and ``availableIdentities``.
+   
+2. **Verify configuration**:
+   
+   Ensure ReplicationSource and ReplicationDestination configurations match.
+   
+3. **Review logs**:
+   
+   Check mover pod logs for detailed error messages.
+   
+4. **Test connectivity**:
+   
+   Verify repository is accessible and credentials are valid.
+   
+5. **Validate data**:
+   
+   Ensure backups have been successfully created before attempting restore.
+
+Quick Reference Commands
+========================
+
+.. code-block:: bash
+
+   # List all ReplicationSources
+   kubectl get replicationsource -A
+   
+   # Check ReplicationDestination status
+   kubectl describe replicationdestination <name>
+   
+   # View available identities
+   kubectl get replicationdestination <name> -o json | jq '.status.kopia.availableIdentities'
+   
+   # Check requested identity
+   kubectl get replicationdestination <name> -o jsonpath='{.status.kopia.requestedIdentity}'
+   
+   # View snapshot count
+   kubectl get replicationdestination <name> -o jsonpath='{.status.kopia.snapshotsFound}'
+   
+   # Find mover pods
+   kubectl get pods -l "volsync.backube/mover-job"
+   
+   # View mover logs
+   kubectl logs -l "volsync.backube/mover-job" --tail=100
+
+Getting Help
+============
+
+If you continue to experience issues after following this troubleshooting guide:
+
+1. Check the VolSync documentation for updates
+2. Review the GitHub issues for similar problems
+3. Enable debug logging for more detailed information
+4. Contact support with the output from the diagnostic commands above

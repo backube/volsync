@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"path"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -96,11 +97,12 @@ type Mover struct {
 	actions             *volsyncv1alpha1.KopiaActions
 	sourceStatus        *volsyncv1alpha1.ReplicationSourceKopiaStatus
 	// Destination-only fields
-	restoreAsOf     *string
-	shallow         *int32
-	previous        *int32
-	cleanupTempPVC  bool
-	cleanupCachePVC bool
+	restoreAsOf       *string
+	shallow           *int32
+	previous          *int32
+	cleanupTempPVC    bool
+	cleanupCachePVC   bool
+	destinationStatus *volsyncv1alpha1.ReplicationDestinationKopiaStatus
 }
 
 var _ mover.Mover = &Mover{}
@@ -561,7 +563,12 @@ func (m *Mover) buildRcloneEnvironmentVariables(repo *corev1.Secret) []corev1.En
 
 // addIdentityEnvironmentVariables adds username and hostname overrides for multi-tenancy
 func (m *Mover) addIdentityEnvironmentVariables(envVars []corev1.EnvVar) []corev1.EnvVar {
-	return append(envVars,
+	// Set the requested identity in status for destinations
+	if !m.isSource && m.destinationStatus != nil {
+		m.destinationStatus.RequestedIdentity = fmt.Sprintf("%s@%s", m.username, m.hostname)
+	}
+
+	envVars = append(envVars,
 		corev1.EnvVar{
 			Name:  "KOPIA_OVERRIDE_USERNAME",
 			Value: m.username,
@@ -571,6 +578,16 @@ func (m *Mover) addIdentityEnvironmentVariables(envVars []corev1.EnvVar) []corev
 			Value: m.hostname,
 		},
 	)
+
+	// Add discovery flag for destinations
+	if !m.isSource {
+		envVars = append(envVars, corev1.EnvVar{
+			Name:  "KOPIA_DISCOVER_SNAPSHOTS",
+			Value: "true",
+		})
+	}
+
+	return envVars
 }
 
 // addSourceDestinationEnvVars adds environment variables specific to source or destination
@@ -971,9 +988,19 @@ func (m *Mover) handleJobStatus(ctx context.Context, job *batchv1.Job,
 
 	// If Job had failed, delete it so it can be recreated
 	if job.Status.Failed >= *job.Spec.BackoffLimit {
-		// Update status with mover logs from failed job
+		// Update status with mover logs from failed job using Kopia-specific filter
+		logFilter := utils.AllLines
+		if !m.isSource {
+			// Use Kopia-specific log filter for destinations to extract discovery info
+			logFilter = KopiaLogFilter
+		}
 		utils.UpdateMoverStatusForFailedJob(ctx, m.logger, m.latestMoverStatus, job.GetName(), job.GetNamespace(),
-			utils.AllLines)
+			logFilter)
+
+		// For destination jobs, parse logs for discovery information
+		if !m.isSource && m.destinationStatus != nil {
+			m.updateDestinationDiscoveryStatus(ctx, job)
+		}
 
 		logger.Info("deleting job -- backoff limit reached")
 		err = m.client.Delete(ctx, job, client.PropagationPolicy(metav1.DeletePropagationBackground))
@@ -1000,8 +1027,13 @@ func (m *Mover) handleJobStatus(ctx context.Context, job *batchv1.Job,
 	}
 
 	// update status with mover logs from successful job
+	// Use Kopia-specific filter for better log extraction
+	logFilter := utils.AllLines
+	if !m.isSource {
+		logFilter = KopiaLogFilter
+	}
 	utils.UpdateMoverStatusForSuccessfulJob(ctx, m.logger, m.latestMoverStatus, job.GetName(), job.GetNamespace(),
-		utils.AllLines)
+		logFilter)
 
 	// We only continue reconciling if the kopia job has completed
 	return job, nil
@@ -1074,6 +1106,10 @@ func (m *Mover) handleJobCompletion(ctx context.Context, job *batchv1.Job,
 	dataPVC *corev1.PersistentVolumeClaim) (mover.Result, error) {
 	// Job handling - check for completion or failure
 	if job.Status.Failed > 0 {
+		// For destination jobs, parse logs for discovery information
+		if !m.isSource && m.destinationStatus != nil {
+			m.updateDestinationDiscoveryStatus(ctx, job)
+		}
 		// Job has failed - this should have been handled in ensureJob,
 		// but we check here too for safety
 		return mover.InProgress(), nil
@@ -1085,6 +1121,12 @@ func (m *Mover) handleJobCompletion(ctx context.Context, job *batchv1.Job,
 	}
 
 	// Job completed successfully
+	// Clear discovery status on successful restore
+	if !m.isSource && m.destinationStatus != nil {
+		m.destinationStatus.AvailableIdentities = nil
+		m.destinationStatus.SnapshotsFound = 0
+	}
+
 	// On the destination, preserve the image and return it
 	if !m.isSource {
 		image, err := m.vh.EnsureImage(ctx, m.logger, dataPVC)
@@ -1285,4 +1327,44 @@ func (m *Mover) getMetricLabels(operation string) prometheus.Labels {
 	}
 
 	return labels
+}
+
+// updateDestinationDiscoveryStatus updates the destination status with discovery information
+// parsed from failed job logs
+func (m *Mover) updateDestinationDiscoveryStatus(ctx context.Context, job *batchv1.Job) {
+	if m.destinationStatus == nil || m.latestMoverStatus == nil {
+		return
+	}
+
+	// Parse the logs for discovery information
+	requestedIdentity, availableIdentities, errorMsg := ParseKopiaDiscoveryOutput(m.latestMoverStatus.Logs)
+
+	// Update the destination status with discovery information
+	if requestedIdentity != "" {
+		m.destinationStatus.RequestedIdentity = requestedIdentity
+	}
+
+	if len(availableIdentities) > 0 {
+		m.destinationStatus.AvailableIdentities = availableIdentities
+		// Count total snapshots for the requested identity
+		for _, identity := range availableIdentities {
+			if identity.Identity == requestedIdentity {
+				m.destinationStatus.SnapshotsFound = identity.SnapshotCount
+				break
+			}
+		}
+	}
+
+	// Update the error message with more helpful information
+	if errorMsg != "" && m.latestMoverStatus.Result == volsyncv1alpha1.MoverResultFailed {
+		// Enhance the error message in the mover status
+		if !strings.Contains(m.latestMoverStatus.Logs, errorMsg) {
+			m.latestMoverStatus.Logs = errorMsg + "\n\n" + m.latestMoverStatus.Logs
+		}
+	}
+
+	m.logger.V(1).Info("Updated destination discovery status",
+		"requestedIdentity", requestedIdentity,
+		"availableIdentities", len(availableIdentities),
+		"errorMsg", errorMsg)
 }

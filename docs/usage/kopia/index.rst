@@ -10,6 +10,7 @@ Kopia-based backup
    multi-tenancy
    backup-configuration
    restore-configuration
+   troubleshooting
    custom-ca
 
 .. sidebar:: Contents
@@ -74,9 +75,11 @@ See :doc:`backup-configuration` for backup setup and configuration options.
 **3. Set up Restore Operations**
 
 When needed, configure a ReplicationDestination to restore data from your backups,
-including point-in-time recovery and previous snapshot selection.
+including point-in-time recovery, previous snapshot selection, and leveraging
+enhanced error reporting for troubleshooting.
 
-See :doc:`restore-configuration` for restore operations and the new ``previous`` parameter.
+See :doc:`restore-configuration` for restore operations, enhanced error reporting,
+and the ``sourceIdentity`` helper field.
 
 **4. Configure Multi-Tenancy (Optional)**
 
@@ -85,7 +88,14 @@ backups across different tenants or environments.
 
 See :doc:`multi-tenancy` for multi-tenancy configuration and identity management.
 
-**5. Custom CA (If Needed)**
+**5. Troubleshooting**
+
+Leverage the enhanced error reporting and snapshot discovery features to quickly
+identify and resolve issues.
+
+See :doc:`troubleshooting` for comprehensive debugging guidance.
+
+**6. Custom CA (If Needed)**
 
 If using self-signed certificates, configure custom certificate authority settings.
 
@@ -142,8 +152,22 @@ Here's a complete example showing how to set up a basic Kopia backup:
        repository: kopia-config
        destinationPVC: restored-data
        copyMethod: Direct
-       # Use the previous parameter to restore from older snapshots
+       # Use sourceIdentity to specify which backup source to restore from
+       sourceIdentity:
+         sourceName: mydata-backup
+         sourceNamespace: default
+       # Optionally use previous parameter to restore from older snapshots
        previous: 1  # Skip latest, use previous snapshot
+
+**Step 4: Check status if issues occur**
+
+.. code-block:: bash
+
+   # Check restore status and available identities
+   kubectl get replicationdestination mydata-restore -o yaml
+   
+   # View discovered identities if snapshots not found
+   kubectl get replicationdestination mydata-restore -o json | jq '.status.kopia.availableIdentities'
 
 Documentation Sections
 ======================
@@ -164,8 +188,13 @@ The Kopia documentation has been organized into focused sections for easier navi
    source path overrides, and backup options.
 
 :doc:`restore-configuration`
-   Complete restore operations guide including the new ``previous`` parameter,
-   point-in-time recovery, restore options, and configuration examples.
+   Complete restore operations guide including enhanced error reporting, snapshot discovery,
+   ``sourceIdentity`` helper, ``previous`` parameter, point-in-time recovery, and restore options.
+
+:doc:`troubleshooting`
+   Comprehensive troubleshooting guide covering enhanced error reporting, snapshot discovery,
+   common error scenarios, identity mismatch issues, multi-tenant repository debugging,
+   and systematic debugging approaches.
 
 :doc:`custom-ca`
    Instructions for configuring custom certificate authorities for self-signed

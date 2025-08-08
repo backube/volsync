@@ -12,6 +12,14 @@ Each Kopia client requires a unique identity consisting of:
 - **Username**: Identifies the tenant/user in the repository
 - **Hostname**: Identifies the specific host/instance within that tenant
 
+.. note::
+   
+   **New in VolSync**: The ``sourceIdentity`` field in ReplicationDestination provides a 
+   simplified way to restore from a specific ReplicationSource's snapshots without manually 
+   configuring username and hostname. See :ref:`sourceIdentity in restore configuration 
+   <restore-configuration:Restoring from a Specific ReplicationSource (sourceIdentity)>` 
+   for detailed usage and examples.
+
 Enhanced Multi-Tenancy with Namespace-First Hostnames
 ------------------------------------------------------
 
@@ -322,8 +330,65 @@ Configuration examples
        username: "hr-dept" 
        hostname: "hr-primary"
 
-Troubleshooting
-~~~~~~~~~~~~~~~
+Troubleshooting Multi-Tenant Repositories
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Using Discovery Features**
+
+VolSync provides enhanced discovery features to help manage multi-tenant repositories:
+
+**Discovering All Tenants/Identities**
+
+To see all identities (tenants) in a shared repository:
+
+.. code-block:: bash
+
+   # Create a temporary ReplicationDestination for discovery
+   cat <<EOF | kubectl apply -f -
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: tenant-discovery
+     namespace: default
+   spec:
+     trigger:
+       manual: discover
+     kopia:
+       repository: kopia-config
+       destinationPVC: temp-discovery
+       copyMethod: Direct
+   EOF
+   
+   # Wait for status to populate
+   sleep 10
+   
+   # View all tenants/identities
+   kubectl get replicationdestination tenant-discovery -o json | \
+     jq '.status.kopia.availableIdentities[] | 
+         {identity: .identity, snapshots: .snapshotCount, latest: .latestSnapshot}'
+   
+   # Clean up
+   kubectl delete replicationdestination tenant-discovery
+
+Example output showing multiple tenants:
+
+.. code-block:: json
+
+   {
+     "identity": "finance-dept@finance-accounting-data",
+     "snapshots": 45,
+     "latest": "2024-01-20T10:00:00Z"
+   }
+   {
+     "identity": "hr-dept@hr-employee-data",
+     "snapshots": 30,
+     "latest": "2024-01-20T09:30:00Z"
+   }
+   {
+     "identity": "webapp-backup@production-webapp-data",
+     "snapshots": 60,
+     "latest": "2024-01-20T11:00:00Z"
+   }
 
 **Common Issues**
 
@@ -331,16 +396,27 @@ Troubleshooting
 
 *Problem*: Multiple backups seem to interfere with each other
 
-*Solution*: Verify that username/hostname combinations are unique:
+*Solution*: Use the discovery features to verify unique identities:
 
 .. code-block:: bash
 
-   # Check generated identities
+   # Check what identity a source is using
    kubectl describe replicationsource my-backup -n my-namespace
    
-   # Look for these fields in the status:
-   # status.kopia.lastSnapshotId
-   # status.latestMoverStatus.logs (contains identity info)
+   # Use discovery to see all identities
+   kubectl get replicationdestination <discovery-dest> -o json | \
+     jq '.status.kopia.availableIdentities[].identity'
+
+*Alternative Solution*: When restoring, use the ``sourceIdentity`` field to automatically 
+match the source's identity:
+
+.. code-block:: yaml
+
+   spec:
+     kopia:
+       sourceIdentity:
+         sourceName: my-backup
+         sourceNamespace: my-namespace
 
 **Issue 2: Unexpected Hostname After Namespace-First Update**
 
@@ -376,6 +452,32 @@ Troubleshooting
           echo "Hostname will be: $NAMESPACE (PVC dropped)"
       fi
 
+2. Use discovery to verify actual identity:
+
+   .. code-block:: bash
+   
+      # Check what identity was actually generated
+      kubectl get replicationdestination <name> -o jsonpath='{.status.kopia.requestedIdentity}'
+
+**Issue 4: Identifying Snapshots from Wrong Tenant**
+
+*Problem*: Restored wrong tenant's data
+
+*Solution*: Use the enhanced error reporting to identify correct tenant:
+
+.. code-block:: bash
+
+   # View error message with available identities
+   kubectl describe replicationdestination <name> | grep -A 10 "Message:"
+   
+   # List all available identities with details
+   kubectl get replicationdestination <name> -o json | \
+     jq '.status.kopia.availableIdentities[] | 
+         select(.identity | contains("<namespace>"))'
+
+The error message will show all available identities, making it easy to identify 
+the correct one for your tenant/namespace.
+
 **Character Validation Patterns**
 
 The API enforces validation patterns for custom usernames and hostnames:
@@ -403,6 +505,50 @@ The API enforces validation patterns for custom usernames and hostnames:
 - ``.backup.user.`` (starts/ends with dot)
 - ``backup user`` (contains space)
 - ```` (empty string)
+
+Simplified Restore with sourceIdentity
+---------------------------------------
+
+For ReplicationDestination resources, the ``sourceIdentity`` field provides a streamlined 
+approach to restoring from specific sources in multi-tenant repositories:
+
+**Traditional Approach (Manual Identity)**
+
+.. code-block:: yaml
+
+   # You need to know the exact username and hostname
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: restore-data
+   spec:
+     kopia:
+       # Must match exactly what the source used
+       username: "webapp-backup-production"
+       hostname: "production-webapp-pvc"
+
+**Simplified Approach (sourceIdentity)**
+
+.. code-block:: yaml
+
+   # Just specify the source name and namespace
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: restore-data
+   spec:
+     kopia:
+       sourceIdentity:
+         sourceName: webapp-backup
+         sourceNamespace: production
+       # VolSync automatically generates matching username/hostname
+
+This is especially useful in multi-tenant scenarios where:
+
+- Multiple teams share the same repository
+- You need to restore data across namespaces
+- Identity generation rules have changed over time
+- You want to avoid manual identity management errors
 
 Best practices for shared repositories
 ---------------------------------------

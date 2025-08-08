@@ -215,15 +215,55 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 	isSource := false
 
 	// Generate username and hostname for multi-tenancy
-	username := generateUsername(destination.Spec.Kopia.Username, destination.GetName(), destination.GetNamespace())
-	hostname := generateHostname(destination.Spec.Kopia.Hostname,
-		destination.Spec.Kopia.DestinationPVC, destination.GetNamespace(), destination.GetName())
+	// Priority order:
+	// 1. Explicit username/hostname fields (highest priority)
+	// 2. sourceIdentity helper (generates from source info)
+	// 3. Default generation from destination name/namespace
+	var username, hostname string
+
+	// Check if sourceIdentity helper is provided and should be used
+	useSourceIdentity := destination.Spec.Kopia.SourceIdentity != nil &&
+		destination.Spec.Kopia.SourceIdentity.SourceName != "" &&
+		destination.Spec.Kopia.SourceIdentity.SourceNamespace != ""
+
+	// Generate username with proper priority
+	if destination.Spec.Kopia.Username != nil && *destination.Spec.Kopia.Username != "" {
+		// Explicit username has highest priority
+		username = *destination.Spec.Kopia.Username
+	} else if useSourceIdentity {
+		// Use sourceIdentity to generate username
+		si := destination.Spec.Kopia.SourceIdentity
+		username = generateUsername(nil, si.SourceName, si.SourceNamespace)
+	} else {
+		// Default generation from destination
+		username = generateUsername(nil, destination.GetName(), destination.GetNamespace())
+	}
+
+	// Generate hostname with proper priority
+	if destination.Spec.Kopia.Hostname != nil && *destination.Spec.Kopia.Hostname != "" {
+		// Explicit hostname has highest priority
+		hostname = *destination.Spec.Kopia.Hostname
+	} else if useSourceIdentity {
+		// Use sourceIdentity to generate hostname
+		si := destination.Spec.Kopia.SourceIdentity
+		hostname = generateHostname(nil, destination.Spec.Kopia.DestinationPVC,
+			si.SourceNamespace, si.SourceName)
+	} else {
+		// Default generation from destination
+		hostname = generateHostname(nil, destination.Spec.Kopia.DestinationPVC,
+			destination.GetNamespace(), destination.GetName())
+	}
 
 	saHandler := utils.NewSAHandler(client, destination, isSource, privileged,
 		destination.Spec.Kopia.MoverServiceAccount)
 
 	// Initialize metrics
 	metrics := newKopiaMetrics()
+
+	// Initialize Kopia status if not already present
+	if destination.Status.Kopia == nil {
+		destination.Status.Kopia = &volsyncv1alpha1.ReplicationDestinationKopiaStatus{}
+	}
 
 	return &Mover{
 		client:                client,
@@ -251,6 +291,7 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		restoreAsOf:           destination.Spec.Kopia.RestoreAsOf,
 		shallow:               destination.Spec.Kopia.Shallow,
 		previous:              destination.Spec.Kopia.Previous,
+		destinationStatus:     destination.Status.Kopia,
 		latestMoverStatus:     destination.Status.LatestMoverStatus,
 		moverConfig:           destination.Spec.Kopia.MoverConfig,
 	}, nil
