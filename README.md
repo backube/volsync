@@ -14,7 +14,7 @@ ghcr.io/perfectra1n/volsync:latest
 
 Also, the documentation is hosted in the [GitHub Pages documentation](https://perfectra1n.github.io/volsync/) (Fork documentation mirror)
 
-As an example, this is my Argo Helm Chart release:
+As an example, this is my Argo Helm Chart release (and please check for the latest version [here](https://github.com/perfectra1n/volsync/pkgs/container/volsync)):
 ```yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
