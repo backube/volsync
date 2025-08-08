@@ -987,12 +987,12 @@ function discover_available_snapshots {
         echo ""
         
         # Output raw JSON for controller parsing
-        echo "${all_snapshots}" | jq -c '.[] | {id: .id, userName: .userName, hostName: .hostName, path: .path, startTime: .startTime, endTime: .endTime}' 2>/dev/null || true
+        echo "${all_snapshots}" | jq -c '.[] | {id: .id, userName: .source.userName, hostName: .source.host, path: .source.path, startTime: .startTime, endTime: .endTime}' 2>/dev/null || true
         
         echo ""
         echo "Available identities (username@hostname combinations):"
         # Also provide human-readable summary
-        echo "${all_snapshots}" | jq -r '.[] | "\(.userName)@\(.hostName):\(.path) - Last snapshot: \(.endTime)"' | sort -u 2>/dev/null || true
+        echo "${all_snapshots}" | jq -r '.[] | "\(.source.userName)@\(.source.host):\(.source.path) - Last snapshot: \(.endTime)"' | sort -u 2>/dev/null || true
     else
         echo "No snapshots found in the repository"
         
