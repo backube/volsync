@@ -103,7 +103,6 @@ spec:
   trigger:
     manual: restore-test
   kopia:
-    repository: volsync-kopia-repo
     sourceIdentity:
       sourceName: homepage-kopia
       sourceNamespace: apps
