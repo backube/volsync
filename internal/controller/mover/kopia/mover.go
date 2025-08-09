@@ -50,7 +50,8 @@ import (
 
 const (
 	kopiaCacheMountPath     = "/cache"
-	mountPath               = "/restore/data"
+	sourceMountPath         = "/data"
+	destinationMountPath    = "/restore/data"
 	dataVolumeName          = "data"
 	kopiaCache              = "cache"
 	restoreVolumeName       = "restore"
@@ -442,8 +443,13 @@ func (m *Mover) buildEnvironmentVariables(repo *corev1.Secret) []corev1.EnvVar {
 
 // buildBasicEnvironmentVariables creates basic environment variables
 func (m *Mover) buildBasicEnvironmentVariables() []corev1.EnvVar {
+	// Use different mount paths for source (backup) vs destination (restore)
+	dataDir := sourceMountPath
+	if !m.isSource {
+		dataDir = destinationMountPath
+	}
 	return []corev1.EnvVar{
-		{Name: "DATA_DIR", Value: mountPath},
+		{Name: "DATA_DIR", Value: dataDir},
 		{Name: "KOPIA_CACHE_DIR", Value: kopiaCacheMountPath},
 	}
 }
@@ -685,8 +691,13 @@ func (m *Mover) addActionsEnvVars(envVars []corev1.EnvVar) []corev1.EnvVar {
 // configureContainer sets up the main container configuration
 func (m *Mover) configureContainer(podSpec *corev1.PodSpec, envVars []corev1.EnvVar,
 	actions []string, readOnlyVolume bool, sa *corev1.ServiceAccount) {
+	// Use different mount paths for source (backup) vs destination (restore)
+	dataMountPath := sourceMountPath
+	if !m.isSource {
+		dataMountPath = destinationMountPath
+	}
 	volumeMounts := []corev1.VolumeMount{
-		{Name: dataVolumeName, MountPath: mountPath, ReadOnly: readOnlyVolume},
+		{Name: dataVolumeName, MountPath: dataMountPath, ReadOnly: readOnlyVolume},
 		{Name: "tempdir", MountPath: "/tmp"},
 	}
 
