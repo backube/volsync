@@ -225,6 +225,7 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 	// 3. Default generation from destination name/namespace
 	var username, hostname string
 	var sourcePathOverride *string
+	var repositoryName string
 
 	// Check if sourceIdentity helper is provided and should be used
 	useSourceIdentity := destination.Spec.Kopia.SourceIdentity != nil &&
@@ -303,6 +304,15 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 					"sourceNamespace", sourceNamespace,
 					"sourcePathOverride", *sourcePathOverride)
 			}
+
+			// Use discovered repository if destination repository is empty
+			if destination.Spec.Kopia.Repository == "" && discoveredInfo.repository != "" {
+				repositoryName = discoveredInfo.repository
+				logger.V(1).Info("Auto-discovered repository from ReplicationSource",
+					"sourceName", si.SourceName,
+					"sourceNamespace", sourceNamespace,
+					"repository", repositoryName)
+			}
 		}
 		hostname = generateHostname(nil, pvcNameToUse,
 			sourceNamespace, si.SourceName)
@@ -311,6 +321,15 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		hostname = generateHostname(nil, destination.Spec.Kopia.DestinationPVC,
 			destination.GetNamespace(), destination.GetName())
 	}
+
+	// Set repository name - prioritize explicit destination repository over discovered one
+	if destination.Spec.Kopia.Repository != "" {
+		repositoryName = destination.Spec.Kopia.Repository
+	}
+	// If repositoryName is still empty at this point, it means:
+	// 1. Destination repository is empty AND
+	// 2. Either sourceIdentity is not used OR no repository was discovered
+	// In this case, repositoryName will remain empty string, which is the existing behavior
 
 	saHandler := utils.NewSAHandler(client, destination, isSource, privileged,
 		destination.Spec.Kopia.MoverServiceAccount)
@@ -335,7 +354,7 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		cacheCapacity:         destination.Spec.Kopia.CacheCapacity,
 		cacheStorageClassName: destination.Spec.Kopia.CacheStorageClassName,
 		cleanupCachePVC:       destination.Spec.Kopia.CleanupCachePVC,
-		repositoryName:        destination.Spec.Kopia.Repository,
+		repositoryName:        repositoryName,
 		isSource:              isSource,
 		paused:                destination.Spec.Paused,
 		mainPVCName:           destination.Spec.Kopia.DestinationPVC,
@@ -495,10 +514,11 @@ func sanitizeForHostname(input string) string {
 type sourceDiscoveryInfo struct {
 	pvcName            string
 	sourcePathOverride *string
+	repository         string
 }
 
-// discoverSourceInfo attempts to discover the source PVC name and sourcePathOverride from a ReplicationSource
-// in the specified namespace. This enables automatic hostname generation matching
+// discoverSourceInfo attempts to discover the source PVC name, sourcePathOverride, and repository from a ReplicationSource
+// in the specified namespace. This enables automatic hostname generation and repository configuration matching
 // the source's identity without requiring manual configuration.
 // Returns a sourceDiscoveryInfo struct with discovered values.
 func (kb *Builder) discoverSourceInfo(c client.Client, sourceName, sourceNamespace string, logger logr.Logger) sourceDiscoveryInfo {
@@ -567,6 +587,15 @@ func (kb *Builder) discoverSourceInfo(c client.Client, sourceName, sourceNamespa
 			"sourceName", sourceName,
 			"sourceNamespace", sourceNamespace,
 			"sourcePathOverride", *source.Spec.Kopia.SourcePathOverride)
+	}
+
+	// Discover the repository
+	if source.Spec.Kopia.Repository != "" {
+		info.repository = source.Spec.Kopia.Repository
+		logger.V(1).Info("Successfully discovered repository from ReplicationSource",
+			"sourceName", sourceName,
+			"sourceNamespace", sourceNamespace,
+			"repository", source.Spec.Kopia.Repository)
 	}
 
 	return info

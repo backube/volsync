@@ -46,10 +46,11 @@ func TestDiscoverSourceInfo(t *testing.T) {
 		existingSource             *volsyncv1alpha1.ReplicationSource
 		expectedPVCName            string
 		expectedSourcePathOverride *string
+		expectedRepository         string
 		expectError                bool
 	}{
 		{
-			name:            "discovers both PVC name and sourcePathOverride",
+			name:            "discovers PVC name, sourcePathOverride, and repository",
 			sourceName:      "test-source",
 			sourceNamespace: "test-ns",
 			existingSource: &volsyncv1alpha1.ReplicationSource{
@@ -61,14 +62,16 @@ func TestDiscoverSourceInfo(t *testing.T) {
 					SourcePVC: "source-pvc",
 					Kopia: &volsyncv1alpha1.ReplicationSourceKopiaSpec{
 						SourcePathOverride: ptr.To("/custom/path"),
+						Repository:         "test-repo-secret",
 					},
 				},
 			},
 			expectedPVCName:            "source-pvc",
 			expectedSourcePathOverride: ptr.To("/custom/path"),
+			expectedRepository:         "test-repo-secret",
 		},
 		{
-			name:            "discovers PVC name without sourcePathOverride",
+			name:            "discovers PVC name without sourcePathOverride or repository",
 			sourceName:      "test-source",
 			sourceNamespace: "test-ns",
 			existingSource: &volsyncv1alpha1.ReplicationSource{
@@ -83,6 +86,7 @@ func TestDiscoverSourceInfo(t *testing.T) {
 			},
 			expectedPVCName:            "source-pvc",
 			expectedSourcePathOverride: nil,
+			expectedRepository:         "",
 		},
 		{
 			name:                       "returns empty when source doesn't exist",
@@ -91,6 +95,7 @@ func TestDiscoverSourceInfo(t *testing.T) {
 			existingSource:             nil,
 			expectedPVCName:            "",
 			expectedSourcePathOverride: nil,
+			expectedRepository:         "",
 		},
 		{
 			name:            "returns empty when source doesn't use Kopia",
@@ -108,6 +113,7 @@ func TestDiscoverSourceInfo(t *testing.T) {
 			},
 			expectedPVCName:            "",
 			expectedSourcePathOverride: nil,
+			expectedRepository:         "",
 		},
 		{
 			name:                       "handles empty source name",
@@ -115,6 +121,7 @@ func TestDiscoverSourceInfo(t *testing.T) {
 			sourceNamespace:            "test-ns",
 			expectedPVCName:            "",
 			expectedSourcePathOverride: nil,
+			expectedRepository:         "",
 		},
 		{
 			name:                       "handles empty namespace",
@@ -122,6 +129,28 @@ func TestDiscoverSourceInfo(t *testing.T) {
 			sourceNamespace:            "",
 			expectedPVCName:            "",
 			expectedSourcePathOverride: nil,
+			expectedRepository:         "",
+		},
+		{
+			name:            "discovers only repository when PVC and sourcePathOverride are empty",
+			sourceName:      "repo-only-source",
+			sourceNamespace: "test-ns",
+			existingSource: &volsyncv1alpha1.ReplicationSource{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "repo-only-source",
+					Namespace: "test-ns",
+				},
+				Spec: volsyncv1alpha1.ReplicationSourceSpec{
+					// No SourcePVC specified
+					Kopia: &volsyncv1alpha1.ReplicationSourceKopiaSpec{
+						Repository: "repo-secret-name",
+						// No sourcePathOverride specified
+					},
+				},
+			},
+			expectedPVCName:            "",
+			expectedSourcePathOverride: nil,
+			expectedRepository:         "repo-secret-name",
 		},
 	}
 
@@ -159,6 +188,11 @@ func TestDiscoverSourceInfo(t *testing.T) {
 					t.Errorf("Expected sourcePathOverride %q, got %q",
 						*tt.expectedSourcePathOverride, *info.sourcePathOverride)
 				}
+			}
+
+			// Check repository
+			if info.repository != tt.expectedRepository {
+				t.Errorf("Expected repository %q, got %q", tt.expectedRepository, info.repository)
 			}
 		})
 	}
