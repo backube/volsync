@@ -236,10 +236,178 @@ While auto-discovery is convenient, you might want to specify ``sourcePVCName`` 
 3. **Historical restores**: Restoring from a source that no longer exists
 4. **Custom scenarios**: When you need to override the discovered value
 
+Repository Auto-Discovery
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+VolSync can automatically discover and use the repository configuration from the ReplicationSource 
+when using ``sourceIdentity``. This feature reduces manual configuration overhead by automatically 
+fetching the repository secret name from the source backup configuration.
+
+**How Repository Auto-Discovery Works**
+
+When using ``sourceIdentity``, VolSync can automatically discover the repository configuration:
+
+1. **Query the ReplicationSource**: VolSync fetches the ReplicationSource specified in ``sourceIdentity``
+2. **Extract Repository**: If the ReplicationSource has ``spec.kopia.repository`` configured, 
+   VolSync automatically uses this value for the restore operation
+3. **Apply to Restore**: The discovered repository is used to connect to the backup repository
+
+**Priority Order for Repository Configuration**
+
+VolSync resolves the repository with the following priority:
+
+1. **Explicit repository in ReplicationDestination**: Highest priority (manual override)
+2. **Auto-discovered from ReplicationSource**: Automatic discovery when destination repository is empty
+3. **Empty repository**: If neither explicit nor discovered repository is available, results in configuration error
+
+**Example: Repository Auto-Discovery in Action**
+
+Consider this ReplicationSource with a repository configuration:
+
+.. code-block:: yaml
+
+   # Original ReplicationSource that created the backup
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: webapp-backup
+     namespace: production
+   spec:
+     sourcePVC: webapp-data
+     kopia:
+       repository: production-kopia-config  # Repository secret name
+
+When restoring with ``sourceIdentity``, the repository is automatically discovered:
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: webapp-restore
+     namespace: production
+   spec:
+     trigger:
+       manual: restore-once
+     kopia:
+       # No repository specified - will be auto-discovered!
+       destinationPVC: webapp-data-restored
+       copyMethod: Direct
+       sourceIdentity:
+         sourceName: webapp-backup
+         sourceNamespace: production
+
+VolSync will automatically:
+
+1. Fetch the ``webapp-backup`` ReplicationSource from the ``production`` namespace
+2. Discover that it uses ``repository: production-kopia-config``
+3. Use this repository configuration for the restore operation
+4. Connect to the same backup repository that the source used
+
+**Manual Override of Auto-Discovery**
+
+You can override the auto-discovered repository by specifying it explicitly:
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: webapp-restore-custom
+   spec:
+     kopia:
+       # Explicit repository overrides auto-discovery
+       repository: different-repo-config
+       destinationPVC: webapp-data-restored
+       copyMethod: Direct
+       sourceIdentity:
+         sourceName: webapp-backup
+         sourceNamespace: production
+
+**Cross-Environment Restore Example**
+
+Repository auto-discovery simplifies cross-environment restores when the same repository is shared:
+
+.. code-block:: yaml
+
+   # Restore production data to staging using auto-discovered repository
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: restore-prod-to-staging
+     namespace: staging
+   spec:
+     trigger:
+       manual: restore-once
+     kopia:
+       # Repository will be auto-discovered from production source
+       destinationPVC: staging-data
+       copyMethod: Direct
+       sourceIdentity:
+         sourceName: webapp-backup
+         sourceNamespace: production  # Cross-namespace restore
+
+This restore operation will:
+
+1. Discover the repository configuration from ``production/webapp-backup``
+2. Use the same repository that production uses for its backups
+3. Restore the production snapshots to the staging environment
+
+**Before and After: Configuration Simplification**
+
+Repository auto-discovery significantly reduces the configuration overhead when setting up restore operations.
+
+**Before (Manual Configuration)**:
+
+.. code-block:: yaml
+
+   # You had to manually specify all details
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: webapp-restore
+   spec:
+     trigger:
+       manual: restore-once
+     kopia:
+       repository: production-kopia-config  # Must manually specify
+       destinationPVC: webapp-data-restored
+       copyMethod: Direct
+       # Manual identity configuration
+       username: webapp-backup
+       hostname: production-webapp-data
+
+**After (Auto-Discovery)**:
+
+.. code-block:: yaml
+
+   # VolSync handles all the discovery automatically
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: webapp-restore
+   spec:
+     trigger:
+       manual: restore-once
+     kopia:
+       # Repository auto-discovered - no manual configuration needed!
+       destinationPVC: webapp-data-restored
+       copyMethod: Direct
+       sourceIdentity:
+         sourceName: webapp-backup      # Just specify the source
+         sourceNamespace: production    # And its namespace
+
+With auto-discovery, VolSync automatically:
+
+- Discovers ``repository: production-kopia-config`` from the ReplicationSource
+- Generates ``username: webapp-backup`` from the source name
+- Discovers PVC name ``webapp-data`` and generates ``hostname: production-webapp-data``
+- Discovers any ``sourcePathOverride`` settings from the source
+
 sourcePathOverride Auto-Discovery
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In addition to auto-discovering the source PVC name, VolSync can also automatically discover 
+In addition to auto-discovering the source PVC name and repository, VolSync can also automatically discover 
 and use the ``sourcePathOverride`` setting from the ReplicationSource. This ensures that 
 restore operations use the correct snapshot path when the source used a path override.
 
@@ -1017,13 +1185,15 @@ customCA
 
 repository
    This is the name of the Secret (in the same Namespace) that holds the
-   connection information for the backup repository.
+   connection information for the backup repository. When empty and using
+   ``sourceIdentity``, the repository will be automatically discovered from
+   the specified ReplicationSource, eliminating the need for manual configuration.
 
 sourceIdentity
    This optional field provides a simplified way to specify which ReplicationSource's 
    snapshots to restore. It automatically generates the correct username and hostname 
-   based on the source configuration, with auto-discovery of the source PVC name and 
-   sourcePathOverride.
+   based on the source configuration, with auto-discovery of the source PVC name, 
+   sourcePathOverride, and repository configuration.
    
    sourceName
       The name of the ReplicationSource that created the snapshots to restore (required)

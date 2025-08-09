@@ -83,7 +83,8 @@ including point-in-time recovery, previous snapshot selection, and leveraging
 enhanced error reporting for troubleshooting.
 
 See :doc:`restore-configuration` for restore operations, enhanced error reporting,
-and the ``sourceIdentity`` helper field with auto-discovery.
+and the ``sourceIdentity`` helper field with auto-discovery of PVC names, 
+sourcePathOverride, and repository configurations.
 
 **4. Configure Multi-Tenancy (Optional)**
 
@@ -153,14 +154,14 @@ Here's a complete example showing how to set up a basic Kopia backup:
      trigger:
        manual: restore-now
      kopia:
-       repository: kopia-config
+       # repository is optional when using sourceIdentity - auto-discovered from ReplicationSource if not specified
        destinationPVC: restored-data
        copyMethod: Direct
        # Use sourceIdentity to specify which backup source to restore from
        sourceIdentity:
          sourceName: mydata-backup
          sourceNamespace: default
-         # sourcePVCName and sourcePathOverride are optional - auto-discovered from ReplicationSource if not provided
+         # sourcePVCName, sourcePathOverride, and repository are optional - auto-discovered from ReplicationSource if not provided
        # Optionally use previous parameter to restore from older snapshots
        previous: 1  # Skip latest, use previous snapshot
 
@@ -194,8 +195,8 @@ The Kopia documentation has been organized into focused sections for easier navi
 
 :doc:`restore-configuration`
    Complete restore operations guide including enhanced error reporting, snapshot discovery,
-   ``sourceIdentity`` helper with auto-discovery of PVC names and sourcePathOverride, 
-   ``previous`` parameter, point-in-time recovery, and restore options.
+   ``sourceIdentity`` helper with auto-discovery of PVC names, sourcePathOverride, and
+   repository configurations, ``previous`` parameter, point-in-time recovery, and restore options.
 
 :doc:`troubleshooting`
    Comprehensive troubleshooting guide covering enhanced error reporting, snapshot discovery,
