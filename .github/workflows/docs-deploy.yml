@@ -28,6 +28,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0  # Fetch full history for rebuilding historical chart versions
 
       - name: Install prerequisites
         run: |
@@ -48,16 +50,111 @@ jobs:
           # Build with relaxed warnings for GitHub Pages deployment (override -W flag)
           SPHINXOPTS="-E -n --keep-going" make html
           
+      - name: Rebuild historical Helm chart versions
+        run: |
+          # Create charts directory
+          mkdir -p docs/_build/html/charts
+          
+          # Define historical versions to rebuild (commit hash and version)
+          # These are the stable releases we want to preserve
+          declare -a VERSIONS=(
+            "bcffbeff:0.10.0"
+            "fcba3e3b:0.11.0"
+            "c95cd350:0.12.0"
+            "7e77ead5:0.12.1"
+            "aa41a9f7:0.13.0"
+            "3d0cee60:0.14.0"
+            "0532cc29:0.15.0"
+            "fbb01615:0.15.1"
+            "e3be5f25:0.15.2"
+            "2ee39fcd:0.15.3"
+            "0461c478:0.15.4"
+            "3e5b81d6:0.15.5"
+          )
+          
+          echo "Rebuilding historical chart versions..."
+          
+          # Save current state
+          CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          if [ "$CURRENT_BRANCH" = "HEAD" ]; then
+            # We're in detached HEAD state (common in CI)
+            CURRENT_BRANCH=$(git rev-parse HEAD)
+          fi
+          
+          for version_info in "${VERSIONS[@]}"; do
+            IFS=':' read -r commit version <<< "$version_info"
+            echo "Building version $version from commit $commit"
+            
+            # Check if commit exists
+            if ! git rev-parse --verify $commit^{commit} >/dev/null 2>&1; then
+              echo "Warning: Commit $commit not found, skipping version $version"
+              continue
+            fi
+            
+            # Check if this version already exists
+            if [ -f "docs/_build/html/charts/volsync-${version}.tgz" ]; then
+              echo "Version $version already exists, skipping"
+              continue
+            fi
+            
+            # Create a temporary directory for this version
+            TEMP_DIR=$(mktemp -d)
+            
+            # Extract the helm chart from that commit
+            git show ${commit}:helm/volsync/Chart.yaml > ${TEMP_DIR}/Chart.yaml 2>/dev/null || {
+              echo "Failed to extract Chart.yaml for version $version"
+              rm -rf ${TEMP_DIR}
+              continue
+            }
+            
+            # Extract the entire helm chart directory from that commit
+            git archive $commit -- helm/volsync/ | tar -x -C ${TEMP_DIR} || {
+              echo "Failed to extract helm chart for version $version"
+              rm -rf ${TEMP_DIR}
+              continue
+            }
+            
+            # Package the chart
+            helm package ${TEMP_DIR}/helm/volsync -d docs/_build/html/charts || {
+              echo "Failed to package version $version"
+              rm -rf ${TEMP_DIR}
+              continue
+            }
+            
+            # Clean up
+            rm -rf ${TEMP_DIR}
+            
+            echo "Successfully built version $version"
+          done
+          
+          echo "Historical versions rebuild complete"
+          
       - name: Package and index Helm charts
         run: |
           # Create charts directory in the build output
           mkdir -p docs/_build/html/charts
           
-          # Package the chart
+          # Try to download existing chart packages and index from GitHub Pages
+          # This preserves older chart versions
+          echo "Attempting to download existing charts..."
+          curl -sL https://perfectra1n.github.io/volsync/charts/index.yaml -o docs/_build/html/charts/index.yaml || echo "No existing index.yaml found"
+          
+          # Download any existing chart packages referenced in the index
+          if [ -f docs/_build/html/charts/index.yaml ]; then
+            # Extract URLs of existing chart packages and download them
+            grep -o 'https://[^"]*\.tgz' docs/_build/html/charts/index.yaml | while read -r url; do
+              filename=$(basename "$url")
+              echo "Downloading existing chart: $filename"
+              curl -sL "$url" -o "docs/_build/html/charts/$filename" || echo "Failed to download $filename"
+            done
+          fi
+          
+          # Package the new chart version
           helm package helm/volsync -d docs/_build/html/charts
           
-          # Generate chart index
-          helm repo index docs/_build/html/charts --url https://perfectra1n.github.io/volsync/charts
+          # Regenerate chart index with all versions (old and new)
+          helm repo index docs/_build/html/charts --url https://perfectra1n.github.io/volsync/charts --merge docs/_build/html/charts/index.yaml || \
+            helm repo index docs/_build/html/charts --url https://perfectra1n.github.io/volsync/charts
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
