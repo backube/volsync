@@ -78,20 +78,28 @@ When a restore operation cannot find snapshots, the status provides comprehensiv
 Common Error Scenarios and Solutions
 =====================================
 
-Missing Identity Configuration
--------------------------------
+Partial Identity Configuration Error
+-------------------------------------
 
-**Error Message**: "Kopia ReplicationDestination requires identity configuration"
+**Error Message**: "missing 'hostname' - either provide both 'username' and 'hostname', or omit both"
 
-**Cause**: Kopia ReplicationDestination cannot automatically determine which snapshots 
-to restore from because the destination doesn't know the source identity (username and 
-hostname combination) and there may be multiple sources in the repository.
+**Cause**: You've provided only username without hostname (or vice versa). When using explicit 
+identity, both fields must be provided together.
 
 **Resolution**:
 
-You **MUST** provide identity information using one of these methods:
+1. **Use automatic identity (simplest)** - Remove partial configuration:
 
-1. **Use sourceIdentity (Recommended)**:
+   .. code-block:: yaml
+
+      spec:
+        kopia:
+          destinationPVC: restored-data
+          # No identity fields - uses automatic identity:
+          # username: <destination-name>-<namespace>
+          # hostname: <namespace>
+
+2. **Use sourceIdentity for cross-namespace**:
 
    .. code-block:: yaml
 
@@ -102,7 +110,7 @@ You **MUST** provide identity information using one of these methods:
             sourceNamespace: production  # Namespace of the source
             # sourcePVCName is auto-discovered if not provided
 
-2. **Use explicit username and hostname**:
+3. **Provide both username AND hostname**:
 
    .. code-block:: yaml
 
@@ -110,13 +118,12 @@ You **MUST** provide identity information using one of these methods:
         kopia:
           username: "my-backup-production"
           hostname: "production"
-          # Both fields are required when using explicit identity
+          # Both fields are required together
 
 **Common Mistakes**:
 
 - Providing only ``username`` without ``hostname`` (or vice versa)
-- Not providing any identity configuration
-- Using incorrect source name or namespace in ``sourceIdentity``
+- Mixing sourceIdentity with explicit username/hostname fields
 
 **Verification**:
 
@@ -737,6 +744,135 @@ Indicates the identity exists but no snapshots match the restore criteria
 **"Unable to find snapshot source"**:
 
 The specified username@hostname doesn't exist in the repository.
+
+Troubleshooting enableFileDeletion
+===================================
+
+The ``enableFileDeletion`` feature cleans the destination directory before restore to ensure 
+exact snapshot matching. Here's how to troubleshoot common issues:
+
+Verifying File Deletion is Enabled
+-----------------------------------
+
+Check if the feature is properly configured:
+
+.. code-block:: bash
+
+   # Check the spec configuration
+   kubectl get replicationdestination <name> -o jsonpath='{.spec.kopia.enableFileDeletion}'
+   
+   # Verify the environment variable is set in the mover pod
+   kubectl describe pod <mover-pod> | grep KOPIA_ENABLE_FILE_DELETION
+   
+   # Check mover logs for cleaning activity
+   kubectl logs <mover-pod> | grep -E "(File deletion|Cleaning destination)"
+
+Expected log output when enabled:
+
+.. code-block:: text
+
+   File deletion enabled - cleaning destination directory before restore
+   Cleaning destination directory: /data
+   Destination directory cleaned (preserved lost+found if present)
+
+Files Not Being Deleted
+------------------------
+
+**Symptoms**: Extra files remain after restore despite ``enableFileDeletion: true``
+
+**Possible Causes**:
+
+1. **Configuration not applied**: Check YAML indentation
+   
+   .. code-block:: yaml
+   
+      # Correct indentation
+      spec:
+        kopia:
+          enableFileDeletion: true
+   
+2. **Old VolSync version**: Ensure you're using a version that supports this feature
+   
+   .. code-block:: bash
+   
+      kubectl get deployment volsync -n volsync-system -o jsonpath='{.spec.template.spec.containers[0].image}'
+   
+3. **Permission issues**: Mover pod lacks permissions to delete files
+   
+   .. code-block:: bash
+   
+      # Check file permissions in the destination
+      kubectl exec <pod-using-pvc> -- ls -la /mount/point
+      
+      # Check security context of mover pod
+      kubectl get pod <mover-pod> -o jsonpath='{.spec.securityContext}'
+
+Restore Fails During Cleaning
+------------------------------
+
+**Error**: "Permission denied" or "Operation not permitted" during cleaning
+
+**Solutions**:
+
+1. Check for immutable files:
+   
+   .. code-block:: bash
+   
+      kubectl exec <pod-using-pvc> -- lsattr /mount/point 2>/dev/null || echo "lsattr not available"
+   
+2. Verify volume mount permissions:
+   
+   .. code-block:: bash
+   
+      kubectl get pvc <pvc-name> -o yaml | grep -A5 "accessModes"
+   
+3. Check if volume is read-only:
+   
+   .. code-block:: bash
+   
+      kubectl describe pod <mover-pod> | grep -A5 "Mounts:"
+
+Performance Impact
+------------------
+
+Large directories with many files may take time to clean. Monitor the cleaning phase:
+
+.. code-block:: bash
+
+   # Watch mover pod logs in real-time
+   kubectl logs -f <mover-pod>
+   
+   # Check how many files are being deleted
+   kubectl exec <pod-using-pvc> -- find /mount/point -type f | wc -l
+
+Best Practices for Debugging
+-----------------------------
+
+1. **Test in non-production first**: Always verify behavior in a test environment
+   
+2. **Create a backup before enabling**: If unsure about existing data
+   
+   .. code-block:: bash
+   
+      # Create a snapshot of the PVC before enabling file deletion
+      kubectl apply -f - <<EOF
+      apiVersion: snapshot.storage.k8s.io/v1
+      kind: VolumeSnapshot
+      metadata:
+        name: backup-before-deletion
+      spec:
+        source:
+          persistentVolumeClaimName: <destination-pvc>
+      EOF
+   
+3. **Monitor the first restore carefully**: Check logs and verify results
+   
+4. **Document what's being deleted**: List files before enabling for production
+   
+   .. code-block:: bash
+   
+      # List files that would be deleted (excluding lost+found)
+      kubectl exec <pod-using-pvc> -- find /mount/point -mindepth 1 -maxdepth 1 ! -name 'lost+found'
 
 **"Repository not initialized"**:
 

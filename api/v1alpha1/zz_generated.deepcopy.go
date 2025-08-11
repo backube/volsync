@@ -352,6 +352,11 @@ func (in *ReplicationDestinationKopiaSpec) DeepCopyInto(out *ReplicationDestinat
 		*out = new(string)
 		**out = **in
 	}
+	if in.EnableFileDeletion != nil {
+		in, out := &in.EnableFileDeletion, &out.EnableFileDeletion
+		*out = new(bool)
+		**out = **in
+	}
 	in.MoverConfig.DeepCopyInto(&out.MoverConfig)
 }
 

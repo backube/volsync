@@ -513,25 +513,27 @@ The API enforces validation patterns for custom usernames and hostnames:
 - ``backup user`` (contains space)
 - ```` (empty string)
 
-Identity Requirement for ReplicationDestination
-------------------------------------------------
+Identity Configuration for ReplicationDestination
+--------------------------------------------------
 
-.. important::
-   **Kopia ReplicationDestination requires explicit identity configuration**
+.. note::
+   **Kopia ReplicationDestination has flexible identity configuration**
    
-   Unlike other movers, Kopia ReplicationDestination cannot automatically determine which 
-   snapshots to restore from because:
+   Identity is now OPTIONAL! When not provided, VolSync automatically generates an identity:
    
-   - The destination doesn't know the source PVC name (part of the hostname)
-   - Multiple backup sources may exist in the same repository
-   - Each source has a unique identity (username@hostname)
+   - Username: ``<destination-name>-<namespace>``
+   - Hostname: ``<namespace>``
    
-   You **MUST** provide either:
+   This works perfectly for simple same-namespace restores when the destination name 
+   matches the source name.
    
-   1. ``sourceIdentity`` with at least ``sourceName`` and ``sourceNamespace`` (recommended)
-   2. Both ``username`` AND ``hostname`` fields explicitly
+   For more complex scenarios, you can still provide:
    
-   Without this, the ReplicationDestination will fail validation with an error.
+   1. ``sourceIdentity`` for cross-namespace restores or different names
+   2. Both ``username`` AND ``hostname`` for custom identity control
+   
+   The system validates that you either provide both username and hostname together, 
+   or neither (for automatic identity).
 
 Simplified Restore with sourceIdentity
 ---------------------------------------

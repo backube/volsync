@@ -53,15 +53,15 @@ spec:
     - ReadWriteOnce
     # storageClassName: fast-ssd  # Optional: specify StorageClass
     
-    # REQUIRED: Specify source identity for cross-namespace restore
-    # Option 1: Use sourceIdentity (recommended - auto-discovers configuration)
+    # Identity configuration for cross-namespace restore
+    # Use sourceIdentity (recommended - auto-discovers configuration)
     sourceIdentity:
       sourceName: app-backup           # Name of the ReplicationSource
       sourceNamespace: source-namespace  # Original namespace
       # sourcePVCName: app-data         # Optional: auto-discovered if not provided
       # sourcePathOverride: /custom/path # Optional: auto-discovered if not provided
     
-    # Option 2: Use explicit identity (when source doesn't exist or for manual control)
+    # Alternative: Use explicit identity (when source doesn't exist or for manual control)
     # username: app-backup-source-namespace  # Format: {source-name}-{namespace}
     # hostname: source-namespace              # Always just namespace name
     
@@ -195,7 +195,10 @@ spec:
     destinationPVC: temp-discovery
     copyMethod: Direct
     capacity: 1Gi
-    # Don't specify identity to see all available sources
+    # Identity is optional - when omitted, automatic identity is used:
+    # username: identity-discovery-target-namespace
+    # hostname: target-namespace
+    # This may not match any snapshots, but status will show available identities
     
 # After applying, check available identities:
 # kubectl get replicationdestination identity-discovery -n target-namespace -o json | jq '.status.kopia.availableIdentities'

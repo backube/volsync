@@ -297,10 +297,11 @@ type KopiaSourceIdentity struct {
 }
 
 // ReplicationDestinationKopiaSpec defines the field for kopia in replicationDestination.
-// IMPORTANT: Kopia ReplicationDestination requires explicit identity configuration.
-// You must provide either SourceIdentity (recommended) or both Username AND Hostname.
-// This is required because the destination cannot automatically determine which snapshots
-// to restore from (the hostname includes the source PVC name which isn't known).
+// Identity configuration is OPTIONAL. When not provided, VolSync automatically generates:
+// - Username: <destination-name>-<namespace>
+// - Hostname: <namespace>
+// This works perfectly for simple same-namespace restores when the destination name matches the source.
+// For cross-namespace restores or custom identity, use SourceIdentity or provide both Username AND Hostname.
 type ReplicationDestinationKopiaSpec struct {
 	ReplicationDestinationVolumeOptions `json:",inline"`
 	// Repository is the secret name containing repository info.
@@ -340,22 +341,28 @@ type ReplicationDestinationKopiaSpec struct {
 	PolicyConfig *KopiaPolicySpec `json:"policyConfig,omitempty"`
 	// SourceIdentity provides an easy way to specify which ReplicationSource's snapshots to restore.
 	// When specified, it will be used to generate the username and hostname automatically.
-	// This is the RECOMMENDED way to configure identity for ReplicationDestination.
-	// Either SourceIdentity OR both Username+Hostname must be provided.
+	// Use this for cross-namespace restores or when the destination has a different name than the source.
+	// Optional: When omitted, automatic identity is used based on the destination's name and namespace.
 	//+optional
 	SourceIdentity *KopiaSourceIdentity `json:"sourceIdentity,omitempty"`
-	// Username override for Kopia repository access.
-	// MUST be used together with Hostname when not using SourceIdentity.
-	// If not specified and SourceIdentity is not used, defaults to "volsync"
+	// Username for Kopia repository access.
+	// When provided, MUST be used together with Hostname.
+	// Optional: If not specified, defaults to <destination-name>-<namespace>.
 	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$"
 	//+optional
 	Username *string `json:"username,omitempty"`
-	// Hostname override for Kopia repository access.
-	// MUST be used together with Username when not using SourceIdentity.
-	// If not specified and SourceIdentity is not used, defaults to "<namespace>-<replicationsource-name>"
+	// Hostname for Kopia repository access.
+	// When provided, MUST be used together with Username.
+	// Optional: If not specified, defaults to the namespace name.
 	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$"
 	//+optional
 	Hostname *string `json:"hostname,omitempty"`
+	// enableFileDeletion will clean the destination directory before restore to ensure
+	// it exactly matches the snapshot. Files and directories in the destination that don't
+	// exist in the snapshot will be removed (except lost+found).
+	// Defaults to false.
+	//+optional
+	EnableFileDeletion *bool `json:"enableFileDeletion,omitempty"`
 
 	MoverConfig `json:",inline"`
 }

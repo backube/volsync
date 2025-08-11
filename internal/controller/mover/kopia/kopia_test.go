@@ -203,7 +203,65 @@ var _ = Describe("Kopia", func() {
 			Expect(m.Name()).To(Equal("kopia"))
 		})
 
-		It("should fail to create mover from destination without identity", func() {
+		It("should properly handle enableFileDeletion field from destination spec", func() {
+			viper := viper.New()
+			flags := flag.NewFlagSet("test", flag.ContinueOnError)
+			b, err := newBuilder(viper, flags)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Test with enableFileDeletion set to true
+			rd := &volsyncv1alpha1.ReplicationDestination{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "rd",
+					Namespace: ns.Name,
+				},
+				Spec: volsyncv1alpha1.ReplicationDestinationSpec{
+					Kopia: &volsyncv1alpha1.ReplicationDestinationKopiaSpec{
+						Repository: "kopia-secret",
+						ReplicationDestinationVolumeOptions: volsyncv1alpha1.ReplicationDestinationVolumeOptions{
+							Capacity: ptr.To(resource.MustParse("1Gi")),
+						},
+						// Provide identity to satisfy validation
+						Username: ptr.To("test-user"),
+						Hostname: ptr.To("test-host"),
+						// Set enableFileDeletion to true
+						EnableFileDeletion: ptr.To(true),
+					},
+				},
+				Status: &volsyncv1alpha1.ReplicationDestinationStatus{},
+			}
+
+			m, err := b.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd, false)
+			Expect(err).To(BeNil())
+			Expect(m).NotTo(BeNil())
+
+			// Verify the mover has the correct enableFileDeletionOnRestore value
+			kopiaMover, ok := m.(*Mover)
+			Expect(ok).To(BeTrue())
+			Expect(kopiaMover.enableFileDeletionOnRestore).To(BeTrue())
+
+			// Test with enableFileDeletion set to false
+			rd.Spec.Kopia.EnableFileDeletion = ptr.To(false)
+			m, err = b.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd, false)
+			Expect(err).To(BeNil())
+			Expect(m).NotTo(BeNil())
+
+			kopiaMover, ok = m.(*Mover)
+			Expect(ok).To(BeTrue())
+			Expect(kopiaMover.enableFileDeletionOnRestore).To(BeFalse())
+
+			// Test with enableFileDeletion not set (should default to false)
+			rd.Spec.Kopia.EnableFileDeletion = nil
+			m, err = b.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd, false)
+			Expect(err).To(BeNil())
+			Expect(m).NotTo(BeNil())
+
+			kopiaMover, ok = m.(*Mover)
+			Expect(ok).To(BeTrue())
+			Expect(kopiaMover.enableFileDeletionOnRestore).To(BeFalse())
+		})
+
+		It("should succeed with automatic identity when no explicit identity provided", func() {
 			viper := viper.New()
 			flags := flag.NewFlagSet("test", flag.ContinueOnError)
 			b, err := newBuilder(viper, flags)
@@ -220,19 +278,27 @@ var _ = Describe("Kopia", func() {
 						ReplicationDestinationVolumeOptions: volsyncv1alpha1.ReplicationDestinationVolumeOptions{
 							Capacity: ptr.To(resource.MustParse("1Gi")),
 						},
-						// No identity information provided - should fail validation
+						// No identity information provided - should use automatic identity
 					},
 				},
 				Status: &volsyncv1alpha1.ReplicationDestinationStatus{},
 			}
 
 			m, err := b.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd, false)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("missing identity configuration"))
-			Expect(m).To(BeNil())
+			Expect(err).To(BeNil())
+			Expect(m).NotTo(BeNil())
+
+			// Verify automatic identity was used
+			kopiaMover, ok := m.(*Mover)
+			Expect(ok).To(BeTrue())
+			// Username should be rd-<namespace>
+			Expect(kopiaMover.username).To(ContainSubstring("rd"))
+			Expect(kopiaMover.username).To(ContainSubstring(ns.Name))
+			// Hostname should be the namespace
+			Expect(kopiaMover.hostname).To(Equal(ns.Name))
 		})
 
-		It("should fail to create mover from destination with only username", func() {
+		It("should fail when partial identity is provided (username without hostname)", func() {
 			viper := viper.New()
 			flags := flag.NewFlagSet("test", flag.ContinueOnError)
 			b, err := newBuilder(viper, flags)
@@ -250,7 +316,7 @@ var _ = Describe("Kopia", func() {
 							Capacity: ptr.To(resource.MustParse("1Gi")),
 						},
 						Username: ptr.To("test-user"),
-						// Missing hostname - should fail validation
+						// Missing hostname - partial identity should fail
 					},
 				},
 				Status: &volsyncv1alpha1.ReplicationDestinationStatus{},
@@ -259,8 +325,10 @@ var _ = Describe("Kopia", func() {
 			m, err := b.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd, false)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("missing 'hostname'"))
+			Expect(err.Error()).To(ContainSubstring("when using explicit identity"))
 			Expect(m).To(BeNil())
 		})
+
 	})
 
 	Context("Kopia credential configuration", func() {
@@ -511,6 +579,45 @@ var _ = Describe("Kopia", func() {
 					}
 				}
 				Expect(found).To(BeTrue(), "Backend variable %s should be present", varName)
+			}
+		})
+
+		It("should set KOPIA_ENABLE_FILE_DELETION when enableFileDeletion is true", func() {
+			// Create a destination mover with enableFileDeletion
+			mover.isSource = false
+			mover.enableFileDeletionOnRestore = true
+
+			envVars := mover.buildEnvironmentVariables(secret)
+
+			Expect(envVars).To(ContainElement(corev1.EnvVar{
+				Name:  "KOPIA_ENABLE_FILE_DELETION",
+				Value: "true",
+			}))
+		})
+
+		It("should not set KOPIA_ENABLE_FILE_DELETION when enableFileDeletion is false", func() {
+			// Create a destination mover without enableFileDeletion
+			mover.isSource = false
+			mover.enableFileDeletionOnRestore = false
+
+			envVars := mover.buildEnvironmentVariables(secret)
+
+			// Check that the environment variable is NOT present
+			for _, env := range envVars {
+				Expect(env.Name).NotTo(Equal("KOPIA_ENABLE_FILE_DELETION"))
+			}
+		})
+
+		It("should not set KOPIA_ENABLE_FILE_DELETION for source movers", func() {
+			// Even if enableFileDeletion is true, it should not be set for source movers
+			mover.isSource = true
+			mover.enableFileDeletionOnRestore = true
+
+			envVars := mover.buildEnvironmentVariables(secret)
+
+			// Check that the environment variable is NOT present
+			for _, env := range envVars {
+				Expect(env.Name).NotTo(Equal("KOPIA_ENABLE_FILE_DELETION"))
 			}
 		})
 	})

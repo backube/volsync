@@ -223,12 +223,11 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		return nil, nil
 	}
 
-	// Validate that user has provided identity information for ReplicationDestination
+	// Validate identity configuration (only checks for invalid partial configurations)
 	if err := kb.validateDestinationIdentity(destination); err != nil {
 		logger.Error(err, "Invalid ReplicationDestination configuration",
 			"destination", destination.GetName(),
-			"namespace", destination.GetNamespace(),
-			"hint", "Please provide either sourceIdentity OR both username and hostname")
+			"namespace", destination.GetNamespace())
 		return nil, err
 	}
 
@@ -287,8 +286,11 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		si := destination.Spec.Kopia.SourceIdentity
 		username = generateUsername(nil, si.SourceName, sourceNamespace)
 	} else {
-		// Default generation from destination
+		// Default generation from destination (automatic identity determination)
 		username = generateUsername(nil, destination.GetName(), destination.GetNamespace())
+		logger.V(1).Info("Using automatic identity determination",
+			"username", username,
+			"basedOn", "destination name and namespace")
 	}
 
 	// Generate hostname and discover sourcePathOverride with proper priority
@@ -352,9 +354,12 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		hostname = generateHostname(nil, pvcNameToUse,
 			sourceNamespace, si.SourceName)
 	} else {
-		// Default generation from destination
+		// Default generation from destination (automatic identity determination)
 		hostname = generateHostname(nil, destination.Spec.Kopia.DestinationPVC,
 			destination.GetNamespace(), destination.GetName())
+		logger.V(1).Info("Using automatic hostname determination",
+			"hostname", hostname,
+			"basedOn", "destination namespace")
 	}
 
 	// Set repository name - prioritize explicit destination repository over discovered one
@@ -377,36 +382,43 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		destination.Status.Kopia = &volsyncv1alpha1.ReplicationDestinationKopiaStatus{}
 	}
 
+	// Handle enableFileDeletion - convert *bool to bool with default false
+	enableFileDeletion := false
+	if destination.Spec.Kopia.EnableFileDeletion != nil {
+		enableFileDeletion = *destination.Spec.Kopia.EnableFileDeletion
+	}
+
 	return &Mover{
-		client:                client,
-		logger:                logger.WithValues("method", "Kopia"),
-		eventRecorder:         eventRecorder,
-		owner:                 destination,
-		vh:                    vh,
-		saHandler:             saHandler,
-		containerImage:        kb.getKopiaContainerImage(),
-		cacheAccessModes:      destination.Spec.Kopia.CacheAccessModes,
-		cacheCapacity:         destination.Spec.Kopia.CacheCapacity,
-		cacheStorageClassName: destination.Spec.Kopia.CacheStorageClassName,
-		cleanupCachePVC:       destination.Spec.Kopia.CleanupCachePVC,
-		repositoryName:        repositoryName,
-		isSource:              isSource,
-		paused:                destination.Spec.Paused,
-		mainPVCName:           destination.Spec.Kopia.DestinationPVC,
-		cleanupTempPVC:        destination.Spec.Kopia.CleanupTempPVC,
-		customCASpec:          volsyncv1alpha1.CustomCASpec(destination.Spec.Kopia.CustomCA),
-		policyConfig:          destination.Spec.Kopia.PolicyConfig,
-		privileged:            privileged,
-		metrics:               metrics,
-		username:              username,
-		hostname:              hostname,
-		sourcePathOverride:    sourcePathOverride,
-		restoreAsOf:           destination.Spec.Kopia.RestoreAsOf,
-		shallow:               destination.Spec.Kopia.Shallow,
-		previous:              destination.Spec.Kopia.Previous,
-		destinationStatus:     destination.Status.Kopia,
-		latestMoverStatus:     destination.Status.LatestMoverStatus,
-		moverConfig:           destination.Spec.Kopia.MoverConfig,
+		client:                      client,
+		logger:                      logger.WithValues("method", "Kopia"),
+		eventRecorder:               eventRecorder,
+		owner:                       destination,
+		vh:                          vh,
+		saHandler:                   saHandler,
+		containerImage:              kb.getKopiaContainerImage(),
+		cacheAccessModes:            destination.Spec.Kopia.CacheAccessModes,
+		cacheCapacity:               destination.Spec.Kopia.CacheCapacity,
+		cacheStorageClassName:       destination.Spec.Kopia.CacheStorageClassName,
+		cleanupCachePVC:             destination.Spec.Kopia.CleanupCachePVC,
+		repositoryName:              repositoryName,
+		isSource:                    isSource,
+		paused:                      destination.Spec.Paused,
+		mainPVCName:                 destination.Spec.Kopia.DestinationPVC,
+		cleanupTempPVC:              destination.Spec.Kopia.CleanupTempPVC,
+		customCASpec:                volsyncv1alpha1.CustomCASpec(destination.Spec.Kopia.CustomCA),
+		policyConfig:                destination.Spec.Kopia.PolicyConfig,
+		privileged:                  privileged,
+		metrics:                     metrics,
+		username:                    username,
+		hostname:                    hostname,
+		sourcePathOverride:          sourcePathOverride,
+		restoreAsOf:                 destination.Spec.Kopia.RestoreAsOf,
+		shallow:                     destination.Spec.Kopia.Shallow,
+		previous:                    destination.Spec.Kopia.Previous,
+		enableFileDeletionOnRestore: enableFileDeletion,
+		destinationStatus:           destination.Status.Kopia,
+		latestMoverStatus:           destination.Status.LatestMoverStatus,
+		moverConfig:                 destination.Spec.Kopia.MoverConfig,
 	}, nil
 }
 
@@ -429,7 +441,7 @@ func sanitizeForIdentifier(input string, allowUnderscore, allowDots bool) string
 			validChars.WriteRune(r)
 		}
 	}
-	
+
 	// Trim separators based on what's allowed
 	trimChars := "-"
 	if allowUnderscore {
@@ -647,12 +659,10 @@ func (kb *Builder) discoverSourcePVC(c client.Client, sourceName, sourceNamespac
 	return info.pvcName
 }
 
-// validateDestinationIdentity validates that the user has provided sufficient identity information
-// for the ReplicationDestination. Users must provide either:
-// 1. Both explicit username AND hostname fields, OR
-// 2. A sourceIdentity field with at least sourceName
-// This validation is required because we cannot automatically determine the source identity
-// when restoring, as we don't know the source's identity (username and hostname combination).
+// validateDestinationIdentity validates identity configuration for ReplicationDestination.
+// This function now only validates mismatched configurations (e.g., username without hostname).
+// Identity is no longer required - it will be automatically determined if not provided.
+// Returns an error only if the configuration is invalid (partial identity provided).
 func (kb *Builder) validateDestinationIdentity(destination *volsyncv1alpha1.ReplicationDestination) error {
 	if destination.Spec.Kopia == nil {
 		return nil
@@ -664,31 +674,21 @@ func (kb *Builder) validateDestinationIdentity(destination *volsyncv1alpha1.Repl
 	hasExplicitUsername := kopiaSpec.Username != nil && *kopiaSpec.Username != ""
 	hasExplicitHostname := kopiaSpec.Hostname != nil && *kopiaSpec.Hostname != ""
 
-	// Check if sourceIdentity is provided with at least sourceName
-	hasSourceIdentity := kopiaSpec.SourceIdentity != nil && kopiaSpec.SourceIdentity.SourceName != ""
-
-	// Valid if either both username/hostname are provided OR sourceIdentity is provided
-	if (hasExplicitUsername && hasExplicitHostname) || hasSourceIdentity {
-		return nil
-	}
-
-	// Build concise error message
-	var errorMsg string
+	// If user provides partial explicit identity, that's an error
+	// They must provide both or neither for explicit identity
 	if hasExplicitUsername && !hasExplicitHostname {
-		errorMsg = "missing 'hostname' (you provided 'username' but both are required)"
-	} else if !hasExplicitUsername && hasExplicitHostname {
-		errorMsg = "missing 'username' (you provided 'hostname' but both are required)"
-	} else {
-		errorMsg = "missing identity configuration for ReplicationDestination"
+		return fmt.Errorf("kopia ReplicationDestination error: missing 'hostname' " +
+			"(you provided 'username' but both are required when using explicit identity)\n\n" +
+			"Either provide both 'username' and 'hostname', or omit both to use automatic identity.\n\n" +
+			"For detailed examples, see: https://volsync.readthedocs.io/en/stable/usage/kopia/index.html")
+	}
+	if !hasExplicitUsername && hasExplicitHostname {
+		return fmt.Errorf("kopia ReplicationDestination error: missing 'username' " +
+			"(you provided 'hostname' but both are required when using explicit identity)\n\n" +
+			"Either provide both 'username' and 'hostname', or omit both to use automatic identity.\n\n" +
+			"For detailed examples, see: https://volsync.readthedocs.io/en/stable/usage/kopia/index.html")
 	}
 
-	// Add brief usage hint and link to documentation
-	errorMsg = fmt.Sprintf("Kopia ReplicationDestination error: %s\n\n"+
-		"Provide either:\n"+
-		"  1. Both 'username' and 'hostname' fields, OR\n"+
-		"  2. A 'sourceIdentity' section with 'sourceName'\n\n"+
-		"For detailed examples, see: https://volsync.readthedocs.io/en/stable/usage/kopia/index.html",
-		errorMsg)
-
-	return fmt.Errorf("%s", errorMsg)
+	// No validation error - identity will be determined automatically or from provided values
+	return nil
 }

@@ -12,6 +12,7 @@ Kopia-based backup
    multi-tenancy
    backup-configuration
    restore-configuration
+   enable_file_deletion
    cross-namespace-restore
    troubleshooting
    custom-ca
@@ -82,22 +83,21 @@ See :doc:`backup-configuration` for backup setup and configuration options.
 
 **3. Set up Restore Operations**
 
-When needed, configure a ReplicationDestination to restore data from your backups,
-including point-in-time recovery, previous snapshot selection, cross-namespace restores,
-and leveraging enhanced error reporting for troubleshooting.
+When needed, configure a ReplicationDestination to restore data from your backups.
+Identity configuration is now OPTIONAL - VolSync automatically determines the identity
+for simple same-namespace restores when the destination name matches the source name.
 
-See :doc:`restore-configuration` for restore operations, enhanced error reporting,
-and the ``sourceIdentity`` helper field with auto-discovery of PVC names, 
-sourcePathOverride, and repository configurations.
+See :doc:`restore-configuration` for restore operations, automatic identity generation,
+the ``sourceIdentity`` helper field for cross-namespace restores, and enhanced error reporting.
 
 For cross-namespace restore scenarios including disaster recovery and environment cloning,
 see :doc:`cross-namespace-restore`.
 
 **4. Understand Identity Management**
 
-VolSync uses an intentional design where hostname equals namespace (always) and
-username equals the ReplicationSource/ReplicationDestination name. This creates
-unique identities without collision risk.
+VolSync automatically manages identity for you! When no identity is specified,
+it generates a username from the destination name and namespace, and uses the
+namespace as the hostname. This makes simple restores configuration-free.
 
 See :doc:`hostname-design` for understanding the intentional hostname design,
 and :doc:`multi-tenancy` for multi-tenancy configuration and customization options.
@@ -153,31 +153,45 @@ Here's a complete example showing how to set up a basic Kopia backup:
 
 **Step 3: Restore when needed**
 
-.. important::
-   Kopia ReplicationDestination **requires** identity information. You must use either 
-   ``sourceIdentity`` (recommended) or provide both ``username`` and ``hostname``.
+.. note::
+   Identity configuration is now OPTIONAL! For simple same-namespace restores,
+   just use the same name as your ReplicationSource.
 
 .. code-block:: yaml
 
+   # Simple restore - no identity configuration needed!
    apiVersion: volsync.backube/v1alpha1
    kind: ReplicationDestination
    metadata:
-     name: mydata-restore
+     name: mydata-backup  # Same name as ReplicationSource
    spec:
      trigger:
        manual: restore-now
      kopia:
-       # repository is optional when using sourceIdentity - auto-discovered from ReplicationSource if not specified
+       repository: kopia-config
        destinationPVC: restored-data
        copyMethod: Direct
-       # REQUIRED: Use sourceIdentity to specify which backup source to restore from
-       # This tells VolSync which snapshots to restore (cannot be auto-determined)
+       # No identity configuration needed!
+       # Automatically uses:
+       #   username: mydata-backup-default
+       #   hostname: default
+
+   ---
+   # For cross-namespace or different-name restores, use sourceIdentity:
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: restore-from-prod
+     namespace: staging
+   spec:
+     trigger:
+       manual: restore-now
+     kopia:
+       destinationPVC: staging-data
+       copyMethod: Direct
        sourceIdentity:
          sourceName: mydata-backup
-         sourceNamespace: default
-         # sourcePVCName, sourcePathOverride, and repository are optional - auto-discovered from ReplicationSource if not provided
-       # Optionally use previous parameter to restore from older snapshots
-       previous: 1  # Skip latest, use previous snapshot
+         sourceNamespace: production
 
 **Step 4: Check status if issues occur**
 
@@ -221,6 +235,11 @@ The Kopia documentation has been organized into focused sections for easier navi
    Complete restore operations guide including enhanced error reporting, snapshot discovery,
    ``sourceIdentity`` helper with auto-discovery of PVC names, sourcePathOverride, and
    repository configurations, ``previous`` parameter, point-in-time recovery, and restore options.
+
+:doc:`enable_file_deletion`
+   Comprehensive guide to the ``enableFileDeletion`` feature for ReplicationDestinations.
+   Controls whether destination directories are cleaned before restore to ensure exact
+   snapshot matching. Covers use cases, behavior differences, migration guidance, and best practices.
 
 :doc:`cross-namespace-restore`
    Comprehensive guide for restoring Kopia backups across namespaces. Covers disaster recovery,

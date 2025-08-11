@@ -87,11 +87,11 @@ spec:
     parallelism: 4
 ---
 # Example: ReplicationDestination for restore from filesystem backup
-# IMPORTANT: Kopia ReplicationDestination REQUIRES identity configuration
+# Identity configuration is OPTIONAL - automatically determined when not provided
 apiVersion: volsync.backube/v1alpha1
 kind: ReplicationDestination
 metadata:
-  name: filesystem-restore
+  name: filesystem-backup  # Same name as ReplicationSource for automatic identity
   namespace: backup-example
 spec:
   trigger:
@@ -108,17 +108,19 @@ spec:
     destinationPVC: restored-data
     copyMethod: Direct
     
-    # REQUIRED: Specify which backup source to restore from
-    # Kopia cannot auto-determine the source identity
-    # With new behavior: hostname is always just the namespace
-    sourceIdentity:
-      sourceName: filesystem-backup      # Name of the ReplicationSource
-      sourceNamespace: backup-example    # Namespace of the source (becomes hostname)
-      # sourcePVCName is auto-discovered but doesn't affect hostname
+    # NO IDENTITY CONFIGURATION NEEDED!
+    # Automatically uses:
+    #   username: filesystem-backup-backup-example
+    #   hostname: backup-example
     
-    # Alternative: Use explicit username and hostname (both required)
-    # username: "filesystem-backup-backup-example"
-    # hostname: "backup-example"  # Always just namespace with new behavior
+    # For cross-namespace restore or different names, use sourceIdentity:
+    # sourceIdentity:
+    #   sourceName: filesystem-backup
+    #   sourceNamespace: production
+    
+    # Or use explicit username and hostname (both required together):
+    # username: "custom-identity"
+    # hostname: "custom-host"
     
     # Optional: Restore from a previous snapshot instead of latest
     # previous: 1  # Skip latest, use previous snapshot

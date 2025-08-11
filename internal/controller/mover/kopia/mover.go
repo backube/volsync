@@ -66,6 +66,7 @@ const (
 	defaultGlobalPolicyFile = "global-policy.json"
 	defaultRepoConfigFile   = "repository.config"
 	operationBackup         = "backup"
+	operationRestore        = "restore"
 )
 
 // Mover is the reconciliation logic for the Kopia-based data mover.
@@ -103,12 +104,13 @@ type Mover struct {
 	sourceStatus        *volsyncv1alpha1.ReplicationSourceKopiaStatus
 	repositoryPVC       *string
 	// Destination-only fields
-	restoreAsOf       *string
-	shallow           *int32
-	previous          *int32
-	cleanupTempPVC    bool
-	cleanupCachePVC   bool
-	destinationStatus *volsyncv1alpha1.ReplicationDestinationKopiaStatus
+	restoreAsOf                 *string
+	shallow                     *int32
+	previous                    *int32
+	cleanupTempPVC              bool
+	cleanupCachePVC             bool
+	enableFileDeletionOnRestore bool
+	destinationStatus           *volsyncv1alpha1.ReplicationDestinationKopiaStatus
 }
 
 var _ mover.Mover = &Mover{}
@@ -132,7 +134,7 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 	operationStart := time.Now()
 	operation := operationBackup
 	if !m.isSource {
-		operation = "restore"
+		operation = operationRestore
 	}
 
 	// Track repository connectivity
@@ -713,6 +715,10 @@ func (m *Mover) addDestinationEnvVars(envVars []corev1.EnvVar) []corev1.EnvVar {
 	// Pass sourcePathOverride to destination jobs for correct snapshot path restoration
 	if m.sourcePathOverride != nil {
 		envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_SOURCE_PATH_OVERRIDE", Value: *m.sourcePathOverride})
+	}
+	// Pass enableFileDeletionOnRestore flag
+	if m.enableFileDeletionOnRestore {
+		envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_ENABLE_FILE_DELETION", Value: "true"})
 	}
 	return envVars
 }

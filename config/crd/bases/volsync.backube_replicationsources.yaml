@@ -163,7 +163,7 @@ spec:
                   hostname:
                     description: |-
                       Hostname override for Kopia repository access.
-                      If not specified, defaults to "<namespace>-<replicationsource-name>"
+                      If not specified, defaults to the namespace name.
                     pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$
                     type: string
                   maintenanceIntervalDays:
@@ -1503,7 +1503,7 @@ spec:
                   username:
                     description: |-
                       Username override for Kopia repository access.
-                      If not specified, defaults to "volsync"
+                      If not specified, defaults to the ReplicationSource name with namespace appended.
                     pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$
                     type: string
                   volumeSnapshotClassName:

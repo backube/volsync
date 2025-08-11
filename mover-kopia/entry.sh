@@ -89,6 +89,7 @@ echo "KOPIA_MANUAL_CONFIG: $([ -n "${KOPIA_MANUAL_CONFIG}" ] && echo "[SET]" || 
 echo "KOPIA_RESTORE_AS_OF: $([ -n "${KOPIA_RESTORE_AS_OF}" ] && echo "[SET]" || echo "[NOT SET]")"
 echo "KOPIA_SHALLOW: $([ -n "${KOPIA_SHALLOW}" ] && echo "[SET]" || echo "[NOT SET]")"
 echo "KOPIA_PREVIOUS: $([ -n "${KOPIA_PREVIOUS}" ] && echo "[SET]" || echo "[NOT SET]")"
+echo "KOPIA_ENABLE_FILE_DELETION: $([ -n "${KOPIA_ENABLE_FILE_DELETION}" ] && echo "[SET]" || echo "[NOT SET]")"
 echo ""
 echo "=== Additional Backend Environment Variables ==="
 echo "KOPIA_B2_BUCKET: $([ -n "${KOPIA_B2_BUCKET}" ] && echo "[SET]" || echo "[NOT SET]")"
@@ -1126,6 +1127,19 @@ function select_snapshot_to_restore {
 
 function do_restore {
     echo "=== Starting restore ==="
+    
+    # Check if file deletion is enabled
+    if [[ "${KOPIA_ENABLE_FILE_DELETION}" == "true" ]]; then
+        echo "File deletion enabled - cleaning destination directory before restore"
+        # Clean the destination directory but preserve lost+found
+        # Use find to delete everything except lost+found directory
+        if [[ -d "${DATA_DIR}" ]]; then
+            echo "Cleaning destination directory: ${DATA_DIR}"
+            # Delete all files and directories except lost+found
+            find "${DATA_DIR}" -mindepth 1 -maxdepth 1 ! -name 'lost+found' -exec rm -rf {} \; 2>/dev/null || true
+            echo "Destination directory cleaned (preserved lost+found if present)"
+        fi
+    fi
     
     # Check if discovery mode is enabled
     if [[ "${KOPIA_DISCOVER_SNAPSHOTS}" == "true" ]]; then

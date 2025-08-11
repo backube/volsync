@@ -168,11 +168,18 @@ spec:
                       automatically provisioning one. Either this field or both capacity and
                       accessModes must be specified.
                     type: string
+                  enableFileDeletion:
+                    description: |-
+                      enableFileDeletion will clean the destination directory before restore to ensure
+                      it exactly matches the snapshot. Files and directories in the destination that don't
+                      exist in the snapshot will be removed (except lost+found).
+                      Defaults to false.
+                    type: boolean
                   hostname:
                     description: |-
-                      Hostname override for Kopia repository access.
-                      MUST be used together with Username when not using SourceIdentity.
-                      If not specified and SourceIdentity is not used, defaults to "<namespace>-<replicationsource-name>"
+                      Hostname for Kopia repository access.
+                      When provided, MUST be used together with Username.
+                      Optional: If not specified, defaults to the namespace name.
                     pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$
                     type: string
                   moverAffinity:
@@ -1470,8 +1477,8 @@ spec:
                     description: |-
                       SourceIdentity provides an easy way to specify which ReplicationSource's snapshots to restore.
                       When specified, it will be used to generate the username and hostname automatically.
-                      This is the RECOMMENDED way to configure identity for ReplicationDestination.
-                      Either SourceIdentity OR both Username+Hostname must be provided.
+                      Use this for cross-namespace restores or when the destination has a different name than the source.
+                      Optional: When omitted, automatic identity is used based on the destination's name and namespace.
                     properties:
                       sourceName:
                         description: |-
@@ -1506,9 +1513,9 @@ spec:
                     type: string
                   username:
                     description: |-
-                      Username override for Kopia repository access.
-                      MUST be used together with Hostname when not using SourceIdentity.
-                      If not specified and SourceIdentity is not used, defaults to "volsync"
+                      Username for Kopia repository access.
+                      When provided, MUST be used together with Hostname.
+                      Optional: If not specified, defaults to <destination-name>-<namespace>.
                     pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$
                     type: string
                   volumeSnapshotClassName:

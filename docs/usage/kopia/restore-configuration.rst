@@ -9,27 +9,52 @@ Data from a backup can be restored using the ReplicationDestination CR. In most
 cases, it is desirable to perform a single restore into an empty
 PersistentVolume.
 
-.. important::
-   **Identity Requirement for Kopia ReplicationDestination**
+.. note::
+   **Simplified Identity Configuration for Kopia ReplicationDestination**
    
-   For Kopia ReplicationDestination, you **MUST** provide identity information to specify 
-   which snapshots to restore from. This is because we cannot automatically determine the 
-   source identity (the username and hostname combination that identifies the backup source).
+   Identity configuration is now **OPTIONAL**! When not provided, VolSync automatically 
+   determines the appropriate identity, making simple same-namespace restores easier.
    
-   You have two options:
+   **Automatic Identity** (when no identity fields are provided):
    
-   1. **Use sourceIdentity (Recommended)**: Specify ``sourceName`` and ``sourceNamespace``
-      to automatically generate the correct identity
-   2. **Use explicit identity**: Provide both ``username`` AND ``hostname`` fields
+   - Username: ``<destination-name>-<namespace>``
+   - Hostname: ``<namespace>``
    
-   Without proper identity configuration, the ReplicationDestination will fail validation.
+   This works perfectly when the ReplicationDestination has the same name as the 
+   ReplicationSource and both are in the same namespace.
+   
+   For more complex scenarios, you can still use:
+   
+   1. **sourceIdentity**: For cross-namespace restores or different names
+   2. **Explicit identity**: Provide both ``username`` AND ``hostname`` for custom control
 
-Restoring from a Specific ReplicationSource (sourceIdentity)
-------------------------------------------------------------
+Simple Same-Namespace Restore (No Configuration Needed)
+--------------------------------------------------------
 
-When restoring data from a Kopia repository that contains backups from multiple sources, 
-you need to specify which source's snapshots to restore. The ``sourceIdentity`` field 
-provides a simplified way to do this with automatic discovery of the source configuration.
+The simplest way to restore data is to create a ReplicationDestination with the same 
+name as your ReplicationSource. No identity configuration is needed!
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: my-backup  # Same name as the ReplicationSource
+     namespace: production
+   spec:
+     kopia:
+       destinationPVC: restored-data
+       repository: kopia-config
+       # No identity configuration needed!
+       # Automatically uses:
+       # - username: my-backup-production
+       # - hostname: production
+
+Advanced: Restoring from a Specific ReplicationSource (sourceIdentity)
+----------------------------------------------------------------------
+
+For cross-namespace restores or when the destination has a different name than the source, 
+use the ``sourceIdentity`` field. This provides automatic discovery of the source configuration.
 
 Understanding the Multi-Tenancy Challenge
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1202,6 +1227,30 @@ customCA
       This is the name of a Secret containing the CA certificate
    configMapName
       This is the name of a ConfigMap containing the CA certificate
+
+enableFileDeletion
+   A boolean field that controls whether the destination directory should be cleaned 
+   before restore operations. When set to ``true``, all files and directories in the 
+   destination (except ``lost+found``) are removed before the restore begins, ensuring 
+   the restored data exactly matches the snapshot content. When ``false`` (the default), 
+   Kopia's standard behavior applies: existing files are overwritten, new files are 
+   created, but extra files not in the snapshot remain untouched. This is useful for:
+   
+   - **Disaster recovery**: Ensuring exact state restoration
+   - **Test environment refresh**: Cleaning test data before restoring production snapshots
+   - **Clean slate restores**: Removing orphaned or accumulated files
+   
+   Example usage:
+   
+   .. code-block:: yaml
+   
+      spec:
+        kopia:
+          enableFileDeletion: true  # Clean destination before restore
+          destinationPVC: restored-data
+          repository: kopia-config
+   
+   See :doc:`enable_file_deletion` for comprehensive documentation on this feature.
 
 repository
    This is the name of the Secret (in the same Namespace) that holds the

@@ -99,7 +99,29 @@ spec:
       fsGroup: 0
 ```
 
-a `ReplicationDestination` example (referencing the above `ReplicationSource`):
+a `ReplicationDestination` example:
+
+Simple same-namespace restore (no identity configuration needed):
+```yaml
+apiVersion: volsync.backube/v1alpha1
+kind: ReplicationDestination
+metadata:
+  name: homepage-kopia  # Same name as ReplicationSource
+  namespace: apps      # Same namespace
+spec:
+  trigger:
+    manual: restore-now
+  kopia:
+    # NO IDENTITY CONFIGURATION NEEDED!
+    # Automatically uses:
+    #   username: homepage-kopia-apps
+    #   hostname: apps
+    destinationPVC: restored-data
+    copyMethod: Direct
+    storageClassName: "truenas-csi-iscsi"
+```
+
+Cross-namespace restore (using sourceIdentity):
 ```yaml
 apiVersion: volsync.backube/v1alpha1
 kind: ReplicationDestination

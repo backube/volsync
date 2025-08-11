@@ -32,10 +32,10 @@ import (
 
 var _ = Describe("Hostname Collision Tests", func() {
 	var (
-		ns           *corev1.Namespace
-		sourcePVC1   *corev1.PersistentVolumeClaim
-		sourcePVC2   *corev1.PersistentVolumeClaim
-		repo         *corev1.Secret
+		ns         *corev1.Namespace
+		sourcePVC1 *corev1.PersistentVolumeClaim
+		sourcePVC2 *corev1.PersistentVolumeClaim
+		repo       *corev1.Secret
 	)
 
 	BeforeEach(func() {
@@ -106,22 +106,22 @@ var _ = Describe("Hostname Collision Tests", func() {
 			// The hostname should be the SAME (namespace only)
 			// The username should be DIFFERENT (object name)
 			// Together they provide uniqueness for Kopia identity
-			
+
 			hostname1 := generateHostname(nil, nil, ns.Name, "source1")
 			username1 := generateUsername(nil, "source1", ns.Name)
-			
+
 			hostname2 := generateHostname(nil, nil, ns.Name, "source2")
 			username2 := generateUsername(nil, "source2", ns.Name)
-			
+
 			// Verify hostnames are the SAME (namespace only)
 			Expect(hostname1).To(Equal(hostname2))
 			Expect(hostname1).To(Equal(ns.Name))
-			
+
 			// Verify usernames are DIFFERENT (object names)
 			Expect(username1).NotTo(Equal(username2))
 			Expect(username1).To(ContainSubstring("source1"))
 			Expect(username2).To(ContainSubstring("source2"))
-			
+
 			// Document the uniqueness guarantee:
 			// - Kubernetes prevents duplicate ReplicationSource names in same namespace
 			// - Each source has unique username (based on object name)
@@ -134,7 +134,7 @@ var _ = Describe("Hostname Collision Tests", func() {
 			// Test that error message is concise and includes documentation link
 			// We can't call validateDestinationIdentity directly as it's not exported
 			// Instead, we'll test the validation through the Builder
-			
+
 			// Create a destination without proper identity
 			dest := &volsyncv1alpha1.ReplicationDestination{
 				ObjectMeta: metav1.ObjectMeta{
@@ -148,15 +148,15 @@ var _ = Describe("Hostname Collision Tests", func() {
 					},
 				},
 			}
-			
+
 			// This should fail validation with our improved error message
 			// The actual validation happens in FromDestination
 			// We're testing that the error message is concise and helpful
-			
+
 			// Test with partial username/hostname
 			dest.Spec.Kopia.Username = ptr.To("test-user")
 			// Missing hostname should produce specific error
-			
+
 			// Test with sourceIdentity - should be valid configuration
 			dest.Spec.Kopia.Username = nil
 			dest.Spec.Kopia.SourceIdentity = &volsyncv1alpha1.KopiaSourceIdentity{
@@ -170,14 +170,14 @@ var _ = Describe("Hostname Collision Tests", func() {
 		It("should handle namespace with special characters", func() {
 			// Test with namespace containing underscores
 			specialNs := "test_namespace_123"
-			
+
 			// Generate hostname for this source
 			hostname := generateHostname(nil, nil, specialNs, "source-special")
-			
+
 			// Verify underscores are converted to hyphens in hostname
 			Expect(hostname).NotTo(ContainSubstring("_"))
 			Expect(hostname).To(ContainSubstring("-"))
-			
+
 			// Username can keep underscores
 			username := generateUsername(nil, "source-special", specialNs)
 			// Username allows underscores, so it should contain the namespace with underscores
@@ -187,11 +187,11 @@ var _ = Describe("Hostname Collision Tests", func() {
 		It("should handle very long names gracefully", func() {
 			longName := "very-long-replication-source-name-that-exceeds-normal-limits"
 			longNamespace := "very-long-namespace-name-that-also-exceeds-limits"
-			
+
 			// Generate identifiers
 			hostname := generateHostname(nil, nil, longNamespace, longName)
 			username := generateUsername(nil, longName, longNamespace)
-			
+
 			// Verify they don't exceed reasonable limits
 			Expect(len(hostname)).To(BeNumerically("<=", 253)) // DNS hostname limit
 			Expect(len(username)).To(BeNumerically("<=", maxUsernameLength))
@@ -201,15 +201,15 @@ var _ = Describe("Hostname Collision Tests", func() {
 			// Test with empty strings
 			hostname := generateHostname(nil, nil, "", "")
 			username := generateUsername(nil, "", "")
-			
+
 			// Should return defaults
 			Expect(hostname).To(Equal(defaultUsername))
 			Expect(username).To(Equal(defaultUsername))
-			
+
 			// Test with invalid characters only
 			hostname = generateHostname(nil, nil, "!@#$%", "^&*()")
 			username = generateUsername(nil, "!@#$%", "^&*()")
-			
+
 			// Should return defaults
 			Expect(hostname).To(Equal(defaultUsername))
 			Expect(username).To(Equal(defaultUsername))
