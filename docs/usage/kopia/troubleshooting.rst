@@ -84,8 +84,8 @@ Missing Identity Configuration
 **Error Message**: "Kopia ReplicationDestination requires identity configuration"
 
 **Cause**: Kopia ReplicationDestination cannot automatically determine which snapshots 
-to restore from because the destination doesn't know the source PVC name (part of the 
-hostname) and there may be multiple sources in the repository.
+to restore from because the destination doesn't know the source identity (username and 
+hostname combination) and there may be multiple sources in the repository.
 
 **Resolution**:
 
@@ -108,8 +108,8 @@ You **MUST** provide identity information using one of these methods:
 
       spec:
         kopia:
-          username: "my-backup"
-          hostname: "production-data-pvc"
+          username: "my-backup-production"
+          hostname: "production"
           # Both fields are required when using explicit identity
 
 **Common Mistakes**:

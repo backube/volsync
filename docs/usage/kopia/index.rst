@@ -11,6 +11,7 @@ Kopia-based backup
    multi-tenancy
    backup-configuration
    restore-configuration
+   cross-namespace-restore
    troubleshooting
    custom-ca
 
@@ -81,12 +82,15 @@ See :doc:`backup-configuration` for backup setup and configuration options.
 **3. Set up Restore Operations**
 
 When needed, configure a ReplicationDestination to restore data from your backups,
-including point-in-time recovery, previous snapshot selection, and leveraging
-enhanced error reporting for troubleshooting.
+including point-in-time recovery, previous snapshot selection, cross-namespace restores,
+and leveraging enhanced error reporting for troubleshooting.
 
 See :doc:`restore-configuration` for restore operations, enhanced error reporting,
 and the ``sourceIdentity`` helper field with auto-discovery of PVC names, 
 sourcePathOverride, and repository configurations.
+
+For cross-namespace restore scenarios including disaster recovery and environment cloning,
+see :doc:`cross-namespace-restore`.
 
 **4. Configure Multi-Tenancy (Optional)**
 
@@ -209,6 +213,11 @@ The Kopia documentation has been organized into focused sections for easier navi
    Complete restore operations guide including enhanced error reporting, snapshot discovery,
    ``sourceIdentity`` helper with auto-discovery of PVC names, sourcePathOverride, and
    repository configurations, ``previous`` parameter, point-in-time recovery, and restore options.
+
+:doc:`cross-namespace-restore`
+   Comprehensive guide for restoring Kopia backups across namespaces. Covers disaster recovery,
+   environment cloning, namespace migration, and testing procedures with detailed examples,
+   security considerations, and troubleshooting steps.
 
 :doc:`troubleshooting`
    Comprehensive troubleshooting guide covering enhanced error reporting, snapshot discovery,

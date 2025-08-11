@@ -55,7 +55,8 @@ customCA
 
 hostname
    This specifies a custom hostname for the Kopia client. When not provided,
-   VolSync automatically generates a hostname based on the namespace and PVC name.
+   VolSync automatically generates a hostname using just the namespace name.
+   All PVCs in a namespace share the same hostname unless customized.
    See :doc:`multi-tenancy` for details on hostname generation.
 
 repository

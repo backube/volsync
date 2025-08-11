@@ -14,8 +14,7 @@ PersistentVolume.
    
    For Kopia ReplicationDestination, you **MUST** provide identity information to specify 
    which snapshots to restore from. This is because we cannot automatically determine the 
-   source identity (the hostname typically includes the source PVC name which isn't known 
-   when creating the destination).
+   source identity (the username and hostname combination that identifies the backup source).
    
    You have two options:
    
@@ -64,18 +63,18 @@ ReplicationSource would use:
 
 **Hostname Generation**:
 
-The hostname generation depends on whether ``sourcePVCName`` is provided:
+The hostname is generated simply from the namespace:
 
-1. **With explicit sourcePVCName**:
+1. **Standard behavior**:
    
    .. code-block:: yaml
    
       sourceIdentity:
         sourceName: webapp-backup
         sourceNamespace: production
-        sourcePVCName: webapp-data
+        sourcePVCName: webapp-data  # Optional - doesn't affect hostname
    
-   Generates: ``production-webapp-data`` (if combined length ≤ 50 characters)
+   Generates hostname: ``production`` (always just the namespace)
 
 2. **With auto-discovery (sourcePVCName not provided)**:
    
@@ -84,16 +83,16 @@ The hostname generation depends on whether ``sourcePVCName`` is provided:
       sourceIdentity:
         sourceName: webapp-backup
         sourceNamespace: production
-        # sourcePVCName will be fetched from the ReplicationSource
+        # sourcePVCName will be fetched from the ReplicationSource for reference
    
    VolSync will:
    - Query the ReplicationSource ``webapp-backup`` in namespace ``production``
-   - Read its ``spec.sourcePVC`` field (e.g., ``webapp-data``)
-   - Generate: ``production-webapp-data`` (if combined length ≤ 50 characters)
+   - Read its ``spec.sourcePVC`` field for reference (e.g., ``webapp-data``)
+   - Generate hostname: ``production`` (always just namespace, PVC name not used)
 
-3. **Fallback for long names**:
+3. **Key point**:
    
-   If the combined ``namespace-pvcname`` exceeds 50 characters, only the namespace is used.
+   The hostname is ALWAYS just the namespace name. All PVCs in a namespace share the same hostname.
 
 **Complete Identity Example**:
 
@@ -102,7 +101,8 @@ For a ReplicationSource with:
 - Namespace: ``production``
 - sourcePVC: ``webapp-data``
 
-The generated identity would be: ``webapp-backup@production-webapp-data``
+The generated identity would be: ``webapp-backup-production@production``
+(username includes namespace suffix, hostname is just namespace)
 
 Using sourceIdentity
 ~~~~~~~~~~~~~~~~~~~~
@@ -139,13 +139,17 @@ In this example, VolSync will automatically:
 1. Fetch the ReplicationSource configuration from ``webapp-backup`` in the ``production`` namespace
 2. Auto-discover the ``sourcePVC`` name from the ReplicationSource (if ``sourcePVCName`` not provided)
 3. Generate the username based on the source name (``webapp-backup``)
-4. Generate the hostname based on the namespace and discovered PVC name
+4. Generate the hostname using just the namespace (PVC name not included)
 5. Connect to the repository using these generated credentials
 6. Restore from the snapshots created by that specific ReplicationSource
 
 **Example: Cross-namespace restore with auto-discovery**
 
-You can restore snapshots created in a different namespace:
+You can restore snapshots created in a different namespace. For comprehensive guidance on
+cross-namespace restore scenarios including disaster recovery, environment cloning, and 
+namespace migration, see :doc:`cross-namespace-restore`.
+
+Basic cross-namespace restore example:
 
 .. code-block:: yaml
 
@@ -389,9 +393,9 @@ Repository auto-discovery significantly reduces the configuration overhead when 
        repository: production-kopia-config  # Must manually specify
        destinationPVC: webapp-data-restored
        copyMethod: Direct
-       # Manual identity configuration
-       username: webapp-backup
-       hostname: production-webapp-data
+       # Manual identity configuration (old format for compatibility)
+       username: webapp-backup-production
+       hostname: production  # Now always just namespace
 
 **After (Auto-Discovery)**:
 
@@ -416,8 +420,8 @@ Repository auto-discovery significantly reduces the configuration overhead when 
 With auto-discovery, VolSync automatically:
 
 - Discovers ``repository: production-kopia-config`` from the ReplicationSource
-- Generates ``username: webapp-backup`` from the source name
-- Discovers PVC name ``webapp-data`` and generates ``hostname: production-webapp-data``
+- Generates ``username: webapp-backup-production`` from the source name and namespace
+- Generates ``hostname: production`` (always just the namespace, PVC name not included)
 - Discovers any ``sourcePathOverride`` settings from the source
 
 sourcePathOverride Auto-Discovery
@@ -541,7 +545,7 @@ This restore operation will:
 
 1. Discover the source PVC name from ``production/webapp-backup``
 2. Discover the ``sourcePathOverride`` from the same ReplicationSource
-3. Generate the correct identity: ``webapp-backup@production-webapp-data``
+3. Generate the correct identity: ``webapp-backup-production@production``
 4. Restore using the correct snapshot path override
 
 **Benefits of sourcePathOverride Auto-Discovery**
@@ -599,7 +603,7 @@ helps verify that identity resolution is working as expected:
 .. code-block:: bash
 
    kubectl get replicationdestination restore-webapp -o jsonpath='{.status.kopia.requestedIdentity}'
-   # Output: webapp-backup@production-webapp-data
+   # Output: webapp-backup-production@production
 
 **SnapshotsFound**
 
@@ -638,18 +642,18 @@ When snapshots are not found, the enhanced error reporting provides clear feedba
      - type: Synchronizing
        status: "False"
        reason: SnapshotsNotFound
-       message: "No snapshots found for identity 'webapp-backup@production-webapp-data'. 
+       message: "No snapshots found for identity 'webapp-backup-production@production'. 
                 Available identities in repository: 
-                database-backup@production-postgres-data (30 snapshots, latest: 2024-01-20T11:00:00Z), 
-                app-backup@staging-app-data (7 snapshots, latest: 2024-01-19T22:00:00Z)"
+                database-backup-production@production (30 snapshots, latest: 2024-01-20T11:00:00Z), 
+                app-backup-staging@staging (7 snapshots, latest: 2024-01-19T22:00:00Z)"
      kopia:
-       requestedIdentity: "webapp-backup@production-webapp-data"
+       requestedIdentity: "webapp-backup-production@production"
        snapshotsFound: 0
        availableIdentities:
-       - identity: "database-backup@production-postgres-data"
+       - identity: "database-backup-production@production"
          snapshotCount: 30
          latestSnapshot: "2024-01-20T11:00:00Z"
-       - identity: "app-backup@staging-app-data"
+       - identity: "app-backup-staging@staging"
          snapshotCount: 7
          latestSnapshot: "2024-01-19T22:00:00Z"
 
@@ -664,13 +668,13 @@ When snapshots are not found, the enhanced error reporting provides clear feedba
        reason: SynchronizingData
        message: "Restoring from snapshot 2024-01-20T10:30:00Z"
      kopia:
-       requestedIdentity: "webapp-backup@production-webapp-data"
+       requestedIdentity: "webapp-backup-production@production"
        snapshotsFound: 15
        availableIdentities:
-       - identity: "webapp-backup@production-webapp-data"
+       - identity: "webapp-backup-production@production"
          snapshotCount: 15
          latestSnapshot: "2024-01-20T10:30:00Z"
-       - identity: "database-backup@production-postgres-data"
+       - identity: "database-backup-production@production"
          snapshotCount: 30
          latestSnapshot: "2024-01-20T11:00:00Z"
        - identity: "app-backup@staging-app-data"

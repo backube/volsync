@@ -35,13 +35,13 @@ func getCustomHostnameCases() []hostnameWithPVCTestCase {
 func getNamespaceWithPVCCases() []hostnameWithPVCTestCase {
 	return []hostnameWithPVCTestCase{
 		{
-			name:        "namespace with PVC - both fit",
+			name:        "namespace with PVC - ignore PVC",
 			hostname:    nil,
 			pvcName:     ptr.To("app-data"),
 			namespace:   "production",
 			objectName:  "test-obj",
-			expected:    "production-app-data",
-			description: "Should combine namespace and PVC when both fit within 50 chars",
+			expected:    "production",
+			description: "Should only use namespace, ignoring PVC name",
 		},
 		{
 			name:        "namespace with PVC - sanitization",
@@ -49,8 +49,8 @@ func getNamespaceWithPVCCases() []hostnameWithPVCTestCase {
 			pvcName:     ptr.To("data_pvc_volume"),
 			namespace:   "test_ns",
 			objectName:  "test-obj",
-			expected:    "test-ns-data-pvc-volume",
-			description: "Should sanitize both namespace and PVC name by converting underscores",
+			expected:    "test-ns",
+			description: "Should sanitize namespace and ignore PVC name",
 		},
 		{
 			name:        "namespace with PVC - special characters",
@@ -58,17 +58,17 @@ func getNamespaceWithPVCCases() []hostnameWithPVCTestCase {
 			pvcName:     ptr.To("data@pvc.storage"),
 			namespace:   "prod@env",
 			objectName:  "test-obj",
-			expected:    "prodenv-datapvc.storage",
-			description: "Should remove special characters but preserve dots",
+			expected:    "prodenv",
+			description: "Should remove special characters from namespace and ignore PVC",
 		},
 		{
-			name:        "namespace with PVC - too long combined",
+			name:        "namespace with PVC - long PVC ignored",
 			hostname:    nil,
 			pvcName:     ptr.To(strings.Repeat("very-long-pvc-name", 3)),
 			namespace:   "my-namespace",
 			objectName:  "test-obj",
 			expected:    "my-namespace",
-			description: "Should use only namespace when combined length exceeds 50 chars",
+			description: "Should use only namespace, ignoring long PVC name",
 		},
 		{
 			name:        "namespace only - no PVC",
@@ -107,8 +107,8 @@ func getSanitizationEdgeCases() []hostnameWithPVCTestCase {
 			pvcName:     ptr.To("-_data-pvc_-"),
 			namespace:   "-_test-ns_-",
 			objectName:  "test-obj",
-			expected:    "test-ns-data-pvc",
-			description: "Should trim leading and trailing hyphens and dots from both",
+			expected:    "test-ns",
+			description: "Should trim leading and trailing hyphens from namespace and ignore PVC",
 		},
 		{
 			name:        "PVC becomes empty after sanitization",
@@ -117,7 +117,7 @@ func getSanitizationEdgeCases() []hostnameWithPVCTestCase {
 			namespace:   "test-ns",
 			objectName:  "test-obj",
 			expected:    "test-ns",
-			description: "Should use only namespace when PVC becomes empty after sanitization",
+			description: "Should use only namespace, ignoring invalid PVC",
 		},
 		{
 			name:        "namespace becomes empty - fallback to namespace-name",
@@ -156,8 +156,8 @@ func getNamespaceLengthCases() []hostnameWithPVCTestCase {
 			pvcName:     ptr.To("MyApp-Data-PVC"),
 			namespace:   "MyNamespace",
 			objectName:  "test-obj",
-			expected:    "MyNamespace-MyApp-Data-PVC",
-			description: "Should preserve case in both namespace and PVC names",
+			expected:    "MyNamespace",
+			description: "Should preserve case in namespace and ignore PVC",
 		},
 		{
 			name:        "namespace with numbers",
@@ -165,17 +165,17 @@ func getNamespaceLengthCases() []hostnameWithPVCTestCase {
 			pvcName:     ptr.To("pvc-123"),
 			namespace:   "namespace-456",
 			objectName:  "test-obj",
-			expected:    "namespace-456-pvc-123",
-			description: "Should handle numbers in both namespace and PVC names",
+			expected:    "namespace-456",
+			description: "Should handle numbers in namespace and ignore PVC",
 		},
 		{
-			name:        "short namespace with PVC that would exceed limit",
+			name:        "short namespace with PVC ignored",
 			hostname:    nil,
 			pvcName:     ptr.To("very-long-persistent-volume-claim-name-that-is-really-long"),
 			namespace:   "ns",
 			objectName:  "test-obj",
 			expected:    "ns",
-			description: "Should prioritize namespace even when very short",
+			description: "Should use namespace even when very short, ignoring PVC",
 		},
 	}
 }
@@ -183,22 +183,22 @@ func getNamespaceLengthCases() []hostnameWithPVCTestCase {
 func getCharacterLimitCases() []hostnameWithPVCTestCase {
 	return []hostnameWithPVCTestCase{
 		{
-			name:        "exact 50 char combined",
+			name:        "namespace with PVC ignored",
 			hostname:    nil,
 			pvcName:     ptr.To("data"),
 			namespace:   strings.Repeat("a", 45),
 			objectName:  "test-obj",
-			expected:    strings.Repeat("a", 45) + "-data",
-			description: "Should allow exactly 50 chars",
+			expected:    strings.Repeat("a", 45),
+			description: "Should use namespace only, ignoring PVC",
 		},
 		{
-			name:        "51 chars would exceed",
+			name:        "namespace with long PVC ignored",
 			hostname:    nil,
 			pvcName:     ptr.To("data1"),
 			namespace:   strings.Repeat("a", 45),
 			objectName:  "test-obj",
 			expected:    strings.Repeat("a", 45),
-			description: "Should drop PVC at 51 chars",
+			description: "Should use namespace only, ignoring PVC",
 		},
 	}
 }
@@ -206,13 +206,13 @@ func getCharacterLimitCases() []hostnameWithPVCTestCase {
 func getDotHandlingCases() []hostnameWithPVCTestCase {
 	return []hostnameWithPVCTestCase{
 		{
-			name:        "PVC with dots",
+			name:        "PVC with dots ignored",
 			hostname:    nil,
 			pvcName:     ptr.To("my.app.pvc"),
 			namespace:   "production",
 			objectName:  "test-obj",
-			expected:    "production-my.app.pvc",
-			description: "Should preserve dots in PVC names",
+			expected:    "production",
+			description: "Should use namespace only, ignoring PVC with dots",
 		},
 		{
 			name:        "namespace with dots",
@@ -220,8 +220,8 @@ func getDotHandlingCases() []hostnameWithPVCTestCase {
 			pvcName:     ptr.To("data-pvc"),
 			namespace:   "prod.region.cluster",
 			objectName:  "test-obj",
-			expected:    "prod.region.cluster-data-pvc",
-			description: "Should preserve dots in namespace",
+			expected:    "prod.region.cluster",
+			description: "Should preserve dots in namespace and ignore PVC",
 		},
 	}
 }
@@ -234,8 +234,8 @@ func getFallbackCases() []hostnameWithPVCTestCase {
 			pvcName:     ptr.To("data-pvc..."),
 			namespace:   "test-ns---",
 			objectName:  "test-obj",
-			expected:    "test-ns-data-pvc",
-			description: "Should trim trailing dots and hyphens",
+			expected:    "test-ns",
+			description: "Should trim trailing dots and hyphens from namespace, ignore PVC",
 		},
 		{
 			name:        "both namespace and PVC invalid - use object name",
@@ -244,7 +244,7 @@ func getFallbackCases() []hostnameWithPVCTestCase {
 			namespace:   "@#$%^&*()",
 			objectName:  "test-obj",
 			expected:    "test-obj",
-			description: "Should use sanitized object name when namespace and PVC are invalid",
+			description: "Should use sanitized object name when namespace is invalid",
 		},
 		{
 			name:        "everything invalid - use default",

@@ -13,15 +13,16 @@ Each Kopia client requires a unique identity consisting of:
 - **Hostname**: Identifies the specific host/instance within that tenant
 
 
-Enhanced Multi-Tenancy with Namespace-First Hostnames
-------------------------------------------------------
+Simplified Multi-Tenancy with Namespace-Only Hostnames
+-------------------------------------------------------
 
-VolSync's hostname generation now prioritizes **namespace-based identification**, providing superior multi-tenant isolation by:
+VolSync's hostname generation now uses **namespace-only identification**, providing simplified multi-tenant isolation by:
 
-- **Grouping backups by namespace**: All backups from the same namespace share a common hostname prefix, making it easier to identify and manage tenant-specific data
-- **Improving access control**: Repository administrators can implement namespace-based policies more effectively
-- **Simplifying troubleshooting**: Issues can be quickly isolated to specific namespaces/tenants
-- **Reducing naming conflicts**: Namespace-first approach minimizes hostname collisions between different tenants using similar PVC names
+- **Single hostname per namespace**: All PVCs in a namespace share the same hostname identity
+- **Clear tenant boundaries**: Each namespace represents a distinct tenant with its own hostname
+- **Simplified access control**: Repository administrators can implement namespace-based policies easily
+- **Predictable behavior**: Hostname is always just the namespace name, regardless of PVC names
+- **No naming conflicts**: Each namespace has a unique hostname, eliminating PVC-based collisions
 
 When multiple clients connect to the same repository with different identities, Kopia can:
 
@@ -33,7 +34,7 @@ When multiple clients connect to the same repository with different identities, 
 Understanding identity generation
 ---------------------------------
 
-VolSync automatically generates usernames and hostnames based on your Kubernetes resources. The generation logic prioritizes user customization while providing sensible defaults optimized for multi-tenant environments that ensure uniqueness and compatibility.
+VolSync automatically generates usernames and hostnames based on your Kubernetes resources. The generation logic prioritizes user customization while providing simple, predictable defaults. The hostname is always just the namespace name (unless customized), making multi-tenancy straightforward.
 
 Username generation logic
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -117,28 +118,24 @@ Username examples
 Hostname generation logic
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The hostname generation follows this priority order, designed to optimize multi-tenancy by prioritizing namespace-based identification:
+The hostname generation follows this simple priority order:
 
 1. **Custom Hostname (Highest Priority)**
    
    If ``spec.kopia.hostname`` is specified, it is used exactly as provided without modification.
 
-2. **Namespace-Based Hostname**
+2. **Namespace-Only Hostname (Default)**
    
-   Use the namespace as the primary identifier to improve multi-tenant isolation:
+   When no custom hostname is provided, the hostname is ALWAYS just the namespace name:
    
-   - Start with the resource's namespace name
-   - **Append PVC name if total length ≤ 50 characters**:
-     
-     - **ReplicationSource**: Appends ``spec.sourcePVC`` if specified
-     - **ReplicationDestination**: Appends ``spec.kopia.destinationPVC`` if specified
-   
-   - **Use namespace-only if combined length > 50 characters**
-   - **Format**: ``{namespace}`` or ``{namespace}-{pvc-name}`` (when space allows)
+   - Uses the resource's namespace name directly
+   - PVC names are NEVER included in the hostname
+   - All PVCs in a namespace share the same hostname
+   - **Format**: ``{namespace}`` (always, regardless of PVC names or length)
 
 3. **Fallback Hostname**
    
-   If namespace is empty or becomes empty after sanitization, use the format ``namespace-{name}``
+   If namespace is empty or becomes empty after sanitization, use "volsync-default"
 
 4. **Sanitization**
    
@@ -170,7 +167,7 @@ Hostname examples
 
 .. code-block:: yaml
 
-   # Example 2: Namespace-first hostname with PVC appended
+   # Example 2: Namespace-only hostname (default behavior)
    apiVersion: volsync.backube/v1alpha1
    kind: ReplicationSource
    metadata:
@@ -180,14 +177,13 @@ Hostname examples
      sourcePVC: app-data
      kopia:
        # No hostname specified
-       # Combined length: "prod" (4) + "-" (1) + "app-data" (8) = 13 chars ≤ 50
-       # Generated hostname: prod-app-data
+       # Generated hostname: prod (always just namespace, PVC name ignored)
 
 ---
 
 .. code-block:: yaml
 
-   # Example 3: Namespace-only when combined length exceeds 50 characters
+   # Example 3: Multiple PVCs in same namespace share hostname
    apiVersion: volsync.backube/v1alpha1
    kind: ReplicationSource
    metadata:
@@ -197,8 +193,18 @@ Hostname examples
      sourcePVC: long-application-storage-pvc-name-v2
      kopia:
        # No hostname specified
-       # Combined would be: "production-environment-long-application-storage-pvc-name-v2" = 69 chars > 50
-       # Generated hostname: production-environment (namespace only)
+       # Generated hostname: production-environment (always namespace only)
+   ---
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: db-backup
+     namespace: production-environment
+   spec:
+     sourcePVC: database-pvc
+     kopia:
+       # No hostname specified
+       # Generated hostname: production-environment (same as above, all share namespace hostname)
 
 Character sanitization rules
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -412,46 +418,38 @@ match the source's identity:
          sourceNamespace: my-namespace
          # sourcePVCName: optional - auto-discovered if not provided
 
-**Issue 2: Unexpected Hostname After Namespace-First Update**
+**Issue 2: Hostname Changed to Namespace-Only**
 
-*Problem*: Generated hostnames changed from PVC-based to namespace-based after VolSync update
+*Problem*: Generated hostnames changed from including PVC names to just namespace after VolSync update
 
-*Explanation*: VolSync now prioritizes namespace-first hostname generation for better multi-tenancy
+*Explanation*: VolSync now uses namespace-only hostname generation for simplicity
 
 *New Behavior*:
-- Hostnames start with namespace: ``{namespace}`` or ``{namespace}-{pvc-name}``
-- PVC name is appended only if total length ≤ 50 characters
-- This improves tenant isolation and reduces naming conflicts
+- Hostname is ALWAYS just the namespace: ``{namespace}``
+- PVC names are NEVER included in the hostname
+- All PVCs in a namespace share the same hostname identity
+- This simplifies multi-tenancy and makes behavior predictable
 
-**Issue 3: Understanding Length-Based PVC Inclusion**
+**Issue 3: All PVCs Share Same Hostname**
 
-*Problem*: PVC name sometimes appears in hostname, sometimes doesn't
+*Problem*: Multiple PVCs in the same namespace have the same hostname
 
-*Explanation*: VolSync uses a 50-character limit to determine hostname format
+*Explanation*: This is the expected behavior - hostname is always just the namespace
 
-*Debug Steps*:
+*Implications*:
 
-1. Calculate combined namespace + PVC length:
+- All PVCs in a namespace share the same Kopia hostname identity
+- This simplifies multi-tenancy - one hostname per namespace
+- Different PVCs are distinguished by their snapshot paths, not hostnames
+- If you need separate hostnames per PVC, use custom hostname configuration
 
-   .. code-block:: bash
-   
-      # Check if PVC will be included
-      NAMESPACE="your-namespace"
-      PVC_NAME="your-pvc"
-      COMBINED="${NAMESPACE}-${PVC_NAME}"
-      echo "Combined length: $(echo -n "$COMBINED" | wc -c)"
-      if [ $(echo -n "$COMBINED" | wc -c) -le 50 ]; then
-          echo "Hostname will be: $COMBINED"
-      else
-          echo "Hostname will be: $NAMESPACE (PVC dropped)"
-      fi
-
-2. Use discovery to verify actual identity:
+*Verify the hostname*:
 
    .. code-block:: bash
    
       # Check what identity was actually generated
       kubectl get replicationdestination <name> -o jsonpath='{.status.kopia.requestedIdentity}'
+      # The hostname part (after @) will always be just the namespace
 
 **Issue 4: Identifying Snapshots from Wrong Tenant**
 
@@ -555,7 +553,7 @@ approach to restoring from specific sources in multi-tenant repositories:
        sourceIdentity:
          sourceName: webapp-backup
          sourceNamespace: production
-         # sourcePVCName is optional - auto-discovered from ReplicationSource
+         # sourcePVCName is optional - auto-discovered but doesn't affect hostname
        # VolSync automatically:
        # 1. Fetches the ReplicationSource configuration
        # 2. Discovers the sourcePVC name from the source
@@ -575,7 +573,7 @@ approach to restoring from specific sources in multi-tenant repositories:
        sourceIdentity:
          sourceName: webapp-backup
          sourceNamespace: production
-         sourcePVCName: webapp-data  # Explicitly specify instead of auto-discovery
+         sourcePVCName: webapp-data  # Optional - for reference only, doesn't affect hostname
 
 This is especially useful in multi-tenant scenarios where:
 

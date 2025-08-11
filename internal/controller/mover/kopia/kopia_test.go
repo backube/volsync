@@ -228,7 +228,7 @@ var _ = Describe("Kopia", func() {
 
 			m, err := b.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd, false)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("requires explicit identity information"))
+			Expect(err.Error()).To(ContainSubstring("missing identity configuration"))
 			Expect(m).To(BeNil())
 		})
 
@@ -258,7 +258,7 @@ var _ = Describe("Kopia", func() {
 
 			m, err := b.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd, false)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("'hostname' is missing"))
+			Expect(err.Error()).To(ContainSubstring("missing 'hostname'"))
 			Expect(m).To(BeNil())
 		})
 	})
@@ -980,7 +980,7 @@ var _ = Describe("Kopia", func() {
 				volumehandler.WithOwner(rs),
 			)
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			mover := &Mover{
 				client:         k8sClient,
 				logger:         logger,
@@ -996,23 +996,23 @@ var _ = Describe("Kopia", func() {
 			// Mock scenario: job exists but is retrying (has failed pods but not reached backoff limit)
 			// This simulates handleJobStatus returning nil, nil
 			// In real scenario, ensureJob would return nil, nil when job is retrying
-			
+
 			// The fix ensures that when ensureJob returns nil (job still retrying),
 			// we don't call recordOperationFailure inappropriately
 			// Instead, we just return InProgress without recording a failure
-			
+
 			// This test documents the expected behavior when a job is retrying
 			Expect(mover).NotTo(BeNil()) // Ensure mover is properly initialized
 		})
 
 		It("should record failure metrics only when job definitively fails", func() {
-			// Setup a destination mover with proper volume handler initialization  
+			// Setup a destination mover with proper volume handler initialization
 			vh, err := volumehandler.NewVolumeHandler(
 				volumehandler.WithClient(k8sClient),
 				volumehandler.WithOwner(rd),
 			)
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			mover := &Mover{
 				client:         k8sClient,
 				logger:         logger,
@@ -1028,7 +1028,7 @@ var _ = Describe("Kopia", func() {
 			// Mock scenario: job has reached backoff limit and will be deleted
 			// This simulates handleJobStatus deleting the job and returning nil, err
 			// In this case, recordOperationFailure should be called
-			
+
 			// This test documents the expected behavior when a job definitively fails
 			Expect(mover).NotTo(BeNil()) // Ensure mover is properly initialized
 		})

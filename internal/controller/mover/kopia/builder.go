@@ -49,6 +49,8 @@ const (
 	kopiaContainerImageEnvVar = "RELATED_IMAGE_KOPIA_CONTAINER"
 	// defaultUsername is the fallback username when sanitization results in empty string
 	defaultUsername = "volsync-default"
+	// maxUsernameLength is the maximum reasonable length for Kopia usernames
+	maxUsernameLength = 50
 )
 
 type Builder struct {
@@ -405,11 +407,42 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 	}, nil
 }
 
+// sanitizeForIdentifier sanitizes a string for use as username or hostname component
+// allowUnderscore: true for usernames (backward compatibility), false for hostnames
+// allowDots: true for hostnames, false for usernames
+// Returns sanitized string with leading/trailing separators removed
+func sanitizeForIdentifier(input string, allowUnderscore, allowDots bool) string {
+	var validChars strings.Builder
+	for _, r := range input {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' {
+			validChars.WriteRune(r)
+		} else if allowUnderscore && r == '_' {
+			validChars.WriteRune(r)
+		} else if !allowUnderscore && r == '_' {
+			// Convert underscores to hyphens for hostnames
+			validChars.WriteRune('-')
+		} else if allowDots && r == '.' {
+			// Dots are allowed in hostnames
+			validChars.WriteRune(r)
+		}
+	}
+	
+	// Trim separators based on what's allowed
+	trimChars := "-"
+	if allowUnderscore {
+		trimChars = "-_"
+	}
+	if allowDots {
+		trimChars = trimChars + "."
+	}
+	return strings.Trim(validChars.String(), trimChars)
+}
+
 // generateUsername returns the username for Kopia identity
 // Priority order:
 // 1. If specified, uses the provided username as-is (highest priority)
-// 2. Sanitizes object name and appends namespace if combined length ≤ 50 chars
-// 3. Uses sanitized object name only if combined length > 50 chars
+// 2. Sanitizes object name and appends namespace if combined length ≤ maxUsernameLength
+// 3. Uses sanitized object name only if combined length > maxUsernameLength
 // 4. Returns "volsync-default" if sanitized username is empty
 // Username rules: alphanumeric, hyphens, and underscores allowed
 // (More permissive than hostnames to maintain backward compatibility)
@@ -418,36 +451,18 @@ func generateUsername(username *string, objectName string, namespace string) str
 		return *username
 	}
 
-	// Sanitize the object name for username
-	// Username rules: alphanumeric, hyphens, and underscores allowed
-	// (More permissive than hostnames to maintain backward compatibility)
-	validObjectName := ""
-	for _, r := range objectName {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
-			validObjectName += string(r)
-		}
-	}
-
-	// Ensure object name doesn't start or end with a hyphen or underscore
-	validObjectName = strings.Trim(validObjectName, "-_")
-
+	// Sanitize the object name for username (allows underscores, no dots)
+	validObjectName := sanitizeForIdentifier(objectName, true, false)
 	if validObjectName == "" {
 		return defaultUsername
 	}
 
 	// Try to append namespace if there's room and namespace is valid
 	// Username approach: object-name-namespace for better identification
-	validNamespace := ""
-	for _, r := range namespace {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
-			validNamespace += string(r)
-		}
-	}
-	validNamespace = strings.Trim(validNamespace, "-_")
+	validNamespace := sanitizeForIdentifier(namespace, true, false)
 
-	// Kopia usernames have practical length limits (typically ~50 chars is reasonable)
+	// Kopia usernames have practical length limits
 	// If we can fit namespace with a separator, include it for better multi-tenancy
-	const maxUsernameLength = 50 // Maximum reasonable length for Kopia usernames
 	if validNamespace != "" {
 		candidateUsername := validObjectName + "-" + validNamespace
 		if len(candidateUsername) <= maxUsernameLength {
@@ -455,65 +470,51 @@ func generateUsername(username *string, objectName string, namespace string) str
 		}
 	}
 
+	// Ensure the username doesn't exceed the maximum length
+	if len(validObjectName) > maxUsernameLength {
+		return validObjectName[:maxUsernameLength]
+	}
 	return validObjectName
 }
 
-// generateHostname returns the hostname for Kopia identity with namespace-first priority for better multi-tenancy
+// generateHostname returns the hostname for Kopia identity based on namespace for multi-tenancy
 // Priority order:
 // 1. Custom hostname (if provided) - highest priority, used as-is
-// 2. Namespace-based hostname - use namespace as the base
-// 3. Append PVC name if space allows - try to add PVC name if combined length is reasonable (≤50 characters)
-// 4. Fallback patterns:
-//   - If namespace + PVC too long, use just namespace
-//   - If namespace is empty/invalid, use "namespace-name" format as final fallback
+// 2. Namespace-based hostname - always use namespace only (no PVC name)
+// 3. Fallback patterns:
+//   - If namespace is empty/invalid, use "namespace-name" format as fallback
+//   - If that fails, use object name
+//   - Final fallback: defaultUsername
 //
-// 5. Sanitization - alphanumeric, dots, hyphens; convert underscores
-func generateHostname(hostname *string, pvcName *string, namespace, name string) string {
+// Sanitization: alphanumeric, dots, hyphens; convert underscores to hyphens
+func generateHostname(hostname *string, _ *string, namespace, name string) string {
 	if hostname != nil && *hostname != "" {
 		return *hostname
 	}
 
-	// Sanitize namespace for hostname use
+	// Sanitize namespace and name for hostname use
 	sanitizedNamespace := sanitizeForHostname(namespace)
+	sanitizedName := sanitizeForHostname(name)
 
-	// Sanitize PVC name for hostname use
-	var sanitizedPVC string
-	if pvcName != nil && *pvcName != "" {
-		sanitizedPVC = sanitizeForHostname(*pvcName)
-	}
-
-	const maxHostnameLength = 50 // Maximum reasonable length for Kopia hostnames
+	// Generate hostname with namespace-objectname pattern for uniqueness
 	var defaultHostname string
-
-	// Priority 1: Use namespace as base (namespace-first approach)
-	if sanitizedNamespace != "" {
-		if sanitizedPVC != "" {
-			// Try to combine namespace + PVC if it fits within reasonable length
-			candidateHostname := sanitizedNamespace + "-" + sanitizedPVC
-			if len(candidateHostname) <= maxHostnameLength {
-				defaultHostname = candidateHostname
-			} else {
-				// If combined is too long, use just namespace for better multi-tenancy
-				defaultHostname = sanitizedNamespace
-			}
-		} else {
-			// No PVC name, use just namespace
-			defaultHostname = sanitizedNamespace
-		}
+	if sanitizedNamespace != "" && sanitizedName != "" {
+		// Use namespace-objectname for uniqueness within namespace
+		defaultHostname = sanitizedNamespace + "-" + sanitizedName
+	} else if sanitizedNamespace != "" {
+		// Use namespace only if name is invalid
+		defaultHostname = sanitizedNamespace
+	} else if sanitizedName != "" {
+		// Use name only if namespace is invalid
+		defaultHostname = sanitizedName
 	} else {
-		// Priority 2: Fallback to traditional namespace-name pattern if namespace is invalid
+		// Fallback to traditional namespace-name pattern if both are problematic
 		fallbackHostname := fmt.Sprintf("%s-%s", namespace, name)
 		defaultHostname = sanitizeForHostname(fallbackHostname)
-
-		// If the fallback also results in empty string, just use the sanitized object name
-		if defaultHostname == "" {
-			defaultHostname = sanitizeForHostname(name)
-		}
 	}
 
 	if defaultHostname == "" {
-		// Log when fallback is used for troubleshooting
-		// Note: In production, consider adding proper logging with context
+		// Final fallback to defaultUsername
 		return defaultUsername
 	}
 
@@ -523,21 +524,9 @@ func generateHostname(hostname *string, pvcName *string, namespace, name string)
 // sanitizeForHostname sanitizes a string for use as a hostname
 // Hostname rules: alphanumeric, dots, and hyphens only
 // Replaces underscores with hyphens per hostname standards
-// Replaces underscores with hyphens, removes invalid characters, and trims separators
 func sanitizeForHostname(input string) string {
-	// Replace underscores with hyphens
-	sanitized := strings.ReplaceAll(input, "_", "-")
-
-	// Remove any invalid characters (only allow alphanumeric, dots, and hyphens)
-	validChars := ""
-	for _, r := range sanitized {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '-' {
-			validChars += string(r)
-		}
-	}
-
-	// Ensure hostname doesn't start or end with a hyphen or dot
-	return strings.Trim(validChars, "-.")
+	// Use common sanitization function (no underscores, allow dots)
+	return sanitizeForIdentifier(input, false, true)
 }
 
 // sourceDiscoveryInfo holds discovered information from a ReplicationSource
@@ -668,7 +657,7 @@ func (kb *Builder) discoverSourcePVC(c client.Client, sourceName, sourceNamespac
 // 1. Both explicit username AND hostname fields, OR
 // 2. A sourceIdentity field with at least sourceName
 // This validation is required because we cannot automatically determine the source identity
-// when restoring, as the hostname typically includes the PVC name which we don't know yet.
+// when restoring, as we don't know the source's identity (username and hostname combination).
 func (kb *Builder) validateDestinationIdentity(destination *volsyncv1alpha1.ReplicationDestination) error {
 	if destination.Spec.Kopia == nil {
 		return nil
@@ -688,35 +677,23 @@ func (kb *Builder) validateDestinationIdentity(destination *volsyncv1alpha1.Repl
 		return nil
 	}
 
-	// Build helpful error message
+	// Build concise error message
 	var errorMsg string
 	if hasExplicitUsername && !hasExplicitHostname {
-		errorMsg = "Kopia ReplicationDestination requires both 'username' and 'hostname' to be specified. " +
-			"You have provided 'username' but 'hostname' is missing.\n"
+		errorMsg = "missing 'hostname' (you provided 'username' but both are required)"
 	} else if !hasExplicitUsername && hasExplicitHostname {
-		errorMsg = "Kopia ReplicationDestination requires both 'username' and 'hostname' to be specified. " +
-			"You have provided 'hostname' but 'username' is missing.\n"
+		errorMsg = "missing 'username' (you provided 'hostname' but both are required)"
 	} else {
-		errorMsg = "Kopia ReplicationDestination requires explicit identity information to restore snapshots.\n"
+		errorMsg = "missing identity configuration for ReplicationDestination"
 	}
 
-	errorMsg += "\nYou must provide one of the following:\n" +
-		"1. Both 'username' and 'hostname' fields to explicitly specify the source identity, OR\n" +
-		"2. A 'sourceIdentity' section with at least 'sourceName' to automatically determine the identity\n" +
-		"\n" +
-		"Example with explicit identity:\n" +
-		"  kopia:\n" +
-		"    username: \"my-source-namespace\"\n" +
-		"    hostname: \"my-namespace-my-pvc\"\n" +
-		"\n" +
-		"Example with sourceIdentity (recommended):\n" +
-		"  kopia:\n" +
-		"    sourceIdentity:\n" +
-		"      sourceName: \"my-replication-source\"\n" +
-		"      sourceNamespace: \"source-namespace\"  # Optional, defaults to destination namespace\n" +
-		"\n" +
-		"Note: We cannot automatically determine the source identity for ReplicationDestination because " +
-		"the hostname typically includes the source PVC name, which is not known when creating the destination."
+	// Add brief usage hint and link to documentation
+	errorMsg = fmt.Sprintf("Kopia ReplicationDestination error: %s\n\n"+
+		"Provide either:\n"+
+		"  1. Both 'username' and 'hostname' fields, OR\n"+
+		"  2. A 'sourceIdentity' section with 'sourceName'\n\n"+
+		"For detailed examples, see: https://volsync.readthedocs.io/en/stable/usage/kopia/index.html",
+		errorMsg)
 
-	return fmt.Errorf(errorMsg)
+	return fmt.Errorf("%s", errorMsg)
 }

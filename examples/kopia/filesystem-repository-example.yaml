@@ -159,17 +159,16 @@ spec:
     copyMethod: Direct
     
     # REQUIRED: Specify which backup source to restore from
-    # Without this, Kopia cannot determine which snapshots to use because:
-    # - The destination doesn't know the source PVC name (part of hostname)
-    # - Multiple backup sources may exist in the same repository
+    # Without this, Kopia cannot determine which snapshots to use
+    # With new behavior: hostname is always just the namespace
     sourceIdentity:
       sourceName: filesystem-backup        # Name of the ReplicationSource
-      sourceNamespace: filesystem-backup-example  # Namespace of the source
-      # sourcePVCName is auto-discovered from the ReplicationSource
+      sourceNamespace: filesystem-backup-example  # Namespace (becomes hostname)
+      # sourcePVCName is auto-discovered but doesn't affect hostname
     
     # Alternative: Use explicit username and hostname (both required)
-    # username: "filesystem-backup"
-    # hostname: "filesystem-backup-example-application-data"
+    # username: "filesystem-backup-filesystem-backup-example"
+    # hostname: "filesystem-backup-example"  # Always just namespace with new behavior
 ---
 # Secret for restore operations
 # Must specify the filesystem URL explicitly for ReplicationDestination

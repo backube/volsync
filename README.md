@@ -86,7 +86,9 @@ spec:
   kopia:
     copyMethod: Direct
     repository: volsync-kopia-repo
-    username: homepage-kopia
+    # Note: hostname is automatically set to namespace "apps"
+    # All PVCs in namespace share same hostname
+    username: homepage-kopia  # Custom username
     retain:
       weekly: 2
       monthly: 4
@@ -109,7 +111,7 @@ spec:
   kopia:
     sourceIdentity:
       sourceName: homepage-kopia
-      sourceNamespace: apps
+      sourceNamespace: apps  # This becomes the hostname (always just namespace)
     destinationPVC: test-restore-data
     copyMethod: Direct
     storageClassName: "truenas-csi-iscsi"

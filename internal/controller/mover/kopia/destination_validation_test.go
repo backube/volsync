@@ -117,7 +117,7 @@ var _ = Describe("Kopia ReplicationDestination validation", func() {
 
 				err := builder.validateDestinationIdentity(destination)
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("requires explicit identity information"))
+				Expect(err.Error()).To(ContainSubstring("missing identity configuration"))
 			})
 		})
 
@@ -128,9 +128,9 @@ var _ = Describe("Kopia ReplicationDestination validation", func() {
 
 				err := builder.validateDestinationIdentity(destination)
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("You have provided 'username' but 'hostname' is missing"))
-				Expect(err.Error()).To(ContainSubstring("Example with explicit identity"))
-				Expect(err.Error()).To(ContainSubstring("Example with sourceIdentity"))
+				Expect(err.Error()).To(ContainSubstring("missing 'hostname'"))
+				Expect(err.Error()).To(ContainSubstring("you provided 'username' but both are required"))
+				Expect(err.Error()).To(ContainSubstring("https://volsync.readthedocs.io"))
 			})
 		})
 
@@ -141,7 +141,8 @@ var _ = Describe("Kopia ReplicationDestination validation", func() {
 
 				err := builder.validateDestinationIdentity(destination)
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("You have provided 'hostname' but 'username' is missing"))
+				Expect(err.Error()).To(ContainSubstring("missing 'username'"))
+				Expect(err.Error()).To(ContainSubstring("you provided 'hostname' but both are required"))
 			})
 		})
 
@@ -151,9 +152,9 @@ var _ = Describe("Kopia ReplicationDestination validation", func() {
 
 				err := builder.validateDestinationIdentity(destination)
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("requires explicit identity information"))
-				Expect(err.Error()).To(ContainSubstring("You must provide one of the following"))
-				Expect(err.Error()).To(ContainSubstring("cannot automatically determine the source identity"))
+				Expect(err.Error()).To(ContainSubstring("missing identity configuration"))
+				Expect(err.Error()).To(ContainSubstring("Provide either"))
+				Expect(err.Error()).To(ContainSubstring("https://volsync.readthedocs.io"))
 			})
 		})
 
@@ -164,7 +165,7 @@ var _ = Describe("Kopia ReplicationDestination validation", func() {
 
 				err := builder.validateDestinationIdentity(destination)
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("'username' is missing"))
+				Expect(err.Error()).To(ContainSubstring("missing 'username'"))
 			})
 
 			It("should fail if hostname is empty string", func() {
@@ -173,7 +174,7 @@ var _ = Describe("Kopia ReplicationDestination validation", func() {
 
 				err := builder.validateDestinationIdentity(destination)
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("'hostname' is missing"))
+				Expect(err.Error()).To(ContainSubstring("missing 'hostname'"))
 			})
 
 			It("should fail if both are empty strings", func() {
@@ -182,34 +183,29 @@ var _ = Describe("Kopia ReplicationDestination validation", func() {
 
 				err := builder.validateDestinationIdentity(destination)
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("requires explicit identity information"))
+				Expect(err.Error()).To(ContainSubstring("missing identity configuration"))
 			})
 		})
 
 		Context("error message content", func() {
-			It("should include both configuration examples", func() {
+			It("should include concise instructions", func() {
 				// No identity provided
 				err := builder.validateDestinationIdentity(destination)
 				Expect(err).To(HaveOccurred())
 
 				errorMsg := err.Error()
-				// Check for presence of both examples
-				Expect(errorMsg).To(ContainSubstring("Example with explicit identity:"))
-				Expect(errorMsg).To(ContainSubstring("username: \"my-source-namespace\""))
-				Expect(errorMsg).To(ContainSubstring("hostname: \"my-namespace-my-pvc\""))
-
-				Expect(errorMsg).To(ContainSubstring("Example with sourceIdentity (recommended):"))
-				Expect(errorMsg).To(ContainSubstring("sourceName: \"my-replication-source\""))
-				Expect(errorMsg).To(ContainSubstring("sourceNamespace: \"source-namespace\""))
+				// Check for concise format
+				Expect(errorMsg).To(ContainSubstring("Provide either:"))
+				Expect(errorMsg).To(ContainSubstring("Both 'username' and 'hostname' fields"))
+				Expect(errorMsg).To(ContainSubstring("'sourceIdentity' section with 'sourceName'"))
 			})
 
-			It("should explain why automatic determination is not possible", func() {
+			It("should include documentation link", func() {
 				err := builder.validateDestinationIdentity(destination)
 				Expect(err).To(HaveOccurred())
 
 				errorMsg := err.Error()
-				Expect(errorMsg).To(ContainSubstring("cannot automatically determine the source identity"))
-				Expect(errorMsg).To(ContainSubstring("hostname typically includes the source PVC name"))
+				Expect(errorMsg).To(ContainSubstring("https://volsync.readthedocs.io"))
 			})
 		})
 
@@ -233,16 +229,16 @@ var _ = Describe("Kopia ReplicationDestination validation", func() {
 			// Mock logger that captures errors
 			errorMessages := []string{}
 			mockLogger := logr.New(logr.LogSink(mockLogSink{
-				errorFunc: func(err error, msg string, keysAndValues ...interface{}) {
+				errorFunc: func(_ error, msg string, _ ...interface{}) {
 					errorMessages = append(errorMessages, msg)
 				},
 			}))
 
 			_, err := builder.FromDestination(nil, mockLogger, nil, destination, false)
-			
+
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("requires explicit identity information"))
-			
+			Expect(err.Error()).To(ContainSubstring("missing identity configuration"))
+
 			// Verify that the error was logged
 			Expect(errorMessages).To(ContainElement("Invalid ReplicationDestination configuration"))
 		})
@@ -254,20 +250,20 @@ type mockLogSink struct {
 	errorFunc func(err error, msg string, keysAndValues ...interface{})
 }
 
-func (m mockLogSink) Init(info logr.RuntimeInfo) {}
-func (m mockLogSink) Enabled(level int) bool { return true }
-func (m mockLogSink) Info(level int, msg string, keysAndValues ...interface{}) {}
+func (m mockLogSink) Init(_ logr.RuntimeInfo)                {}
+func (m mockLogSink) Enabled(_ int) bool                     { return true }
+func (m mockLogSink) Info(_ int, _ string, _ ...interface{}) {}
 func (m mockLogSink) Error(err error, msg string, keysAndValues ...interface{}) {
 	if m.errorFunc != nil {
 		m.errorFunc(err, msg, keysAndValues...)
 	}
 }
-func (m mockLogSink) WithValues(keysAndValues ...interface{}) logr.LogSink { return m }
-func (m mockLogSink) WithName(name string) logr.LogSink { return m }
+func (m mockLogSink) WithValues(_ ...interface{}) logr.LogSink { return m }
+func (m mockLogSink) WithName(_ string) logr.LogSink           { return m }
 
-// Verify examples in error message are valid YAML by attempting to parse them
-var _ = Describe("Error message examples", func() {
-	It("should provide valid YAML examples", func() {
+// Verify error messages are concise and helpful
+var _ = Describe("Error message format", func() {
+	It("should provide concise error messages with documentation link", func() {
 		builder := &Builder{viper: viper.New()}
 		destination := &volsyncv1alpha1.ReplicationDestination{
 			Spec: volsyncv1alpha1.ReplicationDestinationSpec{
@@ -278,24 +274,19 @@ var _ = Describe("Error message examples", func() {
 		err := builder.validateDestinationIdentity(destination)
 		Expect(err).To(HaveOccurred())
 
-		// Extract the examples from the error message
 		errorMsg := err.Error()
-		
-		// Verify the examples contain proper YAML structure
-		Expect(errorMsg).To(MatchRegexp(`kopia:\s+username:`))
-		Expect(errorMsg).To(MatchRegexp(`kopia:\s+sourceIdentity:`))
-		
-		// Verify indentation is consistent
+
+		// Verify the error message is concise
 		lines := strings.Split(errorMsg, "\n")
-		for _, line := range lines {
-			if strings.Contains(line, "  kopia:") {
-				// kopia should be at 2 spaces
-				Expect(strings.Index(line, "kopia:")).To(Equal(2))
-			}
-			if strings.Contains(line, "    username:") || strings.Contains(line, "    hostname:") {
-				// Fields should be at 4 spaces
-				Expect(strings.Index(line, "username:") + strings.Index(line, "hostname:") + 4).To(BeNumerically(">=", 4))
-			}
-		}
+		Expect(len(lines)).To(BeNumerically("<=", 7), "Error message should be concise")
+
+		// Verify it contains key information
+		Expect(errorMsg).To(ContainSubstring("Kopia ReplicationDestination error"))
+		Expect(errorMsg).To(ContainSubstring("Provide either:"))
+		Expect(errorMsg).To(ContainSubstring("https://volsync.readthedocs.io"))
+
+		// Verify it doesn't contain verbose YAML examples
+		Expect(errorMsg).NotTo(ContainSubstring("Example with explicit identity:"))
+		Expect(errorMsg).NotTo(ContainSubstring("Example with sourceIdentity"))
 	})
 })

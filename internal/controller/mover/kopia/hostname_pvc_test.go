@@ -327,8 +327,8 @@ func TestHostnameGenerationMultiTenancyScenarios(t *testing.T) {
 			pvcName:     "app-data",
 			namespace:   "production",
 			objectName:  "backup-job",
-			expected:    "production-app-data",
-			description: "Production environment with app data PVC",
+			expected:    "production",
+			description: "Production environment uses namespace only",
 		},
 		{
 			name:        "development with long names",
@@ -336,22 +336,22 @@ func TestHostnameGenerationMultiTenancyScenarios(t *testing.T) {
 			namespace:   "development",
 			objectName:  "backup-job",
 			expected:    "development",
-			description: "Development environment with very long PVC name",
+			description: "Development environment uses namespace only",
 		},
 		{
 			name:        "staging environment",
 			pvcName:     "staging-db",
 			namespace:   "staging",
 			objectName:  "backup-job",
-			expected:    "staging-staging-db",
-			description: "Staging environment includes namespace even with redundant naming",
+			expected:    "staging",
+			description: "Staging environment uses namespace only",
 		},
 		{
 			name:        "tenant isolation",
 			pvcName:     "tenant-data",
 			namespace:   "tenant-customer-a",
 			objectName:  "backup-job",
-			expected:    "tenant-customer-a-tenant-data",
+			expected:    "tenant-customer-a",
 			description: "Multi-tenant scenario with clear namespace isolation",
 		},
 		{
@@ -360,7 +360,7 @@ func TestHostnameGenerationMultiTenancyScenarios(t *testing.T) {
 			namespace:   "very-long-tenant-namespace-that-exceeds-reasonable-length",
 			objectName:  "backup-job",
 			expected:    "very-long-tenant-namespace-that-exceeds-reasonable-length",
-			description: "Long tenant names should be fully preserved without PVC",
+			description: "Long tenant names are fully preserved",
 		},
 	}
 
@@ -375,37 +375,37 @@ func TestHostnameGenerationMultiTenancyScenarios(t *testing.T) {
 	}
 }
 
-// TestHostnameGenerationNamespaceFirst validates namespace-first priority
-func TestHostnameGenerationNamespaceFirst(t *testing.T) {
+// TestHostnameGenerationNamespaceOnly validates namespace-only hostname generation
+func TestHostnameGenerationNamespaceOnly(t *testing.T) {
 	tests := map[string]struct {
 		namespace  string
 		pvcName    string
 		objectName string
 		expected   string
 	}{
-		"test-ns-app-backup": {
+		"test-ns with app-backup PVC": {
 			namespace:  "test-ns",
 			pvcName:    "app-backup",
 			objectName: "replication-src",
-			expected:   "test-ns-app-backup",
+			expected:   "test-ns",
 		},
-		"prod-database": {
+		"prod with database PVC": {
 			namespace:  "prod",
 			pvcName:    "database",
 			objectName: "replication-src",
-			expected:   "prod-database",
+			expected:   "prod",
 		},
-		"my-namespace-service_name": {
+		"my-namespace with service_name PVC": {
 			namespace:  "my-namespace",
 			pvcName:    "service_name",
 			objectName: "replication-src",
-			expected:   "my-namespace-service-name",
+			expected:   "my-namespace",
 		},
-		"ns-app": {
+		"ns with app PVC": {
 			namespace:  "ns",
 			pvcName:    "app",
 			objectName: "replication-src",
-			expected:   "ns-app",
+			expected:   "ns",
 		},
 	}
 

@@ -73,11 +73,11 @@ func validateUsernameTrimming(t *testing.T, username *string, result string) {
 }
 
 func TestGenerateUsernameEdgeCases(t *testing.T) {
-	// Test with very long names to ensure no panics
+	// Test with very long names to ensure it's truncated to maxUsernameLength
 	veryLongName := strings.Repeat("a-", 1000) + "backup"
 	result := generateUsername(nil, veryLongName, "")
-	if !strings.HasSuffix(result, "backup") {
-		t.Errorf("Expected long name to preserve suffix, got %q", result)
+	if len(result) > maxUsernameLength {
+		t.Errorf("Expected long name to be truncated to max length %d, got length %d", maxUsernameLength, len(result))
 	}
 
 	// Test with only invalid characters followed by valid ones

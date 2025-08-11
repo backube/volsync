@@ -55,7 +55,7 @@ func TestSourceIdentityGeneration(t *testing.T) {
 				},
 			},
 			expectedUsername: "webapp-backup-production",
-			expectedHostname: "production",
+			expectedHostname: "production-webapp-backup",
 		},
 		{
 			name: "explicit username/hostname override sourceIdentity",
@@ -93,7 +93,7 @@ func TestSourceIdentityGeneration(t *testing.T) {
 				},
 			},
 			expectedUsername: "restore-app-restore-ns",
-			expectedHostname: "restore-ns",
+			expectedHostname: "restore-ns-restore-app",
 		},
 		{
 			name: "sourceIdentity with destination PVC name in hostname (no source PVC specified)",
@@ -116,7 +116,7 @@ func TestSourceIdentityGeneration(t *testing.T) {
 				},
 			},
 			expectedUsername: "webapp-prod",
-			expectedHostname: "prod-data-pvc",
+			expectedHostname: "prod-webapp",
 		},
 		{
 			name: "sourceIdentity with source PVC name generates matching hostname",
@@ -140,7 +140,7 @@ func TestSourceIdentityGeneration(t *testing.T) {
 				},
 			},
 			expectedUsername: "webapp-prod",
-			expectedHostname: "prod-original-data-pvc", // Should use source PVC name
+			expectedHostname: "prod-webapp", // Includes object name for uniqueness
 		},
 		{
 			name: "partial sourceIdentity falls back to defaults",
@@ -159,7 +159,7 @@ func TestSourceIdentityGeneration(t *testing.T) {
 				},
 			},
 			expectedUsername: "restore-app-restore-ns",
-			expectedHostname: "restore-ns",
+			expectedHostname: "restore-ns-restore-app",
 		},
 	}
 

@@ -171,7 +171,8 @@ spec:
                   hostname:
                     description: |-
                       Hostname override for Kopia repository access.
-                      If not specified, defaults to "<namespace>-<replicationsource-name>"
+                      MUST be used together with Username when not using SourceIdentity.
+                      If not specified and SourceIdentity is not used, defaults to "<namespace>-<replicationsource-name>"
                     pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$
                     type: string
                   moverAffinity:
@@ -1451,8 +1452,9 @@ spec:
                     format: int32
                     type: integer
                   repository:
-                    description: Repository is the secret name containing repository
-                      info
+                    description: |-
+                      Repository is the secret name containing repository info.
+                      When using SourceIdentity, this can be auto-discovered from the ReplicationSource.
                     type: string
                   restoreAsOf:
                     description: RestoreAsOf refers to the backup that is most recent
@@ -1468,16 +1470,18 @@ spec:
                     description: |-
                       SourceIdentity provides an easy way to specify which ReplicationSource's snapshots to restore.
                       When specified, it will be used to generate the username and hostname automatically.
-                      This is a helper field that simplifies configuration for users.
+                      This is the RECOMMENDED way to configure identity for ReplicationDestination.
+                      Either SourceIdentity OR both Username+Hostname must be provided.
                     properties:
                       sourceName:
-                        description: SourceName is the name of the ReplicationSource
-                          that created the snapshots
+                        description: |-
+                          SourceName is the name of the ReplicationSource that created the snapshots.
+                          This field is REQUIRED when using SourceIdentity.
                         type: string
                       sourceNamespace:
                         description: |-
-                          SourceNamespace is the namespace of the ReplicationSource that created the snapshots
-                          If not specified, defaults to the namespace of this ReplicationDestination
+                          SourceNamespace is the namespace of the ReplicationSource that created the snapshots.
+                          If not specified, defaults to the namespace of this ReplicationDestination.
                         type: string
                       sourcePVCName:
                         description: |-
@@ -1503,7 +1507,8 @@ spec:
                   username:
                     description: |-
                       Username override for Kopia repository access.
-                      If not specified, defaults to "volsync"
+                      MUST be used together with Hostname when not using SourceIdentity.
+                      If not specified and SourceIdentity is not used, defaults to "volsync"
                     pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$
                     type: string
                   volumeSnapshotClassName:

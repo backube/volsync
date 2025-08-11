@@ -1149,6 +1149,14 @@ func (m *Mover) handleJobStatus(ctx context.Context, job *batchv1.Job,
 
 	// If Job had failed, delete it so it can be recreated
 	if job.Status.Failed >= *job.Spec.BackoffLimit {
+		// Record failure metrics before deleting the job
+		// This ensures metrics are properly captured even if the job is recreated
+		operation := operationBackup
+		if !m.isSource {
+			operation = "restore"
+		}
+		m.recordOperationFailure(operation, "job_backoff_limit_exceeded")
+
 		// Update status with mover logs from failed job using Kopia-specific filter
 		logFilter := utils.AllLines
 		if !m.isSource {
