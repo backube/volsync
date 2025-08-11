@@ -182,8 +182,8 @@ func getEdgeCases() []usernameTestCase {
 			name:        "very long object name",
 			username:    nil,
 			objectName:  strings.Repeat("a", 100) + "-backup",
-			expected:    strings.Repeat("a", 100) + "-backup",
-			description: "Should handle very long valid names",
+			expected:    strings.Repeat("a", maxUsernameLength), // Truncated to max length
+			description: "Should truncate very long names to maxUsernameLength",
 		},
 	}
 }

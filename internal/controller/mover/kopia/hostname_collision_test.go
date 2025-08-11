@@ -101,29 +101,31 @@ var _ = Describe("Hostname Collision Tests", func() {
 	})
 
 	Context("Multiple sources in same namespace", func() {
-		It("should generate unique hostnames for different ReplicationSources", func() {
+		It("should use same hostname but different usernames for sources in same namespace", func() {
 			// Test hostname generation for two different sources in same namespace
+			// The hostname should be the SAME (namespace only)
+			// The username should be DIFFERENT (object name)
+			// Together they provide uniqueness for Kopia identity
+			
 			hostname1 := generateHostname(nil, nil, ns.Name, "source1")
 			username1 := generateUsername(nil, "source1", ns.Name)
 			
 			hostname2 := generateHostname(nil, nil, ns.Name, "source2")
 			username2 := generateUsername(nil, "source2", ns.Name)
 			
-			// Verify hostnames are unique
-			Expect(hostname1).NotTo(Equal(hostname2))
+			// Verify hostnames are the SAME (namespace only)
+			Expect(hostname1).To(Equal(hostname2))
+			Expect(hostname1).To(Equal(ns.Name))
 			
-			// Verify hostnames include object names for uniqueness
-			Expect(hostname1).To(ContainSubstring("source1"))
-			Expect(hostname2).To(ContainSubstring("source2"))
-			
-			// Both should contain the namespace
-			Expect(hostname1).To(ContainSubstring(ns.Name))
-			Expect(hostname2).To(ContainSubstring(ns.Name))
-			
-			// Usernames should also be unique
+			// Verify usernames are DIFFERENT (object names)
 			Expect(username1).NotTo(Equal(username2))
 			Expect(username1).To(ContainSubstring("source1"))
 			Expect(username2).To(ContainSubstring("source2"))
+			
+			// Document the uniqueness guarantee:
+			// - Kubernetes prevents duplicate ReplicationSource names in same namespace
+			// - Each source has unique username (based on object name)
+			// - Combined with namespace hostname, this ensures unique Kopia identity
 		})
 	})
 

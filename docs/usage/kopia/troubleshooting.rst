@@ -649,19 +649,19 @@ Understanding Identity Format
 -----------------------------
 
 Identities in Kopia follow the format ``username@hostname``. VolSync generates these
-based on specific rules:
+based on specific, intentional design rules:
 
 **Default Generation (no custom fields)**:
 
-- Username: ReplicationSource name
-- Hostname: ``<namespace>-<pvc-name>``
+- Username: ReplicationSource/ReplicationDestination name (guaranteed unique within namespace)
+- Hostname: ``<namespace>`` (ALWAYS just the namespace, never includes PVC name)
 
 **With sourceIdentity**:
 
-- Username: ``sourceName`` from sourceIdentity
-- Hostname: ``<sourceNamespace>-<sourcePVCName>``
-  - If ``sourcePVCName`` is provided: uses that value
-  - If not provided: auto-discovers from ReplicationSource's ``spec.sourcePVC``
+- Username: Derived from ``sourceName`` (the ReplicationSource object name)
+- Hostname: ``<sourceNamespace>`` (ALWAYS just the namespace)
+  - The ``sourcePVCName`` field (if provided) is used for reference but does NOT affect hostname
+  - This is intentional - hostname is always namespace-only for consistency
 
 **With explicit username/hostname**:
 
@@ -688,11 +688,18 @@ To understand how identities are being generated:
    
    .. code-block:: text
    
-      # Default pattern
-      myapp-backup@production-myapp-data
+      # Default pattern (namespace-only hostname)
+      myapp-backup@production
+      database-backup@production
+      webapp-backup@staging
+      
+      # Multiple sources in same namespace (multi-tenancy)
+      app1-backup@production  # Same hostname
+      app2-backup@production  # Same hostname
+      db-backup@production    # Same hostname - all unique identities
       
       # With custom username
-      custom-user@production-myapp-data
+      custom-user@production
       
       # With custom hostname
       myapp-backup@custom-host

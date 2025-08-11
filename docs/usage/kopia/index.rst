@@ -8,6 +8,7 @@ Kopia-based backup
    database_example
    backends
    filesystem-destination
+   hostname-design
    multi-tenancy
    backup-configuration
    restore-configuration
@@ -92,12 +93,14 @@ sourcePathOverride, and repository configurations.
 For cross-namespace restore scenarios including disaster recovery and environment cloning,
 see :doc:`cross-namespace-restore`.
 
-**4. Configure Multi-Tenancy (Optional)**
+**4. Understand Identity Management**
 
-For shared environments, configure custom usernames and hostnames to organize
-backups across different tenants or environments.
+VolSync uses an intentional design where hostname equals namespace (always) and
+username equals the ReplicationSource/ReplicationDestination name. This creates
+unique identities without collision risk.
 
-See :doc:`multi-tenancy` for multi-tenancy configuration and identity management.
+See :doc:`hostname-design` for understanding the intentional hostname design,
+and :doc:`multi-tenancy` for multi-tenancy configuration and customization options.
 
 **5. Troubleshooting**
 
@@ -200,6 +203,11 @@ The Kopia documentation has been organized into focused sections for easier navi
    Comprehensive guide to using PersistentVolumeClaims as filesystem-based backup
    destinations. Covers configuration, security, migration from remote storage,
    and use cases for local and network-attached storage.
+
+:doc:`hostname-design`
+   Detailed explanation of VolSync's intentional hostname design where hostname equals
+   namespace. Covers the design philosophy, benefits, multi-tenancy model, and why
+   this approach ensures unique identities without collision risks.
 
 :doc:`multi-tenancy`
    Comprehensive guide to multi-tenant setups, automatic username/hostname generation,

@@ -16,25 +16,29 @@ Each Kopia client requires a unique identity consisting of:
 Simplified Multi-Tenancy with Namespace-Only Hostnames
 -------------------------------------------------------
 
-VolSync's hostname generation now uses **namespace-only identification**, providing simplified multi-tenant isolation by:
+VolSync's hostname generation uses **namespace-only identification** by design, providing simplified multi-tenant isolation:
 
-- **Single hostname per namespace**: All PVCs in a namespace share the same hostname identity
-- **Clear tenant boundaries**: Each namespace represents a distinct tenant with its own hostname
-- **Simplified access control**: Repository administrators can implement namespace-based policies easily
-- **Predictable behavior**: Hostname is always just the namespace name, regardless of PVC names
-- **No naming conflicts**: Each namespace has a unique hostname, eliminating PVC-based collisions
+- **Hostname = Namespace**: The hostname is ALWAYS just the namespace name (unless explicitly customized)
+- **Username = ReplicationSource/ReplicationDestination name**: By default, the username is derived from the object name
+- **Unique identity guaranteed**: Since Kubernetes prevents duplicate object names in a namespace, the combination of namespace (hostname) + object name (username) is always unique
+- **Clear tenant boundaries**: Each namespace represents a distinct tenant with a single hostname
+- **Multi-source support**: Multiple ReplicationSources in the same namespace share the hostname but have different usernames
+- **No collision risk**: There's no security issue or collision risk because Kubernetes enforces unique object names
 
-When multiple clients connect to the same repository with different identities, Kopia can:
+This design enables powerful multi-tenancy features:
 
-- Maintain separate snapshot histories per tenant (namespace)
-- Apply different retention policies based on namespace patterns
-- Prevent conflicts during concurrent operations across tenants
-- Enable namespace-based repository access control
+- **Namespace as tenant boundary**: All backups from a namespace share the same hostname, representing a logical tenant
+- **Per-source isolation**: Each ReplicationSource has its own username, maintaining separate snapshot histories
+- **Repository-level policies**: Administrators can apply retention policies based on namespace (hostname) patterns
+- **No collision possible**: Even with shared hostnames, unique usernames prevent any conflicts
+- **Simplified access control**: Control repository access at the namespace level
 
 Understanding identity generation
 ---------------------------------
 
-VolSync automatically generates usernames and hostnames based on your Kubernetes resources. The generation logic prioritizes user customization while providing simple, predictable defaults. The hostname is always just the namespace name (unless customized), making multi-tenancy straightforward.
+VolSync automatically generates usernames and hostnames based on your Kubernetes resources. This is an intentional design that leverages Kubernetes' built-in uniqueness guarantees:
+
+**Key Design Principle**: The hostname is ALWAYS just the namespace name (unless explicitly customized). This is not a limitation but a deliberate design choice that simplifies multi-tenancy and ensures predictable behavior.
 
 Username generation logic
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -128,10 +132,11 @@ The hostname generation follows this simple priority order:
    
    When no custom hostname is provided, the hostname is ALWAYS just the namespace name:
    
-   - Uses the resource's namespace name directly
-   - PVC names are NEVER included in the hostname
-   - All PVCs in a namespace share the same hostname
-   - **Format**: ``{namespace}`` (always, regardless of PVC names or length)
+   - **Format**: ``{namespace}`` - This is the only format used
+   - **Intentional design**: PVC names are NEVER included in the hostname
+   - **Multi-tenancy benefit**: All ReplicationSources in a namespace share the same hostname
+   - **No collisions**: Combined with unique usernames (from object names), identities are always unique
+   - **Predictable**: You always know the hostname will be the namespace name
 
 3. **Fallback Hostname**
    
@@ -167,7 +172,7 @@ Hostname examples
 
 .. code-block:: yaml
 
-   # Example 2: Namespace-only hostname (default behavior)
+   # Example 2: Namespace-only hostname (default and intentional behavior)
    apiVersion: volsync.backube/v1alpha1
    kind: ReplicationSource
    metadata:
@@ -177,13 +182,15 @@ Hostname examples
      sourcePVC: app-data
      kopia:
        # No hostname specified
-       # Generated hostname: prod (always just namespace, PVC name ignored)
+       # Generated hostname: prod (ALWAYS just namespace)
+       # Generated username: app-backup-prod (from object name + namespace)
+       # Full identity: app-backup-prod@prod (guaranteed unique)
 
 ---
 
 .. code-block:: yaml
 
-   # Example 3: Multiple PVCs in same namespace share hostname
+   # Example 3: Multiple sources in same namespace - demonstrating multi-tenancy design
    apiVersion: volsync.backube/v1alpha1
    kind: ReplicationSource
    metadata:
@@ -193,18 +200,23 @@ Hostname examples
      sourcePVC: long-application-storage-pvc-name-v2
      kopia:
        # No hostname specified
-       # Generated hostname: production-environment (always namespace only)
+       # Generated hostname: production-environment (namespace)
+       # Generated username: app-backup (object name)
+       # Full identity: app-backup@production-environment
    ---
    apiVersion: volsync.backube/v1alpha1
    kind: ReplicationSource
    metadata:
-     name: db-backup
+     name: db-backup  # Different name = different username
      namespace: production-environment
    spec:
      sourcePVC: database-pvc
      kopia:
        # No hostname specified
-       # Generated hostname: production-environment (same as above, all share namespace hostname)
+       # Generated hostname: production-environment (same namespace = same hostname)
+       # Generated username: db-backup (different object name)
+       # Full identity: db-backup@production-environment
+       # Result: Both sources share hostname but have unique identities
 
 Character sanitization rules
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -418,30 +430,33 @@ match the source's identity:
          sourceNamespace: my-namespace
          # sourcePVCName: optional - auto-discovered if not provided
 
-**Issue 2: Hostname Changed to Namespace-Only**
+**Issue 2: Understanding Namespace-Only Hostnames**
 
-*Problem*: Generated hostnames changed from including PVC names to just namespace after VolSync update
+*Question*: Why is the hostname just the namespace and not including PVC names?
 
-*Explanation*: VolSync now uses namespace-only hostname generation for simplicity
+*Answer*: This is intentional design, not a bug or limitation
 
-*New Behavior*:
-- Hostname is ALWAYS just the namespace: ``{namespace}``
-- PVC names are NEVER included in the hostname
-- All PVCs in a namespace share the same hostname identity
-- This simplifies multi-tenancy and makes behavior predictable
+*Design Benefits*:
+- **Predictable**: Hostname is ALWAYS just the namespace: ``{namespace}``
+- **Multi-tenancy**: All ReplicationSources in a namespace belong to the same "tenant"
+- **No collisions**: Unique usernames (from object names) ensure unique identities
+- **Simplified management**: One hostname per namespace makes policy management easier
+- **Kubernetes-native**: Leverages Kubernetes' built-in name uniqueness guarantees
 
-**Issue 3: All PVCs Share Same Hostname**
+**Issue 3: Multiple ReplicationSources Share Same Hostname**
 
-*Problem*: Multiple PVCs in the same namespace have the same hostname
+*Observation*: Multiple ReplicationSources in the same namespace have the same hostname
 
-*Explanation*: This is the expected behavior - hostname is always just the namespace
+*Explanation*: This is the intended multi-tenancy design
 
-*Implications*:
+*How it works*:
 
-- All PVCs in a namespace share the same Kopia hostname identity
-- This simplifies multi-tenancy - one hostname per namespace
-- Different PVCs are distinguished by their snapshot paths, not hostnames
-- If you need separate hostnames per PVC, use custom hostname configuration
+- All ReplicationSources in a namespace share the same hostname (the namespace name)
+- Each ReplicationSource has a unique username (from its object name)
+- Result: Each source has a unique identity like ``webapp-backup@production`` and ``db-backup@production``
+- This design treats the namespace as the tenant boundary
+- No collision risk because Kubernetes enforces unique object names within a namespace
+- If you need separate hostnames, use custom hostname configuration
 
 *Verify the hostname*:
 

@@ -167,6 +167,9 @@ func (kb *Builder) createSourceMover(client client.Client, logger logr.Logger,
 	isSource := true
 
 	// Generate username and hostname for multi-tenancy
+	// Username: object name (identifies the specific source within namespace)
+	// Hostname: namespace (identifies the tenant boundary)
+	// Together they provide uniqueness: Kubernetes ensures no duplicate object names in a namespace
 	username := generateUsername(source.Spec.Kopia.Username, source.GetName(), source.GetNamespace())
 	hostname := generateHostname(source.Spec.Kopia.Hostname, &source.Spec.SourcePVC,
 		source.GetNamespace(), source.GetName())
@@ -480,11 +483,16 @@ func generateUsername(username *string, objectName string, namespace string) str
 // generateHostname returns the hostname for Kopia identity based on namespace for multi-tenancy
 // Priority order:
 // 1. Custom hostname (if provided) - highest priority, used as-is
-// 2. Namespace-based hostname - always use namespace only (no PVC name)
-// 3. Fallback patterns:
-//   - If namespace is empty/invalid, use "namespace-name" format as fallback
-//   - If that fails, use object name
+// 2. Namespace-only hostname - sanitized namespace (no object name)
+// 3. Fallback patterns if namespace is invalid/empty:
+//   - Use sanitized object name
 //   - Final fallback: defaultUsername
+//
+// Multi-tenancy design:
+// - Hostname represents the namespace (tenant boundary)
+// - Username represents the specific object within that namespace
+// - Together (hostname + username) they provide uniqueness across the cluster
+// - Kubernetes prevents duplicate object names within a namespace, ensuring uniqueness
 //
 // Sanitization: alphanumeric, dots, hyphens; convert underscores to hyphens
 func generateHostname(hostname *string, _ *string, namespace, name string) string {
@@ -492,33 +500,20 @@ func generateHostname(hostname *string, _ *string, namespace, name string) strin
 		return *hostname
 	}
 
-	// Sanitize namespace and name for hostname use
+	// Primary approach: use sanitized namespace as hostname
 	sanitizedNamespace := sanitizeForHostname(namespace)
+	if sanitizedNamespace != "" {
+		return sanitizedNamespace
+	}
+
+	// Fallback if namespace is invalid/empty: use object name
 	sanitizedName := sanitizeForHostname(name)
-
-	// Generate hostname with namespace-objectname pattern for uniqueness
-	var defaultHostname string
-	if sanitizedNamespace != "" && sanitizedName != "" {
-		// Use namespace-objectname for uniqueness within namespace
-		defaultHostname = sanitizedNamespace + "-" + sanitizedName
-	} else if sanitizedNamespace != "" {
-		// Use namespace only if name is invalid
-		defaultHostname = sanitizedNamespace
-	} else if sanitizedName != "" {
-		// Use name only if namespace is invalid
-		defaultHostname = sanitizedName
-	} else {
-		// Fallback to traditional namespace-name pattern if both are problematic
-		fallbackHostname := fmt.Sprintf("%s-%s", namespace, name)
-		defaultHostname = sanitizeForHostname(fallbackHostname)
+	if sanitizedName != "" {
+		return sanitizedName
 	}
 
-	if defaultHostname == "" {
-		// Final fallback to defaultUsername
-		return defaultUsername
-	}
-
-	return defaultHostname
+	// Final fallback to defaultUsername
+	return defaultUsername
 }
 
 // sanitizeForHostname sanitizes a string for use as a hostname

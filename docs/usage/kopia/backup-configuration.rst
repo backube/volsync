@@ -55,8 +55,11 @@ customCA
 
 hostname
    This specifies a custom hostname for the Kopia client. When not provided,
-   VolSync automatically generates a hostname using just the namespace name.
-   All PVCs in a namespace share the same hostname unless customized.
+   VolSync automatically generates a hostname that is ALWAYS just the namespace name.
+   This is intentional design - all ReplicationSources in a namespace share the same
+   hostname, representing a single tenant. Combined with unique usernames (from object names),
+   this ensures unique identities without collision risk. The namespace-only hostname design
+   simplifies multi-tenancy and makes behavior predictable.
    See :doc:`multi-tenancy` for details on hostname generation.
 
 repository
@@ -79,7 +82,10 @@ sourcePath
 
 username
    This specifies a custom username for the Kopia client. When not provided,
-   VolSync automatically generates a username. See :doc:`multi-tenancy` for
+   VolSync automatically generates a username from the ReplicationSource name.
+   Combined with the namespace-based hostname, this creates a unique identity
+   for each backup source. Since Kubernetes prevents duplicate object names
+   in a namespace, there's no risk of collision. See :doc:`multi-tenancy` for
    details on username generation.
 
 Source Path Override

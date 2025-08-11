@@ -189,8 +189,8 @@ When the source namespace no longer exists, you must provide explicit configurat
        copyMethod: Direct
        
        # Source namespace is gone, use explicit identity
-       username: webapp-backup-production  # Format: {source-name}-{namespace}
-       hostname: production                 # Always just the namespace name
+       username: webapp-backup-production  # Generated username format
+       hostname: production                 # ALWAYS just the namespace name (intentional design)
 
 **Example 2: Environment Cloning with Point-in-Time Recovery**
 
