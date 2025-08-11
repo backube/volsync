@@ -140,7 +140,7 @@ var _ = Describe("Kopia", func() {
 			Expect(m.Name()).To(Equal("kopia"))
 		})
 
-		It("should create mover from destination", func() {
+		It("should create mover from destination with sourceIdentity", func() {
 			viper := viper.New()
 			flags := flag.NewFlagSet("test", flag.ContinueOnError)
 			b, err := newBuilder(viper, flags)
@@ -157,6 +157,10 @@ var _ = Describe("Kopia", func() {
 						ReplicationDestinationVolumeOptions: volsyncv1alpha1.ReplicationDestinationVolumeOptions{
 							Capacity: ptr.To(resource.MustParse("1Gi")),
 						},
+						// Provide sourceIdentity to satisfy validation
+						SourceIdentity: &volsyncv1alpha1.KopiaSourceIdentity{
+							SourceName: "test-source",
+						},
 					},
 				},
 				Status: &volsyncv1alpha1.ReplicationDestinationStatus{},
@@ -166,6 +170,96 @@ var _ = Describe("Kopia", func() {
 			Expect(err).To(BeNil())
 			Expect(m).NotTo(BeNil())
 			Expect(m.Name()).To(Equal("kopia"))
+		})
+
+		It("should create mover from destination with explicit username and hostname", func() {
+			viper := viper.New()
+			flags := flag.NewFlagSet("test", flag.ContinueOnError)
+			b, err := newBuilder(viper, flags)
+			Expect(err).NotTo(HaveOccurred())
+
+			rd := &volsyncv1alpha1.ReplicationDestination{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "rd",
+					Namespace: ns.Name,
+				},
+				Spec: volsyncv1alpha1.ReplicationDestinationSpec{
+					Kopia: &volsyncv1alpha1.ReplicationDestinationKopiaSpec{
+						Repository: "kopia-secret",
+						ReplicationDestinationVolumeOptions: volsyncv1alpha1.ReplicationDestinationVolumeOptions{
+							Capacity: ptr.To(resource.MustParse("1Gi")),
+						},
+						// Provide explicit username and hostname to satisfy validation
+						Username: ptr.To("test-user"),
+						Hostname: ptr.To("test-host"),
+					},
+				},
+				Status: &volsyncv1alpha1.ReplicationDestinationStatus{},
+			}
+
+			m, err := b.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd, false)
+			Expect(err).To(BeNil())
+			Expect(m).NotTo(BeNil())
+			Expect(m.Name()).To(Equal("kopia"))
+		})
+
+		It("should fail to create mover from destination without identity", func() {
+			viper := viper.New()
+			flags := flag.NewFlagSet("test", flag.ContinueOnError)
+			b, err := newBuilder(viper, flags)
+			Expect(err).NotTo(HaveOccurred())
+
+			rd := &volsyncv1alpha1.ReplicationDestination{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "rd",
+					Namespace: ns.Name,
+				},
+				Spec: volsyncv1alpha1.ReplicationDestinationSpec{
+					Kopia: &volsyncv1alpha1.ReplicationDestinationKopiaSpec{
+						Repository: "kopia-secret",
+						ReplicationDestinationVolumeOptions: volsyncv1alpha1.ReplicationDestinationVolumeOptions{
+							Capacity: ptr.To(resource.MustParse("1Gi")),
+						},
+						// No identity information provided - should fail validation
+					},
+				},
+				Status: &volsyncv1alpha1.ReplicationDestinationStatus{},
+			}
+
+			m, err := b.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd, false)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("requires explicit identity information"))
+			Expect(m).To(BeNil())
+		})
+
+		It("should fail to create mover from destination with only username", func() {
+			viper := viper.New()
+			flags := flag.NewFlagSet("test", flag.ContinueOnError)
+			b, err := newBuilder(viper, flags)
+			Expect(err).NotTo(HaveOccurred())
+
+			rd := &volsyncv1alpha1.ReplicationDestination{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "rd",
+					Namespace: ns.Name,
+				},
+				Spec: volsyncv1alpha1.ReplicationDestinationSpec{
+					Kopia: &volsyncv1alpha1.ReplicationDestinationKopiaSpec{
+						Repository: "kopia-secret",
+						ReplicationDestinationVolumeOptions: volsyncv1alpha1.ReplicationDestinationVolumeOptions{
+							Capacity: ptr.To(resource.MustParse("1Gi")),
+						},
+						Username: ptr.To("test-user"),
+						// Missing hostname - should fail validation
+					},
+				},
+				Status: &volsyncv1alpha1.ReplicationDestinationStatus{},
+			}
+
+			m, err := b.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd, false)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("'hostname' is missing"))
+			Expect(m).To(BeNil())
 		})
 	})
 

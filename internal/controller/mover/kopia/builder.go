@@ -218,6 +218,15 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		return nil, nil
 	}
 
+	// Validate that user has provided identity information for ReplicationDestination
+	if err := kb.validateDestinationIdentity(destination); err != nil {
+		logger.Error(err, "Invalid ReplicationDestination configuration",
+			"destination", destination.GetName(),
+			"namespace", destination.GetNamespace(),
+			"hint", "Please provide either sourceIdentity OR both username and hostname")
+		return nil, err
+	}
+
 	// Initialize Status if it's nil
 	if destination.Status == nil {
 		destination.Status = &volsyncv1alpha1.ReplicationDestinationStatus{}
@@ -652,4 +661,62 @@ func (kb *Builder) extractSourceInfo(source *volsyncv1alpha1.ReplicationSource,
 func (kb *Builder) discoverSourcePVC(c client.Client, sourceName, sourceNamespace string, logger logr.Logger) string {
 	info := kb.discoverSourceInfo(c, sourceName, sourceNamespace, logger)
 	return info.pvcName
+}
+
+// validateDestinationIdentity validates that the user has provided sufficient identity information
+// for the ReplicationDestination. Users must provide either:
+// 1. Both explicit username AND hostname fields, OR
+// 2. A sourceIdentity field with at least sourceName
+// This validation is required because we cannot automatically determine the source identity
+// when restoring, as the hostname typically includes the PVC name which we don't know yet.
+func (kb *Builder) validateDestinationIdentity(destination *volsyncv1alpha1.ReplicationDestination) error {
+	if destination.Spec.Kopia == nil {
+		return nil
+	}
+
+	kopiaSpec := destination.Spec.Kopia
+
+	// Check if explicit username and hostname are provided
+	hasExplicitUsername := kopiaSpec.Username != nil && *kopiaSpec.Username != ""
+	hasExplicitHostname := kopiaSpec.Hostname != nil && *kopiaSpec.Hostname != ""
+
+	// Check if sourceIdentity is provided with at least sourceName
+	hasSourceIdentity := kopiaSpec.SourceIdentity != nil && kopiaSpec.SourceIdentity.SourceName != ""
+
+	// Valid if either both username/hostname are provided OR sourceIdentity is provided
+	if (hasExplicitUsername && hasExplicitHostname) || hasSourceIdentity {
+		return nil
+	}
+
+	// Build helpful error message
+	var errorMsg string
+	if hasExplicitUsername && !hasExplicitHostname {
+		errorMsg = "Kopia ReplicationDestination requires both 'username' and 'hostname' to be specified. " +
+			"You have provided 'username' but 'hostname' is missing.\n"
+	} else if !hasExplicitUsername && hasExplicitHostname {
+		errorMsg = "Kopia ReplicationDestination requires both 'username' and 'hostname' to be specified. " +
+			"You have provided 'hostname' but 'username' is missing.\n"
+	} else {
+		errorMsg = "Kopia ReplicationDestination requires explicit identity information to restore snapshots.\n"
+	}
+
+	errorMsg += "\nYou must provide one of the following:\n" +
+		"1. Both 'username' and 'hostname' fields to explicitly specify the source identity, OR\n" +
+		"2. A 'sourceIdentity' section with at least 'sourceName' to automatically determine the identity\n" +
+		"\n" +
+		"Example with explicit identity:\n" +
+		"  kopia:\n" +
+		"    username: \"my-source-namespace\"\n" +
+		"    hostname: \"my-namespace-my-pvc\"\n" +
+		"\n" +
+		"Example with sourceIdentity (recommended):\n" +
+		"  kopia:\n" +
+		"    sourceIdentity:\n" +
+		"      sourceName: \"my-replication-source\"\n" +
+		"      sourceNamespace: \"source-namespace\"  # Optional, defaults to destination namespace\n" +
+		"\n" +
+		"Note: We cannot automatically determine the source identity for ReplicationDestination because " +
+		"the hostname typically includes the source PVC name, which is not known when creating the destination."
+
+	return fmt.Errorf(errorMsg)
 }
