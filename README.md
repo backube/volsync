@@ -2,7 +2,11 @@
 
 
 ## Fork Notes
-**Note**: This is a fork of [backube/volsync](https://github.com/backube/volsync). For installation of the Helm Chart from this fork, use:
+**Note**: This is a fork of [backube/volsync](https://github.com/backube/volsync). 
+
+If you need help or have any questions, join the [home-operations](https://discord.com/invite/home-operations) Discord!
+
+For installation of the Helm Chart from this fork, use:
 ```bash
 helm repo add volsync-fork https://perfectra1n.github.io/volsync/charts
 helm install --create-namespace -n volsync-system volsync volsync-fork/volsync
