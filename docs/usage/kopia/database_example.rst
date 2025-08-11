@@ -256,6 +256,7 @@ Create the ReplicationDestination in the ``dest`` namespace to restore the data:
    kind: ReplicationDestination
    metadata:
      name: database-destination
+     namespace: dest
    spec:
      trigger:
        manual: restore
@@ -263,6 +264,12 @@ Create the ReplicationDestination in the ``dest`` namespace to restore the data:
        destinationPVC: mysql-pv-claim
        repository: kopia-config
        copyMethod: Direct
+       # REQUIRED: Specify which backup source to restore from
+       # Without this, the destination doesn't know which snapshots to use
+       sourceIdentity:
+         sourceName: database-source
+         sourceNamespace: source
+         # sourcePVCName is auto-discovered from the ReplicationSource
 
 .. code-block:: console
 

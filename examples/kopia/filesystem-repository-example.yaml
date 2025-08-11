@@ -139,6 +139,7 @@ spec:
     compression: "zstd"
 ---
 # Example: Restore from filesystem repository
+# IMPORTANT: Kopia ReplicationDestination REQUIRES identity configuration
 apiVersion: volsync.backube/v1alpha1
 kind: ReplicationDestination
 metadata:
@@ -157,10 +158,18 @@ spec:
     destinationPVC: restored-data
     copyMethod: Direct
     
-    # Specify which backup to restore from
+    # REQUIRED: Specify which backup source to restore from
+    # Without this, Kopia cannot determine which snapshots to use because:
+    # - The destination doesn't know the source PVC name (part of hostname)
+    # - Multiple backup sources may exist in the same repository
     sourceIdentity:
-      sourceName: filesystem-backup
-      sourceNamespace: filesystem-backup-example
+      sourceName: filesystem-backup        # Name of the ReplicationSource
+      sourceNamespace: filesystem-backup-example  # Namespace of the source
+      # sourcePVCName is auto-discovered from the ReplicationSource
+    
+    # Alternative: Use explicit username and hostname (both required)
+    # username: "filesystem-backup"
+    # hostname: "filesystem-backup-example-application-data"
 ---
 # Secret for restore operations
 # Must specify the filesystem URL explicitly for ReplicationDestination

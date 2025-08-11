@@ -87,6 +87,7 @@ spec:
     parallelism: 4
 ---
 # Example: ReplicationDestination for restore from filesystem backup
+# IMPORTANT: Kopia ReplicationDestination REQUIRES identity configuration
 apiVersion: volsync.backube/v1alpha1
 kind: ReplicationDestination
 metadata:
@@ -107,10 +108,17 @@ spec:
     destinationPVC: restored-data
     copyMethod: Direct
     
-    # Specify which backup to restore from
+    # REQUIRED: Specify which backup source to restore from
+    # Kopia cannot auto-determine this because the destination doesn't know
+    # the source PVC name (part of the hostname) and multiple sources may exist
     sourceIdentity:
-      sourceName: filesystem-backup
-      sourceNamespace: backup-example
+      sourceName: filesystem-backup      # Name of the ReplicationSource
+      sourceNamespace: backup-example    # Namespace of the source
+      # sourcePVCName is auto-discovered from the ReplicationSource if not provided
+    
+    # Alternative: Use explicit username and hostname (both required)
+    # username: "filesystem-backup"
+    # hostname: "backup-example-application-data"
     
     # Optional: Restore from a previous snapshot instead of latest
     # previous: 1  # Skip latest, use previous snapshot

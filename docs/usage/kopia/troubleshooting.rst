@@ -78,6 +78,58 @@ When a restore operation cannot find snapshots, the status provides comprehensiv
 Common Error Scenarios and Solutions
 =====================================
 
+Missing Identity Configuration
+-------------------------------
+
+**Error Message**: "Kopia ReplicationDestination requires identity configuration"
+
+**Cause**: Kopia ReplicationDestination cannot automatically determine which snapshots 
+to restore from because the destination doesn't know the source PVC name (part of the 
+hostname) and there may be multiple sources in the repository.
+
+**Resolution**:
+
+You **MUST** provide identity information using one of these methods:
+
+1. **Use sourceIdentity (Recommended)**:
+
+   .. code-block:: yaml
+
+      spec:
+        kopia:
+          sourceIdentity:
+            sourceName: my-backup        # Name of the ReplicationSource
+            sourceNamespace: production  # Namespace of the source
+            # sourcePVCName is auto-discovered if not provided
+
+2. **Use explicit username and hostname**:
+
+   .. code-block:: yaml
+
+      spec:
+        kopia:
+          username: "my-backup"
+          hostname: "production-data-pvc"
+          # Both fields are required when using explicit identity
+
+**Common Mistakes**:
+
+- Providing only ``username`` without ``hostname`` (or vice versa)
+- Not providing any identity configuration
+- Using incorrect source name or namespace in ``sourceIdentity``
+
+**Verification**:
+
+Check that identity is properly configured:
+
+.. code-block:: bash
+
+   # Check the requested identity
+   kubectl get replicationdestination <name> -o jsonpath='{.status.kopia.requestedIdentity}'
+   
+   # Verify available identities in repository
+   kubectl get replicationdestination <name> -o json | jq '.status.kopia.availableIdentities'
+
 Filesystem Repository Issues
 -----------------------------
 

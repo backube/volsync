@@ -500,6 +500,26 @@ The API enforces validation patterns for custom usernames and hostnames:
 - ``backup user`` (contains space)
 - ```` (empty string)
 
+Identity Requirement for ReplicationDestination
+------------------------------------------------
+
+.. important::
+   **Kopia ReplicationDestination requires explicit identity configuration**
+   
+   Unlike other movers, Kopia ReplicationDestination cannot automatically determine which 
+   snapshots to restore from because:
+   
+   - The destination doesn't know the source PVC name (part of the hostname)
+   - Multiple backup sources may exist in the same repository
+   - Each source has a unique identity (username@hostname)
+   
+   You **MUST** provide either:
+   
+   1. ``sourceIdentity`` with at least ``sourceName`` and ``sourceNamespace`` (recommended)
+   2. Both ``username`` AND ``hostname`` fields explicitly
+   
+   Without this, the ReplicationDestination will fail validation with an error.
+
 Simplified Restore with sourceIdentity
 ---------------------------------------
 

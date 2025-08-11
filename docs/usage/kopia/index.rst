@@ -146,6 +146,10 @@ Here's a complete example showing how to set up a basic Kopia backup:
 
 **Step 3: Restore when needed**
 
+.. important::
+   Kopia ReplicationDestination **requires** identity information. You must use either 
+   ``sourceIdentity`` (recommended) or provide both ``username`` and ``hostname``.
+
 .. code-block:: yaml
 
    apiVersion: volsync.backube/v1alpha1
@@ -159,7 +163,8 @@ Here's a complete example showing how to set up a basic Kopia backup:
        # repository is optional when using sourceIdentity - auto-discovered from ReplicationSource if not specified
        destinationPVC: restored-data
        copyMethod: Direct
-       # Use sourceIdentity to specify which backup source to restore from
+       # REQUIRED: Use sourceIdentity to specify which backup source to restore from
+       # This tells VolSync which snapshots to restore (cannot be auto-determined)
        sourceIdentity:
          sourceName: mydata-backup
          sourceNamespace: default

@@ -9,6 +9,22 @@ Data from a backup can be restored using the ReplicationDestination CR. In most
 cases, it is desirable to perform a single restore into an empty
 PersistentVolume.
 
+.. important::
+   **Identity Requirement for Kopia ReplicationDestination**
+   
+   For Kopia ReplicationDestination, you **MUST** provide identity information to specify 
+   which snapshots to restore from. This is because we cannot automatically determine the 
+   source identity (the hostname typically includes the source PVC name which isn't known 
+   when creating the destination).
+   
+   You have two options:
+   
+   1. **Use sourceIdentity (Recommended)**: Specify ``sourceName`` and ``sourceNamespace``
+      to automatically generate the correct identity
+   2. **Use explicit identity**: Provide both ``username`` AND ``hostname`` fields
+   
+   Without proper identity configuration, the ReplicationDestination will fail validation.
+
 Restoring from a Specific ReplicationSource (sourceIdentity)
 ------------------------------------------------------------
 

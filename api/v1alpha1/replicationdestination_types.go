@@ -269,13 +269,16 @@ type ReplicationDestinationResticSpec struct {
 
 type ReplicationDestinationKopiaCA CustomCASpec
 
-// KopiaSourceIdentity defines helper fields to identify the source of snapshots to restore
+// KopiaSourceIdentity defines helper fields to identify the source of snapshots to restore.
+// This is the RECOMMENDED way to configure identity for Kopia ReplicationDestination.
+// At minimum, SourceName must be provided (SourceNamespace defaults to current namespace).
 type KopiaSourceIdentity struct {
-	// SourceName is the name of the ReplicationSource that created the snapshots
+	// SourceName is the name of the ReplicationSource that created the snapshots.
+	// This field is REQUIRED when using SourceIdentity.
 	// +optional
 	SourceName string `json:"sourceName,omitempty"`
-	// SourceNamespace is the namespace of the ReplicationSource that created the snapshots
-	// If not specified, defaults to the namespace of this ReplicationDestination
+	// SourceNamespace is the namespace of the ReplicationSource that created the snapshots.
+	// If not specified, defaults to the namespace of this ReplicationDestination.
 	// +optional
 	SourceNamespace string `json:"sourceNamespace,omitempty"`
 	// SourcePVCName is the name of the PVC that was backed up by the ReplicationSource.
@@ -294,9 +297,14 @@ type KopiaSourceIdentity struct {
 }
 
 // ReplicationDestinationKopiaSpec defines the field for kopia in replicationDestination.
+// IMPORTANT: Kopia ReplicationDestination requires explicit identity configuration.
+// You must provide either SourceIdentity (recommended) or both Username AND Hostname.
+// This is required because the destination cannot automatically determine which snapshots
+// to restore from (the hostname includes the source PVC name which isn't known).
 type ReplicationDestinationKopiaSpec struct {
 	ReplicationDestinationVolumeOptions `json:",inline"`
-	// Repository is the secret name containing repository info
+	// Repository is the secret name containing repository info.
+	// When using SourceIdentity, this can be auto-discovered from the ReplicationSource.
 	Repository string `json:"repository,omitempty"`
 	// customCA is a custom CA that will be used to verify the remote
 	CustomCA ReplicationDestinationKopiaCA `json:"customCA,omitempty"`
@@ -332,16 +340,19 @@ type ReplicationDestinationKopiaSpec struct {
 	PolicyConfig *KopiaPolicySpec `json:"policyConfig,omitempty"`
 	// SourceIdentity provides an easy way to specify which ReplicationSource's snapshots to restore.
 	// When specified, it will be used to generate the username and hostname automatically.
-	// This is a helper field that simplifies configuration for users.
+	// This is the RECOMMENDED way to configure identity for ReplicationDestination.
+	// Either SourceIdentity OR both Username+Hostname must be provided.
 	//+optional
 	SourceIdentity *KopiaSourceIdentity `json:"sourceIdentity,omitempty"`
 	// Username override for Kopia repository access.
-	// If not specified, defaults to "volsync"
+	// MUST be used together with Hostname when not using SourceIdentity.
+	// If not specified and SourceIdentity is not used, defaults to "volsync"
 	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$"
 	//+optional
 	Username *string `json:"username,omitempty"`
 	// Hostname override for Kopia repository access.
-	// If not specified, defaults to "<namespace>-<replicationsource-name>"
+	// MUST be used together with Username when not using SourceIdentity.
+	// If not specified and SourceIdentity is not used, defaults to "<namespace>-<replicationsource-name>"
 	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$"
 	//+optional
 	Hostname *string `json:"hostname,omitempty"`
