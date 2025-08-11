@@ -178,10 +178,10 @@ var _ = Describe("Hostname Collision Tests", func() {
 			Expect(hostname).NotTo(ContainSubstring("_"))
 			Expect(hostname).To(ContainSubstring("-"))
 
-			// Username can keep underscores
+			// Username should be only the object name
 			username := generateUsername(nil, "source-special", specialNs)
-			// Username allows underscores, so it should contain the namespace with underscores
-			Expect(username).To(ContainSubstring("namespace"))
+			// Username should be just the object name (no namespace)
+			Expect(username).To(Equal("source-special"))
 		})
 
 		It("should handle very long names gracefully", func() {

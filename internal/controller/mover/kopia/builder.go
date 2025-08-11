@@ -167,7 +167,7 @@ func (kb *Builder) createSourceMover(client client.Client, logger logr.Logger,
 	isSource := true
 
 	// Generate username and hostname for multi-tenancy
-	// Username: object name (identifies the specific source within namespace)
+	// Username: object name only (identifies the specific source within namespace)
 	// Hostname: namespace (identifies the tenant boundary)
 	// Together they provide uniqueness: Kubernetes ensures no duplicate object names in a namespace
 	username := generateUsername(source.Spec.Kopia.Username, source.GetName(), source.GetNamespace())
@@ -257,6 +257,7 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 	// 1. Explicit username/hostname fields (highest priority)
 	// 2. sourceIdentity helper (generates from source info)
 	// 3. Default generation from destination name/namespace
+	// Username format: object name only (simplified from previous object-name-namespace format)
 	var username, hostname string
 	var sourcePathOverride *string
 	var repositoryName string
@@ -456,11 +457,13 @@ func sanitizeForIdentifier(input string, allowUnderscore, allowDots bool) string
 // generateUsername returns the username for Kopia identity
 // Priority order:
 // 1. If specified, uses the provided username as-is (highest priority)
-// 2. Sanitizes object name and appends namespace if combined length ≤ maxUsernameLength
-// 3. Uses sanitized object name only if combined length > maxUsernameLength
-// 4. Returns "volsync-default" if sanitized username is empty
+// 2. Uses sanitized object name only (simplified from previous object-name-namespace format)
+// 3. Returns "volsync-default" if sanitized username is empty
 // Username rules: alphanumeric, hyphens, and underscores allowed
 // (More permissive than hostnames to maintain backward compatibility)
+//
+// Note: Username uniqueness is ensured by hostname (namespace) + username (object name).
+// Kubernetes prevents duplicate object names within a namespace, ensuring overall identity uniqueness.
 func generateUsername(username *string, objectName string, namespace string) string {
 	if username != nil && *username != "" {
 		return *username
@@ -472,18 +475,9 @@ func generateUsername(username *string, objectName string, namespace string) str
 		return defaultUsername
 	}
 
-	// Try to append namespace if there's room and namespace is valid
-	// Username approach: object-name-namespace for better identification
-	validNamespace := sanitizeForIdentifier(namespace, true, false)
-
-	// Kopia usernames have practical length limits
-	// If we can fit namespace with a separator, include it for better multi-tenancy
-	if validNamespace != "" {
-		candidateUsername := validObjectName + "-" + validNamespace
-		if len(candidateUsername) <= maxUsernameLength {
-			return candidateUsername
-		}
-	}
+	// Use only the object name as username (simplified approach)
+	// Multi-tenancy is achieved through hostname (namespace) + username (object name) combination
+	// This ensures uniqueness while keeping usernames clean and simple
 
 	// Ensure the username doesn't exceed the maximum length
 	if len(validObjectName) > maxUsernameLength {

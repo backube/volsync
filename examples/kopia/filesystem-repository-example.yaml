@@ -158,17 +158,19 @@ spec:
     destinationPVC: restored-data
     copyMethod: Direct
     
-    # REQUIRED: Specify which backup source to restore from
-    # Without this, Kopia cannot determine which snapshots to use
-    # With new behavior: hostname is always just the namespace
+    # Identity configuration:
+    # ✅ If this restore is in SAME namespace with SAME name as source:
+    #    NO identity configuration needed! (fully automatic)
+    # ⚠️ If cross-namespace OR different name: sourceIdentity REQUIRED
     sourceIdentity:
-      sourceName: filesystem-backup        # Name of the ReplicationSource
-      sourceNamespace: filesystem-backup-example  # Namespace (becomes hostname)
-      # sourcePVCName is auto-discovered but doesn't affect hostname
+      sourceName: filesystem-backup        # Name of the ReplicationSource (REQUIRED)
+      sourceNamespace: filesystem-backup-example  # Source namespace (REQUIRED)
+      # sourcePVCName is auto-discovered from source ReplicationSource
     
     # Alternative: Use explicit username and hostname (both required)
-    # username: "filesystem-backup-filesystem-backup-example"
-    # hostname: "filesystem-backup-example"  # Always just namespace with new behavior
+    # ⚠️ Only use when source had custom username/hostname
+    # username: "filesystem-backup"
+    # hostname: "filesystem-backup-example"  # Always just namespace
 ---
 # Secret for restore operations
 # Must specify the filesystem URL explicitly for ReplicationDestination

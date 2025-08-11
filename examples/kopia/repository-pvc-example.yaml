@@ -108,17 +108,19 @@ spec:
     destinationPVC: restored-data
     copyMethod: Direct
     
-    # NO IDENTITY CONFIGURATION NEEDED!
+    # ✅ NO IDENTITY CONFIGURATION NEEDED!
+    # Same namespace + matching names = fully automatic identity
     # Automatically uses:
-    #   username: filesystem-backup-backup-example
+    #   username: filesystem-backup
     #   hostname: backup-example
     
-    # For cross-namespace restore or different names, use sourceIdentity:
+    # ⚠️ For cross-namespace restore or different names, use sourceIdentity:
     # sourceIdentity:
-    #   sourceName: filesystem-backup
-    #   sourceNamespace: production
+    #   sourceName: filesystem-backup     # Source ReplicationSource name  
+    #   sourceNamespace: production       # Source namespace
     
-    # Or use explicit username and hostname (both required together):
+    # ⚠️ Or use explicit username and hostname (both required together):
+    # Use when source had custom username/hostname 
     # username: "custom-identity"
     # hostname: "custom-host"
     

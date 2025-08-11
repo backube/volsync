@@ -321,7 +321,7 @@ func getMultiTenancyTestCases() []multiTenancyTestCase {
 			replicationSource: "app-backup",
 			customUsername:    nil,
 			customHostname:    nil,
-			expectedUsername:  "app-backup-production", // Now includes namespace
+			expectedUsername:  "app-backup", // Object name only
 			expectedHostname:  "production",
 		},
 		{
@@ -339,7 +339,7 @@ func getMultiTenancyTestCases() []multiTenancyTestCase {
 			replicationSource: "logs",
 			customUsername:    nil,
 			customHostname:    ptr.To("dev-cluster"),
-			expectedUsername:  "logs-dev", // Now includes namespace
+			expectedUsername:  "logs", // Object name only
 			expectedHostname:  "dev-cluster",
 		},
 		{
@@ -357,8 +357,8 @@ func getMultiTenancyTestCases() []multiTenancyTestCase {
 			replicationSource: "app_backup_job",
 			customUsername:    nil,
 			customHostname:    nil,
-			expectedUsername:  "app_backup_job-my-namespace", // Now includes sanitized namespace
-			expectedHostname:  "my-namespace",                // namespace-first logic uses just namespace when no PVC
+			expectedUsername:  "app_backup_job", // Object name only
+			expectedHostname:  "my-namespace",   // namespace-first logic uses just namespace when no PVC
 		},
 	}
 }

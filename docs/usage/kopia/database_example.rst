@@ -264,11 +264,12 @@ Create the ReplicationDestination in the ``dest`` namespace to restore the data:
        destinationPVC: mysql-pv-claim
        repository: kopia-config
        copyMethod: Direct
-       # REQUIRED: Specify which backup source to restore from
-       # Without this, the destination doesn't know which snapshots to use
+       # ⚠️ sourceIdentity REQUIRED because this is a cross-namespace restore
+       # (dest namespace ≠ source namespace)  
+       # For same-namespace restores with matching names, sourceIdentity is optional
        sourceIdentity:
-         sourceName: database-source
-         sourceNamespace: source
+         sourceName: database-source  # Source ReplicationSource name
+         sourceNamespace: source      # Source namespace (different from dest)
          # sourcePVCName is auto-discovered from the ReplicationSource
 
 .. code-block:: console

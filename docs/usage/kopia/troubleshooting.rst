@@ -96,15 +96,18 @@ identity, both fields must be provided together.
         kopia:
           destinationPVC: restored-data
           # No identity fields - uses automatic identity:
-          # username: <destination-name>-<namespace>
+          # username: <destination-name>
           # hostname: <namespace>
 
-2. **Use sourceIdentity for cross-namespace**:
+2. **Use sourceIdentity (only needed for cross-namespace or different names)**:
 
    .. code-block:: yaml
 
       spec:
         kopia:
+          # ⚠️ sourceIdentity only REQUIRED when:
+          # - Cross-namespace restore (different namespaces)
+          # - Destination name ≠ source ReplicationSource name
           sourceIdentity:
             sourceName: my-backup        # Name of the ReplicationSource
             sourceNamespace: production  # Namespace of the source
@@ -275,11 +278,13 @@ No Snapshots Found
    
 3. **Common causes and fixes**:
 
-   **Incorrect sourceIdentity**:
+   **Incorrect sourceIdentity (only needed for cross-namespace or different names)**:
    
    .. code-block:: yaml
    
-      # Wrong namespace or name
+      # ⚠️ Only use sourceIdentity when necessary:
+      # - Cross-namespace restore: target namespace ≠ source namespace  
+      # - Different names: destination name ≠ source ReplicationSource name
       sourceIdentity:
         sourceName: webapp-backup     # Verify this matches exactly
         sourceNamespace: production    # Verify this matches exactly
@@ -287,13 +292,14 @@ No Snapshots Found
    
    **Source uses custom username/hostname**:
    
-   If the ReplicationSource has custom identity fields, you must use them directly:
+   If the ReplicationSource has custom identity fields, you must use them directly 
+   (sourceIdentity won't work with custom source identity):
    
    .. code-block:: yaml
    
-      # Instead of sourceIdentity, use:
-      username: "custom-user"
-      hostname: "custom-host"
+      # ⚠️ When source used custom identity, must use explicit identity:
+      username: "custom-user"    # Must match source's custom username exactly
+      hostname: "custom-host"    # Must match source's custom hostname exactly
    
    **No backups have been created yet**:
    

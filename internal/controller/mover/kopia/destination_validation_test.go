@@ -260,7 +260,7 @@ var _ = Describe("Kopia ReplicationDestination validation", func() {
 			// Verify automatic identity was used
 			kopMover, ok := mover.(*Mover)
 			Expect(ok).To(BeTrue())
-			Expect(kopMover.username).To(Equal("test-destination-test-namespace"))
+			Expect(kopMover.username).To(Equal("test-destination"))
 			Expect(kopMover.hostname).To(Equal("test-namespace"))
 		})
 

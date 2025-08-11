@@ -1,11 +1,18 @@
 # Cross-Namespace Restore Example
-# This example demonstrates how to restore Kopia backups from one namespace to another
+# This example demonstrates when and how to restore Kopia backups from one namespace to another
 #
-# Use cases:
-# - Disaster recovery: Restore to a new namespace when original is lost
-# - Environment cloning: Copy production data to staging/development
-# - Namespace migration: Move data between namespaces
-# - Testing: Validate backups in isolated namespaces
+# ⚠️ IMPORTANT: sourceIdentity is REQUIRED for cross-namespace restores!
+# Unlike same-namespace restores (which need no identity config), cross-namespace
+# restores cannot auto-discover the source identity and MUST use sourceIdentity.
+#
+# Use cases requiring sourceIdentity:
+# - ⚠️ Disaster recovery: Restore to a new namespace when original is lost  
+# - ⚠️ Environment cloning: Copy production data to staging/development
+# - ⚠️ Namespace migration: Move data between namespaces
+# - ⚠️ Testing: Validate backups in isolated namespaces
+#
+# Compare to same-namespace restores (NO sourceIdentity needed):
+# - ✅ name: my-backup in namespace: apps → restore to name: my-backup in namespace: apps
 
 ---
 # Step 1: Ensure repository secret exists in target namespace
@@ -53,16 +60,17 @@ spec:
     - ReadWriteOnce
     # storageClassName: fast-ssd  # Optional: specify StorageClass
     
-    # Identity configuration for cross-namespace restore
-    # Use sourceIdentity (recommended - auto-discovers configuration)
+    # ⚠️ sourceIdentity REQUIRED for cross-namespace restore!
+    # Cannot auto-discover identity when restoring across namespaces
     sourceIdentity:
-      sourceName: app-backup           # Name of the ReplicationSource
-      sourceNamespace: source-namespace  # Original namespace
+      sourceName: app-backup           # Name of the ReplicationSource (REQUIRED)
+      sourceNamespace: source-namespace  # Original namespace (REQUIRED)
       # sourcePVCName: app-data         # Optional: auto-discovered if not provided
       # sourcePathOverride: /custom/path # Optional: auto-discovered if not provided
     
-    # Alternative: Use explicit identity (when source doesn't exist or for manual control)
-    # username: app-backup-source-namespace  # Format: {source-name}-{namespace}
+    # Alternative: Use explicit identity (when sourceIdentity not available)
+    # ⚠️ Only use this when source ReplicationSource no longer exists
+    # username: app-backup  # Format: {source-name}
     # hostname: source-namespace              # Always just namespace name
     
     # Optional: Point-in-time recovery
@@ -70,8 +78,9 @@ spec:
     # previous: 1                           # Skip N snapshots (0=latest, 1=previous, etc.)
 
 ---
-# Example: Disaster Recovery Scenario
-# When source namespace is deleted, use explicit identity
+# Example: Disaster Recovery Scenario  
+# ⚠️ When source namespace/ReplicationSource deleted, sourceIdentity won't work
+# Must use explicit username/hostname when auto-discovery is impossible
 apiVersion: volsync.backube/v1alpha1
 kind: ReplicationDestination
 metadata:
@@ -86,9 +95,10 @@ spec:
     copyMethod: Direct
     capacity: 20Gi
     
-    # Use explicit identity when source doesn't exist
-    username: webapp-backup-production
-    hostname: production
+    # ⚠️ Use explicit identity when source ReplicationSource no longer exists
+    # Must manually specify what the source identity was
+    username: webapp-backup  # Original source identity format
+    hostname: production                 # Original source namespace (ALWAYS just namespace name)
 
 ---
 # Example: Environment Cloning
@@ -105,13 +115,14 @@ spec:
   trigger:
     manual: clone-once
   kopia:
-    # Repository auto-discovered from source
+    # Repository auto-discovered from source ReplicationSource
     destinationPVC: staging-database
     copyMethod: Direct
     
+    # ⚠️ sourceIdentity REQUIRED for cross-namespace restore
     sourceIdentity:
-      sourceName: database-backup
-      sourceNamespace: production
+      sourceName: database-backup    # Source ReplicationSource name
+      sourceNamespace: production    # Source namespace
     
     # Get snapshot from yesterday for stable testing
     restoreAsOf: "2024-01-19T23:59:59Z"
@@ -195,10 +206,10 @@ spec:
     destinationPVC: temp-discovery
     copyMethod: Direct
     capacity: 1Gi
-    # Identity is optional - when omitted, automatic identity is used:
-    # username: identity-discovery-target-namespace
+    # ✅ Identity is optional for discovery - when omitted, automatic identity is used:
+    # username: identity-discovery  
     # hostname: target-namespace
-    # This may not match any snapshots, but status will show available identities
+    # ⚠️ This may not match any snapshots (different namespace), but status will show available identities
     
 # After applying, check available identities:
 # kubectl get replicationdestination identity-discovery -n target-namespace -o json | jq '.status.kopia.availableIdentities'

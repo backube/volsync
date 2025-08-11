@@ -298,7 +298,7 @@ type KopiaSourceIdentity struct {
 
 // ReplicationDestinationKopiaSpec defines the field for kopia in replicationDestination.
 // Identity configuration is OPTIONAL. When not provided, VolSync automatically generates:
-// - Username: <destination-name>-<namespace>
+// - Username: <destination-name>
 // - Hostname: <namespace>
 // This works perfectly for simple same-namespace restores when the destination name matches the source.
 // For cross-namespace restores or custom identity, use SourceIdentity or provide both Username AND Hostname.

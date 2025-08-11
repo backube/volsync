@@ -17,7 +17,7 @@ PersistentVolume.
    
    **Automatic Identity** (when no identity fields are provided):
    
-   - Username: ``<destination-name>-<namespace>``
+   - Username: ``<destination-name>``
    - Hostname: ``<namespace>``
    
    This works perfectly when the ReplicationDestination has the same name as the 
@@ -445,7 +445,7 @@ Repository auto-discovery significantly reduces the configuration overhead when 
 With auto-discovery, VolSync automatically:
 
 - Discovers ``repository: production-kopia-config`` from the ReplicationSource
-- Generates ``username: webapp-backup-production`` from the source name and namespace
+- Generates ``username: webapp-backup`` from the source name
 - Generates ``hostname: production`` (always just the namespace, PVC name not included)
 - Discovers any ``sourcePathOverride`` settings from the source
 

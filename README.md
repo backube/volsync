@@ -101,41 +101,48 @@ spec:
 
 a `ReplicationDestination` example:
 
-Simple same-namespace restore (no identity configuration needed):
+Simple same-namespace restore (NO identity configuration needed):
 ```yaml
+# Use case: Restore in same namespace with matching destination name
+# ✅ NO sourceIdentity needed - fully automatic!
 apiVersion: volsync.backube/v1alpha1
 kind: ReplicationDestination
 metadata:
   name: homepage-kopia  # Same name as ReplicationSource
-  namespace: apps      # Same namespace
+  namespace: apps      # Same namespace as source
 spec:
   trigger:
     manual: restore-now
   kopia:
-    # NO IDENTITY CONFIGURATION NEEDED!
-    # Automatically uses:
-    #   username: homepage-kopia-apps
-    #   hostname: apps
+    # ✅ NO IDENTITY CONFIGURATION NEEDED!
+    # When destination name matches source name in same namespace:
+    # - Automatically discovers: username = homepage-kopia
+    # - Automatically uses: hostname = apps (always just namespace)
     destinationPVC: restored-data
     copyMethod: Direct
     storageClassName: "truenas-csi-iscsi"
 ```
 
-Cross-namespace restore (using sourceIdentity):
+Cross-namespace restore (sourceIdentity REQUIRED):
 ```yaml
+# Use case: Restore across namespaces or with different destination name
+# ⚠️ sourceIdentity REQUIRED for cross-namespace restores
 apiVersion: volsync.backube/v1alpha1
 kind: ReplicationDestination
 metadata:
-  name: kopia-test-restore
-  namespace: test
+  name: kopia-test-restore  # Different name than source
+  namespace: test           # Different namespace than source
 spec:
   trigger:
     manual: restore-test
   kopia:
+    # ⚠️ sourceIdentity REQUIRED because:
+    #   - Source is in different namespace (apps ≠ test)
+    #   - Destination name differs from source name
     sourceIdentity:
       sourceName: homepage-kopia
-      sourceNamespace: apps  # Hostname is ALWAYS just the namespace (intentional)
-      # The combination of username (from sourceName) + hostname (namespace) = unique identity
+      sourceNamespace: apps  # Source namespace (hostname will be "apps")
+      # PVC name auto-discovered from source ReplicationSource
     destinationPVC: test-restore-data
     copyMethod: Direct
     storageClassName: "truenas-csi-iscsi"
@@ -145,6 +152,15 @@ spec:
       runAsGroup: 0
       fsGroup: 0
 ```
+
+When sourceIdentity is needed:
+- ⚠️ **Cross-namespace restores** (source and destination in different namespaces)
+- ⚠️ **Different destination name** (destination name ≠ source ReplicationSource name)
+- ⚠️ **Source used custom identity** (custom username/hostname in ReplicationSource)
+
+When sourceIdentity is NOT needed:
+- ✅ **Same namespace + same name** (destination name = source name, same namespace)  
+- ✅ **Default source identity** (source used no custom username/hostname)
 
 And a `repository` example:
 ```yaml

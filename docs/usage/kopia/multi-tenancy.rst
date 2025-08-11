@@ -183,8 +183,8 @@ Hostname examples
      kopia:
        # No hostname specified
        # Generated hostname: prod (ALWAYS just namespace)
-       # Generated username: app-backup-prod (from object name + namespace)
-       # Full identity: app-backup-prod@prod (guaranteed unique)
+       # Generated username: app-backup (from object name)
+       # Full identity: app-backup@prod (guaranteed unique)
 
 ---
 
@@ -418,16 +418,20 @@ Example output showing multiple tenants:
    kubectl get replicationdestination <discovery-dest> -o json | \
      jq '.status.kopia.availableIdentities[].identity'
 
-*Alternative Solution*: When restoring, use the ``sourceIdentity`` field to automatically 
-match the source's identity:
+*Alternative Solution*: Use the ``sourceIdentity`` field for cross-namespace restores 
+or when destination name differs from source name:
 
 .. code-block:: yaml
 
+   # ⚠️ sourceIdentity only needed when:
+   # - Cross-namespace restore (different namespaces)  
+   # - Destination name ≠ source ReplicationSource name
+   # ✅ NOT needed for same namespace + matching names
    spec:
      kopia:
        sourceIdentity:
-         sourceName: my-backup
-         sourceNamespace: my-namespace
+         sourceName: my-backup        # Source ReplicationSource name
+         sourceNamespace: my-namespace # Source namespace  
          # sourcePVCName: optional - auto-discovered if not provided
 
 **Issue 2: Understanding Namespace-Only Hostnames**
@@ -521,7 +525,7 @@ Identity Configuration for ReplicationDestination
    
    Identity is now OPTIONAL! When not provided, VolSync automatically generates an identity:
    
-   - Username: ``<destination-name>-<namespace>``
+   - Username: ``<destination-name>``
    - Hostname: ``<namespace>``
    
    This works perfectly for simple same-namespace restores when the destination name 

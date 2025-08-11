@@ -291,9 +291,8 @@ var _ = Describe("Kopia", func() {
 			// Verify automatic identity was used
 			kopiaMover, ok := m.(*Mover)
 			Expect(ok).To(BeTrue())
-			// Username should be rd-<namespace>
-			Expect(kopiaMover.username).To(ContainSubstring("rd"))
-			Expect(kopiaMover.username).To(ContainSubstring(ns.Name))
+			// Username should be just the object name (rd)
+			Expect(kopiaMover.username).To(Equal("rd"))
 			// Hostname should be the namespace
 			Expect(kopiaMover.hostname).To(Equal(ns.Name))
 		})

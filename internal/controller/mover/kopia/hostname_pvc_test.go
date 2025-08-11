@@ -85,7 +85,7 @@ func validateHostnameTrimming(t *testing.T, hostname *string, result string) {
 	}
 }
 
-func TestUsernameGenerationWithNamespace(t *testing.T) {
+func TestUsernameGenerationSimplified(t *testing.T) {
 	tests := getUsernameWithNamespaceTestCases()
 
 	for _, tt := range tests {
@@ -107,7 +107,7 @@ type usernameWithNamespaceTestCase struct {
 	description string
 }
 
-// getUsernameWithNamespaceTestCases returns test cases for username with namespace generation
+// getUsernameWithNamespaceTestCases returns test cases for username generation (object name only)
 func getUsernameWithNamespaceTestCases() []usernameWithNamespaceTestCase {
 	var cases []usernameWithNamespaceTestCase
 	cases = append(cases, getCustomUsernameCases()...)
@@ -130,40 +130,40 @@ func getCustomUsernameCases() []usernameWithNamespaceTestCase {
 	}
 }
 
-// getNamespaceAppendingCases tests namespace appending logic
+// getNamespaceAppendingCases tests object name only logic (no namespace appending)
 func getNamespaceAppendingCases() []usernameWithNamespaceTestCase {
 	return []usernameWithNamespaceTestCase{
 		{
-			name:        "short object name with namespace",
+			name:        "short object name (no namespace)",
 			username:    nil,
 			objectName:  "app",
 			namespace:   "prod",
-			expected:    "app-prod",
-			description: "Should append namespace when combined length is short",
+			expected:    "app",
+			description: "Should use object name only (no namespace appending)",
 		},
 		{
 			name:        "object name with short namespace",
 			username:    nil,
 			objectName:  "application-backup",
 			namespace:   "ns",
-			expected:    "application-backup-ns",
-			description: "Should append short namespace to longer object name",
+			expected:    "application-backup",
+			description: "Should use object name only (no namespace appending)",
 		},
 		{
-			name:        "very long object name prevents namespace",
+			name:        "very long object name (no namespace)",
 			username:    nil,
 			objectName:  strings.Repeat("a", 45),
 			namespace:   "production",
 			expected:    strings.Repeat("a", 45),
-			description: "Should not append namespace when object name is very long",
+			description: "Should use object name only (no namespace appending)",
 		},
 		{
-			name:        "object name at limit prevents namespace",
+			name:        "object name at limit (no namespace)",
 			username:    nil,
 			objectName:  strings.Repeat("a", 50),
 			namespace:   "prod",
 			expected:    strings.Repeat("a", 50),
-			description: "Should not append namespace when object name is at limit",
+			description: "Should use object name only (no namespace appending)",
 		},
 		{
 			name:        "empty namespace",
@@ -171,23 +171,23 @@ func getNamespaceAppendingCases() []usernameWithNamespaceTestCase {
 			objectName:  "app-backup",
 			namespace:   "",
 			expected:    "app-backup",
-			description: "Should not append empty namespace",
+			description: "Should use object name only (empty namespace)",
 		},
 		{
 			name:        "namespace with special characters",
 			username:    nil,
 			objectName:  "app-backup",
 			namespace:   "prod@env",
-			expected:    "app-backup-prodenv",
-			description: "Should sanitize namespace before appending",
+			expected:    "app-backup",
+			description: "Should use object name only (no namespace appending)",
 		},
 		{
 			name:        "namespace with underscores",
 			username:    nil,
 			objectName:  "app-backup",
 			namespace:   "prod_env",
-			expected:    "app-backup-prod_env",
-			description: "Should preserve underscores in namespace",
+			expected:    "app-backup",
+			description: "Should use object name only (no namespace appending)",
 		},
 	}
 }
