@@ -150,9 +150,15 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 
 	// Start and monitor job
 	job, err := m.ensureJob(ctx, cachePVC, dataPVC, sa, repo, customCAObj, policyConfigObj)
-	if job == nil || err != nil {
+	if err != nil {
+		// An actual error occurred during job creation or monitoring
 		m.recordOperationFailure(operation, "job_creation_failed")
 		return mover.InProgress(), err
+	}
+	if job == nil {
+		// Job is still running/retrying but hasn't completed or definitively failed yet
+		// Don't record this as a failure - it's just in progress
+		return mover.InProgress(), nil
 	}
 
 	// Handle job completion
