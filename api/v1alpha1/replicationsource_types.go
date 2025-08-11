@@ -255,6 +255,27 @@ type KopiaActions struct {
 
 type ReplicationSourceKopiaCA CustomCASpec
 
+// FilesystemDestinationSpec defines configuration for using a PVC as a filesystem-based
+// backup destination for Kopia repositories.
+type FilesystemDestinationSpec struct {
+	// ClaimName is the name of the PersistentVolumeClaim to mount as the backup destination.
+	// The PVC must exist in the same namespace as the ReplicationSource.
+	// +kubebuilder:validation:MinLength=1
+	ClaimName string `json:"claimName"`
+	// Path is the repository path within the mounted PVC.
+	// The PVC will be mounted at /kopia and the repository will be created at /kopia/<path>.
+	// If not specified, defaults to "backups".
+	// Only alphanumeric characters, hyphens, underscores, and forward slashes are allowed.
+	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9][a-zA-Z0-9/_-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$"
+	// +kubebuilder:validation:MaxLength=100
+	// +optional
+	Path *string `json:"path,omitempty"`
+	// ReadOnly specifies whether to mount the PVC in read-only mode.
+	// Defaults to false (read-write).
+	// +optional
+	ReadOnly bool `json:"readOnly,omitempty"`
+}
+
 // ReplicationSourceKopiaSpec defines the field for kopia in replicationSource.
 type ReplicationSourceKopiaSpec struct {
 	ReplicationSourceVolumeOptions `json:",inline"`
@@ -306,6 +327,12 @@ type ReplicationSourceKopiaSpec struct {
 	// +kubebuilder:validation:Pattern="^/.*"
 	//+optional
 	SourcePathOverride *string `json:"sourcePathOverride,omitempty"`
+	// FilesystemDestination defines a PVC to use as the backup destination
+	// for filesystem-based Kopia repositories. When specified, Kopia will
+	// write backups directly to this PVC instead of a remote repository.
+	// The PVC must exist in the same namespace as the ReplicationSource.
+	// +optional
+	FilesystemDestination *FilesystemDestinationSpec `json:"filesystemDestination,omitempty"`
 
 	MoverConfig `json:",inline"`
 }

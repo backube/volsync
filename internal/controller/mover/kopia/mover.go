@@ -58,6 +58,9 @@ const (
 	kopiaCAMountPath        = "/customCA"
 	kopiaCAFilename         = "ca.crt"
 	credentialDir           = "/credentials"
+	filesystemDestVolName   = "filesystem-destination"
+	filesystemDestMountPath = "/kopia"
+	defaultFilesystemPath   = "backups"
 	gcsCredentialFile       = "gcs.json"
 	kopiaPolicyMountPath    = "/kopia-config"
 	defaultGlobalPolicyFile = "global-policy.json"
@@ -91,13 +94,15 @@ type Mover struct {
 	username string
 	hostname string
 	// Source-only fields
-	sourcePathOverride  *string
-	maintenanceInterval *int32
-	retainPolicy        *volsyncv1alpha1.KopiaRetainPolicy
-	compression         string
-	parallelism         *int32
-	actions             *volsyncv1alpha1.KopiaActions
-	sourceStatus        *volsyncv1alpha1.ReplicationSourceKopiaStatus
+	sourcePathOverride    *string
+	maintenanceInterval   *int32
+	retainPolicy          *volsyncv1alpha1.KopiaRetainPolicy
+	compression           string
+	parallelism           *int32
+	actions               *volsyncv1alpha1.KopiaActions
+	sourceStatus          *volsyncv1alpha1.ReplicationSourceKopiaStatus
+	filesystemDestination *volsyncv1alpha1.FilesystemDestinationSpec
+	filesystemRepoPath    string
 	// Destination-only fields
 	restoreAsOf       *string
 	shallow           *int32
@@ -300,6 +305,13 @@ func (m *Mover) ensureCache(ctx context.Context,
 }
 
 func (m *Mover) validateRepository(ctx context.Context) (*corev1.Secret, error) {
+	// If using filesystem destination, validate the PVC first
+	if m.filesystemDestination != nil {
+		if err := m.validateFilesystemDestination(ctx); err != nil {
+			return nil, err
+		}
+	}
+
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      m.repositoryName,
@@ -313,6 +325,40 @@ func (m *Mover) validateRepository(ctx context.Context) (*corev1.Secret, error) 
 		return nil, err
 	}
 	return secret, nil
+}
+
+// validateFilesystemDestination validates that the filesystem destination PVC exists and is bound
+func (m *Mover) validateFilesystemDestination(ctx context.Context) error {
+	if m.filesystemDestination == nil {
+		return nil
+	}
+
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      m.filesystemDestination.ClaimName,
+			Namespace: m.owner.GetNamespace(),
+		},
+	}
+
+	if err := m.client.Get(ctx, client.ObjectKeyFromObject(pvc), pvc); err != nil {
+		m.logger.Error(err, "Failed to get filesystem destination PVC",
+			"pvc", m.filesystemDestination.ClaimName)
+		return fmt.Errorf("filesystem destination PVC %s not found: %w",
+			m.filesystemDestination.ClaimName, err)
+	}
+
+	// Check if PVC is bound
+	if pvc.Status.Phase != corev1.ClaimBound {
+		m.logger.Info("Filesystem destination PVC is not bound yet",
+			"pvc", m.filesystemDestination.ClaimName,
+			"phase", pvc.Status.Phase)
+		return fmt.Errorf("filesystem destination PVC %s is not bound (phase: %s)",
+			m.filesystemDestination.ClaimName, pvc.Status.Phase)
+	}
+
+	m.logger.V(1).Info("Filesystem destination PVC validated successfully",
+		"pvc", m.filesystemDestination.ClaimName)
+	return nil
 }
 
 func (m *Mover) validatePolicyConfig(ctx context.Context) (utils.CustomCAObject, error) {
@@ -392,6 +438,12 @@ func (m *Mover) configureJobSpec(ctx context.Context, job *batchv1.Job, cachePVC
 	m.configureCustomCA(podSpec, customCAObj)
 	m.configurePolicyConfig(podSpec, policyConfigObj)
 	m.configureCredentials(podSpec, repo)
+
+	// Configure filesystem destination if specified
+	if err := m.configureFilesystemDestination(podSpec); err != nil {
+		logger.Error(err, "failed to configure filesystem destination")
+		return err
+	}
 
 	// Update the job securityContext, podLabels and resourceRequirements from moverConfig (if specified)
 	utils.UpdatePodTemplateSpecFromMoverConfig(&job.Spec.Template, m.moverConfig, corev1.ResourceRequirements{})
@@ -615,6 +667,11 @@ func (m *Mover) addSourceEnvVars(envVars []corev1.EnvVar) []corev1.EnvVar {
 	}
 	if m.sourcePathOverride != nil {
 		envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_SOURCE_PATH_OVERRIDE", Value: *m.sourcePathOverride})
+	}
+
+	// Add filesystem destination path if configured
+	if m.filesystemDestination != nil && m.filesystemRepoPath != "" {
+		envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_FS_PATH", Value: m.filesystemRepoPath})
 	}
 
 	// Add retention policy
@@ -920,6 +977,53 @@ func (m *Mover) configureFilePolicyConfig(podSpec *corev1.PodSpec, policyConfigO
 		Name:         "kopia-config",
 		VolumeSource: policyConfigObj.GetVolumeSource(""),
 	})
+}
+
+// configureFilesystemDestination configures the pod to use a filesystem-based repository
+// backed by a user-provided PVC. The PVC is mounted at /kopia (parent directory) and
+// the repository is created at /kopia/<path> to handle Kopia's atomic file operations.
+func (m *Mover) configureFilesystemDestination(podSpec *corev1.PodSpec) error {
+	if m.filesystemDestination == nil {
+		return nil
+	}
+
+	// Check for mount path conflicts
+	for _, vm := range podSpec.Containers[0].VolumeMounts {
+		if vm.MountPath == filesystemDestMountPath {
+			m.logger.Error(nil, "Mount path conflict detected for filesystem destination",
+				"mountPath", filesystemDestMountPath,
+				"existingVolume", vm.Name)
+			return fmt.Errorf("mount path %s is already in use by volume %s", filesystemDestMountPath, vm.Name)
+		}
+	}
+
+	volumeName := filesystemDestVolName
+
+	// Add volume mount for the filesystem destination
+	podSpec.Containers[0].VolumeMounts = append(podSpec.Containers[0].VolumeMounts, corev1.VolumeMount{
+		Name:      volumeName,
+		MountPath: filesystemDestMountPath,
+		ReadOnly:  m.filesystemDestination.ReadOnly,
+	})
+
+	// Add volume for the PVC
+	podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
+		Name: volumeName,
+		VolumeSource: corev1.VolumeSource{
+			PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+				ClaimName: m.filesystemDestination.ClaimName,
+				ReadOnly:  m.filesystemDestination.ReadOnly,
+			},
+		},
+	})
+
+	m.logger.V(1).Info("Configured filesystem destination",
+		"pvc", m.filesystemDestination.ClaimName,
+		"mountPath", filesystemDestMountPath,
+		"repoPath", m.filesystemRepoPath,
+		"readOnly", m.filesystemDestination.ReadOnly)
+
+	return nil
 }
 
 // configureCredentials sets up all credential files in a unified manner to avoid mount conflicts

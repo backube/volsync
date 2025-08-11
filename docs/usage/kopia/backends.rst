@@ -7,6 +7,13 @@ Storage Backends
 
 Kopia supports various storage backends with their respective configuration formats:
 
+.. note::
+   **Alternative: Filesystem Destination**
+   
+   Instead of configuring a remote storage backend, you can now use a PersistentVolumeClaim 
+   as a filesystem-based backup destination. This is ideal for local backups, NFS storage, 
+   or air-gapped environments. See :doc:`filesystem-destination` for details.
+
 S3-compatible storage (AWS S3, MinIO, etc.)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

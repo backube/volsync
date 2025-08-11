@@ -1,0 +1,174 @@
+# Example configuration for using a PVC as a filesystem-based backup destination
+# This demonstrates backing up a database to local storage
+---
+# Create a namespace for the example
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: backup-example
+---
+# PVC that contains the data to be backed up
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: application-data
+  namespace: backup-example
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+# PVC that will be used as the backup destination
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backup-storage
+  namespace: backup-example
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  # Use a storage class appropriate for backup storage
+  # storageClassName: fast-ssd  # Example: use fast storage for quick backups
+---
+# Secret containing the Kopia repository password
+# Note: No repository URL or cloud credentials needed for filesystem destinations
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kopia-password
+  namespace: backup-example
+type: Opaque
+stringData:
+  # Password is still required for repository encryption
+  KOPIA_PASSWORD: "change-this-to-a-secure-password-at-least-16-chars"
+---
+# ReplicationSource for scheduled backups to filesystem
+apiVersion: volsync.backube/v1alpha1
+kind: ReplicationSource
+metadata:
+  name: filesystem-backup
+  namespace: backup-example
+spec:
+  # Source PVC to backup
+  sourcePVC: application-data
+  
+  # Backup schedule
+  trigger:
+    schedule: "0 */6 * * *"  # Every 6 hours
+  
+  # Kopia configuration with filesystem destination
+  kopia:
+    # Reference to the password secret
+    repository: kopia-password
+    
+    # Configure filesystem destination using a PVC
+    filesystemDestination:
+      # Name of the PVC to use as backup destination
+      claimName: backup-storage
+      
+      # Optional: Path within the PVC where backups will be stored
+      # The PVC is mounted at /kopia and repository created at /kopia/<path>
+      # Default is "backups" if not specified
+      path: "database-backups"
+      
+      # Optional: Mount mode (default is false for read-write)
+      readOnly: false
+    
+    # Retention policy
+    retain:
+      hourly: 24
+      daily: 7
+      weekly: 4
+      monthly: 3
+    
+    # Optional: Compression algorithm
+    compression: "zstd"
+    
+    # Optional: Number of parallel upload streams
+    parallelism: 4
+---
+# Example: ReplicationDestination for restore from filesystem backup
+apiVersion: volsync.backube/v1alpha1
+kind: ReplicationDestination
+metadata:
+  name: filesystem-restore
+  namespace: backup-example
+spec:
+  trigger:
+    manual: restore-trigger
+  
+  kopia:
+    # Same repository configuration as the source
+    repository: kopia-password
+    
+    # Same filesystem destination configuration
+    filesystemDestination:
+      claimName: backup-storage
+      path: "database-backups"
+      # For restore operations, you might want read-only access
+      readOnly: true
+    
+    # Destination PVC for restored data
+    destinationPVC: restored-data
+    copyMethod: Direct
+    
+    # Specify which backup to restore from
+    sourceIdentity:
+      sourceName: filesystem-backup
+      sourceNamespace: backup-example
+    
+    # Optional: Restore from a previous snapshot instead of latest
+    # previous: 1  # Skip latest, use previous snapshot
+---
+# Example: NFS-backed PVC for shared backup storage
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-backup-pv
+spec:
+  capacity:
+    storage: 500Gi
+  accessModes:
+    - ReadWriteMany
+  nfs:
+    server: nfs-server.example.com
+    path: /exports/volsync-backups
+  persistentVolumeReclaimPolicy: Retain
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-backup-storage
+  namespace: backup-example
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 500Gi
+  volumeName: nfs-backup-pv
+---
+# Example: Using NFS storage for backups
+apiVersion: volsync.backube/v1alpha1
+kind: ReplicationSource
+metadata:
+  name: nfs-backup
+  namespace: backup-example
+spec:
+  sourcePVC: application-data
+  trigger:
+    schedule: "0 2 * * *"  # Daily at 2 AM
+  kopia:
+    repository: kopia-password
+    filesystemDestination:
+      claimName: nfs-backup-storage
+      path: "production/daily"
+    retain:
+      daily: 30
+      weekly: 12
+      monthly: 6

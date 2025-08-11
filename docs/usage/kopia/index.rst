@@ -7,6 +7,7 @@ Kopia-based backup
 
    database_example
    backends
+   filesystem-destination
    multi-tenancy
    backup-configuration
    restore-configuration
@@ -65,9 +66,10 @@ To get started with Kopia backups in VolSync, you'll need to configure a storage
 
 First, set up a repository configuration secret for your chosen storage backend.
 VolSync supports multiple storage options including S3, Azure Blob Storage, Google Cloud Storage,
-and many others.
+filesystem destinations via PVC, and many others.
 
-See :doc:`backends` for detailed configuration examples for all supported storage backends.
+See :doc:`backends` for detailed configuration examples for all supported remote storage backends,
+or :doc:`filesystem-destination` for using PVCs as backup destinations.
 
 **2. Create Backup Configuration**
 
@@ -181,9 +183,14 @@ Documentation Sections
 The Kopia documentation has been organized into focused sections for easier navigation:
 
 :doc:`backends`
-   Complete guide to configuring all supported storage backends including S3,
+   Complete guide to configuring all supported remote storage backends including S3,
    Azure Blob Storage, Google Cloud Storage, Backblaze B2, WebDAV, SFTP, Rclone,
    Google Drive, and more. Includes environment variables reference and troubleshooting.
+
+:doc:`filesystem-destination`
+   Comprehensive guide to using PersistentVolumeClaims as filesystem-based backup
+   destinations. Covers configuration, security, migration from remote storage,
+   and use cases for local and network-attached storage.
 
 :doc:`multi-tenancy`
    Comprehensive guide to multi-tenant setups, automatic username/hostname generation,

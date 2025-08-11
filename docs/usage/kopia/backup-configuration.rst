@@ -61,7 +61,12 @@ hostname
 repository
    This is the name of the Secret (in the same Namespace) that holds the
    connection information for the backup repository. See :doc:`backends` for
-   supported storage backends and configuration examples.
+   supported remote storage backends and configuration examples. For filesystem-based
+   backups using PVCs, see :doc:`filesystem-destination`.
+
+filesystemDestination
+   This option configures a PVC as the backup destination instead of a remote repository.
+   See :doc:`filesystem-destination` for detailed configuration and examples.
 
 sourcePath
    This specifies the path within the source PVC to backup. If not specified,

@@ -78,6 +78,94 @@ When a restore operation cannot find snapshots, the status provides comprehensiv
 Common Error Scenarios and Solutions
 =====================================
 
+Filesystem Destination Issues
+------------------------------
+
+**PVC Not Found**
+
+**Error Message**: "PersistentVolumeClaim '<name>' not found"
+
+**Resolution**:
+
+1. Verify the PVC exists in the correct namespace:
+
+   .. code-block:: bash
+
+      kubectl get pvc -n <namespace>
+
+2. Create the PVC if missing:
+
+   .. code-block:: bash
+
+      kubectl apply -f backup-pvc.yaml -n <namespace>
+
+**PVC Not Bound**
+
+**Error Message**: "PVC <name> is not bound"
+
+**Resolution**:
+
+1. Check PVC status:
+
+   .. code-block:: bash
+
+      kubectl describe pvc <name> -n <namespace>
+
+2. Verify available PersistentVolumes:
+
+   .. code-block:: bash
+
+      kubectl get pv
+
+3. Check for StorageClass issues if using dynamic provisioning
+
+**Path Validation Errors**
+
+**Error Message**: "Invalid path: contains invalid characters or patterns"
+
+**Resolution**:
+
+1. Ensure path only contains alphanumeric characters, hyphens, underscores, and forward slashes
+2. Verify path doesn't exceed 100 characters
+3. Check for directory traversal attempts (../)
+
+**Permission Denied**
+
+**Error Message**: "unable to create repository: permission denied"
+
+**Resolution**:
+
+1. Verify PVC is mounted with write permissions:
+
+   .. code-block:: yaml
+
+      filesystemDestination:
+        claimName: backup-pvc
+        readOnly: false  # Must be false for write access
+
+2. Check pod security context if using privileged movers
+3. Verify storage supports required operations
+
+**Insufficient Storage**
+
+**Error Message**: "no space left on device"
+
+**Resolution**:
+
+1. Check PVC usage:
+
+   .. code-block:: bash
+
+      kubectl exec -it <kopia-pod> -n <namespace> -- df -h /kopia
+
+2. Expand PVC if supported:
+
+   .. code-block:: bash
+
+      kubectl patch pvc <name> -n <namespace> -p '{"spec":{"resources":{"requests":{"storage":"200Gi"}}}}'
+
+3. Clean up old snapshots using retention policies
+
 No Snapshots Found
 ------------------
 

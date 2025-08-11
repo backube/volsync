@@ -160,6 +160,36 @@ spec:
                           If SecretName is used then ConfigMapName should not be set
                         type: string
                     type: object
+                  filesystemDestination:
+                    description: |-
+                      FilesystemDestination defines a PVC to use as the backup destination
+                      for filesystem-based Kopia repositories. When specified, Kopia will
+                      write backups directly to this PVC instead of a remote repository.
+                      The PVC must exist in the same namespace as the ReplicationSource.
+                    properties:
+                      claimName:
+                        description: |-
+                          ClaimName is the name of the PersistentVolumeClaim to mount as the backup destination.
+                          The PVC must exist in the same namespace as the ReplicationSource.
+                        minLength: 1
+                        type: string
+                      path:
+                        description: |-
+                          Path is the repository path within the mounted PVC.
+                          The PVC will be mounted at /kopia and the repository will be created at /kopia/<path>.
+                          If not specified, defaults to "backups".
+                          Only alphanumeric characters, hyphens, underscores, and forward slashes are allowed.
+                        maxLength: 100
+                        pattern: ^[a-zA-Z0-9][a-zA-Z0-9/_-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$
+                        type: string
+                      readOnly:
+                        description: |-
+                          ReadOnly specifies whether to mount the PVC in read-only mode.
+                          Defaults to false (read-write).
+                        type: boolean
+                    required:
+                    - claimName
+                    type: object
                   hostname:
                     description: |-
                       Hostname override for Kopia repository access.
