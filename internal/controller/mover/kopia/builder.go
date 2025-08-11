@@ -69,9 +69,19 @@ func Register() error {
 	return nil
 }
 
-func newBuilder(viper *viper.Viper, flags *flag.FlagSet) (*Builder, error) {
+func newBuilder(viperInstance *viper.Viper, flags *flag.FlagSet) (*Builder, error) {
+	// Use provided viper instance or create a new one if nil
+	if viperInstance == nil {
+		viperInstance = viper.New()
+	}
+
+	// Use provided flags or create a new FlagSet if nil
+	if flags == nil {
+		flags = flag.NewFlagSet("kopia", flag.ContinueOnError)
+	}
+
 	b := &Builder{
-		viper: viper,
+		viper: viperInstance,
 		flags: flags,
 	}
 
@@ -121,6 +131,11 @@ func (kb *Builder) FromSource(client client.Client, logger logr.Logger,
 
 // initializeSourceStatus initializes the status fields for the ReplicationSource
 func (kb *Builder) initializeSourceStatus(source *volsyncv1alpha1.ReplicationSource) {
+	// Initialize Status if it's nil
+	if source.Status == nil {
+		source.Status = &volsyncv1alpha1.ReplicationSourceStatus{}
+	}
+
 	// Create ReplicationSourceKopiaStatus to write kopia status
 	if source.Status.Kopia == nil {
 		source.Status.Kopia = &volsyncv1alpha1.ReplicationSourceKopiaStatus{}
@@ -160,21 +175,6 @@ func (kb *Builder) createSourceMover(client client.Client, logger logr.Logger,
 	// Initialize metrics
 	metrics := newKopiaMetrics()
 
-	// Setup filesystem destination if configured
-	var filesystemRepoPath string
-	if source.Spec.Kopia.FilesystemDestination != nil {
-		// Determine the repository path with sanitization
-		if source.Spec.Kopia.FilesystemDestination.Path != nil {
-			sanitizedPath := sanitizeFilesystemPath(*source.Spec.Kopia.FilesystemDestination.Path)
-			filesystemRepoPath = "/kopia/" + sanitizedPath
-			logger.V(1).Info("Sanitized filesystem path",
-				"original", *source.Spec.Kopia.FilesystemDestination.Path,
-				"sanitized", sanitizedPath)
-		} else {
-			filesystemRepoPath = "/kopia/backups" // Default path
-		}
-	}
-
 	return &Mover{
 		client:                client,
 		logger:                logger.WithValues("method", "Kopia"),
@@ -205,8 +205,7 @@ func (kb *Builder) createSourceMover(client client.Client, logger logr.Logger,
 		sourceStatus:          source.Status.Kopia,
 		latestMoverStatus:     source.Status.LatestMoverStatus,
 		moverConfig:           source.Spec.Kopia.MoverConfig,
-		filesystemDestination: source.Spec.Kopia.FilesystemDestination,
-		filesystemRepoPath:    filesystemRepoPath,
+		repositoryPVC:         source.Spec.Kopia.RepositoryPVC,
 	}
 }
 
@@ -217,6 +216,11 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 	// Only build if the CR belongs to us
 	if destination.Spec.Kopia == nil {
 		return nil, nil
+	}
+
+	// Initialize Status if it's nil
+	if destination.Status == nil {
+		destination.Status = &volsyncv1alpha1.ReplicationDestinationStatus{}
 	}
 
 	if destination.Status.LatestMoverStatus == nil {
@@ -534,11 +538,12 @@ type sourceDiscoveryInfo struct {
 	repository         string
 }
 
-// discoverSourceInfo attempts to discover the source PVC name, sourcePathOverride, and repository from a ReplicationSource
-// in the specified namespace. This enables automatic hostname generation and repository configuration matching
-// the source's identity without requiring manual configuration.
+// discoverSourceInfo attempts to discover the source PVC name, sourcePathOverride, and repository from a
+// ReplicationSource in the specified namespace. This enables automatic hostname generation and repository
+// configuration matching the source's identity without requiring manual configuration.
 // Returns a sourceDiscoveryInfo struct with discovered values.
-func (kb *Builder) discoverSourceInfo(c client.Client, sourceName, sourceNamespace string, logger logr.Logger) sourceDiscoveryInfo {
+func (kb *Builder) discoverSourceInfo(c client.Client, sourceName, sourceNamespace string,
+	logger logr.Logger) sourceDiscoveryInfo {
 	info := sourceDiscoveryInfo{}
 	if sourceName == "" || sourceNamespace == "" {
 		logger.V(2).Info("Cannot discover source info: missing source name or namespace",
@@ -547,32 +552,8 @@ func (kb *Builder) discoverSourceInfo(c client.Client, sourceName, sourceNamespa
 		return info
 	}
 
-	// Create a ReplicationSource object to fetch
-	source := &volsyncv1alpha1.ReplicationSource{}
-	namespacedName := types.NamespacedName{
-		Name:      sourceName,
-		Namespace: sourceNamespace,
-	}
-
-	// Attempt to get the ReplicationSource
-	ctx := context.Background()
-	err := c.Get(ctx, namespacedName, source)
-	if err != nil {
-		if kerrors.IsNotFound(err) {
-			logger.V(2).Info("ReplicationSource not found for auto-discovery",
-				"sourceName", sourceName,
-				"sourceNamespace", sourceNamespace)
-		} else if kerrors.IsForbidden(err) {
-			logger.V(2).Info("Permission denied accessing ReplicationSource for auto-discovery",
-				"sourceName", sourceName,
-				"sourceNamespace", sourceNamespace,
-				"error", err)
-		} else {
-			logger.V(2).Info("Failed to get ReplicationSource for auto-discovery",
-				"sourceName", sourceName,
-				"sourceNamespace", sourceNamespace,
-				"error", err)
-		}
+	source, err := kb.fetchReplicationSource(c, sourceName, sourceNamespace, logger)
+	if err != nil || source == nil {
 		return info
 	}
 
@@ -583,6 +564,51 @@ func (kb *Builder) discoverSourceInfo(c client.Client, sourceName, sourceNamespa
 			"sourceNamespace", sourceNamespace)
 		return info
 	}
+
+	return kb.extractSourceInfo(source, sourceName, sourceNamespace, logger)
+}
+
+// fetchReplicationSource retrieves a ReplicationSource from the cluster
+func (kb *Builder) fetchReplicationSource(c client.Client, sourceName, sourceNamespace string,
+	logger logr.Logger) (*volsyncv1alpha1.ReplicationSource, error) {
+	source := &volsyncv1alpha1.ReplicationSource{}
+	namespacedName := types.NamespacedName{
+		Name:      sourceName,
+		Namespace: sourceNamespace,
+	}
+
+	ctx := context.Background()
+	err := c.Get(ctx, namespacedName, source)
+	if err != nil {
+		kb.logDiscoveryError(err, sourceName, sourceNamespace, logger)
+		return nil, err
+	}
+	return source, nil
+}
+
+// logDiscoveryError logs appropriate error messages based on error type
+func (kb *Builder) logDiscoveryError(err error, sourceName, sourceNamespace string, logger logr.Logger) {
+	if kerrors.IsNotFound(err) {
+		logger.V(2).Info("ReplicationSource not found for auto-discovery",
+			"sourceName", sourceName,
+			"sourceNamespace", sourceNamespace)
+	} else if kerrors.IsForbidden(err) {
+		logger.V(2).Info("Permission denied accessing ReplicationSource for auto-discovery",
+			"sourceName", sourceName,
+			"sourceNamespace", sourceNamespace,
+			"error", err)
+	} else {
+		logger.V(2).Info("Failed to get ReplicationSource for auto-discovery",
+			"sourceName", sourceName,
+			"sourceNamespace", sourceNamespace,
+			"error", err)
+	}
+}
+
+// extractSourceInfo extracts discovery information from a ReplicationSource
+func (kb *Builder) extractSourceInfo(source *volsyncv1alpha1.ReplicationSource,
+	sourceName, sourceNamespace string, logger logr.Logger) sourceDiscoveryInfo {
+	info := sourceDiscoveryInfo{}
 
 	// Discover the source PVC name
 	if source.Spec.SourcePVC != "" {
@@ -626,47 +652,4 @@ func (kb *Builder) discoverSourceInfo(c client.Client, sourceName, sourceNamespa
 func (kb *Builder) discoverSourcePVC(c client.Client, sourceName, sourceNamespace string, logger logr.Logger) string {
 	info := kb.discoverSourceInfo(c, sourceName, sourceNamespace, logger)
 	return info.pvcName
-}
-
-// sanitizeFilesystemPath sanitizes a filesystem path to prevent directory traversal attacks.
-// It removes any parent directory references (..), normalizes the path,
-// and ensures the path is safe and relative.
-// Returns "backups" as default if the path becomes empty after sanitization.
-func sanitizeFilesystemPath(path string) string {
-	// First, remove any leading slashes to ensure it's relative
-	path = strings.TrimPrefix(path, "/")
-	
-	// Split the path and process each component
-	// We use forward slash as separator since Kopia uses Unix-style paths
-	parts := strings.Split(path, "/")
-	var cleanParts []string
-	
-	for _, part := range parts {
-		// Clean each part individually
-		part = strings.TrimSpace(part)
-		
-		// Skip empty parts, current directory (.), and parent directory (..)
-		// Also skip any part that starts with ".." to prevent encoded traversal attempts
-		if part == "" || part == "." || part == ".." || strings.HasPrefix(part, "..") {
-			continue
-		}
-		
-		// Remove any trailing slashes from the part
-		part = strings.TrimSuffix(part, "/")
-		
-		// Add the clean part if it's not empty and doesn't start with a dot followed by dot
-		if part != "" {
-			cleanParts = append(cleanParts, part)
-		}
-	}
-	
-	// Join the clean parts back together
-	safePath := strings.Join(cleanParts, "/")
-	
-	// If the path is empty after sanitization, use default
-	if safePath == "" {
-		return "backups"
-	}
-	
-	return safePath
 }

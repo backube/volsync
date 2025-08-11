@@ -33,6 +33,7 @@ import (
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
 
+//nolint:funlen
 func TestDiscoverSourceInfo(t *testing.T) {
 	// Create a scheme with our types
 	scheme := runtime.NewScheme()
@@ -200,6 +201,8 @@ func TestDiscoverSourceInfo(t *testing.T) {
 
 // TestSourcePathOverrideInDestinationEnvVars tests that sourcePathOverride is properly
 // included in destination environment variables
+//
+//nolint:funlen
 func TestSourcePathOverrideInDestinationEnvVars(t *testing.T) {
 	tests := []struct {
 		name               string

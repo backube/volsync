@@ -1,5 +1,5 @@
-# Example configuration for using a PVC as a filesystem-based backup destination
-# This demonstrates backing up a database to local storage
+# Example: Using a PVC as a Kopia filesystem repository  
+# This demonstrates the simplified repositoryPVC API for local/network storage backups
 ---
 # Create a namespace for the example
 apiVersion: v1
@@ -20,11 +20,11 @@ spec:
     requests:
       storage: 10Gi
 ---
-# PVC that will be used as the backup destination
+# PVC that will be used as the backup repository
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: backup-storage
+  name: backup-repository
   namespace: backup-example
 spec:
   accessModes:
@@ -36,15 +36,18 @@ spec:
   # storageClassName: fast-ssd  # Example: use fast storage for quick backups
 ---
 # Secret containing the Kopia repository password
-# Note: No repository URL or cloud credentials needed for filesystem destinations
+# Note: KOPIA_REPOSITORY is automatically set when using repositoryPVC
 apiVersion: v1
 kind: Secret
 metadata:
-  name: kopia-password
+  name: kopia-config
   namespace: backup-example
 type: Opaque
 stringData:
-  # Password is still required for repository encryption
+  # Optional: Explicitly specify filesystem repository type for clarity
+  # When repositoryPVC is set, this is automatically set to "filesystem:///kopia/repository"
+  # KOPIA_REPOSITORY: "filesystem:"
+  # Password is required for repository encryption (minimum 16 characters recommended)
   KOPIA_PASSWORD: "change-this-to-a-secure-password-at-least-16-chars"
 ---
 # ReplicationSource for scheduled backups to filesystem
@@ -61,23 +64,14 @@ spec:
   trigger:
     schedule: "0 */6 * * *"  # Every 6 hours
   
-  # Kopia configuration with filesystem destination
+  # Kopia configuration with repository PVC
   kopia:
-    # Reference to the password secret
-    repository: kopia-password
+    # Reference to the repository configuration secret
+    repository: kopia-config
     
-    # Configure filesystem destination using a PVC
-    filesystemDestination:
-      # Name of the PVC to use as backup destination
-      claimName: backup-storage
-      
-      # Optional: Path within the PVC where backups will be stored
-      # The PVC is mounted at /kopia and repository created at /kopia/<path>
-      # Default is "backups" if not specified
-      path: "database-backups"
-      
-      # Optional: Mount mode (default is false for read-write)
-      readOnly: false
+    # PVC to use as the filesystem repository
+    # The repository will be created at /kopia/repository (fixed, secure path)
+    repositoryPVC: backup-repository
     
     # Retention policy
     retain:
@@ -104,14 +98,10 @@ spec:
   
   kopia:
     # Same repository configuration as the source
-    repository: kopia-password
+    repository: kopia-config
     
-    # Same filesystem destination configuration
-    filesystemDestination:
-      claimName: backup-storage
-      path: "database-backups"
-      # For restore operations, you might want read-only access
-      readOnly: true
+    # NOTE: ReplicationDestination requires the full filesystem URL in the secret
+    # The repositoryPVC field is only available for ReplicationSource
     
     # Destination PVC for restored data
     destinationPVC: restored-data
@@ -143,7 +133,7 @@ spec:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: nfs-backup-storage
+  name: nfs-backup-repository
   namespace: backup-example
 spec:
   accessModes:
@@ -164,11 +154,20 @@ spec:
   trigger:
     schedule: "0 2 * * *"  # Daily at 2 AM
   kopia:
-    repository: kopia-password
-    filesystemDestination:
-      claimName: nfs-backup-storage
-      path: "production/daily"
+    repository: kopia-config
+    # Simply reference the NFS-backed PVC
+    # Repository will be at /kopia/repository (secure, fixed path)
+    repositoryPVC: nfs-backup-repository
     retain:
       daily: 30
       weekly: 12
       monthly: 6
+---
+# Benefits of the simplified repositoryPVC API:
+# 
+# 1. **Simpler Configuration**: Just specify the PVC name
+# 2. **Enhanced Security**: Fixed path prevents directory traversal attacks
+# 3. **Clear Intent**: "repositoryPVC" immediately indicates its purpose
+# 4. **No Path Sanitization**: Reduces complexity and potential bugs
+# 5. **Consistent Design**: Aligns with other VolSync fields like "sourcePVC"
+# 6. **Standard Format**: Uses Kopia's standard filesystem URL internally

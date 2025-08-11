@@ -1,5 +1,5 @@
 =====================================
-Filesystem Destination for Kopia
+Filesystem Repository for Kopia
 =====================================
 
 .. contents:: Table of Contents
@@ -9,12 +9,12 @@ Filesystem Destination for Kopia
 Overview
 ========
 
-The filesystem destination feature allows you to use a PersistentVolumeClaim (PVC) as a backup destination for Kopia repositories. This provides an alternative to remote storage backends like S3, enabling backups to local or network-attached storage.
+The filesystem repository feature allows you to use a PersistentVolumeClaim (PVC) as a backup repository for Kopia. This provides an alternative to remote storage backends like S3, Azure, or GCS, enabling backups to local or network-attached storage with a simplified and secure API.
 
 Use Cases
 =========
 
-The filesystem destination is ideal for:
+The filesystem repository is ideal for:
 
 * **Local Backups**: Store backups on local storage for quick access and recovery
 * **NFS/Network Storage**: Use existing NFS or other network storage infrastructure
@@ -26,13 +26,13 @@ The filesystem destination is ideal for:
 Prerequisites
 =============
 
-Before using filesystem destinations, ensure:
+Before using filesystem repositories, ensure:
 
-1. **PVC Availability**: The destination PVC must exist in the same namespace as the ReplicationSource
+1. **PVC Availability**: The repository PVC must exist in the same namespace as the ReplicationSource
 2. **PVC Status**: The PVC must be bound to a PersistentVolume before the backup job starts
-3. **Storage Capacity**: The PVC must have sufficient capacity for your backup data
+3. **Storage Capacity**: The PVC must have sufficient capacity for your backup data and repository metadata
 4. **Access Mode**: The PVC must support the access mode required by your backup jobs (typically ReadWriteOnce)
-5. **Password Secret**: A Kopia password must still be provided via the repository secret
+5. **Password Secret**: A Kopia password must be provided via the repository secret for encryption
 
 Configuration
 =============
@@ -40,7 +40,7 @@ Configuration
 Basic Configuration
 -------------------
 
-To use a filesystem destination, configure the ``filesystemDestination`` field in your ReplicationSource:
+To use a filesystem repository, specify the ``repositoryPVC`` field in your ReplicationSource:
 
 .. code-block:: yaml
 
@@ -54,18 +54,15 @@ To use a filesystem destination, configure the ``filesystemDestination`` field i
      trigger:
        schedule: "0 2 * * *"  # Daily at 2 AM
      kopia:
-       # Password is still required for repository encryption
+       # Reference to the repository configuration secret
        repository: kopia-password-secret
-       # Configure filesystem destination
-       filesystemDestination:
-         claimName: backup-storage-pvc
-         path: "backups"  # Optional: defaults to "backups"
-         readOnly: false  # Optional: defaults to false
+       # PVC to use as the filesystem repository
+       repositoryPVC: backup-storage-pvc
 
 Password Secret Configuration
 -----------------------------
 
-Even with filesystem destinations, you must provide a password secret for repository encryption:
+For filesystem repositories, the secret must contain the repository password for encryption:
 
 .. code-block:: yaml
 
@@ -76,36 +73,41 @@ Even with filesystem destinations, you must provide a password secret for reposi
      namespace: myapp
    type: Opaque
    stringData:
+     # Optional: Explicitly specify filesystem repository type
+     # When repositoryPVC is set, this will be automatically set to "filesystem:///kopia/repository"
+     KOPIA_REPOSITORY: "filesystem:"
+     # Required: Password for repository encryption
      KOPIA_PASSWORD: "your-secure-repository-password"
 
-Note that when using filesystem destinations, you do not need to provide repository URL or cloud credentials in the secret.
+.. note::
+   When using ``repositoryPVC``, VolSync automatically sets ``KOPIA_REPOSITORY=filesystem:///kopia/repository``. 
+   You can optionally include ``KOPIA_REPOSITORY: "filesystem:"`` in the secret for clarity, but it's not required.
 
 API Reference
 =============
 
-FilesystemDestinationSpec Fields
----------------------------------
+RepositoryPVC Field
+-------------------
 
-The ``filesystemDestination`` field accepts the following configuration:
+The ``repositoryPVC`` field provides a simplified API for filesystem-based repositories:
 
-**claimName** (string, required)
-   The name of the PersistentVolumeClaim to mount as the backup destination.
-   The PVC must exist in the same namespace as the ReplicationSource.
-
-**path** (string, optional)
-   The repository path within the mounted PVC. The PVC will be mounted at ``/kopia`` 
-   and the repository will be created at ``/kopia/<path>``. 
+**repositoryPVC** (string, optional)
+   The name of the PersistentVolumeClaim to use as the backup repository.
    
-   * Default: ``"backups"``
-   * Pattern: ``^[a-zA-Z0-9][a-zA-Z0-9/_-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$``
-   * Maximum length: 100 characters
-   * Allowed characters: alphanumeric, hyphens, underscores, forward slashes
+   * The PVC must exist in the same namespace as the ReplicationSource
+   * The PVC is mounted at ``/kopia`` within the mover pod
+   * The repository is created at the fixed path ``/kopia/repository``
+   * Minimum length: 1 character
+   * The PVC is always mounted in read-write mode for repository operations
 
-**readOnly** (boolean, optional)
-   Specifies whether to mount the PVC in read-only mode.
+.. important::
+   **Security Enhancement**: The repository path is fixed at ``/kopia/repository`` and cannot be configured. 
+   This design choice:
    
-   * Default: ``false`` (read-write mode)
-   * Use ``true`` for restore operations or read-only access
+   * Eliminates path injection vulnerabilities
+   * Removes the need for path sanitization
+   * Provides consistent, predictable repository locations
+   * Aligns with Kopia's standard filesystem URL format
 
 Examples
 ========
@@ -117,7 +119,7 @@ This example backs up application data to a local storage PVC:
 
 .. code-block:: yaml
 
-   # Create the destination PVC
+   # Create the repository PVC
    ---
    apiVersion: v1
    kind: PersistentVolumeClaim
@@ -156,19 +158,18 @@ This example backs up application data to a local storage PVC:
        schedule: "0 */6 * * *"  # Every 6 hours
      kopia:
        repository: kopia-password
-       filesystemDestination:
-         claimName: local-backup-storage
-         path: "myapp/backups"
+       # Simply reference the PVC - no path configuration needed
+       repositoryPVC: local-backup-storage
        retain:
          hourly: 24
          daily: 7
          weekly: 4
          monthly: 3
 
-Example 2: NFS Backup Destination
-----------------------------------
+Example 2: NFS Backup Repository
+---------------------------------
 
-This example uses an NFS-backed PVC as the backup destination:
+This example uses an NFS-backed PVC as the backup repository:
 
 .. code-block:: yaml
 
@@ -215,9 +216,8 @@ This example uses an NFS-backed PVC as the backup destination:
        schedule: "0 1 * * *"  # Daily at 1 AM
      kopia:
        repository: kopia-secret
-       filesystemDestination:
-         claimName: nfs-backup-pvc
-         path: "production/database"
+       # NFS PVC as repository - simple and secure
+       repositoryPVC: nfs-backup-pvc
        compression: "zstd"
        retain:
          daily: 30
@@ -243,10 +243,8 @@ This example combines filesystem and remote backups for comprehensive data prote
      trigger:
        schedule: "0 */4 * * *"  # Every 4 hours
      kopia:
-       repository: kopia-password
-       filesystemDestination:
-         claimName: fast-local-storage
-         path: "hourly"
+       repository: kopia-password-local
+       repositoryPVC: fast-local-storage
        retain:
          hourly: 24
          daily: 3
@@ -282,22 +280,44 @@ This example combines filesystem and remote backups for comprehensive data prote
          weekly: 12
          monthly: 12
 
-Migration Guide
-===============
+Simplified API Benefits
+========================
 
-Migrating from Remote to Filesystem
-------------------------------------
+The new ``repositoryPVC`` field replaces the previous nested ``filesystemDestination`` structure, providing:
 
-To migrate existing backups from remote storage to filesystem:
+**Improved Security**
+   * Fixed repository path eliminates directory traversal vulnerabilities
+   * No user-configurable paths reduce attack surface
+   * Consistent security model across all deployments
 
-1. **Create Destination PVC**
+**Simplified Configuration**
+   * Single field instead of nested structure
+   * No path configuration or validation required
+   * Clearer intent with descriptive field name
+
+**Better Consistency**
+   * Aligns with other VolSync fields (``sourcePVC``, ``destinationPVC``)
+   * Uses standard Kopia filesystem URL format internally
+   * Same ``KOPIA_REPOSITORY`` environment variable as other backends
+
+**Easier Maintenance**
+   * Reduced complexity in implementation
+   * Fewer edge cases to handle
+   * Simplified troubleshooting
+
+Migration from Remote to Filesystem
+====================================
+
+To switch from remote storage to a filesystem repository:
+
+1. **Create Repository PVC**
 
    .. code-block:: yaml
 
       apiVersion: v1
       kind: PersistentVolumeClaim
       metadata:
-        name: migrated-backups
+        name: backup-repository
         namespace: myapp
       spec:
         accessModes:
@@ -308,7 +328,7 @@ To migrate existing backups from remote storage to filesystem:
 
 2. **Update ReplicationSource**
 
-   Remove the remote repository configuration from your secret and add the filesystem destination:
+   Add the ``repositoryPVC`` field and update the secret:
 
    .. code-block:: yaml
 
@@ -323,46 +343,48 @@ To migrate existing backups from remote storage to filesystem:
           schedule: "0 2 * * *"
         kopia:
           repository: kopia-password  # Now only contains KOPIA_PASSWORD
-          filesystemDestination:
-            claimName: migrated-backups
-            path: "repository"
+          repositoryPVC: backup-repository
 
-3. **Verify Migration**
+3. **Verify Operation**
 
-   Monitor the ReplicationSource status to ensure successful backup operations:
+   Monitor the ReplicationSource status:
 
    .. code-block:: bash
 
       kubectl get replicationsource myapp-backup -n myapp -o yaml
+      kubectl logs -l app.kubernetes.io/component=volsync-kopia -n myapp
 
 Security Considerations
 =======================
 
-Path Validation
----------------
+Enhanced Security Design
+-------------------------
 
-The filesystem destination feature includes built-in security measures:
+The ``repositoryPVC`` implementation includes several security enhancements:
 
-* **Path Sanitization**: All paths are sanitized to prevent directory traversal attacks
-* **CRD Validation**: Path patterns are validated at the API level
-* **Mount Isolation**: Each PVC is mounted in an isolated directory
+* **Fixed Path**: Repository always at ``/kopia/repository`` - no user-configurable paths
+* **No Path Injection**: Eliminates directory traversal attack vectors
+* **Simplified Validation**: Fewer configuration options mean fewer potential misconfigurations
+* **Consistent Isolation**: Each PVC is mounted in a dedicated, isolated directory
 
 Best Practices
 --------------
 
-1. **Access Control**: Restrict access to backup PVCs using appropriate RBAC policies
-2. **Encryption**: Always use strong passwords for repository encryption
+1. **Access Control**: Restrict access to repository PVCs using appropriate RBAC policies
+2. **Encryption**: Always use strong passwords (minimum 16 characters) for repository encryption
 3. **Network Storage**: When using network storage, ensure proper network segmentation
 4. **Regular Testing**: Periodically test restore operations to verify backup integrity
+5. **Capacity Monitoring**: Monitor PVC usage to prevent repository corruption from full storage
 
-Permissions
------------
+Technical Implementation
+-------------------------
 
-The Kopia mover requires write access to the parent directory for repository operations:
+The Kopia mover handles filesystem repositories as follows:
 
-* The PVC is mounted at ``/kopia`` (parent directory)
-* The repository is created at ``/kopia/<path>`` (default: ``/kopia/backups``)
-* An emptyDir volume is mounted at ``/kopia`` to provide the required write permissions
+* The repository PVC is mounted at ``/kopia``
+* The repository is initialized at ``/kopia/repository`` (fixed location)
+* VolSync automatically sets ``KOPIA_REPOSITORY=filesystem:///kopia/repository``
+* The same parsing logic handles filesystem URLs as other backend types (s3://, azure://, etc.)
 
 Troubleshooting
 ===============
@@ -396,13 +418,17 @@ Common Issues
    kubectl describe pvc backup-pvc -n <namespace>
    kubectl get pv
 
-**Path Validation Error**
+**Repository Not Initialized**
 
 .. code-block:: text
 
-   Error: Invalid path: contains invalid characters or patterns
+   Error: repository not initialized at /kopia/repository
 
-**Solution**: Ensure the path only contains allowed characters (alphanumeric, hyphens, underscores, forward slashes) and doesn't exceed 100 characters.
+**Solution**: The repository will be automatically initialized on first backup. If initialization fails, check:
+
+* PVC has sufficient space
+* PVC is writable
+* Password secret is properly configured
 
 **Permission Denied**
 
@@ -410,7 +436,15 @@ Common Issues
 
    Error: unable to create repository: permission denied
 
-**Solution**: Verify the PVC is mounted with write permissions (``readOnly: false``) and the storage supports the required operations.
+**Solution**: Verify the PVC supports write operations and has sufficient permissions:
+
+.. code-block:: bash
+
+   # Check PVC access modes
+   kubectl get pvc <pvc-name> -n <namespace> -o jsonpath='{.spec.accessModes}'
+   
+   # Verify storage class supports dynamic provisioning if applicable
+   kubectl get storageclass <storage-class-name>
 
 **Insufficient Storage**
 
@@ -440,12 +474,21 @@ View Kopia mover logs:
 
    kubectl logs -n <namespace> -l app.kubernetes.io/component=volsync-kopia
 
-Inspect mounted volumes in the mover pod:
+Inspect the repository structure:
 
 .. code-block:: bash
 
+   # Check if repository is properly mounted
    kubectl exec -it <kopia-pod> -n <namespace> -- ls -la /kopia
+   
+   # Verify repository initialization
+   kubectl exec -it <kopia-pod> -n <namespace> -- ls -la /kopia/repository
+   
+   # Check repository status
    kubectl exec -it <kopia-pod> -n <namespace> -- kopia repository status
+   
+   # View repository configuration
+   kubectl exec -it <kopia-pod> -n <namespace> -- env | grep KOPIA_REPOSITORY
 
 Performance Considerations
 ==========================
@@ -473,25 +516,24 @@ Limitations
 Current Limitations
 -------------------
 
-* **Namespace Scope**: PVC must exist in the same namespace as the ReplicationSource
-* **Mount Conflicts**: Cannot use both ``filesystemDestination`` and remote repository configuration
-* **Single PVC**: Only one PVC can be mounted per ReplicationSource
+* **Namespace Scope**: Repository PVC must exist in the same namespace as the ReplicationSource
+* **Single Repository**: Cannot use both ``repositoryPVC`` and remote repository configuration simultaneously
+* **Fixed Path**: Repository location is fixed at ``/kopia/repository`` for security
+* **Single PVC**: Only one repository PVC can be specified per ReplicationSource
 
-Future Enhancements
--------------------
+Compatibility Notes
+--------------------
 
-Potential future improvements may include:
-
-* Cross-namespace PVC references
-* Multiple PVC support for tiered storage
-* Automatic PVC provisioning
-* Built-in storage metrics and monitoring
+* The ``repositoryPVC`` field is available in VolSync v0.10.0 and later
+* Repositories created with ``repositoryPVC`` use standard Kopia filesystem format
+* Compatible with all Kopia retention and compression settings
+* Works with existing Kopia tooling for repository maintenance
 
 Related Documentation
 =====================
 
 * :doc:`index` - Main Kopia documentation
-* :doc:`backup-configuration` - Detailed backup configuration options
-* :doc:`restore-configuration` - Restore operations and recovery
+* :doc:`backup-configuration` - Detailed backup configuration options including ``repositoryPVC``
+* :doc:`restore-configuration` - Restore operations from filesystem repositories
 * :doc:`troubleshooting` - Comprehensive troubleshooting guide
-* :doc:`backends` - Remote storage backend configuration
+* :doc:`backends` - Alternative remote storage backend configuration

@@ -231,7 +231,6 @@ func TestEnvironmentVariables(t *testing.T) {
 		"SFTP_HOST", "SFTP_USERNAME", "SFTP_KEY_FILE", "SFTP_PORT", "SFTP_PASSWORD", "SFTP_PATH",
 		"RCLONE_REMOTE_PATH", "RCLONE_EXE", "RCLONE_CONFIG",
 		"GOOGLE_DRIVE_FOLDER_ID", "GOOGLE_DRIVE_CREDENTIALS",
-		"KOPIA_FS_PATH",
 	}
 
 	for _, requiredVar := range requiredBackendVars {

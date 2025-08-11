@@ -393,7 +393,6 @@ func getFilesystemBackendCompatibilityTestCase(manualConfig string) backendCompa
 		secretData: map[string][]byte{
 			"KOPIA_REPOSITORY":   []byte("filesystem:///mnt/backup"),
 			"KOPIA_PASSWORD":     []byte("password"),
-			"KOPIA_FS_PATH":      []byte("/mnt/backup"),
 			kopiaManualConfigKey: []byte(manualConfig),
 		},
 	}
@@ -698,7 +697,7 @@ func getRequiredVarsForBackend(backendName string) []string {
 	case "SFTP backend":
 		return []string{"KOPIA_REPOSITORY", "KOPIA_PASSWORD", "SFTP_HOST", "SFTP_USERNAME", "SFTP_PASSWORD", "SFTP_KEY_FILE"}
 	case "Filesystem backend":
-		return []string{"KOPIA_REPOSITORY", "KOPIA_PASSWORD", "KOPIA_FS_PATH"}
+		return []string{"KOPIA_REPOSITORY", "KOPIA_PASSWORD"}
 	default:
 		return []string{"KOPIA_REPOSITORY", "KOPIA_PASSWORD"}
 	}

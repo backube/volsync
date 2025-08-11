@@ -78,8 +78,8 @@ When a restore operation cannot find snapshots, the status provides comprehensiv
 Common Error Scenarios and Solutions
 =====================================
 
-Filesystem Destination Issues
-------------------------------
+Filesystem Repository Issues
+-----------------------------
 
 **PVC Not Found**
 
@@ -87,7 +87,7 @@ Filesystem Destination Issues
 
 **Resolution**:
 
-1. Verify the PVC exists in the correct namespace:
+1. Verify the PVC specified in ``repositoryPVC`` exists in the correct namespace:
 
    .. code-block:: bash
 
@@ -119,14 +119,29 @@ Filesystem Destination Issues
 
 3. Check for StorageClass issues if using dynamic provisioning
 
-**Path Validation Errors**
+**Repository Initialization Failed**
 
-**Error Message**: "Invalid path: contains invalid characters or patterns"
+**Error Message**: "unable to initialize repository at /kopia/repository"
 
 **Resolution**:
 
-1. Ensure path only contains alphanumeric characters, hyphens, underscores, and forward slashes
-2. Verify path doesn't exceed 100 characters
+1. Verify the PVC has sufficient space:
+
+   .. code-block:: bash
+
+      kubectl exec -it <kopia-pod> -n <namespace> -- df -h /kopia
+
+2. Check the repository password is properly configured:
+
+   .. code-block:: bash
+
+      kubectl get secret <secret-name> -n <namespace> -o jsonpath='{.data.KOPIA_PASSWORD}' | base64 -d
+
+3. Ensure the PVC supports write operations
+
+**Filesystem URL Configuration**
+
+**Note**: When using ``repositoryPVC``, VolSync automatically sets ``KOPIA_REPOSITORY=filesystem:///kopia/repository``. You don't need to configure this manually in the secret.
 3. Check for directory traversal attempts (../)
 
 **Permission Denied**

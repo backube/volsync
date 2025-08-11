@@ -648,8 +648,8 @@ VolSync's Kopia mover supports a comprehensive set of environment variables for 
 
 **Filesystem Storage Variables**
 
-``KOPIA_FS_PATH``
-   Filesystem path for local or network-attached storage repositories
+   When using ``repositoryPVC`` in the ReplicationSource, the controller automatically sets ``KOPIA_REPOSITORY`` to ``filesystem:///kopia/repository``.
+   For manual filesystem configurations, use ``KOPIA_REPOSITORY`` with a ``filesystem://`` URL (e.g., ``filesystem:///mnt/backup``)
 
 **Backblaze B2 Variables**
 

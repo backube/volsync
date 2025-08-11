@@ -624,9 +624,26 @@ function connect_repository {
             --credentials-file="${GOOGLE_APPLICATION_CREDENTIALS}")
         add_user_overrides GCS_CONNECT_CMD
         "${GCS_CONNECT_CMD[@]}"
-    elif [[ -n "${KOPIA_FS_PATH}" ]]; then
+    elif [[ "${KOPIA_REPOSITORY}" =~ ^filesystem:// ]]; then
         echo "Connecting to filesystem repository"
-        FS_CONNECT_CMD=("${KOPIA[@]}" repository connect filesystem --path="${KOPIA_FS_PATH}")
+        # Extract path from filesystem:// URL
+        # Handle both filesystem:///path and filesystem://path formats
+        local FS_PATH
+        if [[ "${KOPIA_REPOSITORY}" =~ ^filesystem://(/.*) ]]; then
+            FS_PATH="${BASH_REMATCH[1]}"
+        else
+            echo "ERROR: Invalid filesystem URL format. Expected filesystem:///path"
+            return 1
+        fi
+        
+        # Validate path for security (no path traversal)
+        if [[ "${FS_PATH}" =~ \.\./ ]] || [[ ! "${FS_PATH}" =~ ^/ ]]; then
+            echo "ERROR: Invalid filesystem path. Path must be absolute and cannot contain .."
+            return 1
+        fi
+        
+        echo "Using filesystem path: ${FS_PATH}"
+        FS_CONNECT_CMD=("${KOPIA[@]}" repository connect filesystem --path="${FS_PATH}")
         add_user_overrides FS_CONNECT_CMD
         "${FS_CONNECT_CMD[@]}"
     elif [[ -n "${KOPIA_B2_BUCKET}" ]]; then
@@ -682,7 +699,12 @@ function connect_repository {
         add_user_overrides GDRIVE_CONNECT_CMD
         "${GDRIVE_CONNECT_CMD[@]}"
     else
-        echo "No repository configuration found for connecting"
+        # Check if we have a generic filesystem:// URL that wasn't matched
+        if [[ "${KOPIA_REPOSITORY}" =~ ^filesystem:// ]]; then
+            echo "ERROR: Filesystem URL detected but failed to parse: ${KOPIA_REPOSITORY}"
+        else
+            echo "No repository configuration found for connecting"
+        fi
         return 1
     fi
 }
@@ -820,9 +842,26 @@ function create_repository {
         add_user_overrides GCS_CREATE_CMD
         add_manual_config_params GCS_CREATE_CMD
         "${GCS_CREATE_CMD[@]}"
-    elif [[ -n "${KOPIA_FS_PATH}" ]]; then
+    elif [[ "${KOPIA_REPOSITORY}" =~ ^filesystem:// ]]; then
         echo "Creating filesystem repository"
-        FS_CREATE_CMD=("${KOPIA[@]}" repository create filesystem --path="${KOPIA_FS_PATH}")
+        # Extract path from filesystem:// URL
+        # Handle both filesystem:///path and filesystem://path formats
+        local FS_PATH
+        if [[ "${KOPIA_REPOSITORY}" =~ ^filesystem://(/.*) ]]; then
+            FS_PATH="${BASH_REMATCH[1]}"
+        else
+            echo "ERROR: Invalid filesystem URL format. Expected filesystem:///path"
+            return 1
+        fi
+        
+        # Validate path for security (no path traversal)
+        if [[ "${FS_PATH}" =~ \.\./ ]] || [[ ! "${FS_PATH}" =~ ^/ ]]; then
+            echo "ERROR: Invalid filesystem path. Path must be absolute and cannot contain .."
+            return 1
+        fi
+        
+        echo "Using filesystem path: ${FS_PATH}"
+        FS_CREATE_CMD=("${KOPIA[@]}" repository create filesystem --path="${FS_PATH}")
         add_user_overrides FS_CREATE_CMD
         add_manual_config_params FS_CREATE_CMD
         "${FS_CREATE_CMD[@]}"

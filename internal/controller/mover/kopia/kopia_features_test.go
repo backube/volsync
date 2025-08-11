@@ -129,12 +129,11 @@ func getGoogleCloudTestCases() []backendTestCase {
 				"GOOGLE_PROJECT_ID":              []byte("my-project"),
 				"KOPIA_GCS_BUCKET":               []byte("my-bucket"),
 				"GOOGLE_APPLICATION_CREDENTIALS": []byte(`{"type":"service_account"}`),
-				"KOPIA_FS_PATH":                  []byte("/mnt/backup"),
 			},
 			requiredEnvVars: []string{"KOPIA_REPOSITORY", "KOPIA_PASSWORD"},
 			optionalEnvVars: []string{
 				"GOOGLE_PROJECT_ID", "KOPIA_GCS_BUCKET",
-				"GOOGLE_APPLICATION_CREDENTIALS", "KOPIA_FS_PATH",
+				"GOOGLE_APPLICATION_CREDENTIALS",
 			},
 		},
 		{
@@ -219,10 +218,9 @@ func getFilesystemBackendTestCase() backendTestCase {
 		secretData: map[string][]byte{
 			"KOPIA_REPOSITORY": []byte("filesystem:///mnt/backup"),
 			"KOPIA_PASSWORD":   []byte("password"),
-			"KOPIA_FS_PATH":    []byte("/mnt/backup"),
 		},
 		requiredEnvVars: []string{"KOPIA_REPOSITORY", "KOPIA_PASSWORD"},
-		optionalEnvVars: []string{"KOPIA_FS_PATH"},
+		optionalEnvVars: []string{},
 	}
 }
 

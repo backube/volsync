@@ -58,9 +58,9 @@ const (
 	kopiaCAMountPath        = "/customCA"
 	kopiaCAFilename         = "ca.crt"
 	credentialDir           = "/credentials"
-	filesystemDestVolName   = "filesystem-destination"
-	filesystemDestMountPath = "/kopia"
-	defaultFilesystemPath   = "backups"
+	repositoryPVCVolName    = "repository-pvc"
+	repositoryPVCMountPath  = "/kopia"
+	repositoryPath          = "/kopia/repository"
 	gcsCredentialFile       = "gcs.json"
 	kopiaPolicyMountPath    = "/kopia-config"
 	defaultGlobalPolicyFile = "global-policy.json"
@@ -94,15 +94,14 @@ type Mover struct {
 	username string
 	hostname string
 	// Source-only fields
-	sourcePathOverride    *string
-	maintenanceInterval   *int32
-	retainPolicy          *volsyncv1alpha1.KopiaRetainPolicy
-	compression           string
-	parallelism           *int32
-	actions               *volsyncv1alpha1.KopiaActions
-	sourceStatus          *volsyncv1alpha1.ReplicationSourceKopiaStatus
-	filesystemDestination *volsyncv1alpha1.FilesystemDestinationSpec
-	filesystemRepoPath    string
+	sourcePathOverride  *string
+	maintenanceInterval *int32
+	retainPolicy        *volsyncv1alpha1.KopiaRetainPolicy
+	compression         string
+	parallelism         *int32
+	actions             *volsyncv1alpha1.KopiaActions
+	sourceStatus        *volsyncv1alpha1.ReplicationSourceKopiaStatus
+	repositoryPVC       *string
 	// Destination-only fields
 	restoreAsOf       *string
 	shallow           *int32
@@ -305,9 +304,9 @@ func (m *Mover) ensureCache(ctx context.Context,
 }
 
 func (m *Mover) validateRepository(ctx context.Context) (*corev1.Secret, error) {
-	// If using filesystem destination, validate the PVC first
-	if m.filesystemDestination != nil {
-		if err := m.validateFilesystemDestination(ctx); err != nil {
+	// If using repository PVC, validate the PVC first
+	if m.repositoryPVC != nil {
+		if err := m.validateRepositoryPVC(ctx); err != nil {
 			return nil, err
 		}
 	}
@@ -327,37 +326,37 @@ func (m *Mover) validateRepository(ctx context.Context) (*corev1.Secret, error) 
 	return secret, nil
 }
 
-// validateFilesystemDestination validates that the filesystem destination PVC exists and is bound
-func (m *Mover) validateFilesystemDestination(ctx context.Context) error {
-	if m.filesystemDestination == nil {
+// validateRepositoryPVC validates that the repository PVC exists and is bound
+func (m *Mover) validateRepositoryPVC(ctx context.Context) error {
+	if m.repositoryPVC == nil {
 		return nil
 	}
 
 	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      m.filesystemDestination.ClaimName,
+			Name:      *m.repositoryPVC,
 			Namespace: m.owner.GetNamespace(),
 		},
 	}
 
 	if err := m.client.Get(ctx, client.ObjectKeyFromObject(pvc), pvc); err != nil {
-		m.logger.Error(err, "Failed to get filesystem destination PVC",
-			"pvc", m.filesystemDestination.ClaimName)
-		return fmt.Errorf("filesystem destination PVC %s not found: %w",
-			m.filesystemDestination.ClaimName, err)
+		m.logger.Error(err, "Failed to get repository PVC",
+			"pvc", *m.repositoryPVC)
+		return fmt.Errorf("repository PVC %s not found: %w",
+			*m.repositoryPVC, err)
 	}
 
 	// Check if PVC is bound
 	if pvc.Status.Phase != corev1.ClaimBound {
-		m.logger.Info("Filesystem destination PVC is not bound yet",
-			"pvc", m.filesystemDestination.ClaimName,
+		m.logger.Info("Repository PVC is not bound yet",
+			"pvc", *m.repositoryPVC,
 			"phase", pvc.Status.Phase)
-		return fmt.Errorf("filesystem destination PVC %s is not bound (phase: %s)",
-			m.filesystemDestination.ClaimName, pvc.Status.Phase)
+		return fmt.Errorf("repository PVC %s is not bound (phase: %s)",
+			*m.repositoryPVC, pvc.Status.Phase)
 	}
 
-	m.logger.V(1).Info("Filesystem destination PVC validated successfully",
-		"pvc", m.filesystemDestination.ClaimName)
+	m.logger.V(1).Info("Repository PVC validated successfully",
+		"pvc", *m.repositoryPVC)
 	return nil
 }
 
@@ -439,9 +438,9 @@ func (m *Mover) configureJobSpec(ctx context.Context, job *batchv1.Job, cachePVC
 	m.configurePolicyConfig(podSpec, policyConfigObj)
 	m.configureCredentials(podSpec, repo)
 
-	// Configure filesystem destination if specified
-	if err := m.configureFilesystemDestination(podSpec); err != nil {
-		logger.Error(err, "failed to configure filesystem destination")
+	// Configure repository PVC if specified
+	if err := m.configureRepositoryPVC(podSpec); err != nil {
+		logger.Error(err, "failed to configure repository PVC")
 		return err
 	}
 
@@ -508,13 +507,27 @@ func (m *Mover) buildBasicEnvironmentVariables() []corev1.EnvVar {
 
 // buildRepositoryEnvironmentVariables creates repository-related environment variables
 func (m *Mover) buildRepositoryEnvironmentVariables(repo *corev1.Secret) []corev1.EnvVar {
-	return []corev1.EnvVar{
+	envVars := []corev1.EnvVar{
 		// Mandatory variables are needed to define the repository location and its password
-		utils.EnvFromSecret(repo.Name, "KOPIA_REPOSITORY", false),
 		utils.EnvFromSecret(repo.Name, "KOPIA_PASSWORD", false),
 		// Optional manual configuration for advanced repository settings
 		utils.EnvFromSecret(repo.Name, "KOPIA_MANUAL_CONFIG", true),
 	}
+
+	// If using repository PVC, set KOPIA_REPOSITORY to filesystem:// URL
+	// Otherwise, get it from the secret
+	if m.repositoryPVC != nil {
+		// Use filesystem:// URL for PVC-based repositories
+		envVars = append(envVars, corev1.EnvVar{
+			Name:  "KOPIA_REPOSITORY",
+			Value: "filesystem://" + repositoryPath,
+		})
+	} else {
+		// Get repository URL from secret for other backends
+		envVars = append(envVars, utils.EnvFromSecret(repo.Name, "KOPIA_REPOSITORY", false))
+	}
+
+	return envVars
 }
 
 // buildBackendEnvironmentVariables creates backend-specific environment variables
@@ -577,7 +590,6 @@ func (m *Mover) buildGoogleEnvironmentVariables(repo *corev1.Secret) []corev1.En
 		// Kopia-specific GCS variables (support both naming conventions)
 		utils.EnvFromSecret(repo.Name, "KOPIA_GCS_BUCKET", true),
 		utils.EnvFromSecret(repo.Name, "GCS_BUCKET", true), // Support standard GCS prefix
-		utils.EnvFromSecret(repo.Name, "KOPIA_FS_PATH", true),
 	}
 }
 
@@ -669,10 +681,8 @@ func (m *Mover) addSourceEnvVars(envVars []corev1.EnvVar) []corev1.EnvVar {
 		envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_SOURCE_PATH_OVERRIDE", Value: *m.sourcePathOverride})
 	}
 
-	// Add filesystem destination path if configured
-	if m.filesystemDestination != nil && m.filesystemRepoPath != "" {
-		envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_FS_PATH", Value: m.filesystemRepoPath})
-	}
+	// Repository path is now set in KOPIA_REPOSITORY as filesystem:// URL
+	// when using repository PVC - handled in buildRepositoryEnvironmentVariables
 
 	// Add retention policy
 	envVars = m.addRetentionPolicyEnvVars(envVars)
@@ -979,31 +989,31 @@ func (m *Mover) configureFilePolicyConfig(podSpec *corev1.PodSpec, policyConfigO
 	})
 }
 
-// configureFilesystemDestination configures the pod to use a filesystem-based repository
-// backed by a user-provided PVC. The PVC is mounted at /kopia (parent directory) and
-// the repository is created at /kopia/<path> to handle Kopia's atomic file operations.
-func (m *Mover) configureFilesystemDestination(podSpec *corev1.PodSpec) error {
-	if m.filesystemDestination == nil {
+// configureRepositoryPVC configures the pod to use a filesystem-based repository
+// backed by a user-provided PVC. The PVC is mounted at /kopia and
+// the repository is created at /kopia/repository for security and isolation.
+func (m *Mover) configureRepositoryPVC(podSpec *corev1.PodSpec) error {
+	if m.repositoryPVC == nil {
 		return nil
 	}
 
 	// Check for mount path conflicts
 	for _, vm := range podSpec.Containers[0].VolumeMounts {
-		if vm.MountPath == filesystemDestMountPath {
-			m.logger.Error(nil, "Mount path conflict detected for filesystem destination",
-				"mountPath", filesystemDestMountPath,
+		if vm.MountPath == repositoryPVCMountPath {
+			m.logger.Error(nil, "Mount path conflict detected for repository PVC",
+				"mountPath", repositoryPVCMountPath,
 				"existingVolume", vm.Name)
-			return fmt.Errorf("mount path %s is already in use by volume %s", filesystemDestMountPath, vm.Name)
+			return fmt.Errorf("mount path %s is already in use by volume %s", repositoryPVCMountPath, vm.Name)
 		}
 	}
 
-	volumeName := filesystemDestVolName
+	volumeName := repositoryPVCVolName
 
-	// Add volume mount for the filesystem destination
+	// Add volume mount for the repository PVC
 	podSpec.Containers[0].VolumeMounts = append(podSpec.Containers[0].VolumeMounts, corev1.VolumeMount{
 		Name:      volumeName,
-		MountPath: filesystemDestMountPath,
-		ReadOnly:  m.filesystemDestination.ReadOnly,
+		MountPath: repositoryPVCMountPath,
+		ReadOnly:  false, // Repository needs write access
 	})
 
 	// Add volume for the PVC
@@ -1011,17 +1021,16 @@ func (m *Mover) configureFilesystemDestination(podSpec *corev1.PodSpec) error {
 		Name: volumeName,
 		VolumeSource: corev1.VolumeSource{
 			PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-				ClaimName: m.filesystemDestination.ClaimName,
-				ReadOnly:  m.filesystemDestination.ReadOnly,
+				ClaimName: *m.repositoryPVC,
+				ReadOnly:  false, // Repository needs write access
 			},
 		},
 	})
 
-	m.logger.V(1).Info("Configured filesystem destination",
-		"pvc", m.filesystemDestination.ClaimName,
-		"mountPath", filesystemDestMountPath,
-		"repoPath", m.filesystemRepoPath,
-		"readOnly", m.filesystemDestination.ReadOnly)
+	m.logger.V(1).Info("Configured repository PVC",
+		"pvc", *m.repositoryPVC,
+		"mountPath", repositoryPVCMountPath,
+		"repositoryPath", repositoryPath)
 
 	return nil
 }

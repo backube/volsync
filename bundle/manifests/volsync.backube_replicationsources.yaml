@@ -1450,6 +1450,15 @@ spec:
                     description: Repository is the secret name containing repository
                       info
                     type: string
+                  repositoryPVC:
+                    description: |-
+                      RepositoryPVC defines a PVC to use as a filesystem-based backup repository.
+                      When specified, Kopia will write backups directly to this PVC instead of
+                      a remote repository. The PVC must exist in the same namespace as the
+                      ReplicationSource. The repository will be created at /kopia/repository
+                      within the mounted PVC for security and isolation.
+                    minLength: 1
+                    type: string
                   retain:
                     description: Retain define the retention policy
                     properties:

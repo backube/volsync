@@ -36,6 +36,11 @@ import (
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
 
+const (
+	// kopiaRepositoryEnvVar is the environment variable name for Kopia repository configuration
+	kopiaRepositoryEnvVar = "KOPIA_REPOSITORY"
+)
+
 var _ = Describe("Kopia Filesystem Destination", func() {
 	var (
 		ctx       = context.Background()
@@ -84,8 +89,8 @@ var _ = Describe("Kopia Filesystem Destination", func() {
 				Namespace: namespace.Name,
 			},
 			Data: map[string][]byte{
-				"KOPIA_REPOSITORY": []byte("filesystem:"),
-				"KOPIA_PASSWORD":   []byte("test-password"),
+				kopiaRepositoryEnvVar: []byte("filesystem:"),
+				"KOPIA_PASSWORD":      []byte("test-password"),
 			},
 		}
 		Expect(k8sClient.Create(ctx, repoSecret)).To(Succeed())
@@ -131,14 +136,10 @@ var _ = Describe("Kopia Filesystem Destination", func() {
 		Expect(k8sClient.Delete(ctx, namespace)).To(Succeed())
 	})
 
-	Context("When filesystem destination is configured", func() {
+	Context("When repository PVC is configured", func() {
 		It("should configure the PVC mount correctly", func() {
-			// Configure filesystem destination
-			customPath := "my-backups"
-			rs.Spec.Kopia.FilesystemDestination = &volsyncv1alpha1.FilesystemDestinationSpec{
-				ClaimName: destPVC.Name,
-				Path:      &customPath,
-			}
+			// Configure repository PVC
+			rs.Spec.Kopia.RepositoryPVC = &destPVC.Name
 
 			// Create the mover
 			viper := viper.New()
@@ -150,41 +151,17 @@ var _ = Describe("Kopia Filesystem Destination", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(mover).NotTo(BeNil())
 
-			// Verify filesystem fields are set
+			// Verify repository PVC field is set
 			m, ok := mover.(*Mover)
 			Expect(ok).To(BeTrue())
-			Expect(m.filesystemDestination).NotTo(BeNil())
-			Expect(m.filesystemDestination.ClaimName).To(Equal(destPVC.Name))
-			Expect(m.filesystemRepoPath).To(Equal("/kopia/my-backups"))
-		})
-
-		It("should use default path when not specified", func() {
-			// Configure filesystem destination without custom path
-			rs.Spec.Kopia.FilesystemDestination = &volsyncv1alpha1.FilesystemDestinationSpec{
-				ClaimName: destPVC.Name,
-			}
-
-			// Create the mover
-			viper := viper.New()
-			flags := flag.NewFlagSet("test", flag.ContinueOnError)
-			b, err := newBuilder(viper, flags)
-			Expect(err).NotTo(HaveOccurred())
-
-			mover, err := b.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs, false)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(mover).NotTo(BeNil())
-
-			// Verify default path is used
-			m, ok := mover.(*Mover)
-			Expect(ok).To(BeTrue())
-			Expect(m.filesystemRepoPath).To(Equal("/kopia/backups"))
+			Expect(m.repositoryPVC).NotTo(BeNil())
+			Expect(*m.repositoryPVC).To(Equal(destPVC.Name))
 		})
 
 		It("should validate PVC existence", func() {
-			// Configure filesystem destination with non-existent PVC
-			rs.Spec.Kopia.FilesystemDestination = &volsyncv1alpha1.FilesystemDestinationSpec{
-				ClaimName: "non-existent-pvc",
-			}
+			// Configure repository PVC with non-existent PVC
+			nonExistentPVC := "non-existent-pvc"
+			rs.Spec.Kopia.RepositoryPVC = &nonExistentPVC
 
 			// Create the mover
 			viper := viper.New()
@@ -199,7 +176,7 @@ var _ = Describe("Kopia Filesystem Destination", func() {
 			// Validate should fail
 			m, ok := mover.(*Mover)
 			Expect(ok).To(BeTrue())
-			err = m.validateFilesystemDestination(ctx)
+			err = m.validateRepositoryPVC(ctx)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("not found"))
 		})
@@ -224,10 +201,8 @@ var _ = Describe("Kopia Filesystem Destination", func() {
 			}
 			Expect(k8sClient.Create(ctx, unboundPVC)).To(Succeed())
 
-			// Configure filesystem destination with unbound PVC
-			rs.Spec.Kopia.FilesystemDestination = &volsyncv1alpha1.FilesystemDestinationSpec{
-				ClaimName: unboundPVC.Name,
-			}
+			// Configure repository PVC with unbound PVC
+			rs.Spec.Kopia.RepositoryPVC = &unboundPVC.Name
 
 			// Create the mover
 			viper := viper.New()
@@ -242,16 +217,14 @@ var _ = Describe("Kopia Filesystem Destination", func() {
 			// Validate should fail
 			m, ok := mover.(*Mover)
 			Expect(ok).To(BeTrue())
-			err = m.validateFilesystemDestination(ctx)
+			err = m.validateRepositoryPVC(ctx)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("not bound"))
 		})
 
-		It("should add KOPIA_FS_PATH environment variable", func() {
-			// Configure filesystem destination
-			rs.Spec.Kopia.FilesystemDestination = &volsyncv1alpha1.FilesystemDestinationSpec{
-				ClaimName: destPVC.Name,
-			}
+		It("should set "+kopiaRepositoryEnvVar+" to filesystem URL when using repository PVC", func() {
+			// Configure repository PVC
+			rs.Spec.Kopia.RepositoryPVC = &destPVC.Name
 
 			// Create the mover
 			viper := viper.New()
@@ -272,31 +245,28 @@ var _ = Describe("Kopia Filesystem Destination", func() {
 					Namespace: namespace.Name,
 				},
 				Data: map[string][]byte{
-					"KOPIA_REPOSITORY": []byte("filesystem:"),
-					"KOPIA_PASSWORD":   []byte("test-password"),
+					kopiaRepositoryEnvVar: []byte("filesystem:"),
+					"KOPIA_PASSWORD":      []byte("test-password"),
 				},
 			}
 
 			envVars := m.buildEnvironmentVariables(repoSecret)
 
-			// Check for KOPIA_FS_PATH
-			var foundFSPath bool
+			// Check for kopiaRepositoryEnvVar with filesystem URL
+			var foundRepositoryURL bool
 			for _, env := range envVars {
-				if env.Name == "KOPIA_FS_PATH" {
-					foundFSPath = true
-					Expect(env.Value).To(Equal("/kopia/backups"))
+				if env.Name == kopiaRepositoryEnvVar {
+					foundRepositoryURL = true
+					Expect(env.Value).To(Equal("filesystem:///kopia/repository"))
 					break
 				}
 			}
-			Expect(foundFSPath).To(BeTrue(), "KOPIA_FS_PATH should be set")
+			Expect(foundRepositoryURL).To(BeTrue(), kopiaRepositoryEnvVar+" should be set to filesystem URL")
 		})
 
-		It("should configure pod spec with filesystem volume", func() {
-			// Configure filesystem destination
-			rs.Spec.Kopia.FilesystemDestination = &volsyncv1alpha1.FilesystemDestinationSpec{
-				ClaimName: destPVC.Name,
-				ReadOnly:  true,
-			}
+		It("should configure pod spec with repository PVC volume", func() {
+			// Configure repository PVC
+			rs.Spec.Kopia.RepositoryPVC = &destPVC.Name
 
 			// Create the mover
 			viper := viper.New()
@@ -323,47 +293,43 @@ var _ = Describe("Kopia Filesystem Destination", func() {
 				},
 			}
 
-			// Configure filesystem destination on pod
+			// Configure repository PVC on pod
 			m, ok := mover.(*Mover)
 			Expect(ok).To(BeTrue())
-			err = m.configureFilesystemDestination(&job.Spec.Template.Spec)
+			err = m.configureRepositoryPVC(&job.Spec.Template.Spec)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify volume is added
 			foundVolume := false
 			for _, vol := range job.Spec.Template.Spec.Volumes {
-				if vol.Name == "filesystem-destination" {
+				if vol.Name == "repository-pvc" {
 					foundVolume = true
 					Expect(vol.PersistentVolumeClaim).NotTo(BeNil())
 					Expect(vol.PersistentVolumeClaim.ClaimName).To(Equal(destPVC.Name))
-					Expect(vol.PersistentVolumeClaim.ReadOnly).To(BeTrue())
+					Expect(vol.PersistentVolumeClaim.ReadOnly).To(BeFalse())
 					break
 				}
 			}
-			Expect(foundVolume).To(BeTrue(), "filesystem-destination volume should be added")
+			Expect(foundVolume).To(BeTrue(), "repository-pvc volume should be added")
 
 			// Verify volume mount is added
 			foundMount := false
 			for _, mount := range job.Spec.Template.Spec.Containers[0].VolumeMounts {
-				if mount.Name == "filesystem-destination" {
+				if mount.Name == "repository-pvc" {
 					foundMount = true
 					Expect(mount.MountPath).To(Equal("/kopia"))
-					Expect(mount.ReadOnly).To(BeTrue())
+					Expect(mount.ReadOnly).To(BeFalse())
 					break
 				}
 			}
-			Expect(foundMount).To(BeTrue(), "filesystem-destination volume mount should be added")
+			Expect(foundMount).To(BeTrue(), "repository-pvc volume mount should be added")
 		})
 	})
 
-	Context("Path validation and sanitization", func() {
-		It("should sanitize paths with parent directory references", func() {
-			// Test path traversal prevention
-			maliciousPath := "../../../etc/passwd"
-			rs.Spec.Kopia.FilesystemDestination = &volsyncv1alpha1.FilesystemDestinationSpec{
-				ClaimName: destPVC.Name,
-				Path:      &maliciousPath,
-			}
+	Context("Fixed repository path", func() {
+		It("should always use /kopia/repository as the repository path", func() {
+			// Configure repository PVC
+			rs.Spec.Kopia.RepositoryPVC = &destPVC.Name
 
 			viper := viper.New()
 			flags := flag.NewFlagSet("test", flag.ContinueOnError)
@@ -373,80 +339,39 @@ var _ = Describe("Kopia Filesystem Destination", func() {
 			mover, err := b.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs, false)
 			Expect(err).NotTo(HaveOccurred())
 
-			// Path should be sanitized to remove parent directory references
+			// Verify fixed path is always used
 			m, ok := mover.(*Mover)
 			Expect(ok).To(BeTrue())
-			Expect(m.filesystemRepoPath).To(Equal("/kopia/etc/passwd"))
-		})
 
-		It("should sanitize absolute paths", func() {
-			// Test absolute path handling
-			absolutePath := "/absolute/path"
-			rs.Spec.Kopia.FilesystemDestination = &volsyncv1alpha1.FilesystemDestinationSpec{
-				ClaimName: destPVC.Name,
-				Path:      &absolutePath,
+			// Build environment variables to check kopiaRepositoryEnvVar
+			repoSecret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "kopia-secret",
+					Namespace: namespace.Name,
+				},
+				Data: map[string][]byte{
+					kopiaRepositoryEnvVar: []byte("filesystem:"),
+					"KOPIA_PASSWORD":      []byte("test-password"),
+				},
 			}
 
-			viper := viper.New()
-			flags := flag.NewFlagSet("test", flag.ContinueOnError)
-			b, err := newBuilder(viper, flags)
-			Expect(err).NotTo(HaveOccurred())
+			envVars := m.buildEnvironmentVariables(repoSecret)
 
-			mover, err := b.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs, false)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Absolute path should be converted to relative
-			m, ok := mover.(*Mover)
-			Expect(ok).To(BeTrue())
-			Expect(m.filesystemRepoPath).To(Equal("/kopia/absolute/path"))
-		})
-
-		It("should handle empty path after sanitization", func() {
-			// Test that empty/invalid paths fall back to default
-			invalidPath := "../../../"
-			rs.Spec.Kopia.FilesystemDestination = &volsyncv1alpha1.FilesystemDestinationSpec{
-				ClaimName: destPVC.Name,
-				Path:      &invalidPath,
+			// Find kopiaRepositoryEnvVar environment variable
+			var foundPath string
+			for _, env := range envVars {
+				if env.Name == kopiaRepositoryEnvVar {
+					foundPath = env.Value
+					break
+				}
 			}
 
-			viper := viper.New()
-			flags := flag.NewFlagSet("test", flag.ContinueOnError)
-			b, err := newBuilder(viper, flags)
-			Expect(err).NotTo(HaveOccurred())
-
-			mover, err := b.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs, false)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Should fall back to default "backups" path
-			m, ok := mover.(*Mover)
-			Expect(ok).To(BeTrue())
-			Expect(m.filesystemRepoPath).To(Equal("/kopia/backups"))
-		})
-
-		It("should accept valid relative paths", func() {
-			validPath := "relative/path"
-			rs.Spec.Kopia.FilesystemDestination = &volsyncv1alpha1.FilesystemDestinationSpec{
-				ClaimName: destPVC.Name,
-				Path:      &validPath,
-			}
-
-			viper := viper.New()
-			flags := flag.NewFlagSet("test", flag.ContinueOnError)
-			b, err := newBuilder(viper, flags)
-			Expect(err).NotTo(HaveOccurred())
-
-			mover, err := b.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs, false)
-			Expect(err).NotTo(HaveOccurred())
-
-			m, ok := mover.(*Mover)
-			Expect(ok).To(BeTrue())
-			Expect(m.filesystemRepoPath).To(Equal("/kopia/relative/path"))
+			// Should be filesystem URL pointing to /kopia/repository
+			Expect(foundPath).To(Equal("filesystem:///kopia/repository"))
 		})
 
 		It("should handle mount path conflicts", func() {
-			rs.Spec.Kopia.FilesystemDestination = &volsyncv1alpha1.FilesystemDestinationSpec{
-				ClaimName: destPVC.Name,
-			}
+			rs.Spec.Kopia.RepositoryPVC = &destPVC.Name
 
 			viper := viper.New()
 			flags := flag.NewFlagSet("test", flag.ContinueOnError)
@@ -477,10 +402,10 @@ var _ = Describe("Kopia Filesystem Destination", func() {
 				},
 			}
 
-			// Try to configure filesystem destination - should fail due to conflict
+			// Try to configure repository PVC - should fail due to conflict
 			m, ok := mover.(*Mover)
 			Expect(ok).To(BeTrue())
-			err = m.configureFilesystemDestination(&job.Spec.Template.Spec)
+			err = m.configureRepositoryPVC(&job.Spec.Template.Spec)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("mount path /kopia is already in use"))
 		})

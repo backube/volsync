@@ -1,0 +1,208 @@
+# Example: Using a PVC as a Kopia filesystem repository
+# This demonstrates the simplified repositoryPVC API for local/network storage backups
+---
+# Namespace for the example
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: filesystem-backup-example
+---
+# Source PVC containing data to backup
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: application-data
+  namespace: filesystem-backup-example
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+# PVC to use as the backup repository
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backup-repository
+  namespace: filesystem-backup-example
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  # Optional: Use specific storage class for backup storage
+  # storageClassName: fast-ssd
+---
+# Secret with repository password
+# Note: KOPIA_REPOSITORY is automatically set when using repositoryPVC
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kopia-config
+  namespace: filesystem-backup-example
+type: Opaque
+stringData:
+  # Password for repository encryption (required)
+  KOPIA_PASSWORD: "change-this-to-a-secure-password-minimum-16-chars"
+  # Optional: Explicitly specify filesystem repository type for clarity
+  # When repositoryPVC is set, this is automatically set to "filesystem:///kopia/repository"
+  # KOPIA_REPOSITORY: "filesystem:"
+---
+# ReplicationSource for scheduled backups to filesystem
+apiVersion: volsync.backube/v1alpha1
+kind: ReplicationSource
+metadata:
+  name: filesystem-backup
+  namespace: filesystem-backup-example
+spec:
+  # Source PVC to backup
+  sourcePVC: application-data
+  
+  # Backup schedule
+  trigger:
+    schedule: "0 */6 * * *"  # Every 6 hours
+  
+  # Kopia configuration with repository PVC
+  kopia:
+    # Reference to the repository configuration secret
+    repository: kopia-config
+    
+    # PVC to use as the filesystem repository
+    # Repository will be created at /kopia/repository (fixed, secure path)
+    repositoryPVC: backup-repository
+    
+    # Optional: Retention policy
+    retain:
+      hourly: 24
+      daily: 7
+      weekly: 4
+      monthly: 3
+      yearly: 1
+    
+    # Optional: Compression algorithm (zstd, gzip, s2, none)
+    compression: "zstd"
+    
+    # Optional: Number of parallel upload streams
+    parallelism: 4
+    
+    # Optional: Cache configuration
+    cacheCapacity: 2Gi
+---
+# Example: NFS-backed repository for shared storage
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-backup-pv
+spec:
+  capacity:
+    storage: 500Gi
+  accessModes:
+    - ReadWriteMany
+  nfs:
+    server: nfs-server.example.com
+    path: /exports/volsync-backups
+  persistentVolumeReclaimPolicy: Retain
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-backup-repository
+  namespace: filesystem-backup-example
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 500Gi
+  volumeName: nfs-backup-pv
+---
+# Example: Using NFS storage for backups
+apiVersion: volsync.backube/v1alpha1
+kind: ReplicationSource
+metadata:
+  name: nfs-backup
+  namespace: filesystem-backup-example
+spec:
+  sourcePVC: application-data
+  trigger:
+    schedule: "0 2 * * *"  # Daily at 2 AM
+  kopia:
+    repository: kopia-config
+    # Simply reference the NFS-backed PVC
+    repositoryPVC: nfs-backup-repository
+    retain:
+      daily: 30
+      weekly: 12
+      monthly: 6
+    compression: "zstd"
+---
+# Example: Restore from filesystem repository
+apiVersion: volsync.backube/v1alpha1
+kind: ReplicationDestination
+metadata:
+  name: filesystem-restore
+  namespace: filesystem-backup-example
+spec:
+  trigger:
+    manual: restore-trigger
+  
+  kopia:
+    # Repository configuration must include proper repository URL
+    # For restore, create a secret with the filesystem URL
+    repository: kopia-restore-config
+    
+    # Destination PVC for restored data
+    destinationPVC: restored-data
+    copyMethod: Direct
+    
+    # Specify which backup to restore from
+    sourceIdentity:
+      sourceName: filesystem-backup
+      sourceNamespace: filesystem-backup-example
+---
+# Secret for restore operations
+# Must specify the filesystem URL explicitly for ReplicationDestination
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kopia-restore-config
+  namespace: filesystem-backup-example
+type: Opaque
+stringData:
+  # For restore, must specify the full filesystem URL
+  KOPIA_REPOSITORY: "filesystem:///kopia/repository"
+  KOPIA_PASSWORD: "change-this-to-a-secure-password-minimum-16-chars"
+---
+# Destination PVC for restored data
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: restored-data
+  namespace: filesystem-backup-example
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+# Benefits of the simplified repositoryPVC API:
+# 
+# 1. **Simpler Configuration**: Just specify the PVC name
+# 2. **Enhanced Security**: Fixed path prevents directory traversal attacks  
+# 3. **Clear Intent**: "repositoryPVC" immediately indicates its purpose
+# 4. **No Path Sanitization**: Reduces complexity and potential bugs
+# 5. **Consistent Design**: Aligns with other VolSync fields like "sourcePVC"
+# 6. **Standard Format**: Uses Kopia's standard filesystem URL internally
+#
+# Migration from old API:
+# OLD (removed):
+#   filesystemDestination:
+#     claimName: backup-storage-pvc
+#     path: "backups"
+#     readOnly: false
+#
+# NEW (current):
+#   repositoryPVC: backup-storage-pvc

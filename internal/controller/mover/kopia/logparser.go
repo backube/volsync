@@ -136,13 +136,16 @@ func ParseKopiaDiscoveryOutput(logs string) (requestedIdentity string, available
 	})
 
 	// Generate better error message if we have discovery information
-	if errorMsg == "" && requestedIdentity != "" && len(availableIdentities) > 0 {
+	if requestedIdentity != "" && len(availableIdentities) > 0 {
 		var identityList []string
 		for _, id := range availableIdentities {
 			identityList = append(identityList, id.Identity)
 		}
 		errorMsg = fmt.Sprintf("No snapshots found for identity '%s'. Available identities: %s",
 			requestedIdentity, strings.Join(identityList, ", "))
+	} else if errorMsg == "" && requestedIdentity != "" {
+		// If no available identities found, just format the basic error message
+		errorMsg = fmt.Sprintf("No snapshots found for identity '%s'", requestedIdentity)
 	}
 
 	return requestedIdentity, availableIdentities, errorMsg

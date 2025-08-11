@@ -62,10 +62,13 @@ repository
    This is the name of the Secret (in the same Namespace) that holds the
    connection information for the backup repository. See :doc:`backends` for
    supported remote storage backends and configuration examples. For filesystem-based
-   backups using PVCs, see :doc:`filesystem-destination`.
+   backups using PVCs, also configure the ``repositoryPVC`` field.
 
-filesystemDestination
-   This option configures a PVC as the backup destination instead of a remote repository.
+repositoryPVC
+   This option specifies a PVC to use as a filesystem-based backup repository.
+   When set, Kopia will write backups directly to this PVC instead of a remote repository.
+   The PVC must exist in the same namespace as the ReplicationSource.
+   The repository will be created at the fixed path ``/kopia/repository`` within the mounted PVC.
    See :doc:`filesystem-destination` for detailed configuration and examples.
 
 sourcePath
