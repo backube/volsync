@@ -76,6 +76,14 @@ securityContext:
       - ALL
   readOnlyRootFilesystem: true
 
+kube-rbac-proxy-resources:
+  limits:
+    cpu: 500m
+    memory: 128Mi
+  requests:
+    cpu: 5m
+    memory: 64Mi
+
 resources:
   limits:
     cpu: 1000m
