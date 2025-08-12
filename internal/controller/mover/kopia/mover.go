@@ -1231,7 +1231,18 @@ func (m *Mover) setupPrerequisites(ctx context.Context) (*corev1.PersistentVolum
 	} else {
 		dataPVC, err = m.ensureDestinationPVC(ctx)
 	}
-	if dataPVC == nil || err != nil {
+	// Check for nil PVC or error
+	// Note: When waiting for copy trigger, dataPVC may be nil with nil error
+	// In this case, we should return early to avoid nil pointer dereference
+	if dataPVC == nil {
+		if err == nil {
+			// This can happen when waiting for copy trigger timeout
+			// Return a meaningful error to prevent job creation with nil PVC
+			err = fmt.Errorf("data PVC not available (possibly waiting for copy trigger)")
+		}
+		return nil, nil, nil, nil, nil, nil, err
+	}
+	if err != nil {
 		return nil, nil, nil, nil, nil, nil, err
 	}
 
