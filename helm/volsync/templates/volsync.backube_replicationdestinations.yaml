@@ -2641,6 +2641,11 @@ spec:
                       description: RestoreAsOf refers to the backup that is most recent as of that time.
                       format: date-time
                       type: string
+                    sshKeys:
+                      description: |-
+                        sshKeys is the name of a Secret that contains the SSH keys to be used for
+                        authentication. If not provided, the keys will be generated.
+                      type: string
                     storageClassName:
                       description: |-
                         storageClassName can be used to specify the StorageClass of the
@@ -4238,6 +4243,17 @@ spec:
                     scheduled to start (for schedule-based synchronization).
                   format: date-time
                   type: string
+                restic:
+                  description: restic containers status information for Restic-based replication.
+                  properties:
+                    sshKeys:
+                      description: |-
+                        sshKeys is the name of a Secret that contains the SSH keys to be used for
+                        authentication. If not provided in .spec.restic.sshKeys, SSH keys will be
+                        generated and the appropriate keys for the remote side will be placed
+                        here.
+                      type: string
+                  type: object
                 rsync:
                   description: rsync contains status information for Rsync-based replication.
                   properties:
