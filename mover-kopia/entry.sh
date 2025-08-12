@@ -1105,7 +1105,8 @@ function select_snapshot_to_restore {
     # Check if the output indicates no snapshots found
     if [[ "${snapshot_output}" == "[]" ]] || [[ "${snapshot_output}" == "" ]] || 
        [[ "${snapshot_output}" =~ "unable to find snapshots" ]] || 
-       [[ "${snapshot_output}" =~ "no snapshot manifests found" ]]; then
+       [[ "${snapshot_output}" =~ "no snapshot manifests found" ]] ||
+       [[ "${snapshot_output}" =~ "no snapshots contain data" ]]; then
         # No snapshots found for this identity
         return 0
     fi
