@@ -118,7 +118,7 @@ RUN microdnf --refresh update -y && \
     microdnf --nodocs --setopt=install_weak_deps=0 install -y \
         acl             `# rclone - getfacl/setfacl` \
         openssh         `# rsync/ssh - ssh key generation in operator` \
-        openssh-clients `# rsync/ssh - ssh client` \
+        openssh-clients `# rsync/ssh and restic - ssh client` \
         openssh-server  `# rsync/ssh - ssh server` \
         perl            `# rsync/ssh - rrsync script` \
         stunnel         `# rsync-tls` \
