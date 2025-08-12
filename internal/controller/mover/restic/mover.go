@@ -77,6 +77,7 @@ type Mover struct {
 	privileged            bool
 	latestMoverStatus     *volsyncv1alpha1.MoverStatus
 	moverConfig           volsyncv1alpha1.MoverConfig
+	sshKeys               *string
 	// Source-only fields
 	pruneInterval *int32
 	unlock        string
@@ -142,8 +143,13 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 		return mover.InProgress(), err
 	}
 
+	resticSecretName, err := m.ensureSecrets(ctx)
+	if err != nil {
+		return mover.InProgress(), err
+	}
+
 	// Start mover Job
-	job, err := m.ensureJob(ctx, cachePVC, dataPVC, sa, repo, customCAObj)
+	job, err := m.ensureJob(ctx, cachePVC, dataPVC, sa, repo, customCAObj, *resticSecretName)
 	if job == nil || err != nil {
 		return mover.InProgress(), err
 	}
@@ -322,7 +328,7 @@ func (m *Mover) validateRepository(ctx context.Context) (*corev1.Secret, error) 
 //nolint:funlen
 func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolumeClaim,
 	dataPVC *corev1.PersistentVolumeClaim, sa *corev1.ServiceAccount, repo *corev1.Secret,
-	customCAObj utils.CustomCAObject) (*batchv1.Job, error) {
+	customCAObj utils.CustomCAObject, resticSecretName string) (*batchv1.Job, error) {
 	dir := "src"
 	if !m.isSource {
 		dir = "dst"
@@ -510,6 +516,26 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 				}},
 			},
 		}
+		if resticSecretName != "" {
+			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
+				Name: "SSH_KEYS",
+				Value: "true",
+			})
+			// Mount the custom CA certificate
+			podSpec.Containers[0].VolumeMounts =
+				append(podSpec.Containers[0].VolumeMounts, corev1.VolumeMount{
+					Name:      "keys",
+					MountPath: "/keys",
+				})
+			podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
+				Name: "keys", VolumeSource: corev1.VolumeSource{
+					Secret: &corev1.SecretVolumeSource{
+						SecretName:  resticSecretName,
+						DefaultMode: ptr.To[int32](0600),
+					},
+				},
+			})
+		}
 		if m.vh.IsCopyMethodDirect() {
 			affinity, err := utils.AffinityFromVolume(ctx, m.client, logger, dataPVC)
 			if err != nil {
@@ -691,4 +717,26 @@ func generateForgetOptions(policy *volsyncv1alpha1.ResticRetainPolicy) string {
 		return defaultForget
 	}
 	return forget
+}
+
+func (m *Mover) ensureSecrets(ctx context.Context) (*string, error) {
+	// If user provided key, use that
+	if m.sshKeys != nil {
+		resticSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      *m.sshKeys,
+				Namespace: m.owner.GetNamespace(),
+			},
+		}
+		fields := []string{"key", "key.pub"}
+		if err := utils.GetAndValidateSecret(ctx, m.client, m.logger, resticSecret, fields...); err != nil {
+			m.logger.Error(err, "SSH keys secret does not contain the proper fields")
+			return nil, err
+		}
+		return m.sshKeys, nil
+	}
+
+	// Nothing to do if nothing provided
+	sshKeys := ""
+	return &sshKeys, nil
 }
