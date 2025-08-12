@@ -54,6 +54,9 @@ declare -a KOPIA
 export KOPIA_CACHE_DIRECTORY="${KOPIA_CACHE_DIR}"
 export KOPIA_LOG_DIR="${KOPIA_CACHE_DIR}/logs"
 
+# Disable update checking
+export KOPIA_CHECK_FOR_UPDATES=false
+
 # Create necessary directories upfront
 mkdir -p "${KOPIA_CACHE_DIR}/logs"
 chmod 755 "${KOPIA_CACHE_DIR}/logs"
