@@ -79,6 +79,18 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - persistentvolumeclaims/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
   - persistentvolumes
   verbs:
   - get
@@ -235,6 +247,18 @@ rules:
 - apiGroups:
   - volsync.backube
   resources:
+  - replicationdestinations/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - volsync.backube
+  resources:
   - replicationdestinations/status
   verbs:
   - get
@@ -244,6 +268,18 @@ rules:
   - volsync.backube
   resources:
   - replicationsources
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - volsync.backube
+  resources:
+  - replicationsources/finalizers
   verbs:
   - create
   - delete
