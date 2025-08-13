@@ -60,19 +60,14 @@ const (
 
 	// Annotation on ReplicationSource or ReplicationDestination to enable running the mover job in debug mode
 	EnableDebugMoverAnnotation = "volsync.backube/enable-debug-mover"
-
-	// Finalizers used to ensure controlled cleanup of resources
-	ReplicationSourceFinalizer      = "volsync.backube/replication-source-cleanup"
-	ReplicationDestinationFinalizer = "volsync.backube/replication-destination-cleanup"
 )
 
 const (
-	ConditionSynchronizing     string = "Synchronizing"
-	SynchronizingReasonSync    string = "SyncInProgress"
-	SynchronizingReasonSched   string = "WaitingForSchedule"
-	SynchronizingReasonManual  string = "WaitingForManual"
-	SynchronizingReasonCleanup string = "CleaningUp"
-	SynchronizingReasonError   string = "Error"
+	ConditionSynchronizing    string = "Synchronizing"
+	SynchronizingReasonSync   string = "SyncInProgress"
+	SynchronizingReasonSched  string = "WaitingForSchedule"
+	SynchronizingReasonManual string = "WaitingForManual"
+	SynchronizingReasonError  string = "Error"
 )
 
 const (
