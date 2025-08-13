@@ -12,7 +12,6 @@ Kopia-based backup
    multi-tenancy
    backup-configuration
    restore-configuration
-   enable_file_deletion
    cross-namespace-restore
    troubleshooting
    custom-ca
@@ -42,6 +41,7 @@ due to its efficient chunking algorithm and support for parallel uploads.
 
 **Compression**: Kopia supports multiple compression algorithms (zstd, gzip, s2)
 with zstd providing better compression ratios and speed compared to Restic's options.
+Compression can be configured per-repository for optimal storage efficiency.
 
 **Concurrent Access**: Kopia safely supports multiple clients writing to the same
 repository simultaneously, while Restic requires careful coordination to avoid
@@ -49,6 +49,12 @@ conflicts.
 
 **Modern Architecture**: Kopia uses a more modern content-addressable storage
 design that enables features like shallow clones and efficient incremental backups.
+
+**Repository Policies**: Kopia provides comprehensive policy configuration including
+retention policies (hourly, daily, weekly, monthly, yearly), compression settings,
+and external policy files via ConfigMap/Secret. External policies support global
+policy files (applied via ``kopia policy set --global``) and repository config files
+for environment variables. Includes JSON validation, 1MB size limits, and safe error handling.
 
 **Actions/Hooks**: Kopia provides built-in support for pre and post snapshot
 actions, making it easier to ensure data consistency for applications like databases.
@@ -136,7 +142,7 @@ Here's a complete example showing how to set up a basic Kopia backup:
      AWS_SECRET_ACCESS_KEY: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
      AWS_S3_ENDPOINT: http://minio.minio.svc.cluster.local:9000
 
-**Step 2: Create backup**
+**Step 2: Create backup with policy**
 
 .. code-block:: yaml
 
@@ -150,6 +156,12 @@ Here's a complete example showing how to set up a basic Kopia backup:
        schedule: "0 2 * * *"  # Daily at 2 AM
      kopia:
        repository: kopia-config
+       # Optional: Define retention policy
+       retain:
+         daily: 7        # Keep 7 daily snapshots
+         weekly: 4       # Keep 4 weekly snapshots
+         monthly: 12     # Keep 12 monthly snapshots
+       compression: "zstd"  # Use zstd compression
 
 **Step 3: Restore when needed**
 
@@ -228,18 +240,15 @@ The Kopia documentation has been organized into focused sections for easier navi
    namespace-based identity management, customization options, and troubleshooting.
 
 :doc:`backup-configuration`
-   Detailed backup setup including ReplicationSource configuration, scheduling,
-   sourcePath and sourcePathOverride features, and backup options.
+   Comprehensive backup setup including ReplicationSource configuration, scheduling,
+   sourcePath and sourcePathOverride features, repository policies (retention,
+   compression, actions), external policy files via ConfigMap/Secret, structured
+   repository configuration, and advanced backup options with full JSON validation.
 
 :doc:`restore-configuration`
    Complete restore operations guide including enhanced error reporting, snapshot discovery,
    ``sourceIdentity`` helper with auto-discovery of PVC names, sourcePathOverride, and
    repository configurations, ``previous`` parameter, point-in-time recovery, and restore options.
-
-:doc:`enable_file_deletion`
-   Comprehensive guide to the ``enableFileDeletion`` feature for ReplicationDestinations.
-   Controls whether destination directories are cleaned before restore to ensure exact
-   snapshot matching. Covers use cases, behavior differences, migration guidance, and best practices.
 
 :doc:`cross-namespace-restore`
    Comprehensive guide for restoring Kopia backups across namespaces. Covers disaster recovery,
@@ -257,6 +266,51 @@ The Kopia documentation has been organized into focused sections for easier navi
 
 :doc:`database_example`
    Step-by-step example of backing up a MySQL database using Kopia.
+
+Feature Implementation Status
+=============================
+
+Quick reference for Kopia feature availability in VolSync:
+
+**Supported Features:**
+
+- Core backup and restore operations
+- All major cloud storage backends (S3, GCS, Azure, etc.)
+- Filesystem repository via PVC (ReplicationSource only)
+- Retention policies (inline configuration)
+- Snapshot actions/hooks (beforeSnapshot, afterSnapshot)
+- Source path selection and overrides
+- Identity management and auto-discovery
+- enableFileDeletion for clean restores
+- Custom CA certificates
+- Point-in-time restore options
+- Multi-tenancy support
+
+**Partially Implemented:**
+
+- **Compression field**: Environment variable is set but not used by the script.
+  Workaround: Use KOPIA_MANUAL_CONFIG in the repository secret or external policy files.
+
+**Supported Features:**
+
+- **External policy files**: ConfigMap/Secret-based policy configuration
+  with JSON validation, 1MB size limits, and comprehensive error handling.
+- **policyConfig field**: Support for ConfigMap, Secret,
+  and inline repository configuration.
+- **Global policy files**: Applied via ``kopia policy set --global`` for retention,
+  compression, and file patterns.
+- **Repository config files**: Set environment variables for actions, speed limits,
+  and other repository settings.
+- **Structured repository config**: Inline JSON configuration for advanced Kopia features.
+
+**Important Notes:**
+
+- ``repositoryPVC`` is only available for ReplicationSource, not ReplicationDestination
+- Both ``AWS_*`` and ``KOPIA_*`` environment variables are supported for backends
+- Compression is set at repository creation and cannot be changed afterward
+
+For detailed status information, see the :doc:`backup-configuration` documentation
+which includes a comprehensive feature implementation table.
 
 Additional Resources
 ===================

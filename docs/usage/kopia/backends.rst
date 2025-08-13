@@ -34,9 +34,21 @@ S3-compatible storage (AWS S3, MinIO, etc.)
      # Optional: specify region
      AWS_REGION: us-west-2
 
-**Alternative S3 Configuration**
+**Environment Variable Variants**
 
-You can also use the new Kopia-specific S3 environment variables for more explicit configuration:
+VolSync supports multiple environment variable formats for S3 configuration. Both standard AWS 
+variables and Kopia-specific variables are supported:
+
+.. note::
+   **Supported S3 Environment Variables:**
+   
+   - **Endpoint Configuration**: Both ``AWS_S3_ENDPOINT`` and ``KOPIA_S3_ENDPOINT`` are supported
+   - **Region Configuration**: ``AWS_REGION``, ``AWS_DEFAULT_REGION``, or ``KOPIA_S3_REGION``
+   - **Credentials**: Standard AWS credential variables (``AWS_ACCESS_KEY_ID``, ``AWS_SECRET_ACCESS_KEY``)
+   - **Bucket**: Can be specified in the repository URL or via ``KOPIA_S3_BUCKET``
+   - **TLS Control**: ``KOPIA_S3_DISABLE_TLS`` for HTTP-only endpoints
+
+**Alternative S3 Configuration Using Kopia-Specific Variables:**
 
 .. code-block:: yaml
 
@@ -48,17 +60,19 @@ You can also use the new Kopia-specific S3 environment variables for more explic
    stringData:
      KOPIA_REPOSITORY: s3://my-bucket/backups
      KOPIA_PASSWORD: my-secure-password
-     # Kopia-specific S3 variables
+     # Kopia-specific S3 variables (alternative to AWS_* variables)
      KOPIA_S3_BUCKET: my-bucket
-     KOPIA_S3_ENDPOINT: minio.example.com:9000
+     KOPIA_S3_ENDPOINT: minio.example.com:9000  # Alternative to AWS_S3_ENDPOINT
      KOPIA_S3_DISABLE_TLS: "true"  # For HTTP endpoints
-     # Standard AWS credentials
+     KOPIA_S3_REGION: us-west-2  # Alternative to AWS_REGION
+     # Standard AWS credentials (required)
      AWS_ACCESS_KEY_ID: AKIAIOSFODNN7EXAMPLE
      AWS_SECRET_ACCESS_KEY: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
-     AWS_DEFAULT_REGION: us-west-2
 
-.. note::
-   The ``KOPIA_S3_*`` variables provide more explicit control over S3 configuration and support nested repository paths. When using ``KOPIA_REPOSITORY: s3://my-bucket/path1/path2``, Kopia will automatically extract the prefix (``path1/path2``) and configure the repository accordingly.
+.. important::
+   When both AWS and KOPIA environment variables are present for the same setting,
+   the Kopia-specific variables typically take precedence. Use one consistent set
+   to avoid confusion.
 
 Filesystem storage
 ~~~~~~~~~~~~~~~~~~
@@ -590,7 +604,7 @@ VolSync's Kopia mover supports a comprehensive set of environment variables for 
    The repository encryption password (required)
 
 ``KOPIA_MANUAL_CONFIG``
-   JSON configuration object for manual repository configuration. When provided, overrides VolSync's automatic repository format configuration. See the :doc:`advanced-features` section for detailed usage.
+   JSON configuration object for manual repository configuration. When provided, overrides VolSync's automatic repository format configuration. This allows direct control over Kopia's repository format settings for advanced use cases.
 
 **S3-Compatible Storage Variables**
 

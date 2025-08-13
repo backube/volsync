@@ -109,11 +109,12 @@ The above will backup to a bucket called ``kopia-repo``. If the same bucket will
 be used for different PVCs or different uses, then make sure to specify a unique
 path under ``kopia-repo``. See `Shared S3 Bucket Notes`_ for more detail.
 
-ReplicationSource with Database Consistency
---------------------------------------------
+ReplicationSource with Database Consistency and Repository Policies
+--------------------------------------------------------------------
 
-Start by configuring the source with database-specific consistency hooks. This example
-demonstrates using Kopia's actions feature to ensure consistent MySQL backups:
+Start by configuring the source with database-specific consistency hooks and comprehensive
+repository policies. This example demonstrates using Kopia's advanced features including
+retention policies, compression, and actions to ensure consistent MySQL backups:
 
 .. code-block:: yaml
 
@@ -130,19 +131,39 @@ demonstrates using Kopia's actions feature to ensure consistent MySQL backups:
       kopia:
         maintenanceIntervalDays: 7
         repository: kopia-config
+        
+        # Repository Retention Policy
+        # Define how many snapshots to keep at different intervals
         retain:
-          daily: 7
-          weekly: 4
-          monthly: 6
-          yearly: 1
-        # Use zstd compression for better performance and space savings
+          hourly: 24      # Keep 24 hourly snapshots (1 day)
+          daily: 7        # Keep 7 daily snapshots (1 week)
+          weekly: 4       # Keep 4 weekly snapshots (1 month)
+          monthly: 6      # Keep 6 monthly snapshots
+          yearly: 1       # Keep 1 yearly snapshot
+        
+        # Compression Configuration
+        # Use zstd for optimal balance of speed and compression ratio
         compression: zstd
+        
+        # Performance Tuning
         # Use multiple parallel streams for faster uploads
         parallelism: 2
-        # Database consistency actions
+        
+        # Database Consistency Actions
+        # These hooks ensure database consistency during backup
         actions:
-          beforeSnapshot: "mysqldump --single-transaction --routines --triggers --all-databases > /data/mysql-backup.sql"
-          afterSnapshot: "rm -f /data/mysql-backup.sql"
+          # Before snapshot: Create consistent database dump
+          beforeSnapshot: |
+            echo "Starting database backup at $(date)" >> /data/backup.log
+            mysqldump --single-transaction --routines --triggers --all-databases > /data/mysql-backup.sql
+            echo "Database dump completed" >> /data/backup.log
+          
+          # After snapshot: Clean up temporary files
+          afterSnapshot: |
+            rm -f /data/mysql-backup.sql
+            echo "Cleanup completed at $(date)" >> /data/backup.log
+        
+        # Use clone for point-in-time consistency
         copyMethod: Clone
 
 In the above ``ReplicationSource`` object:
@@ -153,20 +174,56 @@ In the above ``ReplicationSource`` object:
   `cronspec <https://en.wikipedia.org/wiki/Cron#Overview>`_, making the schedule
   very flexible. In this case, it will take a backup every 30 minutes.
 - The kopia repository configuration is provided via the ``kopia-config`` Secret.
-- ``maintenanceIntervalDays`` defines the interval between Kopia maintenance operations.
-- The ``retain`` settings determine how many backups should be saved in the
-  repository. Read more about `Kopia snapshot policies
-  <https://kopia.io/docs/advanced/policies/>`_.
-- ``compression`` is set to ``zstd`` for optimal compression ratio and speed.
-- ``parallelism`` is set to 2 for better upload performance.
-- The ``actions`` section ensures database consistency by creating a SQL dump
-  before the snapshot and cleaning it up afterward.
+
+**Repository Policy Features:**
+
+- **Retention Policy**: The ``retain`` field defines a comprehensive retention policy:
+  
+  - ``hourly: 24``: Keeps all hourly snapshots for the last 24 hours
+  - ``daily: 7``: Keeps one snapshot per day for the last 7 days
+  - ``weekly: 4``: Keeps one snapshot per week for the last 4 weeks
+  - ``monthly: 6``: Keeps one snapshot per month for the last 6 months
+  - ``yearly: 1``: Keeps one snapshot per year
+  
+  This policy ensures recent changes are captured frequently while older data
+  is retained with decreasing granularity to optimize storage usage.
+
+- **Compression**: ``zstd`` compression is enabled for optimal balance between
+  compression ratio and speed. This typically reduces backup size by 50-70%
+  for database dumps.
+
+- **Performance**: ``parallelism: 2`` enables parallel upload streams for
+  faster backup operations, especially beneficial for large databases.
+
+- **Maintenance**: ``maintenanceIntervalDays: 7`` ensures weekly maintenance
+  runs to enforce retention policies and optimize repository storage.
+
+- **Consistency Actions**: The ``actions`` section defines hooks that run
+  before and after snapshots:
+  
+  - ``beforeSnapshot``: Creates a consistent SQL dump using ``mysqldump --single-transaction``
+  - ``afterSnapshot``: Cleans up temporary files to avoid backing up unnecessary data
+  
+  These actions ensure the backup captures a consistent database state even
+  during active transactions.
 
 .. note::
-   The ``beforeSnapshot`` action runs inside the PVC container and creates a
-   consistent SQL dump using ``mysqldump --single-transaction``. This ensures
-   the backup captures a consistent state of the database even if writes are
-   happening during the backup process.
+   **Database Consistency Best Practices:**
+   
+   - The ``beforeSnapshot`` action uses ``mysqldump --single-transaction`` to
+     create a consistent backup without locking tables
+   - The ``--routines`` and ``--triggers`` flags ensure stored procedures and
+     triggers are included in the backup
+   - Logging timestamps helps track backup duration and troubleshoot issues
+   - The SQL dump is cleaned up after snapshot to avoid storing redundant data
+
+.. tip::
+   **Policy Inheritance:**
+   
+   Repository policies are automatically inherited by all snapshots created
+   from this ReplicationSource. The retention policy is evaluated during
+   maintenance runs, automatically removing snapshots that exceed the defined
+   retention limits. This ensures storage efficiency without manual intervention.
 
 Now, deploy the ``kopia-config`` followed by ``ReplicationSource`` configuration.
 
@@ -203,7 +260,9 @@ To verify the replication has completed, view the ReplicationSource
        lastMaintenance: "2024-01-15T12:00:00Z"
 
 In the above output, the ``lastSyncTime`` shows the time when the last backup
-completed, and ``lastMaintenance`` shows when maintenance was last run.
+completed, and ``lastMaintenance`` shows when maintenance was last run. The
+maintenance operation enforces retention policies, removing old snapshots
+according to the defined retention rules.
 
 -----------------------------------------
 
@@ -227,6 +286,114 @@ repository:
    2024-01-15 18:19:45 UTC k8s-volsync@cluster 01234567890abcdef Path: /data Size: 1.2 GB
 
 There is a snapshot in the kopia repository created by the kopia data mover.
+
+Advanced Policy Configuration (Future Enhancement)
+===================================================
+
+.. warning::
+   External policy file configuration requires mounting policy files via ConfigMap or Secret.
+   The following example shows the planned functionality. Currently, use inline
+   configuration options (retain, compression, actions) in the ReplicationSource spec.
+
+For future complex policy requirements (not yet available):
+
+.. code-block:: yaml
+
+   ---
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: database-kopia-policies
+     namespace: source
+   data:
+     global-policy.json: |
+       {
+         "retention": {
+           "keepLatest": 10,
+           "keepHourly": 48,
+           "keepDaily": 30,
+           "keepWeekly": 8,
+           "keepMonthly": 24,
+           "keepAnnual": 5
+         },
+         "compression": {
+           "compressor": "zstd",
+           "minSize": 1024,
+           "maxSize": 20971520
+         },
+         "actions": {
+           "beforeSnapshotRoot": [
+             {
+               "mode": "essential",
+               "script": "/scripts/pre-backup.sh",
+               "timeout": 300
+             }
+           ],
+           "afterSnapshotRoot": [
+             {
+               "mode": "async",
+               "script": "/scripts/post-backup.sh"
+             }
+           ]
+         },
+         "scheduling": {
+           "intervalSeconds": 3600,
+           "timesOfDay": ["02:00", "14:00", "22:00"]
+         },
+         "errorHandling": {
+           "ignoreFileErrors": true,
+           "ignoreDirectoryErrors": false
+         },
+         "files": {
+           "ignore": [
+             "*.tmp",
+             "*.swp",
+             "lost+found/",
+             ".Trash*/"
+           ],
+           "dotFiles": "include",
+           "oneFileSystem": true
+         }
+       }
+     repository.config: |
+       {
+         "enableActions": true,
+         "permittedActions": [
+           "beforeSnapshotRoot",
+           "afterSnapshotRoot"
+         ]
+       }
+   ---
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: database-source-advanced
+     namespace: source
+   spec:
+     sourcePVC: mysql-pv-claim
+     trigger:
+       schedule: "0 */2 * * *"  # Every 2 hours
+     kopia:
+       repository: kopia-config
+       policyConfig:
+         configMapName: database-kopia-policies
+         globalPolicyFilename: "global-policy.json"
+         repositoryConfigFilename: "repository.config"
+       copyMethod: Clone
+
+**External Policy Benefits:**
+
+- **Fine-grained Control**: Access to all Kopia policy settings
+- **Complex Scheduling**: Define multiple backup times per day
+- **Advanced Filtering**: Exclude specific file patterns from backups
+- **Error Handling**: Configure how to handle backup errors
+- **Action Modes**: Control action execution (essential, async, optional)
+- **Size-based Compression**: Only compress files within specific size ranges
+
+.. note::
+   **Current Status**: External policy files via ConfigMap/Secret are not yet implemented.
+   Use inline configuration options in the ReplicationSource spec for retention policies,
+   compression settings (at repository creation), and snapshot actions.
 
 Restoring the backup
 ====================

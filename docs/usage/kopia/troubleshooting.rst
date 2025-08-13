@@ -9,6 +9,38 @@ This guide provides comprehensive troubleshooting information for Kopia-based ba
 and restore operations in VolSync, with a focus on the enhanced error reporting and
 snapshot discovery features.
 
+Quick Reference: Common Issues
+===============================
+
+This section provides quick solutions to the most common Kopia issues:
+
+.. list-table:: Common Issues Quick Reference
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Issue
+     - Quick Solution
+   * - Compression not working
+     - Known issue: Use KOPIA_MANUAL_CONFIG in repository secret instead of compression field
+   * - No snapshots found
+     - Check requestedIdentity matches source; use availableIdentities to see what's in repository
+   * - repositoryPVC in ReplicationDestination
+     - Not supported - repositoryPVC only works with ReplicationSource
+   * - External policy files not loading
+     - Not implemented - use inline configuration (retain, actions) instead
+   * - enableFileDeletion vs enable_file_deletion
+     - Use camelCase: ``enableFileDeletion`` (not snake_case)
+   * - Partial identity error
+     - Provide both username AND hostname, or use sourceIdentity, or omit both
+   * - S3 endpoint not working
+     - Both AWS_S3_ENDPOINT and KOPIA_S3_ENDPOINT are supported - check which you're using
+   * - Read-only filesystem error
+     - Update VolSync - fix mounts data at /restore/data for destinations
+   * - Retention not working
+     - Check maintenance is running; policies only apply during maintenance
+   * - Wrong data restored
+     - Verify requestedIdentity; check if source used custom username/hostname
+
 Understanding Enhanced Error Reporting
 ======================================
 
@@ -1025,6 +1057,321 @@ To verify you have the fix:
    - An emptyDir volume mounted at `/restore`
 
 If you're still experiencing this issue, ensure your VolSync deployment is up to date.
+
+Repository Policy Troubleshooting
+==================================
+
+Troubleshooting issues related to repository policies, retention, compression, and actions.
+
+Retention Policy Not Working
+-----------------------------
+
+**Symptoms**:
+
+- Old snapshots are not being removed
+- Repository size keeps growing
+- Retention settings seem to be ignored
+
+**Common Causes and Solutions**:
+
+1. **Maintenance Not Running**
+   
+   Retention policies are enforced during maintenance operations.
+   
+   .. code-block:: bash
+   
+      # Check when maintenance last ran
+      kubectl get replicationsource <name> -o jsonpath='{.status.kopia.lastMaintenance}'
+   
+   **Solution**: Ensure ``maintenanceIntervalDays`` is set appropriately:
+   
+   .. code-block:: yaml
+   
+      spec:
+        kopia:
+          maintenanceIntervalDays: 7  # Run weekly
+
+2. **Policy Not Applied**
+   
+   Check if the policy was successfully set:
+   
+   .. code-block:: bash
+   
+      # Check mover pod logs for policy application
+      kubectl logs <mover-pod> | grep -i "policy\|retention"
+   
+   **Solution**: Verify retention configuration syntax:
+   
+   .. code-block:: yaml
+   
+      spec:
+        kopia:
+          retain:
+            hourly: 24    # Must be integer
+            daily: 7      # Not string
+            weekly: 4
+            monthly: 12
+            yearly: 5
+
+3. **Conflicting Policies**
+   
+   External policy files may override inline settings.
+   
+   .. code-block:: bash
+   
+      # Check if external policies are configured
+      kubectl get replicationsource <name> -o jsonpath='{.spec.kopia.policyConfig}'
+   
+   **Solution**: Either use inline OR external policies, not both.
+
+Compression Issues
+------------------
+
+**Problem**: Compression not reducing backup size as expected
+
+**Known Implementation Issue**:
+
+.. warning::
+   The ``compression`` field in the ReplicationSource spec has a known implementation issue.
+   While the KOPIA_COMPRESSION environment variable is set based on this field, it is not
+   actually used by the Kopia shell script during repository creation or operations.
+   This is a limitation in the current implementation.
+
+**Diagnosis**:
+
+.. code-block:: bash
+
+   # Check if compression is configured
+   kubectl get replicationsource <name> -o jsonpath='{.spec.kopia.compression}'
+   
+   # Check mover logs for compression settings
+   kubectl logs <mover-pod> | grep -i compression
+   
+   # Check if KOPIA_COMPRESSION is set (it will be, but not used)
+   kubectl describe pod <mover-pod> | grep KOPIA_COMPRESSION
+
+**Important Notes**:
+
+- The ``compression`` field sets the KOPIA_COMPRESSION environment variable
+- However, this environment variable is **not used** by the shell script
+- Compression is set at **repository creation time only** and cannot be changed
+- To use different compression, you must create a new repository
+- Not all data compresses well (already compressed files, encrypted data)
+
+**Current Workarounds**:
+
+1. **Use KOPIA_MANUAL_CONFIG for compression** (Most Reliable):
+   
+   Add a KOPIA_MANUAL_CONFIG entry to your repository secret with compression settings:
+   
+   .. code-block:: yaml
+   
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: kopia-config
+      stringData:
+        KOPIA_REPOSITORY: s3://my-bucket/backups
+        KOPIA_PASSWORD: my-password
+        # Use manual config to set compression
+        KOPIA_MANUAL_CONFIG: |
+          {
+            "compression": {
+              "compressor": "zstd"
+            }
+          }
+
+2. **Wait for fix**: This is a known issue that may be addressed in future releases
+
+3. **For existing repositories**: You cannot change compression after creation:
+   - Create a new repository with desired compression settings
+   - Migrate data to the new repository
+
+Actions Not Executing
+---------------------
+
+**Problem**: Before/after snapshot actions are not running
+
+**Diagnosis**:
+
+.. code-block:: bash
+
+   # Check if actions are configured
+   kubectl get replicationsource <name> -o yaml | grep -A5 actions
+   
+   # Check mover pod logs for action execution
+   kubectl logs <mover-pod> | grep -i "action\|hook\|before\|after"
+
+**Common Issues**:
+
+1. **Actions Not Enabled in Repository**
+   
+   When using external policy files, ensure actions are enabled:
+   
+   .. code-block:: yaml
+   
+      # In repository.config
+      {
+        "enableActions": true,
+        "permittedActions": [
+          "beforeSnapshotRoot",
+          "afterSnapshotRoot"
+        ]
+      }
+
+2. **Command Not Found**
+   
+   Actions run in the mover container context:
+   
+   .. code-block:: yaml
+   
+      actions:
+        # Bad: assumes mysql client in mover container
+        beforeSnapshot: "mysql -e 'FLUSH TABLES'"
+        
+        # Good: uses commands available in container
+        beforeSnapshot: "sync"  # Flush filesystem buffers
+
+3. **Permission Issues**
+   
+   Actions run with mover pod permissions:
+   
+   .. code-block:: bash
+   
+      # Check mover pod security context
+      kubectl get pod <mover-pod> -o jsonpath='{.spec.securityContext}'
+
+Policy Configuration Not Loading
+---------------------------------
+
+**Problem**: External policy files not being applied
+
+.. warning::
+   External policy file configuration requires proper JSON formatting and file mounting.
+   Use inline configuration options (retain, compression, actions) instead.
+
+**Current Workaround**:
+
+Use inline configuration in the ReplicationSource spec:
+
+.. code-block:: yaml
+
+   spec:
+     kopia:
+       retain:
+         daily: 7
+         weekly: 4
+       compression: "zstd"  # Only for new repositories
+       actions:
+         beforeSnapshot: "sync"
+
+**Note on External Policies**:
+
+External policy files via ConfigMap/Secret are planned for future releases but not yet implemented.
+Currently, only inline configuration options are supported:
+
+- ``retain``: Retention policies (applied during maintenance)
+- ``compression``: Compression algorithm (repository creation only)
+- ``actions``: Before/after snapshot commands
+- ``parallelism``: Number of parallel upload streams
+
+Verifying Policy Application
+-----------------------------
+
+To verify policies are correctly applied:
+
+1. **Check Mover Pod Logs**:
+   
+   .. code-block:: bash
+   
+      # Look for policy-related messages
+      kubectl logs <mover-pod> | grep -E "policy|retention|compression|action"
+
+2. **Direct Repository Inspection** (if accessible):
+   
+   .. code-block:: bash
+   
+      # Connect to repository and check policies
+      kopia repository connect <repository-params>
+      kopia policy show --global
+      kopia policy show <path>
+
+3. **Monitor Maintenance Operations**:
+   
+   .. code-block:: bash
+   
+      # Watch for maintenance runs
+      kubectl get replicationsource <name> -w -o jsonpath='{.status.kopia.lastMaintenance}'
+
+Best Practices for Policy Configuration
+----------------------------------------
+
+1. **Start Simple**: Begin with inline configuration, move to external files only when needed
+2. **Test Policies**: Verify policies work in test environment before production
+3. **Monitor Results**: Check that retention is working as expected
+4. **Document Changes**: Keep track of policy modifications and reasons
+5. **Regular Audits**: Periodically verify policies are still appropriate
+
+Debugging with KOPIA_MANUAL_CONFIG
+-----------------------------------
+
+When features aren't working as expected through the standard configuration fields,
+check if KOPIA_MANUAL_CONFIG can be used as a workaround:
+
+**Checking Current Configuration:**
+
+.. code-block:: bash
+
+   # Check if KOPIA_MANUAL_CONFIG is set in the repository secret
+   kubectl get secret kopia-config -o jsonpath='{.data.KOPIA_MANUAL_CONFIG}' | base64 -d
+   
+   # Check environment variables in the mover pod
+   kubectl describe pod <mover-pod> | grep -A20 "Environment:"
+   
+   # Check mover logs for manual config usage
+   kubectl logs <mover-pod> | grep -i "manual\|config"
+
+**Using KOPIA_MANUAL_CONFIG for Workarounds:**
+
+.. code-block:: yaml
+
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: kopia-config
+   stringData:
+     KOPIA_REPOSITORY: s3://my-bucket/backups
+     KOPIA_PASSWORD: my-password
+     # Use manual config for features with implementation issues
+     KOPIA_MANUAL_CONFIG: |
+       {
+         "compression": {
+           "compressor": "zstd",
+           "min-size": 1000
+         },
+         "splitter": {
+           "algorithm": "DYNAMIC-4M-BUZHASH",
+           "min-size": "1MB",
+           "max-size": "4MB"
+         },
+         "actions": {
+           "before-snapshot-root": "/scripts/pre-backup.sh",
+           "after-snapshot-root": "/scripts/post-backup.sh"
+         }
+       }
+
+**Common KOPIA_MANUAL_CONFIG Use Cases:**
+
+1. **Setting compression** (workaround for compression field issue)
+2. **Advanced splitter configuration** (not exposed in VolSync)
+3. **Custom encryption settings** (beyond basic password)
+4. **Advanced caching parameters** (fine-tuning performance)
+5. **Repository-specific overrides** (special requirements)
+
+.. warning::
+   KOPIA_MANUAL_CONFIG is a low-level configuration option. Use with caution and
+   test thoroughly before applying to production. Some settings may conflict with
+   VolSync's automatic configuration.
 
 Getting Help
 ============

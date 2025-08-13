@@ -1234,23 +1234,55 @@ enableFileDeletion
    destination (except ``lost+found``) are removed before the restore begins, ensuring 
    the restored data exactly matches the snapshot content. When ``false`` (the default), 
    Kopia's standard behavior applies: existing files are overwritten, new files are 
-   created, but extra files not in the snapshot remain untouched. This is useful for:
+   created, but extra files not in the snapshot remain untouched.
    
-   - **Disaster recovery**: Ensuring exact state restoration
+   **Use Cases:**
+   
+   - **Disaster recovery**: Ensuring exact state restoration without leftover files
    - **Test environment refresh**: Cleaning test data before restoring production snapshots
-   - **Clean slate restores**: Removing orphaned or accumulated files
+   - **Clean slate restores**: Removing orphaned or accumulated files from previous restores
+   - **Compliance requirements**: Ensuring no unauthorized data remains after restore
    
-   Example usage:
+   **Important Considerations:**
+   
+   - This operation is destructive - all existing data in the destination will be deleted
+   - The ``lost+found`` directory (if present) is preserved for filesystem integrity
+   - Ensure you have backups if the destination contains important data
+   - The cleaning happens before each restore operation when enabled
+   
+   **Example Usage:**
    
    .. code-block:: yaml
    
+      apiVersion: volsync.backube/v1alpha1
+      kind: ReplicationDestination
+      metadata:
+        name: clean-restore
       spec:
         kopia:
           enableFileDeletion: true  # Clean destination before restore
           destinationPVC: restored-data
           repository: kopia-config
+          sourceIdentity:
+            sourceName: webapp-backup
+            sourceNamespace: production
    
-   See :doc:`enable_file_deletion` for comprehensive documentation on this feature.
+   **Default Behavior (when false or not specified):**
+   
+   Without this flag, Kopia follows its standard restore behavior:
+   
+   - Existing files with the same name are overwritten
+   - New files from the snapshot are created
+   - Extra files not in the snapshot remain untouched
+   - This can lead to a mix of old and new data
+   
+   **When to Use:**
+   
+   - Enable when you need the destination to exactly match the snapshot
+   - Enable for disaster recovery scenarios
+   - Enable when refreshing test/staging environments from production
+   - Disable when you want to preserve existing files not in the backup
+   - Disable when doing partial restores or merging data
 
 repository
    This is the name of the Secret (in the same Namespace) that holds the
@@ -1315,3 +1347,334 @@ shallow
    however the starting snapshot considered will be the first one taken
    before ``restoreAsOf``. This is similar to Restic's ``previous`` option
    but uses Kopia's shallow clone concept.
+
+policyConfig
+   This optional field allows applying external policy files during restore operations.
+   While restore operations typically don't need policy configuration (policies mainly
+   affect backup creation), this can be useful for:
+   
+   - Setting download speed limits during restore
+   - Configuring restore-specific actions
+   - Applying custom repository settings for restore operations
+   
+   The same configuration options as ReplicationSource are available:
+   
+   configMapName
+      Name of a ConfigMap containing policy files (mutually exclusive with secretName)
+   
+   secretName
+      Name of a Secret containing policy files (mutually exclusive with configMapName)
+   
+   globalPolicyFilename
+      Filename for global policy (defaults to "global-policy.json")
+   
+   repositoryConfigFilename
+      Filename for repository config (defaults to "repository.config")
+   
+   repositoryConfig
+      Inline JSON configuration for advanced repository settings
+
+Using External Policies with Restore
+-------------------------------------
+
+While restore operations typically don't require policy configuration (since policies
+primarily affect how backups are created), there are scenarios where applying policies
+during restore can be beneficial.
+
+**Example: Restore with Download Speed Limits**
+
+Limit download speed to prevent network saturation during restore:
+
+.. code-block:: yaml
+
+   ---
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: restore-policies
+   data:
+     repository.config: |
+       {
+         "downloadSpeed": 52428800,
+         "downloadParallelism": 2,
+         "enableActions": true
+       }
+   ---
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: throttled-restore
+   spec:
+     trigger:
+       manual: restore-now
+     kopia:
+       repository: kopia-config
+       destinationPVC: restored-data
+       copyMethod: Direct
+       
+       # Apply policies during restore
+       policyConfig:
+         configMapName: restore-policies
+       
+       sourceIdentity:
+         sourceName: production-backup
+         sourceNamespace: production
+
+**Example: Restore with Pre/Post Actions**
+
+Execute commands before and after restore operations:
+
+.. code-block:: yaml
+
+   ---
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: restore-actions
+   type: Opaque
+   stringData:
+     repository.config: |
+       {
+         "enableActions": true,
+         "actionCommandTimeout": "10m"
+       }
+   ---
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: restore-with-actions
+   spec:
+     trigger:
+       manual: restore-once
+     kopia:
+       repository: kopia-config
+       destinationPVC: database-restored
+       
+       policyConfig:
+         secretName: restore-actions
+       
+       # Actions to prepare and verify restore
+       actions:
+         beforeSnapshot: |
+           echo "Starting restore at $(date)" >> /tmp/restore.log
+           # Stop services that might access the volume
+           pkill -f myapp || true
+         afterSnapshot: |
+           echo "Restore completed at $(date)" >> /tmp/restore.log
+           # Verify restored data
+           test -f /data/critical-file.db || exit 1
+           # Restart services
+           /usr/local/bin/start-app.sh
+       
+       sourceIdentity:
+         sourceName: database-backup
+         sourceNamespace: production
+
+**Example: Advanced Restore with Structured Config**
+
+Use inline JSON configuration for complex restore scenarios:
+
+.. code-block:: yaml
+
+   ---
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: advanced-restore
+   spec:
+     trigger:
+       manual: restore-now
+     kopia:
+       destinationPVC: restored-app
+       copyMethod: Direct
+       
+       # Inline repository configuration for restore
+       policyConfig:
+         repositoryConfig: |
+           {
+             "caching": {
+               "cacheDirectory": "/tmp/restore-cache",
+               "maxCacheSize": 5368709120,
+               "metadataCacheSize": 1073741824
+             },
+             "performance": {
+               "downloadParallelism": 8,
+               "downloadSpeed": 209715200,
+               "bufferSize": 33554432
+             },
+             "verification": {
+               "verifyData": true,
+               "verifyChecksums": true
+             }
+           }
+       
+       # Restore from specific point in time
+       restoreAsOf: "2024-01-15T10:30:00Z"
+       
+       sourceIdentity:
+         sourceName: app-backup
+         sourceNamespace: production
+
+Best Practices for Restore Policies
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+1. **Performance Tuning**:
+   - Use download speed limits to prevent network congestion
+   - Adjust parallelism based on available resources
+   - Configure caching for large restores
+
+2. **Action Scripts**:
+   - Stop services before restore to prevent data corruption
+   - Verify critical files after restore
+   - Send notifications on completion
+
+3. **Security**:
+   - Use Secrets for sensitive configuration
+   - Validate JSON syntax before applying
+   - Keep policy files under 1MB
+
+4. **Testing**:
+   - Test restore policies in non-production first
+   - Monitor restore performance with different settings
+   - Document optimal configurations for different scenarios
+
+Troubleshooting Restore Policies
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Policy Not Applied During Restore**
+
+Check if the policy ConfigMap/Secret exists:
+
+.. code-block:: bash
+
+   kubectl get configmap restore-policies -o yaml
+   kubectl get secret restore-actions -o yaml
+
+**Download Speed Not Limited**
+
+Verify the repository.config is being applied:
+
+.. code-block:: bash
+
+   # Check mover pod logs
+   kubectl logs <restore-pod> | grep -i "download.*speed"
+
+**Actions Not Executing**
+
+Ensure enableActions is set to true:
+
+.. code-block:: bash
+
+   # Check the repository config
+   kubectl get configmap restore-policies -o jsonpath='{.data.repository\.config}' | jq .
+
+**JSON Validation Errors**
+
+Validate JSON syntax:
+
+.. code-block:: bash
+
+   # Extract and validate JSON
+   kubectl get configmap restore-policies -o jsonpath='{.data.repository\.config}' | jq .
+
+Complete Restore Example with All Features
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Here's a comprehensive example combining all restore features with external policies:
+
+.. code-block:: yaml
+
+   # Comprehensive restore policies
+   ---
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: full-restore-policies
+   data:
+     repository.config: |
+       {
+         "enableActions": true,
+         "actionCommandTimeout": "15m",
+         "downloadSpeed": 104857600,
+         "downloadParallelism": 4,
+         "verifyData": true
+       }
+   
+   # Complete restore configuration
+   ---
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: full-featured-restore
+   spec:
+     trigger:
+       manual: restore-now
+     
+     kopia:
+       # Repository auto-discovered from sourceIdentity
+       destinationPVC: production-data-restored
+       copyMethod: Snapshot
+       
+       # Apply external policies
+       policyConfig:
+         configMapName: full-restore-policies
+       
+       # Source identification with auto-discovery
+       sourceIdentity:
+         sourceName: production-backup
+         sourceNamespace: production
+         # sourcePVCName auto-discovered
+         # sourcePathOverride auto-discovered
+         # repository auto-discovered
+       
+       # Point-in-time restore
+       restoreAsOf: "2024-01-15T00:00:00Z"
+       previous: 1  # Use second-newest from that time
+       
+       # Clean destination before restore
+       enableFileDeletion: true
+       
+       # Custom CA if needed
+       customCA:
+         configMapName: custom-ca-bundle
+         key: ca-bundle.pem
+       
+       # Cache configuration
+       cacheCapacity: 5Gi
+       cacheStorageClassName: fast-ssd
+       
+       # Performance settings
+       parallelism: 4
+       
+       # Pre/post restore actions
+       actions:
+         beforeSnapshot: |
+           echo "=== Pre-restore checks ==="
+           df -h /data
+           # Stop application
+           systemctl stop myapp || true
+           # Backup current state
+           tar czf /tmp/pre-restore-backup.tar.gz /data 2>/dev/null || true
+         afterSnapshot: |
+           echo "=== Post-restore validation ==="
+           # Verify critical files
+           test -f /data/app.conf || exit 1
+           test -d /data/database || exit 1
+           # Set permissions
+           chown -R app:app /data
+           # Start application
+           systemctl start myapp
+           echo "Restore completed successfully"
+       
+       # Security context
+       moverSecurityContext:
+         runAsUser: 1000
+         runAsGroup: 1000
+         fsGroup: 1000
+   
+   status:
+     # Status will show:
+     kopia:
+       requestedIdentity: "production-backup-production@production"
+       snapshotsFound: 42
+       latestSnapshotTime: "2024-01-15T12:00:00Z"
