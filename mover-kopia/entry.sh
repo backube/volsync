@@ -339,31 +339,203 @@ function add_manual_config_params {
 }
 
 # Apply policy configuration if available
+# This function handles two types of configuration from mounted ConfigMaps/Secrets:
+# 1. Global policy file (e.g., retention, compression) - applied via 'kopia policy set --global'
+# 2. Repository config file (e.g., actions, speed limits) - sets environment variables
 function apply_policy_config {
+    local policy_applied=0
+    local policy_errors=0
+    
     if [[ -n "${KOPIA_CONFIG_PATH}" && -d "${KOPIA_CONFIG_PATH}" ]]; then
         echo "=== Applying policy configuration ==="
         
         # Apply global policy if available
         if [[ -n "${KOPIA_GLOBAL_POLICY_FILE}" && -f "${KOPIA_GLOBAL_POLICY_FILE}" ]]; then
-            echo "Importing global policy from ${KOPIA_GLOBAL_POLICY_FILE}"
-            if "${KOPIA[@]}" policy import --from-file "${KOPIA_GLOBAL_POLICY_FILE}" --delete-other-policies "(global)"; then
-                echo "Global policy imported successfully"
+            echo "Found global policy file: ${KOPIA_GLOBAL_POLICY_FILE}"
+            
+            # Validate JSON structure first
+            if ! jq . "${KOPIA_GLOBAL_POLICY_FILE}" >/dev/null 2>&1; then
+                echo "ERROR: Invalid JSON in global policy file ${KOPIA_GLOBAL_POLICY_FILE}"
+                echo "Continuing with default policies"
+                ((policy_errors++))
+                return 1
+            fi
+            
+            # Validate file size (max 1MB)
+            local file_size
+            file_size=$(stat -c%s "${KOPIA_GLOBAL_POLICY_FILE}" 2>/dev/null || stat -f%z "${KOPIA_GLOBAL_POLICY_FILE}" 2>/dev/null || echo "0")
+            if [[ ${file_size} -gt 1048576 ]]; then
+                echo "ERROR: Policy file too large (${file_size} bytes > 1MB)"
+                ((policy_errors++))
+                return 1
+            fi
+            
+            echo "JSON validation passed for global policy"
+            
+            # Parse the JSON safely using jq for all operations
+            # This prevents command injection as jq handles the JSON parsing
+            local policy_json
+            if ! policy_json=$(jq -c . "${KOPIA_GLOBAL_POLICY_FILE}" 2>&1); then
+                echo "ERROR: Failed to parse policy JSON: ${policy_json}"
+                ((policy_errors++))
+                return 1
+            fi
+            
+            # Build the policy set command
+            declare -a POLICY_CMD
+            POLICY_CMD=("${KOPIA[@]}" policy set --global)
+            
+            # Parse retention settings safely
+            local hourly daily weekly monthly yearly
+            hourly=$(jq -r '.retention.keepHourly // empty' <<< "${policy_json}" 2>/dev/null || true)
+            daily=$(jq -r '.retention.keepDaily // empty' <<< "${policy_json}" 2>/dev/null || true)
+            weekly=$(jq -r '.retention.keepWeekly // empty' <<< "${policy_json}" 2>/dev/null || true)
+            monthly=$(jq -r '.retention.keepMonthly // empty' <<< "${policy_json}" 2>/dev/null || true)
+            yearly=$(jq -r '.retention.keepYearly // empty' <<< "${policy_json}" 2>/dev/null || true)
+            
+            if [[ -n "${hourly}" && "${hourly}" != "null" ]]; then
+                POLICY_CMD+=(--keep-hourly="${hourly}")
+            fi
+            if [[ -n "${daily}" && "${daily}" != "null" ]]; then
+                POLICY_CMD+=(--keep-daily="${daily}")
+            fi
+            if [[ -n "${weekly}" && "${weekly}" != "null" ]]; then
+                POLICY_CMD+=(--keep-weekly="${weekly}")
+            fi
+            if [[ -n "${monthly}" && "${monthly}" != "null" ]]; then
+                POLICY_CMD+=(--keep-monthly="${monthly}")
+            fi
+            if [[ -n "${yearly}" && "${yearly}" != "null" ]]; then
+                POLICY_CMD+=(--keep-annual="${yearly}")
+            fi
+            
+            # Parse compression settings safely
+            local compression
+            compression=$(jq -r '.compression.compressor // empty' <<< "${policy_json}" 2>/dev/null || true)
+            if [[ -n "${compression}" && "${compression}" != "null" ]]; then
+                # Validate compression algorithm
+                case "${compression}" in
+                    "zstd-fastest"|"zstd-fast"|"zstd"|"zstd-better"|"zstd-best"|"s2-default"|"s2-better"|"s2-best"|"deflate-default"|"deflate-best-speed"|"deflate-best-compression"|"none")
+                        POLICY_CMD+=(--compression="${compression}")
+                        ;;
+                    *)
+                        echo "Warning: Unsupported compression algorithm '${compression}' in policy"
+                        ;;
+                esac
+            fi
+            
+            # Parse snapshot scheduling safely
+            local snapshot_interval
+            snapshot_interval=$(jq -r '.scheduling.interval // empty' <<< "${policy_json}" 2>/dev/null || true)
+            if [[ -n "${snapshot_interval}" && "${snapshot_interval}" != "null" ]]; then
+                POLICY_CMD+=(--snapshot-interval="${snapshot_interval}")
+            fi
+            
+            # Parse file ignore rules safely
+            local ignore_rules
+            ignore_rules=$(jq -r '.files.ignore[]? // empty' <<< "${policy_json}" 2>/dev/null || true)
+            if [[ -n "${ignore_rules}" ]]; then
+                while IFS= read -r rule; do
+                    if [[ -n "${rule}" ]]; then
+                        POLICY_CMD+=(--add-ignore="${rule}")
+                    fi
+                done <<< "${ignore_rules}"
+            fi
+            
+            # Parse dot-file ignore settings safely
+            local ignore_cache_dirs
+            ignore_cache_dirs=$(jq -r '.files.ignoreCacheDirs // empty' <<< "${policy_json}" 2>/dev/null || true)
+            if [[ "${ignore_cache_dirs}" == "true" ]]; then
+                POLICY_CMD+=(--ignore-cache-dirs)
+            elif [[ "${ignore_cache_dirs}" == "false" ]]; then
+                POLICY_CMD+=(--no-ignore-cache-dirs)
+            fi
+            
+            # Apply the global policy
+            if [[ ${#POLICY_CMD[@]} -gt 3 ]]; then
+                echo "Applying global policy settings..."
+                echo "Policy command: ${POLICY_CMD[*]}"
+                if "${POLICY_CMD[@]}" 2>&1; then
+                    echo "Global policy applied successfully"
+                    ((policy_applied++))
+                else
+                    local exit_code=$?
+                    echo "ERROR: Failed to apply global policy settings (exit code: ${exit_code})"
+                    echo "Continuing with existing policies"
+                    ((policy_errors++))
+                fi
             else
-                echo "Warning: Failed to import global policy, continuing with default policies"
+                echo "No valid global policy settings found in file"
             fi
         fi
         
         # Apply repository configuration if available  
         if [[ -n "${KOPIA_REPOSITORY_CONFIG_FILE}" && -f "${KOPIA_REPOSITORY_CONFIG_FILE}" ]]; then
-            echo "Applying repository configuration from ${KOPIA_REPOSITORY_CONFIG_FILE}"
-            # Repository configuration typically includes settings like enableActions
-            # This would need to be parsed and applied appropriately
-            echo "Note: Repository configuration parsing not yet implemented, file found at ${KOPIA_REPOSITORY_CONFIG_FILE}"
+            echo "Found repository configuration file: ${KOPIA_REPOSITORY_CONFIG_FILE}"
+            
+            # Validate JSON structure
+            if ! jq . "${KOPIA_REPOSITORY_CONFIG_FILE}" >/dev/null 2>&1; then
+                echo "ERROR: Invalid JSON in repository config file ${KOPIA_REPOSITORY_CONFIG_FILE}"
+                echo "Continuing without repository configuration"
+                return 1
+            fi
+            
+            # Parse repository config safely
+            local repo_config
+            if ! repo_config=$(jq -c . "${KOPIA_REPOSITORY_CONFIG_FILE}" 2>&1); then
+                echo "ERROR: Failed to parse repository config: ${repo_config}"
+                ((policy_errors++))
+                return 1
+            fi
+            
+            # Parse and apply repository-specific settings
+            # Enable/disable actions safely
+            local enable_actions
+            enable_actions=$(jq -r '.enableActions // empty' <<< "${repo_config}" 2>/dev/null || true)
+            if [[ "${enable_actions}" == "true" ]]; then
+                echo "Actions enabled in repository configuration"
+                export KOPIA_ACTIONS_ENABLED="true"
+            elif [[ "${enable_actions}" == "false" ]]; then
+                echo "Actions disabled in repository configuration"
+                export KOPIA_ACTIONS_ENABLED="false"
+            fi
+            
+            # Parse upload speed limits safely
+            local upload_speed
+            upload_speed=$(jq -r '.uploadSpeed // empty' <<< "${repo_config}" 2>/dev/null || true)
+            if [[ -n "${upload_speed}" && "${upload_speed}" != "null" ]]; then
+                echo "Setting upload speed limit: ${upload_speed}"
+                export KOPIA_UPLOAD_SPEED="${upload_speed}"
+            fi
+            
+            # Parse download speed limits safely
+            local download_speed
+            download_speed=$(jq -r '.downloadSpeed // empty' <<< "${repo_config}" 2>/dev/null || true)
+            if [[ -n "${download_speed}" && "${download_speed}" != "null" ]]; then
+                echo "Setting download speed limit: ${download_speed}"
+                export KOPIA_DOWNLOAD_SPEED="${download_speed}"
+            fi
+            
+            echo "Repository configuration applied"
+            ((policy_applied++))
+        fi
+        
+        # Report summary
+        echo "Policy configuration summary: ${policy_applied} applied, ${policy_errors} errors"
+        
+        # Return failure if all policies failed
+        if [[ ${policy_applied} -eq 0 && ${policy_errors} -gt 0 ]]; then
+            return 1
         fi
     fi
+    
+    return 0
 }
 
 # Apply JSON repository configuration using kopia's native support
+# This handles the KOPIA_STRUCTURED_REPOSITORY_CONFIG environment variable
+# which contains a complete Kopia repository configuration in JSON format
+# that can be used with 'kopia repository connect from-config'
 function apply_json_repository_config {
     if [[ -n "${KOPIA_STRUCTURED_REPOSITORY_CONFIG}" ]]; then
         echo "=== Applying JSON repository configuration ==="
@@ -502,7 +674,8 @@ function ensure_connected {
     echo ""
     
     # Apply policy configuration after connection
-    apply_policy_config
+    # Run this after cache configuration to ensure policies are applied to connected repo
+    apply_policy_config || echo "Warning: Policy configuration had issues but continuing"
 }
 
 function connect_repository {
@@ -947,14 +1120,19 @@ function do_backup {
         SNAPSHOT_CMD+=(--parallel="${KOPIA_PARALLELISM}")
     fi
     
+    # Add upload speed limit if configured
+    if [[ -n "${KOPIA_UPLOAD_SPEED}" ]]; then
+        SNAPSHOT_CMD+=(--upload-speed="${KOPIA_UPLOAD_SPEED}")
+    fi
+    
     # Add source path override if specified
     if [[ -n "${KOPIA_SOURCE_PATH_OVERRIDE}" ]]; then
         echo "Using source path override: ${KOPIA_SOURCE_PATH_OVERRIDE}"
         SNAPSHOT_CMD+=(--override-source="${KOPIA_SOURCE_PATH_OVERRIDE}")
     fi
     
-    # Run before-snapshot action if specified
-    if [[ -n "${KOPIA_BEFORE_SNAPSHOT}" ]]; then
+    # Run before-snapshot action if specified (check if actions are enabled)
+    if [[ -n "${KOPIA_BEFORE_SNAPSHOT}" ]] && [[ "${KOPIA_ACTIONS_ENABLED}" != "false" ]]; then
         if ! execute_action "${KOPIA_BEFORE_SNAPSHOT}" "before-snapshot"; then
             error 1 "Before-snapshot action failed"
         fi
@@ -969,8 +1147,8 @@ function do_backup {
     
     echo "Snapshot created successfully"
     
-    # Run after-snapshot action if specified
-    if [[ -n "${KOPIA_AFTER_SNAPSHOT}" ]]; then
+    # Run after-snapshot action if specified (check if actions are enabled)
+    if [[ -n "${KOPIA_AFTER_SNAPSHOT}" ]] && [[ "${KOPIA_ACTIONS_ENABLED}" != "false" ]]; then
         if ! execute_action "${KOPIA_AFTER_SNAPSHOT}" "after-snapshot"; then
             echo "WARNING: After-snapshot action failed, but snapshot was created successfully"
             # Don't exit here since the snapshot was already created

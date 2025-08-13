@@ -375,14 +375,29 @@ func (m *Mover) validatePolicyConfig(ctx context.Context) (utils.CustomCAObject,
 
 	// Validate JSON format if repositoryConfig is specified
 	if m.policyConfig.RepositoryConfig != nil && *m.policyConfig.RepositoryConfig != "" {
-		if !json.Valid([]byte(*m.policyConfig.RepositoryConfig)) {
+		configStr := *m.policyConfig.RepositoryConfig
+		
+		// Basic size check (1MB limit)
+		const maxPolicySize = 1024 * 1024
+		if len(configStr) > maxPolicySize {
+			return nil, fmt.Errorf("policy configuration too large (%d bytes, max %d)", len(configStr), maxPolicySize)
+		}
+		
+		// Validate JSON syntax
+		if !json.Valid([]byte(configStr)) {
 			return nil, fmt.Errorf("invalid JSON in repositoryConfig")
 		}
-		m.logger.V(1).Info("JSON validation passed for repositoryConfig")
+		
+		m.logger.V(1).Info("Policy configuration validated", "size", len(configStr))
 	}
 
 	// Validate file-based configuration if specified
 	if m.policyConfig.SecretName != "" || m.policyConfig.ConfigMapName != "" {
+		// Ensure only one of SecretName or ConfigMapName is set
+		if m.policyConfig.SecretName != "" && m.policyConfig.ConfigMapName != "" {
+			return nil, fmt.Errorf("only one of secretName or configMapName can be specified for policy configuration")
+		}
+		
 		// Convert KopiaPolicySpec to CustomCASpec for reuse of validation logic
 		policyCASpec := volsyncv1alpha1.CustomCASpec{
 			SecretName:    m.policyConfig.SecretName,
@@ -390,8 +405,28 @@ func (m *Mover) validatePolicyConfig(ctx context.Context) (utils.CustomCAObject,
 			// We don't need to specify a Key since we'll mount the entire ConfigMap/Secret
 		}
 
-		return utils.ValidateCustomCA(ctx, m.client, m.logger,
+		policyObj, err := utils.ValidateCustomCA(ctx, m.client, m.logger,
 			m.owner.GetNamespace(), policyCASpec)
+		if err != nil {
+			return nil, fmt.Errorf("failed to validate policy configuration source: %w", err)
+		}
+		
+		// Log which files are expected to be present
+		globalPolicyFile := m.policyConfig.GlobalPolicyFilename
+		if globalPolicyFile == "" {
+			globalPolicyFile = defaultGlobalPolicyFile
+		}
+		repoConfigFile := m.policyConfig.RepositoryConfigFilename
+		if repoConfigFile == "" {
+			repoConfigFile = defaultRepoConfigFile
+		}
+		
+		m.logger.V(1).Info("Policy configuration validated",
+			"source", fmt.Sprintf("%T", policyObj),
+			"globalPolicyFile", globalPolicyFile,
+			"repoConfigFile", repoConfigFile)
+		
+		return policyObj, nil
 	}
 
 	return nil, nil
@@ -989,16 +1024,33 @@ func (m *Mover) configureFilePolicyConfig(podSpec *corev1.PodSpec, policyConfigO
 		},
 	)
 
-	// Mount the policy configuration files volume
+	// Mount the policy configuration files volume with read-only access
 	podSpec.Containers[0].VolumeMounts =
 		append(podSpec.Containers[0].VolumeMounts, corev1.VolumeMount{
 			Name:      "kopia-config",
 			MountPath: kopiaPolicyMountPath,
+			ReadOnly:  true,
 		})
+	
+	// Get the volume source - this handles both ConfigMap and Secret
+	volumeSource := policyConfigObj.GetVolumeSource("")
+	
+	// Add default mode for proper file permissions
+	if volumeSource.ConfigMap != nil {
+		volumeSource.ConfigMap.DefaultMode = ptr.To[int32](0644)
+	} else if volumeSource.Secret != nil {
+		volumeSource.Secret.DefaultMode = ptr.To[int32](0644)
+	}
+	
 	podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
 		Name:         "kopia-config",
-		VolumeSource: policyConfigObj.GetVolumeSource(""),
+		VolumeSource: volumeSource,
 	})
+	
+	m.logger.V(1).Info("Configured policy files mount",
+		"mountPath", kopiaPolicyMountPath,
+		"globalPolicyFile", globalPolicyFile,
+		"repoConfigFile", repoConfigFile)
 }
 
 // configureRepositoryPVC configures the pod to use a filesystem-based repository
