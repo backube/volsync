@@ -24,7 +24,7 @@ jobs:
           - platform: linux/amd64
             runner: ubuntu-latest
           - platform: linux/arm64
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-latest-arm64-2-core  # GitHub's ARM64 runners
     
     steps:
       - name: Checkout repository
