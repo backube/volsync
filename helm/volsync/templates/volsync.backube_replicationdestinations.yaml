@@ -1453,7 +1453,7 @@ spec:
                       description: |-
                         Username for Kopia repository access.
                         When provided, MUST be used together with Hostname.
-                        Optional: If not specified, defaults to <destination-name>.
+                        Optional: If not specified, defaults to <destination-name>-<namespace>.
                       pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$
                       type: string
                     volumeSnapshotClassName:

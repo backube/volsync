@@ -162,7 +162,6 @@ spec:
         - apiGroups:
           - ""
           resources:
-          - persistentvolumeclaims/finalizers
           - secrets
           - serviceaccounts
           - services
@@ -286,9 +285,7 @@ spec:
           - volsync.backube
           resources:
           - replicationdestinations
-          - replicationdestinations/finalizers
           - replicationsources
-          - replicationsources/finalizers
           verbs:
           - create
           - delete
