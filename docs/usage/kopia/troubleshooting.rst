@@ -1246,34 +1246,60 @@ Policy Configuration Not Loading
 
 **Problem**: External policy files not being applied
 
-.. warning::
-   External policy file configuration requires proper JSON formatting and file mounting.
-   Use inline configuration options (retain, compression, actions) instead.
+**Diagnosis**:
 
-**Current Workaround**:
+.. code-block:: bash
 
-Use inline configuration in the ReplicationSource spec:
+   # Check if policy configuration is specified
+   kubectl get replicationsource <name> -o jsonpath='{.spec.kopia.policyConfig}'
+   
+   # Verify ConfigMap/Secret exists
+   kubectl get configmap <policy-config-name> -n <namespace>
+   kubectl get secret <policy-secret-name> -n <namespace>
+   
+   # Check mover pod logs for policy application
+   kubectl logs <mover-pod> | grep -i "policy.*config"
 
-.. code-block:: yaml
+**Common Solutions**:
 
-   spec:
-     kopia:
-       retain:
-         daily: 7
-         weekly: 4
-       compression: "zstd"  # Only for new repositories
-       actions:
-         beforeSnapshot: "sync"
+1. **Use inline configuration for simple policies**:
 
-**Note on External Policies**:
+   .. code-block:: yaml
 
-External policy files via ConfigMap/Secret are planned for future releases but not yet implemented.
-Currently, only inline configuration options are supported:
+      spec:
+        kopia:
+          retain:
+            daily: 7
+            weekly: 4
+          compression: "zstd"  # Now works reliably
+          actions:
+            beforeSnapshot: "sync"
 
+2. **For complex policies, use external policy files**:
+
+   .. code-block:: yaml
+
+      spec:
+        kopia:
+          policyConfig:
+            configMapName: kopia-policies
+            # Ensure JSON files are valid and properly formatted
+
+**Note on Policy Configuration**:
+
+Both inline and external policy configuration methods are supported:
+
+**Inline configuration** (for simple policies):
 - ``retain``: Retention policies (applied during maintenance)
-- ``compression``: Compression algorithm (repository creation only)
+- ``compression``: Compression algorithm (works reliably)
 - ``actions``: Before/after snapshot commands
 - ``parallelism``: Number of parallel upload streams
+
+**External policy files** (for complex policies):
+- Global policy files via ConfigMap/Secret
+- Repository configuration files
+- JSON validation and 1MB size limits
+- Support for advanced Kopia features
 
 Verifying Policy Application
 -----------------------------

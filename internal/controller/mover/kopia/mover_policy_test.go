@@ -36,23 +36,23 @@ import (
 
 var _ = Describe("Kopia Policy Configuration", func() {
 	var (
-		ctx      context.Context
+		ctx       context.Context
 		k8sClient client.Client
-		mover    *Mover
+		mover     *Mover
 		namespace string
 	)
 
 	BeforeEach(func() {
 		ctx = context.Background()
 		namespace = "test-namespace"
-		
+
 		// Create a fake client
 		k8sClient = fake.NewClientBuilder().Build()
-		
+
 		// Create a basic mover instance
 		mover = &Mover{
-			client:    k8sClient,
-			logger:    zap.New(zap.UseDevMode(true)),
+			client: k8sClient,
+			logger: zap.New(zap.UseDevMode(true)),
 			owner: &volsyncv1alpha1.ReplicationSource{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-source",
@@ -323,6 +323,6 @@ type mockCustomCAObject struct {
 	volumeSource corev1.VolumeSource
 }
 
-func (m *mockCustomCAObject) GetVolumeSource(key string) corev1.VolumeSource {
+func (m *mockCustomCAObject) GetVolumeSource(_ string) corev1.VolumeSource {
 	return m.volumeSource
 }

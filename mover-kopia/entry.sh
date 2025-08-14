@@ -563,6 +563,57 @@ function apply_json_repository_config {
 }
 
 # Connect to or create the repository
+function apply_compression_policy {
+    if [[ -n "${KOPIA_COMPRESSION}" ]]; then
+        echo "=== Applying compression policy ==="
+        
+        # List of valid compression algorithms
+        local valid_algorithms=(
+            "none"
+            "gzip" "gzip-best-speed" "gzip-best-compression"
+            "deflate" "deflate-best-speed" "deflate-best-compression" "deflate-default"
+            "s2-default" "s2-better" "s2-parallel-4" "s2-parallel-8"
+            "zstd" "zstd-fastest" "zstd-better-compression" "zstd-best-compression"
+            "pgzip" "pgzip-best-speed" "pgzip-best-compression"
+        )
+        
+        # Validate compression algorithm
+        local is_valid=false
+        for alg in "${valid_algorithms[@]}"; do
+            if [[ "${KOPIA_COMPRESSION}" == "${alg}" ]]; then
+                is_valid=true
+                break
+            fi
+        done
+        
+        if [[ "${is_valid}" != "true" ]]; then
+            echo "ERROR: Invalid compression algorithm '${KOPIA_COMPRESSION}'"
+            echo "Valid algorithms are: ${valid_algorithms[*]}"
+            return 1
+        fi
+        
+        # Determine the path to set compression policy for
+        local target_path
+        if [[ -n "${KOPIA_SOURCE_PATH_OVERRIDE}" ]]; then
+            target_path="${KOPIA_SOURCE_PATH_OVERRIDE}"
+            echo "Using source path override for compression policy: ${target_path}"
+        else
+            target_path="${DATA_DIR}"
+            echo "Using data directory for compression policy: ${target_path}"
+        fi
+        
+        # Apply compression policy to the specific path
+        echo "Setting compression algorithm '${KOPIA_COMPRESSION}' for path '${target_path}'"
+        if ! "${KOPIA[@]}" policy set "${target_path}" --compression="${KOPIA_COMPRESSION}"; then
+            echo "ERROR: Failed to set compression policy"
+            return 1
+        fi
+        
+        echo "Compression policy applied successfully"
+    fi
+    return 0
+}
+
 function ensure_connected {
     echo "=== Connecting to repository ==="
     
@@ -1107,6 +1158,11 @@ function create_repository {
 function do_backup {
     echo "=== Starting backup ==="
     
+    # Apply compression policy after connection but before backup
+    if ! apply_compression_policy; then
+        error 1 "Failed to apply compression policy"
+    fi
+    
     # Build snapshot command with options
     declare -a SNAPSHOT_CMD
     SNAPSHOT_CMD=("${KOPIA[@]}" "snapshot" "create" "${DATA_DIR}")
@@ -1308,6 +1364,11 @@ function select_snapshot_to_restore {
 
 function do_restore {
     echo "=== Starting restore ==="
+    
+    # Apply compression policy after connection (if set for destination)
+    if ! apply_compression_policy; then
+        error 1 "Failed to apply compression policy"
+    fi
     
     # Check if file deletion is enabled
     if [[ "${KOPIA_ENABLE_FILE_DELETION}" == "true" ]]; then

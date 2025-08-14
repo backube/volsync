@@ -285,11 +285,8 @@ Quick reference for Kopia feature availability in VolSync:
 - Custom CA certificates
 - Point-in-time restore options
 - Multi-tenancy support
-
-**Partially Implemented:**
-
-- **Compression field**: Environment variable is set but not used by the script.
-  Workaround: Use KOPIA_MANUAL_CONFIG in the repository secret or external policy files.
+- **Compression**: Full support for all compression algorithms (zstd, gzip, s2, none, etc.)
+  with per-path policy application and proper integration with kopia policy commands
 
 **Supported Features:**
 

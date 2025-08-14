@@ -265,7 +265,12 @@ type ReplicationSourceKopiaSpec struct {
 	// Retain define the retention policy
 	//+optional
 	Retain *KopiaRetainPolicy `json:"retain,omitempty"`
-	// Compression defines the compression algorithm. Options: zstd, gzip, s2, none
+	// Compression defines the compression algorithm to use for snapshots.
+	// Valid algorithms are: none, gzip, gzip-best-speed, gzip-best-compression,
+	// deflate, deflate-best-speed, deflate-best-compression, deflate-default,
+	// s2-default, s2-better, s2-parallel-4, s2-parallel-8,
+	// zstd, zstd-fastest, zstd-better-compression, zstd-best-compression,
+	// pgzip, pgzip-best-speed, pgzip-best-compression
 	//+optional
 	Compression string `json:"compression,omitempty"`
 	// Parallelism defines the number of parallel upload streams

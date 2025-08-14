@@ -69,6 +69,61 @@ const (
 	operationRestore        = "restore"
 )
 
+// PolicyConfigSecret wraps a Secret for policy configuration mounting
+type PolicyConfigSecret struct {
+	secret *corev1.Secret
+}
+
+// PolicyConfigConfigMap wraps a ConfigMap for policy configuration mounting
+type PolicyConfigConfigMap struct {
+	configMap *corev1.ConfigMap
+}
+
+// GetVolumeSource returns a volume source that mounts the entire Secret
+func (p *PolicyConfigSecret) GetVolumeSource(_ string) corev1.VolumeSource {
+	return corev1.VolumeSource{
+		Secret: &corev1.SecretVolumeSource{
+			SecretName: p.secret.Name,
+		},
+	}
+}
+
+// GetVolumeSource returns a volume source that mounts the entire ConfigMap
+func (p *PolicyConfigConfigMap) GetVolumeSource(_ string) corev1.VolumeSource {
+	return corev1.VolumeSource{
+		ConfigMap: &corev1.ConfigMapVolumeSource{
+			LocalObjectReference: corev1.LocalObjectReference{Name: p.configMap.Name},
+		},
+	}
+}
+
+// validateCompression validates that the compression algorithm is valid for Kopia
+func validateCompression(compression string) error {
+	// Empty string is allowed (means no compression setting)
+	if compression == "" {
+		return nil
+	}
+
+	// List of valid compression algorithms
+	validAlgorithms := []string{
+		"none",
+		"gzip", "gzip-best-speed", "gzip-best-compression",
+		"deflate", "deflate-best-speed", "deflate-best-compression", "deflate-default",
+		"s2-default", "s2-better", "s2-parallel-4", "s2-parallel-8",
+		"zstd", "zstd-fastest", "zstd-better-compression", "zstd-best-compression",
+		"pgzip", "pgzip-best-speed", "pgzip-best-compression",
+	}
+
+	for _, alg := range validAlgorithms {
+		if compression == alg {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("invalid compression algorithm '%s'. Valid algorithms are: %s",
+		compression, strings.Join(validAlgorithms, ", "))
+}
+
 // Mover is the reconciliation logic for the Kopia-based data mover.
 type Mover struct {
 	client                client.Client
@@ -374,62 +429,114 @@ func (m *Mover) validatePolicyConfig(ctx context.Context) (utils.CustomCAObject,
 	}
 
 	// Validate JSON format if repositoryConfig is specified
-	if m.policyConfig.RepositoryConfig != nil && *m.policyConfig.RepositoryConfig != "" {
-		configStr := *m.policyConfig.RepositoryConfig
-		
-		// Basic size check (1MB limit)
-		const maxPolicySize = 1024 * 1024
-		if len(configStr) > maxPolicySize {
-			return nil, fmt.Errorf("policy configuration too large (%d bytes, max %d)", len(configStr), maxPolicySize)
-		}
-		
-		// Validate JSON syntax
-		if !json.Valid([]byte(configStr)) {
-			return nil, fmt.Errorf("invalid JSON in repositoryConfig")
-		}
-		
-		m.logger.V(1).Info("Policy configuration validated", "size", len(configStr))
+	if err := m.validateJSONRepositoryConfig(); err != nil {
+		return nil, err
 	}
 
 	// Validate file-based configuration if specified
 	if m.policyConfig.SecretName != "" || m.policyConfig.ConfigMapName != "" {
-		// Ensure only one of SecretName or ConfigMapName is set
-		if m.policyConfig.SecretName != "" && m.policyConfig.ConfigMapName != "" {
-			return nil, fmt.Errorf("only one of secretName or configMapName can be specified for policy configuration")
-		}
-		
-		// Convert KopiaPolicySpec to CustomCASpec for reuse of validation logic
-		policyCASpec := volsyncv1alpha1.CustomCASpec{
-			SecretName:    m.policyConfig.SecretName,
-			ConfigMapName: m.policyConfig.ConfigMapName,
-			// We don't need to specify a Key since we'll mount the entire ConfigMap/Secret
-		}
-
-		policyObj, err := utils.ValidateCustomCA(ctx, m.client, m.logger,
-			m.owner.GetNamespace(), policyCASpec)
-		if err != nil {
-			return nil, fmt.Errorf("failed to validate policy configuration source: %w", err)
-		}
-		
-		// Log which files are expected to be present
-		globalPolicyFile := m.policyConfig.GlobalPolicyFilename
-		if globalPolicyFile == "" {
-			globalPolicyFile = defaultGlobalPolicyFile
-		}
-		repoConfigFile := m.policyConfig.RepositoryConfigFilename
-		if repoConfigFile == "" {
-			repoConfigFile = defaultRepoConfigFile
-		}
-		
-		m.logger.V(1).Info("Policy configuration validated",
-			"source", fmt.Sprintf("%T", policyObj),
-			"globalPolicyFile", globalPolicyFile,
-			"repoConfigFile", repoConfigFile)
-		
-		return policyObj, nil
+		return m.validateFileBasedPolicyConfig(ctx)
 	}
 
 	return nil, nil
+}
+
+// validateJSONRepositoryConfig validates the JSON format of repository configuration
+func (m *Mover) validateJSONRepositoryConfig() error {
+	if m.policyConfig.RepositoryConfig == nil || *m.policyConfig.RepositoryConfig == "" {
+		return nil
+	}
+
+	configStr := *m.policyConfig.RepositoryConfig
+
+	// Basic size check (1MB limit)
+	const maxPolicySize = 1024 * 1024
+	if len(configStr) > maxPolicySize {
+		return fmt.Errorf("policy configuration too large (%d bytes, max %d)", len(configStr), maxPolicySize)
+	}
+
+	// Validate JSON syntax
+	if !json.Valid([]byte(configStr)) {
+		return fmt.Errorf("invalid JSON in repositoryConfig")
+	}
+
+	m.logger.V(1).Info("Policy configuration validated", "size", len(configStr))
+	return nil
+}
+
+// validateFileBasedPolicyConfig validates file-based policy configuration from Secret/ConfigMap
+func (m *Mover) validateFileBasedPolicyConfig(ctx context.Context) (utils.CustomCAObject, error) {
+	// Ensure only one of SecretName or ConfigMapName is set
+	if m.policyConfig.SecretName != "" && m.policyConfig.ConfigMapName != "" {
+		return nil, fmt.Errorf("only one of secretName or configMapName can be specified for policy configuration")
+	}
+
+	// Validate policy configuration source
+	policyObj, err := m.validatePolicyConfigSource(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Log which files are expected to be present
+	m.logPolicyConfigFiles(policyObj)
+
+	return policyObj, nil
+}
+
+// validatePolicyConfigSource validates the Secret or ConfigMap exists and returns the policy object
+func (m *Mover) validatePolicyConfigSource(ctx context.Context) (utils.CustomCAObject, error) {
+	if m.policyConfig.SecretName != "" {
+		return m.validatePolicySecret(ctx)
+	}
+	if m.policyConfig.ConfigMapName != "" {
+		return m.validatePolicyConfigMap(ctx)
+	}
+	return nil, nil
+}
+
+// validatePolicySecret validates that the policy configuration Secret exists
+func (m *Mover) validatePolicySecret(ctx context.Context) (utils.CustomCAObject, error) {
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      m.policyConfig.SecretName,
+			Namespace: m.owner.GetNamespace(),
+		},
+	}
+	if err := m.client.Get(ctx, client.ObjectKeyFromObject(secret), secret); err != nil {
+		return nil, fmt.Errorf("failed to get policy configuration secret: %w", err)
+	}
+	return &PolicyConfigSecret{secret: secret}, nil
+}
+
+// validatePolicyConfigMap validates that the policy configuration ConfigMap exists
+func (m *Mover) validatePolicyConfigMap(ctx context.Context) (utils.CustomCAObject, error) {
+	configMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      m.policyConfig.ConfigMapName,
+			Namespace: m.owner.GetNamespace(),
+		},
+	}
+	if err := m.client.Get(ctx, client.ObjectKeyFromObject(configMap), configMap); err != nil {
+		return nil, fmt.Errorf("failed to get policy configuration configmap: %w", err)
+	}
+	return &PolicyConfigConfigMap{configMap: configMap}, nil
+}
+
+// logPolicyConfigFiles logs the expected policy configuration files
+func (m *Mover) logPolicyConfigFiles(policyObj utils.CustomCAObject) {
+	globalPolicyFile := m.policyConfig.GlobalPolicyFilename
+	if globalPolicyFile == "" {
+		globalPolicyFile = defaultGlobalPolicyFile
+	}
+	repoConfigFile := m.policyConfig.RepositoryConfigFilename
+	if repoConfigFile == "" {
+		repoConfigFile = defaultRepoConfigFile
+	}
+
+	m.logger.V(1).Info("Policy configuration validated",
+		"source", fmt.Sprintf("%T", policyObj),
+		"globalPolicyFile", globalPolicyFile,
+		"repoConfigFile", repoConfigFile)
 }
 
 func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolumeClaim,
@@ -715,6 +822,7 @@ func (m *Mover) addSourceDestinationEnvVars(envVars []corev1.EnvVar) []corev1.En
 // addSourceEnvVars adds source-specific environment variables
 func (m *Mover) addSourceEnvVars(envVars []corev1.EnvVar) []corev1.EnvVar {
 	if m.compression != "" {
+		// Validation is done in builder.go before creating the mover
 		envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_COMPRESSION", Value: m.compression})
 	}
 	if m.parallelism != nil {
@@ -1031,22 +1139,22 @@ func (m *Mover) configureFilePolicyConfig(podSpec *corev1.PodSpec, policyConfigO
 			MountPath: kopiaPolicyMountPath,
 			ReadOnly:  true,
 		})
-	
+
 	// Get the volume source - this handles both ConfigMap and Secret
 	volumeSource := policyConfigObj.GetVolumeSource("")
-	
+
 	// Add default mode for proper file permissions
 	if volumeSource.ConfigMap != nil {
 		volumeSource.ConfigMap.DefaultMode = ptr.To[int32](0644)
 	} else if volumeSource.Secret != nil {
 		volumeSource.Secret.DefaultMode = ptr.To[int32](0644)
 	}
-	
+
 	podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
 		Name:         "kopia-config",
 		VolumeSource: volumeSource,
 	})
-	
+
 	m.logger.V(1).Info("Configured policy files mount",
 		"mountPath", kopiaPolicyMountPath,
 		"globalPolicyFile", globalPolicyFile,
