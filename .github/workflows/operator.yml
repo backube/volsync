@@ -327,14 +327,15 @@ jobs:
           # - "1.22.17"  # OCP 4.9 (unsupported)
           # - "1.23.17"  # OCP 4.10 (unsupported)
           # - "1.24.15"  # OCP 4.11 (unsupported)
-          - "1.25.11"  # OCP 4.12
-          - "1.26.6"   # OCP 4.13
+          # - "1.25.11"  # OCP 4.12 (unsupported)
+          # - "1.26.6"   # OCP 4.13 (unsupported)
           - "1.27.3"   # ODC 4.14
           - "1.28.0"   # OCP 4.15
           - "1.29.0"   # OCP 4.16
           - "1.30.0"   # OCP 4.17
           - "1.31.0"   # OCP 4.18
           - "1.32.2"   # OCP 4.19
+          - "1.33.1"   # OCP 4.20
         include:
           - os: ubuntu-24.04-arm
             KUBERNETES_VERSIONS: "1.32.2"   # OCP 4.19
