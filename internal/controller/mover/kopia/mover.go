@@ -97,32 +97,6 @@ func (p *PolicyConfigConfigMap) GetVolumeSource(_ string) corev1.VolumeSource {
 	}
 }
 
-// validateCompression validates that the compression algorithm is valid for Kopia
-func validateCompression(compression string) error {
-	// Empty string is allowed (means no compression setting)
-	if compression == "" {
-		return nil
-	}
-
-	// List of valid compression algorithms
-	validAlgorithms := []string{
-		"none",
-		"gzip", "gzip-best-speed", "gzip-best-compression",
-		"deflate", "deflate-best-speed", "deflate-best-compression", "deflate-default",
-		"s2-default", "s2-better", "s2-parallel-4", "s2-parallel-8",
-		"zstd", "zstd-fastest", "zstd-better-compression", "zstd-best-compression",
-		"pgzip", "pgzip-best-speed", "pgzip-best-compression",
-	}
-
-	for _, alg := range validAlgorithms {
-		if compression == alg {
-			return nil
-		}
-	}
-
-	return fmt.Errorf("invalid compression algorithm '%s'. Valid algorithms are: %s",
-		compression, strings.Join(validAlgorithms, ", "))
-}
 
 // Mover is the reconciliation logic for the Kopia-based data mover.
 type Mover struct {

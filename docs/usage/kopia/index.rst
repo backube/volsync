@@ -39,9 +39,12 @@ several advantages:
 **Performance**: Kopia typically provides faster backup and restore operations
 due to its efficient chunking algorithm and support for parallel uploads.
 
-**Compression**: Kopia supports multiple compression algorithms (zstd, gzip, s2)
-with zstd providing better compression ratios and speed compared to Restic's options.
-Compression can be configured per-repository for optimal storage efficiency.
+**Compression**: Kopia supports multiple compression algorithms including s2 variants
+(s2-default, s2-better, s2-parallel-4/8), zstd variants (zstd, zstd-fastest, 
+zstd-better-compression, zstd-best-compression), gzip variants (gzip, gzip-best-speed,
+gzip-best-compression), pgzip (parallel gzip), deflate variants, and lz4.
+ZSTD typically provides the best balance of compression ratio and speed.
+Compression can be configured per-path for optimal storage efficiency.
 
 **Concurrent Access**: Kopia safely supports multiple clients writing to the same
 repository simultaneously, while Restic requires careful coordination to avoid
@@ -285,8 +288,9 @@ Quick reference for Kopia feature availability in VolSync:
 - Custom CA certificates
 - Point-in-time restore options
 - Multi-tenancy support
-- **Compression**: Full support for all compression algorithms (zstd, gzip, s2, none, etc.)
-  with per-path policy application and proper integration with kopia policy commands
+- **Compression**: Full support for all Kopia compression algorithms including s2 variants,
+  zstd variants, gzip/pgzip, deflate, lz4, and none. Compression is configured per-path
+  via policy commands. Note that VolSync doesn't validate algorithms - Kopia handles this
 
 **Supported Features:**
 

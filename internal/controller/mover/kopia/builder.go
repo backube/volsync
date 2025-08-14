@@ -121,12 +121,9 @@ func (kb *Builder) FromSource(client client.Client, logger logr.Logger,
 	// Initialize status fields
 	kb.initializeSourceStatus(source)
 
-	// Validate compression algorithm if specified
-	if err := validateCompression(source.Spec.Kopia.Compression); err != nil {
-		logger.Error(err, "Invalid compression algorithm specified",
-			"compression", source.Spec.Kopia.Compression)
-		return nil, err
-	}
+	// No longer validating compression algorithm here - Kopia will validate it
+	// This provides better flexibility and ensures we support all current
+	// and future Kopia compression algorithms without maintenance burden
 
 	// Create volume handler
 	vh, err := kb.createVolumeHandlerForSource(client, eventRecorder, source)
