@@ -55,7 +55,6 @@ func setConditionScheduled(r ReplicationMachine, _ logr.Logger) {
 		})
 }
 
-
 func setConditionError(r ReplicationMachine, _ logr.Logger, err error) {
 	apimeta.SetStatusCondition(r.Conditions(),
 		metav1.Condition{

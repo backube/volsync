@@ -409,14 +409,7 @@ When not specified, Kopia uses its default retention policy.
 Inline Compression Configuration
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. warning::
-   **Known Implementation Issue**: The ``compression`` field currently has implementation 
-   limitations. While the KOPIA_COMPRESSION environment variable is set based on this field,
-   it is not actually used by the Kopia shell script during repository creation or snapshot
-   operations. Compression settings only work reliably when configured through the 
-   KOPIA_MANUAL_CONFIG JSON configuration.
-
-Configure compression algorithm for better storage efficiency:
+Configure compression algorithm for better storage efficiency. The compression field is now fully functional and properly applies compression policies via ``kopia policy set`` commands:
 
 .. code-block:: yaml
 
@@ -430,21 +423,23 @@ Configure compression algorithm for better storage efficiency:
        schedule: "0 2 * * *"
      kopia:
        repository: kopia-config
-       compression: "zstd"  # Options: zstd, gzip, s2, none
-       # Note: Due to implementation issues, this may not work as expected
+       compression: "zstd"  # Now works as expected!
 
-**Compression Options (when working):**
+**Supported Compression Algorithms:**
 
 - ``zstd``: Best balance of speed and compression ratio (recommended)
 - ``gzip``: Traditional compression, good compatibility
+- ``deflate``: Standard deflate compression
 - ``s2``: Fast compression with reasonable ratio
+- ``pgzip``: Parallel gzip for improved performance
 - ``none``: No compression (fastest but uses more storage)
 
-**Current Workaround:**
+**How Compression Works:**
 
-To reliably set compression, use the KOPIA_MANUAL_CONFIG environment variable in your
-repository secret with appropriate JSON configuration. See the troubleshooting section
-for details.
+- Compression is applied **per-path**, not globally
+- The direct ``compression`` field takes precedence over manual JSON configuration
+- Different ReplicationSources can use different compression settings
+- Compression policies are set via ``kopia policy set`` commands during backup operations
 
 .. note::
    Compression algorithm is set when the repository is first created and cannot be changed afterward. To use a different compression algorithm, you must create a new repository.
@@ -1258,8 +1253,8 @@ partially working, or planned for future releases:
      - Supported
      - Support for custom TLS certificates
    * - Compression Field
-     - ⚠️ Partially Implemented
-     - Environment variable set but not used by script; use KOPIA_MANUAL_CONFIG instead
+     - Supported
+     - Full support for all compression algorithms with per-path policy application
    * - External Policy Files
      - Supported
      - ConfigMap/Secret policy files with JSON validation and 1MB size limit
@@ -1300,7 +1295,6 @@ partially working, or planned for future releases:
 **Legend:**
 
 - ✅ **Supported**: Feature works as documented
-- ⚠️ **Partially Implemented**: Feature has known limitations or issues
 - ❌ **Not Implemented**: Planned feature not yet available
 
 .. note::

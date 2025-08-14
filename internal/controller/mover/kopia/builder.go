@@ -121,6 +121,13 @@ func (kb *Builder) FromSource(client client.Client, logger logr.Logger,
 	// Initialize status fields
 	kb.initializeSourceStatus(source)
 
+	// Validate compression algorithm if specified
+	if err := validateCompression(source.Spec.Kopia.Compression); err != nil {
+		logger.Error(err, "Invalid compression algorithm specified",
+			"compression", source.Spec.Kopia.Compression)
+		return nil, err
+	}
+
 	// Create volume handler
 	vh, err := kb.createVolumeHandlerForSource(client, eventRecorder, source)
 	if err != nil {
@@ -464,7 +471,7 @@ func sanitizeForIdentifier(input string, allowUnderscore, allowDots bool) string
 //
 // Note: Username uniqueness is ensured by hostname (namespace) + username (object name).
 // Kubernetes prevents duplicate object names within a namespace, ensuring overall identity uniqueness.
-func generateUsername(username *string, objectName string, namespace string) string {
+func generateUsername(username *string, objectName string, _ string) string {
 	if username != nil && *username != "" {
 		return *username
 	}

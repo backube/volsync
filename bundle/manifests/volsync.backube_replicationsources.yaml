@@ -128,8 +128,13 @@ spec:
                     pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                     x-kubernetes-int-or-string: true
                   compression:
-                    description: 'Compression defines the compression algorithm. Options:
-                      zstd, gzip, s2, none'
+                    description: |-
+                      Compression defines the compression algorithm to use for snapshots.
+                      Valid algorithms are: none, gzip, gzip-best-speed, gzip-best-compression,
+                      deflate, deflate-best-speed, deflate-best-compression, deflate-default,
+                      s2-default, s2-better, s2-parallel-4, s2-parallel-8,
+                      zstd, zstd-fastest, zstd-better-compression, zstd-best-compression,
+                      pgzip, pgzip-best-speed, pgzip-best-compression
                     type: string
                   copyMethod:
                     description: |-
