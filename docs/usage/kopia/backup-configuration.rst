@@ -442,7 +442,7 @@ Configure compression algorithm for better storage efficiency. The compression f
 - Compression policies are set via ``kopia policy set`` commands during backup operations
 
 .. note::
-   Compression algorithm is set when the repository is first created and cannot be changed afterward. To use a different compression algorithm, you must create a new repository.
+   Compression can be changed at any time using Kopia's policy system. Each source path can have its own compression policy, allowing different compression algorithms for different ReplicationSources within the same repository. Changes take effect on the next snapshot.
 
 Snapshot Actions (Hooks)
 ~~~~~~~~~~~~~~~~~~~~~~~~
