@@ -518,7 +518,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 		}
 		if resticSecretName != "" {
 			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
-				Name: "SSH_KEYS",
+				Name:  "SSH_KEYS",
 				Value: "true",
 			})
 			// Mount the custom CA certificate
@@ -526,6 +526,9 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 				append(podSpec.Containers[0].VolumeMounts, corev1.VolumeMount{
 					Name:      "keys",
 					MountPath: "/keys",
+				}, corev1.VolumeMount{
+					Name:      "tempsshdir",
+					MountPath: "/root/.ssh",
 				})
 			podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
 				Name: "keys", VolumeSource: corev1.VolumeSource{
@@ -534,6 +537,10 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 						DefaultMode: ptr.To[int32](0600),
 					},
 				},
+			}, corev1.Volume{Name: "tempsshdir", VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{
+					Medium: corev1.StorageMediumMemory,
+				}},
 			})
 		}
 		if m.vh.IsCopyMethodDirect() {
