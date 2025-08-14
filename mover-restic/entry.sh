@@ -62,7 +62,7 @@ Host *
   # Enable protocol-level keepalive to detect connection failure
   ServerAliveCountMax 4
   ServerAliveInterval 30
-  # We don't know the key of the server, so be strict
+  # We don't know the key of the server
   StrictHostKeyChecking no
   # Using protocol-level, so we don't need TCP-level
   TCPKeepAlive no
