@@ -808,66 +808,9 @@ func TestCompressionEnvironmentVariable(t *testing.T) {
 	}
 }
 
-// TestCompressionValidation tests compression algorithm validation
-func TestCompressionValidation(t *testing.T) {
-	tests := getCompressionValidationTestCases()
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			validateCompressionTestCase(t, tt)
-		})
-	}
-}
-
-// getCompressionValidationTestCases returns test cases for compression validation
-func getCompressionValidationTestCases() []struct {
-	name        string
-	compression string
-	wantErr     bool
-} {
-	return []struct {
-		name        string
-		compression string
-		wantErr     bool
-	}{
-		// Valid compression algorithms
-		{"empty compression allowed", "", false},
-		{"none compression", "none", false},
-		{"gzip compression", "gzip", false},
-		{"gzip-best-speed compression", "gzip-best-speed", false},
-		{"gzip-best-compression", "gzip-best-compression", false},
-		{"deflate compression", "deflate", false},
-		{"deflate-best-speed", "deflate-best-speed", false},
-		{"deflate-best-compression", "deflate-best-compression", false},
-		{"deflate-default", "deflate-default", false},
-		{"s2-default compression", "s2-default", false},
-		{"s2-better compression", "s2-better", false},
-		{"s2-parallel-4", "s2-parallel-4", false},
-		{"s2-parallel-8", "s2-parallel-8", false},
-		{"zstd compression", "zstd", false},
-		{"zstd-fastest", "zstd-fastest", false},
-		{"zstd-better-compression", "zstd-better-compression", false},
-		{"zstd-best-compression", "zstd-best-compression", false},
-		{"pgzip compression", "pgzip", false},
-		{"pgzip-best-speed", "pgzip-best-speed", false},
-		{"pgzip-best-compression", "pgzip-best-compression", false},
-		// Invalid compression algorithms
-		{"invalid compression algorithm", "invalid-algo", true},
-		{"lz4 not supported", "lz4", true},
-	}
-}
-
-// validateCompressionTestCase runs a single compression validation test case
-func validateCompressionTestCase(t *testing.T, testCase struct {
-	name        string
-	compression string
-	wantErr     bool
-}) {
-	err := validateCompression(testCase.compression)
-	if (err != nil) != testCase.wantErr {
-		t.Errorf("validateCompression() error = %v, wantErr %v", err, testCase.wantErr)
-	}
-}
+// Compression validation tests have been removed.
+// Compression values are passed directly to Kopia without validation.
+// Kopia handles validation of the compression algorithm and provides clear error messages.
 
 // TestKopiaRetentionPolicy tests retention policy settings
 func TestKopiaRetentionPolicy(t *testing.T) {

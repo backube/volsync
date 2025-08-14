@@ -427,11 +427,46 @@ Configure compression algorithm for better storage efficiency. The compression f
 
 **Supported Compression Algorithms:**
 
-- ``zstd``: Best balance of speed and compression ratio (recommended)
-- ``gzip``: Traditional compression, good compatibility
-- ``deflate``: Standard deflate compression
-- ``s2``: Fast compression with reasonable ratio
-- ``pgzip``: Parallel gzip for improved performance
+Note: Validation isn't performed on compression algorithm input - Kopia handles validation. The list may change as Kopia adds new algorithms. Users can use ``kopia benchmark compression`` to test which algorithm works best for their data.
+
+Based on the official Kopia documentation:
+
+**S2 variants** (Snappy/S2 compression):
+
+- ``s2-default``: Default S2 compression
+- ``s2-better``: Better compression ratio, slightly slower
+- ``s2-parallel-4``: Parallel compression with 4 threads
+- ``s2-parallel-8``: Parallel compression with 8 threads
+- Note: ``s2-parallel-n`` supports various concurrency levels
+
+**ZSTD variants** (Zstandard compression - recommended):
+
+- ``zstd``: Standard zstd compression (good balance)
+- ``zstd-fastest``: Fastest zstd mode, lower compression
+- ``zstd-better-compression``: Better compression ratio
+- ``zstd-best-compression``: Maximum compression ratio
+
+**GZIP variants** (Traditional gzip):
+
+- ``gzip``: Standard gzip compression
+- ``gzip-best-speed``: Fastest gzip mode
+- ``gzip-best-compression``: Maximum gzip compression
+
+**PGZIP variants** (Parallel gzip):
+
+- ``pgzip``: Parallel gzip compression
+- ``pgzip-best-speed``: Fastest parallel gzip mode
+- ``pgzip-best-compression``: Maximum parallel gzip compression
+
+**DEFLATE variants**:
+
+- ``deflate-best-speed``: Fastest deflate mode
+- ``deflate-default``: Standard deflate compression
+- ``deflate-best-compression``: Maximum deflate compression
+
+**Other algorithms**:
+
+- ``lz4``: Very fast compression with reasonable ratio
 - ``none``: No compression (fastest but uses more storage)
 
 **How Compression Works:**

@@ -257,16 +257,10 @@ function add_manual_config_params {
             encryption_algorithm=$(echo "${KOPIA_MANUAL_ENCRYPTION_CONFIG}" | jq -r '.algorithm // empty')
             
             if [[ -n "${encryption_algorithm}" && "${encryption_algorithm}" != "null" ]]; then
-                # Validate encryption algorithm against allowed values
-                case "${encryption_algorithm}" in
-                    "CHACHA20-POLY1305"|"AES256-GCM"|"AES192-GCM"|"AES128-GCM")
-                        echo "  Using encryption algorithm: ${encryption_algorithm}"
-                        cmd_array+=(--encryption="${encryption_algorithm}")
-                        ;;
-                    *)
-                        echo "  WARNING: Unsupported encryption algorithm '${encryption_algorithm}', using default"
-                        ;;
-                esac
+                # Pass encryption algorithm directly to Kopia without validation
+                # Kopia will validate and provide clear error messages if invalid
+                echo "  Using encryption algorithm: ${encryption_algorithm}"
+                cmd_array+=(--encryption="${encryption_algorithm}")
             fi
         fi
         
@@ -281,16 +275,10 @@ function add_manual_config_params {
             compression_max_size=$(echo "${KOPIA_MANUAL_COMPRESSION_CONFIG}" | jq -r '.maxSize // empty')
             
             if [[ -n "${compression_algorithm}" && "${compression_algorithm}" != "null" ]]; then
-                # Validate compression algorithm against common Kopia options
-                case "${compression_algorithm}" in
-                    "ZSTD-FASTEST"|"ZSTD-FAST"|"ZSTD-DEFAULT"|"ZSTD-BETTER"|"ZSTD-BEST"|"S2-DEFAULT"|"S2-BETTER"|"S2-BEST"|"DEFLATE-DEFAULT"|"DEFLATE-BEST-SPEED"|"DEFLATE-BEST-COMPRESSION"|"none")
-                        echo "  Using compression algorithm: ${compression_algorithm}"
-                        cmd_array+=(--compression="${compression_algorithm}")
-                        ;;
-                    *)
-                        echo "  WARNING: Unsupported compression algorithm '${compression_algorithm}', using default"
-                        ;;
-                esac
+                # Pass compression algorithm directly to Kopia without validation
+                # Kopia will validate and provide clear error messages if invalid
+                echo "  Using compression algorithm: ${compression_algorithm}"
+                cmd_array+=(--compression="${compression_algorithm}")
             fi
             
             if [[ -n "${compression_min_size}" && "${compression_min_size}" != "null" ]]; then
@@ -318,16 +306,10 @@ function add_manual_config_params {
             splitter_algorithm=$(echo "${KOPIA_MANUAL_SPLITTER_CONFIG}" | jq -r '.algorithm // empty')
             
             if [[ -n "${splitter_algorithm}" && "${splitter_algorithm}" != "null" ]]; then
-                # Validate splitter algorithm against common Kopia options
-                case "${splitter_algorithm}" in
-                    "DYNAMIC-4M-BUZHASH"|"DYNAMIC-8M-BUZHASH"|"DYNAMIC-16M-BUZHASH"|"DYNAMIC-32M-BUZHASH"|"FIXED-1M"|"FIXED-2M"|"FIXED-4M"|"FIXED-8M"|"FIXED-16M"|"FIXED-32M")
-                        echo "  Using splitter algorithm: ${splitter_algorithm}"
-                        cmd_array+=(--object-splitter="${splitter_algorithm}")
-                        ;;
-                    *)
-                        echo "  WARNING: Unsupported splitter algorithm '${splitter_algorithm}', using default"
-                        ;;
-                esac
+                # Pass splitter algorithm directly to Kopia without validation
+                # Kopia will validate and provide clear error messages if invalid
+                echo "  Using splitter algorithm: ${splitter_algorithm}"
+                cmd_array+=(--object-splitter="${splitter_algorithm}")
             fi
         fi
         
@@ -413,15 +395,9 @@ function apply_policy_config {
             local compression
             compression=$(jq -r '.compression.compressor // empty' <<< "${policy_json}" 2>/dev/null || true)
             if [[ -n "${compression}" && "${compression}" != "null" ]]; then
-                # Validate compression algorithm
-                case "${compression}" in
-                    "zstd-fastest"|"zstd-fast"|"zstd"|"zstd-better"|"zstd-best"|"s2-default"|"s2-better"|"s2-best"|"deflate-default"|"deflate-best-speed"|"deflate-best-compression"|"none")
-                        POLICY_CMD+=(--compression="${compression}")
-                        ;;
-                    *)
-                        echo "Warning: Unsupported compression algorithm '${compression}' in policy"
-                        ;;
-                esac
+                # Pass compression algorithm directly to Kopia without validation
+                # Kopia will validate and provide clear error messages if invalid
+                POLICY_CMD+=(--compression="${compression}")
             fi
             
             # Parse snapshot scheduling safely
@@ -567,30 +543,9 @@ function apply_compression_policy {
     if [[ -n "${KOPIA_COMPRESSION}" ]]; then
         echo "=== Applying compression policy ==="
         
-        # List of valid compression algorithms
-        local valid_algorithms=(
-            "none"
-            "gzip" "gzip-best-speed" "gzip-best-compression"
-            "deflate" "deflate-best-speed" "deflate-best-compression" "deflate-default"
-            "s2-default" "s2-better" "s2-parallel-4" "s2-parallel-8"
-            "zstd" "zstd-fastest" "zstd-better-compression" "zstd-best-compression"
-            "pgzip" "pgzip-best-speed" "pgzip-best-compression"
-        )
-        
-        # Validate compression algorithm
-        local is_valid=false
-        for alg in "${valid_algorithms[@]}"; do
-            if [[ "${KOPIA_COMPRESSION}" == "${alg}" ]]; then
-                is_valid=true
-                break
-            fi
-        done
-        
-        if [[ "${is_valid}" != "true" ]]; then
-            echo "ERROR: Invalid compression algorithm '${KOPIA_COMPRESSION}'"
-            echo "Valid algorithms are: ${valid_algorithms[*]}"
-            return 1
-        fi
+        # No validation needed - Kopia will validate the algorithm
+        # This provides better flexibility and ensures we support all current
+        # and future Kopia compression algorithms without maintenance
         
         # Determine the path to set compression policy for
         local target_path
@@ -606,6 +561,7 @@ function apply_compression_policy {
         echo "Setting compression algorithm '${KOPIA_COMPRESSION}' for path '${target_path}'"
         if ! "${KOPIA[@]}" policy set "${target_path}" --compression="${KOPIA_COMPRESSION}"; then
             echo "ERROR: Failed to set compression policy"
+            echo "Note: Kopia will validate the compression algorithm and provide specific error messages"
             return 1
         fi
         

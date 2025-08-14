@@ -130,11 +130,17 @@ spec:
                   compression:
                     description: |-
                       Compression defines the compression algorithm to use for snapshots.
-                      Valid algorithms are: none, gzip, gzip-best-speed, gzip-best-compression,
-                      deflate, deflate-best-speed, deflate-best-compression, deflate-default,
-                      s2-default, s2-better, s2-parallel-4, s2-parallel-8,
-                      zstd, zstd-fastest, zstd-better-compression, zstd-best-compression,
-                      pgzip, pgzip-best-speed, pgzip-best-compression
+                      Note: Validation isn't performed on compression algorithm input - Kopia handles validation.
+                      The list may change as Kopia adds new algorithms.
+                      Users can use 'kopia benchmark compression' to test which algorithm works best for their data.
+
+                      Supported algorithms (as of Kopia documentation):
+                      - s2 variants: s2-default, s2-better, s2-parallel-4, s2-parallel-8 (s2-parallel-n supports various concurrency levels)
+                      - zstd variants: zstd (standard), zstd-fastest, zstd-better-compression, zstd-best-compression
+                      - gzip variants: gzip, gzip-best-speed, gzip-best-compression
+                      - pgzip variants (parallel gzip): pgzip, pgzip-best-speed, pgzip-best-compression
+                      - deflate variants: deflate-best-speed, deflate-default, deflate-best-compression
+                      - Other: lz4, none (no compression)
                     type: string
                   copyMethod:
                     description: |-
