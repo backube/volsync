@@ -338,7 +338,7 @@ jobs:
           - "1.33.1"   # OCP 4.20
         include:
           - os: ubuntu-24.04-arm
-            KUBERNETES_VERSIONS: "1.32.2"   # OCP 4.19
+            KUBERNETES_VERSIONS: "1.33.1"   # OCP 4.20
     env:
       KUBECONFIG: /tmp/kubeconfig
       KUBERNETES_VERSION: ${{ matrix.KUBERNETES_VERSIONS }}
