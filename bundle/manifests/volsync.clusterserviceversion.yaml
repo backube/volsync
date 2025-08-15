@@ -55,8 +55,8 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2025-08-20T15:32:39Z"
-    olm.skipRange: ">=0.4.0 <0.14.0"
+    createdAt: "2025-08-28T19:57:25Z"
+    olm.skipRange: '>=0.4.0 <0.14.0'
     operators.operatorframework.io/builder: operator-sdk-v1.33.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
   name: volsync.v0.14.0
@@ -65,21 +65,19 @@ spec:
   apiservicedefinitions: {}
   customresourcedefinitions:
     owned:
-      - description:
-          A ReplicationDestination is a VolSync resource that you can use
-          to define the destination of a VolSync replication or synchronization.
-        displayName: Replication Destination
-        kind: ReplicationDestination
-        name: replicationdestinations.volsync.backube
-        version: v1alpha1
-      - description:
-          A ReplicationSource is a VolSync resource that you can use to define
-          the source PVC and replication mover type, enabling you to replicate or synchronize
-          PVC data to a remote location.
-        displayName: Replication Source
-        kind: ReplicationSource
-        name: replicationsources.volsync.backube
-        version: v1alpha1
+    - description: A ReplicationDestination is a VolSync resource that you can use
+        to define the destination of a VolSync replication or synchronization.
+      displayName: Replication Destination
+      kind: ReplicationDestination
+      name: replicationdestinations.volsync.backube
+      version: v1alpha1
+    - description: A ReplicationSource is a VolSync resource that you can use to define
+        the source PVC and replication mover type, enabling you to replicate or synchronize
+        PVC data to a remote location.
+      displayName: Replication Source
+      kind: ReplicationSource
+      name: replicationsources.volsync.backube
+      version: v1alpha1
   description: |-
     Asynchronous volume replication for Kubernetes CSI storage
 
@@ -130,376 +128,376 @@ spec:
       to securely and efficiently transfer data.
   displayName: VolSync
   icon:
-    - base64data: PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxOTIgMTQ1Ij48ZGVmcz48c3R5bGU+LmNscy0xe2ZpbGw6I2UwMDt9PC9zdHlsZT48L2RlZnM+PHRpdGxlPlJlZEhhdC1Mb2dvLUhhdC1Db2xvcjwvdGl0bGU+PHBhdGggZD0iTTE1Ny43Nyw2Mi42MWExNCwxNCwwLDAsMSwuMzEsMy40MmMwLDE0Ljg4LTE4LjEsMTcuNDYtMzAuNjEsMTcuNDZDNzguODMsODMuNDksNDIuNTMsNTMuMjYsNDIuNTMsNDRhNi40Myw2LjQzLDAsMCwxLC4yMi0xLjk0bC0zLjY2LDkuMDZhMTguNDUsMTguNDUsMCwwLDAtMS41MSw3LjMzYzAsMTguMTEsNDEsNDUuNDgsODcuNzQsNDUuNDgsMjAuNjksMCwzNi40My03Ljc2LDM2LjQzLTIxLjc3LDAtMS4wOCwwLTEuOTQtMS43My0xMC4xM1oiLz48cGF0aCBjbGFzcz0iY2xzLTEiIGQ9Ik0xMjcuNDcsODMuNDljMTIuNTEsMCwzMC42MS0yLjU4LDMwLjYxLTE3LjQ2YTE0LDE0LDAsMCwwLS4zMS0zLjQybC03LjQ1LTMyLjM2Yy0xLjcyLTcuMTItMy4yMy0xMC4zNS0xNS43My0xNi42QzEyNC44OSw4LjY5LDEwMy43Ni41LDk3LjUxLjUsOTEuNjkuNSw5MCw4LDgzLjA2LDhjLTYuNjgsMC0xMS42NC01LjYtMTcuODktNS42LTYsMC05LjkxLDQuMDktMTIuOTMsMTIuNSwwLDAtOC40MSwyMy43Mi05LjQ5LDI3LjE2QTYuNDMsNi40MywwLDAsMCw0Mi41Myw0NGMwLDkuMjIsMzYuMywzOS40NSw4NC45NCwzOS40NU0xNjAsNzIuMDdjMS43Myw4LjE5LDEuNzMsOS4wNSwxLjczLDEwLjEzLDAsMTQtMTUuNzQsMjEuNzctMzYuNDMsMjEuNzdDNzguNTQsMTA0LDM3LjU4LDc2LjYsMzcuNTgsNTguNDlhMTguNDUsMTguNDUsMCwwLDEsMS41MS03LjMzQzIyLjI3LDUyLC41LDU1LC41LDc0LjIyYzAsMzEuNDgsNzQuNTksNzAuMjgsMTMzLjY1LDcwLjI4LDQ1LjI4LDAsNTYuNy0yMC40OCw1Ni43LTM2LjY1LDAtMTIuNzItMTEtMjcuMTYtMzAuODMtMzUuNzgiLz48L3N2Zz4=
-      mediatype: image/svg+xml
+  - base64data: PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxOTIgMTQ1Ij48ZGVmcz48c3R5bGU+LmNscy0xe2ZpbGw6I2UwMDt9PC9zdHlsZT48L2RlZnM+PHRpdGxlPlJlZEhhdC1Mb2dvLUhhdC1Db2xvcjwvdGl0bGU+PHBhdGggZD0iTTE1Ny43Nyw2Mi42MWExNCwxNCwwLDAsMSwuMzEsMy40MmMwLDE0Ljg4LTE4LjEsMTcuNDYtMzAuNjEsMTcuNDZDNzguODMsODMuNDksNDIuNTMsNTMuMjYsNDIuNTMsNDRhNi40Myw2LjQzLDAsMCwxLC4yMi0xLjk0bC0zLjY2LDkuMDZhMTguNDUsMTguNDUsMCwwLDAtMS41MSw3LjMzYzAsMTguMTEsNDEsNDUuNDgsODcuNzQsNDUuNDgsMjAuNjksMCwzNi40My03Ljc2LDM2LjQzLTIxLjc3LDAtMS4wOCwwLTEuOTQtMS43My0xMC4xM1oiLz48cGF0aCBjbGFzcz0iY2xzLTEiIGQ9Ik0xMjcuNDcsODMuNDljMTIuNTEsMCwzMC42MS0yLjU4LDMwLjYxLTE3LjQ2YTE0LDE0LDAsMCwwLS4zMS0zLjQybC03LjQ1LTMyLjM2Yy0xLjcyLTcuMTItMy4yMy0xMC4zNS0xNS43My0xNi42QzEyNC44OSw4LjY5LDEwMy43Ni41LDk3LjUxLjUsOTEuNjkuNSw5MCw4LDgzLjA2LDhjLTYuNjgsMC0xMS42NC01LjYtMTcuODktNS42LTYsMC05LjkxLDQuMDktMTIuOTMsMTIuNSwwLDAtOC40MSwyMy43Mi05LjQ5LDI3LjE2QTYuNDMsNi40MywwLDAsMCw0Mi41Myw0NGMwLDkuMjIsMzYuMywzOS40NSw4NC45NCwzOS40NU0xNjAsNzIuMDdjMS43Myw4LjE5LDEuNzMsOS4wNSwxLjczLDEwLjEzLDAsMTQtMTUuNzQsMjEuNzctMzYuNDMsMjEuNzdDNzguNTQsMTA0LDM3LjU4LDc2LjYsMzcuNTgsNTguNDlhMTguNDUsMTguNDUsMCwwLDEsMS41MS03LjMzQzIyLjI3LDUyLC41LDU1LC41LDc0LjIyYzAsMzEuNDgsNzQuNTksNzAuMjgsMTMzLjY1LDcwLjI4LDQ1LjI4LDAsNTYuNy0yMC40OCw1Ni43LTM2LjY1LDAtMTIuNzItMTEtMjcuMTYtMzAuODMtMzUuNzgiLz48L3N2Zz4=
+    mediatype: image/svg+xml
   install:
     spec:
       clusterPermissions:
-        - rules:
-            - apiGroups:
-                - ""
-              resources:
-                - configmaps
-                - namespaces
-                - nodes
-                - pods
-                - pods/log
-              verbs:
-                - get
-                - list
-                - watch
-            - apiGroups:
-                - ""
-              resources:
-                - persistentvolumeclaims
-              verbs:
-                - create
-                - delete
-                - deletecollection
-                - get
-                - list
-                - patch
-                - update
-                - watch
-            - apiGroups:
-                - ""
-              resources:
-                - persistentvolumeclaims/finalizers
-                - secrets
-                - serviceaccounts
-                - services
-              verbs:
-                - create
-                - delete
-                - get
-                - list
-                - patch
-                - update
-                - watch
-            - apiGroups:
-                - ""
-              resources:
-                - persistentvolumes
-              verbs:
-                - get
-                - list
-                - patch
-                - watch
-            - apiGroups:
-                - ""
-                - events.k8s.io
-              resources:
-                - events
-              verbs:
-                - create
-                - patch
-                - update
-            - apiGroups:
-                - apps
-              resources:
-                - deployments
-              verbs:
-                - create
-                - delete
-                - deletecollection
-                - get
-                - list
-                - patch
-                - update
-                - watch
-            - apiGroups:
-                - batch
-              resources:
-                - jobs
-              verbs:
-                - create
-                - delete
-                - deletecollection
-                - get
-                - list
-                - patch
-                - update
-                - watch
-            - apiGroups:
-                - populator.storage.k8s.io
-              resources:
-                - volumepopulators
-              verbs:
-                - create
-                - get
-                - list
-                - patch
-                - update
-                - watch
-            - apiGroups:
-                - rbac.authorization.k8s.io
-              resources:
-                - rolebindings
-                - roles
-              verbs:
-                - create
-                - delete
-                - get
-                - list
-                - patch
-                - update
-                - watch
-            - apiGroups:
-                - security.openshift.io
-              resources:
-                - securitycontextconstraints
-              verbs:
-                - create
-                - get
-                - list
-                - patch
-                - update
-                - watch
-            - apiGroups:
-                - security.openshift.io
-              resourceNames:
-                - volsync-privileged-mover
-              resources:
-                - securitycontextconstraints
-              verbs:
-                - use
-            - apiGroups:
-                - snapshot.storage.k8s.io
-              resources:
-                - volumesnapshots
-              verbs:
-                - create
-                - delete
-                - deletecollection
-                - get
-                - list
-                - patch
-                - update
-                - watch
-            - apiGroups:
-                - storage.k8s.io
-              resources:
-                - storageclasses
-              verbs:
-                - get
-                - list
-                - watch
-            - apiGroups:
-                - volsync.backube
-              resources:
-                - replicationdestinations
-                - replicationdestinations/finalizers
-                - replicationsources
-                - replicationsources/finalizers
-              verbs:
-                - create
-                - delete
-                - get
-                - list
-                - patch
-                - update
-                - watch
-            - apiGroups:
-                - volsync.backube
-              resources:
-                - replicationdestinations/status
-                - replicationsources/status
-              verbs:
-                - get
-                - patch
-                - update
-            - apiGroups:
-                - authentication.k8s.io
-              resources:
-                - tokenreviews
-              verbs:
-                - create
-            - apiGroups:
-                - authorization.k8s.io
-              resources:
-                - subjectaccessreviews
-              verbs:
-                - create
-          serviceAccountName: volsync-controller-manager
+      - rules:
+        - apiGroups:
+          - ""
+          resources:
+          - configmaps
+          - namespaces
+          - nodes
+          - pods
+          - pods/log
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - ""
+          resources:
+          - persistentvolumeclaims
+          verbs:
+          - create
+          - delete
+          - deletecollection
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - ""
+          resources:
+          - persistentvolumeclaims/finalizers
+          - secrets
+          - serviceaccounts
+          - services
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - ""
+          resources:
+          - persistentvolumes
+          verbs:
+          - get
+          - list
+          - patch
+          - watch
+        - apiGroups:
+          - ""
+          - events.k8s.io
+          resources:
+          - events
+          verbs:
+          - create
+          - patch
+          - update
+        - apiGroups:
+          - apps
+          resources:
+          - deployments
+          verbs:
+          - create
+          - delete
+          - deletecollection
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - batch
+          resources:
+          - jobs
+          verbs:
+          - create
+          - delete
+          - deletecollection
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - populator.storage.k8s.io
+          resources:
+          - volumepopulators
+          verbs:
+          - create
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - rbac.authorization.k8s.io
+          resources:
+          - rolebindings
+          - roles
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - security.openshift.io
+          resources:
+          - securitycontextconstraints
+          verbs:
+          - create
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - security.openshift.io
+          resourceNames:
+          - volsync-privileged-mover
+          resources:
+          - securitycontextconstraints
+          verbs:
+          - use
+        - apiGroups:
+          - snapshot.storage.k8s.io
+          resources:
+          - volumesnapshots
+          verbs:
+          - create
+          - delete
+          - deletecollection
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - storage.k8s.io
+          resources:
+          - storageclasses
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - volsync.backube
+          resources:
+          - replicationdestinations
+          - replicationdestinations/finalizers
+          - replicationsources
+          - replicationsources/finalizers
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - volsync.backube
+          resources:
+          - replicationdestinations/status
+          - replicationsources/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - authentication.k8s.io
+          resources:
+          - tokenreviews
+          verbs:
+          - create
+        - apiGroups:
+          - authorization.k8s.io
+          resources:
+          - subjectaccessreviews
+          verbs:
+          - create
+        serviceAccountName: volsync-controller-manager
       deployments:
-        - label:
-            app.kubernetes.io/component: manager
-            app.kubernetes.io/created-by: volsync
-            app.kubernetes.io/instance: controller-manager
-            app.kubernetes.io/managed-by: kustomize
-            app.kubernetes.io/name: volsync
-            app.kubernetes.io/part-of: volsync
-            control-plane: controller-manager
-          name: volsync-controller-manager
-          spec:
-            replicas: 1
-            selector:
-              matchLabels:
+      - label:
+          app.kubernetes.io/component: manager
+          app.kubernetes.io/created-by: volsync
+          app.kubernetes.io/instance: controller-manager
+          app.kubernetes.io/managed-by: kustomize
+          app.kubernetes.io/name: volsync
+          app.kubernetes.io/part-of: volsync
+          control-plane: controller-manager
+        name: volsync-controller-manager
+        spec:
+          replicas: 1
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: volsync
+              control-plane: controller-manager
+          strategy: {}
+          template:
+            metadata:
+              annotations:
+                kubectl.kubernetes.io/default-container: manager
+              labels:
                 app.kubernetes.io/name: volsync
                 control-plane: controller-manager
-            strategy: {}
-            template:
-              metadata:
-                annotations:
-                  kubectl.kubernetes.io/default-container: manager
-                labels:
-                  app.kubernetes.io/name: volsync
-                  control-plane: controller-manager
-              spec:
-                containers:
-                  - args:
-                      - --secure-listen-address=0.0.0.0:8443
-                      - --upstream=http://127.0.0.1:8080/
-                      - --logtostderr=true
-                      - --tls-min-version=VersionTLS12
-                      - --v=0
-                    image: quay.io/brancz/kube-rbac-proxy:v0.19.0
-                    name: kube-rbac-proxy
-                    ports:
-                      - containerPort: 8443
-                        name: https
-                        protocol: TCP
-                    resources:
-                      limits:
-                        cpu: 500m
-                        memory: 128Mi
-                      requests:
-                        cpu: 5m
-                        memory: 64Mi
-                    securityContext:
-                      allowPrivilegeEscalation: false
-                      capabilities:
-                        drop:
-                          - ALL
-                      readOnlyRootFilesystem: true
-                  - args:
-                      - --health-probe-bind-address=:8081
-                      - --metrics-bind-address=127.0.0.1:8080
-                      - --leader-elect
-                      - --scc-name=volsync-privileged-mover
-                    command:
-                      - /manager
-                    env:
-                      - name: VOLSYNC_NAMESPACE
-                        valueFrom:
-                          fieldRef:
-                            fieldPath: metadata.namespace
-                      - name: RELATED_IMAGE_RSYNC_CONTAINER
-                        value: quay.io/backube/volsync:latest
-                      - name: RELATED_IMAGE_RSYNC_TLS_CONTAINER
-                        value: quay.io/backube/volsync:latest
-                      - name: RELATED_IMAGE_RCLONE_CONTAINER
-                        value: quay.io/backube/volsync:latest
-                      - name: RELATED_IMAGE_RESTIC_CONTAINER
-                        value: quay.io/backube/volsync:latest
-                      - name: RELATED_IMAGE_SYNCTHING_CONTAINER
-                        value: quay.io/backube/volsync:latest
-                    image: quay.io/backube/volsync:latest
-                    livenessProbe:
-                      httpGet:
-                        path: /healthz
-                        port: 8081
-                      initialDelaySeconds: 15
-                      periodSeconds: 20
-                    name: manager
-                    readinessProbe:
-                      httpGet:
-                        path: /readyz
-                        port: 8081
-                      initialDelaySeconds: 5
-                      periodSeconds: 10
-                    resources:
-                      limits:
-                        cpu: "1"
-                        memory: 1Gi
-                      requests:
-                        cpu: 100m
-                        memory: 64Mi
-                    securityContext:
-                      allowPrivilegeEscalation: false
-                      capabilities:
-                        drop:
-                          - ALL
-                      readOnlyRootFilesystem: true
-                    volumeMounts:
-                      - mountPath: /tmp
-                        name: tempdir
+            spec:
+              containers:
+              - args:
+                - --secure-listen-address=0.0.0.0:8443
+                - --upstream=http://127.0.0.1:8080/
+                - --logtostderr=true
+                - --tls-min-version=VersionTLS12
+                - --v=0
+                image: quay.io/brancz/kube-rbac-proxy:v0.19.0
+                name: kube-rbac-proxy
+                ports:
+                - containerPort: 8443
+                  name: https
+                  protocol: TCP
+                resources:
+                  limits:
+                    cpu: 500m
+                    memory: 128Mi
+                  requests:
+                    cpu: 5m
+                    memory: 64Mi
                 securityContext:
-                  runAsNonRoot: true
-                  seccompProfile:
-                    type: RuntimeDefault
-                serviceAccountName: volsync-controller-manager
-                terminationGracePeriodSeconds: 10
-                volumes:
-                  - emptyDir:
-                      medium: Memory
-                    name: tempdir
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop:
+                    - ALL
+                  readOnlyRootFilesystem: true
+              - args:
+                - --health-probe-bind-address=:8081
+                - --metrics-bind-address=127.0.0.1:8080
+                - --leader-elect
+                - --scc-name=volsync-privileged-mover
+                command:
+                - /manager
+                env:
+                - name: VOLSYNC_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+                - name: RELATED_IMAGE_RSYNC_CONTAINER
+                  value: quay.io/backube/volsync:latest
+                - name: RELATED_IMAGE_RSYNC_TLS_CONTAINER
+                  value: quay.io/backube/volsync:latest
+                - name: RELATED_IMAGE_RCLONE_CONTAINER
+                  value: quay.io/backube/volsync:latest
+                - name: RELATED_IMAGE_RESTIC_CONTAINER
+                  value: quay.io/backube/volsync:latest
+                - name: RELATED_IMAGE_SYNCTHING_CONTAINER
+                  value: quay.io/backube/volsync:latest
+                image: quay.io/backube/volsync:latest
+                livenessProbe:
+                  httpGet:
+                    path: /healthz
+                    port: 8081
+                  initialDelaySeconds: 15
+                  periodSeconds: 20
+                name: manager
+                readinessProbe:
+                  httpGet:
+                    path: /readyz
+                    port: 8081
+                  initialDelaySeconds: 5
+                  periodSeconds: 10
+                resources:
+                  limits:
+                    cpu: "1"
+                    memory: 1Gi
+                  requests:
+                    cpu: 100m
+                    memory: 64Mi
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop:
+                    - ALL
+                  readOnlyRootFilesystem: true
+                volumeMounts:
+                - mountPath: /tmp
+                  name: tempdir
+              securityContext:
+                runAsNonRoot: true
+                seccompProfile:
+                  type: RuntimeDefault
+              serviceAccountName: volsync-controller-manager
+              terminationGracePeriodSeconds: 10
+              volumes:
+              - emptyDir:
+                  medium: Memory
+                name: tempdir
       permissions:
-        - rules:
-            - apiGroups:
-                - ""
-              resources:
-                - configmaps
-              verbs:
-                - get
-                - list
-                - watch
-                - create
-                - update
-                - patch
-                - delete
-            - apiGroups:
-                - coordination.k8s.io
-              resources:
-                - leases
-              verbs:
-                - get
-                - list
-                - watch
-                - create
-                - update
-                - patch
-                - delete
-            - apiGroups:
-                - ""
-              resources:
-                - events
-              verbs:
-                - create
-                - patch
-          serviceAccountName: volsync-controller-manager
+      - rules:
+        - apiGroups:
+          - ""
+          resources:
+          - configmaps
+          verbs:
+          - get
+          - list
+          - watch
+          - create
+          - update
+          - patch
+          - delete
+        - apiGroups:
+          - coordination.k8s.io
+          resources:
+          - leases
+          verbs:
+          - get
+          - list
+          - watch
+          - create
+          - update
+          - patch
+          - delete
+        - apiGroups:
+          - ""
+          resources:
+          - events
+          verbs:
+          - create
+          - patch
+        serviceAccountName: volsync-controller-manager
     strategy: deployment
   installModes:
-    - supported: false
-      type: OwnNamespace
-    - supported: false
-      type: SingleNamespace
-    - supported: false
-      type: MultiNamespace
-    - supported: true
-      type: AllNamespaces
+  - supported: false
+    type: OwnNamespace
+  - supported: false
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
   keywords:
-    - backup
-    - csi
-    - data
-    - disaster recovery
-    - replication
-    - storage
+  - backup
+  - csi
+  - data
+  - disaster recovery
+  - replication
+  - storage
   links:
-    - name: Documentation
-      url: https://volsync.readthedocs.io/
-    - name: Source
-      url: https://github.com/backube/volsync
+  - name: Documentation
+    url: https://volsync.readthedocs.io/
+  - name: Source
+    url: https://github.com/backube/volsync
   maintainers:
-    - email: jstrunk@redhat.com
-      name: John Strunk
-    - email: tflower@redhat.com
-      name: Tesshu Flower
+  - email: jstrunk@redhat.com
+    name: John Strunk
+  - email: tflower@redhat.com
+    name: Tesshu Flower
   maturity: alpha
   minKubeVersion: 1.20.0
   provider:
     name: Red Hat
   relatedImages:
-    - image: quay.io/backube/volsync:latest
-      name: ""
+  - image: quay.io/backube/volsync:latest
+    name: ""
   version: 0.14.0
