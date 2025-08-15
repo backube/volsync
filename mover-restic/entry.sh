@@ -52,6 +52,12 @@ fi
 if [[ "${SSH_KEYS}" == "true" ]]; then
   echo "Using SSH Keys."
   chmod 711 ~/.ssh
+
+  check_host_keys="no"
+  if [ -s "/keys/known_hosts" ]; then
+    ln -sf /keys/known_hosts ~/.ssh/known_hosts
+    check_host_keys="yes"
+  fi
   
   cat - <<SSHCONFIG > ~/.ssh/config
 Host *
@@ -63,7 +69,7 @@ Host *
   ServerAliveCountMax 4
   ServerAliveInterval 30
   # We don't know the key of the server
-  StrictHostKeyChecking no
+  StrictHostKeyChecking ${check_host_keys}
   # Using protocol-level, so we don't need TCP-level
   TCPKeepAlive no
 SSHCONFIG
