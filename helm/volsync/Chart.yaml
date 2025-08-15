@@ -24,6 +24,10 @@ annotations: # https://artifacthub.io/docs/topics/annotations/helm/
   # Changelog for current chart & app version
   # Kinds: added, changed, deprecated, removed, fixed, and security
   artifacthub.io/changes: |
+    - kind: added
+      description: Kopia ReplicationSource now supports filesystem destinations via PVC mounts
+    - kind: added
+      description: Kopia ReplicationDestination can now auto-discover sourcePathOverride from ReplicationSource
     - kind: changed
       description: Syncthing updated to v1.30.0
   artifacthub.io/crds: |
