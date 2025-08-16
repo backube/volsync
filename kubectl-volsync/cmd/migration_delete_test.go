@@ -10,25 +10,32 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	krand "k8s.io/apimachinery/pkg/util/rand"
+
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
 
 var _ = Describe("migration delete", func() {
 	var (
-		ns      *corev1.Namespace
-		cmd     *cobra.Command
-		dirname string
+		ns                        *corev1.Namespace
+		cmd                       *cobra.Command
+		dirname                   string
+		migrationRelationshipFile string
+		migrationCmdArgs          = make(map[string]string)
 	)
 
 	BeforeEach(func() {
-		ns = &corev1.Namespace{}
-		cmd = &cobra.Command{}
-		mc := &migrationCreate{}
-		var err error
-
-		migrationCmdArgs := map[string]string{
+		// Defaults for tests
+		migrationCmdArgs = map[string]string{
 			"capacity": "2Gi",
 			"pvcname":  "dest/volsync",
 		}
+	})
+
+	JustBeforeEach(func() {
+		ns = &corev1.Namespace{}
+		cmd = &cobra.Command{}
+		var mc *migrationCreate
+		var err error
 
 		initMigrationCreateCmd(cmd)
 		cmd.Flags().String("relationship", "test", "")
@@ -37,15 +44,10 @@ var _ = Describe("migration delete", func() {
 		Expect(err).NotTo(HaveOccurred())
 		cmd.Flags().String("config-dir", dirname, "")
 
-		mr, err := newMigrationRelationship(cmd)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(mr).ToNot(BeNil())
-		mc.mr = mr
-
 		err = migrationCmdArgsSet(cmd, migrationCmdArgs)
 		Expect(err).ToNot(HaveOccurred())
 
-		err = mc.parseCLI(cmd)
+		mc, err = newMigrationCreate(cmd)
 		Expect(err).NotTo(HaveOccurred())
 
 		mc.client = k8sClient
@@ -68,11 +70,16 @@ var _ = Describe("migration delete", func() {
 		mc.mr.data.Destination = mrd
 
 		// Create replicationdestination
-		rd, err := mc.ensureReplicationDestination(context.Background())
+		rd, err := mc.mr.mh.EnsureReplicationDestination(context.Background(), mc.client, mrd)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(rd).ToNot(BeNil())
 
 		err = mc.mr.Save()
+		Expect(err).ToNot(HaveOccurred())
+
+		// Verify migration relationship file was created
+		migrationRelationshipFile = dirname + "/test.yaml"
+		_, err = os.Stat(migrationRelationshipFile)
 		Expect(err).ToNot(HaveOccurred())
 	})
 
@@ -99,6 +106,10 @@ var _ = Describe("migration delete", func() {
 		err = md.mr.Delete()
 		Expect(err).ToNot(HaveOccurred())
 
+		_, err = os.Stat(migrationRelationshipFile)
+		Expect(err).To(HaveOccurred())
+		Expect(os.IsNotExist(err)).To(BeTrue())
+
 		// Verify delete replicationdestination that does not exist
 		err = md.deleteReplicationDestination(context.Background())
 		Expect(err).To(HaveOccurred())
@@ -108,4 +119,73 @@ var _ = Describe("migration delete", func() {
 		Expect(err).To(HaveOccurred())
 	})
 
+	Context("Loading older migrationship (data at v1)", func() {
+		const v1MigrationRelationshipFileContents string = `data:
+    destination:
+        cluster: "test-cluster"
+        destination:
+            replicationdestinationvolumeoptions:
+                accessmodes: []
+                copymethod: ""
+                destinationpvc: volsync
+            servicetype: LoadBalancer
+        namespace: dest
+        pvcname: volsync
+        rdname: dest-volsync-migration-dest
+        sshkeyname: ""
+    version: 1
+id: c22818bd-8716-436f-a48d-c2c8746afde6
+type: migration`
+
+		When("The migration relationship file is at v1", func() {
+			JustBeforeEach(func() {
+				// Parent JustBeforeEach sets up a v2 migration relationship file - overwrite it
+				// with a v1 file for this test
+				Expect(os.WriteFile(migrationRelationshipFile, []byte(v1MigrationRelationshipFileContents), 0600)).To(Succeed())
+			})
+
+			It("Should convert data to v2", func() {
+				mr, err := loadMigrationRelationship(cmd)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(mr.data.Version).To(Equal(2))
+				Expect(mr.data.IsRsyncTLS).To(BeFalse())
+				Expect(mr.data.Destination.RDName).To(Equal("dest-volsync-migration-dest"))
+				Expect(mr.data.Destination.PVCName).To(Equal("volsync"))
+				Expect(mr.data.Destination.Namespace).To(Equal("dest"))
+				Expect(mr.data.Destination.Cluster).To(Equal("test-cluster"))
+				Expect(*mr.data.Destination.ServiceType).To(Equal(corev1.ServiceTypeLoadBalancer))
+				// Was not specified in v1 but should be filled out when we convert to v2
+				Expect(mr.data.Destination.CopyMethod).To(Equal(volsyncv1alpha1.CopyMethodDirect))
+			})
+		})
+	})
+
+	Context("Test loading migrationrelationship file instantiates correctly", func() {
+		Context("When the migrationRelationship uses rsync (the default)", func() {
+			It("Should load correctly", func() {
+				mr, err := loadMigrationRelationship(cmd)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(mr.data.IsRsyncTLS).To(BeFalse())
+				// Check the migrationHandler is Rsync
+				_, ok := mr.mh.(*migrationHandlerRsync)
+				Expect(ok).To(BeTrue())
+			})
+		})
+		Context("When the migrationRelationship uses rsync-tls", func() {
+			BeforeEach(func() {
+				migrationCmdArgs["rsynctls"] = "true"
+			})
+
+			It("Should load correctly", func() {
+				mr, err := loadMigrationRelationship(cmd)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(mr.data.IsRsyncTLS).To(BeTrue())
+				// Check the migrationHandler is RsyncTLS
+				_, ok := mr.mh.(*migrationHandlerRsyncTLS)
+				Expect(ok).To(BeTrue())
+			})
+		})
+	})
 })
