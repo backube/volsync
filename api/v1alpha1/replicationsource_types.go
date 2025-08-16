@@ -181,6 +181,10 @@ type ReplicationSourceResticCA CustomCASpec
 // ReplicationSourceResticSpec defines the field for restic in replicationSource.
 type ReplicationSourceResticSpec struct {
 	ReplicationSourceVolumeOptions `json:",inline"`
+	// sshKeys is the name of a Secret that contains the SSH keys to be used for
+	// authentication. If not provided, the keys will be generated.
+	//+optional
+	SSHKeys *string `json:"sshKeys,omitempty"`
 	// PruneIntervalDays define how often to prune the repository
 	PruneIntervalDays *int32 `json:"pruneIntervalDays,omitempty"`
 	// Repository is the secret name containing repository info
@@ -215,6 +219,12 @@ type ReplicationSourceResticSpec struct {
 
 // ReplicationSourceResticStatus defines the field for ReplicationSourceStatus in ReplicationSourceStatus
 type ReplicationSourceResticStatus struct {
+	// sshKeys is the name of a Secret that contains the SSH keys to be used for
+	// authentication. If not provided in .spec.restic.sshKeys, SSH keys will be
+	// generated and the appropriate keys for the remote side will be placed
+	// here.
+	//+optional
+	SSHKeys *string `json:"sshKeys,omitempty"`
 	// lastPruned in the object holding the time of last pruned
 	//+optional
 	LastPruned *metav1.Time `json:"lastPruned,omitempty"`

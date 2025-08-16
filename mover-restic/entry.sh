@@ -49,6 +49,32 @@ if [[ $DEBUG_MOVER -eq 1 && "$SCRIPT_DIR" != "/tmp" ]]; then
   exit 0
 fi
 
+if [[ "${SSH_KEYS}" == "true" ]]; then
+  echo "Using SSH Keys."
+  chmod 711 ~/.ssh
+
+  check_host_keys="no"
+  if [ -s "/keys/known_hosts" ]; then
+    ln -sf /keys/known_hosts ~/.ssh/known_hosts
+    check_host_keys="yes"
+  fi
+  
+  cat - <<SSHCONFIG > ~/.ssh/config
+Host *
+  # Wait max 30s to establish connection
+  ConnectTimeout 30
+  # Use the identity provided via attached Secret
+  IdentityFile /keys/key
+  # Enable protocol-level keepalive to detect connection failure
+  ServerAliveCountMax 4
+  ServerAliveInterval 30
+  # We don't know the key of the server
+  StrictHostKeyChecking ${check_host_keys}
+  # Using protocol-level, so we don't need TCP-level
+  TCPKeepAlive no
+SSHCONFIG
+fi
+
 declare -a RESTIC
 RESTIC=("restic")
 if [[ -n "${CUSTOM_CA}" ]]; then
