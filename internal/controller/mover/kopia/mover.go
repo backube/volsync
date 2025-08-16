@@ -132,6 +132,7 @@ type Mover struct {
 	actions             *volsyncv1alpha1.KopiaActions
 	sourceStatus        *volsyncv1alpha1.ReplicationSourceKopiaStatus
 	repositoryPVC       *string
+	additionalArgs      []string
 	// Destination-only fields
 	restoreAsOf                 *string
 	shallow                     *int32
@@ -815,6 +816,9 @@ func (m *Mover) addSourceEnvVars(envVars []corev1.EnvVar) []corev1.EnvVar {
 	// Add actions
 	envVars = m.addActionsEnvVars(envVars)
 
+	// Add additional args if specified
+	envVars = m.addAdditionalArgsEnvVar(envVars)
+
 	return envVars
 }
 
@@ -837,6 +841,10 @@ func (m *Mover) addDestinationEnvVars(envVars []corev1.EnvVar) []corev1.EnvVar {
 	if m.enableFileDeletionOnRestore {
 		envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_ENABLE_FILE_DELETION", Value: "true"})
 	}
+	
+	// Add additional args if specified
+	envVars = m.addAdditionalArgsEnvVar(envVars)
+	
 	return envVars
 }
 
@@ -881,6 +889,76 @@ func (m *Mover) addActionsEnvVars(envVars []corev1.EnvVar) []corev1.EnvVar {
 	if m.actions.AfterSnapshot != "" {
 		envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_AFTER_SNAPSHOT", Value: m.actions.AfterSnapshot})
 	}
+	return envVars
+}
+
+// validateAdditionalArgs validates that additional arguments don't contain dangerous flags
+func (m *Mover) validateAdditionalArgs() error {
+	// List of dangerous flags that should not be allowed
+	// These could compromise security or override VolSync's configuration
+	dangerousFlags := []string{
+		"--password",
+		"--config-file",
+		"--config",
+		"--repository",
+		"--cache-directory",
+		"--log-dir",
+		"--override-username",
+		"--override-hostname",
+		"--access-key",
+		"--secret-access-key",
+		"--session-token",
+		"--storage-account",
+		"--storage-key",
+		"--credentials-file",
+		"--key-id",
+		"--key",
+	}
+
+	for _, arg := range m.additionalArgs {
+		// Check if the argument starts with any dangerous flag
+		for _, dangerous := range dangerousFlags {
+			if strings.HasPrefix(arg, dangerous) {
+				return fmt.Errorf("dangerous flag '%s' is not allowed in additionalArgs", arg)
+			}
+		}
+		
+		// Also check for equals sign format (e.g., --password=value)
+		if strings.Contains(arg, "=") {
+			parts := strings.SplitN(arg, "=", 2)
+			for _, dangerous := range dangerousFlags {
+				if parts[0] == dangerous {
+					return fmt.Errorf("dangerous flag '%s' is not allowed in additionalArgs", parts[0])
+				}
+			}
+		}
+	}
+	
+	return nil
+}
+
+// addAdditionalArgsEnvVar adds additional arguments as an environment variable
+func (m *Mover) addAdditionalArgsEnvVar(envVars []corev1.EnvVar) []corev1.EnvVar {
+	if len(m.additionalArgs) == 0 {
+		return envVars
+	}
+	
+	// Validate additional args first
+	if err := m.validateAdditionalArgs(); err != nil {
+		// Log the error but don't add the args
+		m.logger.Error(err, "Invalid additional arguments, skipping")
+		return envVars
+	}
+	
+	// Join all additional args with a special delimiter that's unlikely to appear in args
+	// We'll use "|VOLSYNC_ARG_SEP|" as the delimiter
+	argsString := strings.Join(m.additionalArgs, "|VOLSYNC_ARG_SEP|")
+	
+	envVars = append(envVars, corev1.EnvVar{
+		Name:  "KOPIA_ADDITIONAL_ARGS",
+		Value: argsString,
+	})
+	
 	return envVars
 }
 

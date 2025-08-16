@@ -93,6 +93,7 @@ echo "KOPIA_RESTORE_AS_OF: $([ -n "${KOPIA_RESTORE_AS_OF}" ] && echo "[SET]" || 
 echo "KOPIA_SHALLOW: $([ -n "${KOPIA_SHALLOW}" ] && echo "[SET]" || echo "[NOT SET]")"
 echo "KOPIA_PREVIOUS: $([ -n "${KOPIA_PREVIOUS}" ] && echo "[SET]" || echo "[NOT SET]")"
 echo "KOPIA_ENABLE_FILE_DELETION: $([ -n "${KOPIA_ENABLE_FILE_DELETION}" ] && echo "[SET]" || echo "[NOT SET]")"
+echo "KOPIA_ADDITIONAL_ARGS: $([ -n "${KOPIA_ADDITIONAL_ARGS}" ] && echo "[SET]" || echo "[NOT SET]")"
 echo ""
 echo "=== Additional Backend Environment Variables ==="
 echo "KOPIA_B2_BUCKET: $([ -n "${KOPIA_B2_BUCKET}" ] && echo "[SET]" || echo "[NOT SET]")"
@@ -192,6 +193,30 @@ function add_user_overrides {
     if [[ -n "${KOPIA_OVERRIDE_HOSTNAME}" ]]; then
         echo "Using hostname override: ${KOPIA_OVERRIDE_HOSTNAME}"
         cmd_array+=(--override-hostname="${KOPIA_OVERRIDE_HOSTNAME}")
+    fi
+}
+
+# Parse and add additional arguments to command array
+# add_additional_args command_array_name
+function add_additional_args {
+    local -n cmd_array=$1
+    
+    if [[ -n "${KOPIA_ADDITIONAL_ARGS}" ]]; then
+        echo "Processing additional arguments..."
+        
+        # Split the arguments using our special delimiter
+        # The delimiter "|VOLSYNC_ARG_SEP|" was chosen to be unlikely to appear in actual args
+        IFS='|VOLSYNC_ARG_SEP|' read -ra ADDITIONAL_ARGS_ARRAY <<< "${KOPIA_ADDITIONAL_ARGS}"
+        
+        # Add each argument to the command array
+        for arg in "${ADDITIONAL_ARGS_ARRAY[@]}"; do
+            if [[ -n "${arg}" ]]; then
+                echo "  Adding additional argument: ${arg}"
+                cmd_array+=("${arg}")
+            fi
+        done
+        
+        echo "Added ${#ADDITIONAL_ARGS_ARRAY[@]} additional arguments"
     fi
 }
 
@@ -1143,6 +1168,9 @@ function do_backup {
         SNAPSHOT_CMD+=(--override-source="${KOPIA_SOURCE_PATH_OVERRIDE}")
     fi
     
+    # Add additional arguments if specified
+    add_additional_args SNAPSHOT_CMD
+    
     # Run before-snapshot action if specified (check if actions are enabled)
     if [[ -n "${KOPIA_BEFORE_SNAPSHOT}" ]] && [[ "${KOPIA_ACTIONS_ENABLED}" != "false" ]]; then
         if ! execute_action "${KOPIA_BEFORE_SNAPSHOT}" "before-snapshot"; then
@@ -1374,11 +1402,17 @@ function do_restore {
         error 1 "Failed to change to data directory: ${DATA_DIR}"
     fi
     
-    # Restore to current directory (.) to ensure atomic temp files are created correctly
-    # The --write-files-atomically flag creates .kopia-entry temp files in the current dir
-    if ! "${KOPIA[@]}" snapshot restore "${snapshot_id}" . \
+    # Build restore command with options
+    declare -a RESTORE_CMD
+    RESTORE_CMD=("${KOPIA[@]}" snapshot restore "${snapshot_id}" . \
         --write-files-atomically \
-        --ignore-permission-errors; then
+        --ignore-permission-errors)
+    
+    # Add additional arguments if specified
+    add_additional_args RESTORE_CMD
+    
+    # Execute the restore command
+    if ! "${RESTORE_CMD[@]}"; then
         
         # If discovery mode is enabled and restore failed, show available snapshots
         if [[ "${KOPIA_DISCOVER_SNAPSHOTS}" == "true" ]]; then

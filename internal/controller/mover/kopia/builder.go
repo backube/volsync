@@ -215,6 +215,7 @@ func (kb *Builder) createSourceMover(client client.Client, logger logr.Logger,
 		latestMoverStatus:     source.Status.LatestMoverStatus,
 		moverConfig:           source.Spec.Kopia.MoverConfig,
 		repositoryPVC:         source.Spec.Kopia.RepositoryPVC,
+		additionalArgs:        source.Spec.Kopia.AdditionalArgs,
 	}
 }
 
@@ -424,6 +425,7 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		destinationStatus:           destination.Status.Kopia,
 		latestMoverStatus:           destination.Status.LatestMoverStatus,
 		moverConfig:                 destination.Spec.Kopia.MoverConfig,
+		additionalArgs:              destination.Spec.Kopia.AdditionalArgs,
 	}, nil
 }
 

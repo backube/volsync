@@ -325,6 +325,15 @@ type ReplicationSourceKopiaSpec struct {
 	// +kubebuilder:validation:MinLength=1
 	// +optional
 	RepositoryPVC *string `json:"repositoryPVC,omitempty"`
+	// AdditionalArgs allows specifying additional command-line arguments for Kopia.
+	// These arguments will be passed to Kopia snapshot commands during backup operations.
+	// This provides flexibility for advanced users to utilize Kopia features not directly
+	// exposed by VolSync. Use with caution as invalid arguments may cause backup failures.
+	// Security-sensitive flags like --password and --config-file are not allowed.
+	// Example: ["--one-file-system", "--ignore-cache-dirs"]
+	// +kubebuilder:validation:MaxItems=20
+	// +optional
+	AdditionalArgs []string `json:"additionalArgs,omitempty"`
 
 	MoverConfig `json:",inline"`
 }

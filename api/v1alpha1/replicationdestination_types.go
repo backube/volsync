@@ -363,6 +363,15 @@ type ReplicationDestinationKopiaSpec struct {
 	// Defaults to false.
 	//+optional
 	EnableFileDeletion *bool `json:"enableFileDeletion,omitempty"`
+	// AdditionalArgs allows specifying additional command-line arguments for Kopia.
+	// These arguments will be passed to Kopia restore commands during restore operations.
+	// This provides flexibility for advanced users to utilize Kopia features not directly
+	// exposed by VolSync. Use with caution as invalid arguments may cause restore failures.
+	// Security-sensitive flags like --password and --config-file are not allowed.
+	// Example: ["--ignore-permission-errors", "--parallel=8"]
+	// +kubebuilder:validation:MaxItems=20
+	// +optional
+	AdditionalArgs []string `json:"additionalArgs,omitempty"`
 
 	MoverConfig `json:",inline"`
 }
