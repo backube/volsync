@@ -1677,4 +1677,101 @@ Here's a comprehensive example combining all restore features with external poli
      kopia:
        requestedIdentity: "production-backup-production@production"
        snapshotsFound: 42
+
+Additional Command-Line Arguments for Restore
+----------------------------------------------
+
+Similar to backup operations, you can pass additional command-line arguments to Kopia during restore operations using the ``additionalArgs`` field. This provides flexibility for advanced restore scenarios.
+
+.. warning::
+   Use ``additionalArgs`` with caution during restores. Invalid arguments can cause restore failures or data corruption. Always test in a non-production environment first.
+
+Basic Usage
+~~~~~~~~~~~
+
+Add custom Kopia arguments to your ReplicationDestination:
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: restore-with-args
+   spec:
+     kopia:
+       repository: kopia-config
+       destinationPVC: restored-data
+       additionalArgs:
+         - "--parallel=8"            # Parallel downloads
+         - "--override-uid=1000"     # Set file owner UID
+         - "--override-gid=1000"     # Set file owner GID
+         - "--progress-interval=100" # Progress reporting
+
+Common Restore Use Cases
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Performance Optimization:**
+
+.. code-block:: yaml
+
+   additionalArgs:
+     - "--parallel=16"           # More parallel downloads
+     - "--skip-verification"     # Skip file verification (faster but less safe)
+
+**Ownership and Permissions:**
+
+.. code-block:: yaml
+
+   additionalArgs:
+     - "--override-uid=1000"     # Set all files to UID 1000
+     - "--override-gid=1000"     # Set all files to GID 1000
+     - "--ignore-permission-errors" # Continue on permission errors
+
+**Progress Monitoring:**
+
+.. code-block:: yaml
+
+   additionalArgs:
+     - "--progress-interval=50"  # Report every 50 files
+     - "--verbose"               # More detailed output
+
+Example: Complete Restore with Additional Args
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationDestination
+   metadata:
+     name: optimized-restore
+   spec:
+     trigger:
+       manual: "restore-now"
+     kopia:
+       repository: kopia-config
+       destinationPVC: app-data-restored
+       
+       # Standard configuration
+       restoreAsOf: "2024-01-15T12:00:00Z"
+       enableFileDeletion: true
+       
+       # Performance and ownership tuning
+       additionalArgs:
+         - "--parallel=12"
+         - "--override-uid=1000"
+         - "--override-gid=1000"
+         - "--progress-interval=100"
+         - "--ignore-permission-errors"
+
+Security Considerations
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+The same security restrictions apply as for backup operations. Forbidden flags include:
+
+- Credential and authentication flags
+- Repository configuration overrides
+- Cache and log directory overrides
+- Username/hostname overrides (use identity fields instead)
+
+For comprehensive documentation on additional arguments, see :doc:`additional-args`.
        latestSnapshotTime: "2024-01-15T12:00:00Z"

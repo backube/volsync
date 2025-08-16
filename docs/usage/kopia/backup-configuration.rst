@@ -1797,4 +1797,107 @@ Monitor the impact of policies:
    kubectl logs $POD | grep -i "parallel"
    
    # Check compression ratio
+
+Additional Command-Line Arguments
+-----------------------------------
+
+For advanced use cases not covered by VolSync's native configuration options, you can pass additional command-line arguments directly to Kopia using the ``additionalArgs`` field. This provides flexibility to access Kopia features that aren't explicitly exposed in VolSync's API.
+
+.. warning::
+   Use ``additionalArgs`` with caution. Invalid arguments can cause backup failures. Always test thoroughly in a non-production environment first.
+
+Basic Usage
+~~~~~~~~~~~
+
+Add custom Kopia arguments to your ReplicationSource:
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: backup-with-args
+   spec:
+     sourcePVC: application-data
+     trigger:
+       schedule: "0 2 * * *"
+     kopia:
+       repository: kopia-config
+       additionalArgs:
+         - "--one-file-system"       # Don't cross filesystem boundaries
+         - "--ignore-cache-dirs"     # Skip cache directories
+         - "--parallel=16"           # Increase parallelism
+         - "--progress-interval=100" # Report progress every 100 files
+
+Common Use Cases
+~~~~~~~~~~~~~~~~
+
+**Performance Optimization:**
+
+.. code-block:: yaml
+
+   additionalArgs:
+     - "--parallel=16"           # More parallel operations
+     - "--block-size=4MB"        # Larger blocks for big files
+     - "--read-buffer-size=32MB" # Bigger read buffer
+     - "--no-progress"           # Disable progress for less overhead
+
+**File Exclusions:**
+
+.. code-block:: yaml
+
+   additionalArgs:
+     - "--ignore=/tmp/"          # Exclude /tmp directory
+     - "--ignore=*.log"          # Skip all log files
+     - "--ignore=*.tmp"          # Skip temporary files
+     - "--ignore-cache-dirs"     # Skip dirs with CACHEDIR.TAG
+
+**Bandwidth Management:**
+
+.. code-block:: yaml
+
+   additionalArgs:
+     - "--upload-speed=10MB"     # Limit upload to 10MB/s
+
+Security Restrictions
+~~~~~~~~~~~~~~~~~~~~~
+
+The following flags are **forbidden** for security reasons:
+
+- ``--password``, ``--config-file``, ``--config`` - Use secrets instead
+- ``--repository`` - Managed by VolSync
+- ``--cache-directory``, ``--log-dir`` - Managed by VolSync
+- ``--override-username``, ``--override-hostname`` - Use identity fields
+- Credential flags (``--access-key``, ``--storage-account``, etc.) - Use secrets
+
+Example: Complete Backup with Additional Args
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: ReplicationSource
+   metadata:
+     name: optimized-backup
+   spec:
+     sourcePVC: application-data
+     trigger:
+       schedule: "0 */6 * * *"
+     kopia:
+       repository: kopia-config
+       retain:
+         daily: 7
+         weekly: 4
+         monthly: 3
+       compression: "zstd"
+       # Advanced tuning via additional args
+       additionalArgs:
+         - "--one-file-system"
+         - "--ignore-cache-dirs"
+         - "--ignore=/var/log/"
+         - "--parallel=12"
+         - "--block-size=4MB"
+         - "--progress-interval=1000"
+
+For comprehensive documentation on additional arguments, see :doc:`additional-args`.
    kubectl exec -it $POD -- kopia content stats

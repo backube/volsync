@@ -13,6 +13,7 @@ Kopia-based backup
    backup-configuration
    restore-configuration
    cross-namespace-restore
+   additional-args
    troubleshooting
    custom-ca
 
@@ -61,6 +62,10 @@ for environment variables. Includes JSON validation, 1MB size limits, and safe e
 
 **Actions/Hooks**: Kopia provides built-in support for pre and post snapshot
 actions, making it easier to ensure data consistency for applications like databases.
+
+**Advanced Customization**: VolSync supports passing additional command-line arguments
+to Kopia for advanced use cases not directly exposed in the API. This enables fine-tuning
+of performance, exclusions, and other Kopia features while maintaining security.
 
 **Maintenance**: Kopia's maintenance operations (equivalent to Restic's prune)
 are more efficient and can run concurrently with backups.
@@ -118,7 +123,14 @@ identify and resolve issues.
 
 See :doc:`troubleshooting` for comprehensive debugging guidance.
 
-**6. Custom CA (If Needed)**
+**6. Advanced Customization**
+
+For advanced use cases, you can pass additional command-line arguments to Kopia
+for features not directly exposed by VolSync's API.
+
+See :doc:`additional-args` for using additional Kopia arguments safely.
+
+**7. Custom CA (If Needed)**
 
 If using self-signed certificates, configure custom certificate authority settings.
 
