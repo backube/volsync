@@ -56,17 +56,13 @@ Add arguments to your ReplicationSource or ReplicationDestination:
          - "--ignore-permission-errors"
          - "--parallel=4"
 
-Forbidden Flags
+Important Notes
 ===============
 
-For security reasons, the following flags are blocked:
-
-* ``--password``, ``--password-file`` - Use repository secret instead
-* ``--config-file``, ``--config`` - Managed by VolSync
-* ``--key-id``, ``--key-data`` - Use repository secret
-* ``--username``, ``--hostname`` - Use VolSync's identity fields
-* ``--repository``, ``--repo`` - Configured via repository secret
-* ``AWS_*``, ``AZURE_*``, ``GOOGLE_*`` credential flags - Use repository secret
+* All arguments are passed directly to Kopia without validation
+* Users are responsible for providing valid Kopia flags
+* Invalid arguments will cause backup/restore failures
+* Some flags may conflict with VolSync's configuration - use with caution
 
 Common Use Cases
 ================

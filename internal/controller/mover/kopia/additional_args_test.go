@@ -20,198 +20,155 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package kopia
 
 import (
-	"strings"
+	"testing"
 
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 )
 
-var _ = Describe("Kopia additional args", func() {
-	var m *Mover
-	var logger logr.Logger
+func TestAddAdditionalArgsEnvVar(t *testing.T) {
+	tests := []struct {
+		name           string
+		additionalArgs []string
+		expectedEnvVar string
+		expectNoEnvVar bool
+	}{
+		{
+			name: "single argument",
+			additionalArgs: []string{
+				"--one-file-system",
+			},
+			expectedEnvVar: "--one-file-system",
+		},
+		{
+			name: "multiple arguments",
+			additionalArgs: []string{
+				"--one-file-system",
+				"--parallel=8",
+				"--ignore-cache-dirs",
+			},
+			expectedEnvVar: "--one-file-system|VOLSYNC_ARG_SEP|--parallel=8|VOLSYNC_ARG_SEP|--ignore-cache-dirs",
+		},
+		{
+			name: "arguments with equals",
+			additionalArgs: []string{
+				"--compression=zstd",
+				"--upload-speed=100MB",
+			},
+			expectedEnvVar: "--compression=zstd|VOLSYNC_ARG_SEP|--upload-speed=100MB",
+		},
+		{
+			name: "arguments with special characters",
+			additionalArgs: []string{
+				"--exclude=*.tmp",
+				"--exclude=cache/",
+			},
+			expectedEnvVar: "--exclude=*.tmp|VOLSYNC_ARG_SEP|--exclude=cache/",
+		},
+		{
+			name: "arguments that would have been blocked before",
+			additionalArgs: []string{
+				"--password=secret",
+				"--config-file=/etc/kopia",
+				"--username=myuser",
+			},
+			expectedEnvVar: "--password=secret|VOLSYNC_ARG_SEP|--config-file=/etc/kopia|VOLSYNC_ARG_SEP|--username=myuser",
+		},
+		{
+			name:           "empty args",
+			additionalArgs: []string{},
+			expectNoEnvVar: true,
+		},
+		{
+			name:           "nil args",
+			additionalArgs: nil,
+			expectNoEnvVar: true,
+		},
+	}
 
-	BeforeEach(func() {
-		logger = GinkgoLogr
-		m = &Mover{
-			logger: logger,
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Mover{
+				logger:         logr.Discard(),
+				additionalArgs: tt.additionalArgs,
+			}
+
+			envVars := []corev1.EnvVar{}
+			result := m.addAdditionalArgsEnvVar(envVars)
+
+			if tt.expectNoEnvVar {
+				// Check that no KOPIA_ADDITIONAL_ARGS was added
+				for _, env := range result {
+					if env.Name == "KOPIA_ADDITIONAL_ARGS" {
+						t.Errorf("expected no KOPIA_ADDITIONAL_ARGS env var, but found: %s", env.Value)
+					}
+				}
+			} else {
+				// Check that KOPIA_ADDITIONAL_ARGS was added with correct value
+				found := false
+				for _, env := range result {
+					if env.Name == "KOPIA_ADDITIONAL_ARGS" {
+						found = true
+						if env.Value != tt.expectedEnvVar {
+							t.Errorf("expected env var value '%s', got '%s'", tt.expectedEnvVar, env.Value)
+						}
+					}
+				}
+				if !found {
+					t.Errorf("expected KOPIA_ADDITIONAL_ARGS env var, but not found")
+				}
+			}
+		})
+	}
+}
+
+func TestAdditionalArgsIntegration(t *testing.T) {
+	// Test that additional args are properly passed through the builder
+	t.Run("ReplicationSource includes additional args", func(t *testing.T) {
+		m := &Mover{
+			logger: logr.Discard(),
+			additionalArgs: []string{
+				"--one-file-system",
+				"--parallel=8",
+			},
+		}
+
+		envVars := m.addAdditionalArgsEnvVar([]corev1.EnvVar{})
+		
+		if len(envVars) != 1 {
+			t.Errorf("expected 1 env var, got %d", len(envVars))
+		}
+		
+		if envVars[0].Name != "KOPIA_ADDITIONAL_ARGS" {
+			t.Errorf("expected env var name KOPIA_ADDITIONAL_ARGS, got %s", envVars[0].Name)
+		}
+		
+		expected := "--one-file-system|VOLSYNC_ARG_SEP|--parallel=8"
+		if envVars[0].Value != expected {
+			t.Errorf("expected env var value '%s', got '%s'", expected, envVars[0].Value)
 		}
 	})
 
-	Context("validateAdditionalArgs", func() {
-		It("should accept valid additional arguments", func() {
-			m.additionalArgs = []string{
-				"--one-file-system",
-				"--ignore-cache-dirs",
-				"--parallel=8",
-				"--upload-speed=100MB",
-				"--compression=s2",
-			}
-			err := m.validateAdditionalArgs()
-			Expect(err).NotTo(HaveOccurred())
-		})
-
-		It("should reject dangerous password flags", func() {
-			m.additionalArgs = []string{
-				"--one-file-system",
+	t.Run("No validation - all args are allowed", func(t *testing.T) {
+		m := &Mover{
+			logger: logr.Discard(),
+			additionalArgs: []string{
 				"--password=secret",
-			}
-			err := m.validateAdditionalArgs()
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("--password"))
-			Expect(err.Error()).To(ContainSubstring("not allowed"))
-		})
+				"--config-file=/custom/config",
+				"--repository=s3://bucket",
+			},
+		}
 
-		It("should reject config-file flags", func() {
-			m.additionalArgs = []string{
-				"--config-file=/path/to/config",
-			}
-			err := m.validateAdditionalArgs()
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("--config-file"))
-		})
-
-		It("should reject repository override flags", func() {
-			m.additionalArgs = []string{
-				"--repository=s3://different-bucket",
-			}
-			err := m.validateAdditionalArgs()
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("--repository"))
-		})
-
-		It("should reject credential-related flags", func() {
-			dangerousArgs := []string{
-				"--access-key=AKIAIOSFODNN7EXAMPLE",
-				"--secret-access-key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-				"--session-token=token",
-				"--storage-account=myaccount",
-				"--storage-key=mykey",
-				"--credentials-file=/path/to/creds",
-				"--key-id=keyid",
-				"--key=secret",
-			}
-
-			for _, arg := range dangerousArgs {
-				m.additionalArgs = []string{arg}
-				err := m.validateAdditionalArgs()
-				Expect(err).To(HaveOccurred(), "Expected error for arg: %s", arg)
-			}
-		})
-
-		It("should reject override-username and override-hostname flags", func() {
-			m.additionalArgs = []string{
-				"--override-username=different-user",
-			}
-			err := m.validateAdditionalArgs()
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("--override-username"))
-
-			m.additionalArgs = []string{
-				"--override-hostname=different-host",
-			}
-			err = m.validateAdditionalArgs()
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("--override-hostname"))
-		})
-
-		It("should handle flags with and without equals sign", func() {
-			// With equals
-			m.additionalArgs = []string{"--password=secret"}
-			err := m.validateAdditionalArgs()
-			Expect(err).To(HaveOccurred())
-
-			// Without equals (space-separated value would be a separate arg)
-			m.additionalArgs = []string{"--password"}
-			err = m.validateAdditionalArgs()
-			Expect(err).To(HaveOccurred())
-		})
-
-		It("should accept empty additional args", func() {
-			m.additionalArgs = []string{}
-			err := m.validateAdditionalArgs()
-			Expect(err).NotTo(HaveOccurred())
-		})
+		envVars := m.addAdditionalArgsEnvVar([]corev1.EnvVar{})
+		
+		// Should include all args without validation
+		if len(envVars) != 1 {
+			t.Errorf("expected 1 env var, got %d", len(envVars))
+		}
+		
+		expected := "--password=secret|VOLSYNC_ARG_SEP|--config-file=/custom/config|VOLSYNC_ARG_SEP|--repository=s3://bucket"
+		if envVars[0].Value != expected {
+			t.Errorf("expected env var value '%s', got '%s'", expected, envVars[0].Value)
+		}
 	})
-
-	Context("addAdditionalArgsEnvVar", func() {
-		var envVars []corev1.EnvVar
-
-		BeforeEach(func() {
-			envVars = []corev1.EnvVar{}
-		})
-
-		It("should add valid additional args as environment variable", func() {
-			m.additionalArgs = []string{
-				"--one-file-system",
-				"--ignore-cache-dirs",
-				"--parallel=8",
-			}
-			
-			result := m.addAdditionalArgsEnvVar(envVars)
-			
-			Expect(result).To(HaveLen(1))
-			Expect(result[0].Name).To(Equal("KOPIA_ADDITIONAL_ARGS"))
-			
-			// Check that args are joined with the delimiter
-			expectedValue := strings.Join(m.additionalArgs, "|VOLSYNC_ARG_SEP|")
-			Expect(result[0].Value).To(Equal(expectedValue))
-		})
-
-		It("should not add environment variable for empty args", func() {
-			m.additionalArgs = []string{}
-			
-			result := m.addAdditionalArgsEnvVar(envVars)
-			
-			Expect(result).To(BeEmpty())
-		})
-
-		It("should not add environment variable for invalid args", func() {
-			m.additionalArgs = []string{
-				"--one-file-system",
-				"--password=secret", // Invalid arg
-			}
-			
-			result := m.addAdditionalArgsEnvVar(envVars)
-			
-			// Should not add the env var due to validation failure
-			Expect(result).To(BeEmpty())
-		})
-
-		It("should preserve existing environment variables", func() {
-			existingVar := corev1.EnvVar{
-				Name:  "EXISTING_VAR",
-				Value: "existing_value",
-			}
-			envVars = append(envVars, existingVar)
-			
-			m.additionalArgs = []string{"--one-file-system"}
-			
-			result := m.addAdditionalArgsEnvVar(envVars)
-			
-			Expect(result).To(HaveLen(2))
-			Expect(result[0]).To(Equal(existingVar))
-			Expect(result[1].Name).To(Equal("KOPIA_ADDITIONAL_ARGS"))
-		})
-
-		It("should handle args with special characters", func() {
-			m.additionalArgs = []string{
-				"--ignore=/path/with spaces/file.txt",
-				"--description=This is a test",
-				"--pattern=*.log",
-			}
-			
-			result := m.addAdditionalArgsEnvVar(envVars)
-			
-			Expect(result).To(HaveLen(1))
-			// Verify the args are properly delimited
-			value := result[0].Value
-			parts := strings.Split(value, "|VOLSYNC_ARG_SEP|")
-			Expect(parts).To(HaveLen(3))
-			Expect(parts[0]).To(Equal("--ignore=/path/with spaces/file.txt"))
-			Expect(parts[1]).To(Equal("--description=This is a test"))
-			Expect(parts[2]).To(Equal("--pattern=*.log"))
-		})
-	})
-})
+}

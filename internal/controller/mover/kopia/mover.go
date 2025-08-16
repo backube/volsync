@@ -892,61 +892,16 @@ func (m *Mover) addActionsEnvVars(envVars []corev1.EnvVar) []corev1.EnvVar {
 	return envVars
 }
 
-// validateAdditionalArgs validates that additional arguments don't contain dangerous flags
+// validateAdditionalArgs validates that additional arguments are valid
 func (m *Mover) validateAdditionalArgs() error {
-	// List of dangerous flags that should not be allowed
-	// These could compromise security or override VolSync's configuration
-	dangerousFlags := []string{
-		"--password",
-		"--config-file",
-		"--config",
-		"--repository",
-		"--cache-directory",
-		"--log-dir",
-		"--override-username",
-		"--override-hostname",
-		"--access-key",
-		"--secret-access-key",
-		"--session-token",
-		"--storage-account",
-		"--storage-key",
-		"--credentials-file",
-		"--key-id",
-		"--key",
-	}
-
-	for _, arg := range m.additionalArgs {
-		// Check if the argument starts with any dangerous flag
-		for _, dangerous := range dangerousFlags {
-			if strings.HasPrefix(arg, dangerous) {
-				return fmt.Errorf("dangerous flag '%s' is not allowed in additionalArgs", arg)
-			}
-		}
-		
-		// Also check for equals sign format (e.g., --password=value)
-		if strings.Contains(arg, "=") {
-			parts := strings.SplitN(arg, "=", 2)
-			for _, dangerous := range dangerousFlags {
-				if parts[0] == dangerous {
-					return fmt.Errorf("dangerous flag '%s' is not allowed in additionalArgs", parts[0])
-				}
-			}
-		}
-	}
-	
+	// No validation - allow users to use any Kopia flags they need
+	// Users are responsible for providing valid flags
 	return nil
 }
 
 // addAdditionalArgsEnvVar adds additional arguments as an environment variable
 func (m *Mover) addAdditionalArgsEnvVar(envVars []corev1.EnvVar) []corev1.EnvVar {
 	if len(m.additionalArgs) == 0 {
-		return envVars
-	}
-	
-	// Validate additional args first
-	if err := m.validateAdditionalArgs(); err != nil {
-		// Log the error but don't add the args
-		m.logger.Error(err, "Invalid additional arguments, skipping")
 		return envVars
 	}
 	
