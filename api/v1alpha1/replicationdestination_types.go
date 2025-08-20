@@ -125,7 +125,7 @@ type ReplicationDestinationRsyncSpec struct {
 	//+kubebuilder:validation:Maximum=65535
 	//+optional
 	Port *int32 `json:"port,omitempty"`
-	// path is the remote path to rsync from. Defaults to "/"
+	// This field is not used and will be ignored
 	//+optional
 	Path *string `json:"path,omitempty"`
 	// sshUser is the username for outgoing SSH connections. Defaults to "root".

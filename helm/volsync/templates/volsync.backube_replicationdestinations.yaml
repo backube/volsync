@@ -2779,7 +2779,7 @@ spec:
                         The service account needs to exist in the same namespace as the ReplicationDestination.
                       type: string
                     path:
-                      description: path is the remote path to rsync from. Defaults to "/"
+                      description: This field is not used and will be ignored
                       type: string
                     port:
                       description: port is the SSH port to connect to for replication. Defaults to 22.

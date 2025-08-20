@@ -271,9 +271,7 @@ sshKeys
    a new Secret. The name of that new Secret will be placed in
    .status.rsync.sshKeys.
 path
-   This determines the path within the destination volume where the data should
-   be written. In order to create a replica of the source volume, this should be
-   left as the default of ``/``.
+   This field is not used and will be ignored.
 port
    This determines the TCP port number that is used to connect via ssh. The
    default is 22.
