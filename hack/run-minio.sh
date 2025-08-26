@@ -35,7 +35,7 @@ if ! helm install --create-namespace -n "${MINIO_NAMESPACE}" \
     --debug \
     --set auth.rootUser=access \
     --set auth.rootPassword=password \
-    --set defaultBuckets=mybucket \
+    --set defaultBuckets="mybucket restic-e2e"\
     "${SECURITY_ARGS[@]}" \
     "${MINIO_TLS_ARGS[@]}" \
     --version "${MINIO_CHART_VERSION}" \
