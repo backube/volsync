@@ -55,11 +55,11 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2025-04-23T18:50:13Z"
-    olm.skipRange: '>=0.4.0 <0.13.0'
+    createdAt: "2025-08-27T13:12:05Z"
+    olm.skipRange: '>=0.4.0 <0.13.1'
     operators.operatorframework.io/builder: operator-sdk-v1.33.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
-  name: volsync.v0.13.0
+  name: volsync.v0.13.1
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -500,4 +500,5 @@ spec:
   relatedImages:
   - image: quay.io/backube/volsync:latest
     name: ""
-  version: 0.13.0
+  replaces: volsync.v0.13.0
+  version: 0.13.1
