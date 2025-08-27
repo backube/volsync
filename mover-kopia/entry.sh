@@ -1333,16 +1333,19 @@ function select_snapshot_to_restore {
         echo "Restoring as of: ${KOPIA_RESTORE_AS_OF}" >&2
         # For restore-as-of, we need to filter by time first, then apply offset
         local filtered_snapshots
-        filtered_snapshots=$(echo "${snapshot_output}" | jq -r "[.[] | select(.startTime <= \"${KOPIA_RESTORE_AS_OF}\")] | .[${previous_offset}:${previous_offset}+1][] | .id" 2>/dev/null || true)
+        # Reverse the array first to get newest snapshots first, then filter and apply offset
+        filtered_snapshots=$(echo "${snapshot_output}" | jq -r "reverse | [.[] | select(.startTime <= \"${KOPIA_RESTORE_AS_OF}\")] | .[${previous_offset}:${previous_offset}+1][] | .id" 2>/dev/null || true)
         echo "${filtered_snapshots}"
     elif [[ -n "${KOPIA_SHALLOW}" ]]; then
         echo "Shallow restore, showing last ${KOPIA_SHALLOW} snapshots with previous offset ${previous_offset}" >&2
         # Apply previous offset within the shallow limit
-        echo "${snapshot_output}" | jq -r ".[${previous_offset}:${KOPIA_SHALLOW}+${previous_offset}][] | .id" 2>/dev/null | head -1 || true
+        # Reverse to get newest first, then apply offset within shallow limit
+        echo "${snapshot_output}" | jq -r "reverse | .[${previous_offset}:${KOPIA_SHALLOW}+${previous_offset}][] | .id" 2>/dev/null | head -1 || true
     else
         # Get snapshot with offset (0 = latest, 1 = previous, etc.)
         echo "Using previous offset: ${previous_offset} (0=latest, 1=previous, etc.)" >&2
-        echo "${snapshot_output}" | jq -r ".[${previous_offset}].id" 2>/dev/null || true
+        # Reverse to get newest first (Kopia returns oldest first by default)
+        echo "${snapshot_output}" | jq -r "reverse | .[${previous_offset}].id" 2>/dev/null || true
     fi
 }
 
