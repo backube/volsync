@@ -1,0 +1,32 @@
+---
+# yamllint disable rule:line-length
+
+name: Close stale issues/PRs
+on:  # yamllint disable-line rule:truthy
+  schedule:
+    - cron: "43 5 * * *"  # Daily @ 05:43
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    name: Close stale issues/PRs
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/stale@5bef64f19d7facfb25b37b414482c7164d639639 # v9.1.0
+        with:
+          days-before-issue-stale: -1
+          days-before-issue-close: -1
+          days-before-pr-stale: 60
+          days-before-pr-close: 30
+          exempt-pr-labels: "do-not-merge/hold"
+          stale-pr-message: >
+            This pull request has been automatically marked as stale because it
+            has not had recent activity. It will be closed in 30 days if no
+            further activity occurs. Thank you for your contributions.
+          close-pr-message: >
+            This pull request has been automatically closed due to inactivity.
+            Please re-open if these changes are still required.
