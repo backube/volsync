@@ -5,7 +5,7 @@ set -e -o pipefail
 # Possible versions:
 # https://hub.docker.com/r/kindest/node/tags?page=1&ordering=name
 # skopeo list-tags docker://kindest/node
-KUBE_VERSION="${1:-1.31.0}"
+KUBE_VERSION="${1:-1.33.1}"
 
 function log {
   echo "=====  $*  ====="
@@ -258,7 +258,7 @@ case "$KUBE_MINOR" in
     ;;
   *)
     # renovate: datasource=github-releases depName=kubernetes-csi/csi-driver-host-path versioning=semver-coerced
-    TAG="v1.16.1"
+    TAG="v1.17.0"
     DEPLOY_SCRIPT="deploy.sh"
     ;;
 esac

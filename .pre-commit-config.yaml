@@ -17,7 +17,7 @@ exclude: |
   )$
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: "v5.0.0"
+    rev: "v6.0.0"
     hooks:
       - id: check-added-large-files  # Prevents giant files from being committed
       - id: check-json               # Check that JSON files are valid
@@ -55,6 +55,6 @@ repos:
         args: ["--style", ".ci-scripts/mdl-style.rb"]
 
   - repo: https://github.com/renovatebot/pre-commit-hooks
-    rev: "41.40.0"
+    rev: "41.76.0"
     hooks:
       - id: renovate-config-validator
