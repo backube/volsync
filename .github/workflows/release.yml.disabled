@@ -28,7 +28,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{github.event.release.tag_name}}
           # Fetch whole history so we can properly determine the version string
@@ -82,7 +82,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{github.event.release.tag_name}}
 

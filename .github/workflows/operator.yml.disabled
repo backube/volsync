@@ -14,7 +14,7 @@ on:  # yamllint disable-line rule:truthy
 
 env:
   GO_VERSION: "1.23"
-  KIND_VERSION: "0.29.0"
+  KIND_VERSION: "0.27.0"
   GO111MODULE: "on"
   OPERATOR_IMAGE: "quay.io/backube/volsync"
   CUSTOM_SCORECARD_IMAGE: "quay.io/backube/volsync-custom-scorecard-tests"
@@ -28,7 +28,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -52,7 +52,7 @@ jobs:
           echo "ImageVersion=${ImageVersion}" >> $GITHUB_ENV
 
       - name: Enable cache for pre-commit hooks
-        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: ~/.cache/pre-commit
           key: pre-commit|${{ env.ImageOS }}|${{ env.ImageVersion }}|${{ env.PYHASH }}|${{ hashFiles('.pre-commit-config.yaml') }}
@@ -71,7 +71,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Install Go
         uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
@@ -151,7 +151,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
 
@@ -175,7 +175,7 @@ jobs:
         run: make test
 
       - name: Upload test coverage
-        uses: codecov/codecov-action@fdcc8476540edceab3de004e990f80d881c6cc00 # v5.5.0
+        uses: codecov/codecov-action@18283e04ce6e62d37312384ff67231eb8fd56d24 # v5.4.3
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           file: ./cover.out
@@ -194,7 +194,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Determine architecture
         id: arch
@@ -220,7 +220,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Install Go
         uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
@@ -265,7 +265,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           # Fetch whole history so we can properly determine the version string
           # (required by krew validation)
@@ -327,18 +327,17 @@ jobs:
           # - "1.22.17"  # OCP 4.9 (unsupported)
           # - "1.23.17"  # OCP 4.10 (unsupported)
           # - "1.24.15"  # OCP 4.11 (unsupported)
-          # - "1.25.11"  # OCP 4.12 (unsupported)
-          # - "1.26.6"   # OCP 4.13 (unsupported)
+          - "1.25.11"  # OCP 4.12
+          - "1.26.6"   # OCP 4.13
           - "1.27.3"   # ODC 4.14
           - "1.28.0"   # OCP 4.15
           - "1.29.0"   # OCP 4.16
           - "1.30.0"   # OCP 4.17
           - "1.31.0"   # OCP 4.18
           - "1.32.2"   # OCP 4.19
-          - "1.33.1"   # OCP 4.20
         include:
           - os: ubuntu-24.04-arm
-            KUBERNETES_VERSIONS: "1.33.1"   # OCP 4.20
+            KUBERNETES_VERSIONS: "1.32.2"   # OCP 4.19
     env:
       KUBECONFIG: /tmp/kubeconfig
       KUBERNETES_VERSION: ${{ matrix.KUBERNETES_VERSIONS }}
@@ -351,7 +350,7 @@ jobs:
           proc_trace_chart_show: false
 
       - name: Checkout source
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       # We set bash as the default shell (instead of dash) because the kuttl
       # test steps require bash, but the "script" directive executes them as "sh
@@ -397,7 +396,7 @@ jobs:
           MINIO_NAMESPACE=minio-tls MINIO_USE_TLS=1 ./hack/run-minio.sh
 
       - name: Load operator container artifact
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: volsync-operator-${{ env.ARCH }}
           path: /tmp
@@ -422,7 +421,7 @@ jobs:
               volsync-ghaction ./helm/volsync
 
       - name: Load cli artifact
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: kubectl-volsync-${{ env.ARCH }}
           path: bin
@@ -478,7 +477,7 @@ jobs:
 
       - name: Checkout source
         if: ${{ env.FFWD_RELEASE_BRANCH != '' }}
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           # Fetch whole history so we can see all commits
           fetch-depth: 0
