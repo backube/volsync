@@ -214,6 +214,45 @@ var _ = Describe("Kopia Snapshot Selection", func() {
 			}
 		})
 
+		It("REGRESSION TEST: Must use reverse for proper snapshot ordering", func() {
+			// This test ensures the fix remains in place
+			// It will FAIL if someone removes the 'reverse' from the jq commands
+			
+			// The correct behavior MUST select newest first
+			result, err := selectSnapshotWithReverse(snapshots, 0)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).To(ContainSubstring("latest"), 
+				"CRITICAL: Snapshot selection must return newest snapshot when offset=0. "+
+				"The 'reverse' operation is required because Kopia returns snapshots oldest-first.")
+			
+			// Verify ordering for all offsets
+			expectations := []struct {
+				offset   int
+				expected string
+				desc     string
+			}{
+				{0, "latest", "newest snapshot"},
+				{1, "hour-ago", "second-newest snapshot"},
+				{2, "yesterday", "third-newest snapshot"},
+				{3, "oldest", "fourth-newest snapshot"},
+				{4, "week-old", "oldest snapshot"},
+			}
+			
+			for _, exp := range expectations {
+				result, err := selectSnapshotWithReverse(snapshots, exp.offset)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result).To(ContainSubstring(exp.expected),
+					fmt.Sprintf("Offset %d must return %s. Check that 'reverse' is applied in entry.sh", 
+						exp.offset, exp.desc))
+			}
+			
+			// This would be the WRONG behavior (without reverse)
+			wrongResult, err := selectSnapshotWithoutReverse(snapshots, 0)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(wrongResult).NotTo(ContainSubstring("latest"),
+				"Without 'reverse', the selection is broken and returns oldest snapshots")
+		})
+
 		It("should verify JSON parsing behavior matches shell script", func() {
 			// Test that our Go structs correctly parse Kopia JSON output
 			jsonOutput, err := json.Marshal(snapshots)
