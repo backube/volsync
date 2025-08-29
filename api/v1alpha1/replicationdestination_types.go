@@ -222,6 +222,15 @@ type ReplicationDestinationRsyncStatus struct {
 	Port *int32 `json:"port,omitempty"`
 }
 
+type ReplicationDestinationResticStatus struct {
+	// sshKeys is the name of a Secret that contains the SSH keys to be used for
+	// authentication. If not provided in .spec.restic.sshKeys, SSH keys will be
+	// generated and the appropriate keys for the remote side will be placed
+	// here.
+	//+optional
+	SSHKeys *string `json:"sshKeys,omitempty"`
+}
+
 type ReplicationDestinationResticCA CustomCASpec
 
 // ReplicationDestinationResticSpec defines the field for restic in replicationDestination.
@@ -255,6 +264,10 @@ type ReplicationDestinationResticSpec struct {
 	// +kubebuilder:validation:Format="date-time"
 	//+optional
 	RestoreAsOf *string `json:"restoreAsOf,omitempty"`
+	// sshKeys is the name of a Secret that contains the SSH keys to be used for
+	// authentication. If not provided, the keys will be generated.
+	//+optional
+	SSHKeys *string `json:"sshKeys,omitempty"`
 	// enableFileDeletion will pass the --delete flag to the restic restore command.
 	// This will remove files and directories in the pvc that do not exist in the snapshot being restored.
 	// Defaults to false.
@@ -294,6 +307,8 @@ type ReplicationDestinationStatus struct {
 	Rsync *ReplicationDestinationRsyncStatus `json:"rsync,omitempty"`
 	// rsyncTLS contains status information for Rsync-based replication over TLS.
 	RsyncTLS *ReplicationDestinationRsyncTLSStatus `json:"rsyncTLS,omitempty"`
+	// restic containers status information for Restic-based replication.
+	Restic *ReplicationDestinationResticStatus `json:"restic,omitempty"`
 	// external contains provider-specific status information. For more details,
 	// please see the documentation of the specific replication provider being
 	// used.
