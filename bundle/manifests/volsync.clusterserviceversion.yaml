@@ -162,7 +162,15 @@ spec:
         - apiGroups:
           - ""
           resources:
-          - persistentvolumeclaims/finalizers
+          - persistentvolumes
+          verbs:
+          - get
+          - list
+          - patch
+          - watch
+        - apiGroups:
+          - ""
+          resources:
           - secrets
           - serviceaccounts
           - services
@@ -173,15 +181,6 @@ spec:
           - list
           - patch
           - update
-          - watch
-        - apiGroups:
-          - ""
-          resources:
-          - persistentvolumes
-          verbs:
-          - get
-          - list
-          - patch
           - watch
         - apiGroups:
           - ""
@@ -286,9 +285,7 @@ spec:
           - volsync.backube
           resources:
           - replicationdestinations
-          - replicationdestinations/finalizers
           - replicationsources
-          - replicationsources/finalizers
           verbs:
           - create
           - delete
