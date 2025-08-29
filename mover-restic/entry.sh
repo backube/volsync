@@ -95,7 +95,7 @@ function ensure_initialized {
     set +e  # Don't exit on command failure
 
     outfile=$(mktemp -q)
-    timeout 10s "${RESTIC[@]}" cat config > /dev/null 2>"$outfile"
+    timeout 60s "${RESTIC[@]}" cat config > /dev/null 2>"$outfile"
     rc=$?
 
     set -e  # Exit on command failure

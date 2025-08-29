@@ -119,7 +119,7 @@
         res.resources[0].status.latestMoverStatus.logs is search("No data will be restored.*") and
         res.resources[0].status.latestMoverStatus.logs is search("Restic completed in.*")
       delay: 1
-      retries: 300
+      retries: 360
 
     # Now that the bucket/path has been created, run again and this time the repo should not be initialized
     - name: Trigger another restore after bucket created and repo initialized
