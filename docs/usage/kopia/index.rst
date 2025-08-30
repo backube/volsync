@@ -74,6 +74,10 @@ are more efficient and can run concurrently with backups.
 ``readOnlyRootFilesystem: true`` in pod security contexts, with automatic adjustments
 to handle Kopia's temporary file requirements during restore operations.
 
+**Logging Control**: VolSync provides fine-grained control over Kopia's file logging
+to prevent cache PVC filling issues. Default settings are optimized for Kubernetes
+with conservative log retention (warn level, 10 files, 24h retention).
+
 Getting Started
 ===============
 

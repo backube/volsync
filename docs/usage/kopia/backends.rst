@@ -726,5 +726,27 @@ VolSync's Kopia mover supports a comprehensive set of environment variables for 
 ``GOOGLE_DRIVE_CREDENTIALS``
    OAuth2 credentials JSON content (service account or user credentials)
 
+**Logging Control Variables**
+
+``KOPIA_FILE_LOG_LEVEL``
+   Log level for file logs: debug, info, warn, error (default: warn)
+
+``KOPIA_LOG_DIR_MAX_FILES``
+   Maximum number of CLI log files to retain (default: 10)
+
+``KOPIA_LOG_DIR_MAX_AGE``
+   Maximum age of CLI log files, e.g., "24h", "7d" (default: 24h)
+
+``KOPIA_CONTENT_LOG_DIR_MAX_FILES``
+   Maximum number of content log files to retain (default: 10)
+
+``KOPIA_CONTENT_LOG_DIR_MAX_AGE``
+   Maximum age of content log files (default: 24h)
+
+.. note::
+   **Logging Configuration**: VolSync provides optimized defaults for Kubernetes environments 
+   to prevent cache PVC filling issues. See :doc:`troubleshooting` for detailed logging 
+   configuration and troubleshooting guidance.
+
 .. note::
    Environment variables are displayed securely in mover logs as ``[SET]`` or ``[NOT SET]`` to prevent credential exposure while providing configuration visibility for troubleshooting.

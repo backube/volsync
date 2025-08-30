@@ -40,6 +40,8 @@ This section provides quick solutions to the most common Kopia issues:
      - Check maintenance is running; policies only apply during maintenance
    * - Wrong data restored
      - Verify requestedIdentity; check if source used custom username/hostname
+   * - Cache PVC filling up with logs
+     - Configure logging via KOPIA_FILE_LOG_LEVEL, KOPIA_LOG_DIR_MAX_FILES, KOPIA_LOG_DIR_MAX_AGE in repository secret
 
 Understanding Enhanced Error Reporting
 ======================================
@@ -1398,6 +1400,330 @@ check if KOPIA_MANUAL_CONFIG can be used as a workaround:
    KOPIA_MANUAL_CONFIG is a low-level configuration option. Use with caution and
    test thoroughly before applying to production. Some settings may conflict with
    VolSync's automatic configuration.
+
+Kopia Logging Configuration
+============================
+
+VolSync provides environment variables to control Kopia's file logging behavior, preventing the cache PVC from filling up with excessive logs. This is particularly important in Kubernetes environments where users typically rely on external logging solutions (Loki, ElasticSearch, Splunk, etc.) rather than file-based logs.
+
+The Problem: Cache PVC Filling Up
+----------------------------------
+
+**Issue**: Kopia's default logging configuration can generate large amounts of log files that accumulate in the cache PVC, eventually filling it up and causing backup failures.
+
+**Root Cause**: 
+
+- Kopia creates detailed file logs by default at debug level
+- Logs are stored in the cache directory (typically ``/kopia/cache/logs``)
+- Default retention keeps logs indefinitely or for long periods
+- In Kubernetes, these logs duplicate what's already captured by pod logs
+
+**Impact**:
+
+- Cache PVCs fill up over time, especially with frequent backups
+- Backup and restore operations fail when the PVC is full
+- Manual intervention required to clean up logs
+- Wasted storage on redundant logging
+
+Logging Configuration Environment Variables
+--------------------------------------------
+
+VolSync exposes Kopia's native logging controls through environment variables that can be set in your repository secret. The defaults are optimized for Kubernetes environments:
+
+.. list-table:: Kopia Logging Environment Variables
+   :header-rows: 1
+   :widths: 30 20 50
+
+   * - Variable
+     - Default
+     - Description
+   * - ``KOPIA_FILE_LOG_LEVEL``
+     - ``warn``
+     - Log level for file logs (debug, info, warn, error). Default changed from debug to reduce verbosity
+   * - ``KOPIA_LOG_DIR_MAX_FILES``
+     - ``10``
+     - Maximum number of CLI log files to retain. Older files are automatically deleted
+   * - ``KOPIA_LOG_DIR_MAX_AGE``
+     - ``24h``
+     - Maximum age of CLI log files. Format: duration string (e.g., "24h", "7d", "168h")
+   * - ``KOPIA_CONTENT_LOG_DIR_MAX_FILES``
+     - ``10``
+     - Maximum number of content log files to retain (low-level formatting logs)
+   * - ``KOPIA_CONTENT_LOG_DIR_MAX_AGE``
+     - ``24h``
+     - Maximum age of content log files. These logs don't contain sensitive data
+
+**Default Configuration Rationale**:
+
+The defaults are conservative to prevent cache PVC issues:
+
+- **Info log level**: Balances useful information with manageable log size
+- **10 files max**: Limits total log storage to a predictable amount
+- **24 hour retention**: Provides recent history while ensuring regular cleanup
+- **Optimized for Kubernetes**: Assumes pod logs are the primary logging mechanism
+
+Configuring Logging in Your Repository Secret
+----------------------------------------------
+
+Override the default logging configuration by adding environment variables to your Kopia repository secret:
+
+**Example: Production Configuration with Minimal Logging**
+
+.. code-block:: yaml
+
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: kopia-config
+   type: Opaque
+   stringData:
+     # Repository configuration
+     KOPIA_REPOSITORY: s3://my-bucket/backups
+     KOPIA_PASSWORD: my-secure-password
+     AWS_ACCESS_KEY_ID: AKIAIOSFODNN7EXAMPLE
+     AWS_SECRET_ACCESS_KEY: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+     
+     # Minimal logging for production
+     KOPIA_FILE_LOG_LEVEL: "error"      # Only log errors to files
+     KOPIA_LOG_DIR_MAX_FILES: "5"       # Keep only 5 log files
+     KOPIA_LOG_DIR_MAX_AGE: "6h"        # Retain for 6 hours only
+
+**Example: Development Configuration with Verbose Logging**
+
+.. code-block:: yaml
+
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: kopia-config-dev
+   type: Opaque
+   stringData:
+     # Repository configuration
+     KOPIA_REPOSITORY: s3://dev-bucket/backups
+     KOPIA_PASSWORD: dev-password
+     AWS_ACCESS_KEY_ID: AKIAIOSFODNN7EXAMPLE
+     AWS_SECRET_ACCESS_KEY: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+     
+     # Verbose logging for debugging
+     KOPIA_FILE_LOG_LEVEL: "debug"      # Maximum verbosity
+     KOPIA_LOG_DIR_MAX_FILES: "20"      # Keep more files for analysis
+     KOPIA_LOG_DIR_MAX_AGE: "7d"        # Keep logs for a week
+
+**Example: Disable File Logging Entirely**
+
+.. code-block:: yaml
+
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: kopia-config-no-logs
+   type: Opaque
+   stringData:
+     # Repository configuration
+     KOPIA_REPOSITORY: s3://my-bucket/backups
+     KOPIA_PASSWORD: my-secure-password
+     AWS_ACCESS_KEY_ID: AKIAIOSFODNN7EXAMPLE
+     AWS_SECRET_ACCESS_KEY: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+     
+     # Effectively disable file logging
+     KOPIA_FILE_LOG_LEVEL: "error"      # Only critical errors
+     KOPIA_LOG_DIR_MAX_FILES: "1"       # Minimum possible
+     KOPIA_LOG_DIR_MAX_AGE: "1h"        # Very short retention
+
+Troubleshooting Logging Issues
+-------------------------------
+
+**Checking Current Log Usage**
+
+To see how much space logs are using in your cache PVC:
+
+.. code-block:: bash
+
+   # Find the mover pod
+   kubectl get pods -l "volsync.backube/mover-job" -n <namespace>
+   
+   # Check log directory size
+   kubectl exec <mover-pod> -n <namespace> -- du -sh /kopia/cache/logs
+   
+   # List log files
+   kubectl exec <mover-pod> -n <namespace> -- ls -lh /kopia/cache/logs
+
+**Monitoring Log Rotation**
+
+Verify that log rotation is working:
+
+.. code-block:: bash
+
+   # Check mover pod environment variables
+   kubectl describe pod <mover-pod> -n <namespace> | grep -E "KOPIA_(FILE_)?LOG"
+   
+   # Watch log directory over time
+   kubectl exec <mover-pod> -n <namespace> -- ls -lt /kopia/cache/logs | head -10
+
+**Cleaning Up Existing Logs**
+
+If your cache PVC is already full of old logs:
+
+.. code-block:: bash
+
+   # Option 1: Delete old logs manually
+   kubectl exec <mover-pod> -n <namespace> -- find /kopia/cache/logs -type f -mtime +1 -delete
+   
+   # Option 2: Clear all logs (safe - they'll be recreated)
+   kubectl exec <mover-pod> -n <namespace> -- rm -rf /kopia/cache/logs/*
+
+**Debugging with Increased Logging**
+
+When troubleshooting issues, temporarily increase logging:
+
+.. code-block:: yaml
+
+   # Temporarily update your secret for debugging
+   stringData:
+     KOPIA_FILE_LOG_LEVEL: "debug"      # Increase verbosity
+     KOPIA_LOG_DIR_MAX_FILES: "20"      # Keep more files
+     KOPIA_LOG_DIR_MAX_AGE: "48h"       # Keep for 2 days
+
+.. warning::
+   Remember to revert to production settings after debugging. Debug level logging
+   can generate very large files (100MB+ per backup operation).
+
+Best Practices for Logging in Kubernetes
+-----------------------------------------
+
+1. **Use External Logging Systems**: Rely on Kubernetes pod logs and external aggregation (Loki, ElasticSearch, Splunk) rather than file logs.
+
+2. **Conservative Defaults**: The VolSync defaults (warn level, 10 files, 24h retention) work well for most use cases.
+
+3. **Monitor Cache PVC Usage**: Set up alerts for cache PVC usage to catch issues early:
+
+   .. code-block:: yaml
+
+      # Example Prometheus alert
+      alert: KopiaCachePVCFull
+      expr: |
+        (kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes) 
+        * on(persistentvolumeclaim) group_left()
+        kube_persistentvolumeclaim_labels{label_app="volsync"} > 0.8
+      annotations:
+        summary: "Kopia cache PVC is >80% full"
+
+4. **Size Cache PVCs Appropriately**: Account for both cache data and logs when sizing:
+   
+   - Minimum: 2Gi for light usage
+   - Recommended: 5-10Gi for regular backups
+   - Large datasets: 20Gi+ (scales with data size and change rate)
+
+5. **Regular Maintenance**: Run Kopia maintenance to clean up cache and logs:
+
+   .. code-block:: yaml
+
+      spec:
+        kopia:
+          maintenanceIntervalDays: 7  # Weekly maintenance
+
+Common Scenarios and Recommendations
+-------------------------------------
+
+**High-Frequency Backups (Hourly or more)**
+
+.. code-block:: yaml
+
+   stringData:
+     KOPIA_FILE_LOG_LEVEL: "error"      # Minimize logging
+     KOPIA_LOG_DIR_MAX_FILES: "5"       # Small rotation
+     KOPIA_LOG_DIR_MAX_AGE: "6h"        # Short retention
+
+**Large Datasets (100GB+)**
+
+.. code-block:: yaml
+
+   stringData:
+     KOPIA_FILE_LOG_LEVEL: "warn"       # Balanced logging
+     KOPIA_LOG_DIR_MAX_FILES: "10"      # Moderate rotation
+     KOPIA_LOG_DIR_MAX_AGE: "12h"       # Half-day retention
+
+**Development/Testing**
+
+.. code-block:: yaml
+
+   stringData:
+     KOPIA_FILE_LOG_LEVEL: "info"       # Informative logging
+     KOPIA_LOG_DIR_MAX_FILES: "20"      # Keep more history
+     KOPIA_LOG_DIR_MAX_AGE: "3d"        # Several days retention
+
+**Air-Gapped/Disconnected Environments**
+
+.. code-block:: yaml
+
+   stringData:
+     KOPIA_FILE_LOG_LEVEL: "info"       # More logging since no external collection
+     KOPIA_LOG_DIR_MAX_FILES: "30"      # Extended history
+     KOPIA_LOG_DIR_MAX_AGE: "7d"        # Week of logs for troubleshooting
+
+Migration Guide for Existing Deployments
+-----------------------------------------
+
+If you're experiencing cache PVC issues with existing deployments:
+
+1. **Immediate Relief**: Clear existing logs
+
+   .. code-block:: bash
+
+      # Clean up old logs in running pods
+      kubectl exec -it <mover-pod> -- rm -rf /kopia/cache/logs/*.log
+
+2. **Apply New Configuration**: Update your repository secret
+
+   .. code-block:: bash
+
+      # Edit the secret
+      kubectl edit secret kopia-config -n <namespace>
+      
+      # Add the logging configuration
+      # KOPIA_FILE_LOG_LEVEL: "warn"
+      # KOPIA_LOG_DIR_MAX_FILES: "10"
+      # KOPIA_LOG_DIR_MAX_AGE: "24h"
+
+3. **Trigger New Backup**: Force a new backup to apply settings
+
+   .. code-block:: bash
+
+      # Trigger manual sync
+      kubectl patch replicationsource <name> -n <namespace> \
+        --type merge -p '{"spec":{"trigger":{"manual":"backup-now"}}}'
+
+4. **Verify New Settings**: Check that rotation is working
+
+   .. code-block:: bash
+
+      # After backup completes, verify settings
+      kubectl logs <new-mover-pod> | grep "Log Configuration"
+
+Technical Details
+-----------------
+
+**Log Types in Kopia**:
+
+1. **CLI Logs** (``KOPIA_LOG_DIR_*``): General operations, may contain file names and paths
+2. **Content Logs** (``KOPIA_CONTENT_LOG_DIR_*``): Low-level storage operations, no sensitive data
+
+**Log File Naming**:
+
+- CLI logs: ``kopia-<timestamp>-<pid>.log``
+- Content logs: ``kopia-content-<timestamp>-<pid>.log``
+
+**Rotation Mechanism**:
+
+- Kopia checks file count and age at startup
+- Oldest files are deleted when limits are exceeded
+- Rotation happens per-execution, not continuously
+
+**Performance Impact**:
+
+- ``debug`` level: Can slow operations by 10-20% due to I/O
+- ``info`` level: Minimal impact (<5%)
+- ``warn``/``error`` level: Negligible impact
 
 Getting Help
 ============

@@ -4,23 +4,30 @@
 #
 # Environment Variables for Log Configuration:
 # ---------------------------------------------
-# KOPIA_FILE_LOG_LEVEL - Set the log level for file logs (default: warn)
+# KOPIA_FILE_LOG_LEVEL - Set the log level for file logs (default: info)
 #   Possible values: debug, info, warn, error
+#   Default 'info' provides good operational visibility
 #   Note: debug level can generate very large logs and should be used sparingly
 #
-# KOPIA_LOG_DIR_MAX_FILES - Maximum number of CLI log files to retain (default: 10)
+# KOPIA_LOG_DIR_MAX_FILES - Maximum number of CLI log files to retain (default: 3)
 #   Controls retention of general-purpose logs (may contain sensitive info)
+#   Optimized for Kubernetes where external logging systems collect logs
 #
-# KOPIA_LOG_DIR_MAX_AGE - Maximum age of CLI log files to retain (default: 24h)
-#   Format: duration string like "24h", "7d", "168h"
+# KOPIA_LOG_DIR_MAX_AGE - Maximum age of CLI log files to retain (default: 4h)
+#   Format: duration string like "4h", "24h", "7d"
+#   Short retention since Kubernetes logging collectors capture logs externally
 #
-# KOPIA_CONTENT_LOG_DIR_MAX_FILES - Maximum number of content log files to retain (default: 10)
+# KOPIA_CONTENT_LOG_DIR_MAX_FILES - Maximum number of content log files to retain (default: 3)
 #   Controls retention of low-level formatting logs (no sensitive data)
+#   Minimal retention as these are rarely useful for debugging
 #
-# KOPIA_CONTENT_LOG_DIR_MAX_AGE - Maximum age of content log files to retain (default: 24h)
-#   Format: duration string like "24h", "7d", "168h"
+# KOPIA_CONTENT_LOG_DIR_MAX_AGE - Maximum age of content log files to retain (default: 4h)
+#   Format: duration string like "4h", "24h", "7d"
+#   Short retention to minimize PVC disk usage
 #
-# These settings help prevent the cache PVC from filling up with logs.
+# These Kubernetes-optimized defaults minimize cache PVC disk usage since most
+# users rely on external logging systems (Loki, ElasticSearch, Fluentd, etc.)
+# for log aggregation. The local files are primarily for immediate debugging.
 # Users can override these by setting the environment variables in their
 # Kopia repository secret.
 
@@ -81,17 +88,28 @@ export KOPIA_LOG_DIR="${KOPIA_CACHE_DIR}/logs"
 # Disable update checking
 export KOPIA_CHECK_FOR_UPDATES=false
 
-# Configure log retention to prevent cache PVC from filling up
-# These environment variables control Kopia's content log retention
-# Default to conservative values to prevent excessive disk usage
-export KOPIA_LOG_DIR_MAX_FILES="${KOPIA_LOG_DIR_MAX_FILES:-10}"
-export KOPIA_LOG_DIR_MAX_AGE="${KOPIA_LOG_DIR_MAX_AGE:-24h}"
-export KOPIA_CONTENT_LOG_DIR_MAX_FILES="${KOPIA_CONTENT_LOG_DIR_MAX_FILES:-10}"
-export KOPIA_CONTENT_LOG_DIR_MAX_AGE="${KOPIA_CONTENT_LOG_DIR_MAX_AGE:-24h}"
+# Configure log retention optimized for Kubernetes environments
+# In Kubernetes, logs are typically collected by external systems (Loki, ElasticSearch, etc.)
+# These local file logs are primarily for immediate debugging during pod execution
+# We use aggressive retention to minimize disk usage on the cache PVC
 
-# Set default file log level to warn (instead of debug) to reduce log verbosity
-# This can be overridden via KOPIA_FILE_LOG_LEVEL environment variable
-export KOPIA_FILE_LOG_LEVEL="${KOPIA_FILE_LOG_LEVEL:-warn}"
+# Keep only 3 log files - just enough for recent debugging
+# Most Kubernetes users rely on centralized logging, not local files
+export KOPIA_LOG_DIR_MAX_FILES="${KOPIA_LOG_DIR_MAX_FILES:-3}"
+
+# Keep logs for only 4 hours - sufficient for debugging active operations
+# Kubernetes logging collectors will have captured these logs externally
+export KOPIA_LOG_DIR_MAX_AGE="${KOPIA_LOG_DIR_MAX_AGE:-4h}"
+
+# Content logs (low-level formatting logs) have similar aggressive retention
+# These rarely contain useful debugging info and can be safely minimized
+export KOPIA_CONTENT_LOG_DIR_MAX_FILES="${KOPIA_CONTENT_LOG_DIR_MAX_FILES:-3}"
+export KOPIA_CONTENT_LOG_DIR_MAX_AGE="${KOPIA_CONTENT_LOG_DIR_MAX_AGE:-4h}"
+
+# Set default file log level to info for better observability
+# 'info' provides good operational visibility without excessive verbosity
+# Users can set to 'debug' if troubleshooting, or 'warn' to reduce further
+export KOPIA_FILE_LOG_LEVEL="${KOPIA_FILE_LOG_LEVEL:-info}"
 
 # Create necessary directories upfront
 mkdir -p "${KOPIA_CACHE_DIR}/logs"
