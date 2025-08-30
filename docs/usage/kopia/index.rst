@@ -76,7 +76,7 @@ to handle Kopia's temporary file requirements during restore operations.
 
 **Logging Control**: VolSync provides fine-grained control over Kopia's file logging
 to prevent cache PVC filling issues. Default settings are optimized for Kubernetes
-with conservative log retention (warn level, 10 files, 24h retention).
+with minimal log retention (info level, 3 files, 4h retention) since external logging is typically used.
 
 Getting Started
 ===============

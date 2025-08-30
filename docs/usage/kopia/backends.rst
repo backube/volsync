@@ -729,19 +729,19 @@ VolSync's Kopia mover supports a comprehensive set of environment variables for 
 **Logging Control Variables**
 
 ``KOPIA_FILE_LOG_LEVEL``
-   Log level for file logs: debug, info, warn, error (default: warn)
+   Log level for file logs: debug, info, warn, error (default: info)
 
 ``KOPIA_LOG_DIR_MAX_FILES``
-   Maximum number of CLI log files to retain (default: 10)
+   Maximum number of CLI log files to retain (default: 3)
 
 ``KOPIA_LOG_DIR_MAX_AGE``
-   Maximum age of CLI log files, e.g., "24h", "7d" (default: 24h)
+   Maximum age of CLI log files, e.g., "24h", "7d" (default: 4h)
 
 ``KOPIA_CONTENT_LOG_DIR_MAX_FILES``
-   Maximum number of content log files to retain (default: 10)
+   Maximum number of content log files to retain (default: 3)
 
 ``KOPIA_CONTENT_LOG_DIR_MAX_AGE``
-   Maximum age of content log files (default: 24h)
+   Maximum age of content log files (default: 4h)
 
 .. note::
    **Logging Configuration**: VolSync provides optimized defaults for Kubernetes environments 

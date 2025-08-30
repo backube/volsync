@@ -1438,20 +1438,20 @@ VolSync exposes Kopia's native logging controls through environment variables th
      - Default
      - Description
    * - ``KOPIA_FILE_LOG_LEVEL``
-     - ``warn``
-     - Log level for file logs (debug, info, warn, error). Default changed from debug to reduce verbosity
+     - ``info``
+     - Log level for file logs (debug, info, warn, error). Provides good operational visibility without excessive verbosity
    * - ``KOPIA_LOG_DIR_MAX_FILES``
-     - ``10``
-     - Maximum number of CLI log files to retain. Older files are automatically deleted
+     - ``3``
+     - Maximum number of CLI log files to retain. Optimized for Kubernetes where logs are externally collected
    * - ``KOPIA_LOG_DIR_MAX_AGE``
-     - ``24h``
-     - Maximum age of CLI log files. Format: duration string (e.g., "24h", "7d", "168h")
+     - ``4h``
+     - Maximum age of CLI log files. Short retention since Kubernetes typically has external logging
    * - ``KOPIA_CONTENT_LOG_DIR_MAX_FILES``
-     - ``10``
-     - Maximum number of content log files to retain (low-level formatting logs)
+     - ``3``
+     - Maximum number of content log files to retain. Minimal retention for immediate debugging only
    * - ``KOPIA_CONTENT_LOG_DIR_MAX_AGE``
-     - ``24h``
-     - Maximum age of content log files. These logs don't contain sensitive data
+     - ``4h``
+     - Maximum age of content log files. Short retention optimized for Kubernetes environments
 
 **Default Configuration Rationale**:
 
@@ -1593,7 +1593,7 @@ Best Practices for Logging in Kubernetes
 
 1. **Use External Logging Systems**: Rely on Kubernetes pod logs and external aggregation (Loki, ElasticSearch, Splunk) rather than file logs.
 
-2. **Conservative Defaults**: The VolSync defaults (warn level, 10 files, 24h retention) work well for most use cases.
+2. **Conservative Defaults**: The VolSync defaults (info level, 3 files, 4h retention) are optimized for Kubernetes environments where external logging is typically used.
 
 3. **Monitor Cache PVC Usage**: Set up alerts for cache PVC usage to catch issues early:
 
@@ -1681,9 +1681,9 @@ If you're experiencing cache PVC issues with existing deployments:
       kubectl edit secret kopia-config -n <namespace>
       
       # Add the logging configuration
-      # KOPIA_FILE_LOG_LEVEL: "warn"
-      # KOPIA_LOG_DIR_MAX_FILES: "10"
-      # KOPIA_LOG_DIR_MAX_AGE: "24h"
+      # KOPIA_FILE_LOG_LEVEL: "info"
+      # KOPIA_LOG_DIR_MAX_FILES: "3"
+      # KOPIA_LOG_DIR_MAX_AGE: "4h"
 
 3. **Trigger New Backup**: Force a new backup to apply settings
 
