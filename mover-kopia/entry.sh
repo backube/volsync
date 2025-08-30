@@ -1,4 +1,28 @@
 #! /bin/bash
+#
+# Kopia Mover Entry Script for VolSync
+#
+# Environment Variables for Log Configuration:
+# ---------------------------------------------
+# KOPIA_FILE_LOG_LEVEL - Set the log level for file logs (default: warn)
+#   Possible values: debug, info, warn, error
+#   Note: debug level can generate very large logs and should be used sparingly
+#
+# KOPIA_LOG_DIR_MAX_FILES - Maximum number of CLI log files to retain (default: 10)
+#   Controls retention of general-purpose logs (may contain sensitive info)
+#
+# KOPIA_LOG_DIR_MAX_AGE - Maximum age of CLI log files to retain (default: 24h)
+#   Format: duration string like "24h", "7d", "168h"
+#
+# KOPIA_CONTENT_LOG_DIR_MAX_FILES - Maximum number of content log files to retain (default: 10)
+#   Controls retention of low-level formatting logs (no sensitive data)
+#
+# KOPIA_CONTENT_LOG_DIR_MAX_AGE - Maximum age of content log files to retain (default: 24h)
+#   Format: duration string like "24h", "7d", "168h"
+#
+# These settings help prevent the cache PVC from filling up with logs.
+# Users can override these by setting the environment variables in their
+# Kopia repository secret.
 
 echo "Starting container"
 echo
@@ -57,6 +81,18 @@ export KOPIA_LOG_DIR="${KOPIA_CACHE_DIR}/logs"
 # Disable update checking
 export KOPIA_CHECK_FOR_UPDATES=false
 
+# Configure log retention to prevent cache PVC from filling up
+# These environment variables control Kopia's content log retention
+# Default to conservative values to prevent excessive disk usage
+export KOPIA_LOG_DIR_MAX_FILES="${KOPIA_LOG_DIR_MAX_FILES:-10}"
+export KOPIA_LOG_DIR_MAX_AGE="${KOPIA_LOG_DIR_MAX_AGE:-24h}"
+export KOPIA_CONTENT_LOG_DIR_MAX_FILES="${KOPIA_CONTENT_LOG_DIR_MAX_FILES:-10}"
+export KOPIA_CONTENT_LOG_DIR_MAX_AGE="${KOPIA_CONTENT_LOG_DIR_MAX_AGE:-24h}"
+
+# Set default file log level to warn (instead of debug) to reduce log verbosity
+# This can be overridden via KOPIA_FILE_LOG_LEVEL environment variable
+export KOPIA_FILE_LOG_LEVEL="${KOPIA_FILE_LOG_LEVEL:-warn}"
+
 # Create necessary directories upfront
 mkdir -p "${KOPIA_CACHE_DIR}/logs"
 chmod 755 "${KOPIA_CACHE_DIR}/logs"
@@ -95,6 +131,13 @@ echo "KOPIA_PREVIOUS: $([ -n "${KOPIA_PREVIOUS}" ] && echo "[SET]" || echo "[NOT
 echo "KOPIA_ENABLE_FILE_DELETION: $([ -n "${KOPIA_ENABLE_FILE_DELETION}" ] && echo "[SET]" || echo "[NOT SET]")"
 echo "KOPIA_ADDITIONAL_ARGS: $([ -n "${KOPIA_ADDITIONAL_ARGS}" ] && echo "[SET]" || echo "[NOT SET]")"
 echo ""
+echo "=== Log Configuration ==="
+echo "KOPIA_FILE_LOG_LEVEL: ${KOPIA_FILE_LOG_LEVEL}"
+echo "KOPIA_LOG_DIR_MAX_FILES: ${KOPIA_LOG_DIR_MAX_FILES}"
+echo "KOPIA_LOG_DIR_MAX_AGE: ${KOPIA_LOG_DIR_MAX_AGE}"
+echo "KOPIA_CONTENT_LOG_DIR_MAX_FILES: ${KOPIA_CONTENT_LOG_DIR_MAX_FILES}"
+echo "KOPIA_CONTENT_LOG_DIR_MAX_AGE: ${KOPIA_CONTENT_LOG_DIR_MAX_AGE}"
+echo ""
 echo "=== Additional Backend Environment Variables ==="
 echo "KOPIA_B2_BUCKET: $([ -n "${KOPIA_B2_BUCKET}" ] && echo "[SET]" || echo "[NOT SET]")"
 echo "B2_ACCOUNT_ID: $([ -n "${B2_ACCOUNT_ID}" ] && echo "[SET]" || echo "[NOT SET]")"
@@ -116,7 +159,7 @@ echo "GOOGLE_DRIVE_CREDENTIALS: $([ -n "${GOOGLE_DRIVE_CREDENTIALS}" ] && echo "
 echo "=== END DEBUG ==="
 echo ""
 
-KOPIA=("kopia" "--config-file=${KOPIA_CACHE_DIR}/kopia.config" "--log-dir=${KOPIA_CACHE_DIR}/logs")
+KOPIA=("kopia" "--config-file=${KOPIA_CACHE_DIR}/kopia.config" "--log-dir=${KOPIA_CACHE_DIR}/logs" "--file-log-level=${KOPIA_FILE_LOG_LEVEL}" "--log-dir-max-files=${KOPIA_LOG_DIR_MAX_FILES}" "--log-dir-max-age=${KOPIA_LOG_DIR_MAX_AGE}")
 if [[ -n "${CUSTOM_CA}" ]]; then
     echo "Using custom CA."
     export KOPIA_CA_CERT="${CUSTOM_CA}"
