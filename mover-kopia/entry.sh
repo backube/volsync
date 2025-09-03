@@ -179,8 +179,9 @@ echo ""
 
 KOPIA=("kopia" "--config-file=${KOPIA_CACHE_DIR}/kopia.config" "--log-dir=${KOPIA_CACHE_DIR}/logs" "--file-log-level=${KOPIA_FILE_LOG_LEVEL}" "--log-dir-max-files=${KOPIA_LOG_DIR_MAX_FILES}" "--log-dir-max-age=${KOPIA_LOG_DIR_MAX_AGE}")
 if [[ -n "${CUSTOM_CA}" ]]; then
-    echo "Using custom CA."
-    export KOPIA_CA_CERT="${CUSTOM_CA}"
+    echo "Using custom CA certificate at: ${CUSTOM_CA}"
+    # Note: Custom CA is now handled via --root-ca-pem-path flag in S3 connect/create commands
+    # The KOPIA_CA_CERT environment variable is not used by Kopia for S3 connections
 fi
 
 echo "=== Kopia Version ==="
@@ -872,6 +873,12 @@ function connect_repository {
             S3_CONNECT_CMD+=(--disable-tls)
         fi
         
+        # Add custom CA certificate if specified
+        if [[ -n "${CUSTOM_CA}" ]] && [[ -f "${CUSTOM_CA}" ]]; then
+            echo "Adding custom CA certificate for S3 connection: ${CUSTOM_CA}"
+            S3_CONNECT_CMD+=(--root-ca-pem-path="${CUSTOM_CA}")
+        fi
+        
         # Add username/hostname overrides if specified
         add_user_overrides S3_CONNECT_CMD
         
@@ -1083,6 +1090,12 @@ function create_repository {
         # Add disable TLS flag if specified (support both naming conventions)
         if [[ "${KOPIA_S3_DISABLE_TLS}" == "true" ]] || [[ "${AWS_S3_DISABLE_TLS}" == "true" ]]; then
             S3_CREATE_CMD+=(--disable-tls)
+        fi
+        
+        # Add custom CA certificate if specified
+        if [[ -n "${CUSTOM_CA}" ]] && [[ -f "${CUSTOM_CA}" ]]; then
+            echo "Adding custom CA certificate for S3 repository creation: ${CUSTOM_CA}"
+            S3_CREATE_CMD+=(--root-ca-pem-path="${CUSTOM_CA}")
         fi
         
         # Add username/hostname overrides if specified
