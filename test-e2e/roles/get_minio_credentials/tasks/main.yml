@@ -18,8 +18,8 @@
 
 - name: Save access key
   ansible.builtin.set_fact:
-    minio_access_key: "{{ minio_secret.resources[0].data['root-user'] | b64decode }}"
+    minio_access_key: "{{ minio_secret.resources[0].data['rootUser'] | b64decode }}"
 
 - name: Save secret key
   ansible.builtin.set_fact:
-    minio_secret_key: "{{ minio_secret.resources[0].data['root-password'] | b64decode }}"
+    minio_secret_key: "{{ minio_secret.resources[0].data['rootPassword'] | b64decode }}"

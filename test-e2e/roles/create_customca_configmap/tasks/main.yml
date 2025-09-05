@@ -32,4 +32,4 @@
         name: "{{ ca_configmap_name }}"
         namespace: "{{ namespace }}"
       data:
-        ca.crt: "{{ minio_secret.resources[0].data['ca.crt'] | b64decode }}"
+        ca.crt: "{{ minio_secret.resources[0].data['public.crt'] | b64decode }}"
