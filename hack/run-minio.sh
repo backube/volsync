@@ -59,8 +59,9 @@ if [[ MINIO_USE_TLS -ne 0 ]]; then
     tmpdir="$(mktemp -d)"
 
     # Create self signed cert
-    openssl req -x509 -newkey ed25519 -days 3650 \
-      -noenc -keyout "${tmpdir}"/private.key -out "${tmpdir}"/public.crt -subj "/CN=localhost" \
+    openssl req -x509 -newkey rsa:2048 -days 3650 \
+      -noenc -keyout "${tmpdir}/private.key" -out "${tmpdir}/public.crt" \
+      -subj "/CN=minio.${MINIO_NAMESPACE}.svc.cluster.local" \
       -addext "subjectAltName=DNS:minio.${MINIO_NAMESPACE},DNS:*.${MINIO_NAMESPACE},DNS:*.${MINIO_NAMESPACE}.svc.cluster.local"
 
     # Create generic secret that minio is expecting
