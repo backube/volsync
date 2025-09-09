@@ -32,4 +32,4 @@
         name: "{{ ca_secret_name }}"
         namespace: "{{ namespace }}"
       data:
-        ca.crt: "{{ minio_secret.resources[0].data['ca.crt'] }}"
+        ca.crt: "{{ minio_secret.resources[0].data['public.crt'] }}"
