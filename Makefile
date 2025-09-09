@@ -16,7 +16,7 @@ KUBECTL_VERSION := v1.32.3
 KUSTOMIZE_VERSION := v5.7.1
 OPERATOR_SDK_VERSION := v1.33.0
 PIPENV_VERSION := 2025.0.4
-YQ_VERSION := v4.47.1
+YQ_VERSION := v4.47.2
 #ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
 ENVTEST_VERSION ?= $(shell go list -m -f "{{ .Version }}" sigs.k8s.io/controller-runtime | awk -F'[v.]' '{printf "release-%d.%d", $$2, $$3}')
 #ENVTEST_K8S_VERSION is the version of Kubernetes to use for setting up ENVTEST binaries (i.e. 1.31)
