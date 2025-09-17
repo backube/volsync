@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Syncthing updated to v1.30.0
 - Rclone updated to v1.69.3
+- Rclone --checksum, --transfers and --stats parameters can now be
+  overridden by RCLONE_ env vars in the rclone config secret
 
 ## 0.13.0
 
