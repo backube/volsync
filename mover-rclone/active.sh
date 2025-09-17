@@ -57,12 +57,16 @@ function error {
 [[ -n "${DIRECTION}" ]] || error 1 "DIRECTION must be defined"
 [[ -n "${PRIVILEGED_MOVER}" ]] || error 1 "PRIVILEGED_MOVER must be defined"
 
+# Some default options for COPY and SYNC - these will be used unless the user specifically sets them to override
+export RCLONE_TRANSFERS="${RCLONE_TRANSFERS:-10}"
+export RCLONE_CHECKSUM="${RCLONE_CHECKSUM:-1}"
+export RCLONE_STATS="${RCLONE_STATS:-20s}"
 
 # Flags for the main sync operation (no --progress and no --stats-one-line-date so we can get a summary at the end)
-RCLONE_FLAGS_SYNC=(--checksum --one-file-system --create-empty-src-dirs --stats 20s --transfers 10)
+RCLONE_FLAGS_SYNC=(--one-file-system --create-empty-src-dirs)
 
 # Flags for the permissions.facl copy
-RCLONE_FLAGS_COPY=(--checksum --one-file-system --create-empty-src-dirs --stats-one-line-date --stats 20s --transfers 10)
+RCLONE_FLAGS_COPY=(--one-file-system --create-empty-src-dirs --stats-one-line-date)
 
 if [[ -n "${CUSTOM_CA}" ]]; then
     echo "Using custom CA."
