@@ -19,15 +19,13 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	errorsutil "k8s.io/apimachinery/pkg/util/errors"
-	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/component-base/logs"
 	"k8s.io/klog/v2"
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
@@ -43,11 +41,20 @@ const ReplicationRelationshipType RelationshipType = "replication"
 // relationships
 type replicationRelationship struct {
 	Relationship
-	data replicationRelationshipData
+	data replicationRelationshipDataV2
+	rh   replicationHandler
 }
 
-// replicationRelationshipData is the state that will be saved to the
-// relationship config file
+type replicationHandler interface {
+	ApplyDestination(ctx context.Context, c client.Client,
+		dstPVC *corev1.PersistentVolumeClaim, addIDLabel func(obj client.Object),
+		destConfig *replicationRelationshipDestinationV2) (*string, *corev1.Secret, error)
+	ApplySource(ctx context.Context, c client.Client,
+		address *string, dstKeys *corev1.Secret, addIDLabel func(obj client.Object),
+		sourceConfig *replicationRelationshipSourceV2) error
+}
+
+// Old v1 version of the data
 type replicationRelationshipData struct {
 	// Config file/struct version used so we know how to decode when parsing
 	// from disk
@@ -56,6 +63,20 @@ type replicationRelationshipData struct {
 	Source *replicationRelationshipSource
 	// Config info for the destination side of the relationship
 	Destination *replicationRelationshipDestination
+}
+
+// replicationRelationshipData is the state that will be saved to the
+// relationship config file
+type replicationRelationshipDataV2 struct {
+	// Config file/struct version used so we know how to decode when parsing
+	// from disk
+	Version int
+	// True if the ReplicationDestination should use RsyncTLS
+	IsRsyncTLS bool
+	// Config info for the source side of the relationship
+	Source *replicationRelationshipSourceV2
+	// Config info for the destination side of the relationship
+	Destination *replicationRelationshipDestinationV2
 }
 
 type replicationRelationshipSource struct {
@@ -73,6 +94,24 @@ type replicationRelationshipSource struct {
 	Trigger volsyncv1alpha1.ReplicationSourceTriggerSpec
 }
 
+type replicationRelationshipSourceV2 struct {
+	// Cluster context name
+	Cluster string
+	// Namespace on source cluster
+	Namespace string
+	// Name of PVC being replicated
+	PVCName string
+	// Name of ReplicationSource object
+	RSName string
+	// Parameters for the ReplicationSource volume options
+	ReplicationSourceVolumeOptions volsyncv1alpha1.ReplicationSourceVolumeOptions
+	// Scheduling parameters
+	Trigger volsyncv1alpha1.ReplicationSourceTriggerSpec
+	// MoverSecurityContext allows specifying the PodSecurityContext that will
+	// be used by the data mover
+	MoverSecurityContext *corev1.PodSecurityContext
+}
+
 type replicationRelationshipDestination struct {
 	// Cluster context name
 	Cluster string
@@ -82,6 +121,22 @@ type replicationRelationshipDestination struct {
 	RDName string
 	// Parameters for the ReplicationDestination
 	Destination volsyncv1alpha1.ReplicationDestinationRsyncSpec
+}
+
+type replicationRelationshipDestinationV2 struct {
+	// Cluster context name
+	Cluster string
+	// Namespace on destination cluster
+	Namespace string
+	// Name of the ReplicationDestination object
+	RDName string
+	// Parameters for the ReplicationDestination volume options
+	ReplicationDestinationVolumeOptions volsyncv1alpha1.ReplicationDestinationVolumeOptions
+	// Service Type for the ReplicationDestination
+	ServiceType *corev1.ServiceType
+	// MoverSecurityContext allows specifying the PodSecurityContext that will
+	// be used by the data mover
+	MoverSecurityContext *corev1.PodSecurityContext
 }
 
 // replicationCmd represents the replication command
@@ -101,22 +156,11 @@ var replicationCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(replicationCmd)
 
+	// Add logging flags to all sub-commands
+	logs.AddFlags(migrationCmd.PersistentFlags())
+
 	replicationCmd.PersistentFlags().StringP("relationship", "r", "", "relationship name")
 	cobra.CheckErr(replicationCmd.MarkPersistentFlagRequired("relationship"))
-}
-
-func newReplicationRelationship(cmd *cobra.Command) (*replicationRelationship, error) {
-	r, err := CreateRelationshipFromCommand(cmd, ReplicationRelationshipType)
-	if err != nil {
-		return nil, err
-	}
-
-	return &replicationRelationship{
-		Relationship: *r,
-		data: replicationRelationshipData{
-			Version: 1,
-		},
-	}, nil
 }
 
 func loadReplicationRelationship(cmd *cobra.Command) (*replicationRelationship, error) {
@@ -132,12 +176,26 @@ func loadReplicationRelationship(cmd *cobra.Command) (*replicationRelationship, 
 	version := rr.GetInt("data.version")
 	switch version {
 	case 1:
+		// Old version of config, migrate to v2
+		datav1 := &replicationRelationshipData{}
+		if err := rr.GetData(datav1); err != nil {
+			return nil, err
+		}
+		rr.convertDataToV2(datav1)
+	case 2:
 		if err := rr.GetData(&rr.data); err != nil {
 			return nil, err
 		}
 	default:
 		return nil, fmt.Errorf("unsupported config file version %d", version)
 	}
+
+	if rr.data.IsRsyncTLS {
+		rr.rh = &replicationHandlerRsyncTLS{}
+	} else {
+		rr.rh = &replicationHandlerRsync{}
+	}
+
 	return rr, nil
 }
 
@@ -146,15 +204,37 @@ func (rr *replicationRelationship) Save() error {
 		return err
 	}
 	// resource.Quantity doesn't properly encode, so we need to do it manually
-	if rr.data.Source != nil && rr.data.Source.Source.Capacity != nil {
-		rr.Set("data.source.source.replicationsourcevolumeoptions.capacity",
-			rr.data.Source.Source.Capacity.String())
+	if rr.data.Source != nil && rr.data.Source.ReplicationSourceVolumeOptions.Capacity != nil {
+		rr.Set("data.source.replicationsourcevolumeoptions.capacity",
+			rr.data.Source.ReplicationSourceVolumeOptions.Capacity.String())
 	}
-	if rr.data.Destination != nil && rr.data.Destination.Destination.Capacity != nil {
-		rr.Set("data.destination.destination.replicationdestinationvolumeoptions.capacity",
-			rr.data.Destination.Destination.Capacity.String())
+	if rr.data.Destination != nil && rr.data.Destination.ReplicationDestinationVolumeOptions.Capacity != nil {
+		rr.Set("data.destination.replicationdestinationvolumeoptions.capacity",
+			rr.data.Destination.ReplicationDestinationVolumeOptions.Capacity.String())
 	}
 	return rr.Relationship.Save()
+}
+
+func (rr *replicationRelationship) convertDataToV2(datav1 *replicationRelationshipData) {
+	rr.data = replicationRelationshipDataV2{
+		Version:    2,
+		IsRsyncTLS: false, // Rsync-TLS support wasn't there in v1
+		Source: &replicationRelationshipSourceV2{
+			Cluster:                        datav1.Source.Cluster,
+			Namespace:                      datav1.Source.Namespace,
+			PVCName:                        datav1.Source.PVCName,
+			RSName:                         datav1.Source.RSName,
+			ReplicationSourceVolumeOptions: datav1.Source.Source.ReplicationSourceVolumeOptions,
+			Trigger:                        datav1.Source.Trigger,
+		},
+		Destination: &replicationRelationshipDestinationV2{
+			Cluster:                             datav1.Destination.Cluster,
+			Namespace:                           datav1.Destination.Namespace,
+			RDName:                              datav1.Destination.RDName,
+			ReplicationDestinationVolumeOptions: datav1.Destination.Destination.ReplicationDestinationVolumeOptions,
+			ServiceType:                         datav1.Destination.Destination.ServiceType,
+		},
+	}
 }
 
 // GetClients returns clients to access the src & dst clusters (srcClient,
@@ -249,14 +329,14 @@ func (rr *replicationRelationship) Apply(ctx context.Context, srcClient client.C
 	}
 
 	var dstPVC *corev1.PersistentVolumeClaim
-	if rr.data.Destination.Destination.CopyMethod == volsyncv1alpha1.CopyMethodSnapshot {
+	if rr.data.Destination.ReplicationDestinationVolumeOptions.CopyMethod == volsyncv1alpha1.CopyMethodSnapshot {
 		// We need to ensure the RD has defaults based on the source volume
-		if rr.data.Destination.Destination.Capacity == nil {
+		if rr.data.Destination.ReplicationDestinationVolumeOptions.Capacity == nil {
 			capacity := srcPVC.Spec.Resources.Requests[corev1.ResourceStorage]
-			rr.data.Destination.Destination.Capacity = &capacity
+			rr.data.Destination.ReplicationDestinationVolumeOptions.Capacity = &capacity
 		}
-		if len(rr.data.Destination.Destination.AccessModes) == 0 {
-			rr.data.Destination.Destination.AccessModes = srcPVC.Spec.AccessModes
+		if len(rr.data.Destination.ReplicationDestinationVolumeOptions.AccessModes) == 0 {
+			rr.data.Destination.ReplicationDestinationVolumeOptions.AccessModes = srcPVC.Spec.AccessModes
 		}
 	} else {
 		// Since we're not snapshotting on the dest, we need to ensure there's a
@@ -268,12 +348,12 @@ func (rr *replicationRelationship) Apply(ctx context.Context, srcClient client.C
 		}
 	}
 
-	address, keys, err := rr.applyDestination(ctx, dstClient, dstPVC)
+	address, secret, err := rr.rh.ApplyDestination(ctx, dstClient, dstPVC, rr.AddIDLabel, rr.data.Destination)
 	if err != nil {
 		return err
 	}
 
-	return rr.applySource(ctx, srcClient, address, keys)
+	return rr.rh.ApplySource(ctx, srcClient, address, secret, rr.AddIDLabel, rr.data.Source)
 }
 
 // Gets or creates the destination PVC
@@ -287,11 +367,11 @@ func (rr *replicationRelationship) ensureDestinationPVC(ctx context.Context, c c
 		accessModes = srcPVC.Spec.AccessModes
 		capacity = srcPVC.Spec.Resources.Requests[corev1.ResourceStorage]
 	}
-	if len(rr.data.Destination.Destination.AccessModes) > 0 {
-		accessModes = rr.data.Destination.Destination.AccessModes
+	if len(rr.data.Destination.ReplicationDestinationVolumeOptions.AccessModes) > 0 {
+		accessModes = rr.data.Destination.ReplicationDestinationVolumeOptions.AccessModes
 	}
-	if rr.data.Destination.Destination.Capacity != nil {
-		capacity = *rr.data.Destination.Destination.Capacity
+	if rr.data.Destination.ReplicationDestinationVolumeOptions.Capacity != nil {
+		capacity = *rr.data.Destination.ReplicationDestinationVolumeOptions.Capacity
 	}
 
 	pvc := &corev1.PersistentVolumeClaim{
@@ -318,7 +398,7 @@ func (rr *replicationRelationship) ensureDestinationPVC(ctx context.Context, c c
 					corev1.ResourceStorage: capacity,
 				},
 			},
-			StorageClassName: rr.data.Destination.Destination.StorageClassName,
+			StorageClassName: rr.data.Destination.ReplicationDestinationVolumeOptions.StorageClassName,
 		}
 		return nil
 	})
@@ -327,126 +407,4 @@ func (rr *replicationRelationship) ensureDestinationPVC(ctx context.Context, c c
 	}
 
 	return pvc, nil
-}
-
-func (rr *replicationRelationship) applyDestination(ctx context.Context,
-	c client.Client, dstPVC *corev1.PersistentVolumeClaim) (*string, *corev1.Secret, error) {
-	params := rr.data.Destination
-
-	// Create destination
-	rd := &volsyncv1alpha1.ReplicationDestination{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      params.RDName,
-			Namespace: params.Namespace,
-		},
-	}
-	_, err := ctrlutil.CreateOrUpdate(ctx, c, rd, func() error {
-		rr.AddIDLabel(rd)
-		rd.Spec = volsyncv1alpha1.ReplicationDestinationSpec{
-			Rsync: &params.Destination,
-		}
-		if dstPVC != nil {
-			rd.Spec.Rsync.DestinationPVC = &dstPVC.Name
-		}
-		return nil
-	})
-	if err != nil {
-		klog.Errorf("unable to create ReplicationDestination: %v", err)
-		return nil, nil, err
-	}
-
-	rd, err = rr.awaitDestAddrKeys(ctx, c, client.ObjectKeyFromObject(rd))
-	if err != nil {
-		klog.Errorf("error while waiting for destination keys and address: %v", err)
-		return nil, nil, err
-	}
-
-	// Fetch the keys
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      *rd.Status.Rsync.SSHKeys,
-			Namespace: params.Namespace,
-		},
-	}
-	if err = c.Get(ctx, client.ObjectKeyFromObject(secret), secret); err != nil {
-		klog.Errorf("unable to retrieve ssh keys: %v", err)
-		return nil, nil, err
-	}
-
-	return rd.Status.Rsync.Address, secret, nil
-}
-
-func (rr *replicationRelationship) awaitDestAddrKeys(ctx context.Context, c client.Client,
-	rdName types.NamespacedName) (*volsyncv1alpha1.ReplicationDestination, error) {
-	klog.Infof("waiting for keys & address of destination to be available")
-	rd := volsyncv1alpha1.ReplicationDestination{}
-	err := wait.PollUntilContextTimeout(ctx, 5*time.Second, defaultRsyncKeyTimeout, true, /*immediate*/
-		func(ctx context.Context) (bool, error) {
-			if err := c.Get(ctx, rdName, &rd); err != nil {
-				return false, err
-			}
-			if rd.Status == nil || rd.Status.Rsync == nil {
-				return false, nil
-			}
-			if rd.Status.Rsync.Address == nil {
-				return false, nil
-			}
-			if rd.Status.Rsync.SSHKeys == nil {
-				return false, nil
-			}
-			return true, nil
-		})
-	if err != nil {
-		return nil, err
-	}
-	return &rd, nil
-}
-
-func (rr *replicationRelationship) applySource(ctx context.Context, c client.Client,
-	address *string, dstKeys *corev1.Secret) error {
-	klog.Infof("creating resources on Source")
-	srcKeys, err := rr.applySourceKeys(ctx, c, dstKeys)
-	if err != nil {
-		klog.Errorf("unable to create source ssh keys: %v", err)
-		return err
-	}
-
-	rs := &volsyncv1alpha1.ReplicationSource{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      rr.data.Source.RSName,
-			Namespace: rr.data.Source.Namespace,
-		},
-	}
-	_, err = ctrlutil.CreateOrUpdate(ctx, c, rs, func() error {
-		rr.AddIDLabel(rs)
-		rs.Spec = volsyncv1alpha1.ReplicationSourceSpec{
-			SourcePVC: rr.data.Source.PVCName,
-			Trigger:   &rr.data.Source.Trigger,
-			Rsync:     &rr.data.Source.Source,
-		}
-		rs.Spec.Rsync.Address = address
-		rs.Spec.Rsync.SSHKeys = &srcKeys.Name
-		return nil
-	})
-	return err
-}
-
-// Copies the ssh keys into the source cluster
-func (rr *replicationRelationship) applySourceKeys(ctx context.Context,
-	c client.Client, dstKeys *corev1.Secret) (*corev1.Secret, error) {
-	srcKeys := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      rr.data.Source.RSName,
-			Namespace: rr.data.Source.Namespace,
-		},
-	}
-	_, err := ctrlutil.CreateOrUpdate(ctx, c, srcKeys, func() error {
-		rr.AddIDLabel(srcKeys)
-		srcKeys.Data = dstKeys.Data
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return srcKeys, nil
 }
