@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Updated release to build on golang 1.24
 - Syncthing updated to v1.30.0
 - Rclone updated to v1.69.3
 - Rclone --checksum, --transfers and --stats parameters can now be
