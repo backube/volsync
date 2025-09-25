@@ -1313,7 +1313,7 @@ var _ = Describe("Restic as a source", func() {
 			})
 			When("it's the initial sync", func() {
 				It("should have only the backup action", func() {
-					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -1324,7 +1324,7 @@ var _ = Describe("Restic as a source", func() {
 					Expect(args).To(ConsistOf("backup"))
 				})
 				It("should use the specified container image", func() {
-					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -1335,7 +1335,7 @@ var _ = Describe("Restic as a source", func() {
 					Expect(args).To(Equal(defaultResticContainerImage))
 				})
 				It("should use the specified service account", func() {
-					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -1344,7 +1344,7 @@ var _ = Describe("Restic as a source", func() {
 					Expect(job.Spec.Template.Spec.ServiceAccountName).To(Equal(sa.Name))
 				})
 				It("should support pausing", func() {
-					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -1353,14 +1353,14 @@ var _ = Describe("Restic as a source", func() {
 					Expect(*job.Spec.Parallelism).To(Equal(int32(1)))
 
 					mover.paused = true
-					j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+					j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 					Expect(*job.Spec.Parallelism).To(Equal(int32(0)))
 
 					mover.paused = false
-					j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+					j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
@@ -1368,7 +1368,7 @@ var _ = Describe("Restic as a source", func() {
 				})
 
 				It("Should have correct volumes", func() {
-					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -1397,7 +1397,7 @@ var _ = Describe("Restic as a source", func() {
 				})
 
 				It("Should not have a PodSecurityContext by default", func() {
-					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -1416,7 +1416,7 @@ var _ = Describe("Restic as a source", func() {
 					})
 
 					It("The job name should be shortened appropriately (should handle long CR names)", func() {
-						j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+						j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 						Expect(e).NotTo(HaveOccurred())
 						Expect(j).To(BeNil()) // hasn't completed
 
@@ -1442,7 +1442,7 @@ var _ = Describe("Restic as a source", func() {
 						}
 					})
 					It("Should appear in the mover Job", func() {
-						j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+						j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 						Expect(e).NotTo(HaveOccurred())
 						Expect(j).To(BeNil()) // hasn't completed
 						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -1459,7 +1459,7 @@ var _ = Describe("Restic as a source", func() {
 				})
 
 				It("Should not have container resourceRequirements set by default", func() {
-					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -1480,7 +1480,7 @@ var _ = Describe("Restic as a source", func() {
 						}
 					})
 					It("Should use them in the mover job container", func() {
-						j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+						j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 						Expect(e).NotTo(HaveOccurred())
 						Expect(j).To(BeNil()) // hasn't completed
 						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -1504,7 +1504,7 @@ var _ = Describe("Restic as a source", func() {
 
 				When("The NS allows privileged movers", func() { // Already the case in this block
 					It("Should start a privileged mover", func() {
-						j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+						j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 						Expect(e).NotTo(HaveOccurred())
 						Expect(j).To(BeNil()) // hasn't completed
 						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -1545,7 +1545,7 @@ var _ = Describe("Restic as a source", func() {
 					Expect(k8sClient.Create(ctx, roxPVC)).To(Succeed())
 				})
 				It("Mover job should mount the PVC as read-only", func() {
-					j, e := mover.ensureJob(ctx, cache, roxPVC, sa, repo, nil)
+					j, e := mover.ensureJob(ctx, cache, roxPVC, sa, repo, nil, "")
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -1573,7 +1573,7 @@ var _ = Describe("Restic as a source", func() {
 						mover.unlock = "unlock-1"
 					})
 					It("should run a backup with unlock", func() {
-						j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+						j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 						Expect(e).NotTo(HaveOccurred())
 						Expect(j).To(BeNil()) // hasn't completed
 						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -1586,7 +1586,7 @@ var _ = Describe("Restic as a source", func() {
 						// Mark completed
 						job.Status.Succeeded = int32(1)
 						Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
-						j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+						j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 						Expect(e).NotTo(HaveOccurred())
 						Expect(j).NotTo(BeNil())
 						Expect(mover.sourceStatus.LastUnlocked).To(Equal("unlock-1"))
@@ -1601,7 +1601,7 @@ var _ = Describe("Restic as a source", func() {
 					})
 
 					It("should run a backup without running unlock", func() {
-						j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+						j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 						Expect(e).NotTo(HaveOccurred())
 						Expect(j).To(BeNil()) // hasn't completed
 						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -1614,7 +1614,7 @@ var _ = Describe("Restic as a source", func() {
 						// Mark completed
 						job.Status.Succeeded = int32(1)
 						Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
-						j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+						j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 						Expect(e).NotTo(HaveOccurred())
 						Expect(j).NotTo(BeNil())
 						// LastUnlocked should still be the previous value
@@ -1631,7 +1631,7 @@ var _ = Describe("Restic as a source", func() {
 					})
 
 					It("should run a backup with unlock", func() {
-						j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+						j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 						Expect(e).NotTo(HaveOccurred())
 						Expect(j).To(BeNil()) // hasn't completed
 						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -1644,7 +1644,7 @@ var _ = Describe("Restic as a source", func() {
 						// Mark completed
 						job.Status.Succeeded = int32(1)
 						Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
-						j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+						j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 						Expect(e).NotTo(HaveOccurred())
 						Expect(j).NotTo(BeNil())
 						// LastUnlocked should be updated with the new value
@@ -1662,7 +1662,7 @@ var _ = Describe("Restic as a source", func() {
 					It("should run a backup without running unlock", func() {
 						mover.unlock = ""
 
-						j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+						j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 						Expect(e).NotTo(HaveOccurred())
 						Expect(j).To(BeNil()) // hasn't completed
 						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -1676,7 +1676,7 @@ var _ = Describe("Restic as a source", func() {
 						// Mark completed
 						job.Status.Succeeded = int32(1)
 						Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
-						j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+						j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 						Expect(e).NotTo(HaveOccurred())
 						Expect(j).NotTo(BeNil())
 
@@ -1697,7 +1697,7 @@ var _ = Describe("Restic as a source", func() {
 					}
 				})
 				It("should have the backup and prune actions", func() {
-					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -1710,7 +1710,7 @@ var _ = Describe("Restic as a source", func() {
 					// Mark completed
 					job.Status.Succeeded = int32(1)
 					Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
-					j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+					j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).NotTo(BeNil())
 					Expect(mover.sourceStatus.LastPruned.After(lastMonth.Time))
@@ -1722,7 +1722,7 @@ var _ = Describe("Restic as a source", func() {
 					mover.containerImage = "my-restic-mover-image"
 
 					// Initial job creation
-					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 
@@ -1740,7 +1740,7 @@ var _ = Describe("Restic as a source", func() {
 					mover.containerImage = myUpdatedImage
 
 					// Mover should get immutable err for updating the image and then delete the job
-					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 					Expect(e).To(HaveOccurred())
 					Expect(j).To(BeNil())
 
@@ -1750,7 +1750,7 @@ var _ = Describe("Restic as a source", func() {
 					Expect(kerrors.IsNotFound(k8sClient.Get(ctx, nsn, job))).To(BeTrue())
 
 					// Run ensureJob again as the reconciler would do - should recreate the job
-					j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+					j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // job hasn't completed
 
@@ -1763,7 +1763,7 @@ var _ = Describe("Restic as a source", func() {
 
 			When("the job has failed", func() {
 				It("should be restarted", func() {
-					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -1773,14 +1773,14 @@ var _ = Describe("Restic as a source", func() {
 					Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
 
 					// 1st reconcile should delete the job
-					j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+					j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil())
 					// Job should be deleted
 					Expect(kerrors.IsNotFound(k8sClient.Get(ctx, nsn, job))).To(BeTrue())
 
 					// 2nd reconcile should recreate the job
-					j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+					j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
@@ -1840,7 +1840,7 @@ var _ = Describe("Restic as a source", func() {
 			})
 
 			It("Should run unprivileged by default", func() {
-				j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+				j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil, "")
 				Expect(e).NotTo(HaveOccurred())
 				Expect(j).To(BeNil()) // hasn't completed
 				nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -2143,7 +2143,7 @@ var _ = Describe("Restic as a destination", func() {
 			})
 			When("it's the initial sync", func() {
 				It("should have only the restore action", func() {
-					j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo, nil)
+					j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo, nil, "")
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -2170,7 +2170,7 @@ var _ = Describe("Restic as a destination", func() {
 					Expect(err).NotTo(HaveOccurred())
 
 					// Common checks for customCA (configCA as secret or configmap)
-					j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo, customCaObj)
+					j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo, customCaObj, "")
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -2248,7 +2248,7 @@ var _ = Describe("Restic as a destination", func() {
 				})
 
 				It("Should set the env vars in the mover job pod", func() {
-					j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo, nil)
+					j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo, nil, "")
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil()) // hasn't completed
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -2270,7 +2270,7 @@ var _ = Describe("Restic as a destination", func() {
 			Context("Handling GCS credentials", func() {
 				When("no credentials are provided", func() {
 					It("shouldn't mount the Secret", func() {
-						j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo, nil)
+						j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo, nil, "")
 						Expect(e).NotTo(HaveOccurred())
 						Expect(j).To(BeNil()) // hasn't completed
 						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -2295,7 +2295,7 @@ var _ = Describe("Restic as a destination", func() {
 						}
 					})
 					It("should mount the Secret", func() {
-						j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo, nil)
+						j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo, nil, "")
 						Expect(e).NotTo(HaveOccurred())
 						Expect(j).To(BeNil()) // hasn't completed
 						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -2337,7 +2337,7 @@ var _ = Describe("Restic as a destination", func() {
 			Context("Restore options", func() {
 				When("No restore options are specified", func() {
 					It("should set env vars related to restore options with defaults", func() {
-						j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo, nil)
+						j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo, nil, "")
 						Expect(e).NotTo(HaveOccurred())
 						Expect(j).To(BeNil()) // hasn't completed
 						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -2382,7 +2382,7 @@ var _ = Describe("Restic as a destination", func() {
 						rd.Spec.Restic.EnableFileDeletion = true
 					})
 					It("should set RESTORE_OPTIONS env var with delete flag", func() {
-						j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo, nil)
+						j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo, nil, "")
 						Expect(e).NotTo(HaveOccurred())
 						Expect(j).To(BeNil()) // hasn't completed
 						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -2406,7 +2406,7 @@ var _ = Describe("Restic as a destination", func() {
 			Context("Cluster wide proxy settings", func() {
 				When("no proxy env vars are set on the volsync controller", func() {
 					It("shouldn't set any proxy env vars on the mover job", func() {
-						j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo, nil)
+						j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo, nil, "")
 						Expect(e).NotTo(HaveOccurred())
 						Expect(j).To(BeNil()) // hasn't completed
 						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
@@ -2437,7 +2437,7 @@ var _ = Describe("Restic as a destination", func() {
 					})
 
 					It("should set the corresponding proxy env vars on the mover job", func() {
-						j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo, nil)
+						j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo, nil, "")
 						Expect(e).NotTo(HaveOccurred())
 						Expect(j).To(BeNil()) // hasn't completed
 						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
