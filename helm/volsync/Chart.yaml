@@ -24,16 +24,8 @@ annotations: # https://artifacthub.io/docs/topics/annotations/helm/
   # Changelog for current chart & app version
   # Kinds: added, changed, deprecated, removed, fixed, and security
   artifacthub.io/changes: |
-    - kind: added
-      description: Multi-arch volsync image published in quay.io, will include amd64 as usual as well as arm64
-    - kind: changed
-      description: Syncthing updated to v1.29.7
-    - kind: changed
-      description: Restic updated to v0.18.0
     - kind: fixed
-      description: Fix restic cache PVC name collision if replicationsource and replicationdestination have the same name and are in the same namespace
-    - kind: security
-      description: kube-rbac-proxy upgraded to v0.19.2
+      description: increase timeout for issue with restic repository initialization when restic cat config takes more than 10 seconds
   artifacthub.io/crds: |
     - kind: ReplicationDestination
       version: v1alpha1
