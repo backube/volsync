@@ -1,6 +1,6 @@
 ######################################################################
 # Establish a common builder image for all golang-based images
-FROM golang:1.23 AS golang-builder
+FROM golang:1.24 AS golang-builder
 USER root
 WORKDIR /workspace
 # We don't vendor modules. Enforce that behavior
@@ -46,7 +46,8 @@ WORKDIR /workspace/rclone
 # Make sure the Rclone version tag matches the git hash we're expecting
 RUN /bin/bash -c "[[ $(git rev-list -n 1 HEAD) == ${RCLONE_GIT_HASH} ]]"
 
-RUN make rclone
+# Tell Go to use the standard BFD linker instead of gold
+RUN make rclone BUILD_ARGS="-ldflags='-extldflags=-fuse-ld=bfd'"
 
 
 ######################################################################
