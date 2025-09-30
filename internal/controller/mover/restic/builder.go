@@ -124,7 +124,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 	saHandler := utils.NewSAHandler(client, source, isSource, privileged,
 		source.Spec.Restic.MoverServiceAccount)
 
-	return &Mover{
+	mover := &Mover{
 		client:                client,
 		logger:                logger.WithValues("method", "Restic"),
 		eventRecorder:         eventRecorder,
@@ -136,6 +136,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		cacheCapacity:         source.Spec.Restic.CacheCapacity,
 		cacheStorageClassName: source.Spec.Restic.CacheStorageClassName,
 		repositoryName:        source.Spec.Restic.Repository,
+		sshKeys:               source.Spec.Restic.SSHKeys,
 		isSource:              isSource,
 		paused:                source.Spec.Paused,
 		mainPVCName:           &source.Spec.SourcePVC,
@@ -147,7 +148,13 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		sourceStatus:          source.Status.Restic,
 		latestMoverStatus:     source.Status.LatestMoverStatus,
 		moverConfig:           source.Spec.Restic.MoverConfig,
-	}, nil
+	}
+
+	if source.Spec.Restic.SSHKeys != nil {
+		mover.moverConfig.MoverSecurityContext = nil
+	}
+
+	return mover, nil
 }
 
 func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
@@ -177,7 +184,7 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 	saHandler := utils.NewSAHandler(client, destination, isSource, privileged,
 		destination.Spec.Restic.MoverServiceAccount)
 
-	return &Mover{
+	mover := &Mover{
 		client:                      client,
 		logger:                      logger.WithValues("method", "Restic"),
 		eventRecorder:               eventRecorder,
@@ -190,6 +197,7 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		cacheStorageClassName:       destination.Spec.Restic.CacheStorageClassName,
 		cleanupCachePVC:             destination.Spec.Restic.CleanupCachePVC,
 		repositoryName:              destination.Spec.Restic.Repository,
+		sshKeys:                     destination.Spec.Restic.SSHKeys,
 		isSource:                    isSource,
 		paused:                      destination.Spec.Paused,
 		mainPVCName:                 destination.Spec.Restic.DestinationPVC,
@@ -201,5 +209,11 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		enableFileDeletionOnRestore: destination.Spec.Restic.EnableFileDeletion,
 		latestMoverStatus:           destination.Status.LatestMoverStatus,
 		moverConfig:                 destination.Spec.Restic.MoverConfig,
-	}, nil
+	}
+
+	if destination.Spec.Restic.SSHKeys != nil {
+		mover.moverConfig.MoverSecurityContext = nil
+	}
+
+	return mover, nil
 }
