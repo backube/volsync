@@ -121,6 +121,7 @@ type Mover struct {
 	apiConfig           api.APIConfig
 	privileged          bool
 	moverConfig         volsyncv1alpha1.MoverConfig
+	moverVolumes        []volsyncv1alpha1.MoverVolume
 }
 
 var _ mover.Mover = &Mover{}
@@ -178,6 +179,12 @@ func (m *Mover) ensureNecessaryResources(ctx context.Context) (*corev1.Service, 
 
 	secretAPIKey, err := m.ensureSecretAPIKey(ctx)
 	if secretAPIKey == nil || err != nil {
+		return nil, nil, err
+	}
+
+	// Validate MoverVolumes
+	err = utils.ValidateMoverVolumes(ctx, m.client, m.logger, m.owner.GetNamespace(), m.moverVolumes)
+	if err != nil {
 		return nil, nil, err
 	}
 
@@ -528,6 +535,9 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 
 		// Update the deployment securityContext, podLabels and resourceRequirements from moverConfig (if specified)
 		utils.UpdatePodTemplateSpecFromMoverConfig(&deployment.Spec.Template, m.moverConfig, defaultMoverResources)
+
+		// Update the deployment volumes/mounts for additional mover volumes (if specified)
+		utils.UpdatePodTemplateSpecWithMoverVolumes(&deployment.Spec.Template, m.moverVolumes)
 
 		if m.privileged {
 			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{

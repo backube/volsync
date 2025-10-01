@@ -144,6 +144,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		sourceStatus:       source.Status.RsyncTLS,
 		latestMoverStatus:  source.Status.LatestMoverStatus,
 		moverConfig:        source.Spec.RsyncTLS.MoverConfig,
+		moverVolumes:       source.Spec.RsyncTLS.MoverVolumes,
 	}, nil
 }
 
@@ -210,5 +211,6 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		destStatus:         destination.Status.RsyncTLS,
 		latestMoverStatus:  destination.Status.LatestMoverStatus,
 		moverConfig:        destination.Spec.RsyncTLS.MoverConfig,
+		moverVolumes:       destination.Spec.RsyncTLS.MoverVolumes,
 	}, nil
 }

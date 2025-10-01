@@ -268,6 +268,69 @@ func UpdatePodTemplateSpecFromMoverConfig(podTemplateSpec *corev1.PodTemplateSpe
 	}
 }
 
+func UpdatePodTemplateSpecWithMoverVolumes(podTemplateSpec *corev1.PodTemplateSpec,
+	moverVolumes []volsyncv1alpha1.MoverVolume) {
+	if podTemplateSpec == nil {
+		return
+	}
+
+	container := &podTemplateSpec.Spec.Containers[0]
+
+	for _, mv := range moverVolumes {
+		vName := "u-" + mv.Name
+
+		if mv.VolumeSource.PersistentVolumeClaim == nil && mv.VolumeSource.Secret == nil {
+			continue
+		}
+
+		volumeSource := corev1.VolumeSource{
+			PersistentVolumeClaim: mv.VolumeSource.PersistentVolumeClaim,
+			Secret:                mv.VolumeSource.Secret,
+		}
+
+		container.VolumeMounts =
+			append(container.VolumeMounts, corev1.VolumeMount{
+				Name:      vName,
+				MountPath: "/mnt/" + mv.Name,
+			})
+
+		podTemplateSpec.Spec.Volumes = append(podTemplateSpec.Spec.Volumes, corev1.Volume{
+			Name:         vName,
+			VolumeSource: volumeSource,
+		})
+	}
+}
+
+func ValidateMoverVolumes(ctx context.Context, c client.Client, logger logr.Logger,
+	namespace string, moverVolumes []volsyncv1alpha1.MoverVolume) error {
+	for _, mv := range moverVolumes {
+		if mv.VolumeSource.PersistentVolumeClaim != nil {
+			pvc := &corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      mv.VolumeSource.PersistentVolumeClaim.ClaimName,
+					Namespace: namespace,
+				},
+			}
+			if err := c.Get(ctx, client.ObjectKeyFromObject(pvc), pvc); err != nil {
+				logger.Error(err, "failed to get moverVolume PVC", "PVC", client.ObjectKeyFromObject(pvc))
+				return err
+			}
+		} else if mv.VolumeSource.Secret != nil {
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      mv.VolumeSource.Secret.SecretName,
+					Namespace: namespace,
+				},
+			}
+			if err := c.Get(ctx, client.ObjectKeyFromObject(secret), secret); err != nil {
+				logger.Error(err, "failed to get moverVolume Secret", "Secret", client.ObjectKeyFromObject(secret))
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // Will return a name with prefix + owner.Name unless it's too long, in which
 // case we will return prefix + owner.UID
 // (This assumes namePrefix + UID is shorter than 63 chars)

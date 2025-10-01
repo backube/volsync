@@ -140,6 +140,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		apiConfig:           api.APIConfig{},
 		privileged:          privileged,
 		moverConfig:         source.Spec.Syncthing.MoverConfig,
+		moverVolumes:        source.Spec.Syncthing.MoverVolumes,
 		// defer setting the VolumeHandler
 	}, nil
 }
