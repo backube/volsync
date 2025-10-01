@@ -586,7 +586,7 @@ var _ = Describe("utils tests", func() {
 
 	})
 
-	Describe("ValidateMoverVolumes", func() {
+	Describe("MoverVolume utils", func() {
 		logger := zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
 		var ns *corev1.Namespace
 
@@ -604,283 +604,374 @@ var _ = Describe("utils tests", func() {
 			Expect(k8sClient.Delete(ctx, ns)).To(Succeed())
 		})
 
-		When("moverVolumes is empty", func() {
-			It("ValidateMoverVolumes should succeed", func() {
-				Expect(utils.ValidateMoverVolumes(
-					ctx, k8sClient, logger, ns.GetName(), []volsyncv1alpha1.MoverVolume{})).To(Succeed())
-			})
-		})
-
-		When("moverVolumes is nil", func() {
-			It("ValidateMoverVolumes should succeed", func() {
-				Expect(utils.ValidateMoverVolumes(
-					ctx, k8sClient, logger, ns.GetName(), nil)).To(Succeed())
-			})
-		})
-
-		When("moverVolumes has a volume source that contains PVCs and Secrets", func() {
-			var moverVolumes []volsyncv1alpha1.MoverVolume
-
-			BeforeEach(func() {
-				moverVolumes = []volsyncv1alpha1.MoverVolume{
-					{
-						Name: "pvc1mnt",
-						VolumeSource: volsyncv1alpha1.MoverVolumeSource{
-							PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-								ClaimName: "pvc1",
-							},
-						},
-					},
-					{
-						Name: "sec1mnt",
-						VolumeSource: volsyncv1alpha1.MoverVolumeSource{
-							Secret: &corev1.SecretVolumeSource{
-								SecretName: "sec1",
-							},
-						},
-					},
-				}
-			})
-
-			When("a PVC does not exist", func() {
-				It("ValidateMoverVolumes should fail", func() {
-					err := utils.ValidateMoverVolumes(
-						ctx, k8sClient, logger, ns.GetName(), moverVolumes)
-
-					Expect(err).To(HaveOccurred())
-					Expect(err).To(MatchError(ContainSubstring("not found")))
-					Expect(err).To(MatchError(ContainSubstring("pvc1")))
+		Describe("ValidateMoverVolumes", func() {
+			When("moverVolumes is empty", func() {
+				It("ValidateMoverVolumes should succeed", func() {
+					Expect(utils.ValidateMoverVolumes(
+						ctx, k8sClient, logger, ns.GetName(), []volsyncv1alpha1.MoverVolume{})).To(Succeed())
 				})
 			})
 
-			When("a secret does not exist", func() {
+			When("moverVolumes is nil", func() {
+				It("ValidateMoverVolumes should succeed", func() {
+					Expect(utils.ValidateMoverVolumes(
+						ctx, k8sClient, logger, ns.GetName(), nil)).To(Succeed())
+				})
+			})
+
+			When("moverVolumes has a volume source that contains PVCs and Secrets", func() {
+				var moverVolumes []volsyncv1alpha1.MoverVolume
+
 				BeforeEach(func() {
-					// Create the PVC so validation proceeds to the secret
-					pvc := &corev1.PersistentVolumeClaim{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "pvc1",
-							Namespace: ns.Name,
-						},
-						Spec: corev1.PersistentVolumeClaimSpec{
-							AccessModes: []corev1.PersistentVolumeAccessMode{
-								corev1.ReadWriteMany,
+					moverVolumes = []volsyncv1alpha1.MoverVolume{
+						{
+							Name: "pvc1mnt",
+							VolumeSource: volsyncv1alpha1.MoverVolumeSource{
+								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+									ClaimName: "pvc1",
+								},
 							},
-							Resources: corev1.VolumeResourceRequirements{
-								Requests: corev1.ResourceList{
-									corev1.ResourceStorage: resource.MustParse("1Gi"),
+						},
+						{
+							Name: "sec1mnt",
+							VolumeSource: volsyncv1alpha1.MoverVolumeSource{
+								Secret: &corev1.SecretVolumeSource{
+									SecretName: "sec1",
 								},
 							},
 						},
 					}
-					Expect(k8sClient.Create(ctx, pvc)).To(Succeed())
 				})
 
-				When("a secret does not exist", func() {
+				When("a PVC does not exist", func() {
 					It("ValidateMoverVolumes should fail", func() {
 						err := utils.ValidateMoverVolumes(
 							ctx, k8sClient, logger, ns.GetName(), moverVolumes)
 
 						Expect(err).To(HaveOccurred())
 						Expect(err).To(MatchError(ContainSubstring("not found")))
-						Expect(err).To(MatchError(ContainSubstring("sec1")))
+						Expect(err).To(MatchError(ContainSubstring("pvc1")))
 					})
 				})
 
-				When("all mover volumes exist", func() {
+				When("a secret does not exist", func() {
 					BeforeEach(func() {
-						// Create the secret so all mover volumes exist
-						sec := &corev1.Secret{
+						// Create the PVC so validation proceeds to the secret
+						pvc := &corev1.PersistentVolumeClaim{
 							ObjectMeta: metav1.ObjectMeta{
-								Name:      "sec1",
+								Name:      "pvc1",
 								Namespace: ns.Name,
 							},
-							StringData: map[string]string{
-								"key1": "value1",
+							Spec: corev1.PersistentVolumeClaimSpec{
+								AccessModes: []corev1.PersistentVolumeAccessMode{
+									corev1.ReadWriteMany,
+								},
+								Resources: corev1.VolumeResourceRequirements{
+									Requests: corev1.ResourceList{
+										corev1.ResourceStorage: resource.MustParse("1Gi"),
+									},
+								},
 							},
 						}
-						Expect(k8sClient.Create(ctx, sec)).To(Succeed())
+						Expect(k8sClient.Create(ctx, pvc)).To(Succeed())
 					})
 
-					It("ValidateMoverVolumes should succeed", func() {
-						Expect(utils.ValidateMoverVolumes(
-							ctx, k8sClient, logger, ns.GetName(), moverVolumes)).To(Succeed())
+					When("a secret does not exist", func() {
+						It("ValidateMoverVolumes should fail", func() {
+							err := utils.ValidateMoverVolumes(
+								ctx, k8sClient, logger, ns.GetName(), moverVolumes)
+
+							Expect(err).To(HaveOccurred())
+							Expect(err).To(MatchError(ContainSubstring("not found")))
+							Expect(err).To(MatchError(ContainSubstring("sec1")))
+						})
+					})
+
+					When("all mover volumes exist", func() {
+						BeforeEach(func() {
+							// Create the secret so all mover volumes exist
+							sec := &corev1.Secret{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:      "sec1",
+									Namespace: ns.Name,
+								},
+								StringData: map[string]string{
+									"key1": "value1",
+								},
+							}
+							Expect(k8sClient.Create(ctx, sec)).To(Succeed())
+						})
+
+						It("ValidateMoverVolumes should succeed", func() {
+							Expect(utils.ValidateMoverVolumes(
+								ctx, k8sClient, logger, ns.GetName(), moverVolumes)).To(Succeed())
+						})
 					})
 				})
 			})
 		})
-	})
 
-	Describe("UpdatePodTemplateSpecWithMoverVolumes", func() {
-		When("no pod template spec", func() {
-			It("should not fail", func() {
-				utils.UpdatePodTemplateSpecWithMoverVolumes(nil, []volsyncv1alpha1.MoverVolume{})
+		Describe("UpdatePodTemplateSpecWithMoverVolumes", func() {
+			When("no pod template spec", func() {
+				It("should not fail", func() {
+					Expect(utils.UpdatePodTemplateSpecWithMoverVolumes(ctx, k8sClient, logger, ns.GetName(),
+						nil, []volsyncv1alpha1.MoverVolume{})).To(Succeed())
+				})
 			})
-		})
 
-		var podTemplateSpec *corev1.PodTemplateSpec
+			var podTemplateSpec *corev1.PodTemplateSpec
 
-		var origVolume corev1.Volume
-		var origVolumeMount corev1.VolumeMount
+			var origVolume corev1.Volume
+			var origVolumeMount corev1.VolumeMount
 
-		BeforeEach(func() {
-			// Save the original volume and volume mount so we can compare later
-			origVolume = corev1.Volume{
-				Name: "test-volume-1",
-				VolumeSource: corev1.VolumeSource{
-					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{},
-				},
-			}
-			origVolumeMount = corev1.VolumeMount{
-				Name:      "test-volume-1",
-				MountPath: "/data",
-			}
+			BeforeEach(func() {
+				// Save the original volume and volume mount so we can compare later
+				origVolume = corev1.Volume{
+					Name: "test-volume-1",
+					VolumeSource: corev1.VolumeSource{
+						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{},
+					},
+				}
+				origVolumeMount = corev1.VolumeMount{
+					Name:      "test-volume-1",
+					MountPath: "/data",
+				}
 
-			// Make a copy
-			volume := origVolume.DeepCopy()
-			volumeMount := origVolumeMount.DeepCopy()
+				// Make a copy
+				volume := origVolume.DeepCopy()
+				volumeMount := origVolumeMount.DeepCopy()
 
-			podTemplateSpec = &corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-podtemplatespec",
-					Namespace: "test-ns",
-				},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						// 1 container for this test - all movers currently using
-						// only 1 container
-						{
-							Name:    "testcontainer0",
-							Image:   "quay.io/testtesttest/test:test",
-							Command: []string{"takeovertheworld.sh", "now"},
-							VolumeMounts: []corev1.VolumeMount{
-								*volumeMount,
+				podTemplateSpec = &corev1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-podtemplatespec",
+						Namespace: "test-ns",
+					},
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{
+							// 1 container for this test - all movers currently using
+							// only 1 container
+							{
+								Name:    "testcontainer0",
+								Image:   "quay.io/testtesttest/test:test",
+								Command: []string{"takeovertheworld.sh", "now"},
+								VolumeMounts: []corev1.VolumeMount{
+									*volumeMount,
+								},
+							},
+						},
+						Volumes: []corev1.Volume{
+							*volume,
+						},
+					},
+				}
+
+				// Pre-create a PVC to use as a moverVolume
+				moverVolPVC := &corev1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "addl-pvc-1",
+						Namespace: ns.GetName(),
+					},
+					Spec: corev1.PersistentVolumeClaimSpec{
+						AccessModes: []corev1.PersistentVolumeAccessMode{
+							corev1.ReadWriteOnce,
+						},
+						Resources: corev1.VolumeResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceStorage: resource.MustParse("1Gi"),
 							},
 						},
 					},
-					Volumes: []corev1.Volume{
-						*volume,
-					},
-				},
-			}
-		})
-
-		When("moverVolumes is empty", func() {
-			It("should not fail", func() {
-				utils.UpdatePodTemplateSpecWithMoverVolumes(podTemplateSpec, []volsyncv1alpha1.MoverVolume{})
-				Expect(podTemplateSpec.Spec.Containers[0].VolumeMounts).To(Equal([]corev1.VolumeMount{origVolumeMount}))
-				Expect(podTemplateSpec.Spec.Volumes).To(Equal([]corev1.Volume{origVolume}))
+				}
+				Expect(k8sClient.Create(ctx, moverVolPVC)).To(Succeed())
 			})
-		})
 
-		When("moverVolumes is nil", func() {
-			It("should not fail", func() {
-				utils.UpdatePodTemplateSpecWithMoverVolumes(podTemplateSpec, nil)
-				Expect(podTemplateSpec.Spec.Containers[0].VolumeMounts).To(Equal([]corev1.VolumeMount{origVolumeMount}))
-				Expect(podTemplateSpec.Spec.Volumes).To(Equal([]corev1.Volume{origVolume}))
+			When("moverVolumes is empty", func() {
+				It("should not fail", func() {
+					Expect(utils.UpdatePodTemplateSpecWithMoverVolumes(ctx, k8sClient, logger, ns.GetName(), podTemplateSpec,
+						[]volsyncv1alpha1.MoverVolume{})).To(Succeed())
+					Expect(podTemplateSpec.Spec.Containers[0].VolumeMounts).To(Equal([]corev1.VolumeMount{origVolumeMount}))
+					Expect(podTemplateSpec.Spec.Volumes).To(Equal([]corev1.Volume{origVolume}))
+				})
 			})
-		})
 
-		// nolint:dupl
-		When("moverVolumes has a volume source that is a PVC", func() {
-			It("should mount the pvc in the pod template spec", func() {
-				utils.UpdatePodTemplateSpecWithMoverVolumes(podTemplateSpec, []volsyncv1alpha1.MoverVolume{
-					{
-						Name: "test-volume-1",
-						VolumeSource: volsyncv1alpha1.MoverVolumeSource{
+			When("moverVolumes is nil", func() {
+				It("should not fail", func() {
+					Expect(utils.UpdatePodTemplateSpecWithMoverVolumes(ctx, k8sClient, logger, ns.GetName(), podTemplateSpec,
+						nil)).To(Succeed())
+					Expect(podTemplateSpec.Spec.Containers[0].VolumeMounts).To(Equal([]corev1.VolumeMount{origVolumeMount}))
+					Expect(podTemplateSpec.Spec.Volumes).To(Equal([]corev1.Volume{origVolume}))
+				})
+			})
+
+			// nolint:dupl
+			When("moverVolumes has a volume source that is a PVC", func() {
+				It("should mount the pvc in the pod template spec", func() {
+					err := utils.UpdatePodTemplateSpecWithMoverVolumes(ctx, k8sClient, logger, ns.GetName(), podTemplateSpec,
+						[]volsyncv1alpha1.MoverVolume{
+							{
+								Name: "test-volume-1",
+								VolumeSource: volsyncv1alpha1.MoverVolumeSource{
+									PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+										ClaimName: "addl-pvc-1",
+									},
+								},
+							},
+						})
+					Expect(err).NotTo(HaveOccurred())
+
+					specVolumeMounts := podTemplateSpec.Spec.Containers[0].VolumeMounts
+					specVolumes := podTemplateSpec.Spec.Volumes
+
+					Expect(len(specVolumeMounts)).To(Equal(2))
+					Expect(len(specVolumes)).To(Equal(2))
+
+					Expect(specVolumeMounts[0]).To(Equal(origVolumeMount))
+					Expect(specVolumes[0]).To(Equal(origVolume))
+
+					// new PVC should be added
+					Expect(specVolumeMounts[1]).To(Equal(corev1.VolumeMount{
+						Name:      "u-test-volume-1",
+						MountPath: "/mnt/test-volume-1",
+					}))
+					Expect(specVolumes[1]).To(Equal(corev1.Volume{
+						Name: "u-test-volume-1",
+						VolumeSource: corev1.VolumeSource{
 							PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 								ClaimName: "addl-pvc-1",
 							},
 						},
-					},
+					}))
 				})
-
-				specVolumeMounts := podTemplateSpec.Spec.Containers[0].VolumeMounts
-				specVolumes := podTemplateSpec.Spec.Volumes
-
-				Expect(len(specVolumeMounts)).To(Equal(2))
-				Expect(len(specVolumes)).To(Equal(2))
-
-				Expect(specVolumeMounts[0]).To(Equal(origVolumeMount))
-				Expect(specVolumes[0]).To(Equal(origVolume))
-
-				// new PVC should be added
-				Expect(specVolumeMounts[1]).To(Equal(corev1.VolumeMount{
-					Name:      "u-test-volume-1",
-					MountPath: "/mnt/test-volume-1",
-				}))
-				Expect(specVolumes[1]).To(Equal(corev1.Volume{
-					Name: "u-test-volume-1",
-					VolumeSource: corev1.VolumeSource{
-						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-							ClaimName: "addl-pvc-1",
-						},
-					},
-				}))
 			})
-		})
 
-		// nolint:dupl // Same as above, but for a secret
-		When("moverVolumes has a volume source that is a secret", func() {
-			It("should mount them all in the pod template spec", func() {
-				utils.UpdatePodTemplateSpecWithMoverVolumes(podTemplateSpec, []volsyncv1alpha1.MoverVolume{
-					{
-						Name: "test-sec-1",
-						VolumeSource: volsyncv1alpha1.MoverVolumeSource{
+			// nolint:dupl // Same as above, but for a secret
+			When("moverVolumes has a volume source that is a secret", func() {
+				It("should mount them all in the pod template spec", func() {
+					err := utils.UpdatePodTemplateSpecWithMoverVolumes(ctx, k8sClient, logger, ns.GetName(), podTemplateSpec,
+						[]volsyncv1alpha1.MoverVolume{
+							{
+								Name: "test-sec-1",
+								VolumeSource: volsyncv1alpha1.MoverVolumeSource{
+									Secret: &corev1.SecretVolumeSource{
+										SecretName: "addl-sec1",
+									},
+								},
+							},
+						})
+					Expect(err).NotTo(HaveOccurred())
+
+					specVolumeMounts := podTemplateSpec.Spec.Containers[0].VolumeMounts
+					specVolumes := podTemplateSpec.Spec.Volumes
+
+					Expect(len(specVolumeMounts)).To(Equal(2))
+					Expect(len(specVolumes)).To(Equal(2))
+
+					Expect(specVolumeMounts[0]).To(Equal(origVolumeMount))
+					Expect(specVolumes[0]).To(Equal(origVolume))
+
+					// new Secret should be added
+					Expect(specVolumeMounts[1]).To(Equal(corev1.VolumeMount{
+						Name:      "u-test-sec-1",
+						MountPath: "/mnt/test-sec-1",
+					}))
+					Expect(specVolumes[1]).To(Equal(corev1.Volume{
+						Name: "u-test-sec-1",
+						VolumeSource: corev1.VolumeSource{
 							Secret: &corev1.SecretVolumeSource{
 								SecretName: "addl-sec1",
 							},
 						},
-					},
+					}))
 				})
-
-				specVolumeMounts := podTemplateSpec.Spec.Containers[0].VolumeMounts
-				specVolumes := podTemplateSpec.Spec.Volumes
-
-				Expect(len(specVolumeMounts)).To(Equal(2))
-				Expect(len(specVolumes)).To(Equal(2))
-
-				Expect(specVolumeMounts[0]).To(Equal(origVolumeMount))
-				Expect(specVolumes[0]).To(Equal(origVolume))
-
-				// new Secret should be added
-				Expect(specVolumeMounts[1]).To(Equal(corev1.VolumeMount{
-					Name:      "u-test-sec-1",
-					MountPath: "/mnt/test-sec-1",
-				}))
-				Expect(specVolumes[1]).To(Equal(corev1.Volume{
-					Name: "u-test-sec-1",
-					VolumeSource: corev1.VolumeSource{
-						Secret: &corev1.SecretVolumeSource{
-							SecretName: "addl-sec1",
-						},
-					},
-				}))
 			})
-		})
 
-		When("moverVolumes has multiple volume sources ", func() {
-			It("should mount the secret in the pod template spec", func() {
-				utils.UpdatePodTemplateSpecWithMoverVolumes(podTemplateSpec, []volsyncv1alpha1.MoverVolume{
-					{
-						Name: "test-sec-1",
-						VolumeSource: volsyncv1alpha1.MoverVolumeSource{
+			When("moverVolumes has multiple volume sources ", func() {
+				It("should mount the secret in the pod template spec", func() {
+					err := utils.UpdatePodTemplateSpecWithMoverVolumes(ctx, k8sClient, logger, ns.GetName(), podTemplateSpec,
+						[]volsyncv1alpha1.MoverVolume{
+							{
+								Name: "test-sec-1",
+								VolumeSource: volsyncv1alpha1.MoverVolumeSource{
+									Secret: &corev1.SecretVolumeSource{
+										SecretName: "addl-sec1",
+									},
+								},
+							},
+							{
+								Name: "test-volume-1",
+								VolumeSource: volsyncv1alpha1.MoverVolumeSource{
+									PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+										ClaimName: "addl-pvc-1",
+									},
+								},
+							},
+							{
+								// More complicated secret
+								Name: "s2",
+								VolumeSource: volsyncv1alpha1.MoverVolumeSource{
+									Secret: &corev1.SecretVolumeSource{
+										SecretName: "my-secret-2",
+										Items: []corev1.KeyToPath{
+											{
+												Key:  "key1",
+												Path: "path1",
+											},
+											{
+												Key:  "key2",
+												Path: "path2",
+											},
+										},
+									},
+								},
+							},
+						})
+					Expect(err).NotTo(HaveOccurred())
+
+					specVolumeMounts := podTemplateSpec.Spec.Containers[0].VolumeMounts
+					specVolumes := podTemplateSpec.Spec.Volumes
+
+					Expect(len(specVolumeMounts)).To(Equal(4))
+					Expect(len(specVolumes)).To(Equal(4))
+
+					Expect(specVolumeMounts[0]).To(Equal(origVolumeMount))
+					Expect(specVolumes[0]).To(Equal(origVolume))
+
+					// new Secret should be added
+					Expect(specVolumeMounts[1]).To(Equal(corev1.VolumeMount{
+						Name:      "u-test-sec-1",
+						MountPath: "/mnt/test-sec-1",
+					}))
+					Expect(specVolumes[1]).To(Equal(corev1.Volume{
+						Name: "u-test-sec-1",
+						VolumeSource: corev1.VolumeSource{
 							Secret: &corev1.SecretVolumeSource{
 								SecretName: "addl-sec1",
 							},
 						},
-					},
-					{
-						Name: "test-volume-1",
-						VolumeSource: volsyncv1alpha1.MoverVolumeSource{
+					}))
+
+					// new PVC should be added
+					Expect(specVolumeMounts[2]).To(Equal(corev1.VolumeMount{
+						Name:      "u-test-volume-1",
+						MountPath: "/mnt/test-volume-1",
+					}))
+					Expect(specVolumes[2]).To(Equal(corev1.Volume{
+						Name: "u-test-volume-1",
+						VolumeSource: corev1.VolumeSource{
 							PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 								ClaimName: "addl-pvc-1",
 							},
 						},
-					},
-					{
-						// More complicated secret
-						Name: "s2",
-						VolumeSource: volsyncv1alpha1.MoverVolumeSource{
+					}))
+
+					// new secret should be added
+					Expect(specVolumeMounts[3]).To(Equal(corev1.VolumeMount{
+						Name:      "u-s2",
+						MountPath: "/mnt/s2",
+					}))
+					Expect(specVolumes[3]).To(Equal(corev1.Volume{
+						Name: "u-s2",
+						VolumeSource: corev1.VolumeSource{
 							Secret: &corev1.SecretVolumeSource{
 								SecretName: "my-secret-2",
 								Items: []corev1.KeyToPath{
@@ -895,69 +986,8 @@ var _ = Describe("utils tests", func() {
 								},
 							},
 						},
-					},
+					}))
 				})
-
-				specVolumeMounts := podTemplateSpec.Spec.Containers[0].VolumeMounts
-				specVolumes := podTemplateSpec.Spec.Volumes
-
-				Expect(len(specVolumeMounts)).To(Equal(4))
-				Expect(len(specVolumes)).To(Equal(4))
-
-				Expect(specVolumeMounts[0]).To(Equal(origVolumeMount))
-				Expect(specVolumes[0]).To(Equal(origVolume))
-
-				// new Secret should be added
-				Expect(specVolumeMounts[1]).To(Equal(corev1.VolumeMount{
-					Name:      "u-test-sec-1",
-					MountPath: "/mnt/test-sec-1",
-				}))
-				Expect(specVolumes[1]).To(Equal(corev1.Volume{
-					Name: "u-test-sec-1",
-					VolumeSource: corev1.VolumeSource{
-						Secret: &corev1.SecretVolumeSource{
-							SecretName: "addl-sec1",
-						},
-					},
-				}))
-
-				// new PVC should be added
-				Expect(specVolumeMounts[2]).To(Equal(corev1.VolumeMount{
-					Name:      "u-test-volume-1",
-					MountPath: "/mnt/test-volume-1",
-				}))
-				Expect(specVolumes[2]).To(Equal(corev1.Volume{
-					Name: "u-test-volume-1",
-					VolumeSource: corev1.VolumeSource{
-						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-							ClaimName: "addl-pvc-1",
-						},
-					},
-				}))
-
-				// new secret should be added
-				Expect(specVolumeMounts[3]).To(Equal(corev1.VolumeMount{
-					Name:      "u-s2",
-					MountPath: "/mnt/s2",
-				}))
-				Expect(specVolumes[3]).To(Equal(corev1.Volume{
-					Name: "u-s2",
-					VolumeSource: corev1.VolumeSource{
-						Secret: &corev1.SecretVolumeSource{
-							SecretName: "my-secret-2",
-							Items: []corev1.KeyToPath{
-								{
-									Key:  "key1",
-									Path: "path1",
-								},
-								{
-									Key:  "key2",
-									Path: "path2",
-								},
-							},
-						},
-					},
-				}))
 			})
 		})
 	})

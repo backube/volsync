@@ -476,7 +476,10 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 		utils.UpdatePodTemplateSpecFromMoverConfig(&job.Spec.Template, m.moverConfig, corev1.ResourceRequirements{})
 
 		// Update the job volumes/mounts for additional mover volumes (if specified)
-		utils.UpdatePodTemplateSpecWithMoverVolumes(&job.Spec.Template, m.moverVolumes)
+		if err := utils.UpdatePodTemplateSpecWithMoverVolumes(ctx, m.client, logger, m.owner.GetNamespace(),
+			&job.Spec.Template, m.moverVolumes); err != nil {
+			return err
+		}
 
 		if m.privileged {
 			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{

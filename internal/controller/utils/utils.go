@@ -268,10 +268,11 @@ func UpdatePodTemplateSpecFromMoverConfig(podTemplateSpec *corev1.PodTemplateSpe
 	}
 }
 
-func UpdatePodTemplateSpecWithMoverVolumes(podTemplateSpec *corev1.PodTemplateSpec,
-	moverVolumes []volsyncv1alpha1.MoverVolume) {
+func UpdatePodTemplateSpecWithMoverVolumes(ctx context.Context, c client.Client,
+	logger logr.Logger, namespace string,
+	podTemplateSpec *corev1.PodTemplateSpec, moverVolumes []volsyncv1alpha1.MoverVolume) error {
 	if podTemplateSpec == nil {
-		return
+		return nil
 	}
 
 	container := &podTemplateSpec.Spec.Containers[0]
@@ -281,6 +282,34 @@ func UpdatePodTemplateSpecWithMoverVolumes(podTemplateSpec *corev1.PodTemplateSp
 
 		if mv.VolumeSource.PersistentVolumeClaim == nil && mv.VolumeSource.Secret == nil {
 			continue
+		}
+
+		// Determine affinity for PVC mounted volume, but only if it's not already set
+		// (It could be set already if we're in direct mode, or by a previous moverVolume
+		//  in this loop)
+		if mv.VolumeSource.PersistentVolumeClaim != nil &&
+			len(podTemplateSpec.Spec.NodeSelector) == 0 &&
+			len(podTemplateSpec.Spec.Tolerations) == 0 {
+			// Look up the PVC
+			addlPVC := &corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      mv.VolumeSource.PersistentVolumeClaim.ClaimName,
+					Namespace: namespace,
+				},
+			}
+			err := c.Get(ctx, client.ObjectKeyFromObject(addlPVC), addlPVC)
+			if err != nil {
+				logger.Error(err, "unable to lookup moverVolume PVC", "PVC", client.ObjectKeyFromObject(addlPVC))
+				return err
+			}
+
+			affinity, err := AffinityFromVolume(ctx, c, logger, addlPVC)
+			if err != nil {
+				logger.Error(err, "unable to determine proper affinity", "PVC", client.ObjectKeyFromObject(addlPVC))
+				return err
+			}
+			podTemplateSpec.Spec.NodeSelector = affinity.NodeSelector
+			podTemplateSpec.Spec.Tolerations = affinity.Tolerations
 		}
 
 		volumeSource := corev1.VolumeSource{
@@ -299,6 +328,8 @@ func UpdatePodTemplateSpecWithMoverVolumes(podTemplateSpec *corev1.PodTemplateSp
 			VolumeSource: volumeSource,
 		})
 	}
+
+	return nil
 }
 
 func ValidateMoverVolumes(ctx context.Context, c client.Client, logger logr.Logger,

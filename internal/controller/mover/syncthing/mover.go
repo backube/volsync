@@ -537,7 +537,10 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 		utils.UpdatePodTemplateSpecFromMoverConfig(&deployment.Spec.Template, m.moverConfig, defaultMoverResources)
 
 		// Update the deployment volumes/mounts for additional mover volumes (if specified)
-		utils.UpdatePodTemplateSpecWithMoverVolumes(&deployment.Spec.Template, m.moverVolumes)
+		if err := utils.UpdatePodTemplateSpecWithMoverVolumes(ctx, m.client, logger, m.owner.GetNamespace(),
+			&deployment.Spec.Template, m.moverVolumes); err != nil {
+			return err
+		}
 
 		if m.privileged {
 			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
