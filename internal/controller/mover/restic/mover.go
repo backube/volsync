@@ -77,6 +77,7 @@ type Mover struct {
 	privileged            bool
 	latestMoverStatus     *volsyncv1alpha1.MoverStatus
 	moverConfig           volsyncv1alpha1.MoverConfig
+	moverVolumes          []volsyncv1alpha1.MoverVolume
 	// Source-only fields
 	pruneInterval *int32
 	unlock        string
@@ -138,6 +139,12 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 	customCAObj, err := utils.ValidateCustomCA(ctx, m.client, m.logger,
 		m.owner.GetNamespace(), m.customCASpec)
 	// nil customCAObj is ok (indicates we're not using a custom CA)
+	if err != nil {
+		return mover.InProgress(), err
+	}
+
+	// Validate MoverVolumes
+	err = utils.ValidateMoverVolumes(ctx, m.client, m.logger, m.owner.GetNamespace(), m.moverVolumes)
 	if err != nil {
 		return mover.InProgress(), err
 	}
@@ -570,6 +577,12 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 
 		// Update the job securityContext, podLabels and resourceRequirements from moverConfig (if specified)
 		utils.UpdatePodTemplateSpecFromMoverConfig(&job.Spec.Template, m.moverConfig, corev1.ResourceRequirements{})
+
+		// Update the job volumes/mounts for additional mover volumes (if specified)
+		if err := utils.UpdatePodTemplateSpecWithMoverVolumes(ctx, m.client, logger, m.owner.GetNamespace(),
+			&job.Spec.Template, m.moverVolumes); err != nil {
+			return err
+		}
 
 		if m.privileged {
 			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{

@@ -18,6 +18,7 @@ Usage
    syncthing/index
    cli/index
    volume-populator/index
+   movervolumes
 
 There are four different replication methods built into VolSync. Choose the method that best fits your use-case:
 
@@ -84,3 +85,9 @@ Volume Populator
 
 VolSync provides a :doc:`Volume Populator <volume-populator/index>` to allow creation of PVCs that reference a
 ReplicationDestination as a dataSourceRef.
+
+Additional Mover Volumes
+========================
+
+VolSync provides an :doc:`additional mover volumes <movervolumes>` feature to allow advanced users to mount
+additional PVCs or secrets to the data mover Pods.

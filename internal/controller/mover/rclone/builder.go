@@ -138,6 +138,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		privileged:          privileged,
 		latestMoverStatus:   source.Status.LatestMoverStatus,
 		moverConfig:         source.Spec.Rclone.MoverConfig,
+		moverVolumes:        source.Spec.Rclone.MoverVolumes,
 	}, nil
 }
 
@@ -187,5 +188,6 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		privileged:          privileged,
 		latestMoverStatus:   destination.Status.LatestMoverStatus,
 		moverConfig:         destination.Spec.Rclone.MoverConfig,
+		moverVolumes:        destination.Spec.Rclone.MoverVolumes,
 	}, nil
 }

@@ -68,6 +68,7 @@ type Mover struct {
 	privileged          bool // true if the mover should have elevated privileges
 	latestMoverStatus   *volsyncv1alpha1.MoverStatus
 	moverConfig         volsyncv1alpha1.MoverConfig
+	moverVolumes        []volsyncv1alpha1.MoverVolume
 	// Destination-only fields
 	cleanupTempPVC bool
 }
@@ -119,6 +120,12 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 	customCAObj, err := utils.ValidateCustomCA(ctx, m.client, m.logger,
 		m.owner.GetNamespace(), m.customCASpec)
 	// nil customCAObj is ok (indicates we're not using a custom CA)
+	if err != nil {
+		return mover.InProgress(), err
+	}
+
+	// Validate MoverVolumes
+	err = utils.ValidateMoverVolumes(ctx, m.client, m.logger, m.owner.GetNamespace(), m.moverVolumes)
 	if err != nil {
 		return mover.InProgress(), err
 	}
@@ -345,6 +352,12 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 
 		// Update the job securityContext, podLabels and resourceRequirements from moverConfig (if specified)
 		utils.UpdatePodTemplateSpecFromMoverConfig(&job.Spec.Template, m.moverConfig, corev1.ResourceRequirements{})
+
+		// Update the job volumes/mounts for additional mover volumes (if specified)
+		if err := utils.UpdatePodTemplateSpecWithMoverVolumes(ctx, m.client, logger, m.owner.GetNamespace(),
+			&job.Spec.Template, m.moverVolumes); err != nil {
+			return err
+		}
 
 		// Adjust the Job based on whether the mover should be running as privileged
 		logger.Info("mover permissions", "privileged-mover", m.privileged)
