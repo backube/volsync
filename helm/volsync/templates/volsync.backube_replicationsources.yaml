@@ -1319,10 +1319,10 @@ spec:
                         This should only be used by advanced users.
                       items:
                         properties:
-                          name:
+                          mountPath:
                             description: |-
                               Path to give the volume when mounting under /mnt in the mover job pod.
-                              For example if MountPath is 'my-pvc' then this moverVolume will be mounted in the mover pod
+                              For example if mountPath is 'my-pvc' then this moverVolume will be mounted in the mover pod
                               at /mnt/my-pvc
                             type: string
                           volumeSource:
@@ -1413,7 +1413,7 @@ spec:
                                 type: object
                             type: object
                         required:
-                          - name
+                          - mountPath
                           - volumeSource
                         type: object
                       type: array
@@ -2691,10 +2691,10 @@ spec:
                         This should only be used by advanced users.
                       items:
                         properties:
-                          name:
+                          mountPath:
                             description: |-
                               Path to give the volume when mounting under /mnt in the mover job pod.
-                              For example if MountPath is 'my-pvc' then this moverVolume will be mounted in the mover pod
+                              For example if mountPath is 'my-pvc' then this moverVolume will be mounted in the mover pod
                               at /mnt/my-pvc
                             type: string
                           volumeSource:
@@ -2785,7 +2785,7 @@ spec:
                                 type: object
                             type: object
                         required:
-                          - name
+                          - mountPath
                           - volumeSource
                         type: object
                       type: array
@@ -4216,10 +4216,10 @@ spec:
                         This should only be used by advanced users.
                       items:
                         properties:
-                          name:
+                          mountPath:
                             description: |-
                               Path to give the volume when mounting under /mnt in the mover job pod.
-                              For example if MountPath is 'my-pvc' then this moverVolume will be mounted in the mover pod
+                              For example if mountPath is 'my-pvc' then this moverVolume will be mounted in the mover pod
                               at /mnt/my-pvc
                             type: string
                           volumeSource:
@@ -4310,7 +4310,7 @@ spec:
                                 type: object
                             type: object
                         required:
-                          - name
+                          - mountPath
                           - volumeSource
                         type: object
                       type: array
@@ -5546,10 +5546,10 @@ spec:
                         This should only be used by advanced users.
                       items:
                         properties:
-                          name:
+                          mountPath:
                             description: |-
                               Path to give the volume when mounting under /mnt in the mover job pod.
-                              For example if MountPath is 'my-pvc' then this moverVolume will be mounted in the mover pod
+                              For example if mountPath is 'my-pvc' then this moverVolume will be mounted in the mover pod
                               at /mnt/my-pvc
                             type: string
                           volumeSource:
@@ -5640,7 +5640,7 @@ spec:
                                 type: object
                             type: object
                         required:
-                          - name
+                          - mountPath
                           - volumeSource
                         type: object
                       type: array

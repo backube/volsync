@@ -139,7 +139,7 @@
               cacheCapacity: 1Gi
               moverSecurityContext: "{{ podSecurityContext }}"
               moverVolumes:
-                - name: repo
+                - mountPath: repo
                   volumeSource:
                     persistentVolumeClaim:
                       claimName: repo-pvc
@@ -168,7 +168,7 @@
               copyMethod: Snapshot
               cacheCapacity: 1Gi
               moverVolumes:
-                - name: repo
+                - mountPath: repo
                   volumeSource:
                     persistentVolumeClaim:
                       claimName: repo-pvc
@@ -212,7 +212,7 @@
               cacheCapacity: 1Gi
               moverSecurityContext: "{{ podSecurityContext }}"
               moverVolumes:
-                - name: repo
+                - mountPath: repo
                   volumeSource:
                     persistentVolumeClaim:
                       claimName: repo-pvc
@@ -236,7 +236,7 @@
               copyMethod: Direct
               cacheCapacity: 1Gi
               moverVolumes:
-                - name: repo
+                - mountPath: repo
                   volumeSource:
                     persistentVolumeClaim:
                       claimName: repo-pvc
