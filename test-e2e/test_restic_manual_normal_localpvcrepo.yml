@@ -82,6 +82,39 @@
               requests:
                 storage: 1Gi
 
+    # Pre-create dest pvc as we need to be wary of affinity (see affinity pod
+    # comments below)
+    - name: Create dest PVC (restore volume)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          kind: PersistentVolumeClaim
+          apiVersion: v1
+          metadata:
+            name: data-dest
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 1Gi
+
+    # Run affinity pod attached to source, dest and repo pvcs to make sure
+    # they end up in the same availability zone
+    # - data-source & data-dest need to be be mounted by a single pod later
+    #   when running compare-pvcs
+    # - data-dest & repo-pvc need to be mounted by the restore mover pod later
+    #   as data-dest is going to be a direct PVC.
+    - name: Run pvc affinity pod
+      include_role:
+        name: pvc_affinity_pod
+      vars:
+        pvc_names:
+          - data-source
+          - data-dest
+          - repo-pvc
+
     - name: Backup data from source volume with manual trigger (w/ mSC)
       kubernetes.core.k8s:
         state: present
@@ -159,33 +192,6 @@
         res.resources[0].status.latestMoverStatus.logs is search("Restic completed in.*")
       delay: 1
       retries: 900
-
-    - name: Create dest PVC (restore volume)
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          kind: PersistentVolumeClaim
-          apiVersion: v1
-          metadata:
-            name: data-dest
-            namespace: "{{ namespace }}"
-          spec:
-            accessModes:
-              - ReadWriteOnce
-            resources:
-              requests:
-                storage: 1Gi
-
-    # Run affinity pod attached to both pvcs to make sure they end up in the
-    # same availability zone so they can be mounted by a single pod later
-    # when running compare-pvcs
-    - name: Run pvc affinity pod
-      include_role:
-        name: pvc_affinity_pod
-      vars:
-        pvc_names:
-          - data-source
-          - data-dest
 
     - name: Restore data to destination (w/ mSC)
       kubernetes.core.k8s:
