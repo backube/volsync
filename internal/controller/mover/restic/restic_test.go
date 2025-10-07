@@ -1506,7 +1506,7 @@ var _ = Describe("Restic as a source", func() {
 					BeforeEach(func() {
 						rs.Spec.Restic.MoverVolumes = []volsyncv1alpha1.MoverVolume{
 							{
-								Name: "addl-pvc",
+								MountPath: "addl-pvc",
 								VolumeSource: volsyncv1alpha1.MoverVolumeSource{
 									PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 										ClaimName: "restic-extra-pvc",

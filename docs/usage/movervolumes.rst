@@ -13,8 +13,8 @@ Note: This feature is not available for the ``rsync`` mover - use the ``rsync-tl
 mover instead.
 
 Each mover has a ``spec`` section where ``moverVolumes`` can be specified.
-Each moverVolume has a ``name`` field, and the corresponding secret or PVC will be
-mounted in the mover pod at ``/mnt/<name>``.
+Each moverVolume has a ``mountPath`` field, and the corresponding secret or PVC will be
+mounted in the mover pod at ``/mnt/<mountPath>``.
 
 Here is an example restic ``replicationsource`` that sets a moverVolume to mount
 an additional PVC.  In the example the PVC named ``repo-pvc`` will be mounted to
@@ -42,7 +42,7 @@ the mover pod at the path ``/mnt/repo``:
       cacheCapacity: 1Gi
       # Additional PVC to mount to the mover pod at /mnt/repo
       moverVolumes:
-        - name: repo
+        - mountPath: repo
           volumeSource:
             persistentVolumeClaim:
               claimName: repo-pvc

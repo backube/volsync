@@ -179,10 +179,10 @@ type MoverConfig struct {
 }
 
 type MoverVolume struct {
-	// Name to give the volume when mounting under /mnt in the mover job pod.
-	// For example if name is 'my-pvc' then this moverVolume will be mounted in the mover pod
+	// Path to give the volume when mounting under /mnt in the mover job pod.
+	// For example if MountPath is 'my-pvc' then this moverVolume will be mounted in the mover pod
 	// at /mnt/my-pvc
-	Name string `json:"name"`
+	MountPath string `json:"name"`
 	// volumeSource represents the secret or PersistentVolumeClaim that should be mounted to the mover pod.
 	VolumeSource MoverVolumeSource `json:"volumeSource"`
 }

@@ -625,7 +625,7 @@ var _ = Describe("utils tests", func() {
 				BeforeEach(func() {
 					moverVolumes = []volsyncv1alpha1.MoverVolume{
 						{
-							Name: "pvc1mnt",
+							MountPath: "pvc1mnt",
 							VolumeSource: volsyncv1alpha1.MoverVolumeSource{
 								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 									ClaimName: "pvc1",
@@ -633,7 +633,7 @@ var _ = Describe("utils tests", func() {
 							},
 						},
 						{
-							Name: "sec1mnt",
+							MountPath: "sec1mnt",
 							VolumeSource: volsyncv1alpha1.MoverVolumeSource{
 								Secret: &corev1.SecretVolumeSource{
 									SecretName: "sec1",
@@ -809,7 +809,7 @@ var _ = Describe("utils tests", func() {
 					err := utils.UpdatePodTemplateSpecWithMoverVolumes(ctx, k8sClient, logger, ns.GetName(), podTemplateSpec,
 						[]volsyncv1alpha1.MoverVolume{
 							{
-								Name: "test-volume-1",
+								MountPath: "test-volume-1",
 								VolumeSource: volsyncv1alpha1.MoverVolumeSource{
 									PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 										ClaimName: "addl-pvc-1",
@@ -842,6 +842,46 @@ var _ = Describe("utils tests", func() {
 						},
 					}))
 				})
+
+				When("the moverVolume mountpath contains /", func() {
+					It("should mount the pvc in the pod template spec", func() {
+						err := utils.UpdatePodTemplateSpecWithMoverVolumes(ctx, k8sClient, logger, ns.GetName(), podTemplateSpec,
+							[]volsyncv1alpha1.MoverVolume{
+								{
+									MountPath: "test-volume-1/subpath",
+									VolumeSource: volsyncv1alpha1.MoverVolumeSource{
+										PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+											ClaimName: "addl-pvc-1",
+										},
+									},
+								},
+							})
+						Expect(err).NotTo(HaveOccurred())
+
+						specVolumeMounts := podTemplateSpec.Spec.Containers[0].VolumeMounts
+						specVolumes := podTemplateSpec.Spec.Volumes
+
+						Expect(len(specVolumeMounts)).To(Equal(2))
+						Expect(len(specVolumes)).To(Equal(2))
+
+						Expect(specVolumeMounts[0]).To(Equal(origVolumeMount))
+						Expect(specVolumes[0]).To(Equal(origVolume))
+
+						// new PVC should be added
+						Expect(specVolumeMounts[1]).To(Equal(corev1.VolumeMount{
+							Name:      "u-test-volume-1-subpath",
+							MountPath: "/mnt/test-volume-1/subpath",
+						}))
+						Expect(specVolumes[1]).To(Equal(corev1.Volume{
+							Name: "u-test-volume-1-subpath",
+							VolumeSource: corev1.VolumeSource{
+								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+									ClaimName: "addl-pvc-1",
+								},
+							},
+						}))
+					})
+				})
 			})
 
 			// nolint:dupl // Same as above, but for a secret
@@ -850,7 +890,7 @@ var _ = Describe("utils tests", func() {
 					err := utils.UpdatePodTemplateSpecWithMoverVolumes(ctx, k8sClient, logger, ns.GetName(), podTemplateSpec,
 						[]volsyncv1alpha1.MoverVolume{
 							{
-								Name: "test-sec-1",
+								MountPath: "test-sec-1",
 								VolumeSource: volsyncv1alpha1.MoverVolumeSource{
 									Secret: &corev1.SecretVolumeSource{
 										SecretName: "addl-sec1",
@@ -890,7 +930,7 @@ var _ = Describe("utils tests", func() {
 					err := utils.UpdatePodTemplateSpecWithMoverVolumes(ctx, k8sClient, logger, ns.GetName(), podTemplateSpec,
 						[]volsyncv1alpha1.MoverVolume{
 							{
-								Name: "test-sec-1",
+								MountPath: "test-sec-1",
 								VolumeSource: volsyncv1alpha1.MoverVolumeSource{
 									Secret: &corev1.SecretVolumeSource{
 										SecretName: "addl-sec1",
@@ -898,7 +938,7 @@ var _ = Describe("utils tests", func() {
 								},
 							},
 							{
-								Name: "test-volume-1",
+								MountPath: "test-volume-1",
 								VolumeSource: volsyncv1alpha1.MoverVolumeSource{
 									PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 										ClaimName: "addl-pvc-1",
@@ -907,7 +947,7 @@ var _ = Describe("utils tests", func() {
 							},
 							{
 								// More complicated secret
-								Name: "s2",
+								MountPath: "s2",
 								VolumeSource: volsyncv1alpha1.MoverVolumeSource{
 									Secret: &corev1.SecretVolumeSource{
 										SecretName: "my-secret-2",

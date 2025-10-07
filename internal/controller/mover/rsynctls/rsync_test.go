@@ -1416,7 +1416,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 					BeforeEach(func() {
 						rs.Spec.RsyncTLS.MoverVolumes = []volsyncv1alpha1.MoverVolume{
 							{
-								Name: "addl-pvc",
+								MountPath: "addl-pvc",
 								VolumeSource: volsyncv1alpha1.MoverVolumeSource{
 									PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 										ClaimName: "my-extra-pvc",

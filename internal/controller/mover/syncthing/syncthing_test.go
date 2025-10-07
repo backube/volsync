@@ -1422,7 +1422,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 							BeforeEach(func() {
 								rs.Spec.Syncthing.MoverVolumes = []volsyncv1alpha1.MoverVolume{
 									{
-										Name: "addl-pvc",
+										MountPath: "addl-pvc",
 										VolumeSource: volsyncv1alpha1.MoverVolumeSource{
 											PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 												ClaimName: "my-extra-pvc",

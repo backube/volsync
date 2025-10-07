@@ -1377,8 +1377,8 @@ spec:
                       properties:
                         name:
                           description: |-
-                            Name to give the volume when mounting under /mnt in the mover job pod.
-                            For example if name is 'my-pvc' then this moverVolume will be mounted in the mover pod
+                            Path to give the volume when mounting under /mnt in the mover job pod.
+                            For example if MountPath is 'my-pvc' then this moverVolume will be mounted in the mover pod
                             at /mnt/my-pvc
                           type: string
                         volumeSource:
@@ -2812,8 +2812,8 @@ spec:
                       properties:
                         name:
                           description: |-
-                            Name to give the volume when mounting under /mnt in the mover job pod.
-                            For example if name is 'my-pvc' then this moverVolume will be mounted in the mover pod
+                            Path to give the volume when mounting under /mnt in the mover job pod.
+                            For example if MountPath is 'my-pvc' then this moverVolume will be mounted in the mover pod
                             at /mnt/my-pvc
                           type: string
                         volumeSource:
@@ -4407,8 +4407,8 @@ spec:
                       properties:
                         name:
                           description: |-
-                            Name to give the volume when mounting under /mnt in the mover job pod.
-                            For example if name is 'my-pvc' then this moverVolume will be mounted in the mover pod
+                            Path to give the volume when mounting under /mnt in the mover job pod.
+                            For example if MountPath is 'my-pvc' then this moverVolume will be mounted in the mover pod
                             at /mnt/my-pvc
                           type: string
                         volumeSource:
@@ -5796,8 +5796,8 @@ spec:
                       properties:
                         name:
                           description: |-
-                            Name to give the volume when mounting under /mnt in the mover job pod.
-                            For example if name is 'my-pvc' then this moverVolume will be mounted in the mover pod
+                            Path to give the volume when mounting under /mnt in the mover job pod.
+                            For example if MountPath is 'my-pvc' then this moverVolume will be mounted in the mover pod
                             at /mnt/my-pvc
                           type: string
                         volumeSource:

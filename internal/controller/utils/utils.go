@@ -278,7 +278,8 @@ func UpdatePodTemplateSpecWithMoverVolumes(ctx context.Context, c client.Client,
 	container := &podTemplateSpec.Spec.Containers[0]
 
 	for _, mv := range moverVolumes {
-		vName := "u-" + mv.Name
+		absMountPath := "/mnt/" + mv.MountPath
+		vName := "u-" + strings.ReplaceAll(mv.MountPath, "/", "-")
 
 		if mv.VolumeSource.PersistentVolumeClaim == nil && mv.VolumeSource.Secret == nil {
 			continue
@@ -320,7 +321,7 @@ func UpdatePodTemplateSpecWithMoverVolumes(ctx context.Context, c client.Client,
 		container.VolumeMounts =
 			append(container.VolumeMounts, corev1.VolumeMount{
 				Name:      vName,
-				MountPath: "/mnt/" + mv.Name,
+				MountPath: absMountPath,
 			})
 
 		podTemplateSpec.Spec.Volumes = append(podTemplateSpec.Spec.Volumes, corev1.Volume{
