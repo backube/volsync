@@ -1412,6 +1412,65 @@ var _ = Describe("RsyncTLS as a source", func() {
 					})
 				})
 
+				When("moverVolumes are provided", func() {
+					BeforeEach(func() {
+						rs.Spec.RsyncTLS.MoverVolumes = []volsyncv1alpha1.MoverVolume{
+							{
+								MountPath: "addl-pvc",
+								VolumeSource: volsyncv1alpha1.MoverVolumeSource{
+									PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+										ClaimName: "my-extra-pvc",
+									},
+								},
+							},
+						}
+						// Pre-create the PVC to use as a moverVolume
+						moverVolPVC := &corev1.PersistentVolumeClaim{
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      "my-extra-pvc",
+								Namespace: ns.GetName(),
+							},
+							Spec: corev1.PersistentVolumeClaimSpec{
+								AccessModes: []corev1.PersistentVolumeAccessMode{
+									corev1.ReadWriteOnce,
+								},
+								Resources: corev1.VolumeResourceRequirements{
+									Requests: corev1.ResourceList{
+										corev1.ResourceStorage: resource.MustParse("1Gi"),
+									},
+								},
+							},
+						}
+						Expect(k8sClient.Create(ctx, moverVolPVC)).To(Succeed())
+					})
+					It("should mount the pvc in the container", func() {
+						j, e := mover.ensureJob(ctx, sPVC, sa, tlsKeySecret.GetName()) // Using sPVC as dataPVC (i.e. direct)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(j).To(BeNil()) // hasn't completed
+						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+						job = &batchv1.Job{}
+						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+
+						// Check that the PVC volume is added to the job
+						var volName string
+						for _, v := range job.Spec.Template.Spec.Volumes {
+							if v.PersistentVolumeClaim != nil && v.PersistentVolumeClaim.ClaimName == "my-extra-pvc" {
+								volName = v.Name
+							}
+						}
+						Expect(volName).To(Equal("u-addl-pvc"))
+
+						// Check that PVC is mounted to container
+						var mountPath string
+						for _, v := range job.Spec.Template.Spec.Containers[0].VolumeMounts {
+							if v.Name == "u-addl-pvc" {
+								mountPath = v.MountPath
+							}
+						}
+						Expect(mountPath).To(Equal("/mnt/addl-pvc"))
+					})
+				})
+
 				It("should support pausing", func() {
 					j, e := mover.ensureJob(ctx, sPVC, sa, tlsKeySecret.GetName()) // Using sPVC as dataPVC (i.e. direct)
 					Expect(e).NotTo(HaveOccurred())

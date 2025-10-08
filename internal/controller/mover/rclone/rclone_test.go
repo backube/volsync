@@ -1213,6 +1213,47 @@ var _ = Describe("Rclone as a source", func() {
 					})
 				})
 
+				When("moverVolumes are provided", func() {
+					BeforeEach(func() {
+						rs.Spec.Rclone.MoverVolumes = []volsyncv1alpha1.MoverVolume{
+							{
+								MountPath: "addl-secret",
+								VolumeSource: volsyncv1alpha1.MoverVolumeSource{
+									Secret: &corev1.SecretVolumeSource{
+										SecretName: "rclone-extra-secret",
+									},
+								},
+							},
+						}
+					})
+					It("should mount the secret in the container", func() {
+						j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret, nil) // Using sPVC as dataPVC (i.e. direct)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(j).To(BeNil()) // hasn't completed
+						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+						job = &batchv1.Job{}
+						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+
+						// Check that the secret volume is added to the job
+						var volName string
+						for _, v := range job.Spec.Template.Spec.Volumes {
+							if v.Secret != nil && v.Secret.SecretName == "rclone-extra-secret" {
+								volName = v.Name
+							}
+						}
+						Expect(volName).To(Equal("u-addl-secret"))
+
+						// Check that secret volume is mounted to container
+						var mountPath string
+						for _, v := range job.Spec.Template.Spec.Containers[0].VolumeMounts {
+							if v.Name == "u-addl-secret" {
+								mountPath = v.MountPath
+							}
+						}
+						Expect(mountPath).To(Equal("/mnt/addl-secret"))
+					})
+				})
+
 				When("a custom CA is not supplied", func() {
 					It("Should not attempt to update the podspec in the mover job", func() {
 						var customCA volsyncv1alpha1.CustomCASpec // No CustomCA, not initializing w any values

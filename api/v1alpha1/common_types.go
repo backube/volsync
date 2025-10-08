@@ -172,4 +172,30 @@ type MoverConfig struct {
 	MoverResources *corev1.ResourceRequirements `json:"moverResources,omitempty"`
 	// MoverAffinity allows specifying the PodAffinity that will be used by the data mover
 	MoverAffinity *corev1.Affinity `json:"moverAffinity,omitempty"`
+	// MoverVolumes are PVCs or Secrets that should additionally be mounted to the mover job pod.
+	// This should only be used by advanced users.
+	// +optional
+	MoverVolumes []MoverVolume `json:"moverVolumes,omitempty"`
+}
+
+type MoverVolume struct {
+	// Path to give the volume when mounting under /mnt in the mover job pod.
+	// For example if mountPath is 'my-pvc' then this moverVolume will be mounted in the mover pod
+	// at /mnt/my-pvc
+	MountPath string `json:"mountPath"`
+	// volumeSource represents the secret or PersistentVolumeClaim that should be mounted to the mover pod.
+	VolumeSource MoverVolumeSource `json:"volumeSource"`
+}
+
+type MoverVolumeSource struct {
+	// secret represents a secret that should populate this volume.
+	// More info: https://kubernetes.io/docs/concepts/storage/volumes#secret
+	// +optional
+	Secret *corev1.SecretVolumeSource `json:"secret,omitempty" protobuf:"bytes,6,opt,name=secret"`
+	// persistentVolumeClaimVolumeSource represents a reference to a
+	// PersistentVolumeClaim in the same namespace.
+	// More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#persistentvolumeclaims
+	// +optional
+	// nolint:lll
+	PersistentVolumeClaim *corev1.PersistentVolumeClaimVolumeSource `json:"persistentVolumeClaim,omitempty" protobuf:"bytes,10,opt,name=persistentVolumeClaim"`
 }
