@@ -25,11 +25,15 @@ annotations: # https://artifacthub.io/docs/topics/annotations/helm/
   # Kinds: added, changed, deprecated, removed, fixed, and security
   artifacthub.io/changes: |
     - kind: changed
+      description: Updated release to build on golang 1.24
+    - kind: changed
       description: Syncthing updated to v1.30.0
     - kind: changed
-      description: Rclone updated to v1.69.3
-    - kind: changed
-      description: "Rclone --checksum, --transfers and --stats parameters can now be overridden by RCLONE_ env vars in the rclone config secret"
+      description: Rclone updated to v1.71.1
+    - kind: added
+      description: Rclone --checksum, --transfers and --stats parameters can now be overridden by RCLONE_ env vars in the rclone config secret
+    - kind: added
+      description: addition of moverVolumes for advanced users to allow mounting of secrets or PVCs to their mover pod
   artifacthub.io/crds: |
     - kind: ReplicationDestination
       version: v1alpha1
