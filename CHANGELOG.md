@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Updated release to build on golang 1.24
 - Syncthing updated to v1.30.0
-- Rclone updated to v1.71.1
+- Rclone updated to v1.71.2
 - Rclone --checksum, --transfers and --stats parameters can now be
   overridden by RCLONE_ env vars in the rclone config secret
 - addition of moverVolumes for advanced users to allow mounting

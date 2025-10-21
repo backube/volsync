@@ -29,7 +29,7 @@ annotations: # https://artifacthub.io/docs/topics/annotations/helm/
     - kind: changed
       description: Syncthing updated to v1.30.0
     - kind: changed
-      description: Rclone updated to v1.71.1
+      description: Rclone updated to v1.71.2
     - kind: added
       description: Rclone --checksum, --transfers and --stats parameters can now be overridden by RCLONE_ env vars in the rclone config secret
     - kind: added
