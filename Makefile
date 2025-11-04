@@ -10,7 +10,7 @@ include ./version.mk
 
 # Helper software versions
 CONTROLLER_TOOLS_VERSION := v0.19.0
-GOLANGCI_VERSION := v2.5.0
+GOLANGCI_VERSION := v2.6.1
 HELM_VERSION := v3.19.0
 KUBECTL_VERSION := v1.34.1
 KUSTOMIZE_VERSION := v5.7.1
