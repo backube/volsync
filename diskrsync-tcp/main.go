@@ -150,7 +150,7 @@ func connectToTarget(sourceFile, targetAddress string, port int, opts *options, 
 		return err
 	}
 
-	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", targetAddress, port))
+	conn, err := net.Dial("tcp", net.JoinHostPort(targetAddress, fmt.Sprintf("%d", port)))
 	if err != nil {
 		return err
 	}
