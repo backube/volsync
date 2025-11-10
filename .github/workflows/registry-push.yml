@@ -98,11 +98,18 @@ jobs:
           echo "Attempting docker login to: ${REGISTRY}"
           skopeo login -u "${{ secrets.registry-username }}" -p "${{ secrets.registry-password }}" ${REGISTRY}
 
+      # Save additional tag to be pushed to the registry
+      - name: Determine additional tag based on the commit and date
+        run: |
+          SHORT_COMMIT_SHA=$(echo "$GITHUB_SHA" | cut -c1-8)
+          DATE_TAG=$(date -u '+%Y%m%d%H%M%S')
+          echo "ADDITIONAL_TAG="$SHORT_COMMIT_SHA-$DATE_TAG" >> $GITHUB_ENV
+
       # If we're on the default branch, we push to :latest
       - name: Push to registry (as :latest)
         if: github.ref_name == github.event.repository.default_branch
         run: |
-          skopeo copy --multi-arch all --src-tls-verify=false docker://localhost:5000/${{ inputs.image-name }} "docker://${{ inputs.image-name }}"
+          skopeo copy --multi-arch all --src-tls-verify=false docker://localhost:5000/${{ inputs.image-name }} "docker://${{ inputs.image-name }}:latest" --additional-tag="${{ env.ADDITIONAL_TAG }}"
 
       # if we're on a non-default branch, push to that ref name
       - name: Push to registry (branch)
@@ -111,7 +118,7 @@ jobs:
         run: |
           TAG="${{ github.ref_name }}"
           echo "Pushing to $TAG"
-          skopeo copy --multi-arch all --src-tls-verify=false docker://localhost:5000/${{ inputs.image-name }} "docker://${{ inputs.image-name }}:${TAG}"
+          skopeo copy --multi-arch all --src-tls-verify=false docker://localhost:5000/${{ inputs.image-name }} "docker://${{ inputs.image-name }}:${TAG}" --additional-tag="${{ env.ADDITIONAL_TAG }}"
 
       # if we're on a tag, strip the leading "v" and push to that ref name
       - name: Push to registry (tag)
@@ -120,4 +127,4 @@ jobs:
           [[ "${{ github.ref_name }}" =~ ^v([0-9]+.*) ]] || exit 0
           TAG="${BASH_REMATCH[1]}"
           echo "Pushing to $TAG"
-          skopeo copy --multi-arch all --src-tls-verify=false docker://localhost:5000/${{ inputs.image-name }} "docker://${{ inputs.image-name }}:${TAG}"
+          skopeo copy --multi-arch all --src-tls-verify=false docker://localhost:5000/${{ inputs.image-name }} "docker://${{ inputs.image-name }}:${TAG}" --additional-tag="${{ env.ADDITIONAL_TAG }}"
