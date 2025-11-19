@@ -19,7 +19,7 @@ env:
   OPERATOR_IMAGE: "quay.io/backube/volsync"
   CUSTOM_SCORECARD_IMAGE: "quay.io/backube/volsync-custom-scorecard-tests"
   DOCKER_BUILDKIT: "1"
-  FFWD_RELEASE_BRANCH: "" # set to "" to skip ffwding from main to this branch
+  FFWD_RELEASE_BRANCH: "release-0.15" # set to "" to skip ffwding from main to this branch
 
 jobs:
   lint:
