@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Rclone updated to v1.72.0
+
+## [0.14.0]
+
+### Changed
+
 - Updated release to build on golang 1.24
 - Syncthing updated to v1.30.0
 - Rclone updated to v1.71.2
@@ -17,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - addition of moverVolumes for advanced users to allow mounting
   of secrets or PVCs to their mover pod
 
-## 0.13.1
+## [0.13.1]
 
 ### Fixed
 
@@ -28,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Minio used for e2e tests migrated to minio helm charts from bitnami
 
-## 0.13.0
+## [0.13.0]
 
 ### Changed
 
@@ -394,7 +400,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for rsync & rclone replication
 - Helm chart to deploy operator
 
-[Unreleased]: https://github.com/backube/volsync/compare/release-0.13...HEAD
+[Unreleased]: https://github.com/backube/volsync/compare/release-0.14...HEAD
+[0.14.0]: https://github.com/backube/volsync/compare/release-0.13...v0.14.0
 [0.13.1]: https://github.com/backube/volsync/compare/release-0.13.0...v0.13.1
 [0.13.0]: https://github.com/backube/volsync/compare/release-0.12...v0.13.0
 [0.12.1]: https://github.com/backube/volsync/compare/release-0.12.0...v0.12.1
