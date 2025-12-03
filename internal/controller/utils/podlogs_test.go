@@ -112,15 +112,16 @@ var _ = Describe("Pod Logs Tests", func() {
 				Expect(pod2Running.CreationTimestamp.Before(&pod3Running.CreationTimestamp)).To(BeTrue())
 
 				pod4Succeeded = createTestPodForJob("test4", ns.GetName(), job.GetName(), corev1.PodSucceeded)
-				//time.Sleep(10 * time.Millisecond)
 				time.Sleep(2 * time.Second)
 				pod5Succeeded = createTestPodForJob("test5", ns.GetName(), job.GetName(), corev1.PodSucceeded)
+				time.Sleep(2 * time.Second) // Add sleep after pod5 to ensure timestamp difference
 
 				Expect(pod4Succeeded.CreationTimestamp.Before(&pod5Succeeded.CreationTimestamp)).To(BeTrue())
 
 				pod6Failed = createTestPodForJob("test6", ns.GetName(), job.GetName(), corev1.PodFailed)
 				time.Sleep(2 * time.Second)
 				pod7Failed = createTestPodForJob("test7", ns.GetName(), job.GetName(), corev1.PodFailed)
+				time.Sleep(2 * time.Second) // Add sleep after pod7 to ensure timestamp difference
 
 				Expect(pod6Failed.CreationTimestamp.Before(&pod7Failed.CreationTimestamp)).To(BeTrue())
 			})
@@ -165,7 +166,7 @@ var _ = Describe("Pod Logs Tests", func() {
 						if err != nil {
 							return false
 						}
-						p7, err := k8sClientSet.CoreV1().Pods(ns.GetName()).Get(ctx, pod6Failed.GetName(), metav1.GetOptions{})
+						p7, err := k8sClientSet.CoreV1().Pods(ns.GetName()).Get(ctx, pod7Failed.GetName(), metav1.GetOptions{})
 						if err != nil {
 							return false
 						}
