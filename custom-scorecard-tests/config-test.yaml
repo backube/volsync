@@ -1,0 +1,64 @@
+apiVersion: scorecard.operatorframework.io/v1alpha3
+kind: Configuration
+metadata:
+  name: config
+serviceaccount: volsync-test-runner
+stages:
+- parallel: false
+  tests:
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - deploy-prereqs
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: deploy-prereqs
+- parallel: true
+  tests:
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_rclone_normal.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_rclone_normal.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_rsync_tls_normal.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_rsync_tls_normal.yml
+    storage:
+      spec:
+        mountPath: {}
+- parallel: true
+  tests:
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_restic_manual_normal.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_restic_manual_normal.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_restic_with_restoreoptions.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_restic_with_restoreoptions.yml
+    storage:
+      spec:
+        mountPath: {}
+- parallel: true
+  tests: []
+storage:
+  spec:
+    mountPath: {}
