@@ -9,11 +9,11 @@
 #
 # Bundle Version being built right now and channels to use
 #
-VERSION := 0.13.1
+VERSION := 0.13.2
 # REPLACES_VERSION should be left empty for the first version in a new channel (See more info in Procedures.md)
-REPLACES_VERSION := 0.13.0
+REPLACES_VERSION := 0.13.1
 OLM_SKIPRANGE := '>=0.4.0 <$(VERSION)'
-CHANNELS := stable,stable-0.13
+CHANNELS := stable-0.13
 DEFAULT_CHANNEL := stable
 MIN_KUBE_VERSION := 1.20.0
 
