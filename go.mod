@@ -1,6 +1,6 @@
 module github.com/backube/volsync
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/dop251/diskrsync v1.3.0
