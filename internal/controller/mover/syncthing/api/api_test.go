@@ -1,5 +1,6 @@
 //go:build !disable_syncthing
 
+//nolint:revive
 package api
 
 import (
