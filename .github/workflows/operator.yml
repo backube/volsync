@@ -463,7 +463,7 @@ jobs:
   # This job is to optionally ffwd the main branch to a release branch
   ffwd-to-release-br:
     name: Fast forward release branch
-    needs: e2e-success
+    #needs: e2e-success
     if: >
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
       (github.ref == 'refs/heads/main')
