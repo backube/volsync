@@ -6,7 +6,7 @@ Additional Mover Volumes
    :hidden:
 
 For advanced users, VolSync's data movers can be run mounting additional
-PVCs or secrets. These PVCs and secrets must be in the same namespace as the
+PVCs, secrets or NFS mounts. PVCs and secrets must be in the same namespace as the
 corresponding ReplicationSource or ReplicationDestination.
 
 Note: This feature is not available for the ``rsync`` mover - use the ``rsync-tls``

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- moverVolumes updated to allow NFS type volumeMounts
 - Rclone updated to v1.72.0
 
 ## [0.14.0]

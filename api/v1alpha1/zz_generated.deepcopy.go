@@ -146,6 +146,11 @@ func (in *MoverVolumeSource) DeepCopyInto(out *MoverVolumeSource) {
 		*out = new(v1.SecretVolumeSource)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.NFS != nil {
+		in, out := &in.NFS, &out.NFS
+		*out = new(v1.NFSVolumeSource)
+		**out = **in
+	}
 	if in.PersistentVolumeClaim != nil {
 		in, out := &in.PersistentVolumeClaim, &out.PersistentVolumeClaim
 		*out = new(v1.PersistentVolumeClaimVolumeSource)
