@@ -90,4 +90,4 @@ Additional Mover Volumes
 ========================
 
 VolSync provides an :doc:`additional mover volumes <movervolumes>` feature to allow advanced users to mount
-additional PVCs or secrets to the data mover Pods.
+additional PVCs, secrets or NFS mounts to the data mover Pods.

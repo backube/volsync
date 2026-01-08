@@ -1320,6 +1320,31 @@ spec:
                           volumeSource:
                             description: volumeSource represents the secret or PersistentVolumeClaim that should be mounted to the mover pod.
                             properties:
+                              nfs:
+                                description: |-
+                                  nfs represents an NFS mount on the host that shares a pod's lifetime
+                                  More info: https://kubernetes.io/docs/concepts/storage/volumes#nfs
+                                properties:
+                                  path:
+                                    description: |-
+                                      path that is exported by the NFS server.
+                                      More info: https://kubernetes.io/docs/concepts/storage/volumes#nfs
+                                    type: string
+                                  readOnly:
+                                    description: |-
+                                      readOnly here will force the NFS export to be mounted with read-only permissions.
+                                      Defaults to false.
+                                      More info: https://kubernetes.io/docs/concepts/storage/volumes#nfs
+                                    type: boolean
+                                  server:
+                                    description: |-
+                                      server is the hostname or IP address of the NFS server.
+                                      More info: https://kubernetes.io/docs/concepts/storage/volumes#nfs
+                                    type: string
+                                required:
+                                  - path
+                                  - server
+                                type: object
                               persistentVolumeClaim:
                                 description: |-
                                   persistentVolumeClaimVolumeSource represents a reference to a
@@ -2684,6 +2709,31 @@ spec:
                           volumeSource:
                             description: volumeSource represents the secret or PersistentVolumeClaim that should be mounted to the mover pod.
                             properties:
+                              nfs:
+                                description: |-
+                                  nfs represents an NFS mount on the host that shares a pod's lifetime
+                                  More info: https://kubernetes.io/docs/concepts/storage/volumes#nfs
+                                properties:
+                                  path:
+                                    description: |-
+                                      path that is exported by the NFS server.
+                                      More info: https://kubernetes.io/docs/concepts/storage/volumes#nfs
+                                    type: string
+                                  readOnly:
+                                    description: |-
+                                      readOnly here will force the NFS export to be mounted with read-only permissions.
+                                      Defaults to false.
+                                      More info: https://kubernetes.io/docs/concepts/storage/volumes#nfs
+                                    type: boolean
+                                  server:
+                                    description: |-
+                                      server is the hostname or IP address of the NFS server.
+                                      More info: https://kubernetes.io/docs/concepts/storage/volumes#nfs
+                                    type: string
+                                required:
+                                  - path
+                                  - server
+                                type: object
                               persistentVolumeClaim:
                                 description: |-
                                   persistentVolumeClaimVolumeSource represents a reference to a
@@ -4201,6 +4251,31 @@ spec:
                           volumeSource:
                             description: volumeSource represents the secret or PersistentVolumeClaim that should be mounted to the mover pod.
                             properties:
+                              nfs:
+                                description: |-
+                                  nfs represents an NFS mount on the host that shares a pod's lifetime
+                                  More info: https://kubernetes.io/docs/concepts/storage/volumes#nfs
+                                properties:
+                                  path:
+                                    description: |-
+                                      path that is exported by the NFS server.
+                                      More info: https://kubernetes.io/docs/concepts/storage/volumes#nfs
+                                    type: string
+                                  readOnly:
+                                    description: |-
+                                      readOnly here will force the NFS export to be mounted with read-only permissions.
+                                      Defaults to false.
+                                      More info: https://kubernetes.io/docs/concepts/storage/volumes#nfs
+                                    type: boolean
+                                  server:
+                                    description: |-
+                                      server is the hostname or IP address of the NFS server.
+                                      More info: https://kubernetes.io/docs/concepts/storage/volumes#nfs
+                                    type: string
+                                required:
+                                  - path
+                                  - server
+                                type: object
                               persistentVolumeClaim:
                                 description: |-
                                   persistentVolumeClaimVolumeSource represents a reference to a
@@ -5523,6 +5598,31 @@ spec:
                           volumeSource:
                             description: volumeSource represents the secret or PersistentVolumeClaim that should be mounted to the mover pod.
                             properties:
+                              nfs:
+                                description: |-
+                                  nfs represents an NFS mount on the host that shares a pod's lifetime
+                                  More info: https://kubernetes.io/docs/concepts/storage/volumes#nfs
+                                properties:
+                                  path:
+                                    description: |-
+                                      path that is exported by the NFS server.
+                                      More info: https://kubernetes.io/docs/concepts/storage/volumes#nfs
+                                    type: string
+                                  readOnly:
+                                    description: |-
+                                      readOnly here will force the NFS export to be mounted with read-only permissions.
+                                      Defaults to false.
+                                      More info: https://kubernetes.io/docs/concepts/storage/volumes#nfs
+                                    type: boolean
+                                  server:
+                                    description: |-
+                                      server is the hostname or IP address of the NFS server.
+                                      More info: https://kubernetes.io/docs/concepts/storage/volumes#nfs
+                                    type: string
+                                required:
+                                  - path
+                                  - server
+                                type: object
                               persistentVolumeClaim:
                                 description: |-
                                   persistentVolumeClaimVolumeSource represents a reference to a
