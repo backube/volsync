@@ -14,7 +14,7 @@ GOLANGCI_VERSION := v2.8.0
 HELM_VERSION := v3.19.4
 KUBECTL_VERSION := v1.35.0
 KUSTOMIZE_VERSION := v5.7.1
-OPERATOR_SDK_VERSION := v1.34.0
+OPERATOR_SDK_VERSION := v1.36.1
 PIPENV_VERSION := 2026.0.3
 YQ_VERSION := v4.50.1
 #ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
@@ -251,6 +251,12 @@ krew-plugin-manifest: yq bin/kubectl-volsync ## Build & package the kubectl plug
 	HASH="`sha256sum bin/kubectl-volsync.tar.gz | cut -f 1 -d ' '`" \
 	VERSION="v$(VERSION)" \
 	$(YQ) --inplace '.spec.version=strenv(VERSION) | with(.spec.platforms[]; .sha256=strenv(HASH) | .uri|=sub("v[[:digit:]]+\.[^/]+", strenv(VERSION)))' ./kubectl-volsync/volsync.yaml
+
+.PHONY: build-installer
+build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
+	mkdir -p dist
+	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+	$(KUSTOMIZE) build config/default > dist/install.yaml
 
 ##@ Deployment
 
