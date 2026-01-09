@@ -55,9 +55,9 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2026-01-07T19:29:34Z"
+    createdAt: "2026-01-09T15:54:09Z"
     olm.skipRange: '>=0.4.0 <0.15.0'
-    operators.operatorframework.io/builder: operator-sdk-v1.33.0
+    operators.operatorframework.io/builder: operator-sdk-v1.37.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
   name: volsync.v0.15.0
   namespace: placeholder
@@ -65,15 +65,16 @@ spec:
   apiservicedefinitions: {}
   customresourcedefinitions:
     owned:
-    - description: A ReplicationDestination is a VolSync resource that you can use
-        to define the destination of a VolSync replication or synchronization.
+    - description: |-
+        A ReplicationDestination is a VolSync resource that you can use to define the destination of a VolSync replication
+        or synchronization.
       displayName: Replication Destination
       kind: ReplicationDestination
       name: replicationdestinations.volsync.backube
       version: v1alpha1
-    - description: A ReplicationSource is a VolSync resource that you can use to define
-        the source PVC and replication mover type, enabling you to replicate or synchronize
-        PVC data to a remote location.
+    - description: |-
+        A ReplicationSource is a VolSync resource that you can use to define the source PVC and replication mover type,
+        enabling you to replicate or synchronize PVC data to a remote location.
       displayName: Replication Source
       kind: ReplicationSource
       name: replicationsources.volsync.backube
