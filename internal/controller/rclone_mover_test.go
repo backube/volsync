@@ -279,9 +279,10 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 						}, maxWait, interval).Should(Not(BeNil()))
 						latestImage := rd.Status.LatestImage
 						// ensure the name was correctly set
+						Expect(latestImage).ToNot(BeNil())
 						Expect(latestImage.Kind).To(Equal("VolumeSnapshot"))
 						Expect(*latestImage.APIGroup).To(Equal(snapv1.SchemeGroupVersion.Group))
-						Expect(latestImage).To(Not(Equal("")))
+						Expect(latestImage.Name).ToNot(Equal(""))
 					})
 
 					It("Ensure that previous VolumeSnapshot is deleted at the end of an iteration", func() {
@@ -291,7 +292,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 							_ = k8sClient.List(ctx, snapshots, client.InNamespace(rd.Namespace))
 							return snapshots.Items
 						}, maxWait, interval).Should(Not(BeEmpty()))
-						Expect(len(snapshots.Items)).To(Equal(1))
+						Expect(snapshots.Items).To(HaveLen(1))
 
 						// sync should be waiting for snapshot - check that lastSyncStartTime
 						// is set
@@ -396,7 +397,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 								break
 							}
 						}
-						Expect(snapshot2.GetName).To(Not(Equal("")))
+						Expect(snapshot2.GetName()).To(Not(Equal("")))
 						foo2 := "dummysnapshot2"
 						snapshot2.Status = &snapv1.VolumeSnapshotStatus{
 							BoundVolumeSnapshotContentName: &foo2,

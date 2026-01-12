@@ -307,7 +307,7 @@ var _ = Context("Issue 290: Synchronizing condition error doesn't clear", func()
 		// Error clears and we return to syncing
 		m.SyncErr = nil
 		_, err = Run(ctx, m, logger)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 
 		c = apimeta.FindStatusCondition(*m.Conditions(), volsyncv1alpha1.ConditionSynchronizing)
 		Expect(c).NotTo(BeNil())

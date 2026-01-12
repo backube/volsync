@@ -256,7 +256,7 @@ var _ = Describe("Cleanup", func() {
 				remainingSnapList := &snapv1.VolumeSnapshotList{}
 				Expect(k8sClient.List(ctx, remainingSnapList,
 					client.InNamespace(testNamespace.GetName()))).To(Succeed())
-				Expect(len(remainingSnapList.Items)).To(Equal(2))
+				Expect(remainingSnapList.Items).To(HaveLen(2))
 
 				// snapA2 should remain, no cleanup label
 				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(snapA2), snapA1)).To(Succeed())
@@ -289,7 +289,7 @@ var _ = Describe("Cleanup", func() {
 					remainingSnapList := &snapv1.VolumeSnapshotList{}
 					Expect(k8sClient.List(ctx, remainingSnapList,
 						client.InNamespace(testNamespace.GetName()))).To(Succeed())
-					Expect(len(remainingSnapList.Items)).To(Equal(3)) // Nothing should be deleted
+					Expect(remainingSnapList.Items).To(HaveLen(3)) // Nothing should be deleted
 
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(snapB1), snapB1)).To(Succeed())
 					validateCleanupLabelAndOwnerRefRemoved(snapB1)
@@ -347,7 +347,7 @@ var _ = Describe("Cleanup", func() {
 					remainingSnapList := &snapv1.VolumeSnapshotList{}
 					Expect(k8sClient.List(ctx, remainingSnapList,
 						client.InNamespace(testNamespace.GetName()))).To(Succeed())
-					Expect(len(remainingSnapList.Items)).To(Equal(1)) // only snapB1 should be left
+					Expect(remainingSnapList.Items).To(HaveLen(1)) // only snapB1 should be left
 
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(snapB1), snapB1)).To(Succeed())
 				})
@@ -395,8 +395,8 @@ var _ = Describe("Cleanup", func() {
 func validateCleanupLabelAndOwnerRefRemoved(obj client.Object) {
 	labels := obj.GetLabels()
 	_, ok := labels["volsync.backube/cleanup"]
-	Expect(ok).To(BeFalse())                           // cleanup label should be removed
-	Expect(len(obj.GetOwnerReferences())).To(Equal(0)) // Owner ref should be removed as well
+	Expect(ok).To(BeFalse())                       // cleanup label should be removed
+	Expect(obj.GetOwnerReferences()).To(BeEmpty()) // Owner ref should be removed as well
 }
 
 // This assumes there was only 1 owner ref at the start
@@ -406,7 +406,7 @@ func validateCleanupLabelAndOwnerRef(obj client.Object, owner client.Object) {
 	Expect(ok).To(BeTrue()) // cleanup label should exist
 	Expect(cleanupVal).To(Equal(string(owner.GetUID())))
 
-	Expect(len(obj.GetOwnerReferences())).To(Equal(1)) // Owner ref should exist
+	Expect(obj.GetOwnerReferences()).To(HaveLen(1)) // Owner ref should exist
 	ownerRef := obj.GetOwnerReferences()[0]
 	Expect(ownerRef.Kind).To(Equal("ReplicationDestination"))
 	Expect(ownerRef.Name).To(Equal(owner.GetName()))

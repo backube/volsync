@@ -122,7 +122,7 @@ var _ = Describe("Syncthing doesn't implement RD", func() {
 			// get a builder from the xRD to ensure that this errors
 			m, e := commonBuilderForTestSuite.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd,
 				true /* privileged */)
-			Expect(e).To(BeNil())
+			Expect(e).ToNot(HaveOccurred())
 			Expect(m).To(BeNil())
 		})
 	})
@@ -315,7 +315,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 						appLabel, ok := deployment.GetLabels()["app"]
 						Expect(ok).To(BeTrue())
 						Expect(appLabel).To(ContainSubstring(utils.GetHashedName(rs.GetName())))
-						Expect(len(appLabel) > 63).To(BeFalse())
+						Expect(len(appLabel)).ToNot(BeNumerically(">", 63))
 
 						// make sure the api service is created
 						apiSvc, err := mover.ensureAPIService(ctx, deployment)
@@ -323,7 +323,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 						Expect(apiSvc).NotTo(BeNil())
 						Expect(apiSvc.GetName()).To(ContainSubstring(utils.GetHashedName(rs.GetName())))
 						// Make sure our shortened name is actually short enough
-						Expect(len(apiSvc.GetName()) > 63).To(BeFalse())
+						Expect(len(apiSvc.GetName())).ToNot(BeNumerically(">", 63))
 
 						// make sure the data service is created
 						dataSvc, err := mover.ensureDataService(ctx, deployment)
@@ -331,7 +331,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 						Expect(dataSvc).NotTo(BeNil())
 						Expect(dataSvc.GetName()).To(ContainSubstring(utils.GetHashedName(rs.GetName())))
 						// Make sure our shortened name is actually short enough
-						Expect(len(dataSvc.GetName()) > 63).To(BeFalse())
+						Expect(len(dataSvc.GetName())).ToNot(BeNumerically(">", 63))
 					})
 				})
 
@@ -615,11 +615,11 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 
 				It("Doesn't synchronize", func() {
 					res, err := mover.Synchronize(ctx)
-					Expect(err).ToNot(BeNil())
+					Expect(err).To(HaveOccurred())
 					Expect(res).To(Equal(cMover.InProgress()))
 
 					syncthing, err := mover.syncthingConnection.Fetch()
-					Expect(err).ToNot(BeNil())
+					Expect(err).To(HaveOccurred())
 					Expect(syncthing).To(BeNil())
 
 					apiKeys := &corev1.Secret{
@@ -636,7 +636,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 
 					syncthing = &api.Syncthing{}
 					err = mover.ensureIsConfigured(apiKeys, syncthing)
-					Expect(err).ToNot(BeNil())
+					Expect(err).To(HaveOccurred())
 
 					service := &corev1.Service{
 						ObjectMeta: metav1.ObjectMeta{
@@ -645,7 +645,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 						},
 					}
 					err = mover.ensureStatusIsUpdated(service, syncthing)
-					Expect(err).ToNot(BeNil())
+					Expect(err).To(HaveOccurred())
 				})
 			})
 
@@ -694,7 +694,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 
 				It("Fetches the Latest Info", func() {
 					syncthing, err := mover.syncthingConnection.Fetch()
-					Expect(err).To(BeNil())
+					Expect(err).ToNot(HaveOccurred())
 					Expect(syncthing.Configuration.Version).To(Equal(10))
 					Expect(syncthing.SystemStatus.MyID).To(Equal(myID.GoString()))
 					Expect(syncthing.SystemConnections.Total.At).To(Equal("test"))
@@ -707,7 +707,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 						},
 					}
 					err := mover.syncthingConnection.PublishConfig(syncthing.Configuration)
-					Expect(err).To(BeNil())
+					Expect(err).ToNot(HaveOccurred())
 					Expect(syncthingState.Configuration.Version).To(Equal(9))
 				})
 
@@ -725,16 +725,16 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					}
 					// pull syncthing state from server
 					syncthing, err := mover.syncthingConnection.Fetch()
-					Expect(err).To(BeNil())
+					Expect(err).ToNot(HaveOccurred())
 
 					// configure syncthing server w/ local state
 					err = mover.ensureIsConfigured(apiKeys, syncthing)
-					Expect(err).To(BeNil())
+					Expect(err).ToNot(HaveOccurred())
 
 					// make sure that our peers can be found on the server
 					for i, peer := range mover.peerList {
 						devID, err := protocol.DeviceIDFromString(peer.ID)
-						Expect(err).To(BeNil())
+						Expect(err).ToNot(HaveOccurred())
 						expected := config.DeviceConfiguration{
 							DeviceID:   devID,
 							Addresses:  []string{peer.Address},
@@ -769,9 +769,9 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 
 					// update the mover's status with info from the Syncthing server
 					syncthing, err := mover.syncthingConnection.Fetch()
-					Expect(err).To(BeNil())
+					Expect(err).ToNot(HaveOccurred())
 					err = mover.ensureStatusIsUpdated(service, syncthing)
-					Expect(err).To(BeNil())
+					Expect(err).ToNot(HaveOccurred())
 
 					// ensure that volsync is recording whether or not we are connected
 					for i, peer := range mover.status.Peers {
@@ -832,10 +832,10 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 
 						// expect status to be updated
 						syncthing, err := mover.syncthingConnection.Fetch()
-						Expect(err).To(BeNil())
+						Expect(err).ToNot(HaveOccurred())
 						Expect(syncthing).NotTo(BeNil())
 						err = mover.ensureStatusIsUpdated(&fakeDataSVC, syncthing)
-						Expect(err).To(BeNil())
+						Expect(err).ToNot(HaveOccurred())
 
 						// check that the status contains the new connection
 						Expect(mover.status.Peers).To(HaveLen(1))
@@ -1072,8 +1072,8 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 						Expect(found).To(Equal(1))
 
 						// make sure no duplicates of peer exist in the syncthing state
-						Expect(len(serverState.Configuration.Devices)).To(Equal(1))
-						Expect(len(serverState.SystemConnections.Connections)).To(Equal(1))
+						Expect(serverState.Configuration.Devices).To(HaveLen(1))
+						Expect(serverState.SystemConnections.Connections).To(HaveLen(1))
 
 						// run again and ensure no duplicates are added
 						result, err = mover.Synchronize(ctx)
@@ -1100,7 +1100,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					Expect(result).To(Equal(cMover.InProgress()))
 
 					// ensure the error is not nil
-					Expect(err).NotTo(BeNil())
+					Expect(err).To(HaveOccurred())
 				})
 
 				When("datapvcname is invalid", func() {
@@ -1117,7 +1117,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 						Expect(res).To(Equal(cMover.InProgress()))
 
 						// error should be not nil
-						Expect(err).NotTo(BeNil())
+						Expect(err).To(HaveOccurred())
 					})
 				})
 			})
@@ -1300,9 +1300,9 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 								Expect(deployment).NotTo(BeNil())
 
 								stContainer := deployment.Spec.Template.Spec.Containers[0]
-								Expect(*stContainer.SecurityContext.AllowPrivilegeEscalation).To(Equal(false))
-								Expect(*stContainer.SecurityContext.Privileged).To(Equal(false))
-								Expect(*stContainer.SecurityContext.ReadOnlyRootFilesystem).To(Equal(true))
+								Expect(*stContainer.SecurityContext.AllowPrivilegeEscalation).To(BeFalse())
+								Expect(*stContainer.SecurityContext.Privileged).To(BeFalse())
+								Expect(*stContainer.SecurityContext.ReadOnlyRootFilesystem).To(BeTrue())
 
 								Expect(stContainer.SecurityContext.Capabilities).To(Equal(&corev1.Capabilities{
 									Drop: []corev1.Capability{"ALL"},
@@ -1328,11 +1328,11 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 								Expect(deployment).NotTo(BeNil())
 
 								stContainer := deployment.Spec.Template.Spec.Containers[0]
-								Expect(*stContainer.SecurityContext.AllowPrivilegeEscalation).To(Equal(false))
-								Expect(*stContainer.SecurityContext.Privileged).To(Equal(false))
-								Expect(*stContainer.SecurityContext.ReadOnlyRootFilesystem).To(Equal(true))
+								Expect(*stContainer.SecurityContext.AllowPrivilegeEscalation).To(BeFalse())
+								Expect(*stContainer.SecurityContext.Privileged).To(BeFalse())
+								Expect(*stContainer.SecurityContext.ReadOnlyRootFilesystem).To(BeTrue())
 
-								Expect(len(stContainer.SecurityContext.Capabilities.Add)).To(BeNumerically(">", 0))
+								Expect(stContainer.SecurityContext.Capabilities.Add).ToNot(BeEmpty())
 								Expect(stContainer.SecurityContext.RunAsUser).NotTo(BeNil())
 								Expect(*stContainer.SecurityContext.RunAsUser).To(Equal(int64(0)))
 
@@ -1356,7 +1356,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 								Expect(err).NotTo(HaveOccurred())
 								Expect(deployment).NotTo(BeNil())
 
-								Expect(len(deployment.Spec.Template.Spec.Containers)).To(Equal(1))
+								Expect(deployment.Spec.Template.Spec.Containers).To(HaveLen(1))
 								// Restic mover sets a default memory limit of 1Gi
 								Expect(deployment.Spec.Template.Spec.Containers[0].Resources).To(Equal(
 									corev1.ResourceRequirements{
@@ -1377,7 +1377,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 								Expect(err).NotTo(HaveOccurred())
 								Expect(deployment).NotTo(BeNil())
 
-								Expect(len(deployment.Spec.Template.Spec.Containers)).To(Equal(1))
+								Expect(deployment.Spec.Template.Spec.Containers).To(HaveLen(1))
 								Expect(deployment.Spec.Template.Labels["mountain"]).To(Equal("Aconcagua"))
 								Expect(deployment.Spec.Template.Labels["range"]).To(Equal("Andes"))
 							})
@@ -1399,7 +1399,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 								Expect(err).NotTo(HaveOccurred())
 								Expect(deployment).NotTo(BeNil())
 
-								Expect(len(deployment.Spec.Template.Spec.Containers)).To(Equal(1))
+								Expect(deployment.Spec.Template.Spec.Containers).To(HaveLen(1))
 								// ResourceRequirements should be set
 								resourceReqs := deployment.Spec.Template.Spec.Containers[0].Resources
 								Expect(resourceReqs.Limits).NotTo(BeNil()) // No limits were set
@@ -1641,15 +1641,15 @@ var _ = Describe("Syncthing utils", func() {
 
 				// folders should have been shared with the new peers
 				for _, folder := range syncthing.Configuration.Folders {
-					Expect(len(folder.Devices)).To(Equal(len(peerList)))
+					Expect(folder.Devices).To(HaveLen(len(peerList)))
 				}
 
 				// pass an empty peer list to ensure that the devices are removed
 				err = updateSyncthingDevices([]volsyncv1alpha1.SyncthingPeer{}, &syncthing)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(syncthing.Configuration.Devices).To(HaveLen(0))
+				Expect(syncthing.Configuration.Devices).To(BeEmpty())
 				for _, folder := range syncthing.Configuration.Folders {
-					Expect(folder.Devices).To(HaveLen(0))
+					Expect(folder.Devices).To(BeEmpty())
 				}
 			})
 
@@ -1904,8 +1904,8 @@ var _ = Describe("Syncthing utils", func() {
 					Expect(len(syncthing.Configuration.Folders[0].Devices)).To(BeNumerically("<", len(previousFolders[0].Devices)))
 
 					// new device lengths should equal what we passed in
-					Expect(len(syncthing.Configuration.Devices)).To(Equal(len(peerListSubset)))
-					Expect(len(syncthing.Configuration.Folders[0].Devices)).To(Equal(len(peerListSubset)))
+					Expect(syncthing.Configuration.Devices).To(HaveLen(len(peerListSubset)))
+					Expect(syncthing.Configuration.Folders[0].Devices).To(HaveLen(len(peerListSubset)))
 
 					// ensure that the devices in the Syncthing config are only those specified in the subset
 					found := 0

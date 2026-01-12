@@ -79,7 +79,7 @@ var _ = Describe("Syncthing connection", func() {
 
 					// write to the server
 					err := syncthingConnection.PublishConfig(syncthing.Configuration)
-					Expect(err).To(BeNil())
+					Expect(err).ToNot(HaveOccurred())
 					Expect(serverState.Configuration.Version).To(Equal(9))
 				})
 
@@ -103,33 +103,33 @@ var _ = Describe("Syncthing connection", func() {
 				It("jsonRequests without errors", func() {
 					// all of these request methods should succeed
 					_, err := apiConnection.jsonRequest(ConfigEndpoint, "GET", nil)
-					Expect(err).To(BeNil())
+					Expect(err).ToNot(HaveOccurred())
 
 					_, err = apiConnection.jsonRequest(SystemStatusEndpoint, "GET", nil)
-					Expect(err).To(BeNil())
+					Expect(err).ToNot(HaveOccurred())
 
 					_, err = apiConnection.jsonRequest(SystemConnectionsEndpoint, "GET", nil)
-					Expect(err).To(BeNil())
+					Expect(err).ToNot(HaveOccurred())
 
 					stConfig, err := apiConnection.fetchConfig()
-					Expect(err).NotTo(HaveOccurred())
+					Expect(err).ToNot(HaveOccurred())
 					Expect(stConfig).NotTo(BeNil())
 
 					connections, err := apiConnection.fetchSystemConnections()
-					Expect(err).NotTo(HaveOccurred())
+					Expect(err).ToNot(HaveOccurred())
 					Expect(connections).NotTo(BeNil())
 
 					status, err := apiConnection.fetchSystemStatus()
-					Expect(err).NotTo(HaveOccurred())
+					Expect(err).ToNot(HaveOccurred())
 					Expect(status).NotTo(BeNil())
 
 					mockConfig := config.Configuration{Version: 74}
 					err = apiConnection.PublishConfig(mockConfig)
-					Expect(err).NotTo(HaveOccurred())
+					Expect(err).ToNot(HaveOccurred())
 					Expect(serverState.Configuration.Version).To(Equal(mockConfig.Version))
 
 					syncthingResponse, err := apiConnection.Fetch()
-					Expect(err).NotTo(HaveOccurred())
+					Expect(err).ToNot(HaveOccurred())
 					Expect(syncthingResponse).NotTo(BeNil())
 
 				})
@@ -265,12 +265,12 @@ var _ = Describe("Syncthing struct methods", func() {
 			})
 
 			It("shares them with the given devices", func() {
-				Expect(len(syncthing.Configuration.Folders)).NotTo(BeZero())
-				Expect(len(syncthing.Configuration.Folders[0].Devices)).To(BeZero())
+				Expect(syncthing.Configuration.Folders).NotTo(BeEmpty())
+				Expect(syncthing.Configuration.Folders[0].Devices).To(BeEmpty())
 				// devices have not been shared yet so expect to find nothing
 				syncthing.ShareFoldersWithDevices()
-				Expect(len(syncthing.Configuration.Folders[0].Devices)).
-					To(Equal(len(syncthing.Configuration.Devices)))
+				Expect(syncthing.Configuration.Folders[0].Devices).
+					To(HaveLen(len(syncthing.Configuration.Devices)))
 
 				deviceMap := syncthing.Configuration.DeviceMap()
 				sharedWith := syncthing.Configuration.Folders[0].Devices

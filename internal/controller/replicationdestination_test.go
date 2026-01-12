@@ -74,7 +74,7 @@ var _ = Describe("ReplicationDestination", func() {
 				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)).To(Succeed())
 				return rd.Status
 			}, duration, interval).ShouldNot(BeNil())
-			Expect(len(rd.Status.Conditions)).To(Equal(1))
+			Expect(rd.Status.Conditions).To(HaveLen(1))
 			errCond := rd.Status.Conditions[0]
 			Expect(errCond.Type).To(Equal(volsyncv1alpha1.ConditionSynchronizing))
 			Expect(errCond.Status).To(Equal(metav1.ConditionFalse))
@@ -437,7 +437,7 @@ var _ = Describe("ReplicationDestination", func() {
 					_ = k8sClient.List(ctx, snapshots, client.InNamespace(rd.Namespace))
 					return snapshots.Items
 				}, maxWait, interval).Should(Not(BeEmpty()))
-				Expect(len(snapshots.Items)).To(Equal(1))
+				Expect(snapshots.Items).To(HaveLen(1))
 
 				// sync should be waiting for the snapshot to be bound - check that lastSyncStartTime
 				// is set
@@ -543,7 +543,7 @@ var _ = Describe("ReplicationDestination", func() {
 						break
 					}
 				}
-				Expect(snapshot2.GetName).To(Not(Equal("")))
+				Expect(snapshot2.GetName()).To(Not(Equal("")))
 				foo2 := "fakesnapshot2"
 				snapshot2.Status = &snapv1.VolumeSnapshotStatus{
 					BoundVolumeSnapshotContentName: &foo2,
