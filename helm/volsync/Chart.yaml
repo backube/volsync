@@ -25,7 +25,9 @@ annotations: # https://artifacthub.io/docs/topics/annotations/helm/
   # Kinds: added, changed, deprecated, removed, fixed, and security
   artifacthub.io/changes: |
     - kind: changed
-      description: Rclone updated to v1.72.0
+      description: moverVolumes updated to allow NFS type volumeMounts
+    - kind: changed
+      description: Rclone updated to v1.72.1
   artifacthub.io/crds: |
     - kind: ReplicationDestination
       version: v1alpha1
