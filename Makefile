@@ -252,12 +252,6 @@ krew-plugin-manifest: yq bin/kubectl-volsync ## Build & package the kubectl plug
 	VERSION="v$(VERSION)" \
 	$(YQ) --inplace '.spec.version=strenv(VERSION) | with(.spec.platforms[]; .sha256=strenv(HASH) | .uri|=sub("v[[:digit:]]+\.[^/]+", strenv(VERSION)))' ./kubectl-volsync/volsync.yaml
 
-.PHONY: build-installer
-build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
-	mkdir -p dist
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/default > dist/install.yaml
-
 ##@ Deployment
 
 ifndef ignore-not-found
