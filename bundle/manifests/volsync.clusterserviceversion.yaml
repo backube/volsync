@@ -55,9 +55,9 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2026-01-16T14:10:23Z"
+    createdAt: "2026-01-16T16:20:01Z"
     olm.skipRange: '>=0.4.0 <0.15.0'
-    operators.operatorframework.io/builder: operator-sdk-v1.38.0
+    operators.operatorframework.io/builder: operator-sdk-v1.39.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
   name: volsync.v0.15.0
   namespace: placeholder
