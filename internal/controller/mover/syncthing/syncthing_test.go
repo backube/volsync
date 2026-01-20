@@ -1823,7 +1823,7 @@ var _ = Describe("Syncthing utils", func() {
 
 				It("can reconfigure to a larger list", func() {
 					// create a peerlist based on the configured devices in the Syncthing object
-					replicaPeerList := []volsyncv1alpha1.SyncthingPeer{}
+					replicaPeerList := make([]volsyncv1alpha1.SyncthingPeer, 0, len(syncthing.Configuration.Devices))
 					for _, device := range syncthing.Configuration.Devices {
 						replicaPeerList = append(replicaPeerList, volsyncv1alpha1.SyncthingPeer{
 							ID:      device.DeviceID.GoString(),

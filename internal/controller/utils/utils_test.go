@@ -945,8 +945,8 @@ var _ = Describe("utils tests", func() {
 					specVolumeMounts := podTemplateSpec.Spec.Containers[0].VolumeMounts
 					specVolumes := podTemplateSpec.Spec.Volumes
 
-					Expect(len(specVolumeMounts)).To(Equal(2))
-					Expect(len(specVolumes)).To(Equal(2))
+					Expect(specVolumeMounts).To(HaveLen(2))
+					Expect(specVolumes).To(HaveLen(2))
 
 					Expect(specVolumeMounts[0]).To(Equal(origVolumeMount))
 					Expect(specVolumes[0]).To(Equal(origVolume))

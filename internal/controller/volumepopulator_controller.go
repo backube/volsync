@@ -66,21 +66,18 @@ func IndexFieldsForVolumePopulator(ctx context.Context, fieldIndexer client.Fiel
 	// Index on PVCs - used to find pvc referring to (by dataSourceRef) a ReplicationDestination
 	err := fieldIndexer.IndexField(ctx, &corev1.PersistentVolumeClaim{},
 		VolPopPVCToReplicationDestinationIndex, func(o client.Object) []string {
-			var res []string
 			pvc, ok := o.(*corev1.PersistentVolumeClaim)
 			if !ok {
 				// This shouldn't happen
-				return res
+				return []string{}
 			}
 			if !pvcHasReplicationDestinationDataSourceRef(pvc) {
 				// This pvc is not using a ReplicationDestination as a DataSourceRef, don't add to index
-				return res
+				return []string{}
 			}
 
 			// just return the raw field value -- the indexer will take care of dealing with namespaces for us
-			res = append(res, pvc.Spec.DataSourceRef.Name)
-
-			return res
+			return []string{pvc.Spec.DataSourceRef.Name}
 		})
 	if err != nil {
 		return err
@@ -90,7 +87,7 @@ func IndexFieldsForVolumePopulator(ctx context.Context, fieldIndexer client.Fiel
 	// Will only index PVCs that are using a ReplicationDestination as DataSourceRef
 	return fieldIndexer.IndexField(ctx, &corev1.PersistentVolumeClaim{},
 		VolPopPVCToStorageClassIndex, func(o client.Object) []string {
-			var res []string
+			res := []string{}
 			pvc, ok := o.(*corev1.PersistentVolumeClaim)
 			if !ok {
 				// This shouldn't happen
