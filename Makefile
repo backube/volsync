@@ -14,7 +14,7 @@ GOLANGCI_VERSION := v2.8.0
 HELM_VERSION := v3.19.4
 KUBECTL_VERSION := v1.35.0
 KUSTOMIZE_VERSION := v5.7.1
-OPERATOR_SDK_VERSION := v1.39.0
+OPERATOR_SDK_VERSION := v1.40.0
 PIPENV_VERSION := 2026.0.3
 YQ_VERSION := v4.50.1
 #ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
@@ -351,7 +351,7 @@ $(OPM): $(LOCALBIN)
 	set -e ;\
 	mkdir -p $(dir $(OPM)) ;\
 	OS=$(shell go env GOOS) && ARCH=$(shell go env GOARCH) && \
-	curl -sSLo $(OPM) https://github.com/operator-framework/operator-registry/releases/download/v1.23.0/$${OS}-$${ARCH}-opm ;\
+	curl -sSLo $(OPM) https://github.com/operator-framework/operator-registry/releases/download/v1.55.0/$${OS}-$${ARCH}-opm ;\
 	chmod +x $(OPM) ;\
 	}
 
