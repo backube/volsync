@@ -28,6 +28,8 @@ annotations: # https://artifacthub.io/docs/topics/annotations/helm/
       description: moverVolumes updated to allow NFS type volumeMounts
     - kind: changed
       description: Rclone updated to v1.72.1
+    - kind: fixed
+      description: Exclude lost+found for Rclone
   artifacthub.io/crds: |
     - kind: ReplicationDestination
       version: v1alpha1
