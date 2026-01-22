@@ -78,11 +78,11 @@ START_TIME=$SECONDS
 case "${DIRECTION}" in
 source)
     getfacl -R "${MOUNT_PATH}" > /tmp/permissions.facl
-    rclone sync "${RCLONE_FLAGS_SYNC[@]}" "${MOUNT_PATH}" "${RCLONE_CONFIG_SECTION}:${RCLONE_DEST_PATH}" --log-level DEBUG
+    rclone sync "${RCLONE_FLAGS_SYNC[@]}" --exclude "lost+found/**" "${MOUNT_PATH}" "${RCLONE_CONFIG_SECTION}:${RCLONE_DEST_PATH}" --log-level DEBUG
     rclone copy "${RCLONE_FLAGS_COPY[@]}" --include permissions.facl /tmp "${RCLONE_CONFIG_SECTION}:${RCLONE_DEST_PATH}" --log-level DEBUG
     ;;
 destination)
-    rclone sync "${RCLONE_FLAGS_SYNC[@]}" --exclude permissions.facl "${RCLONE_CONFIG_SECTION}:${RCLONE_DEST_PATH}" "${MOUNT_PATH}" --log-level DEBUG
+    rclone sync "${RCLONE_FLAGS_SYNC[@]}" --exclude "lost+found/**" --exclude permissions.facl "${RCLONE_CONFIG_SECTION}:${RCLONE_DEST_PATH}" "${MOUNT_PATH}" --log-level DEBUG
     rclone copy "${RCLONE_FLAGS_COPY[@]}" --include permissions.facl "${RCLONE_CONFIG_SECTION}:${RCLONE_DEST_PATH}" /tmp --log-level DEBUG
     stat /tmp/permissions.facl
     setfacl --restore=/tmp/permissions.facl || true
