@@ -277,7 +277,7 @@ var _ = Describe("Volumehandler", func() {
 				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: snapname, Namespace: ns.Name}, snap)).To(Succeed())
 
 				// At this point the snapshot should have ownership set
-				Expect(len(snap.GetOwnerReferences())).To(Equal(1))
+				Expect(snap.GetOwnerReferences()).To(HaveLen(1))
 				ownerRef := snap.GetOwnerReferences()[0]
 				Expect(ownerRef.UID).To(Equal(rd.GetUID()))
 
@@ -304,7 +304,7 @@ var _ = Describe("Volumehandler", func() {
 				// Because do-not-delete label was on the snapshot, ownership should be removed
 				snapReloaded := &snapv1.VolumeSnapshot{}
 				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: snapname, Namespace: ns.Name}, snapReloaded)).To(Succeed())
-				Expect(len(snapReloaded.GetOwnerReferences())).To(Equal(0)) // Owner ref should be removed
+				Expect(snapReloaded.GetOwnerReferences()).To(BeEmpty()) // Owner ref should be removed
 			})
 		})
 	})

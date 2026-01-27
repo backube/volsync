@@ -50,7 +50,7 @@ func (s *Syncthing) MyID() string { return s.SystemStatus.MyID }
 // on the folder by the device.
 func (s *Syncthing) ShareFoldersWithDevices() {
 	// share the current folder(s) with the new devices
-	var newFolders = []config.FolderConfiguration{}
+	newFolders := make([]config.FolderConfiguration, 0, len(s.Configuration.Folders))
 	for _, folder := range s.Configuration.Folders {
 		// copy folder & reset
 		newFolder := folder

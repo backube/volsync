@@ -130,9 +130,9 @@ var _ = Describe("Pod Logs Tests", func() {
 					job.GetName(), job.GetNamespace())
 				Expect(err).NotTo(HaveOccurred())
 
-				Expect(len(runningPods)).To(Equal(3))
-				Expect(len(successfulPods)).To(Equal(2))
-				Expect(len(failedPods)).To(Equal(2))
+				Expect(runningPods).To(HaveLen(3))
+				Expect(successfulPods).To(HaveLen(2))
+				Expect(failedPods).To(HaveLen(2))
 			})
 
 			It("Should find the latest successful pod for a successful job", func() {
@@ -281,7 +281,7 @@ var _ = Describe("Tail lines env var test", func() {
 	It("Should test the default value for the tail logs env var", func() {
 		tailLinesDefault := utils.GetMoverLogTailLines()
 		Expect(tailLinesDefault).To(Equal(int64(-1)))
-		Expect(tailLinesDefault < 0).To(BeTrue())
+		Expect(tailLinesDefault).To(BeNumerically("<", 0))
 	})
 
 	When("The env var is set to a value", func() {

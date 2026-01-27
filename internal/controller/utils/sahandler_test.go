@@ -121,12 +121,12 @@ var _ = Describe("sahandler tests", func() {
 				}, timeout, interval).Should(BeTrue())
 
 				// No pull secrets should be set on the svcAccount
-				Expect(len(svcAccount.ImagePullSecrets)).To(Equal(0))
+				Expect(svcAccount.ImagePullSecrets).To(BeEmpty())
 
 				// Check no secrets copied to our mover (i.e replicationsource) namespace
 				secretsList := &corev1.SecretList{}
 				Expect(k8sClient.List(ctx, secretsList, client.InNamespace(namespace.GetName()))).To(Succeed())
-				Expect(len(secretsList.Items)).To(Equal(0))
+				Expect(secretsList.Items).To(BeEmpty())
 			})
 		})
 
@@ -146,7 +146,7 @@ var _ = Describe("sahandler tests", func() {
 					}, timeout, interval).Should(BeTrue())
 
 					// pull secret should still be set on the svcAccount
-					Expect(len(svcAccount.ImagePullSecrets)).To(Equal(1))
+					Expect(svcAccount.ImagePullSecrets).To(HaveLen(1))
 					Expect(svcAccount.ImagePullSecrets).To(Equal([]corev1.LocalObjectReference{
 						{
 							Name: "volsync-pull-" + utils.GetHashedName(secretName),
@@ -156,7 +156,7 @@ var _ = Describe("sahandler tests", func() {
 					// Check no secrets copied to our mover (i.e replicationsource) namespace
 					secretsList := &corev1.SecretList{}
 					Expect(k8sClient.List(ctx, secretsList, client.InNamespace(namespace.GetName()))).To(Succeed())
-					Expect(len(secretsList.Items)).To(Equal(0))
+					Expect(secretsList.Items).To(BeEmpty())
 				})
 			})
 
@@ -200,7 +200,7 @@ var _ = Describe("sahandler tests", func() {
 					}, timeout, interval).Should(BeTrue())
 
 					// pull secret should be set on the svcAccount
-					Expect(len(svcAccount.ImagePullSecrets)).To(Equal(1))
+					Expect(svcAccount.ImagePullSecrets).To(HaveLen(1))
 					Expect(svcAccount.ImagePullSecrets).To(Equal([]corev1.LocalObjectReference{
 						{
 							Name: expectedCopiedSecretName,
@@ -210,14 +210,14 @@ var _ = Describe("sahandler tests", func() {
 					// Check the secret is copied to our mover (i.e replicationsource) namespace
 					secretsList := &corev1.SecretList{}
 					Expect(k8sClient.List(ctx, secretsList, client.InNamespace(namespace.GetName()))).To(Succeed())
-					Expect(len(secretsList.Items)).To(Equal(1))
+					Expect(secretsList.Items).To(HaveLen(1))
 					copiedSecret := secretsList.Items[0]
 					Expect(copiedSecret.GetName()).To(Equal(expectedCopiedSecretName))
 					Expect(copiedSecret.Type).To(Equal(secret.Type))
 					Expect(copiedSecret.Data).To(Equal(secret.Data))
 
 					// Also check that owner reference is set
-					Expect(len(copiedSecret.OwnerReferences)).To(Equal(1))
+					Expect(copiedSecret.OwnerReferences).To(HaveLen(1))
 					Expect(copiedSecret.OwnerReferences[0].Kind).To(Equal("ReplicationSource"))
 					Expect(copiedSecret.OwnerReferences[0].Name).To(Equal(ownerRS.GetName()))
 				})
@@ -243,21 +243,19 @@ var _ = Describe("sahandler tests", func() {
 						}, timeout, interval).Should(BeTrue())
 
 						// Everything else should still be set
-						Expect(len(svcAccount.ImagePullSecrets)).To(Equal(1))
+						Expect(svcAccount.ImagePullSecrets).To(HaveLen(1))
 						// Check the secret is copied to our mover (i.e replicationsource) namespace
 						secretsList := &corev1.SecretList{}
 						Expect(k8sClient.List(ctx, secretsList, client.InNamespace(namespace.GetName()))).To(Succeed())
-						Expect(len(secretsList.Items)).To(Equal(1))
+						Expect(secretsList.Items).To(HaveLen(1))
 						copiedSecret := secretsList.Items[0]
 						Expect(copiedSecret.GetName()).To(Equal(expectedCopiedSecretName))
 						Expect(copiedSecret.Type).To(Equal(secret.Type))
 						Expect(copiedSecret.Data).To(Equal(secret.Data)) // Should be up-to-date
-						Expect(len(copiedSecret.Data)).To(Equal(2))      // We put an extra k/v into the data
+						Expect(copiedSecret.Data).To(HaveLen(2))         // We put an extra k/v into the data
 					})
 				})
-
 			})
-
 		})
 		When("Multiple image pull secrets are set", func() {
 			secretNameA := "test-pull-a"
@@ -313,7 +311,7 @@ var _ = Describe("sahandler tests", func() {
 				}, timeout, interval).Should(BeTrue())
 
 				// pull secrets should be set on the svcAccount
-				Expect(len(svcAccount.ImagePullSecrets)).To(Equal(3))
+				Expect(svcAccount.ImagePullSecrets).To(HaveLen(3))
 				Expect(svcAccount.ImagePullSecrets).To(ContainElement(
 					corev1.LocalObjectReference{
 						Name: expectedCopiedSecretNameA,
@@ -333,7 +331,7 @@ var _ = Describe("sahandler tests", func() {
 				// Check the secrets (only A and C since B does not exist) are copied to our mover namespace
 				secretsList := &corev1.SecretList{}
 				Expect(k8sClient.List(ctx, secretsList, client.InNamespace(namespace.GetName()))).To(Succeed())
-				Expect(len(secretsList.Items)).To(Equal(2))
+				Expect(secretsList.Items).To(HaveLen(2))
 
 				for i := range secretsList.Items {
 					switch secretsList.Items[i].Name {
@@ -348,13 +346,13 @@ var _ = Describe("sahandler tests", func() {
 
 				Expect(copiedSecretA.Type).To(Equal(secretA.Type))
 				Expect(copiedSecretA.Data).To(Equal(secretA.Data))
-				Expect(len(copiedSecretA.OwnerReferences)).To(Equal(1))
+				Expect(copiedSecretA.OwnerReferences).To(HaveLen(1))
 				Expect(copiedSecretA.OwnerReferences[0].Kind).To(Equal("ReplicationSource"))
 				Expect(copiedSecretA.OwnerReferences[0].Name).To(Equal(ownerRS.GetName()))
 
 				Expect(copiedSecretC.Type).To(Equal(secretC.Type))
 				Expect(copiedSecretC.Data).To(Equal(secretC.Data))
-				Expect(len(copiedSecretC.OwnerReferences)).To(Equal(1))
+				Expect(copiedSecretC.OwnerReferences).To(HaveLen(1))
 				Expect(copiedSecretC.OwnerReferences[0].Kind).To(Equal("ReplicationSource"))
 				Expect(copiedSecretC.OwnerReferences[0].Name).To(Equal(ownerRS.GetName()))
 			})
@@ -365,16 +363,15 @@ var _ = Describe("sahandler tests", func() {
 				// Check owner references, there should be just 1
 				Expect(copiedSecretA.Type).To(Equal(secretA.Type))
 				Expect(copiedSecretA.Data).To(Equal(secretA.Data))
-				Expect(len(copiedSecretA.OwnerReferences)).To(Equal(1))
+				Expect(copiedSecretA.OwnerReferences).To(HaveLen(1))
 				Expect(copiedSecretA.OwnerReferences[0].Kind).To(Equal("ReplicationSource"))
 				Expect(copiedSecretA.OwnerReferences[0].Name).To(Equal(ownerRS.GetName()))
 
 				Expect(copiedSecretC.Type).To(Equal(secretC.Type))
 				Expect(copiedSecretC.Data).To(Equal(secretC.Data))
-				Expect(len(copiedSecretC.OwnerReferences)).To(Equal(1))
+				Expect(copiedSecretC.OwnerReferences).To(HaveLen(1))
 				Expect(copiedSecretC.OwnerReferences[0].Kind).To(Equal("ReplicationSource"))
 				Expect(copiedSecretC.OwnerReferences[0].Name).To(Equal(ownerRS.GetName()))
-
 			})
 
 			When("Multiple movers are in the same namespace", func() {
@@ -419,7 +416,7 @@ var _ = Describe("sahandler tests", func() {
 
 					// pull secrets should be set on both svcAccounts
 					for _, svcAcct := range []*corev1.ServiceAccount{svcAccount1, svcAccount2} {
-						Expect(len(svcAcct.ImagePullSecrets)).To(Equal(3))
+						Expect(svcAcct.ImagePullSecrets).To(HaveLen(3))
 						Expect(svcAcct.ImagePullSecrets).To(ContainElement(
 							corev1.LocalObjectReference{
 								Name: expectedCopiedSecretNameA,
@@ -440,7 +437,7 @@ var _ = Describe("sahandler tests", func() {
 					// Check the secrets (only A and C since B does not exist) are copied to our mover namespace
 					secretsList := &corev1.SecretList{}
 					Expect(k8sClient.List(ctx, secretsList, client.InNamespace(namespace.GetName()))).To(Succeed())
-					Expect(len(secretsList.Items)).To(Equal(2))
+					Expect(secretsList.Items).To(HaveLen(2))
 
 					for i := range secretsList.Items {
 						switch secretsList.Items[i].Name {
@@ -459,7 +456,7 @@ var _ = Describe("sahandler tests", func() {
 					Expect(copiedSecretC.Data).To(Equal(secretC.Data))
 
 					// Secrets should have owner references for both owner CRs
-					Expect(len(copiedSecretA.OwnerReferences)).To(Equal(2))
+					Expect(copiedSecretA.OwnerReferences).To(HaveLen(2))
 					Expect(copiedSecretA.OwnerReferences).To(ContainElement(
 						gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
 							"Kind": Equal("ReplicationSource"),
@@ -473,7 +470,7 @@ var _ = Describe("sahandler tests", func() {
 						}),
 					))
 
-					Expect(len(copiedSecretC.OwnerReferences)).To(Equal(2))
+					Expect(copiedSecretC.OwnerReferences).To(HaveLen(2))
 					Expect(copiedSecretC.OwnerReferences).To(ContainElement(
 						gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
 							"Kind": Equal("ReplicationSource"),

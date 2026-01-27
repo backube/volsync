@@ -55,9 +55,9 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2026-01-07T19:29:34Z"
+    createdAt: "2026-01-21T22:16:56Z"
     olm.skipRange: '>=0.4.0 <0.15.0'
-    operators.operatorframework.io/builder: operator-sdk-v1.33.0
+    operators.operatorframework.io/builder: operator-sdk-v1.42.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
   name: volsync.v0.15.0
   namespace: placeholder
@@ -65,15 +65,16 @@ spec:
   apiservicedefinitions: {}
   customresourcedefinitions:
     owned:
-    - description: A ReplicationDestination is a VolSync resource that you can use
-        to define the destination of a VolSync replication or synchronization.
+    - description: |-
+        A ReplicationDestination is a VolSync resource that you can use to define the destination of a VolSync replication
+        or synchronization.
       displayName: Replication Destination
       kind: ReplicationDestination
       name: replicationdestinations.volsync.backube
       version: v1alpha1
-    - description: A ReplicationSource is a VolSync resource that you can use to define
-        the source PVC and replication mover type, enabling you to replicate or synchronize
-        PVC data to a remote location.
+    - description: |-
+        A ReplicationSource is a VolSync resource that you can use to define the source PVC and replication mover type,
+        enabling you to replicate or synchronize PVC data to a remote location.
       displayName: Replication Source
       kind: ReplicationSource
       name: replicationsources.volsync.backube
@@ -346,34 +347,9 @@ spec:
             spec:
               containers:
               - args:
-                - --secure-listen-address=0.0.0.0:8443
-                - --upstream=http://127.0.0.1:8080/
-                - --logtostderr=true
-                - --tls-min-version=VersionTLS12
-                - --v=0
-                image: quay.io/brancz/kube-rbac-proxy:v0.19.0
-                name: kube-rbac-proxy
-                ports:
-                - containerPort: 8443
-                  name: https
-                  protocol: TCP
-                resources:
-                  limits:
-                    cpu: 500m
-                    memory: 128Mi
-                  requests:
-                    cpu: 5m
-                    memory: 64Mi
-                securityContext:
-                  allowPrivilegeEscalation: false
-                  capabilities:
-                    drop:
-                    - ALL
-                  readOnlyRootFilesystem: true
-              - args:
-                - --health-probe-bind-address=:8081
-                - --metrics-bind-address=127.0.0.1:8080
+                - --metrics-bind-address=:8443
                 - --leader-elect
+                - --health-probe-bind-address=:8081
                 - --scc-name=volsync-privileged-mover
                 command:
                 - /manager

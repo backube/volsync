@@ -767,7 +767,7 @@ var _ = Describe("Restic as a source", func() {
 
 						waitingSinceTime, err := time.Parse(time.RFC3339, waitingSince)
 						Expect(err).NotTo(HaveOccurred())
-						Expect(waitingSinceTime.Before(time.Now().Add(1 * time.Second)))
+						Expect(waitingSinceTime.Before(time.Now().Add(1 * time.Second))).To(BeTrue())
 					})
 					It("Should wait before creating the clone and set latest-copy-status to WaitingForTrigger", func() {
 						// Tests are in JustBeforeEach above
@@ -896,7 +896,7 @@ var _ = Describe("Restic as a source", func() {
 
 									waitingSinceTime, err := time.Parse(time.RFC3339, waitingSince)
 									Expect(err).NotTo(HaveOccurred())
-									Expect(waitingSinceTime.Before(time.Now().Add(1 * time.Second)))
+									Expect(waitingSinceTime.Before(time.Now().Add(1 * time.Second))).To(BeTrue())
 								})
 								It("Should again wait for the copy-trigger to be updated to a new value", func() {
 									// the latestcopytrigger should still be from the previous sync
@@ -982,7 +982,7 @@ var _ = Describe("Restic as a source", func() {
 					// Snapshot should have been created
 					snapshots := &snapv1.VolumeSnapshotList{}
 					Expect(k8sClient.List(ctx, snapshots, client.InNamespace(rs.Namespace))).To(Succeed())
-					Expect(len(snapshots.Items)).To(Equal(1))
+					Expect(snapshots.Items).To(HaveLen(1))
 
 					// update the VS name
 					snapshot := snapshots.Items[0]
@@ -1024,7 +1024,7 @@ var _ = Describe("Restic as a source", func() {
 
 						snapshots := &snapv1.VolumeSnapshotList{}
 						Expect(k8sClient.List(ctx, snapshots, client.InNamespace(rs.Namespace))).To(Succeed())
-						Expect(len(snapshots.Items)).To(Equal(0))
+						Expect(snapshots.Items).To(BeEmpty())
 
 						// re-load sPVC to see that volsync has added latest-copy-trigger annotation
 						// k8sClient is direct in this test, so no need for Eventually()
@@ -1039,7 +1039,7 @@ var _ = Describe("Restic as a source", func() {
 
 						waitingSinceTime, err := time.Parse(time.RFC3339, waitingSince)
 						Expect(err).NotTo(HaveOccurred())
-						Expect(waitingSinceTime.Before(time.Now().Add(1 * time.Second)))
+						Expect(waitingSinceTime.Before(time.Now().Add(1 * time.Second))).To(BeTrue())
 					})
 					It("Should wait before creating the snapshot and set latest-copy-status to WaitingForTrigger", func() {
 						// Tests are in JustBeforeEach above
@@ -1084,7 +1084,7 @@ var _ = Describe("Restic as a source", func() {
 							// Snapshot however should have been created
 							snapshots := &snapv1.VolumeSnapshotList{}
 							Expect(k8sClient.List(ctx, snapshots, client.InNamespace(rs.Namespace))).To(Succeed())
-							Expect(len(snapshots.Items)).To(Equal(1))
+							Expect(snapshots.Items).To(HaveLen(1))
 
 							firstSyncSnapshot = &snapshots.Items[0]
 
@@ -1164,7 +1164,7 @@ var _ = Describe("Restic as a source", func() {
 									snapshotReloaded := &snapv1.VolumeSnapshot{}
 									err = k8sClient.Get(ctx, client.ObjectKeyFromObject(firstSyncSnapshot), snapshotReloaded)
 									Expect(err).To(HaveOccurred())
-									Expect(kerrors.IsNotFound(err))
+									Expect(kerrors.IsNotFound(err)).To(BeTrue())
 
 									// Now run another ensureSourcePVC/reconcile
 									dataPVCSnap2, err := mover.ensureSourcePVC(ctx)
@@ -1174,7 +1174,7 @@ var _ = Describe("Restic as a source", func() {
 									// No new snap should be created yet since we're waiting on the copy-trigger
 									snapshots := &snapv1.VolumeSnapshotList{}
 									Expect(k8sClient.List(ctx, snapshots, client.InNamespace(rs.Namespace))).To(Succeed())
-									Expect(len(snapshots.Items)).To(Equal(0))
+									Expect(snapshots.Items).To(BeEmpty())
 
 									// re-load sPVC to see that volsync has added latest-copy-trigger annotation
 									// k8sClient is direct in this test, so no need for Eventually()
@@ -1189,7 +1189,7 @@ var _ = Describe("Restic as a source", func() {
 
 									waitingSinceTime, err := time.Parse(time.RFC3339, waitingSince)
 									Expect(err).NotTo(HaveOccurred())
-									Expect(waitingSinceTime.Before(time.Now().Add(1 * time.Second)))
+									Expect(waitingSinceTime.Before(time.Now().Add(1 * time.Second))).To(BeTrue())
 								})
 								It("Should again wait for the copy-trigger to be updated to a new value", func() {
 									// the latestcopytrigger should still be from the previous sync
@@ -1215,7 +1215,7 @@ var _ = Describe("Restic as a source", func() {
 										// Snapshot however should have been created
 										snapshots := &snapv1.VolumeSnapshotList{}
 										Expect(k8sClient.List(ctx, snapshots, client.InNamespace(rs.Namespace))).To(Succeed())
-										Expect(len(snapshots.Items)).To(Equal(1))
+										Expect(snapshots.Items).To(HaveLen(1))
 
 										secondSyncSnapshot = &snapshots.Items[0]
 
@@ -1319,7 +1319,7 @@ var _ = Describe("Restic as a source", func() {
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
-					Expect(len(job.Spec.Template.Spec.Containers)).To(BeNumerically(">", 0))
+					Expect(job.Spec.Template.Spec.Containers).ToNot(BeEmpty())
 					args := job.Spec.Template.Spec.Containers[0].Args
 					Expect(args).To(ConsistOf("backup"))
 				})
@@ -1330,7 +1330,7 @@ var _ = Describe("Restic as a source", func() {
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
-					Expect(len(job.Spec.Template.Spec.Containers)).To(BeNumerically(">", 0))
+					Expect(job.Spec.Template.Spec.Containers).ToNot(BeEmpty())
 					args := job.Spec.Template.Spec.Containers[0].Image
 					Expect(args).To(Equal(defaultResticContainerImage))
 				})
@@ -1376,7 +1376,7 @@ var _ = Describe("Restic as a source", func() {
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
 					volumes := job.Spec.Template.Spec.Volumes
-					Expect(len(volumes)).To(Equal(3))
+					Expect(volumes).To(HaveLen(3))
 					foundDataVolume := false
 					foundCacheVolume := false
 					for _, vol := range volumes {
@@ -1385,7 +1385,7 @@ var _ = Describe("Restic as a source", func() {
 							foundDataVolume = true
 							Expect(vol.VolumeSource.PersistentVolumeClaim).ToNot(BeNil())
 							Expect(vol.VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(sPVC.GetName()))
-							Expect(vol.VolumeSource.PersistentVolumeClaim.ReadOnly).To(Equal(false))
+							Expect(vol.VolumeSource.PersistentVolumeClaim.ReadOnly).To(BeFalse())
 						case resticCache:
 							foundCacheVolume = true
 							Expect(vol.VolumeSource.PersistentVolumeClaim).ToNot(BeNil())
@@ -1422,7 +1422,7 @@ var _ = Describe("Restic as a source", func() {
 
 						jobs := &batchv1.JobList{}
 						Expect(k8sClient.List(ctx, jobs, client.InNamespace(rs.Namespace))).To(Succeed())
-						Expect(len(jobs.Items)).To(Equal(1))
+						Expect(jobs.Items).To(HaveLen(1))
 						moverJob := jobs.Items[0]
 
 						// Reload the replicationsource to see that it got updated
@@ -1430,7 +1430,7 @@ var _ = Describe("Restic as a source", func() {
 
 						Expect(moverJob.GetName()).To(ContainSubstring(utils.GetHashedName(rs.GetName())))
 						// Make sure our shortened name is actually short enough
-						Expect(len(moverJob.GetName()) > 63).To(BeFalse())
+						Expect(len(moverJob.GetName())).ToNot(BeNumerically(">", 63))
 					})
 				})
 
@@ -1466,7 +1466,7 @@ var _ = Describe("Restic as a source", func() {
 					job = &batchv1.Job{}
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
-					Expect(len(job.Spec.Template.Spec.Containers)).To(Equal(1))
+					Expect(job.Spec.Template.Spec.Containers).To(HaveLen(1))
 					// ResourceRequirements should be the empty/default value
 					Expect(job.Spec.Template.Spec.Containers[0].Resources).To(Equal(corev1.ResourceRequirements{}))
 				})
@@ -1487,7 +1487,7 @@ var _ = Describe("Restic as a source", func() {
 						job = &batchv1.Job{}
 						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
-						Expect(len(job.Spec.Template.Spec.Containers)).To(Equal(1))
+						Expect(job.Spec.Template.Spec.Containers).To(HaveLen(1))
 						// ResourceRequirements should be set
 						resourceReqs := job.Spec.Template.Spec.Containers[0].Resources
 						Expect(resourceReqs.Limits).To(BeNil()) // No limits were set
@@ -1572,7 +1572,7 @@ var _ = Describe("Restic as a source", func() {
 
 						sc := job.Spec.Template.Spec.Containers[0].SecurityContext
 						Expect(sc).NotTo(BeNil())
-						Expect(len(sc.Capabilities.Add)).To(BeNumerically(">", 0))
+						Expect(sc.Capabilities.Add).ToNot(BeEmpty())
 						Expect(sc.RunAsUser).NotTo(BeNil())
 						Expect(*sc.RunAsUser).To(Equal(int64(0)))
 					})
@@ -1618,10 +1618,10 @@ var _ = Describe("Restic as a source", func() {
 							Expect(vol.VolumeSource.PersistentVolumeClaim).ToNot(BeNil())
 							Expect(vol.VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(roxPVC.GetName()))
 							// The volumes should be mounted read-only
-							Expect(vol.VolumeSource.PersistentVolumeClaim.ReadOnly).To(Equal(true))
+							Expect(vol.VolumeSource.PersistentVolumeClaim.ReadOnly).To(BeTrue())
 						}
 					}
-					Expect(foundDataVolume).To(Equal(true))
+					Expect(foundDataVolume).To(BeTrue())
 				})
 			})
 
@@ -1639,7 +1639,7 @@ var _ = Describe("Restic as a source", func() {
 						job = &batchv1.Job{}
 						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 						Expect(mover.shouldUnlock()).To(BeTrue())
-						Expect(len(job.Spec.Template.Spec.Containers)).To(BeNumerically(">", 0))
+						Expect(job.Spec.Template.Spec.Containers).ToNot(BeEmpty())
 						args := job.Spec.Template.Spec.Containers[0].Args
 						Expect(args).To(ConsistOf([]string{"unlock", "backup"}))
 						// Mark completed
@@ -1667,7 +1667,7 @@ var _ = Describe("Restic as a source", func() {
 						job = &batchv1.Job{}
 						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 						Expect(mover.shouldUnlock()).To(BeFalse())
-						Expect(len(job.Spec.Template.Spec.Containers)).To(BeNumerically(">", 0))
+						Expect(job.Spec.Template.Spec.Containers).ToNot(BeEmpty())
 						args := job.Spec.Template.Spec.Containers[0].Args
 						Expect(args).To(ConsistOf("backup"))
 						// Mark completed
@@ -1697,7 +1697,7 @@ var _ = Describe("Restic as a source", func() {
 						job = &batchv1.Job{}
 						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 						Expect(mover.shouldUnlock()).To(BeTrue())
-						Expect(len(job.Spec.Template.Spec.Containers)).To(BeNumerically(">", 0))
+						Expect(job.Spec.Template.Spec.Containers).ToNot(BeEmpty())
 						args := job.Spec.Template.Spec.Containers[0].Args
 						Expect(args).To(ConsistOf([]string{"unlock", "backup"}))
 						// Mark completed
@@ -1728,7 +1728,7 @@ var _ = Describe("Restic as a source", func() {
 						job = &batchv1.Job{}
 						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 						Expect(mover.shouldUnlock()).To(BeFalse())
-						Expect(len(job.Spec.Template.Spec.Containers)).To(BeNumerically(">", 0))
+						Expect(job.Spec.Template.Spec.Containers).ToNot(BeEmpty())
 						args := job.Spec.Template.Spec.Containers[0].Args
 
 						Expect(args).To(ConsistOf("backup")) // No unlock
@@ -1763,7 +1763,7 @@ var _ = Describe("Restic as a source", func() {
 					job = &batchv1.Job{}
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 					Expect(mover.shouldPrune(time.Now())).To(BeTrue())
-					Expect(len(job.Spec.Template.Spec.Containers)).To(BeNumerically(">", 0))
+					Expect(job.Spec.Template.Spec.Containers).ToNot(BeEmpty())
 					args := job.Spec.Template.Spec.Containers[0].Args
 					Expect(args).To(ConsistOf("backup", "prune"))
 					// Mark completed
@@ -1772,7 +1772,7 @@ var _ = Describe("Restic as a source", func() {
 					j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).NotTo(BeNil())
-					Expect(mover.sourceStatus.LastPruned.After(lastMonth.Time))
+					Expect(mover.sourceStatus.LastPruned.After(lastMonth.Time)).To(BeTrue())
 				})
 			})
 
@@ -1908,7 +1908,7 @@ var _ = Describe("Restic as a source", func() {
 
 				sc := job.Spec.Template.Spec.Containers[0].SecurityContext
 				Expect(sc).NotTo(BeNil())
-				Expect(len(sc.Capabilities.Add)).To(Equal(0))
+				Expect(sc.Capabilities.Add).To(BeEmpty())
 				Expect(sc.RunAsUser).To(BeNil())
 			})
 		})
@@ -2208,7 +2208,7 @@ var _ = Describe("Restic as a destination", func() {
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
-					Expect(len(job.Spec.Template.Spec.Containers)).To(BeNumerically(">", 0))
+					Expect(job.Spec.Template.Spec.Containers).ToNot(BeEmpty())
 					args := job.Spec.Template.Spec.Containers[0].Args
 					Expect(args).To(ConsistOf("restore"))
 				})

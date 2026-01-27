@@ -8,6 +8,7 @@ linters:
     - asciicheck
     - bidichk
     - contextcheck
+    - copyloopvar
     - dupl
     - errcheck
     - errname
@@ -15,6 +16,7 @@ linters:
     - exhaustive
     - forcetypeassert
     - funlen
+    - ginkgolinter
     - goconst
     - gocyclo
     - gosec
@@ -24,6 +26,7 @@ linters:
     - makezero
     - misspell
     - nakedret
+    - prealloc
     - revive
     - staticcheck
     - unconvert

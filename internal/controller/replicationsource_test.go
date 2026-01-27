@@ -95,7 +95,7 @@ var _ = Describe("ReplicationSource", func() {
 				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rs), rs)).To(Succeed())
 				return rs.Status
 			}, duration, interval).ShouldNot(BeNil())
-			Expect(len(rs.Status.Conditions)).To(Equal(1))
+			Expect(rs.Status.Conditions).To(HaveLen(1))
 			errCond := rs.Status.Conditions[0]
 			Expect(errCond.Type).To(Equal(volsyncv1alpha1.ConditionSynchronizing))
 			Expect(errCond.Status).To(Equal(metav1.ConditionFalse))

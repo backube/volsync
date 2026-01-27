@@ -121,12 +121,12 @@ var _ = Describe("Label helpers", func() {
 		It("can remove labels from a nil map", func() {
 			t := newTestLabelable(nil)
 			Expect(utils.RemoveLabel(t, "blah")).To(BeFalse())
-			Expect(t.M).To(HaveLen(0))
+			Expect(t.M).To(BeEmpty())
 		})
 		It("can remove labels from an empty map", func() {
 			t := newTestLabelable(map[string]string{})
 			Expect(utils.RemoveLabel(t, "blah")).To(BeFalse())
-			Expect(t.M).To(HaveLen(0))
+			Expect(t.M).To(BeEmpty())
 		})
 		It("can remove labels from a map w/o the specified key", func() {
 			t := newTestLabelable(baseLabels)
@@ -142,7 +142,7 @@ var _ = Describe("Label helpers", func() {
 		It("can remove the only label from a map", func() {
 			t := newTestLabelable(map[string]string{"key1": "value1"})
 			Expect(utils.RemoveLabel(t, "key1")).To(BeTrue())
-			Expect(t.M).To(HaveLen(0))
+			Expect(t.M).To(BeEmpty())
 		})
 	})
 	When("checking labels", func() {

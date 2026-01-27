@@ -93,7 +93,6 @@ var _ = Describe("migration delete", func() {
 		md.client = k8sClient
 
 		err = md.deleteReplicationDestination(context.Background())
-		Expect(err).To(BeNil())
 		Expect(err).ToNot(HaveOccurred())
 
 		err = md.mr.Delete()

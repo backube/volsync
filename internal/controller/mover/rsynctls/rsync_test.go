@@ -360,7 +360,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 
 						waitingSinceTime, err := time.Parse(time.RFC3339, waitingSince)
 						Expect(err).NotTo(HaveOccurred())
-						Expect(waitingSinceTime.Before(time.Now().Add(1 * time.Second)))
+						Expect(waitingSinceTime.Before(time.Now().Add(1 * time.Second))).To(BeTrue())
 					})
 					It("Should wait before creating the clone and set latest-copy-status to WaitingForTrigger", func() {
 						// Tests are in JustBeforeEach above
@@ -488,7 +488,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 
 									waitingSinceTime, err := time.Parse(time.RFC3339, waitingSince)
 									Expect(err).NotTo(HaveOccurred())
-									Expect(waitingSinceTime.Before(time.Now().Add(1 * time.Second)))
+									Expect(waitingSinceTime.Before(time.Now().Add(1 * time.Second))).To(BeTrue())
 								})
 								It("Should again wait for the copy-trigger to be updated to a new value", func() {
 									// the latestcopytrigger should still be from the previous sync
@@ -573,7 +573,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 					// Snapshot should have been created
 					snapshots := &snapv1.VolumeSnapshotList{}
 					Expect(k8sClient.List(ctx, snapshots, client.InNamespace(rs.Namespace))).To(Succeed())
-					Expect(len(snapshots.Items)).To(Equal(1))
+					Expect(snapshots.Items).To(HaveLen(1))
 					// update the VS name
 					snapshot := snapshots.Items[0]
 					foo := "dummysourcesnapshot"
@@ -613,7 +613,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 
 						snapshots := &snapv1.VolumeSnapshotList{}
 						Expect(k8sClient.List(ctx, snapshots, client.InNamespace(rs.Namespace))).To(Succeed())
-						Expect(len(snapshots.Items)).To(Equal(0))
+						Expect(snapshots.Items).To(BeEmpty())
 
 						// re-load sPVC to see that volsync has added latest-copy-trigger annotation
 						// k8sClient is direct in this test, so no need for Eventually()
@@ -628,7 +628,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 
 						waitingSinceTime, err := time.Parse(time.RFC3339, waitingSince)
 						Expect(err).NotTo(HaveOccurred())
-						Expect(waitingSinceTime.Before(time.Now().Add(1 * time.Second)))
+						Expect(waitingSinceTime.Before(time.Now().Add(1 * time.Second))).To(BeTrue())
 					})
 					It("Should wait before creating the snapshot and set latest-copy-status to WaitingForTrigger", func() {
 						// Tests are in JustBeforeEach above
@@ -673,7 +673,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 							// Snapshot however should have been created
 							snapshots := &snapv1.VolumeSnapshotList{}
 							Expect(k8sClient.List(ctx, snapshots, client.InNamespace(rs.Namespace))).To(Succeed())
-							Expect(len(snapshots.Items)).To(Equal(1))
+							Expect(snapshots.Items).To(HaveLen(1))
 
 							firstSyncSnapshot = &snapshots.Items[0]
 
@@ -753,7 +753,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 									snapshotReloaded := &snapv1.VolumeSnapshot{}
 									err = k8sClient.Get(ctx, client.ObjectKeyFromObject(firstSyncSnapshot), snapshotReloaded)
 									Expect(err).To(HaveOccurred())
-									Expect(kerrors.IsNotFound(err))
+									Expect(kerrors.IsNotFound(err)).To(BeTrue())
 
 									// Now run another ensureSourcePVC/reconcile
 									dataPVCSnap2, err := mover.ensureSourcePVC(ctx)
@@ -763,7 +763,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 									// No new snap should be created yet since we're waiting on the copy-trigger
 									snapshots := &snapv1.VolumeSnapshotList{}
 									Expect(k8sClient.List(ctx, snapshots, client.InNamespace(rs.Namespace))).To(Succeed())
-									Expect(len(snapshots.Items)).To(Equal(0))
+									Expect(snapshots.Items).To(BeEmpty())
 
 									// re-load sPVC to see that volsync has added latest-copy-trigger annotation
 									// k8sClient is direct in this test, so no need for Eventually()
@@ -778,7 +778,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 
 									waitingSinceTime, err := time.Parse(time.RFC3339, waitingSince)
 									Expect(err).NotTo(HaveOccurred())
-									Expect(waitingSinceTime.Before(time.Now().Add(1 * time.Second)))
+									Expect(waitingSinceTime.Before(time.Now().Add(1 * time.Second))).To(BeTrue())
 								})
 								It("Should again wait for the copy-trigger to be updated to a new value", func() {
 									// the latestcopytrigger should still be from the previous sync
@@ -804,7 +804,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 										// Snapshot however should have been created
 										snapshots := &snapv1.VolumeSnapshotList{}
 										Expect(k8sClient.List(ctx, snapshots, client.InNamespace(rs.Namespace))).To(Succeed())
-										Expect(len(snapshots.Items)).To(Equal(1))
+										Expect(snapshots.Items).To(HaveLen(1))
 
 										secondSyncSnapshot = &snapshots.Items[0]
 
@@ -871,7 +871,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 				// No service should be created regardless here as this is the replicationsource
 				// enasureServiecAndPublishAddress should return true,nil immediately
 				result, err := mover.ensureServiceAndPublishAddress(ctx)
-				Expect(err).To(BeNil())
+				Expect(err).ToNot(HaveOccurred())
 				Expect(result).To(BeTrue())
 
 				svc := &corev1.Service{
@@ -930,7 +930,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 						}
 						return keyName
 					}, maxWait, interval).Should(Not(BeNil()))
-					Expect(err).To(BeNil())
+					Expect(err).ToNot(HaveOccurred())
 					Expect(keyName).ToNot(BeNil())
 
 					// Check the correct secret is put in the status (i.e. dest secret for replication source)
@@ -1137,7 +1137,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
-					Expect(len(job.Spec.Template.Spec.Containers)).To(Equal(1))
+					Expect(job.Spec.Template.Spec.Containers).To(HaveLen(1))
 					Expect(job.Spec.Template.Spec.Containers[0].Command).To(Equal(
 						[]string{"/bin/bash", "-c", "/mover-rsync-tls/client.sh"}))
 				})
@@ -1149,7 +1149,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
-					Expect(len(job.Spec.Template.Spec.Containers)).To(BeNumerically(">", 0))
+					Expect(job.Spec.Template.Spec.Containers).ToNot(BeEmpty())
 					Expect(job.Spec.Template.Spec.Containers[0].Image).To(Equal(defaultRsyncTLSContainerImage))
 				})
 
@@ -1175,7 +1175,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 
 						jobs := &batchv1.JobList{}
 						Expect(k8sClient.List(ctx, jobs, client.InNamespace(rs.Namespace))).To(Succeed())
-						Expect(len(jobs.Items)).To(Equal(1))
+						Expect(jobs.Items).To(HaveLen(1))
 						moverJob := jobs.Items[0]
 
 						// Reload the replicationsource to see that it got updated
@@ -1183,7 +1183,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 
 						Expect(moverJob.GetName()).To(ContainSubstring(utils.GetHashedName(rs.GetName())))
 						// Make sure our shortened name is actually short enough
-						Expect(len(moverJob.GetName()) > 63).To(BeFalse())
+						Expect(len(moverJob.GetName())).ToNot(BeNumerically(">", 63))
 					})
 				})
 
@@ -1205,7 +1205,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 
 					c := job.Spec.Template.Spec.Containers[0]
 					// Validate job volume mounts
-					Expect(len(c.VolumeMounts)).To(Equal(3))
+					Expect(c.VolumeMounts).To(HaveLen(3))
 					foundDataVolumeMount := false
 					foundTLSSecretVolumeMount := false
 					foundTmpMount := false
@@ -1248,7 +1248,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 							foundDataVolume = true
 							Expect(vol.VolumeSource.PersistentVolumeClaim).ToNot(BeNil())
 							Expect(vol.VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(pvc.GetName()))
-							Expect(vol.VolumeSource.PersistentVolumeClaim.ReadOnly).To(Equal(false))
+							Expect(vol.VolumeSource.PersistentVolumeClaim.ReadOnly).To(BeFalse())
 						case "keys":
 							foundTLSSecretVolume = true
 							Expect(vol.VolumeSource.Secret).ToNot(BeNil())
@@ -1349,10 +1349,10 @@ var _ = Describe("RsyncTLS as a source", func() {
 								Expect(vol.VolumeSource.PersistentVolumeClaim).ToNot(BeNil())
 								Expect(vol.VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(roxPVC.GetName()))
 								// The volumes should be mounted read-only
-								Expect(vol.VolumeSource.PersistentVolumeClaim.ReadOnly).To(Equal(true))
+								Expect(vol.VolumeSource.PersistentVolumeClaim.ReadOnly).To(BeTrue())
 							}
 						}
-						Expect(foundDataVolume).To(Equal(true))
+						Expect(foundDataVolume).To(BeTrue())
 					})
 				})
 
@@ -1376,7 +1376,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 					job = &batchv1.Job{}
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
-					Expect(len(job.Spec.Template.Spec.Containers)).To(Equal(1))
+					Expect(job.Spec.Template.Spec.Containers).To(HaveLen(1))
 					// ResourceRequirements should be the empty/default value
 					Expect(job.Spec.Template.Spec.Containers[0].Resources).To(Equal(corev1.ResourceRequirements{}))
 				})
@@ -1397,7 +1397,7 @@ var _ = Describe("RsyncTLS as a source", func() {
 						job = &batchv1.Job{}
 						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
-						Expect(len(job.Spec.Template.Spec.Containers)).To(Equal(1))
+						Expect(job.Spec.Template.Spec.Containers).To(HaveLen(1))
 						// ResourceRequirements should be set
 						resourceReqs := job.Spec.Template.Spec.Containers[0].Resources
 						Expect(resourceReqs.Limits).To(BeNil()) // No limits were set
@@ -1784,7 +1784,7 @@ var _ = Describe("Rsync as a destination", func() {
 			It("The service name should be shortened appropriately (should handle long CR names)", func() {
 				// create the svc
 				result, err := mover.ensureServiceAndPublishAddress(ctx)
-				Expect(err).To(BeNil())
+				Expect(err).ToNot(HaveOccurred())
 
 				if !result {
 					// This means the svc address wasn't populated immediately
@@ -1798,12 +1798,12 @@ var _ = Describe("Rsync as a destination", func() {
 				// Find the service
 				svcs := &corev1.ServiceList{}
 				Expect(k8sClient.List(ctx, svcs, client.InNamespace(rd.Namespace))).To(Succeed())
-				Expect(len(svcs.Items)).To(Equal(1))
+				Expect(svcs.Items).To(HaveLen(1))
 				rdSvc := svcs.Items[0]
 
 				Expect(rdSvc.GetName()).To(ContainSubstring(utils.GetHashedName(rd.GetName())))
 				// Make sure our shortened name is actually short enough
-				Expect(len(rdSvc.GetName()) > 63).To(BeFalse())
+				Expect(len(rdSvc.GetName())).ToNot(BeNumerically(">", 63))
 			})
 		})
 
@@ -1813,7 +1813,7 @@ var _ = Describe("Rsync as a destination", func() {
 			JustBeforeEach(func() {
 				// create the svc
 				result, err := mover.ensureServiceAndPublishAddress(ctx)
-				Expect(err).To(BeNil())
+				Expect(err).ToNot(HaveOccurred())
 
 				// Service should now be created - check to see it's been created
 				svc = &corev1.Service{
@@ -1867,7 +1867,7 @@ var _ = Describe("Rsync as a destination", func() {
 				It("Creates a Service for incoming connections with no volsync annotations", func() {
 					Expect(*rd.Status.RsyncTLS.Address).To(Equal(svc.Spec.ClusterIP))
 
-					Expect(len(svc.Annotations)).To(Equal(0))
+					Expect(svc.Annotations).To(BeEmpty())
 
 					// Doublecheck here that the rd should have empty serviceAnnotations set after re-loading
 					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)).NotTo(HaveOccurred())
@@ -1913,7 +1913,7 @@ var _ = Describe("Rsync as a destination", func() {
 						}
 						return keyName
 					}, maxWait, interval).Should(Not(BeNil()))
-					Expect(err).To(BeNil())
+					Expect(err).ToNot(HaveOccurred())
 					Expect(keyName).ToNot(BeNil())
 
 					// Check the correct secret is put in the status (i.e. exported src secret for replication destination)
@@ -2105,7 +2105,7 @@ var _ = Describe("Rsync as a destination", func() {
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
-					Expect(len(job.Spec.Template.Spec.Containers)).To(Equal(1))
+					Expect(job.Spec.Template.Spec.Containers).To(HaveLen(1))
 					Expect(job.Spec.Template.Spec.Containers[0].Command).To(Equal(
 						[]string{"/bin/bash", "-c", "/mover-rsync-tls/server.sh"}))
 				})
@@ -2211,7 +2211,6 @@ var _ = Describe("Rsync as a destination", func() {
 				Expect(err).ToNot(HaveOccurred())
 				Expect(result.Completed).To(BeTrue())
 				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dPVC), dPVC)).To(Succeed())
-				Expect(dPVC.GetAnnotations()["volsync.backube/snap"])
 				Expect(dPVC.Annotations).ToNot(HaveKey("volsync.backube/snapname"))
 			})
 			It("Should remove old snapshot", func() {
@@ -2221,7 +2220,7 @@ var _ = Describe("Rsync as a destination", func() {
 
 				snapshots := &snapv1.VolumeSnapshotList{}
 				Expect(k8sClient.List(ctx, snapshots, client.InNamespace(rd.Namespace))).To(Succeed())
-				Expect(len(snapshots.Items)).Should(Equal(1))
+				Expect(snapshots.Items).Should(HaveLen(1))
 				// Snapshot left should be our "latestImage"
 				Expect(snapshots.Items[0].Name).To(Equal("mytestsnap2"))
 			})
@@ -2251,14 +2250,14 @@ func validateSaRoleAndRoleBinding(sa *corev1.ServiceAccount, namespace string, p
 
 	if privileged {
 		// Check to make sure the role grants access to the privileged mover scc
-		Expect(len(role.Rules)).To(Equal(1))
+		Expect(role.Rules).To(HaveLen(1))
 		rule := role.Rules[0]
 		Expect(rule.APIGroups).To(Equal([]string{"security.openshift.io"}))
 		Expect(rule.Resources).To(Equal([]string{"securitycontextconstraints"}))
 		Expect(rule.ResourceNames).To(Equal([]string{utils.SCCName}))
 		Expect(rule.Verbs).To(Equal([]string{"use"}))
 	} else {
-		Expect(len(role.Rules)).To(Equal(0))
+		Expect(role.Rules).To(BeEmpty())
 	}
 }
 

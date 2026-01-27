@@ -33,10 +33,6 @@ syncthing:
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
   image: ""
-kube-rbac-proxy:
-  repository: quay.io/brancz/kube-rbac-proxy
-  tag: "v0.19.0"
-  image: ""
 
 manageCRDs: true
 
@@ -75,14 +71,6 @@ securityContext:
     drop:
       - ALL
   readOnlyRootFilesystem: true
-
-kube-rbac-proxy-resources:
-  limits:
-    cpu: 500m
-    memory: 128Mi
-  requests:
-    cpu: 5m
-    memory: 64Mi
 
 resources:
   limits:

@@ -345,7 +345,7 @@ var _ = Describe("Rsync as a source", func() {
 					// Snapshot should have been created
 					snapshots := &snapv1.VolumeSnapshotList{}
 					Expect(k8sClient.List(ctx, snapshots, client.InNamespace(rs.Namespace))).To(Succeed())
-					Expect(len(snapshots.Items)).To(Equal(1))
+					Expect(snapshots.Items).To(HaveLen(1))
 					// update the VS name
 					snapshot := snapshots.Items[0]
 					foo := "dummysourcesnapshot"
@@ -384,7 +384,7 @@ var _ = Describe("Rsync as a source", func() {
 				})
 				It("Creates a Service for incoming connections", func() {
 					result, err := mover.ensureServiceAndPublishAddress(ctx)
-					Expect(err).To(BeNil())
+					Expect(err).ToNot(HaveOccurred())
 
 					// Service should now be created - check to see it's been created
 					svc := &corev1.Service{
@@ -424,7 +424,7 @@ var _ = Describe("Rsync as a source", func() {
 				It("No Service is created", func() {
 					// enasureServiecAndPublishAddress should return true,nil immediately
 					result, err := mover.ensureServiceAndPublishAddress(ctx)
-					Expect(err).To(BeNil())
+					Expect(err).ToNot(HaveOccurred())
 					Expect(result).To(BeTrue())
 
 					svc := &corev1.Service{
@@ -457,7 +457,7 @@ var _ = Describe("Rsync as a source", func() {
 						}
 						return keyName
 					}, maxWait, interval).Should(Not(BeNil()))
-					Expect(err).To(BeNil())
+					Expect(err).ToNot(HaveOccurred())
 					Expect(keyName).ToNot(BeNil())
 
 					// No need to reload status from k8s as ensureSecrets updates the status on the rs directly
@@ -700,7 +700,7 @@ var _ = Describe("Rsync as a source", func() {
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
-					Expect(len(job.Spec.Template.Spec.Containers)).To(Equal(1))
+					Expect(job.Spec.Template.Spec.Containers).To(HaveLen(1))
 					Expect(job.Spec.Template.Spec.Containers[0].Command).To(Equal(
 						[]string{"/bin/bash", "-c", "/mover-rsync/source.sh"}))
 				})
@@ -712,7 +712,7 @@ var _ = Describe("Rsync as a source", func() {
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
-					Expect(len(job.Spec.Template.Spec.Containers)).To(BeNumerically(">", 0))
+					Expect(job.Spec.Template.Spec.Containers).ToNot(BeEmpty())
 					Expect(job.Spec.Template.Spec.Containers[0].Image).To(Equal(defaultRsyncContainerImage))
 				})
 
@@ -738,7 +738,7 @@ var _ = Describe("Rsync as a source", func() {
 
 						jobs := &batchv1.JobList{}
 						Expect(k8sClient.List(ctx, jobs, client.InNamespace(rs.Namespace))).To(Succeed())
-						Expect(len(jobs.Items)).To(Equal(1))
+						Expect(jobs.Items).To(HaveLen(1))
 						moverJob := jobs.Items[0]
 
 						// Reload the replicationsource to see that it got updated
@@ -746,7 +746,7 @@ var _ = Describe("Rsync as a source", func() {
 
 						Expect(moverJob.GetName()).To(ContainSubstring(utils.GetHashedName(rs.GetName())))
 						// Make sure our shortened name is actually short enough
-						Expect(len(moverJob.GetName()) > 63).To(BeFalse())
+						Expect(len(moverJob.GetName())).ToNot(BeNumerically(">", 63))
 					})
 				})
 
@@ -758,7 +758,7 @@ var _ = Describe("Rsync as a source", func() {
 					job = &batchv1.Job{}
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
-					Expect(len(job.Spec.Template.Spec.Containers)).To(Equal(1))
+					Expect(job.Spec.Template.Spec.Containers).To(HaveLen(1))
 					// ResourceRequirements should be the empty/default value
 					Expect(job.Spec.Template.Spec.Containers[0].Resources).To(Equal(corev1.ResourceRequirements{}))
 				})
@@ -779,7 +779,7 @@ var _ = Describe("Rsync as a source", func() {
 						job = &batchv1.Job{}
 						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
-						Expect(len(job.Spec.Template.Spec.Containers)).To(Equal(1))
+						Expect(job.Spec.Template.Spec.Containers).To(HaveLen(1))
 						// ResourceRequirements should be set
 						resourceReqs := job.Spec.Template.Spec.Containers[0].Resources
 						Expect(resourceReqs.Limits).To(BeNil()) // No limits were set
@@ -804,7 +804,7 @@ var _ = Describe("Rsync as a source", func() {
 
 					c := job.Spec.Template.Spec.Containers[0]
 					// Validate job volume mounts
-					Expect(len(c.VolumeMounts)).To(Equal(4))
+					Expect(c.VolumeMounts).To(HaveLen(4))
 					foundDataVolumeMount := false
 					foundSSHSecretVolumeMount := false
 					foundDotSSHMount := false
@@ -861,7 +861,7 @@ var _ = Describe("Rsync as a source", func() {
 							foundDataVolume = true
 							Expect(vol.VolumeSource.PersistentVolumeClaim).ToNot(BeNil())
 							Expect(vol.VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(pvc.GetName()))
-							Expect(vol.VolumeSource.PersistentVolumeClaim.ReadOnly).To(Equal(false))
+							Expect(vol.VolumeSource.PersistentVolumeClaim.ReadOnly).To(BeFalse())
 						case "keys":
 							foundSSHSecretVolume = true
 							Expect(vol.VolumeSource.Secret).ToNot(BeNil())
@@ -893,7 +893,7 @@ var _ = Describe("Rsync as a source", func() {
 
 						c := job.Spec.Template.Spec.Containers[0]
 						// Validate job volume mounts
-						Expect(len(c.VolumeMounts)).To(Equal(3))
+						Expect(c.VolumeMounts).To(HaveLen(3))
 						foundDataVolumeMount := false
 						foundSSHSecretVolumeMount := false
 						foundDotSSHMount := false
@@ -970,10 +970,10 @@ var _ = Describe("Rsync as a source", func() {
 								Expect(vol.VolumeSource.PersistentVolumeClaim).ToNot(BeNil())
 								Expect(vol.VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(roxPVC.GetName()))
 								// The volumes should be mounted read-only
-								Expect(vol.VolumeSource.PersistentVolumeClaim.ReadOnly).To(Equal(true))
+								Expect(vol.VolumeSource.PersistentVolumeClaim.ReadOnly).To(BeTrue())
 							}
 						}
-						Expect(foundDataVolume).To(Equal(true))
+						Expect(foundDataVolume).To(BeTrue())
 					})
 				})
 
@@ -1023,7 +1023,7 @@ var _ = Describe("Rsync as a source", func() {
 
 					// Validate job env vars
 					env := job.Spec.Template.Spec.Containers[0].Env
-					Expect(len(env)).To(Equal(0))
+					Expect(env).To(BeEmpty())
 				})
 			})
 
@@ -1044,7 +1044,7 @@ var _ = Describe("Rsync as a source", func() {
 
 					// Validate job env vars
 					env := job.Spec.Template.Spec.Containers[0].Env
-					Expect(len(env)).To(Equal(1))
+					Expect(env).To(HaveLen(1))
 					validateEnvVar(env, "DESTINATION_ADDRESS", address)
 				})
 			})
@@ -1070,7 +1070,7 @@ var _ = Describe("Rsync as a source", func() {
 
 					// Validate job env vars
 					env := job.Spec.Template.Spec.Containers[0].Env
-					Expect(len(env)).To(Equal(2))
+					Expect(env).To(HaveLen(2))
 					validateEnvVar(env, "DESTINATION_ADDRESS", address)
 					validateEnvVar(env, "DESTINATION_PORT", strconv.Itoa(int(port)))
 				})
@@ -1318,7 +1318,7 @@ var _ = Describe("Rsync as a destination", func() {
 			It("The service name should be shortened appropriately (should handle long CR names)", func() {
 				// create the svc
 				result, err := mover.ensureServiceAndPublishAddress(ctx)
-				Expect(err).To(BeNil())
+				Expect(err).ToNot(HaveOccurred())
 
 				if !result {
 					// This means the svc address wasn't populated immediately
@@ -1332,12 +1332,12 @@ var _ = Describe("Rsync as a destination", func() {
 				// Find the service
 				svcs := &corev1.ServiceList{}
 				Expect(k8sClient.List(ctx, svcs, client.InNamespace(rd.Namespace))).To(Succeed())
-				Expect(len(svcs.Items)).To(Equal(1))
+				Expect(svcs.Items).To(HaveLen(1))
 				rdSvc := svcs.Items[0]
 
 				Expect(rdSvc.GetName()).To(ContainSubstring(utils.GetHashedName(rd.GetName())))
 				// Make sure our shortened name is actually short enough
-				Expect(len(rdSvc.GetName()) > 63).To(BeFalse())
+				Expect(len(rdSvc.GetName())).ToNot(BeNumerically(">", 63))
 			})
 		})
 
@@ -1348,7 +1348,7 @@ var _ = Describe("Rsync as a destination", func() {
 				JustBeforeEach(func() {
 					// create the svc
 					result, err := mover.ensureServiceAndPublishAddress(ctx)
-					Expect(err).To(BeNil())
+					Expect(err).ToNot(HaveOccurred())
 
 					// Service should now be created - check to see it's been created
 					svc = &corev1.Service{
@@ -1405,7 +1405,7 @@ var _ = Describe("Rsync as a destination", func() {
 					It("Creates a Service for incoming connections with no volsync annotations", func() {
 						Expect(*rd.Status.Rsync.Address).To(Equal(svc.Spec.ClusterIP))
 
-						Expect(len(svc.Annotations)).To(Equal(0))
+						Expect(svc.Annotations).To(BeEmpty())
 
 						// Doublecheck here that the rd should have empty serviceAnnotations set after re-loading
 						Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rd), rd)).NotTo(HaveOccurred())
@@ -1442,7 +1442,7 @@ var _ = Describe("Rsync as a destination", func() {
 				It("No Service is created", func() {
 					// enasureServiecAndPublishAddress should return true,nil immediately
 					result, err := mover.ensureServiceAndPublishAddress(ctx)
-					Expect(err).To(BeNil())
+					Expect(err).ToNot(HaveOccurred())
 					Expect(result).To(BeTrue())
 
 					svc := &corev1.Service{
@@ -1474,7 +1474,7 @@ var _ = Describe("Rsync as a destination", func() {
 						}
 						return keyName
 					}, maxWait, interval).Should(Not(BeNil()))
-					Expect(err).To(BeNil())
+					Expect(err).ToNot(HaveOccurred())
 					Expect(keyName).ToNot(BeNil())
 
 					// No need to reload status from k8s as ensureSecrets updates the status on the rd directly
@@ -1702,7 +1702,7 @@ var _ = Describe("Rsync as a destination", func() {
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
-					Expect(len(job.Spec.Template.Spec.Containers)).To(Equal(1))
+					Expect(job.Spec.Template.Spec.Containers).To(HaveLen(1))
 					Expect(job.Spec.Template.Spec.Containers[0].Command).To(Equal(
 						[]string{"/bin/bash", "-c", "/mover-rsync/destination.sh"}))
 				})
@@ -1715,7 +1715,7 @@ var _ = Describe("Rsync as a destination", func() {
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
 					// Validate job env vars - no env vars on dest job
-					Expect(len(job.Spec.Template.Spec.Containers[0].Env)).To(Equal(0))
+					Expect(job.Spec.Template.Spec.Containers[0].Env).To(BeEmpty())
 				})
 			})
 		})
@@ -1819,7 +1819,6 @@ var _ = Describe("Rsync as a destination", func() {
 				Expect(err).ToNot(HaveOccurred())
 				Expect(result.Completed).To(BeTrue())
 				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dPVC), dPVC)).To(Succeed())
-				Expect(dPVC.GetAnnotations()["volsync.backube/snap"])
 				Expect(dPVC.Annotations).ToNot(HaveKey("volsync.backube/snapname"))
 			})
 			It("Should remove old snapshot", func() {
@@ -1829,7 +1828,7 @@ var _ = Describe("Rsync as a destination", func() {
 
 				snapshots := &snapv1.VolumeSnapshotList{}
 				Expect(k8sClient.List(ctx, snapshots, client.InNamespace(rd.Namespace))).To(Succeed())
-				Expect(len(snapshots.Items)).Should(Equal(1))
+				Expect(snapshots.Items).Should(HaveLen(1))
 				// Snapshot left should be our "latestImage"
 				Expect(snapshots.Items[0].Name).To(Equal("mytestsnap2"))
 			})
@@ -1859,7 +1858,7 @@ func validateSaRoleAndRoleBinding(sa *corev1.ServiceAccount, namespace string) {
 
 	// Check to make sure the role grants access to the privileged mover scc
 	// rsync should always run privileged
-	Expect(len(role.Rules)).To(Equal(1))
+	Expect(role.Rules).To(HaveLen(1))
 	rule := role.Rules[0]
 	Expect(rule.APIGroups).To(Equal([]string{"security.openshift.io"}))
 	Expect(rule.Resources).To(Equal([]string{"securitycontextconstraints"}))

@@ -65,7 +65,7 @@ var _ = Describe("A cluster w/ StorageContextConstraints", func() {
 		bytes, err := os.ReadFile("../test/scc-crd.yml")
 		// Make sure we successfully read the file
 		Expect(err).NotTo(HaveOccurred())
-		Expect(len(bytes)).To(BeNumerically(">", 0))
+		Expect(bytes).ToNot(BeEmpty())
 		sccCRD = &apiextensionsv1.CustomResourceDefinition{}
 		err = yaml.Unmarshal(bytes, sccCRD)
 		Expect(err).NotTo(HaveOccurred())
@@ -258,7 +258,7 @@ var _ = Describe("A cluster w/ StorageContextConstraints", func() {
 
 					Expect(reloadedScc.AllowHostDirVolumePlugin).To(BeTrue())
 					// Check arrays to make sure they were not modified
-					Expect(len(reloadedScc.AllowedCapabilities)).To(Equal(2))
+					Expect(reloadedScc.AllowedCapabilities).To(HaveLen(2))
 					Expect(reloadedScc.AllowedCapabilities).Should(ContainElement(corev1.Capability("AUDIT_WRITE")))
 					Expect(reloadedScc.AllowedCapabilities).Should(ContainElement(corev1.Capability("FAKE_CAPABILITY")))
 				})
