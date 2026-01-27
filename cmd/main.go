@@ -121,11 +121,16 @@ func configureChecks(mgr manager.Manager) error {
 
 // addCommandFlags Configures flags to be bound to the VolSync command.
 func addCommandFlags(probeAddr *string, metricsAddr *string, enableLeaderElection *bool, secureMetrics *bool,
-	metricsCertPath *string, metricsCertName *string, metricsCertKey *string, enableHTTP2 *bool) {
+	metricsRequireRBAC *bool, metricsCertPath *string, metricsCertName *string, metricsCertKey *string,
+	enableHTTP2 *bool) {
 	flag.StringVar(metricsAddr, "metrics-bind-address", ":0", "The address the metric endpoint binds to."+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.BoolVar(secureMetrics, "metrics-secure", true,
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
+	flag.BoolVar(metricsRequireRBAC, "metrics-require-rbac", true,
+		"enables protection of the metrics endpoint with RBAC-based authn/authz. see "+
+			"https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.18.4/pkg/metrics/filters#WithAuthenticationAndAuthorization "+
+			" for more info.")
 	flag.StringVar(probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
@@ -203,6 +208,7 @@ func main() {
 	}
 	var probeAddr, metricsAddr string
 	var secureMetrics bool
+	var metricsRequireRBAC bool
 	var enableLeaderElection bool
 	var enableHTTP2 bool
 	var metricsCertPath, metricsCertName, metricsCertKey string
@@ -210,7 +216,7 @@ func main() {
 	var tlsOpts []func(*tls.Config)
 
 	addCommandFlags(&probeAddr, &metricsAddr, &enableLeaderElection, &secureMetrics,
-		&metricsCertPath, &metricsCertName, &metricsCertKey, &enableHTTP2)
+		&metricsRequireRBAC, &metricsCertPath, &metricsCertName, &metricsCertKey, &enableHTTP2)
 	printInfo()
 
 	leaseDuration := 137 * time.Second
@@ -279,7 +285,7 @@ func main() {
 		TLSOpts: tlsOpts,
 	}
 
-	if secureMetrics {
+	if secureMetrics && metricsRequireRBAC {
 		// FilterProvider is used to protect the metrics endpoint with authn/authz.
 		// These configurations ensure that only authorized users and service accounts
 		// can access the metrics endpoint. The RBAC are configured in 'config/rbac/kustomization.yaml'. More info:
