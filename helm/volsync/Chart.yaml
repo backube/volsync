@@ -27,7 +27,9 @@ annotations: # https://artifacthub.io/docs/topics/annotations/helm/
     - kind: changed
       description: moverVolumes updated to allow NFS type volumeMounts
     - kind: changed
-      description: Rclone updated to v1.72.1
+      description: Rclone updated to v1.73.0
+    - kind: changed
+      description: kube-rbac-proxy container no longer used. Built in auth for metrics provided by controller-runtime
     - kind: fixed
       description: Exclude lost+found for Rclone
   artifacthub.io/crds: |

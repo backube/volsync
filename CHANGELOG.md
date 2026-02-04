@@ -10,7 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - moverVolumes updated to allow NFS type volumeMounts
-- Rclone updated to v1.72.1
+- Rclone updated to v1.73.0
+- kube-rbac-proxy container no longer used. Built in auth for metrics
+  provided by controller-runtime
 
 ### Fixed
 
