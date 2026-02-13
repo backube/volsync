@@ -38,7 +38,7 @@ repos:
       - id: rst-inline-touching-normal
 
   - repo: https://github.com/adrienverge/yamllint
-    rev: "v1.37.1"
+    rev: "v1.38.0"
     hooks:
       - id: yamllint
         args: ["--strict", "-c", ".ci-scripts/yamlconfig.yaml"]
@@ -49,12 +49,12 @@ repos:
       - id: shellcheck
 
   - repo: https://github.com/markdownlint/markdownlint
-    rev: "v0.13.0"
+    rev: "v0.15.0"
     hooks:
       - id: markdownlint
         args: ["--style", ".ci-scripts/mdl-style.rb"]
 
   - repo: https://github.com/renovatebot/pre-commit-hooks
-    rev: "41.76.0"
+    rev: "43.4.3"
     hooks:
       - id: renovate-config-validator

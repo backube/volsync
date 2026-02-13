@@ -71,6 +71,7 @@ spec:
         args:
         - --leader-elect
         - --health-probe-bind-address=:8081
+        - --scc-name=volsync-privileged-mover
         image: controller:latest
         name: manager
         env:

@@ -68,7 +68,8 @@ func IsCRDNotPresentError(err error) bool {
 }
 
 func GetAndValidateSecret(ctx context.Context, cl client.Client,
-	logger logr.Logger, secret *corev1.Secret, fields ...string) error {
+	logger logr.Logger, secret *corev1.Secret, fields ...string,
+) error {
 	if err := cl.Get(ctx, client.ObjectKeyFromObject(secret), secret); err != nil {
 		logger.Error(err, "failed to get Secret with provided name", "Secret", client.ObjectKeyFromObject(secret))
 		return err
@@ -109,7 +110,8 @@ func EnvFromSecret(secretName string, field string, optional bool) corev1.EnvVar
 }
 
 func GetAndValidateConfigMap(ctx context.Context, cl client.Client,
-	logger logr.Logger, configMap *corev1.ConfigMap, fields ...string) error {
+	logger logr.Logger, configMap *corev1.ConfigMap, fields ...string,
+) error {
 	if err := cl.Get(ctx, client.ObjectKeyFromObject(configMap), configMap); err != nil {
 		logger.Error(err, "failed to get ConfigMap with provided name", "ConfigMap", client.ObjectKeyFromObject(configMap))
 		return err
@@ -237,7 +239,8 @@ func AppendDebugMoverEnvVar(replicationSourceOrDestObj metav1.Object, envVars []
 // Updates to set the securityContext, podLabels on mover pod in the spec and resourceRequirements on the mover
 // containers based on what is set in the MoverConfig
 func UpdatePodTemplateSpecFromMoverConfig(podTemplateSpec *corev1.PodTemplateSpec,
-	moverConfig volsyncv1alpha1.MoverConfig, defaultMoverResources corev1.ResourceRequirements) {
+	moverConfig volsyncv1alpha1.MoverConfig, defaultMoverResources corev1.ResourceRequirements,
+) {
 	if podTemplateSpec == nil {
 		return
 	}
@@ -270,7 +273,8 @@ func UpdatePodTemplateSpecFromMoverConfig(podTemplateSpec *corev1.PodTemplateSpe
 
 func UpdatePodTemplateSpecWithMoverVolumes(ctx context.Context, c client.Client,
 	logger logr.Logger, namespace string,
-	podTemplateSpec *corev1.PodTemplateSpec, moverVolumes []volsyncv1alpha1.MoverVolume) error {
+	podTemplateSpec *corev1.PodTemplateSpec, moverVolumes []volsyncv1alpha1.MoverVolume,
+) error {
 	if podTemplateSpec == nil {
 		return nil
 	}
@@ -280,10 +284,6 @@ func UpdatePodTemplateSpecWithMoverVolumes(ctx context.Context, c client.Client,
 	for _, mv := range moverVolumes {
 		absMountPath := "/mnt/" + mv.MountPath
 		vName := "u-" + strings.ReplaceAll(mv.MountPath, "/", "-")
-
-		if mv.VolumeSource.PersistentVolumeClaim == nil && mv.VolumeSource.Secret == nil {
-			continue
-		}
 
 		// Determine affinity for PVC mounted volume, but only if it's not already set
 		// (It could be set already if we're in direct mode, or by a previous moverVolume
@@ -316,13 +316,13 @@ func UpdatePodTemplateSpecWithMoverVolumes(ctx context.Context, c client.Client,
 		volumeSource := corev1.VolumeSource{
 			PersistentVolumeClaim: mv.VolumeSource.PersistentVolumeClaim,
 			Secret:                mv.VolumeSource.Secret,
+			NFS:                   mv.VolumeSource.NFS,
 		}
 
-		container.VolumeMounts =
-			append(container.VolumeMounts, corev1.VolumeMount{
-				Name:      vName,
-				MountPath: absMountPath,
-			})
+		container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
+			Name:      vName,
+			MountPath: absMountPath,
+		})
 
 		podTemplateSpec.Spec.Volumes = append(podTemplateSpec.Spec.Volumes, corev1.Volume{
 			Name:         vName,
@@ -334,19 +334,9 @@ func UpdatePodTemplateSpecWithMoverVolumes(ctx context.Context, c client.Client,
 }
 
 func ValidateMoverVolumes(ctx context.Context, c client.Client, logger logr.Logger,
-	namespace string, moverVolumes []volsyncv1alpha1.MoverVolume) error {
+	namespace string, moverVolumes []volsyncv1alpha1.MoverVolume,
+) error {
 	for _, mv := range moverVolumes {
-		// Validate mount path is safe
-		if mv.MountPath == "" {
-			return fmt.Errorf("moverVolume mount path cannot be empty")
-		}
-		if strings.Contains(mv.MountPath, "/") {
-			return fmt.Errorf("moverVolume mount path cannot contain path separators: %s", mv.MountPath)
-		}
-		if strings.Contains(mv.MountPath, "..") {
-			return fmt.Errorf("moverVolume mount path cannot contain path traversal: %s", mv.MountPath)
-		}
-
 		if mv.VolumeSource.PersistentVolumeClaim != nil {
 			pvc := &corev1.PersistentVolumeClaim{
 				ObjectMeta: metav1.ObjectMeta{
@@ -370,6 +360,7 @@ func ValidateMoverVolumes(ctx context.Context, c client.Client, logger logr.Logg
 				return err
 			}
 		}
+		// No validations for NFS moverVolumes
 	}
 	return nil
 }

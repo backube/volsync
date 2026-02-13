@@ -66,7 +66,7 @@ var _ = Describe("Relationships", func() {
 			// File exists
 			info, err := os.Stat(filepath)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(info.Mode().IsRegular())
+			Expect(info.Mode().IsRegular()).To(BeTrue())
 		})
 		It("Fails if one already exists", func() {
 			_ = rel.Save()

@@ -16,6 +16,8 @@ GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
+
+//nolint:revive
 package api
 
 import (
@@ -48,7 +50,7 @@ func (s *Syncthing) MyID() string { return s.SystemStatus.MyID }
 // on the folder by the device.
 func (s *Syncthing) ShareFoldersWithDevices() {
 	// share the current folder(s) with the new devices
-	var newFolders = []config.FolderConfiguration{}
+	newFolders := make([]config.FolderConfiguration, 0, len(s.Configuration.Folders))
 	for _, folder := range s.Configuration.Folders {
 		// copy folder & reset
 		newFolder := folder

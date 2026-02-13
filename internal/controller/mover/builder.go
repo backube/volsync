@@ -68,7 +68,7 @@ type Builder interface {
 }
 
 func GetEnabledMoverList() []string {
-	enabledMoverNames := []string{}
+	enabledMoverNames := make([]string, 0, len(Catalog))
 	for _, builder := range Catalog {
 		enabledMoverNames = append(enabledMoverNames, builder.Name())
 	}

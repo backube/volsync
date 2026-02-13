@@ -147,6 +147,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		sourceStatus:          source.Status.Restic,
 		latestMoverStatus:     source.Status.LatestMoverStatus,
 		moverConfig:           source.Spec.Restic.MoverConfig,
+		moverVolumes:          source.Spec.Restic.MoverVolumes,
 	}, nil
 }
 
@@ -201,5 +202,6 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		enableFileDeletionOnRestore: destination.Spec.Restic.EnableFileDeletion,
 		latestMoverStatus:           destination.Status.LatestMoverStatus,
 		moverConfig:                 destination.Spec.Restic.MoverConfig,
+		moverVolumes:                destination.Spec.Restic.MoverVolumes,
 	}, nil
 }

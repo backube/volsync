@@ -9,9 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Syncthing updated to v1.30.0
+- moverVolumes updated to allow NFS type volumeMounts
+- Rclone updated to v1.73.0
+- kube-rbac-proxy container no longer used. Built in auth for metrics
+  provided by controller-runtime
 
-## 0.13.0
+### Fixed
+
+- Exclude lost+found for Rclone
+
+## [0.14.0]
+
+### Changed
+
+- Updated release to build on golang 1.24
+- Syncthing updated to v1.30.0
+- Rclone updated to v1.71.2
+- Rclone --checksum, --transfers and --stats parameters can now be
+  overridden by RCLONE_ env vars in the rclone config secret
+- addition of moverVolumes for advanced users to allow mounting
+  of secrets or PVCs to their mover pod
+
+## [0.13.1]
+
+### Fixed
+
+- Increase timeout for issue with restic repository initialization
+  when `restic cat config` takes > 10 seconds
+
+### Changed
+
+- Minio used for e2e tests migrated to minio helm charts from bitnami
+
+## [0.13.0]
 
 ### Changed
 
@@ -377,7 +407,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for rsync & rclone replication
 - Helm chart to deploy operator
 
-[Unreleased]: https://github.com/backube/volsync/compare/release-0.13...HEAD
+[Unreleased]: https://github.com/backube/volsync/compare/release-0.14...HEAD
+[0.14.0]: https://github.com/backube/volsync/compare/release-0.13...v0.14.0
+[0.13.1]: https://github.com/backube/volsync/compare/release-0.13.0...v0.13.1
 [0.13.0]: https://github.com/backube/volsync/compare/release-0.12...v0.13.0
 [0.12.1]: https://github.com/backube/volsync/compare/release-0.12.0...v0.12.1
 [0.12.0]: https://github.com/backube/volsync/compare/release-0.11..v0.12.0

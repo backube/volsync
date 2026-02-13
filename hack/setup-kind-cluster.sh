@@ -164,29 +164,14 @@ rm -f "${KIND_CONFIG_FILE}"
 # Kube >= 1.17, we need to deploy the snapshot controller
 if [[ $KUBE_MINOR -ge 24 ]]; then  # Kube 1.24 removed snapshot.storage.k8s.io/v1beta1
   # renovate: datasource=github-releases depName=kubernetes-csi/external-snapshotter versioning=semver-coerced
-  TAG="v8.0.1"  # https://github.com/kubernetes-csi/external-snapshotter/releases
+  TAG="v8.4.0"  # https://github.com/kubernetes-csi/external-snapshotter/releases
   log "Deploying external snapshotter: ${TAG}"
   kubectl create -k "https://github.com/kubernetes-csi/external-snapshotter/client/config/crd?ref=${TAG}"
   kubectl create -n kube-system -k "https://github.com/kubernetes-csi/external-snapshotter/deploy/kubernetes/snapshot-controller?ref=${TAG}"
 
-  # Deploy validating webhook server for snapshots: https://github.com/kubernetes-csi/external-snapshotter#validating-webhook
-  log "Deploying validating webhook server for volumesnapshots: ${TAG}"
-  EXT_SNAPSHOTTER_BASE="$(mktemp --tmpdir -d external-snapshotter-XXXXXX)"
-  git clone --depth 1 -b "${TAG}" https://github.com/kubernetes-csi/external-snapshotter.git "${EXT_SNAPSHOTTER_BASE}"
-
-  SNAP_WEBHOOK_PATH="${EXT_SNAPSHOTTER_BASE}/deploy/kubernetes/webhook-example"
-  # webhook server need a TLS certificate - run script to generate and deploy secret to cluster (requires openssl)
-  "${SNAP_WEBHOOK_PATH}"/create-cert.sh --service snapshot-validation-service --secret snapshot-validation-secret --namespace kube-system
-  < "${SNAP_WEBHOOK_PATH}"/admission-configuration-template "${SNAP_WEBHOOK_PATH}"/patch-ca-bundle.sh > "${SNAP_WEBHOOK_PATH}"/admission-configuration.yaml
-
-  # Update namespace in the example files
-  for yamlfile in "${SNAP_WEBHOOK_PATH}"/*.yaml
-  do
-    sed -i s/'namespace: "default"'/'namespace: "kube-system"'/g "${yamlfile}"
-    sed -i s/'namespace: default'/'namespace: kube-system'/g "${yamlfile}"
-  done
-  kubectl apply -f "${SNAP_WEBHOOK_PATH}"
-  rm -rf "${EXT_SNAPSHOTTER_BASE}"
+  # No longer deploying validating webhook - the webhook is now a "conversion webhook" meant to convert
+  # VolumeGroupSnapshotContent v1beta1 to/from v1beta2
+  # see: https://github.com/kubernetes-csi/external-snapshotter/blob/v8.4.0/deploy/kubernetes/webhook-example/README.md
 
 elif [[ $KUBE_MINOR -ge 20 ]]; then  # Kube 1.20 added snapshot.storage.k8s.io/v1
   TAG="v5.0.1"  # https://github.com/kubernetes-csi/external-snapshotter/releases
@@ -207,7 +192,7 @@ fi
 if [[ $KUBE_MINOR -ge 24 ]]; then # Volume Populators should work (AnyVolumeDataSource feature gate enabled by default)
   # Install the volume-data-source-validator (For validating PVC dataRefSource against known VolumePopulators)
   # renovate: datasource=github-releases depName=kubernetes-csi/volume-data-source-validator versioning=semver-coerced
-  TAG="v1.3.0" # https://github.com/kubernetes-csi/volume-data-source-validator/releases
+  TAG="v1.5.0" # https://github.com/kubernetes-csi/volume-data-source-validator/releases
   log "Deploying volume data source validator: ${TAG}"
   kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/volume-data-source-validator/${TAG}/client/config/crd/populator.storage.k8s.io_volumepopulators.yaml"
   kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/volume-data-source-validator/${TAG}/deploy/kubernetes/rbac-data-source-validator.yaml"
@@ -258,7 +243,7 @@ case "$KUBE_MINOR" in
     ;;
   *)
     # renovate: datasource=github-releases depName=kubernetes-csi/csi-driver-host-path versioning=semver-coerced
-    TAG="v1.17.0"
+    TAG="v1.17.1"
     DEPLOY_SCRIPT="deploy.sh"
     ;;
 esac

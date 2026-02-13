@@ -48,10 +48,6 @@ kopia:
     # failedJobsHistoryLimit: Number of failed maintenance Jobs to keep (default: 1)
     # Failed jobs are retained to help diagnose issues
     failedJobsHistoryLimit: 1
-kube-rbac-proxy:
-  repository: quay.io/brancz/kube-rbac-proxy
-  tag: "v0.19.0"
-  image: ""
 
 manageCRDs: true
 
@@ -90,14 +86,6 @@ securityContext:
     drop:
       - ALL
   readOnlyRootFilesystem: true
-
-kube-rbac-proxy-resources:
-  limits:
-    cpu: 500m
-    memory: 128Mi
-  requests:
-    cpu: 5m
-    memory: 64Mi
 
 resources:
   limits:

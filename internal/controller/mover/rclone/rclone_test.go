@@ -464,7 +464,7 @@ var _ = Describe("Rclone as a source", func() {
 
 						waitingSinceTime, err := time.Parse(time.RFC3339, waitingSince)
 						Expect(err).NotTo(HaveOccurred())
-						Expect(waitingSinceTime.Before(time.Now().Add(1 * time.Second)))
+						Expect(waitingSinceTime.Before(time.Now().Add(1 * time.Second))).To(BeTrue())
 					})
 					It("Should wait before creating the clone and set latest-copy-status to WaitingForTrigger", func() {
 						// Tests are in JustBeforeEach above
@@ -592,7 +592,7 @@ var _ = Describe("Rclone as a source", func() {
 
 									waitingSinceTime, err := time.Parse(time.RFC3339, waitingSince)
 									Expect(err).NotTo(HaveOccurred())
-									Expect(waitingSinceTime.Before(time.Now().Add(1 * time.Second)))
+									Expect(waitingSinceTime.Before(time.Now().Add(1 * time.Second))).To(BeTrue())
 								})
 								It("Should again wait for the copy-trigger to be updated to a new value", func() {
 									// the latestcopytrigger should still be from the previous sync
@@ -677,7 +677,7 @@ var _ = Describe("Rclone as a source", func() {
 					// Snapshot should have been created
 					snapshots := &snapv1.VolumeSnapshotList{}
 					Expect(k8sClient.List(ctx, snapshots, client.InNamespace(rs.Namespace))).To(Succeed())
-					Expect(len(snapshots.Items)).To(Equal(1))
+					Expect(snapshots.Items).To(HaveLen(1))
 
 					// update the VS name
 					snapshot := snapshots.Items[0]
@@ -719,7 +719,7 @@ var _ = Describe("Rclone as a source", func() {
 
 						snapshots := &snapv1.VolumeSnapshotList{}
 						Expect(k8sClient.List(ctx, snapshots, client.InNamespace(rs.Namespace))).To(Succeed())
-						Expect(len(snapshots.Items)).To(Equal(0))
+						Expect(snapshots.Items).To(BeEmpty())
 
 						// re-load sPVC to see that volsync has added latest-copy-trigger annotation
 						// k8sClient is direct in this test, so no need for Eventually()
@@ -734,7 +734,7 @@ var _ = Describe("Rclone as a source", func() {
 
 						waitingSinceTime, err := time.Parse(time.RFC3339, waitingSince)
 						Expect(err).NotTo(HaveOccurred())
-						Expect(waitingSinceTime.Before(time.Now().Add(1 * time.Second)))
+						Expect(waitingSinceTime.Before(time.Now().Add(1 * time.Second))).To(BeTrue())
 					})
 					It("Should wait before creating the snapshot and set latest-copy-status to WaitingForTrigger", func() {
 						// Tests are in JustBeforeEach above
@@ -779,7 +779,7 @@ var _ = Describe("Rclone as a source", func() {
 							// Snapshot however should have been created
 							snapshots := &snapv1.VolumeSnapshotList{}
 							Expect(k8sClient.List(ctx, snapshots, client.InNamespace(rs.Namespace))).To(Succeed())
-							Expect(len(snapshots.Items)).To(Equal(1))
+							Expect(snapshots.Items).To(HaveLen(1))
 
 							firstSyncSnapshot = &snapshots.Items[0]
 
@@ -859,7 +859,7 @@ var _ = Describe("Rclone as a source", func() {
 									snapshotReloaded := &snapv1.VolumeSnapshot{}
 									err = k8sClient.Get(ctx, client.ObjectKeyFromObject(firstSyncSnapshot), snapshotReloaded)
 									Expect(err).To(HaveOccurred())
-									Expect(kerrors.IsNotFound(err))
+									Expect(kerrors.IsNotFound(err)).To(BeTrue())
 
 									// Now run another ensureSourcePVC/reconcile
 									dataPVCSnap2, err := mover.ensureSourcePVC(ctx)
@@ -869,7 +869,7 @@ var _ = Describe("Rclone as a source", func() {
 									// No new snap should be created yet since we're waiting on the copy-trigger
 									snapshots := &snapv1.VolumeSnapshotList{}
 									Expect(k8sClient.List(ctx, snapshots, client.InNamespace(rs.Namespace))).To(Succeed())
-									Expect(len(snapshots.Items)).To(Equal(0))
+									Expect(snapshots.Items).To(BeEmpty())
 
 									// re-load sPVC to see that volsync has added latest-copy-trigger annotation
 									// k8sClient is direct in this test, so no need for Eventually()
@@ -884,7 +884,7 @@ var _ = Describe("Rclone as a source", func() {
 
 									waitingSinceTime, err := time.Parse(time.RFC3339, waitingSince)
 									Expect(err).NotTo(HaveOccurred())
-									Expect(waitingSinceTime.Before(time.Now().Add(1 * time.Second)))
+									Expect(waitingSinceTime.Before(time.Now().Add(1 * time.Second))).To(BeTrue())
 								})
 								It("Should again wait for the copy-trigger to be updated to a new value", func() {
 									// the latestcopytrigger should still be from the previous sync
@@ -910,7 +910,7 @@ var _ = Describe("Rclone as a source", func() {
 										// Snapshot however should have been created
 										snapshots := &snapv1.VolumeSnapshotList{}
 										Expect(k8sClient.List(ctx, snapshots, client.InNamespace(rs.Namespace))).To(Succeed())
-										Expect(len(snapshots.Items)).To(Equal(1))
+										Expect(snapshots.Items).To(HaveLen(1))
 
 										secondSyncSnapshot = &snapshots.Items[0]
 
@@ -1106,7 +1106,7 @@ var _ = Describe("Rclone as a source", func() {
 
 					job = &batchv1.Job{}
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
-					Expect(len(job.Spec.Template.Spec.Containers)).To(Equal(1))
+					Expect(job.Spec.Template.Spec.Containers).To(HaveLen(1))
 					Expect(job.Spec.Template.Spec.Containers[0].Command).To(Equal(
 						[]string{"/bin/bash", "-c", "/mover-rclone/active.sh"}))
 				})
@@ -1118,7 +1118,7 @@ var _ = Describe("Rclone as a source", func() {
 					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
 					job = &batchv1.Job{}
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
-					Expect(len(job.Spec.Template.Spec.Containers)).To(BeNumerically(">", 0))
+					Expect(job.Spec.Template.Spec.Containers).ToNot(BeEmpty())
 					Expect(job.Spec.Template.Spec.Containers[0].Image).To(Equal(defaultRcloneContainerImage))
 				})
 
@@ -1152,7 +1152,7 @@ var _ = Describe("Rclone as a source", func() {
 					job = &batchv1.Job{}
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
-					Expect(len(job.Spec.Template.Spec.Containers)).To(Equal(1))
+					Expect(job.Spec.Template.Spec.Containers).To(HaveLen(1))
 					// ResourceRequirements should be the empty/default value
 					Expect(job.Spec.Template.Spec.Containers[0].Resources).To(Equal(corev1.ResourceRequirements{}))
 				})
@@ -1169,7 +1169,7 @@ var _ = Describe("Rclone as a source", func() {
 
 						jobs := &batchv1.JobList{}
 						Expect(k8sClient.List(ctx, jobs, client.InNamespace(rs.Namespace))).To(Succeed())
-						Expect(len(jobs.Items)).To(Equal(1))
+						Expect(jobs.Items).To(HaveLen(1))
 						moverJob := jobs.Items[0]
 
 						// Reload the replicationsource to see that it got updated
@@ -1177,7 +1177,7 @@ var _ = Describe("Rclone as a source", func() {
 
 						Expect(moverJob.GetName()).To(ContainSubstring(utils.GetHashedName(rs.GetName())))
 						// Make sure our shortened name is actually short enough
-						Expect(len(moverJob.GetName()) > 63).To(BeFalse())
+						Expect(len(moverJob.GetName())).ToNot(BeNumerically(">", 63))
 					})
 				})
 
@@ -1198,7 +1198,7 @@ var _ = Describe("Rclone as a source", func() {
 						job = &batchv1.Job{}
 						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
-						Expect(len(job.Spec.Template.Spec.Containers)).To(Equal(1))
+						Expect(job.Spec.Template.Spec.Containers).To(HaveLen(1))
 						// ResourceRequirements should be set
 						resourceReqs := job.Spec.Template.Spec.Containers[0].Resources
 						Expect(resourceReqs.Limits).To(BeNil()) // No limits were set
@@ -1210,6 +1210,47 @@ var _ = Describe("Rclone as a source", func() {
 						memRequest := resourceReqs.Requests[corev1.ResourceMemory]
 						Expect(memRequest).NotTo(BeNil())
 						Expect(memRequest).To(Equal(resource.MustParse("128Mi")))
+					})
+				})
+
+				When("moverVolumes are provided", func() {
+					BeforeEach(func() {
+						rs.Spec.Rclone.MoverVolumes = []volsyncv1alpha1.MoverVolume{
+							{
+								MountPath: "addl-secret",
+								VolumeSource: volsyncv1alpha1.MoverVolumeSource{
+									Secret: &corev1.SecretVolumeSource{
+										SecretName: "rclone-extra-secret",
+									},
+								},
+							},
+						}
+					})
+					It("should mount the secret in the container", func() {
+						j, e := mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret, nil) // Using sPVC as dataPVC (i.e. direct)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(j).To(BeNil()) // hasn't completed
+						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+						job = &batchv1.Job{}
+						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+
+						// Check that the secret volume is added to the job
+						var volName string
+						for _, v := range job.Spec.Template.Spec.Volumes {
+							if v.Secret != nil && v.Secret.SecretName == "rclone-extra-secret" {
+								volName = v.Name
+							}
+						}
+						Expect(volName).To(Equal("u-addl-secret"))
+
+						// Check that secret volume is mounted to container
+						var mountPath string
+						for _, v := range job.Spec.Template.Spec.Containers[0].VolumeMounts {
+							if v.Name == "u-addl-secret" {
+								mountPath = v.MountPath
+							}
+						}
+						Expect(mountPath).To(Equal("/mnt/addl-secret"))
 					})
 				})
 
@@ -1450,7 +1491,7 @@ var _ = Describe("Rclone as a source", func() {
 								rcloneConfigEnvVars = append(rcloneConfigEnvVars, envVar)
 							}
 						}
-						Expect(len(rcloneConfigEnvVars)).To(Equal(2))
+						Expect(rcloneConfigEnvVars).To(HaveLen(2))
 						first := rcloneConfigEnvVars[0]
 						second := rcloneConfigEnvVars[1]
 						// First one in the env array should be the one from the secret
@@ -1479,7 +1520,7 @@ var _ = Describe("Rclone as a source", func() {
 
 					c := job.Spec.Template.Spec.Containers[0]
 					// Validate job volume mounts
-					Expect(len(c.VolumeMounts)).To(Equal(3))
+					Expect(c.VolumeMounts).To(HaveLen(3))
 					foundDataVolumeMount := false
 					foundRcloneSecretVolumeMount := false
 					foundTempMount := false
@@ -1510,7 +1551,7 @@ var _ = Describe("Rclone as a source", func() {
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 
 					volumes := job.Spec.Template.Spec.Volumes
-					Expect(len(volumes)).To(Equal(3))
+					Expect(volumes).To(HaveLen(3))
 					foundDataVolume := false
 					foundRcloneSecretVolume := false
 					foundTemp := false
@@ -1520,7 +1561,7 @@ var _ = Describe("Rclone as a source", func() {
 							foundDataVolume = true
 							Expect(vol.VolumeSource.PersistentVolumeClaim).ToNot(BeNil())
 							Expect(vol.VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(sPVC.GetName()))
-							Expect(vol.VolumeSource.PersistentVolumeClaim.ReadOnly).To(Equal(false))
+							Expect(vol.VolumeSource.PersistentVolumeClaim.ReadOnly).To(BeFalse())
 						case rcloneSecret:
 							foundRcloneSecretVolume = true
 							Expect(vol.VolumeSource.Secret).ToNot(BeNil())
@@ -1574,10 +1615,10 @@ var _ = Describe("Rclone as a source", func() {
 								Expect(vol.VolumeSource.PersistentVolumeClaim).ToNot(BeNil())
 								Expect(vol.VolumeSource.PersistentVolumeClaim.ClaimName).To(Equal(roxPVC.GetName()))
 								// The volumes should be mounted read-only
-								Expect(vol.VolumeSource.PersistentVolumeClaim.ReadOnly).To(Equal(true))
+								Expect(vol.VolumeSource.PersistentVolumeClaim.ReadOnly).To(BeTrue())
 							}
 						}
-						Expect(foundDataVolume).To(Equal(true))
+						Expect(foundDataVolume).To(BeTrue())
 					})
 				})
 
@@ -2068,7 +2109,6 @@ var _ = Describe("Rclone as a destination", func() {
 				Expect(err).ToNot(HaveOccurred())
 				Expect(result.Completed).To(BeTrue())
 				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dPVC), dPVC)).To(Succeed())
-				Expect(dPVC.GetAnnotations()["volsync.backube/snap"])
 				Expect(dPVC.Annotations).ToNot(HaveKey("volsync.backube/snapname"))
 			})
 			It("Should remove old snapshot", func() {
@@ -2078,7 +2118,7 @@ var _ = Describe("Rclone as a destination", func() {
 
 				snapshots := &snapv1.VolumeSnapshotList{}
 				Expect(k8sClient.List(ctx, snapshots, client.InNamespace(rd.Namespace))).To(Succeed())
-				Expect(len(snapshots.Items)).Should(Equal(1))
+				Expect(snapshots.Items).Should(HaveLen(1))
 				// Snapshot left should be our "latestImage"
 				Expect(snapshots.Items[0].Name).To(Equal("mytestsnap2"))
 			})
@@ -2111,14 +2151,14 @@ func validateSaRoleAndRoleBinding(sa *corev1.ServiceAccount, namespace string, p
 
 	if privileged {
 		// Check to make sure the role grants access to the privileged mover scc
-		Expect(len(role.Rules)).To(Equal(1))
+		Expect(role.Rules).To(HaveLen(1))
 		rule := role.Rules[0]
 		Expect(rule.APIGroups).To(Equal([]string{"security.openshift.io"}))
 		Expect(rule.Resources).To(Equal([]string{"securitycontextconstraints"}))
 		Expect(rule.ResourceNames).To(Equal([]string{utils.SCCName}))
 		Expect(rule.Verbs).To(Equal([]string{"use"}))
 	} else {
-		Expect(len(role.Rules)).To(Equal(0))
+		Expect(role.Rules).To(BeEmpty())
 	}
 }
 
