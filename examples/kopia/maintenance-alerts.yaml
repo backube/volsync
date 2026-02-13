@@ -1,0 +1,252 @@
+# Example Prometheus alerting rules for Kopia maintenance monitoring
+#
+# These alerts help ensure that Kopia repository maintenance is running properly
+# and detect issues that could affect backup reliability or repository health.
+#
+# To use these alerts:
+# 1. Save this file to your Prometheus configuration directory
+# 2. Update your prometheus.yml to include this file in rule_files
+# 3. Adjust thresholds based on your maintenance schedule and requirements
+# 4. Configure alertmanager to route these alerts appropriately
+
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kopia-maintenance-alerts
+  namespace: volsync-system
+  labels:
+    prometheus: kops-prometheus
+    role: alert-rules
+spec:
+  groups:
+  - name: kopia.maintenance
+    interval: 60s
+    rules:
+
+    # Alert when maintenance hasn't run for too long
+    - alert: KopiaMaintenanceNotRunning
+      expr: |
+        (time() - volsync_kopia_maintenance_last_run_timestamp_seconds) > 259200
+      for: 1h
+      labels:
+        severity: warning
+        component: kopia
+        alert_type: maintenance
+      annotations:
+        summary: "Kopia maintenance hasn't run for {{ $value | humanizeDuration }} for repository {{ $labels.repository }}"
+        description: |
+          Kopia maintenance for repository {{ $labels.repository }} in namespace {{ $labels.obj_namespace }}
+          hasn't successfully completed in over 3 days ({{ $value | humanizeDuration }}).
+          This could lead to repository bloat and degraded performance.
+
+          Check:
+          - CronJob status: kubectl get cronjob -n {{ $labels.obj_namespace }} | grep kopia-maintenance
+          - Recent jobs: kubectl get jobs -n {{ $labels.obj_namespace }} --sort-by=.metadata.creationTimestamp | grep kopia-maintenance
+          - Pod logs for errors: kubectl logs -n {{ $labels.obj_namespace }} -l volsync.backube/kopia-maintenance=true --tail=100
+
+    # Alert when maintenance hasn't run for an extended period (critical)
+    - alert: KopiaMaintenanceCritical
+      expr: |
+        (time() - volsync_kopia_maintenance_last_run_timestamp_seconds) > 604800
+      for: 1h
+      labels:
+        severity: critical
+        component: kopia
+        alert_type: maintenance
+      annotations:
+        summary: "CRITICAL: Kopia maintenance hasn't run for {{ $value | humanizeDuration }}"
+        description: |
+          Kopia maintenance for repository {{ $labels.repository }} in namespace {{ $labels.obj_namespace }}
+          hasn't successfully completed in over 7 days ({{ $value | humanizeDuration }}).
+
+          This is critical and requires immediate attention:
+          - Repository may have excessive bloat
+          - Snapshot retention policies may not be enforced
+          - Performance degradation is likely
+
+          Immediate actions:
+          1. Check CronJob suspension: kubectl get cronjob -n {{ $labels.obj_namespace }} kopia-maintenance-* -o yaml | grep suspend
+          2. Manually trigger maintenance if needed: kubectl create job --from=cronjob/kopia-maintenance-* manual-maintenance -n {{ $labels.obj_namespace }}
+          3. Check repository connectivity and credentials
+
+    # Alert on repeated maintenance failures
+    - alert: KopiaMaintenanceFailures
+      expr: |
+        rate(volsync_kopia_maintenance_cronjob_failures_total[1h]) > 0.5
+      for: 30m
+      labels:
+        severity: warning
+        component: kopia
+        alert_type: maintenance
+      annotations:
+        summary: "Kopia maintenance jobs are failing for repository {{ $labels.repository }}"
+        description: |
+          Multiple Kopia maintenance job failures detected for repository {{ $labels.repository }}
+          in namespace {{ $labels.obj_namespace }}.
+          Failure rate: {{ $value | humanize }} failures per hour
+
+          Common causes:
+          - Repository connectivity issues
+          - Authentication failures
+          - Insufficient resources (CPU/Memory)
+          - Repository corruption
+
+          Troubleshooting:
+          - Check failed job logs: kubectl logs -n {{ $labels.obj_namespace }} job/<failed-job-name>
+          - Verify repository secret: kubectl get secret -n {{ $labels.obj_namespace }} {{ $labels.repository }}
+          - Check resource limits in CronJob spec
+
+    # Alert when maintenance takes too long
+    - alert: KopiaMaintenanceSlow
+      expr: |
+        histogram_quantile(0.95, rate(volsync_kopia_maintenance_duration_seconds_bucket[1d])) > 3600
+      for: 2h
+      labels:
+        severity: warning
+        component: kopia
+        alert_type: performance
+      annotations:
+        summary: "Kopia maintenance is taking too long for repository {{ $labels.repository }}"
+        description: |
+          Kopia maintenance operations for repository {{ $labels.repository }} in namespace {{ $labels.obj_namespace }}
+          are taking longer than expected. 95th percentile duration: {{ $value | humanizeDuration }}
+
+          This could indicate:
+          - Repository is very large and needs optimization
+          - Network performance issues
+          - Insufficient CPU/Memory allocation
+          - Too many snapshots to process
+
+          Consider:
+          - Increasing resource limits for maintenance jobs
+          - Adjusting retention policies to reduce snapshot count
+          - Running maintenance more frequently
+          - Checking network connectivity to repository backend
+
+    # Alert on high rate of CronJob updates
+    - alert: KopiaMaintenanceCronJobChurn
+      expr: |
+        rate(volsync_kopia_maintenance_cronjob_updated_total[1h]) > 5
+      for: 30m
+      labels:
+        severity: info
+        component: kopia
+        alert_type: configuration
+      annotations:
+        summary: "High rate of Kopia maintenance CronJob updates"
+        description: |
+          The Kopia maintenance CronJob for repository {{ $labels.repository }} in namespace {{ $labels.obj_namespace }}
+          is being updated frequently ({{ $value | humanize }} updates per hour).
+
+          This could indicate:
+          - Configuration changes being applied repeatedly
+          - Controller reconciliation issues
+          - Conflicting configurations from multiple sources
+
+          Check:
+          - Controller logs for reconciliation errors
+          - Recent changes to ReplicationSource configurations
+          - Multiple ReplicationSources using the same repository
+
+    # Alert when no maintenance CronJobs exist but sources are configured
+    - alert: KopiaMaintenanceCronJobMissing
+      expr: |
+        sum by (obj_namespace) (volsync_kopia_operation_success_total{operation="backup"}) > 0
+        unless
+        sum by (obj_namespace) (volsync_kopia_maintenance_cronjob_created_total) > 0
+      for: 6h
+      labels:
+        severity: warning
+        component: kopia
+        alert_type: configuration
+      annotations:
+        summary: "Kopia backups running but no maintenance CronJob exists in namespace {{ $labels.obj_namespace }}"
+        description: |
+          Kopia backup operations are running in namespace {{ $labels.obj_namespace }} but no maintenance
+          CronJob has been created. This will lead to repository bloat and performance degradation over time.
+
+          Actions:
+          - Check if maintenance is intentionally disabled in ReplicationSource specs
+          - Verify controller is running and has proper RBAC permissions
+          - Look for errors in controller logs related to CronJob creation
+
+          To manually check:
+          kubectl get cronjobs -n {{ $labels.obj_namespace }} -l volsync.backube/kopia-maintenance=true
+
+  - name: kopia.repository.health
+    interval: 60s
+    rules:
+
+    # Alert on repository size growth
+    - alert: KopiaRepositoryGrowth
+      expr: |
+        rate(volsync_kopia_repository_size_bytes[1d]) > 1073741824
+      for: 1h
+      labels:
+        severity: info
+        component: kopia
+        alert_type: capacity
+      annotations:
+        summary: "Kopia repository {{ $labels.repository }} is growing rapidly"
+        description: |
+          Repository {{ $labels.repository }} in namespace {{ $labels.obj_namespace }} is growing
+          at {{ $value | humanize1024 }}B per day.
+
+          Current size can be checked with:
+          kubectl exec -n {{ $labels.obj_namespace }} <kopia-pod> -- kopia repository status
+
+          Consider:
+          - Reviewing retention policies
+          - Checking if maintenance is running properly
+          - Analyzing deduplication effectiveness
+
+    # Alert on poor deduplication ratio
+    - alert: KopiaDeduplicationPoor
+      expr: |
+        avg_over_time(volsync_kopia_deduplication_ratio[1h]) < 1.5
+      for: 2h
+      labels:
+        severity: info
+        component: kopia
+        alert_type: efficiency
+      annotations:
+        summary: "Poor deduplication ratio for Kopia repository {{ $labels.repository }}"
+        description: |
+          Repository {{ $labels.repository }} has a low deduplication ratio of {{ $value | humanize }}.
+          This indicates that data is not being efficiently deduplicated.
+
+          Possible causes:
+          - Backing up frequently changing binary files
+          - Encrypted or compressed files that don't deduplicate well
+          - Different compression settings across snapshots
+
+          Consider reviewing what data is being backed up and whether all of it needs to be included.
+
+---
+# Example ServiceMonitor to scrape VolSync metrics
+# This ensures Prometheus collects the metrics needed for the above alerts
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: volsync-metrics
+  namespace: volsync-system
+  labels:
+    app.kubernetes.io/name: volsync
+    app.kubernetes.io/component: metrics
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: volsync-metrics
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+    relabelings:
+    - sourceLabels: [__meta_kubernetes_pod_node_name]
+      targetLabel: node
+    - sourceLabels: [__meta_kubernetes_namespace]
+      targetLabel: namespace
+    - sourceLabels: [__meta_kubernetes_pod_name]
+      targetLabel: pod
+    - sourceLabels: [__meta_kubernetes_pod_container_name]
+      targetLabel: container
