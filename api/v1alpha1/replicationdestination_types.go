@@ -319,6 +319,16 @@ type ReplicationDestinationKopiaSpec struct {
 	// accessModes can be used to set the accessModes of kopia metadata cache volume
 	//+optional
 	CacheAccessModes []corev1.PersistentVolumeAccessMode `json:"cacheAccessModes,omitempty"`
+	// MetadataCacheSizeLimitMB is the hard limit for Kopia's metadata cache in MB.
+	// If not specified, auto-calculated as 70% of CacheCapacity.
+	// Set to 0 for unlimited (Kopia default behavior).
+	//+optional
+	MetadataCacheSizeLimitMB *int32 `json:"metadataCacheSizeLimitMB,omitempty"`
+	// ContentCacheSizeLimitMB is the hard limit for Kopia's content cache in MB.
+	// If not specified, auto-calculated as 20% of CacheCapacity.
+	// Set to 0 for unlimited (Kopia default behavior).
+	//+optional
+	ContentCacheSizeLimitMB *int32 `json:"contentCacheSizeLimitMB,omitempty"`
 	// Set this to true to delete the kopia cache PVC (dynamically provisioned
 	// by VolSync) at the end of each successful ReplicationDestination sync iteration.
 	// Cache PVCs will always be deleted if the owning ReplicationDestination is
@@ -398,6 +408,13 @@ type ReplicationDestinationKopiaStatus struct {
 	// AvailableIdentities lists the identities available in the repository
 	//+optional
 	AvailableIdentities []KopiaIdentityInfo `json:"availableIdentities,omitempty"`
+	// LastConfiguredMetadataCacheSizeLimitMB is the metadata cache limit that was last applied.
+	// Used to skip redundant cache configuration on subsequent runs.
+	// +optional
+	LastConfiguredMetadataCacheSizeLimitMB *int32 `json:"lastConfiguredMetadataCacheSizeLimitMB,omitempty"`
+	// LastConfiguredContentCacheSizeLimitMB is the content cache limit that was last applied.
+	// +optional
+	LastConfiguredContentCacheSizeLimitMB *int32 `json:"lastConfiguredContentCacheSizeLimitMB,omitempty"`
 }
 
 // ReplicationDestinationStatus defines the observed state of ReplicationDestination

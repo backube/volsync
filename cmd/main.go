@@ -235,6 +235,16 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "ReplicationSource")
 		os.Exit(1)
 	}
+	// Register the Kopia Maintenance Controller for proactive maintenance management
+	if err = (&controller.KopiaMaintenanceReconciler{
+		Client:        mgr.GetClient(),
+		Log:           ctrl.Log.WithName("controller").WithName("KopiaMaintenance"),
+		Scheme:        mgr.GetScheme(),
+		EventRecorder: mgr.GetEventRecorderFor("volsync-maintenance-controller"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "KopiaMaintenance")
+		os.Exit(1)
+	}
 	if err = (&controller.ReplicationDestinationReconciler{
 		Client:        mgr.GetClient(),
 		Log:           ctrl.Log.WithName("controller").WithName("ReplicationDestination"),

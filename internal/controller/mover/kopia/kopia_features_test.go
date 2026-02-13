@@ -21,25 +21,15 @@ package kopia
 
 import (
 	"strings"
-	"testing"
 
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
-
-// TestAllBackendEnvironmentVariables tests that all 9 supported backends have proper environment variables
-func TestAllBackendEnvironmentVariables(t *testing.T) {
-	tests := getBackendTestCases()
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			testBackendEnvironmentVariables(t, tt)
-		})
-	}
-}
 
 type backendTestCase struct {
 	name            string
@@ -224,85 +214,6 @@ func getFilesystemBackendTestCase() backendTestCase {
 	}
 }
 
-func testBackendEnvironmentVariables(t *testing.T, tt backendTestCase) {
-	// Create mock owner
-	owner := &volsyncv1alpha1.ReplicationSource{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-rs",
-			Namespace: "test-namespace",
-		},
-	}
-
-	// Create mover
-	mover := &Mover{
-		username: "test-user",
-		hostname: "test-host",
-		owner:    owner,
-	}
-
-	// Create secret
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-secret",
-		},
-		Data: tt.secretData,
-	}
-
-	// Build environment variables
-	envVars := mover.buildEnvironmentVariables(secret)
-
-	// Check required variables
-	verifyRequiredVariables(t, tt.name, envVars, tt.requiredEnvVars)
-
-	// Check optional variables
-	verifyOptionalVariables(t, tt.name, envVars, tt.optionalEnvVars)
-}
-
-func verifyRequiredVariables(t *testing.T, testName string, envVars []corev1.EnvVar, requiredVars []string) {
-	for _, reqVar := range requiredVars {
-		found := false
-		for _, env := range envVars {
-			if env.Name == reqVar {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("%s: Required variable %s not found", testName, reqVar)
-		}
-	}
-}
-
-func verifyOptionalVariables(t *testing.T, testName string, envVars []corev1.EnvVar, optionalVars []string) {
-	for _, optVar := range optionalVars {
-		found := false
-		for _, env := range envVars {
-			if env.Name == optVar {
-				found = true
-				// Verify it's properly configured as a secret reference
-				if env.ValueFrom == nil || env.ValueFrom.SecretKeyRef == nil {
-					t.Errorf("%s: Variable %s should be a secret reference", testName, optVar)
-				}
-				break
-			}
-		}
-		if !found {
-			t.Errorf("%s: Optional variable %s not found", testName, optVar)
-		}
-	}
-}
-
-// TestMultiTenancyFeatures tests Kopia's multi-tenancy features
-func TestMultiTenancyFeatures(t *testing.T) {
-	tests := getMultiTenancyTestCases()
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			testMultiTenancyFeature(t, tt)
-		})
-	}
-}
-
 type multiTenancyTestCase struct {
 	name              string
 	namespace         string
@@ -363,84 +274,6 @@ func getMultiTenancyTestCases() []multiTenancyTestCase {
 	}
 }
 
-func testMultiTenancyFeature(t *testing.T, tt multiTenancyTestCase) {
-	// Test with ReplicationSource - for backward compatibility test with nil PVC name
-	username := generateUsername(tt.customUsername, tt.replicationSource, tt.namespace)
-	hostname := generateHostname(tt.customHostname, nil, tt.namespace, tt.replicationSource)
-
-	if username != tt.expectedUsername {
-		t.Errorf("Expected username %s, got %s", tt.expectedUsername, username)
-	}
-	if hostname != tt.expectedHostname {
-		t.Errorf("Expected hostname %s, got %s", tt.expectedHostname, hostname)
-	}
-
-	// Verify the generated values work in environment variables
-	owner := &volsyncv1alpha1.ReplicationSource{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      tt.replicationSource,
-			Namespace: tt.namespace,
-		},
-	}
-
-	mover := &Mover{
-		username: username,
-		hostname: hostname,
-		owner:    owner,
-	}
-
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-secret",
-		},
-		Data: map[string][]byte{
-			"KOPIA_REPOSITORY": []byte("s3://bucket/path"),
-			"KOPIA_PASSWORD":   []byte("password"),
-		},
-	}
-
-	envVars := mover.buildEnvironmentVariables(secret)
-
-	// Check override environment variables
-	verifyOverrideEnvironmentVariables(t, tt.expectedUsername, tt.expectedHostname, envVars)
-}
-
-func verifyOverrideEnvironmentVariables(
-	t *testing.T,
-	expectedUsername, expectedHostname string,
-	envVars []corev1.EnvVar,
-) {
-	var actualUsername, actualHostname string
-	for _, env := range envVars {
-		if env.Name == "KOPIA_OVERRIDE_USERNAME" {
-			actualUsername = env.Value
-		}
-		if env.Name == "KOPIA_OVERRIDE_HOSTNAME" {
-			actualHostname = env.Value
-		}
-	}
-
-	if actualUsername != expectedUsername {
-		t.Errorf("Environment variable KOPIA_OVERRIDE_USERNAME: expected %s, got %s",
-			expectedUsername, actualUsername)
-	}
-	if actualHostname != expectedHostname {
-		t.Errorf("Environment variable KOPIA_OVERRIDE_HOSTNAME: expected %s, got %s",
-			expectedHostname, actualHostname)
-	}
-}
-
-// TestSourcePathOverrideFeature tests the sourcePathOverride functionality
-func TestSourcePathOverrideFeature(t *testing.T) {
-	tests := getSourcePathOverrideTestCases()
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			testSourcePathOverride(t, tt)
-		})
-	}
-}
-
 type sourcePathOverrideTestCase struct {
 	name                  string
 	sourcePathOverride    *string
@@ -473,71 +306,6 @@ func getSourcePathOverrideTestCases() []sourcePathOverrideTestCase {
 			expectedEnvVarPresent: true,
 			expectedValue:         "/",
 		},
-	}
-}
-
-func testSourcePathOverride(t *testing.T, tt sourcePathOverrideTestCase) {
-	owner := &volsyncv1alpha1.ReplicationSource{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-rs",
-			Namespace: "test-namespace",
-		},
-	}
-
-	mover := &Mover{
-		username:           "test-user",
-		hostname:           "test-host",
-		owner:              owner,
-		isSource:           true,
-		sourcePathOverride: tt.sourcePathOverride,
-	}
-
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-secret",
-		},
-		Data: map[string][]byte{
-			"KOPIA_REPOSITORY": []byte("s3://bucket/path"),
-			"KOPIA_PASSWORD":   []byte("password"),
-		},
-	}
-
-	envVars := mover.buildEnvironmentVariables(secret)
-
-	// Check for KOPIA_SOURCE_PATH_OVERRIDE
-	verifySourcePathOverrideVariable(t, tt, envVars)
-}
-
-func verifySourcePathOverrideVariable(t *testing.T, tt sourcePathOverrideTestCase, envVars []corev1.EnvVar) {
-	found := false
-	var actualValue string
-	for _, env := range envVars {
-		if env.Name == "KOPIA_SOURCE_PATH_OVERRIDE" {
-			found = true
-			actualValue = env.Value
-			break
-		}
-	}
-
-	if found != tt.expectedEnvVarPresent {
-		t.Errorf("Expected KOPIA_SOURCE_PATH_OVERRIDE present=%v, got %v",
-			tt.expectedEnvVarPresent, found)
-	}
-
-	if found && actualValue != tt.expectedValue {
-		t.Errorf("Expected KOPIA_SOURCE_PATH_OVERRIDE value %s, got %s",
-			tt.expectedValue, actualValue)
-	}
-}
-
-// TestKopiaActionsFeature tests the actions (hooks) functionality
-func TestKopiaActionsFeature(t *testing.T) {
-	tests := getActionsTestCases()
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			testKopiaActions(t, tt)
-		})
 	}
 }
 
@@ -577,70 +345,6 @@ func getActionsTestCases() []actionsTestCase {
 			expectedBefore: "mysqldump --all-databases > /data/backup.sql",
 			expectedAfter:  "rm -f /data/backup.sql",
 		},
-	}
-}
-
-func testKopiaActions(t *testing.T, tt actionsTestCase) {
-	owner := &volsyncv1alpha1.ReplicationSource{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-rs",
-			Namespace: "test-namespace",
-		},
-	}
-
-	mover := &Mover{
-		username: "test-user",
-		hostname: "test-host",
-		owner:    owner,
-		isSource: true,
-		actions:  tt.actions,
-	}
-
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-secret",
-		},
-		Data: map[string][]byte{
-			"KOPIA_REPOSITORY": []byte("s3://bucket/path"),
-			"KOPIA_PASSWORD":   []byte("password"),
-		},
-	}
-
-	envVars := mover.buildEnvironmentVariables(secret)
-
-	// Check for action environment variables
-	verifyActionEnvironmentVariables(t, tt.expectedBefore, tt.expectedAfter, envVars)
-}
-
-func verifyActionEnvironmentVariables(t *testing.T, expectedBefore, expectedAfter string, envVars []corev1.EnvVar) {
-	var actualBefore, actualAfter string
-	for _, env := range envVars {
-		if env.Name == "KOPIA_BEFORE_SNAPSHOT" {
-			actualBefore = env.Value
-		}
-		if env.Name == "KOPIA_AFTER_SNAPSHOT" {
-			actualAfter = env.Value
-		}
-	}
-
-	if actualBefore != expectedBefore {
-		t.Errorf("Expected KOPIA_BEFORE_SNAPSHOT %q, got %q",
-			expectedBefore, actualBefore)
-	}
-	if actualAfter != expectedAfter {
-		t.Errorf("Expected KOPIA_AFTER_SNAPSHOT %q, got %q",
-			expectedAfter, actualAfter)
-	}
-}
-
-// TestKopiaCompressionAndParallelism tests compression and parallelism settings
-func TestKopiaCompressionAndParallelism(t *testing.T) {
-	tests := getCompressionParallelismTestCases()
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			testCompressionAndParallelism(t, tt)
-		})
 	}
 }
 
@@ -694,135 +398,6 @@ func getCompressionParallelismTestCases() []compressionParallelismTestCase {
 	}
 }
 
-func testCompressionAndParallelism(t *testing.T, tt compressionParallelismTestCase) {
-	owner := &volsyncv1alpha1.ReplicationSource{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-rs",
-			Namespace: "test-namespace",
-		},
-	}
-
-	mover := &Mover{
-		username:    "test-user",
-		hostname:    "test-host",
-		owner:       owner,
-		isSource:    true,
-		compression: tt.compression,
-		parallelism: tt.parallelism,
-	}
-
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-secret",
-		},
-		Data: map[string][]byte{
-			"KOPIA_REPOSITORY": []byte("s3://bucket/path"),
-			"KOPIA_PASSWORD":   []byte("password"),
-		},
-	}
-
-	envVars := mover.buildEnvironmentVariables(secret)
-
-	// Check for compression and parallelism environment variables
-	verifyCompressionParallelismVariables(t, tt.expectedCompression, tt.expectedParallelism, envVars)
-}
-
-func verifyCompressionParallelismVariables(
-	t *testing.T,
-	expectedCompression, expectedParallelism string,
-	envVars []corev1.EnvVar,
-) {
-	var actualCompression, actualParallelism string
-	for _, env := range envVars {
-		if env.Name == "KOPIA_COMPRESSION" {
-			actualCompression = env.Value
-		}
-		if env.Name == "KOPIA_PARALLELISM" {
-			actualParallelism = env.Value
-		}
-	}
-
-	if actualCompression != expectedCompression {
-		t.Errorf("Expected KOPIA_COMPRESSION %q, got %q",
-			expectedCompression, actualCompression)
-	}
-	if actualParallelism != expectedParallelism {
-		t.Errorf("Expected KOPIA_PARALLELISM %q, got %q",
-			expectedParallelism, actualParallelism)
-	}
-}
-
-// TestCompressionEnvironmentVariable tests that the compression environment variable is set correctly
-func TestCompressionEnvironmentVariable(t *testing.T) {
-	tests := []struct {
-		name                string
-		compression         string
-		expectedCompression string
-	}{
-		{
-			name:                "valid zstd compression sets env var",
-			compression:         "zstd",
-			expectedCompression: "zstd",
-		},
-		{
-			name:                "valid gzip compression sets env var",
-			compression:         "gzip-best-speed",
-			expectedCompression: "gzip-best-speed",
-		},
-		{
-			name:                "empty compression does not set env var",
-			compression:         "",
-			expectedCompression: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create mover with minimal setup
-			mover := &Mover{
-				compression: tt.compression,
-				isSource:    true,
-			}
-
-			// Get environment variables
-			envVars := mover.addSourceEnvVars([]corev1.EnvVar{})
-
-			// Check if KOPIA_COMPRESSION is set correctly
-			found := false
-			for _, env := range envVars {
-				if env.Name == "KOPIA_COMPRESSION" {
-					found = true
-					if env.Value != tt.expectedCompression {
-						t.Errorf("Expected KOPIA_COMPRESSION=%q, got %q", tt.expectedCompression, env.Value)
-					}
-				}
-			}
-
-			if !found && tt.expectedCompression != "" {
-				t.Errorf("KOPIA_COMPRESSION environment variable not found, expected %q", tt.expectedCompression)
-			}
-			if found && tt.expectedCompression == "" {
-				t.Error("KOPIA_COMPRESSION environment variable found when not expected")
-			}
-		})
-	}
-}
-
-// Compression validation tests have been removed.
-// Compression values are passed directly to Kopia without validation.
-// Kopia handles validation of the compression algorithm and provides clear error messages.
-
-// TestKopiaRetentionPolicy tests retention policy settings
-func TestKopiaRetentionPolicy(t *testing.T) {
-	tests := getRetentionPolicyTestCases()
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			testRetentionPolicy(t, tt)
-		})
-	}
-}
-
 type retentionPolicyTestCase struct {
 	name         string
 	retainPolicy *volsyncv1alpha1.KopiaRetainPolicy
@@ -846,6 +421,15 @@ func getRetentionPolicyTestCases() []retentionPolicyTestCase {
 			},
 		},
 		{
+			name: "latest retention only",
+			retainPolicy: &volsyncv1alpha1.KopiaRetainPolicy{
+				Latest: ptr.To[int32](10),
+			},
+			expectedEnvs: map[string]string{
+				"KOPIA_RETAIN_LATEST": "10",
+			},
+		},
+		{
 			name: "complete retention policy",
 			retainPolicy: &volsyncv1alpha1.KopiaRetainPolicy{
 				Hourly:  ptr.To[int32](24),
@@ -853,6 +437,7 @@ func getRetentionPolicyTestCases() []retentionPolicyTestCase {
 				Weekly:  ptr.To[int32](8),
 				Monthly: ptr.To[int32](12),
 				Yearly:  ptr.To[int32](5),
+				Latest:  ptr.To[int32](100),
 			},
 			expectedEnvs: map[string]string{
 				"KOPIA_RETAIN_HOURLY":  "24",
@@ -860,76 +445,9 @@ func getRetentionPolicyTestCases() []retentionPolicyTestCase {
 				"KOPIA_RETAIN_WEEKLY":  "8",
 				"KOPIA_RETAIN_MONTHLY": "12",
 				"KOPIA_RETAIN_YEARLY":  "5",
+				"KOPIA_RETAIN_LATEST":  "100",
 			},
 		},
-	}
-}
-
-func testRetentionPolicy(t *testing.T, tt retentionPolicyTestCase) {
-	owner := &volsyncv1alpha1.ReplicationSource{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-rs",
-			Namespace: "test-namespace",
-		},
-	}
-
-	mover := &Mover{
-		username:     "test-user",
-		hostname:     "test-host",
-		owner:        owner,
-		isSource:     true,
-		retainPolicy: tt.retainPolicy,
-	}
-
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-secret",
-		},
-		Data: map[string][]byte{
-			"KOPIA_REPOSITORY": []byte("s3://bucket/path"),
-			"KOPIA_PASSWORD":   []byte("password"),
-		},
-	}
-
-	envVars := mover.buildEnvironmentVariables(secret)
-
-	// Check for retention policy environment variables
-	verifyRetentionPolicyVariables(t, tt.expectedEnvs, envVars)
-}
-
-func verifyRetentionPolicyVariables(t *testing.T, expectedEnvs map[string]string, envVars []corev1.EnvVar) {
-	actualEnvs := make(map[string]string)
-	for _, env := range envVars {
-		if strings.HasPrefix(env.Name, "KOPIA_RETAIN_") {
-			actualEnvs[env.Name] = env.Value
-		}
-	}
-
-	// Verify expected environment variables
-	for key, expectedValue := range expectedEnvs {
-		if actualValue, ok := actualEnvs[key]; !ok {
-			t.Errorf("Expected environment variable %s not found", key)
-		} else if actualValue != expectedValue {
-			t.Errorf("Expected %s=%s, got %s", key, expectedValue, actualValue)
-		}
-	}
-
-	// Verify no unexpected retention variables
-	for key := range actualEnvs {
-		if _, expected := expectedEnvs[key]; !expected {
-			t.Errorf("Unexpected environment variable %s", key)
-		}
-	}
-}
-
-// TestKopiaDestinationFeatures tests destination-specific features
-func TestKopiaDestinationFeatures(t *testing.T) {
-	tests := getDestinationFeaturesTestCases()
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			testDestinationFeatures(t, tt)
-		})
 	}
 }
 
@@ -991,61 +509,474 @@ func getDestinationFeaturesTestCases() []destinationFeaturesTestCase {
 	}
 }
 
-func testDestinationFeatures(t *testing.T, tt destinationFeaturesTestCase) {
-	owner := &volsyncv1alpha1.ReplicationDestination{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-rd",
-			Namespace: "test-namespace",
+var _ = Describe("Backend Environment Variables", func() {
+	DescribeTable("tests all 9 supported backends have proper environment variables",
+		func(tt backendTestCase) {
+			// Create mock owner
+			owner := &volsyncv1alpha1.ReplicationSource{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-rs",
+					Namespace: "test-namespace",
+				},
+			}
+
+			// Create mover
+			mover := &Mover{
+				username: "test-user",
+				hostname: "test-host",
+				owner:    owner,
+			}
+
+			// Create secret
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-secret",
+				},
+				Data: tt.secretData,
+			}
+
+			// Build environment variables
+			envVars := mover.buildEnvironmentVariables(secret)
+
+			// Check required variables
+			for _, reqVar := range tt.requiredEnvVars {
+				found := false
+				for _, env := range envVars {
+					if env.Name == reqVar {
+						found = true
+						break
+					}
+				}
+				Expect(found).To(BeTrue(), "Required variable %s not found", reqVar)
+			}
+
+			// Check optional variables
+			for _, optVar := range tt.optionalEnvVars {
+				found := false
+				for _, env := range envVars {
+					if env.Name == optVar {
+						found = true
+						// Verify it's properly configured as a secret reference
+						Expect(env.ValueFrom).NotTo(BeNil(), "Variable %s should be a secret reference", optVar)
+						Expect(env.ValueFrom.SecretKeyRef).NotTo(BeNil(), "Variable %s should be a secret reference", optVar)
+						break
+					}
+				}
+				Expect(found).To(BeTrue(), "Optional variable %s not found", optVar)
+			}
 		},
-	}
+		Entry("S3 backend with all variables", getAWSS3BackendTestCase()),
+		Entry("Azure Blob Storage with all variables", getAzureBackendTestCase()),
+		Entry("Google Cloud Storage with all variables", getGoogleCloudTestCases()[0]),
+		Entry("Google Drive with all variables", getGoogleCloudTestCases()[1]),
+		Entry("Backblaze B2 with all variables", getBackblazeB2BackendTestCase()),
+		Entry("WebDAV with all variables", getProtocolBackendTestCases()[0]),
+		Entry("SFTP with all variables", getProtocolBackendTestCases()[1]),
+		Entry("Rclone with all variables", getProtocolBackendTestCases()[2]),
+		Entry("Filesystem with all variables", getFilesystemBackendTestCase()),
+	)
+})
 
-	mover := &Mover{
-		username:    "test-user",
-		hostname:    "test-host",
-		owner:       owner,
-		isSource:    false, // Destination
-		restoreAsOf: tt.restoreAsOf,
-		shallow:     tt.shallow,
-		previous:    tt.previous,
-	}
+var _ = Describe("Multi-Tenancy Features", func() {
+	DescribeTable("tests Kopia's multi-tenancy features",
+		func(tt multiTenancyTestCase) {
+			// Test with ReplicationSource - for backward compatibility test with nil PVC name
+			username := generateUsername(tt.customUsername, tt.replicationSource, tt.namespace)
+			hostname := generateHostname(tt.customHostname, nil, tt.namespace, tt.replicationSource)
 
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-secret",
+			Expect(username).To(Equal(tt.expectedUsername))
+			Expect(hostname).To(Equal(tt.expectedHostname))
+
+			// Verify the generated values work in environment variables
+			owner := &volsyncv1alpha1.ReplicationSource{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      tt.replicationSource,
+					Namespace: tt.namespace,
+				},
+			}
+
+			mover := &Mover{
+				username: username,
+				hostname: hostname,
+				owner:    owner,
+			}
+
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-secret",
+				},
+				Data: map[string][]byte{
+					"KOPIA_REPOSITORY": []byte("s3://bucket/path"),
+					"KOPIA_PASSWORD":   []byte("password"),
+				},
+			}
+
+			envVars := mover.buildEnvironmentVariables(secret)
+
+			// Check override environment variables
+			var actualUsername, actualHostname string
+			for _, env := range envVars {
+				if env.Name == "KOPIA_OVERRIDE_USERNAME" {
+					actualUsername = env.Value
+				}
+				if env.Name == "KOPIA_OVERRIDE_HOSTNAME" {
+					actualHostname = env.Value
+				}
+			}
+
+			Expect(actualUsername).To(Equal(tt.expectedUsername),
+				"Environment variable KOPIA_OVERRIDE_USERNAME mismatch")
+			Expect(actualHostname).To(Equal(tt.expectedHostname),
+				"Environment variable KOPIA_OVERRIDE_HOSTNAME mismatch")
 		},
-		Data: map[string][]byte{
-			"KOPIA_REPOSITORY": []byte("s3://bucket/path"),
-			"KOPIA_PASSWORD":   []byte("password"),
+		Entry("default username and hostname", getMultiTenancyTestCases()[0]),
+		Entry("custom username only", getMultiTenancyTestCases()[1]),
+		Entry("custom hostname only", getMultiTenancyTestCases()[2]),
+		Entry("both custom username and hostname", getMultiTenancyTestCases()[3]),
+		Entry("special characters in namespace/name", getMultiTenancyTestCases()[4]),
+	)
+})
+
+var _ = Describe("Source Path Override Feature", func() {
+	DescribeTable("tests the sourcePathOverride functionality",
+		func(tt sourcePathOverrideTestCase) {
+			owner := &volsyncv1alpha1.ReplicationSource{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-rs",
+					Namespace: "test-namespace",
+				},
+			}
+
+			mover := &Mover{
+				username:           "test-user",
+				hostname:           "test-host",
+				owner:              owner,
+				isSource:           true,
+				sourcePathOverride: tt.sourcePathOverride,
+			}
+
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-secret",
+				},
+				Data: map[string][]byte{
+					"KOPIA_REPOSITORY": []byte("s3://bucket/path"),
+					"KOPIA_PASSWORD":   []byte("password"),
+				},
+			}
+
+			envVars := mover.buildEnvironmentVariables(secret)
+
+			// Check for KOPIA_SOURCE_PATH_OVERRIDE
+			found := false
+			var actualValue string
+			for _, env := range envVars {
+				if env.Name == "KOPIA_SOURCE_PATH_OVERRIDE" {
+					found = true
+					actualValue = env.Value
+					break
+				}
+			}
+
+			Expect(found).To(Equal(tt.expectedEnvVarPresent),
+				"Expected KOPIA_SOURCE_PATH_OVERRIDE present=%v, got %v", tt.expectedEnvVarPresent, found)
+
+			if found {
+				Expect(actualValue).To(Equal(tt.expectedValue),
+					"Expected KOPIA_SOURCE_PATH_OVERRIDE value %s, got %s", tt.expectedValue, actualValue)
+			}
 		},
-	}
+		Entry("no override specified", getSourcePathOverrideTestCases()[0]),
+		Entry("standard path override", getSourcePathOverrideTestCases()[1]),
+		Entry("nested path override", getSourcePathOverrideTestCases()[2]),
+		Entry("root path override", getSourcePathOverrideTestCases()[3]),
+	)
+})
 
-	envVars := mover.buildEnvironmentVariables(secret)
+var _ = Describe("Kopia Actions Feature", func() {
+	DescribeTable("tests the actions (hooks) functionality",
+		func(tt actionsTestCase) {
+			owner := &volsyncv1alpha1.ReplicationSource{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-rs",
+					Namespace: "test-namespace",
+				},
+			}
 
-	// Check for destination-specific environment variables
-	verifyDestinationFeatureVariables(t, tt.expectedEnvs, envVars)
+			mover := &Mover{
+				username: "test-user",
+				hostname: "test-host",
+				owner:    owner,
+				isSource: true,
+				actions:  tt.actions,
+			}
+
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-secret",
+				},
+				Data: map[string][]byte{
+					"KOPIA_REPOSITORY": []byte("s3://bucket/path"),
+					"KOPIA_PASSWORD":   []byte("password"),
+				},
+			}
+
+			envVars := mover.buildEnvironmentVariables(secret)
+
+			// Check for action environment variables
+			var actualBefore, actualAfter string
+			for _, env := range envVars {
+				if env.Name == "KOPIA_BEFORE_SNAPSHOT" {
+					actualBefore = env.Value
+				}
+				if env.Name == "KOPIA_AFTER_SNAPSHOT" {
+					actualAfter = env.Value
+				}
+			}
+
+			Expect(actualBefore).To(Equal(tt.expectedBefore),
+				"Expected KOPIA_BEFORE_SNAPSHOT %q, got %q", tt.expectedBefore, actualBefore)
+			Expect(actualAfter).To(Equal(tt.expectedAfter),
+				"Expected KOPIA_AFTER_SNAPSHOT %q, got %q", tt.expectedAfter, actualAfter)
+		},
+		Entry("no actions", getActionsTestCases()[0]),
+		Entry("before action only", getActionsTestCases()[1]),
+		Entry("after action only", getActionsTestCases()[2]),
+		Entry("both before and after actions", getActionsTestCases()[3]),
+	)
+})
+
+var _ = Describe("Kopia Compression And Parallelism", func() {
+	DescribeTable("tests compression and parallelism settings",
+		func(tt compressionParallelismTestCase) {
+			owner := &volsyncv1alpha1.ReplicationSource{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-rs",
+					Namespace: "test-namespace",
+				},
+			}
+
+			mover := &Mover{
+				username:    "test-user",
+				hostname:    "test-host",
+				owner:       owner,
+				isSource:    true,
+				compression: tt.compression,
+				parallelism: tt.parallelism,
+			}
+
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-secret",
+				},
+				Data: map[string][]byte{
+					"KOPIA_REPOSITORY": []byte("s3://bucket/path"),
+					"KOPIA_PASSWORD":   []byte("password"),
+				},
+			}
+
+			envVars := mover.buildEnvironmentVariables(secret)
+
+			// Check for compression and parallelism environment variables
+			var actualCompression, actualParallelism string
+			for _, env := range envVars {
+				if env.Name == "KOPIA_COMPRESSION" {
+					actualCompression = env.Value
+				}
+				if env.Name == "KOPIA_PARALLELISM" {
+					actualParallelism = env.Value
+				}
+			}
+
+			Expect(actualCompression).To(Equal(tt.expectedCompression),
+				"Expected KOPIA_COMPRESSION %q, got %q", tt.expectedCompression, actualCompression)
+			Expect(actualParallelism).To(Equal(tt.expectedParallelism),
+				"Expected KOPIA_PARALLELISM %q, got %q", tt.expectedParallelism, actualParallelism)
+		},
+		Entry("no compression or parallelism", getCompressionParallelismTestCases()[0]),
+		Entry("zstd compression", getCompressionParallelismTestCases()[1]),
+		Entry("gzip compression", getCompressionParallelismTestCases()[2]),
+		Entry("s2 compression", getCompressionParallelismTestCases()[3]),
+		Entry("no compression", getCompressionParallelismTestCases()[4]),
+		Entry("parallelism set", getCompressionParallelismTestCases()[5]),
+		Entry("both compression and parallelism", getCompressionParallelismTestCases()[6]),
+	)
+})
+
+type compressionEnvTestCase struct {
+	name                string
+	compression         string
+	expectedCompression string
 }
 
-func verifyDestinationFeatureVariables(t *testing.T, expectedEnvs map[string]string, envVars []corev1.EnvVar) {
-	actualEnvs := make(map[string]string)
-	for _, env := range envVars {
-		if env.Name == "KOPIA_RESTORE_AS_OF" || env.Name == "KOPIA_SHALLOW" || env.Name == "KOPIA_PREVIOUS" {
-			actualEnvs[env.Name] = env.Value
-		}
-	}
+var _ = Describe("Compression Environment Variable", func() {
+	DescribeTable("tests that the compression environment variable is set correctly",
+		func(tt compressionEnvTestCase) {
+			// Create mover with minimal setup
+			mover := &Mover{
+				compression: tt.compression,
+				isSource:    true,
+			}
 
-	// Verify expected environment variables
-	for key, expectedValue := range expectedEnvs {
-		if actualValue, ok := actualEnvs[key]; !ok {
-			t.Errorf("Expected environment variable %s not found", key)
-		} else if actualValue != expectedValue {
-			t.Errorf("Expected %s=%s, got %s", key, expectedValue, actualValue)
-		}
-	}
+			// Get environment variables
+			envVars := mover.addSourceEnvVars([]corev1.EnvVar{})
 
-	// Verify no unexpected environment variables
-	for key := range actualEnvs {
-		if _, expected := expectedEnvs[key]; !expected {
-			t.Errorf("Unexpected environment variable %s", key)
-		}
-	}
-}
+			// Check if KOPIA_COMPRESSION is set correctly
+			found := false
+			for _, env := range envVars {
+				if env.Name == "KOPIA_COMPRESSION" {
+					found = true
+					Expect(env.Value).To(Equal(tt.expectedCompression),
+						"Expected KOPIA_COMPRESSION=%q, got %q", tt.expectedCompression, env.Value)
+				}
+			}
+
+			if tt.expectedCompression != "" {
+				Expect(found).To(BeTrue(),
+					"KOPIA_COMPRESSION environment variable not found, expected %q", tt.expectedCompression)
+			} else {
+				Expect(found).To(BeFalse(),
+					"KOPIA_COMPRESSION environment variable found when not expected")
+			}
+		},
+		Entry("valid zstd compression sets env var", compressionEnvTestCase{
+			name:                "valid zstd compression sets env var",
+			compression:         "zstd",
+			expectedCompression: "zstd",
+		}),
+		Entry("valid gzip compression sets env var", compressionEnvTestCase{
+			name:                "valid gzip compression sets env var",
+			compression:         "gzip-best-speed",
+			expectedCompression: "gzip-best-speed",
+		}),
+		Entry("empty compression does not set env var", compressionEnvTestCase{
+			name:                "empty compression does not set env var",
+			compression:         "",
+			expectedCompression: "",
+		}),
+	)
+})
+
+// Compression validation tests have been removed.
+// Compression values are passed directly to Kopia without validation.
+// Kopia handles validation of the compression algorithm and provides clear error messages.
+
+var _ = Describe("Kopia Retention Policy", func() {
+	DescribeTable("tests retention policy settings",
+		func(tt retentionPolicyTestCase) {
+			owner := &volsyncv1alpha1.ReplicationSource{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-rs",
+					Namespace: "test-namespace",
+				},
+			}
+
+			mover := &Mover{
+				username:     "test-user",
+				hostname:     "test-host",
+				owner:        owner,
+				isSource:     true,
+				retainPolicy: tt.retainPolicy,
+			}
+
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-secret",
+				},
+				Data: map[string][]byte{
+					"KOPIA_REPOSITORY": []byte("s3://bucket/path"),
+					"KOPIA_PASSWORD":   []byte("password"),
+				},
+			}
+
+			envVars := mover.buildEnvironmentVariables(secret)
+
+			// Check for retention policy environment variables
+			actualEnvs := make(map[string]string)
+			for _, env := range envVars {
+				if strings.HasPrefix(env.Name, "KOPIA_RETAIN_") {
+					actualEnvs[env.Name] = env.Value
+				}
+			}
+
+			// Verify expected environment variables
+			for key, expectedValue := range tt.expectedEnvs {
+				actualValue, ok := actualEnvs[key]
+				Expect(ok).To(BeTrue(), "Expected environment variable %s not found", key)
+				Expect(actualValue).To(Equal(expectedValue), "Expected %s=%s, got %s", key, expectedValue, actualValue)
+			}
+
+			// Verify no unexpected retention variables
+			for key := range actualEnvs {
+				_, expected := tt.expectedEnvs[key]
+				Expect(expected).To(BeTrue(), "Unexpected environment variable %s", key)
+			}
+		},
+		Entry("no retention policy", getRetentionPolicyTestCases()[0]),
+		Entry("hourly retention only", getRetentionPolicyTestCases()[1]),
+		Entry("latest retention only", getRetentionPolicyTestCases()[2]),
+		Entry("complete retention policy", getRetentionPolicyTestCases()[3]),
+	)
+})
+
+var _ = Describe("Kopia Destination Features", func() {
+	DescribeTable("tests destination-specific features",
+		func(tt destinationFeaturesTestCase) {
+			owner := &volsyncv1alpha1.ReplicationDestination{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-rd",
+					Namespace: "test-namespace",
+				},
+			}
+
+			mover := &Mover{
+				username:    "test-user",
+				hostname:    "test-host",
+				owner:       owner,
+				isSource:    false, // Destination
+				restoreAsOf: tt.restoreAsOf,
+				shallow:     tt.shallow,
+				previous:    tt.previous,
+			}
+
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-secret",
+				},
+				Data: map[string][]byte{
+					"KOPIA_REPOSITORY": []byte("s3://bucket/path"),
+					"KOPIA_PASSWORD":   []byte("password"),
+				},
+			}
+
+			envVars := mover.buildEnvironmentVariables(secret)
+
+			// Check for destination-specific environment variables
+			actualEnvs := make(map[string]string)
+			for _, env := range envVars {
+				if env.Name == "KOPIA_RESTORE_AS_OF" || env.Name == "KOPIA_SHALLOW" || env.Name == "KOPIA_PREVIOUS" {
+					actualEnvs[env.Name] = env.Value
+				}
+			}
+
+			// Verify expected environment variables
+			for key, expectedValue := range tt.expectedEnvs {
+				actualValue, ok := actualEnvs[key]
+				Expect(ok).To(BeTrue(), "Expected environment variable %s not found", key)
+				Expect(actualValue).To(Equal(expectedValue), "Expected %s=%s, got %s", key, expectedValue, actualValue)
+			}
+
+			// Verify no unexpected environment variables
+			for key := range actualEnvs {
+				_, expected := tt.expectedEnvs[key]
+				Expect(expected).To(BeTrue(), "Unexpected environment variable %s", key)
+			}
+		},
+		Entry("no restore options", getDestinationFeaturesTestCases()[0]),
+		Entry("restore as of timestamp", getDestinationFeaturesTestCases()[1]),
+		Entry("shallow restore", getDestinationFeaturesTestCases()[2]),
+		Entry("both restore as of and shallow", getDestinationFeaturesTestCases()[3]),
+		Entry("previous restore", getDestinationFeaturesTestCases()[4]),
+		Entry("previous with restore as of", getDestinationFeaturesTestCases()[5]),
+	)
+})

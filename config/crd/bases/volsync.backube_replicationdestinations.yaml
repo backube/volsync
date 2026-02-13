@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.16.3
+    controller-gen.kubebuilder.io/version: v0.19.0
   name: replicationdestinations.volsync.backube
 spec:
   group: volsync.backube
@@ -85,6 +85,18 @@ spec:
                       type: string
                     minItems: 1
                     type: array
+                  additionalArgs:
+                    description: |-
+                      AdditionalArgs allows specifying additional command-line arguments for Kopia.
+                      These arguments will be passed to Kopia restore commands during restore operations.
+                      This provides flexibility for advanced users to utilize Kopia features not directly
+                      exposed by VolSync. Use with caution as invalid arguments may cause restore failures.
+                      Security-sensitive flags like --password and --config-file are not allowed.
+                      Example: ["--ignore-permission-errors", "--parallel=8"]
+                    items:
+                      type: string
+                    maxItems: 20
+                    type: array
                   cacheAccessModes:
                     description: accessModes can be used to set the accessModes of
                       kopia metadata cache volume
@@ -133,6 +145,13 @@ spec:
                       owning ReplicationDestination is removed, even if this setting is false.
                       The default is false.
                     type: boolean
+                  contentCacheSizeLimitMB:
+                    description: |-
+                      ContentCacheSizeLimitMB is the hard limit for Kopia's content cache in MB.
+                      If not specified, auto-calculated as 20% of CacheCapacity.
+                      Set to 0 for unlimited (Kopia default behavior).
+                    format: int32
+                    type: integer
                   copyMethod:
                     description: |-
                       copyMethod describes how a point-in-time (PiT) image of the destination
@@ -182,6 +201,13 @@ spec:
                       Optional: If not specified, defaults to the namespace name.
                     pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$
                     type: string
+                  metadataCacheSizeLimitMB:
+                    description: |-
+                      MetadataCacheSizeLimitMB is the hard limit for Kopia's metadata cache in MB.
+                      If not specified, auto-calculated as 70% of CacheCapacity.
+                      Set to 0 for unlimited (Kopia default behavior).
+                    format: int32
+                    type: integer
                   moverAffinity:
                     description: MoverAffinity allows specifying the PodAffinity that
                       will be used by the data mover
@@ -469,7 +495,6 @@ spec:
                                         pod labels will be ignored. The default value is empty.
                                         The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                         Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                        This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                       items:
                                         type: string
                                       type: array
@@ -484,7 +509,6 @@ spec:
                                         pod labels will be ignored. The default value is empty.
                                         The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                         Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                        This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                       items:
                                         type: string
                                       type: array
@@ -651,7 +675,6 @@ spec:
                                     pod labels will be ignored. The default value is empty.
                                     The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                     Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                   items:
                                     type: string
                                   type: array
@@ -666,7 +689,6 @@ spec:
                                     pod labels will be ignored. The default value is empty.
                                     The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                     Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                   items:
                                     type: string
                                   type: array
@@ -760,8 +782,8 @@ spec:
                               most preferred is the one with the greatest sum of weights, i.e.
                               for each node that meets all of the scheduling requirements (resource
                               request, requiredDuringScheduling anti-affinity expressions, etc.),
-                              compute a sum by iterating through the elements of this field and adding
-                              "weight" to the sum if the node has pods which matches the corresponding podAffinityTerm; the
+                              compute a sum by iterating through the elements of this field and subtracting
+                              "weight" from the sum if the node has pods which matches the corresponding podAffinityTerm; the
                               node(s) with the highest sum are the most preferred.
                             items:
                               description: The weights of all of the matched WeightedPodAffinityTerm
@@ -831,7 +853,6 @@ spec:
                                         pod labels will be ignored. The default value is empty.
                                         The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                         Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                        This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                       items:
                                         type: string
                                       type: array
@@ -846,7 +867,6 @@ spec:
                                         pod labels will be ignored. The default value is empty.
                                         The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                         Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                        This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                       items:
                                         type: string
                                       type: array
@@ -1013,7 +1033,6 @@ spec:
                                     pod labels will be ignored. The default value is empty.
                                     The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                     Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                   items:
                                     type: string
                                   type: array
@@ -1028,7 +1047,6 @@ spec:
                                     pod labels will be ignored. The default value is empty.
                                     The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                     Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                   items:
                                     type: string
                                   type: array
@@ -1130,7 +1148,7 @@ spec:
                           Claims lists the names of resources, defined in spec.resourceClaims,
                           that are used by this container.
 
-                          This is an alpha field and requires enabling the
+                          This field depends on the
                           DynamicResourceAllocation feature gate.
 
                           This field is immutable. It can only be set for containers.
@@ -1422,6 +1440,113 @@ spec:
                       users who want to override the service account normally used by the mover.
                       The service account needs to exist in the same namespace as this CR.
                     type: string
+                  moverVolumes:
+                    description: |-
+                      MoverVolumes are PVCs or Secrets that should additionally be mounted to the mover job pod.
+                      This should only be used by advanced users.
+                    items:
+                      properties:
+                        mountPath:
+                          description: |-
+                            Path to give the volume when mounting under /mnt in the mover job pod.
+                            For example if mountPath is 'my-pvc' then this moverVolume will be mounted in the mover pod
+                            at /mnt/my-pvc
+                          type: string
+                        volumeSource:
+                          description: volumeSource represents the secret or PersistentVolumeClaim
+                            that should be mounted to the mover pod.
+                          properties:
+                            persistentVolumeClaim:
+                              description: |-
+                                persistentVolumeClaimVolumeSource represents a reference to a
+                                PersistentVolumeClaim in the same namespace.
+                                More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#persistentvolumeclaims
+                                nolint:lll
+                              properties:
+                                claimName:
+                                  description: |-
+                                    claimName is the name of a PersistentVolumeClaim in the same namespace as the pod using this volume.
+                                    More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#persistentvolumeclaims
+                                  type: string
+                                readOnly:
+                                  description: |-
+                                    readOnly Will force the ReadOnly setting in VolumeMounts.
+                                    Default false.
+                                  type: boolean
+                              required:
+                              - claimName
+                              type: object
+                            secret:
+                              description: |-
+                                secret represents a secret that should populate this volume.
+                                More info: https://kubernetes.io/docs/concepts/storage/volumes#secret
+                              properties:
+                                defaultMode:
+                                  description: |-
+                                    defaultMode is Optional: mode bits used to set permissions on created files by default.
+                                    Must be an octal value between 0000 and 0777 or a decimal value between 0 and 511.
+                                    YAML accepts both octal and decimal values, JSON requires decimal values
+                                    for mode bits. Defaults to 0644.
+                                    Directories within the path are not affected by this setting.
+                                    This might be in conflict with other options that affect the file
+                                    mode, like fsGroup, and the result can be other mode bits set.
+                                  format: int32
+                                  type: integer
+                                items:
+                                  description: |-
+                                    items If unspecified, each key-value pair in the Data field of the referenced
+                                    Secret will be projected into the volume as a file whose name is the
+                                    key and content is the value. If specified, the listed keys will be
+                                    projected into the specified paths, and unlisted keys will not be
+                                    present. If a key is specified which is not present in the Secret,
+                                    the volume setup will error unless it is marked optional. Paths must be
+                                    relative and may not contain the '..' path or start with '..'.
+                                  items:
+                                    description: Maps a string key to a path within
+                                      a volume.
+                                    properties:
+                                      key:
+                                        description: key is the key to project.
+                                        type: string
+                                      mode:
+                                        description: |-
+                                          mode is Optional: mode bits used to set permissions on this file.
+                                          Must be an octal value between 0000 and 0777 or a decimal value between 0 and 511.
+                                          YAML accepts both octal and decimal values, JSON requires decimal values for mode bits.
+                                          If not specified, the volume defaultMode will be used.
+                                          This might be in conflict with other options that affect the file
+                                          mode, like fsGroup, and the result can be other mode bits set.
+                                        format: int32
+                                        type: integer
+                                      path:
+                                        description: |-
+                                          path is the relative path of the file to map the key to.
+                                          May not be an absolute path.
+                                          May not contain the path element '..'.
+                                          May not start with the string '..'.
+                                        type: string
+                                    required:
+                                    - key
+                                    - path
+                                    type: object
+                                  type: array
+                                  x-kubernetes-list-type: atomic
+                                optional:
+                                  description: optional field specify whether the
+                                    Secret or its keys must be defined
+                                  type: boolean
+                                secretName:
+                                  description: |-
+                                    secretName is the name of the secret in the pod's namespace to use.
+                                    More info: https://kubernetes.io/docs/concepts/storage/volumes#secret
+                                  type: string
+                              type: object
+                          type: object
+                      required:
+                      - mountPath
+                      - volumeSource
+                      type: object
+                    type: array
                   policyConfig:
                     description: PolicyConfig defines configuration for Kopia policy
                       files
@@ -1882,7 +2007,6 @@ spec:
                                         pod labels will be ignored. The default value is empty.
                                         The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                         Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                        This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                       items:
                                         type: string
                                       type: array
@@ -1897,7 +2021,6 @@ spec:
                                         pod labels will be ignored. The default value is empty.
                                         The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                         Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                        This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                       items:
                                         type: string
                                       type: array
@@ -2064,7 +2187,6 @@ spec:
                                     pod labels will be ignored. The default value is empty.
                                     The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                     Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                   items:
                                     type: string
                                   type: array
@@ -2079,7 +2201,6 @@ spec:
                                     pod labels will be ignored. The default value is empty.
                                     The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                     Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                   items:
                                     type: string
                                   type: array
@@ -2173,8 +2294,8 @@ spec:
                               most preferred is the one with the greatest sum of weights, i.e.
                               for each node that meets all of the scheduling requirements (resource
                               request, requiredDuringScheduling anti-affinity expressions, etc.),
-                              compute a sum by iterating through the elements of this field and adding
-                              "weight" to the sum if the node has pods which matches the corresponding podAffinityTerm; the
+                              compute a sum by iterating through the elements of this field and subtracting
+                              "weight" from the sum if the node has pods which matches the corresponding podAffinityTerm; the
                               node(s) with the highest sum are the most preferred.
                             items:
                               description: The weights of all of the matched WeightedPodAffinityTerm
@@ -2244,7 +2365,6 @@ spec:
                                         pod labels will be ignored. The default value is empty.
                                         The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                         Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                        This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                       items:
                                         type: string
                                       type: array
@@ -2259,7 +2379,6 @@ spec:
                                         pod labels will be ignored. The default value is empty.
                                         The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                         Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                        This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                       items:
                                         type: string
                                       type: array
@@ -2426,7 +2545,6 @@ spec:
                                     pod labels will be ignored. The default value is empty.
                                     The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                     Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                   items:
                                     type: string
                                   type: array
@@ -2441,7 +2559,6 @@ spec:
                                     pod labels will be ignored. The default value is empty.
                                     The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                     Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                   items:
                                     type: string
                                   type: array
@@ -2543,7 +2660,7 @@ spec:
                           Claims lists the names of resources, defined in spec.resourceClaims,
                           that are used by this container.
 
-                          This is an alpha field and requires enabling the
+                          This field depends on the
                           DynamicResourceAllocation feature gate.
 
                           This field is immutable. It can only be set for containers.
@@ -2835,6 +2952,113 @@ spec:
                       users who want to override the service account normally used by the mover.
                       The service account needs to exist in the same namespace as this CR.
                     type: string
+                  moverVolumes:
+                    description: |-
+                      MoverVolumes are PVCs or Secrets that should additionally be mounted to the mover job pod.
+                      This should only be used by advanced users.
+                    items:
+                      properties:
+                        mountPath:
+                          description: |-
+                            Path to give the volume when mounting under /mnt in the mover job pod.
+                            For example if mountPath is 'my-pvc' then this moverVolume will be mounted in the mover pod
+                            at /mnt/my-pvc
+                          type: string
+                        volumeSource:
+                          description: volumeSource represents the secret or PersistentVolumeClaim
+                            that should be mounted to the mover pod.
+                          properties:
+                            persistentVolumeClaim:
+                              description: |-
+                                persistentVolumeClaimVolumeSource represents a reference to a
+                                PersistentVolumeClaim in the same namespace.
+                                More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#persistentvolumeclaims
+                                nolint:lll
+                              properties:
+                                claimName:
+                                  description: |-
+                                    claimName is the name of a PersistentVolumeClaim in the same namespace as the pod using this volume.
+                                    More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#persistentvolumeclaims
+                                  type: string
+                                readOnly:
+                                  description: |-
+                                    readOnly Will force the ReadOnly setting in VolumeMounts.
+                                    Default false.
+                                  type: boolean
+                              required:
+                              - claimName
+                              type: object
+                            secret:
+                              description: |-
+                                secret represents a secret that should populate this volume.
+                                More info: https://kubernetes.io/docs/concepts/storage/volumes#secret
+                              properties:
+                                defaultMode:
+                                  description: |-
+                                    defaultMode is Optional: mode bits used to set permissions on created files by default.
+                                    Must be an octal value between 0000 and 0777 or a decimal value between 0 and 511.
+                                    YAML accepts both octal and decimal values, JSON requires decimal values
+                                    for mode bits. Defaults to 0644.
+                                    Directories within the path are not affected by this setting.
+                                    This might be in conflict with other options that affect the file
+                                    mode, like fsGroup, and the result can be other mode bits set.
+                                  format: int32
+                                  type: integer
+                                items:
+                                  description: |-
+                                    items If unspecified, each key-value pair in the Data field of the referenced
+                                    Secret will be projected into the volume as a file whose name is the
+                                    key and content is the value. If specified, the listed keys will be
+                                    projected into the specified paths, and unlisted keys will not be
+                                    present. If a key is specified which is not present in the Secret,
+                                    the volume setup will error unless it is marked optional. Paths must be
+                                    relative and may not contain the '..' path or start with '..'.
+                                  items:
+                                    description: Maps a string key to a path within
+                                      a volume.
+                                    properties:
+                                      key:
+                                        description: key is the key to project.
+                                        type: string
+                                      mode:
+                                        description: |-
+                                          mode is Optional: mode bits used to set permissions on this file.
+                                          Must be an octal value between 0000 and 0777 or a decimal value between 0 and 511.
+                                          YAML accepts both octal and decimal values, JSON requires decimal values for mode bits.
+                                          If not specified, the volume defaultMode will be used.
+                                          This might be in conflict with other options that affect the file
+                                          mode, like fsGroup, and the result can be other mode bits set.
+                                        format: int32
+                                        type: integer
+                                      path:
+                                        description: |-
+                                          path is the relative path of the file to map the key to.
+                                          May not be an absolute path.
+                                          May not contain the path element '..'.
+                                          May not start with the string '..'.
+                                        type: string
+                                    required:
+                                    - key
+                                    - path
+                                    type: object
+                                  type: array
+                                  x-kubernetes-list-type: atomic
+                                optional:
+                                  description: optional field specify whether the
+                                    Secret or its keys must be defined
+                                  type: boolean
+                                secretName:
+                                  description: |-
+                                    secretName is the name of the secret in the pod's namespace to use.
+                                    More info: https://kubernetes.io/docs/concepts/storage/volumes#secret
+                                  type: string
+                              type: object
+                          type: object
+                      required:
+                      - mountPath
+                      - volumeSource
+                      type: object
+                    type: array
                   rcloneConfig:
                     description: RcloneConfig is the rclone secret name
                     type: string
@@ -3243,7 +3467,6 @@ spec:
                                         pod labels will be ignored. The default value is empty.
                                         The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                         Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                        This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                       items:
                                         type: string
                                       type: array
@@ -3258,7 +3481,6 @@ spec:
                                         pod labels will be ignored. The default value is empty.
                                         The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                         Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                        This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                       items:
                                         type: string
                                       type: array
@@ -3425,7 +3647,6 @@ spec:
                                     pod labels will be ignored. The default value is empty.
                                     The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                     Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                   items:
                                     type: string
                                   type: array
@@ -3440,7 +3661,6 @@ spec:
                                     pod labels will be ignored. The default value is empty.
                                     The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                     Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                   items:
                                     type: string
                                   type: array
@@ -3534,8 +3754,8 @@ spec:
                               most preferred is the one with the greatest sum of weights, i.e.
                               for each node that meets all of the scheduling requirements (resource
                               request, requiredDuringScheduling anti-affinity expressions, etc.),
-                              compute a sum by iterating through the elements of this field and adding
-                              "weight" to the sum if the node has pods which matches the corresponding podAffinityTerm; the
+                              compute a sum by iterating through the elements of this field and subtracting
+                              "weight" from the sum if the node has pods which matches the corresponding podAffinityTerm; the
                               node(s) with the highest sum are the most preferred.
                             items:
                               description: The weights of all of the matched WeightedPodAffinityTerm
@@ -3605,7 +3825,6 @@ spec:
                                         pod labels will be ignored. The default value is empty.
                                         The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                         Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                        This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                       items:
                                         type: string
                                       type: array
@@ -3620,7 +3839,6 @@ spec:
                                         pod labels will be ignored. The default value is empty.
                                         The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                         Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                        This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                       items:
                                         type: string
                                       type: array
@@ -3787,7 +4005,6 @@ spec:
                                     pod labels will be ignored. The default value is empty.
                                     The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                     Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                   items:
                                     type: string
                                   type: array
@@ -3802,7 +4019,6 @@ spec:
                                     pod labels will be ignored. The default value is empty.
                                     The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                     Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                   items:
                                     type: string
                                   type: array
@@ -3904,7 +4120,7 @@ spec:
                           Claims lists the names of resources, defined in spec.resourceClaims,
                           that are used by this container.
 
-                          This is an alpha field and requires enabling the
+                          This field depends on the
                           DynamicResourceAllocation feature gate.
 
                           This field is immutable. It can only be set for containers.
@@ -4196,6 +4412,113 @@ spec:
                       users who want to override the service account normally used by the mover.
                       The service account needs to exist in the same namespace as this CR.
                     type: string
+                  moverVolumes:
+                    description: |-
+                      MoverVolumes are PVCs or Secrets that should additionally be mounted to the mover job pod.
+                      This should only be used by advanced users.
+                    items:
+                      properties:
+                        mountPath:
+                          description: |-
+                            Path to give the volume when mounting under /mnt in the mover job pod.
+                            For example if mountPath is 'my-pvc' then this moverVolume will be mounted in the mover pod
+                            at /mnt/my-pvc
+                          type: string
+                        volumeSource:
+                          description: volumeSource represents the secret or PersistentVolumeClaim
+                            that should be mounted to the mover pod.
+                          properties:
+                            persistentVolumeClaim:
+                              description: |-
+                                persistentVolumeClaimVolumeSource represents a reference to a
+                                PersistentVolumeClaim in the same namespace.
+                                More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#persistentvolumeclaims
+                                nolint:lll
+                              properties:
+                                claimName:
+                                  description: |-
+                                    claimName is the name of a PersistentVolumeClaim in the same namespace as the pod using this volume.
+                                    More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#persistentvolumeclaims
+                                  type: string
+                                readOnly:
+                                  description: |-
+                                    readOnly Will force the ReadOnly setting in VolumeMounts.
+                                    Default false.
+                                  type: boolean
+                              required:
+                              - claimName
+                              type: object
+                            secret:
+                              description: |-
+                                secret represents a secret that should populate this volume.
+                                More info: https://kubernetes.io/docs/concepts/storage/volumes#secret
+                              properties:
+                                defaultMode:
+                                  description: |-
+                                    defaultMode is Optional: mode bits used to set permissions on created files by default.
+                                    Must be an octal value between 0000 and 0777 or a decimal value between 0 and 511.
+                                    YAML accepts both octal and decimal values, JSON requires decimal values
+                                    for mode bits. Defaults to 0644.
+                                    Directories within the path are not affected by this setting.
+                                    This might be in conflict with other options that affect the file
+                                    mode, like fsGroup, and the result can be other mode bits set.
+                                  format: int32
+                                  type: integer
+                                items:
+                                  description: |-
+                                    items If unspecified, each key-value pair in the Data field of the referenced
+                                    Secret will be projected into the volume as a file whose name is the
+                                    key and content is the value. If specified, the listed keys will be
+                                    projected into the specified paths, and unlisted keys will not be
+                                    present. If a key is specified which is not present in the Secret,
+                                    the volume setup will error unless it is marked optional. Paths must be
+                                    relative and may not contain the '..' path or start with '..'.
+                                  items:
+                                    description: Maps a string key to a path within
+                                      a volume.
+                                    properties:
+                                      key:
+                                        description: key is the key to project.
+                                        type: string
+                                      mode:
+                                        description: |-
+                                          mode is Optional: mode bits used to set permissions on this file.
+                                          Must be an octal value between 0000 and 0777 or a decimal value between 0 and 511.
+                                          YAML accepts both octal and decimal values, JSON requires decimal values for mode bits.
+                                          If not specified, the volume defaultMode will be used.
+                                          This might be in conflict with other options that affect the file
+                                          mode, like fsGroup, and the result can be other mode bits set.
+                                        format: int32
+                                        type: integer
+                                      path:
+                                        description: |-
+                                          path is the relative path of the file to map the key to.
+                                          May not be an absolute path.
+                                          May not contain the path element '..'.
+                                          May not start with the string '..'.
+                                        type: string
+                                    required:
+                                    - key
+                                    - path
+                                    type: object
+                                  type: array
+                                  x-kubernetes-list-type: atomic
+                                optional:
+                                  description: optional field specify whether the
+                                    Secret or its keys must be defined
+                                  type: boolean
+                                secretName:
+                                  description: |-
+                                    secretName is the name of the secret in the pod's namespace to use.
+                                    More info: https://kubernetes.io/docs/concepts/storage/volumes#secret
+                                  type: string
+                              type: object
+                          type: object
+                      required:
+                      - mountPath
+                      - volumeSource
+                      type: object
+                    type: array
                   previous:
                     description: Previous specifies the number of image to skip before
                       selecting one to restore from
@@ -4292,7 +4615,7 @@ spec:
                           Claims lists the names of resources, defined in spec.resourceClaims,
                           that are used by this container.
 
-                          This is an alpha field and requires enabling the
+                          This field depends on the
                           DynamicResourceAllocation feature gate.
 
                           This field is immutable. It can only be set for containers.
@@ -4738,7 +5061,6 @@ spec:
                                         pod labels will be ignored. The default value is empty.
                                         The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                         Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                        This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                       items:
                                         type: string
                                       type: array
@@ -4753,7 +5075,6 @@ spec:
                                         pod labels will be ignored. The default value is empty.
                                         The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                         Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                        This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                       items:
                                         type: string
                                       type: array
@@ -4920,7 +5241,6 @@ spec:
                                     pod labels will be ignored. The default value is empty.
                                     The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                     Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                   items:
                                     type: string
                                   type: array
@@ -4935,7 +5255,6 @@ spec:
                                     pod labels will be ignored. The default value is empty.
                                     The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                     Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                   items:
                                     type: string
                                   type: array
@@ -5029,8 +5348,8 @@ spec:
                               most preferred is the one with the greatest sum of weights, i.e.
                               for each node that meets all of the scheduling requirements (resource
                               request, requiredDuringScheduling anti-affinity expressions, etc.),
-                              compute a sum by iterating through the elements of this field and adding
-                              "weight" to the sum if the node has pods which matches the corresponding podAffinityTerm; the
+                              compute a sum by iterating through the elements of this field and subtracting
+                              "weight" from the sum if the node has pods which matches the corresponding podAffinityTerm; the
                               node(s) with the highest sum are the most preferred.
                             items:
                               description: The weights of all of the matched WeightedPodAffinityTerm
@@ -5100,7 +5419,6 @@ spec:
                                         pod labels will be ignored. The default value is empty.
                                         The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                         Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                        This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                       items:
                                         type: string
                                       type: array
@@ -5115,7 +5433,6 @@ spec:
                                         pod labels will be ignored. The default value is empty.
                                         The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                         Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                        This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                       items:
                                         type: string
                                       type: array
@@ -5282,7 +5599,6 @@ spec:
                                     pod labels will be ignored. The default value is empty.
                                     The same key is forbidden to exist in both matchLabelKeys and labelSelector.
                                     Also, matchLabelKeys cannot be set when labelSelector isn't set.
-                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                   items:
                                     type: string
                                   type: array
@@ -5297,7 +5613,6 @@ spec:
                                     pod labels will be ignored. The default value is empty.
                                     The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
                                     Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
-                                    This is a beta field and requires enabling MatchLabelKeysInPodAffinity feature gate (enabled by default).
                                   items:
                                     type: string
                                   type: array
@@ -5399,7 +5714,7 @@ spec:
                           Claims lists the names of resources, defined in spec.resourceClaims,
                           that are used by this container.
 
-                          This is an alpha field and requires enabling the
+                          This field depends on the
                           DynamicResourceAllocation feature gate.
 
                           This field is immutable. It can only be set for containers.
@@ -5691,6 +6006,113 @@ spec:
                       users who want to override the service account normally used by the mover.
                       The service account needs to exist in the same namespace as this CR.
                     type: string
+                  moverVolumes:
+                    description: |-
+                      MoverVolumes are PVCs or Secrets that should additionally be mounted to the mover job pod.
+                      This should only be used by advanced users.
+                    items:
+                      properties:
+                        mountPath:
+                          description: |-
+                            Path to give the volume when mounting under /mnt in the mover job pod.
+                            For example if mountPath is 'my-pvc' then this moverVolume will be mounted in the mover pod
+                            at /mnt/my-pvc
+                          type: string
+                        volumeSource:
+                          description: volumeSource represents the secret or PersistentVolumeClaim
+                            that should be mounted to the mover pod.
+                          properties:
+                            persistentVolumeClaim:
+                              description: |-
+                                persistentVolumeClaimVolumeSource represents a reference to a
+                                PersistentVolumeClaim in the same namespace.
+                                More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#persistentvolumeclaims
+                                nolint:lll
+                              properties:
+                                claimName:
+                                  description: |-
+                                    claimName is the name of a PersistentVolumeClaim in the same namespace as the pod using this volume.
+                                    More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#persistentvolumeclaims
+                                  type: string
+                                readOnly:
+                                  description: |-
+                                    readOnly Will force the ReadOnly setting in VolumeMounts.
+                                    Default false.
+                                  type: boolean
+                              required:
+                              - claimName
+                              type: object
+                            secret:
+                              description: |-
+                                secret represents a secret that should populate this volume.
+                                More info: https://kubernetes.io/docs/concepts/storage/volumes#secret
+                              properties:
+                                defaultMode:
+                                  description: |-
+                                    defaultMode is Optional: mode bits used to set permissions on created files by default.
+                                    Must be an octal value between 0000 and 0777 or a decimal value between 0 and 511.
+                                    YAML accepts both octal and decimal values, JSON requires decimal values
+                                    for mode bits. Defaults to 0644.
+                                    Directories within the path are not affected by this setting.
+                                    This might be in conflict with other options that affect the file
+                                    mode, like fsGroup, and the result can be other mode bits set.
+                                  format: int32
+                                  type: integer
+                                items:
+                                  description: |-
+                                    items If unspecified, each key-value pair in the Data field of the referenced
+                                    Secret will be projected into the volume as a file whose name is the
+                                    key and content is the value. If specified, the listed keys will be
+                                    projected into the specified paths, and unlisted keys will not be
+                                    present. If a key is specified which is not present in the Secret,
+                                    the volume setup will error unless it is marked optional. Paths must be
+                                    relative and may not contain the '..' path or start with '..'.
+                                  items:
+                                    description: Maps a string key to a path within
+                                      a volume.
+                                    properties:
+                                      key:
+                                        description: key is the key to project.
+                                        type: string
+                                      mode:
+                                        description: |-
+                                          mode is Optional: mode bits used to set permissions on this file.
+                                          Must be an octal value between 0000 and 0777 or a decimal value between 0 and 511.
+                                          YAML accepts both octal and decimal values, JSON requires decimal values for mode bits.
+                                          If not specified, the volume defaultMode will be used.
+                                          This might be in conflict with other options that affect the file
+                                          mode, like fsGroup, and the result can be other mode bits set.
+                                        format: int32
+                                        type: integer
+                                      path:
+                                        description: |-
+                                          path is the relative path of the file to map the key to.
+                                          May not be an absolute path.
+                                          May not contain the path element '..'.
+                                          May not start with the string '..'.
+                                        type: string
+                                    required:
+                                    - key
+                                    - path
+                                    type: object
+                                  type: array
+                                  x-kubernetes-list-type: atomic
+                                optional:
+                                  description: optional field specify whether the
+                                    Secret or its keys must be defined
+                                  type: boolean
+                                secretName:
+                                  description: |-
+                                    secretName is the name of the secret in the pod's namespace to use.
+                                    More info: https://kubernetes.io/docs/concepts/storage/volumes#secret
+                                  type: string
+                              type: object
+                          type: object
+                      required:
+                      - mountPath
+                      - volumeSource
+                      type: object
+                    type: array
                   serviceAnnotations:
                     additionalProperties:
                       type: string
@@ -5844,6 +6266,17 @@ spec:
                       - snapshotCount
                       type: object
                     type: array
+                  lastConfiguredContentCacheSizeLimitMB:
+                    description: LastConfiguredContentCacheSizeLimitMB is the content
+                      cache limit that was last applied.
+                    format: int32
+                    type: integer
+                  lastConfiguredMetadataCacheSizeLimitMB:
+                    description: |-
+                      LastConfiguredMetadataCacheSizeLimitMB is the metadata cache limit that was last applied.
+                      Used to skip redundant cache configuration on subsequent runs.
+                    format: int32
+                    type: integer
                   requestedIdentity:
                     description: RequestedIdentity is the username@hostname that was
                       requested for restore

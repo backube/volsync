@@ -68,6 +68,14 @@ type kopiaMetrics struct {
 	ConfigurationErrors   *prometheus.CounterVec
 	CustomActionsExecuted *prometheus.CounterVec
 	CustomActionsDuration *prometheus.SummaryVec
+
+	// Maintenance CronJob Metrics
+	MaintenanceCronJobCreated   *prometheus.CounterVec
+	MaintenanceCronJobUpdated   *prometheus.CounterVec
+	MaintenanceCronJobDeleted   *prometheus.CounterVec
+	MaintenanceCronJobFailures  *prometheus.CounterVec
+	MaintenanceLastRunTimestamp *prometheus.GaugeVec
+	MaintenanceDurationSeconds  *prometheus.SummaryVec
 }
 
 var (
@@ -342,6 +350,63 @@ var (
 		},
 		append(kopiaMetricLabels, "action_type"),
 	)
+
+	// Maintenance CronJob Metrics
+	maintenanceCronJobCreated = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name:      "maintenance_cronjob_created_total",
+			Namespace: kopiaMetricsNamespace,
+			Help:      "Total number of maintenance CronJobs created",
+		},
+		kopiaMetricLabels,
+	)
+
+	maintenanceCronJobUpdated = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name:      "maintenance_cronjob_updated_total",
+			Namespace: kopiaMetricsNamespace,
+			Help:      "Total number of maintenance CronJobs updated",
+		},
+		kopiaMetricLabels,
+	)
+
+	maintenanceCronJobDeleted = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name:      "maintenance_cronjob_deleted_total",
+			Namespace: kopiaMetricsNamespace,
+			Help:      "Total number of maintenance CronJobs deleted",
+		},
+		kopiaMetricLabels,
+	)
+
+	maintenanceCronJobFailures = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name:      "maintenance_cronjob_failures_total",
+			Namespace: kopiaMetricsNamespace,
+			Help:      "Total number of failed maintenance jobs",
+		},
+		append(kopiaMetricLabels, "failure_reason"),
+	)
+
+	maintenanceLastRunTimestamp = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name:      "maintenance_last_run_timestamp_seconds",
+			Namespace: kopiaMetricsNamespace,
+			Help:      "Unix timestamp of the last successful maintenance run",
+		},
+		kopiaMetricLabels,
+	)
+
+	maintenanceDurationSeconds = prometheus.NewSummaryVec(
+		prometheus.SummaryOpts{
+			Name:       "maintenance_job_duration_seconds",
+			Namespace:  kopiaMetricsNamespace,
+			Help:       "Duration of maintenance CronJob operations in seconds (from job logs)",
+			Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
+			MaxAge:     7 * 24 * time.Hour, // Keep for a week since maintenance is less frequent
+		},
+		kopiaMetricLabels,
+	)
 )
 
 func newKopiaMetrics() kopiaMetrics {
@@ -382,6 +447,14 @@ func newKopiaMetrics() kopiaMetrics {
 		ConfigurationErrors:   configurationErrors,
 		CustomActionsExecuted: customActionsExecuted,
 		CustomActionsDuration: customActionsDuration,
+
+		// Maintenance CronJob Metrics
+		MaintenanceCronJobCreated:   maintenanceCronJobCreated,
+		MaintenanceCronJobUpdated:   maintenanceCronJobUpdated,
+		MaintenanceCronJobDeleted:   maintenanceCronJobDeleted,
+		MaintenanceCronJobFailures:  maintenanceCronJobFailures,
+		MaintenanceLastRunTimestamp: maintenanceLastRunTimestamp,
+		MaintenanceDurationSeconds:  maintenanceDurationSeconds,
 	}
 }
 
@@ -424,5 +497,13 @@ func init() {
 		configurationErrors,
 		customActionsExecuted,
 		customActionsDuration,
+
+		// Maintenance CronJob Metrics
+		maintenanceCronJobCreated,
+		maintenanceCronJobUpdated,
+		maintenanceCronJobDeleted,
+		maintenanceCronJobFailures,
+		maintenanceLastRunTimestamp,
+		maintenanceDurationSeconds,
 	)
 }

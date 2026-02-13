@@ -1,6 +1,6 @@
 ######################################################################
 # Establish a common builder image for all golang-based images
-FROM golang:1.24 AS golang-builder
+FROM golang:1.25 AS golang-builder
 USER root
 WORKDIR /workspace
 # We don't vendor modules. Enforce that behavior
@@ -37,8 +37,8 @@ RUN go build -a -o manager -ldflags "-X=main.volsyncVersion=${version_arg}" -tag
 # Build rclone
 FROM golang-builder AS rclone-builder
 
-ARG RCLONE_VERSION=v1.63.1
-ARG RCLONE_GIT_HASH=bd1fbcae12f795f498c7ace6af9d9cc218102094
+ARG RCLONE_VERSION=v1.71.2
+ARG RCLONE_GIT_HASH=84a85367111c84061c959e01e0c320618e492dc6
 
 RUN git clone --depth 1 -b ${RCLONE_VERSION} https://github.com/rclone/rclone.git
 WORKDIR /workspace/rclone
@@ -66,8 +66,8 @@ RUN go run build.go --enable-cgo
 # Build kopia
 FROM golang-builder AS kopia-builder
 
-ARG KOPIA_VERSION="v0.21.1"
-ARG KOPIA_GIT_HASH="0733cb4d2a731dbb92d927f66230694e014f4df2"
+ARG KOPIA_VERSION="v0.22.3"
+ARG KOPIA_GIT_HASH="154bf56899228e5c95fb3176b9c6901bbe4ca97b"
 
 RUN git clone --depth 1 -b ${KOPIA_VERSION} https://github.com/kopia/kopia.git
 WORKDIR /workspace/kopia

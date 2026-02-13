@@ -71,7 +71,6 @@
             trigger:
               manual: once
             kopia:
-              maintenanceIntervalDays: 1
               repository: "{{ kopia_secret_name }}"
               retain:
                 daily: 2

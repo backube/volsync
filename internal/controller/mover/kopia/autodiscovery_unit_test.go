@@ -22,9 +22,10 @@ package kopia
 import (
 	"context"
 	"errors"
-	"testing"
 
 	"github.com/go-logr/logr"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -35,50 +36,57 @@ import (
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
 
-// TestDiscoverSourcePVC tests the auto-discovery functionality
-//
-//nolint:funlen
-func TestDiscoverSourcePVC(t *testing.T) {
-	scheme := runtime.NewScheme()
-	if err := volsyncv1alpha1.AddToScheme(scheme); err != nil {
-		t.Fatalf("Failed to add scheme: %v", err)
-	}
+var _ = Describe("discoverSourcePVC unit tests", func() {
+	var (
+		logger logr.Logger
+		scheme *runtime.Scheme
+		kb     *Builder
+	)
 
-	logger := logr.Discard()
-	kb := &Builder{}
+	BeforeEach(func() {
+		logger = logr.Discard()
+		scheme = runtime.NewScheme()
+		Expect(volsyncv1alpha1.AddToScheme(scheme)).To(Succeed())
+		kb = &Builder{}
+	})
 
-	tests := []struct {
-		name            string
-		sourceName      string
-		sourceNamespace string
-		objects         []client.Object
-		expectedPVC     string
-		setupMock       func() client.Client
-	}{
-		{
-			name:            "returns empty when source name is empty",
-			sourceName:      "",
-			sourceNamespace: "test-ns",
-			expectedPVC:     "",
+	DescribeTable("discoverSourcePVC",
+		func(sourceName, sourceNamespace string, objects []client.Object, setupMock func() client.Client, expectedPVC string) {
+			var c client.Client
+			if setupMock != nil {
+				c = setupMock()
+			} else {
+				c = fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
+			}
+
+			result := kb.discoverSourcePVC(c, sourceName, sourceNamespace, logger)
+			Expect(result).To(Equal(expectedPVC))
 		},
-		{
-			name:            "returns empty when source namespace is empty",
-			sourceName:      "test-source",
-			sourceNamespace: "",
-			expectedPVC:     "",
-		},
-		{
-			name:            "returns empty when ReplicationSource not found",
-			sourceName:      "nonexistent",
-			sourceNamespace: "test-ns",
-			objects:         []client.Object{},
-			expectedPVC:     "",
-		},
-		{
-			name:            "returns empty when ReplicationSource doesn't use Kopia",
-			sourceName:      "rsync-source",
-			sourceNamespace: "test-ns",
-			objects: []client.Object{
+		Entry("returns empty when source name is empty",
+			"",
+			"test-ns",
+			[]client.Object{},
+			nil,
+			"",
+		),
+		Entry("returns empty when source namespace is empty",
+			"test-source",
+			"",
+			[]client.Object{},
+			nil,
+			"",
+		),
+		Entry("returns empty when ReplicationSource not found",
+			"nonexistent",
+			"test-ns",
+			[]client.Object{},
+			nil,
+			"",
+		),
+		Entry("returns empty when ReplicationSource doesn't use Kopia",
+			"rsync-source",
+			"test-ns",
+			[]client.Object{
 				&volsyncv1alpha1.ReplicationSource{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "rsync-source",
@@ -90,13 +98,13 @@ func TestDiscoverSourcePVC(t *testing.T) {
 					},
 				},
 			},
-			expectedPVC: "",
-		},
-		{
-			name:            "returns PVC when ReplicationSource uses Kopia",
-			sourceName:      "kopia-source",
-			sourceNamespace: "test-ns",
-			objects: []client.Object{
+			nil,
+			"",
+		),
+		Entry("returns PVC when ReplicationSource uses Kopia",
+			"kopia-source",
+			"test-ns",
+			[]client.Object{
 				&volsyncv1alpha1.ReplicationSource{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "kopia-source",
@@ -110,13 +118,13 @@ func TestDiscoverSourcePVC(t *testing.T) {
 					},
 				},
 			},
-			expectedPVC: "my-data-pvc",
-		},
-		{
-			name:            "returns empty when Kopia source has no PVC",
-			sourceName:      "kopia-source-no-pvc",
-			sourceNamespace: "test-ns",
-			objects: []client.Object{
+			nil,
+			"my-data-pvc",
+		),
+		Entry("returns empty when Kopia source has no PVC",
+			"kopia-source-no-pvc",
+			"test-ns",
+			[]client.Object{
 				&volsyncv1alpha1.ReplicationSource{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "kopia-source-no-pvc",
@@ -129,14 +137,14 @@ func TestDiscoverSourcePVC(t *testing.T) {
 					},
 				},
 			},
-			expectedPVC: "",
-		},
-		{
-			name:            "handles permission errors gracefully",
-			sourceName:      "test-source",
-			sourceNamespace: "test-ns",
-			expectedPVC:     "",
-			setupMock: func() client.Client {
+			nil,
+			"",
+		),
+		Entry("handles permission errors gracefully",
+			"test-source",
+			"test-ns",
+			[]client.Object{},
+			func() client.Client {
 				return &mockClientWithErrorUnit{
 					err: kerrors.NewForbidden(
 						schema.GroupResource{Group: "volsync.backube", Resource: "replicationsources"},
@@ -145,25 +153,10 @@ func TestDiscoverSourcePVC(t *testing.T) {
 					),
 				}
 			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var c client.Client
-			if tt.setupMock != nil {
-				c = tt.setupMock()
-			} else {
-				c = fake.NewClientBuilder().WithScheme(scheme).WithObjects(tt.objects...).Build()
-			}
-
-			result := kb.discoverSourcePVC(c, tt.sourceName, tt.sourceNamespace, logger)
-			if result != tt.expectedPVC {
-				t.Errorf("discoverSourcePVC() = %q, want %q", result, tt.expectedPVC)
-			}
-		})
-	}
-}
+			"",
+		),
+	)
+})
 
 // mockClientWithErrorUnit is a mock client that returns a specific error for unit tests
 type mockClientWithErrorUnit struct {

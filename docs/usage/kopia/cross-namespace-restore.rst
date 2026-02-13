@@ -114,7 +114,7 @@ Copy or create the repository configuration Secret in the destination namespace:
    # Option 2: Create a new secret with the same credentials
    kubectl create secret generic kopia-config \
      --namespace=staging \
-     --from-literal=KOPIA_REPOSITORY=s3://backup-bucket/kopia \
+     --from-literal=KOPIA_REPOSITORY=s3://backup-bucket \
      --from-literal=KOPIA_PASSWORD=your-repository-password \
      --from-literal=AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE \
      --from-literal=AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG
@@ -306,7 +306,7 @@ Disaster Recovery
         namespace: production-recovery
       type: Opaque
       stringData:
-        KOPIA_REPOSITORY: s3://disaster-recovery/kopia
+        KOPIA_REPOSITORY: s3://disaster-recovery
         KOPIA_PASSWORD: ${BACKUP_PASSWORD}
         AWS_ACCESS_KEY_ID: ${AWS_KEY}
         AWS_SECRET_ACCESS_KEY: ${AWS_SECRET}

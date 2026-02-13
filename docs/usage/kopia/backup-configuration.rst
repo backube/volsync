@@ -60,26 +60,44 @@ hostname
    hostname, representing a single tenant. Combined with unique usernames (from object names),
    this ensures unique identities without collision risk. The namespace-only hostname design
    simplifies multi-tenancy and makes behavior predictable.
+
+   .. important::
+      The hostname override is applied at repository connection time through the
+      ``KOPIA_OVERRIDE_HOSTNAME`` environment variable, which translates to the
+      ``--override-hostname`` flag on ``kopia repository connect`` or ``create`` commands.
+      Once connected with the override identity, all snapshots automatically use that identity.
+      The ``--override-hostname`` flag does NOT exist for ``kopia snapshot create`` (removed in v0.6.0).
+
    See :doc:`multi-tenancy` for details on hostname generation.
 
 repository
    This is the name of the Secret (in the same Namespace) that holds the
    connection information for the backup repository. See :doc:`backends` for
    supported remote storage backends and configuration examples. For filesystem-based
-   backups using PVCs, also configure the ``repositoryPVC`` field.
+   backups using PVCs, use the ``moverVolumes`` field to mount the repository PVC.
 
-repositoryPVC
-   **ReplicationSource Only**: This option specifies a PVC to use as a filesystem-based backup repository.
-   When set, Kopia will write backups directly to this PVC instead of a remote repository.
-   The PVC must exist in the same namespace as the ReplicationSource.
-   The repository will be created at the fixed path ``/kopia/repository`` within the mounted PVC.
-   
+moverVolumes
+   **ReplicationSource Only**: This option allows mounting additional PVCs or volumes to the mover pod.
+   For filesystem-based backup repositories, the first PVC in the moverVolumes list is automatically
+   detected as the Kopia repository location. The PVC is mounted at ``/mnt/<mountPath>`` where
+   ``<mountPath>`` is specified in the volume configuration.
+
    .. important::
-      This field is only available for ReplicationSource (backup operations).
-      ReplicationDestination does not support ``repositoryPVC`` - you must use a
+      The first PVC in ``moverVolumes`` is used as the repository. If multiple PVCs are present,
+      only the first is used (a warning is logged). This field is only available for ReplicationSource.
+      ReplicationDestination does not support ``moverVolumes`` for repositories - you must use a
       repository secret with appropriate backend configuration for restore operations.
-   
-   See :doc:`filesystem-destination` for detailed configuration and examples.
+
+   .. code-block:: yaml
+
+      moverVolumes:
+      - mountPath: kopia-repo        # Mounted at /mnt/kopia-repo
+        volumeSource:
+          persistentVolumeClaim:
+            claimName: backup-storage-pvc
+
+   See :doc:`filesystem-destination` for detailed configuration and examples, and :doc:`../movervolumes`
+   for more information about the moverVolumes pattern.
 
 sourcePath
    This specifies the path within the source PVC to backup. If not specified,
@@ -91,8 +109,16 @@ username
    VolSync automatically generates a username from the ReplicationSource name.
    Combined with the namespace-based hostname, this creates a unique identity
    for each backup source. Since Kubernetes prevents duplicate object names
-   in a namespace, there's no risk of collision. See :doc:`multi-tenancy` for
-   details on username generation.
+   in a namespace, there's no risk of collision.
+
+   .. important::
+      The username override is applied at repository connection time through the
+      ``KOPIA_OVERRIDE_USERNAME`` environment variable, which translates to the
+      ``--override-username`` flag on ``kopia repository connect`` or ``create`` commands.
+      Once connected with the override identity, all snapshots automatically use that identity.
+      The ``--override-username`` flag does NOT exist for ``kopia snapshot create`` (removed in v0.6.0).
+
+   See :doc:`multi-tenancy` for details on username generation.
 
 Source Path Override
 --------------------
@@ -395,6 +421,7 @@ The simplest way to configure retention is through the ``retain`` field:
          weekly: 4        # Keep 4 weekly snapshots
          monthly: 12      # Keep 12 monthly snapshots
          yearly: 5        # Keep 5 yearly snapshots
+         latest: 50       # Keep 50 most recent snapshots
 
 **Retention Policy Fields:**
 
@@ -403,6 +430,7 @@ The simplest way to configure retention is through the ``retain`` field:
 - ``weekly``: Number of weekly snapshots to retain (default: not set)
 - ``monthly``: Number of monthly snapshots to retain (default: not set)
 - ``yearly``: Number of yearly snapshots to retain (default: not set)
+- ``latest``: Number of most recent snapshots to retain regardless of time (default: not set)
 
 When not specified, Kopia uses its default retention policy.
 
@@ -1266,7 +1294,7 @@ partially working, or planned for future releases:
    * - Repository Backends (S3, GCS, Azure)
      - Supported
      - All major cloud providers supported
-   * - Filesystem Repository (repositoryPVC)
+   * - Filesystem Repository (moverVolumes)
      - Supported
      - ReplicationSource only, not for ReplicationDestination
    * - Retention Policies (inline)
@@ -1457,9 +1485,6 @@ A production-ready configuration using external policy files for comprehensive b
        # Performance tuning
        parallelism: 8
        cacheCapacity: 5Gi
-       
-       # Maintenance schedule
-       maintenanceIntervalDays: 1
 
 **Example 2: Multi-Tier Application with Structured Config**
 
@@ -1723,7 +1748,42 @@ Complete disaster recovery setup with all policy features:
        sourcePath: "/data"
        parallelism: 16
        cacheCapacity: 20Gi
-       maintenanceIntervalDays: 1
+
+Maintenance Configuration
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Repository maintenance is now handled exclusively through the KopiaMaintenance CRD. The ``maintenanceIntervalDays``
+field has been removed from ReplicationSource.
+
+**Creating KopiaMaintenance for your backups:**
+
+.. code-block:: yaml
+
+   ---
+   apiVersion: volsync.backube/v1alpha1
+   kind: KopiaMaintenance
+   metadata:
+     name: production-maintenance
+     namespace: production
+   spec:
+     repository:
+       repository: kopia-config  # Same secret as ReplicationSource
+     trigger:
+       schedule: "0 2 * * *"     # Daily at 2 AM
+     # Cache configuration for better performance
+     cacheCapacity: 10Gi
+     cacheStorageClassName: fast-ssd
+     cacheAccessModes:
+       - ReadWriteOnce
+
+**Key benefits of using KopiaMaintenance CRD:**
+
+- **Decoupled maintenance**: Maintenance runs independently from backup operations
+- **Flexible triggers**: Support for both scheduled and manual maintenance
+- **Performance optimization**: Dedicated cache configuration for maintenance operations
+- **Better resource management**: Control CPU and memory allocation for maintenance jobs
+
+See :doc:`kopiamaintenance` for complete configuration options and migration guide.
 
 Validation and Testing
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -1867,7 +1927,7 @@ The following flags are **forbidden** for security reasons:
 - ``--password``, ``--config-file``, ``--config`` - Use secrets instead
 - ``--repository`` - Managed by VolSync
 - ``--cache-directory``, ``--log-dir`` - Managed by VolSync
-- ``--override-username``, ``--override-hostname`` - Use identity fields
+- ``--override-username``, ``--override-hostname`` - These flags don't exist for ``kopia snapshot create`` (removed in v0.6.0). Use the ``username`` and ``hostname`` fields instead, which apply the overrides at repository connection time
 - Credential flags (``--access-key``, ``--storage-account``, etc.) - Use secrets
 
 Example: Complete Backup with Additional Args

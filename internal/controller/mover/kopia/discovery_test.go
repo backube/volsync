@@ -20,41 +20,320 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package kopia
 
 import (
-	"testing"
-
 	"github.com/go-logr/logr"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
 
-//nolint:funlen
-func TestDiscoverSourceInfo(t *testing.T) {
-	// Create a scheme with our types
-	scheme := runtime.NewScheme()
-	_ = volsyncv1alpha1.AddToScheme(scheme)
-	_ = corev1.AddToScheme(scheme)
+var _ = Describe("Discovery", func() {
+	var scheme *runtime.Scheme
 
-	tests := []struct {
-		name                       string
-		sourceName                 string
-		sourceNamespace            string
-		existingSource             *volsyncv1alpha1.ReplicationSource
-		expectedPVCName            string
-		expectedSourcePathOverride *string
-		expectedRepository         string
-		expectError                bool
-	}{
-		{
-			name:            "discovers PVC name, sourcePathOverride, and repository",
-			sourceName:      "test-source",
-			sourceNamespace: "test-ns",
-			existingSource: &volsyncv1alpha1.ReplicationSource{
+	BeforeEach(func() {
+		scheme = runtime.NewScheme()
+		Expect(volsyncv1alpha1.AddToScheme(scheme)).To(Succeed())
+		Expect(corev1.AddToScheme(scheme)).To(Succeed())
+	})
+
+	Describe("discoverSourceInfo", func() {
+		var (
+			kb     *Builder
+			logger logr.Logger
+		)
+
+		BeforeEach(func() {
+			kb = &Builder{}
+			logger = logr.Discard()
+		})
+
+		Context("when discovering PVC name, sourcePathOverride, and repository", func() {
+			It("should discover all fields from a valid ReplicationSource", func() {
+				existingSource := &volsyncv1alpha1.ReplicationSource{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-source",
+						Namespace: "test-ns",
+					},
+					Spec: volsyncv1alpha1.ReplicationSourceSpec{
+						SourcePVC: "source-pvc",
+						Kopia: &volsyncv1alpha1.ReplicationSourceKopiaSpec{
+							SourcePathOverride: ptr.To("/custom/path"),
+							Repository:         "test-repo-secret",
+						},
+					},
+				}
+
+				fakeClient := fake.NewClientBuilder().
+					WithScheme(scheme).
+					WithObjects(existingSource).
+					Build()
+
+				info := kb.discoverSourceInfo(fakeClient, "test-source", "test-ns", logger)
+
+				Expect(info.pvcName).To(Equal("source-pvc"))
+				Expect(info.sourcePathOverride).NotTo(BeNil())
+				Expect(*info.sourcePathOverride).To(Equal("/custom/path"))
+				Expect(info.repository).To(Equal("test-repo-secret"))
+			})
+		})
+
+		Context("when discovering PVC name without sourcePathOverride or repository", func() {
+			It("should discover only PVC name", func() {
+				existingSource := &volsyncv1alpha1.ReplicationSource{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-source",
+						Namespace: "test-ns",
+					},
+					Spec: volsyncv1alpha1.ReplicationSourceSpec{
+						SourcePVC: "source-pvc",
+						Kopia:     &volsyncv1alpha1.ReplicationSourceKopiaSpec{},
+					},
+				}
+
+				fakeClient := fake.NewClientBuilder().
+					WithScheme(scheme).
+					WithObjects(existingSource).
+					Build()
+
+				info := kb.discoverSourceInfo(fakeClient, "test-source", "test-ns", logger)
+
+				Expect(info.pvcName).To(Equal("source-pvc"))
+				Expect(info.sourcePathOverride).To(BeNil())
+				Expect(info.repository).To(BeEmpty())
+			})
+		})
+
+		Context("when source doesn't exist", func() {
+			It("should return empty info", func() {
+				fakeClient := fake.NewClientBuilder().
+					WithScheme(scheme).
+					Build()
+
+				info := kb.discoverSourceInfo(fakeClient, "missing-source", "test-ns", logger)
+
+				Expect(info.pvcName).To(BeEmpty())
+				Expect(info.sourcePathOverride).To(BeNil())
+				Expect(info.repository).To(BeEmpty())
+			})
+		})
+
+		Context("when source doesn't use Kopia", func() {
+			It("should return empty info", func() {
+				existingSource := &volsyncv1alpha1.ReplicationSource{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-source",
+						Namespace: "test-ns",
+					},
+					Spec: volsyncv1alpha1.ReplicationSourceSpec{
+						SourcePVC: "source-pvc",
+						// No Kopia spec
+					},
+				}
+
+				fakeClient := fake.NewClientBuilder().
+					WithScheme(scheme).
+					WithObjects(existingSource).
+					Build()
+
+				info := kb.discoverSourceInfo(fakeClient, "test-source", "test-ns", logger)
+
+				Expect(info.pvcName).To(BeEmpty())
+				Expect(info.sourcePathOverride).To(BeNil())
+				Expect(info.repository).To(BeEmpty())
+			})
+		})
+
+		Context("when source name is empty", func() {
+			It("should return empty info", func() {
+				fakeClient := fake.NewClientBuilder().
+					WithScheme(scheme).
+					Build()
+
+				info := kb.discoverSourceInfo(fakeClient, "", "test-ns", logger)
+
+				Expect(info.pvcName).To(BeEmpty())
+				Expect(info.sourcePathOverride).To(BeNil())
+				Expect(info.repository).To(BeEmpty())
+			})
+		})
+
+		Context("when namespace is empty", func() {
+			It("should return empty info", func() {
+				fakeClient := fake.NewClientBuilder().
+					WithScheme(scheme).
+					Build()
+
+				info := kb.discoverSourceInfo(fakeClient, "test-source", "", logger)
+
+				Expect(info.pvcName).To(BeEmpty())
+				Expect(info.sourcePathOverride).To(BeNil())
+				Expect(info.repository).To(BeEmpty())
+			})
+		})
+
+		Context("when only repository is specified", func() {
+			It("should discover only repository when PVC and sourcePathOverride are empty", func() {
+				existingSource := &volsyncv1alpha1.ReplicationSource{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "repo-only-source",
+						Namespace: "test-ns",
+					},
+					Spec: volsyncv1alpha1.ReplicationSourceSpec{
+						// No SourcePVC specified
+						Kopia: &volsyncv1alpha1.ReplicationSourceKopiaSpec{
+							Repository: "repo-secret-name",
+							// No sourcePathOverride specified
+						},
+					},
+				}
+
+				fakeClient := fake.NewClientBuilder().
+					WithScheme(scheme).
+					WithObjects(existingSource).
+					Build()
+
+				info := kb.discoverSourceInfo(fakeClient, "repo-only-source", "test-ns", logger)
+
+				Expect(info.pvcName).To(BeEmpty())
+				Expect(info.sourcePathOverride).To(BeNil())
+				Expect(info.repository).To(Equal("repo-secret-name"))
+			})
+		})
+	})
+
+	Describe("sourcePathOverride in destination environment variables", func() {
+		Context("when sourcePathOverride is set for destination", func() {
+			It("should include KOPIA_SOURCE_PATH_OVERRIDE env var", func() {
+				owner := &volsyncv1alpha1.ReplicationDestination{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-destination",
+						Namespace: "test-ns",
+					},
+				}
+
+				m := &Mover{
+					sourcePathOverride: ptr.To("/custom/restore/path"),
+					isSource:           false,
+					repositoryName:     "test-repo",
+					username:           "test-user",
+					hostname:           "test-host",
+					owner:              owner,
+				}
+
+				secret := &corev1.Secret{
+					Data: map[string][]byte{
+						"KOPIA_REPOSITORY": []byte("s3://bucket/path"),
+						"KOPIA_PASSWORD":   []byte("password"),
+					},
+				}
+
+				envVars := m.buildEnvironmentVariables(secret)
+
+				var found bool
+				var actualValue string
+				for _, env := range envVars {
+					if env.Name == "KOPIA_SOURCE_PATH_OVERRIDE" {
+						found = true
+						actualValue = env.Value
+						break
+					}
+				}
+
+				Expect(found).To(BeTrue(), "Expected KOPIA_SOURCE_PATH_OVERRIDE env var to be present")
+				Expect(actualValue).To(Equal("/custom/restore/path"))
+			})
+		})
+
+		Context("when sourcePathOverride is set for source", func() {
+			It("should include KOPIA_SOURCE_PATH_OVERRIDE env var", func() {
+				owner := &volsyncv1alpha1.ReplicationSource{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-source",
+						Namespace: "test-ns",
+					},
+				}
+
+				m := &Mover{
+					sourcePathOverride: ptr.To("/custom/backup/path"),
+					isSource:           true,
+					repositoryName:     "test-repo",
+					username:           "test-user",
+					hostname:           "test-host",
+					owner:              owner,
+				}
+
+				secret := &corev1.Secret{
+					Data: map[string][]byte{
+						"KOPIA_REPOSITORY": []byte("s3://bucket/path"),
+						"KOPIA_PASSWORD":   []byte("password"),
+					},
+				}
+
+				envVars := m.buildEnvironmentVariables(secret)
+
+				var found bool
+				var actualValue string
+				for _, env := range envVars {
+					if env.Name == "KOPIA_SOURCE_PATH_OVERRIDE" {
+						found = true
+						actualValue = env.Value
+						break
+					}
+				}
+
+				Expect(found).To(BeTrue(), "Expected KOPIA_SOURCE_PATH_OVERRIDE env var to be present")
+				Expect(actualValue).To(Equal("/custom/backup/path"))
+			})
+		})
+
+		Context("when sourcePathOverride is nil", func() {
+			It("should not include KOPIA_SOURCE_PATH_OVERRIDE env var", func() {
+				owner := &volsyncv1alpha1.ReplicationDestination{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-destination",
+						Namespace: "test-ns",
+					},
+				}
+
+				m := &Mover{
+					sourcePathOverride: nil,
+					isSource:           false,
+					repositoryName:     "test-repo",
+					username:           "test-user",
+					hostname:           "test-host",
+					owner:              owner,
+				}
+
+				secret := &corev1.Secret{
+					Data: map[string][]byte{
+						"KOPIA_REPOSITORY": []byte("s3://bucket/path"),
+						"KOPIA_PASSWORD":   []byte("password"),
+					},
+				}
+
+				envVars := m.buildEnvironmentVariables(secret)
+
+				var found bool
+				for _, env := range envVars {
+					if env.Name == "KOPIA_SOURCE_PATH_OVERRIDE" {
+						found = true
+						break
+					}
+				}
+
+				Expect(found).To(BeFalse(), "Did not expect KOPIA_SOURCE_PATH_OVERRIDE env var to be present")
+			})
+		})
+	})
+
+	Describe("discoverSourcePVC backward compatibility", func() {
+		It("should return PVC name from discoverSourceInfo", func() {
+			source := &volsyncv1alpha1.ReplicationSource{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-source",
 					Namespace: "test-ns",
@@ -63,270 +342,21 @@ func TestDiscoverSourceInfo(t *testing.T) {
 					SourcePVC: "source-pvc",
 					Kopia: &volsyncv1alpha1.ReplicationSourceKopiaSpec{
 						SourcePathOverride: ptr.To("/custom/path"),
-						Repository:         "test-repo-secret",
 					},
 				},
-			},
-			expectedPVCName:            "source-pvc",
-			expectedSourcePathOverride: ptr.To("/custom/path"),
-			expectedRepository:         "test-repo-secret",
-		},
-		{
-			name:            "discovers PVC name without sourcePathOverride or repository",
-			sourceName:      "test-source",
-			sourceNamespace: "test-ns",
-			existingSource: &volsyncv1alpha1.ReplicationSource{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-source",
-					Namespace: "test-ns",
-				},
-				Spec: volsyncv1alpha1.ReplicationSourceSpec{
-					SourcePVC: "source-pvc",
-					Kopia:     &volsyncv1alpha1.ReplicationSourceKopiaSpec{},
-				},
-			},
-			expectedPVCName:            "source-pvc",
-			expectedSourcePathOverride: nil,
-			expectedRepository:         "",
-		},
-		{
-			name:                       "returns empty when source doesn't exist",
-			sourceName:                 "missing-source",
-			sourceNamespace:            "test-ns",
-			existingSource:             nil,
-			expectedPVCName:            "",
-			expectedSourcePathOverride: nil,
-			expectedRepository:         "",
-		},
-		{
-			name:            "returns empty when source doesn't use Kopia",
-			sourceName:      "test-source",
-			sourceNamespace: "test-ns",
-			existingSource: &volsyncv1alpha1.ReplicationSource{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-source",
-					Namespace: "test-ns",
-				},
-				Spec: volsyncv1alpha1.ReplicationSourceSpec{
-					SourcePVC: "source-pvc",
-					// No Kopia spec
-				},
-			},
-			expectedPVCName:            "",
-			expectedSourcePathOverride: nil,
-			expectedRepository:         "",
-		},
-		{
-			name:                       "handles empty source name",
-			sourceName:                 "",
-			sourceNamespace:            "test-ns",
-			expectedPVCName:            "",
-			expectedSourcePathOverride: nil,
-			expectedRepository:         "",
-		},
-		{
-			name:                       "handles empty namespace",
-			sourceName:                 "test-source",
-			sourceNamespace:            "",
-			expectedPVCName:            "",
-			expectedSourcePathOverride: nil,
-			expectedRepository:         "",
-		},
-		{
-			name:            "discovers only repository when PVC and sourcePathOverride are empty",
-			sourceName:      "repo-only-source",
-			sourceNamespace: "test-ns",
-			existingSource: &volsyncv1alpha1.ReplicationSource{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "repo-only-source",
-					Namespace: "test-ns",
-				},
-				Spec: volsyncv1alpha1.ReplicationSourceSpec{
-					// No SourcePVC specified
-					Kopia: &volsyncv1alpha1.ReplicationSourceKopiaSpec{
-						Repository: "repo-secret-name",
-						// No sourcePathOverride specified
-					},
-				},
-			},
-			expectedPVCName:            "",
-			expectedSourcePathOverride: nil,
-			expectedRepository:         "repo-secret-name",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create fake client
-			var objs []client.Object
-			if tt.existingSource != nil {
-				objs = append(objs, tt.existingSource)
 			}
+
 			fakeClient := fake.NewClientBuilder().
 				WithScheme(scheme).
-				WithObjects(objs...).
+				WithObjects(source).
 				Build()
 
-			// Create builder
 			kb := &Builder{}
 			logger := logr.Discard()
 
-			// Call the function
-			info := kb.discoverSourceInfo(fakeClient, tt.sourceName, tt.sourceNamespace, logger)
+			pvcName := kb.discoverSourcePVC(fakeClient, "test-source", "test-ns", logger)
 
-			// Check PVC name
-			if info.pvcName != tt.expectedPVCName {
-				t.Errorf("Expected PVC name %q, got %q", tt.expectedPVCName, info.pvcName)
-			}
-
-			// Check sourcePathOverride
-			if tt.expectedSourcePathOverride == nil && info.sourcePathOverride != nil {
-				t.Errorf("Expected nil sourcePathOverride, got %q", *info.sourcePathOverride)
-			} else if tt.expectedSourcePathOverride != nil && info.sourcePathOverride == nil {
-				t.Errorf("Expected sourcePathOverride %q, got nil", *tt.expectedSourcePathOverride)
-			} else if tt.expectedSourcePathOverride != nil && info.sourcePathOverride != nil {
-				if *tt.expectedSourcePathOverride != *info.sourcePathOverride {
-					t.Errorf("Expected sourcePathOverride %q, got %q",
-						*tt.expectedSourcePathOverride, *info.sourcePathOverride)
-				}
-			}
-
-			// Check repository
-			if info.repository != tt.expectedRepository {
-				t.Errorf("Expected repository %q, got %q", tt.expectedRepository, info.repository)
-			}
+			Expect(pvcName).To(Equal("source-pvc"))
 		})
-	}
-}
-
-// TestSourcePathOverrideInDestinationEnvVars tests that sourcePathOverride is properly
-// included in destination environment variables
-//
-//nolint:funlen
-func TestSourcePathOverrideInDestinationEnvVars(t *testing.T) {
-	tests := []struct {
-		name               string
-		sourcePathOverride *string
-		isSource           bool
-		expectEnvVar       bool
-		expectedValue      string
-	}{
-		{
-			name:               "includes sourcePathOverride for destination",
-			sourcePathOverride: ptr.To("/custom/restore/path"),
-			isSource:           false,
-			expectEnvVar:       true,
-			expectedValue:      "/custom/restore/path",
-		},
-		{
-			name:               "includes sourcePathOverride for source",
-			sourcePathOverride: ptr.To("/custom/backup/path"),
-			isSource:           true,
-			expectEnvVar:       true,
-			expectedValue:      "/custom/backup/path",
-		},
-		{
-			name:               "no env var when sourcePathOverride is nil",
-			sourcePathOverride: nil,
-			isSource:           false,
-			expectEnvVar:       false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create a mock owner object
-			var owner client.Object
-			if tt.isSource {
-				owner = &volsyncv1alpha1.ReplicationSource{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-source",
-						Namespace: "test-ns",
-					},
-				}
-			} else {
-				owner = &volsyncv1alpha1.ReplicationDestination{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-destination",
-						Namespace: "test-ns",
-					},
-				}
-			}
-
-			m := &Mover{
-				sourcePathOverride: tt.sourcePathOverride,
-				isSource:           tt.isSource,
-				repositoryName:     "test-repo",
-				username:           "test-user",
-				hostname:           "test-host",
-				owner:              owner,
-			}
-
-			// Create a mock secret
-			secret := &corev1.Secret{
-				Data: map[string][]byte{
-					"KOPIA_REPOSITORY": []byte("s3://bucket/path"),
-					"KOPIA_PASSWORD":   []byte("password"),
-				},
-			}
-
-			envVars := m.buildEnvironmentVariables(secret)
-
-			// Check if KOPIA_SOURCE_PATH_OVERRIDE is present
-			found := false
-			var actualValue string
-			for _, env := range envVars {
-				if env.Name == "KOPIA_SOURCE_PATH_OVERRIDE" {
-					found = true
-					actualValue = env.Value
-					break
-				}
-			}
-
-			if tt.expectEnvVar && !found {
-				t.Errorf("Expected KOPIA_SOURCE_PATH_OVERRIDE env var, but not found")
-			}
-			if !tt.expectEnvVar && found {
-				t.Errorf("Did not expect KOPIA_SOURCE_PATH_OVERRIDE env var, but found with value %q", actualValue)
-			}
-			if tt.expectEnvVar && found && actualValue != tt.expectedValue {
-				t.Errorf("Expected KOPIA_SOURCE_PATH_OVERRIDE value %q, got %q", tt.expectedValue, actualValue)
-			}
-		})
-	}
-}
-
-// TestDiscoverSourcePVCCompatibility tests the backward compatibility wrapper
-func TestDiscoverSourcePVCCompatibility(t *testing.T) {
-	scheme := runtime.NewScheme()
-	_ = volsyncv1alpha1.AddToScheme(scheme)
-
-	source := &volsyncv1alpha1.ReplicationSource{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-source",
-			Namespace: "test-ns",
-		},
-		Spec: volsyncv1alpha1.ReplicationSourceSpec{
-			SourcePVC: "source-pvc",
-			Kopia: &volsyncv1alpha1.ReplicationSourceKopiaSpec{
-				SourcePathOverride: ptr.To("/custom/path"),
-			},
-		},
-	}
-
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme).
-		WithObjects(source).
-		Build()
-
-	kb := &Builder{}
-	logger := logr.Discard()
-
-	// Call the deprecated function
-	pvcName := kb.discoverSourcePVC(fakeClient, "test-source", "test-ns", logger)
-
-	// Should still return the PVC name
-	if pvcName != "source-pvc" {
-		t.Errorf("Expected PVC name 'source-pvc', got %q", pvcName)
-	}
-}
+	})
+})

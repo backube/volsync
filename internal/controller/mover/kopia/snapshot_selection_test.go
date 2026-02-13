@@ -125,15 +125,15 @@ var _ = Describe("Kopia Snapshot Selection", func() {
 		It("should demonstrate that Kopia returns snapshots in chronological order (oldest first)", func() {
 			// Verify our test data matches Kopia's behavior
 			Expect(snapshots).To(HaveLen(5))
-			
+
 			// First element should be the oldest
 			Expect(snapshots[0].ID).To(ContainSubstring("week-old"))
 			Expect(snapshots[0].Description).To(ContainSubstring("week old"))
-			
+
 			// Last element should be the newest
 			Expect(snapshots[len(snapshots)-1].ID).To(ContainSubstring("latest"))
 			Expect(snapshots[len(snapshots)-1].Description).To(ContainSubstring("latest"))
-			
+
 			// Verify chronological ordering
 			for i := 1; i < len(snapshots); i++ {
 				Expect(snapshots[i].StartTime.After(snapshots[i-1].StartTime)).To(BeTrue(),
@@ -145,7 +145,7 @@ var _ = Describe("Kopia Snapshot Selection", func() {
 			// Test with previousOffset=0 (should select latest, but gets oldest)
 			selected, err := selectSnapshotWithoutReverse(snapshots, 0)
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			// BUG: This selects the OLDEST snapshot instead of the newest!
 			Expect(selected).To(ContainSubstring("week-old"), "Current buggy behavior: selects oldest when expecting newest")
 			Expect(selected).NotTo(ContainSubstring("latest"), "Should have selected latest, but didn't")
@@ -156,7 +156,7 @@ var _ = Describe("Kopia Snapshot Selection", func() {
 			selected, err := selectSnapshotWithoutReverse(snapshots, 1)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(selected).To(ContainSubstring("oldest"), "Gets second-oldest instead of second-newest")
-			
+
 			// previousOffset=2 should get third-newest, but gets third-oldest
 			selected, err = selectSnapshotWithoutReverse(snapshots, 2)
 			Expect(err).NotTo(HaveOccurred())
@@ -168,12 +168,12 @@ var _ = Describe("Kopia Snapshot Selection", func() {
 			selected, err := selectSnapshotWithReverse(snapshots, 0)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(selected).To(ContainSubstring("latest"), "Fixed behavior: correctly selects newest")
-			
+
 			// Test with previousOffset=1 (should select second-newest)
 			selected, err = selectSnapshotWithReverse(snapshots, 1)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(selected).To(ContainSubstring("hour-ago"), "Correctly selects second-newest")
-			
+
 			// Test with previousOffset=2 (should select third-newest)
 			selected, err = selectSnapshotWithReverse(snapshots, 2)
 			Expect(err).NotTo(HaveOccurred())
@@ -186,7 +186,7 @@ var _ = Describe("Kopia Snapshot Selection", func() {
 			_, err := selectSnapshotWithReverse(emptySnapshots, 0)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("no snapshots"))
-			
+
 			// Offset exceeds available snapshots
 			_, err = selectSnapshotWithReverse(snapshots, 10)
 			Expect(err).To(HaveOccurred())
@@ -197,13 +197,13 @@ var _ = Describe("Kopia Snapshot Selection", func() {
 			// Simulate what users are experiencing
 			fmt.Fprintf(GinkgoWriter, "\n=== Real-World Impact ===\n")
 			fmt.Fprintf(GinkgoWriter, "User expects to restore: %s\n", snapshots[len(snapshots)-1].ID)
-			
+
 			buggySelection, _ := selectSnapshotWithoutReverse(snapshots, 0)
 			fmt.Fprintf(GinkgoWriter, "Current bug restores: %s\n", buggySelection)
-			
+
 			fixedSelection, _ := selectSnapshotWithReverse(snapshots, 0)
 			fmt.Fprintf(GinkgoWriter, "After fix restores: %s\n", fixedSelection)
-			
+
 			// Calculate how old the wrong snapshot is
 			for _, s := range snapshots {
 				if s.ID == buggySelection {
@@ -217,14 +217,14 @@ var _ = Describe("Kopia Snapshot Selection", func() {
 		It("REGRESSION TEST: Must use reverse for proper snapshot ordering", func() {
 			// This test ensures the fix remains in place
 			// It will FAIL if someone removes the 'reverse' from the jq commands
-			
+
 			// The correct behavior MUST select newest first
 			result, err := selectSnapshotWithReverse(snapshots, 0)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result).To(ContainSubstring("latest"), 
+			Expect(result).To(ContainSubstring("latest"),
 				"CRITICAL: Snapshot selection must return newest snapshot when offset=0. "+
-				"The 'reverse' operation is required because Kopia returns snapshots oldest-first.")
-			
+					"The 'reverse' operation is required because Kopia returns snapshots oldest-first.")
+
 			// Verify ordering for all offsets
 			expectations := []struct {
 				offset   int
@@ -237,15 +237,15 @@ var _ = Describe("Kopia Snapshot Selection", func() {
 				{3, "oldest", "fourth-newest snapshot"},
 				{4, "week-old", "oldest snapshot"},
 			}
-			
+
 			for _, exp := range expectations {
 				result, err := selectSnapshotWithReverse(snapshots, exp.offset)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(result).To(ContainSubstring(exp.expected),
-					fmt.Sprintf("Offset %d must return %s. Check that 'reverse' is applied in entry.sh", 
+					fmt.Sprintf("Offset %d must return %s. Check that 'reverse' is applied in entry.sh",
 						exp.offset, exp.desc))
 			}
-			
+
 			// This would be the WRONG behavior (without reverse)
 			wrongResult, err := selectSnapshotWithoutReverse(snapshots, 0)
 			Expect(err).NotTo(HaveOccurred())
@@ -257,17 +257,17 @@ var _ = Describe("Kopia Snapshot Selection", func() {
 			// Test that our Go structs correctly parse Kopia JSON output
 			jsonOutput, err := json.Marshal(snapshots)
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			var parsedSnapshots []KopiaSnapshot
 			err = json.Unmarshal(jsonOutput, &parsedSnapshots)
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			Expect(len(parsedSnapshots)).To(Equal(len(snapshots)))
 			// Compare IDs instead of full structs to avoid time comparison issues
 			for i := range parsedSnapshots {
 				Expect(parsedSnapshots[i].ID).To(Equal(snapshots[i].ID))
 			}
-			
+
 			// Simulate jq processing: '.[0].id' on original array
 			fmt.Fprintf(GinkgoWriter, "\nSimulating shell script behavior:\n")
 			fmt.Fprintf(GinkgoWriter, "jq '.[0].id' (current): %s\n", parsedSnapshots[0].ID)

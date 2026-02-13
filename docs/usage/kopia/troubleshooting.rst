@@ -9,6 +9,102 @@ This guide provides comprehensive troubleshooting information for Kopia-based ba
 and restore operations in VolSync, with a focus on the enhanced error reporting and
 snapshot discovery features.
 
+Enable Debug Logging First!
+============================
+
+.. important::
+   **When experiencing issues, the FIRST step should be enabling debug logging.**
+
+   Debug logging provides detailed information about what the Kopia mover is doing,
+   making it much easier to identify where problems occur (especially hangs).
+
+Quick Steps to Enable Debug Logging
+------------------------------------
+
+1. **Edit your repository secret** to add debug logging:
+
+   .. code-block:: bash
+
+      kubectl edit secret kopia-config -n <namespace>
+
+2. **Add the following to the stringData section**:
+
+   .. code-block:: yaml
+
+      stringData:
+        # Your existing configuration...
+        KOPIA_REPOSITORY: s3://my-bucket
+        KOPIA_PASSWORD: my-password
+
+        # ADD THESE LINES for debug output:
+        KOPIA_LOG_LEVEL: "debug"       # Shows logs in kubectl logs (console/stdout)
+        KOPIA_FILE_LOG_LEVEL: "debug"  # Saves logs to files in cache directory
+
+3. **Trigger a new backup/restore** to apply the settings:
+
+   .. code-block:: bash
+
+      # For backup
+      kubectl patch replicationsource <name> -n <namespace> \
+        --type merge -p '{"spec":{"trigger":{"manual":"debug-now"}}}'
+
+      # For restore
+      kubectl patch replicationdestination <name> -n <namespace> \
+        --type merge -p '{"spec":{"trigger":{"manual":"debug-now"}}}'
+
+4. **View the debug logs**:
+
+   .. code-block:: bash
+
+      # Find the mover pod
+      kubectl get pods -l "volsync.backube/mover-job" -n <namespace>
+
+      # View logs with timestamps
+      kubectl logs <mover-pod> -n <namespace> --timestamps
+
+5. **Look for timing information** in the logs:
+
+   - Lines with ``TIMING:`` show operation durations
+   - Lines with ``DEBUG:`` show detailed execution steps
+   - Lines with ``INFO:`` show major operations
+   - Lines with ``ERROR:`` indicate failures
+
+What Debug Logging Shows
+------------------------
+
+With debug logging enabled, you'll see:
+
+- **Cache directory operations** - Where it often hangs with "setting cache directory"
+- **Repository connection attempts** - Each connection method and timing
+- **Snapshot operations** - Detailed progress during backup/restore
+- **Command execution** - Exact Kopia commands being run
+- **Timing metrics** - How long each operation takes
+
+.. warning::
+   **Remember to disable debug logging after troubleshooting!**
+
+   Debug logging can generate large amounts of output. After resolving issues:
+
+   - Remove or set ``KOPIA_LOG_LEVEL`` back to ``"info"`` (for console logs)
+   - Remove or set ``KOPIA_FILE_LOG_LEVEL`` back to ``"info"`` or ``"error"`` (for file logs)
+
+Controlling Log Retention
+-------------------------
+
+To prevent cache PVC from filling with logs, you can also configure:
+
+.. code-block:: yaml
+
+   stringData:
+     # Debug logging for troubleshooting
+     KOPIA_FILE_LOG_LEVEL: "debug"
+
+     # Limit log retention (optional)
+     KOPIA_LOG_DIR_MAX_FILES: "5"    # Keep only 5 log files
+     KOPIA_LOG_DIR_MAX_AGE: "2h"     # Keep logs for 2 hours only
+
+See the :ref:`kopia-logging-configuration` section for complete logging configuration options.
+
 Quick Reference: Common Issues
 ===============================
 
@@ -24,8 +120,8 @@ This section provides quick solutions to the most common Kopia issues:
      - Known issue: Use KOPIA_MANUAL_CONFIG in repository secret instead of compression field
    * - No snapshots found
      - Check requestedIdentity matches source; use availableIdentities to see what's in repository
-   * - repositoryPVC in ReplicationDestination
-     - Not supported - repositoryPVC only works with ReplicationSource
+   * - moverVolumes for repository in ReplicationDestination
+     - Not supported - moverVolumes for repositories only works with ReplicationSource
    * - External policy files not loading
      - Not implemented - use inline configuration (retain, actions) instead
    * - enableFileDeletion vs enable_file_deletion
@@ -40,8 +136,14 @@ This section provides quick solutions to the most common Kopia issues:
      - Check maintenance is running; policies only apply during maintenance
    * - Wrong data restored
      - Verify requestedIdentity; check if source used custom username/hostname
+   * - **Debugging any issue**
+     - **Enable debug logging: Add KOPIA_LOG_LEVEL: "debug" to repository secret for console logs**
+   * - Want to see Kopia logs in kubectl logs
+     - Set KOPIA_LOG_LEVEL to desired level (debug, info, warn, error) in repository secret
    * - Cache PVC filling up with logs
      - Configure logging via KOPIA_FILE_LOG_LEVEL, KOPIA_LOG_DIR_MAX_FILES, KOPIA_LOG_DIR_MAX_AGE in repository secret
+   * - KopiaMaintenance permission denied
+     - Set podSecurityContext.runAsUser and fsGroup to match repository directory ownership
 
 Understanding Enhanced Error Reporting
 ======================================
@@ -183,7 +285,7 @@ Filesystem Repository Issues
 
 **Resolution**:
 
-1. Verify the PVC specified in ``repositoryPVC`` exists in the correct namespace:
+1. Verify the PVC specified in ``moverVolumes`` exists in the correct namespace:
 
    .. code-block:: bash
 
@@ -237,7 +339,7 @@ Filesystem Repository Issues
 
 **Filesystem URL Configuration**
 
-**Note**: When using ``repositoryPVC``, VolSync automatically sets ``KOPIA_REPOSITORY=filesystem:///kopia/repository``. You don't need to configure this manually in the secret.
+**Note**: When using ``moverVolumes`` for filesystem repositories, VolSync automatically detects the first PVC and sets ``KOPIA_REPOSITORY=filesystem:///mnt/<mountPath>`` where ``<mountPath>`` is from your moverVolumes configuration. You don't need to configure this manually in the secret.
 3. Check for directory traversal attempts (../)
 
 **Permission Denied**
@@ -1081,17 +1183,23 @@ Retention Policy Not Working
    Retention policies are enforced during maintenance operations.
    
    .. code-block:: bash
-   
+
       # Check when maintenance last ran
-      kubectl get replicationsource <name> -o jsonpath='{.status.kopia.lastMaintenance}'
-   
-   **Solution**: Ensure ``maintenanceIntervalDays`` is set appropriately:
-   
+      kubectl get kopiamaintenance <name> -o jsonpath='{.status.lastMaintenanceTime}'
+
+   **Solution**: Ensure KopiaMaintenance CRD is configured:
+
    .. code-block:: yaml
-   
+
+      apiVersion: volsync.backube/v1alpha1
+      kind: KopiaMaintenance
+      metadata:
+        name: my-maintenance
       spec:
-        kopia:
-          maintenanceIntervalDays: 7  # Run weekly
+        repository:
+          repository: kopia-config
+        trigger:
+          schedule: "0 2 * * 0"  # Weekly on Sunday at 2 AM
 
 2. **Policy Not Applied**
    
@@ -1125,6 +1233,86 @@ Retention Policy Not Working
       kubectl get replicationsource <name> -o jsonpath='{.spec.kopia.policyConfig}'
    
    **Solution**: Either use inline OR external policies, not both.
+
+KopiaMaintenance Issues
+-----------------------
+
+**Problem**: Maintenance not running after migrating from maintenanceIntervalDays
+
+Since ``maintenanceIntervalDays`` has been removed from ReplicationSource, you must now use
+the KopiaMaintenance CRD for repository maintenance.
+
+**Migration Steps**:
+
+1. **Create KopiaMaintenance resource**:
+
+   .. code-block:: yaml
+
+      apiVersion: volsync.backube/v1alpha1
+      kind: KopiaMaintenance
+      metadata:
+        name: my-maintenance
+        namespace: my-namespace
+      spec:
+        repository:
+          repository: kopia-config  # Same as your ReplicationSource
+        trigger:
+          schedule: "0 2 * * *"     # Daily at 2 AM
+        # Optional: Add cache for better performance
+        cacheCapacity: 10Gi
+        cacheStorageClassName: fast-ssd
+
+2. **Verify maintenance is running**:
+
+   .. code-block:: bash
+
+      # Check KopiaMaintenance status
+      kubectl get kopiamaintenance -n my-namespace
+
+      # Check CronJob creation
+      kubectl get cronjobs -n my-namespace -l volsync.backube/kopia-maintenance=true
+
+      # Check maintenance job logs
+      kubectl logs -n my-namespace job/<maintenance-job-name>
+
+**Common KopiaMaintenance Problems**:
+
+1. **Cache PVC Issues**:
+
+   .. code-block:: bash
+
+      # Check cache PVC status
+      kubectl get pvc -n my-namespace | grep cache
+
+      # If cache PVC is stuck in Pending
+      kubectl describe pvc <cache-pvc-name> -n my-namespace
+
+   **Solution**: Verify storage class exists and has available capacity
+
+2. **Manual Trigger Not Working**:
+
+   .. code-block:: yaml
+
+      spec:
+        trigger:
+          manual: "trigger-now"  # Update this value to trigger
+
+   .. code-block:: bash
+
+      # Check if manual trigger is recognized
+      kubectl get kopiamaintenance <name> -n <namespace> \
+        -o jsonpath='{.spec.trigger.manual} -> {.status.lastManualSync}'
+
+3. **Maintenance Job Failures**:
+
+   .. code-block:: bash
+
+      # Check recent job failures
+      kubectl get jobs -n <namespace> -l volsync.backube/kopia-maintenance=true \
+        --sort-by=.metadata.creationTimestamp | tail -5
+
+      # View error logs
+      kubectl logs -n <namespace> job/<failed-job-name>
 
 Compression Issues
 ------------------
@@ -1340,6 +1528,220 @@ Best Practices for Policy Configuration
 4. **Document Changes**: Keep track of policy modifications and reasons
 5. **Regular Audits**: Periodically verify policies are still appropriate
 
+KopiaMaintenance Permission Issues
+===================================
+
+Permission Denied Accessing Repository
+---------------------------------------
+
+**Problem**: KopiaMaintenance jobs fail with permission errors when accessing repository files
+
+**Error Message**:
+
+.. code-block:: text
+
+   ERROR error connecting to repository: unable to read format blob:
+   error determining sharded path: error getting sharding parameters for storage:
+   unable to complete GetBlobFromPath:/repository/.shards despite 10 retries:
+   open /repository/.shards: permission denied
+
+**Cause**: Repository directory ownership doesn't match the user running maintenance jobs. By default, maintenance jobs run as UID 1000, but your repository may be owned by a different user.
+
+**Diagnosis**:
+
+1. **Check maintenance pod user**:
+
+   .. code-block:: bash
+
+      # Find the maintenance job pod
+      kubectl get pods -n <namespace> -l volsync.backube/kopia-maintenance=true
+
+      # Check the security context
+      kubectl get pod <maintenance-pod> -o jsonpath='{.spec.securityContext}'
+
+2. **Check repository ownership** (for filesystem repositories):
+
+   .. code-block:: bash
+
+      # Create debug pod to check repository ownership
+      kubectl run -it --rm debug --image=busybox --restart=Never \
+        --overrides='
+        {
+          "spec": {
+            "containers": [{
+              "name": "debug",
+              "image": "busybox",
+              "command": ["sh"],
+              "volumeMounts": [{
+                "name": "repo",
+                "mountPath": "/repository"
+              }]
+            }],
+            "volumes": [{
+              "name": "repo",
+              "persistentVolumeClaim": {
+                "claimName": "your-repository-pvc"
+              }
+            }]
+          }
+        }' \
+        -- sh -c "ls -ln /repository"
+
+      # Look for numeric UIDs/GIDs in output
+      # Example: drwxr-xr-x 2 2000 2000 4096 Jan 20 10:00 .
+
+**Solution**:
+
+Configure ``podSecurityContext`` in your KopiaMaintenance resource to match the repository ownership:
+
+.. code-block:: yaml
+
+   apiVersion: volsync.backube/v1alpha1
+   kind: KopiaMaintenance
+   metadata:
+     name: my-maintenance
+     namespace: backup-ns
+   spec:
+     repository:
+       repository: my-repo-secret
+     # Configure security context to match repository ownership
+     podSecurityContext:
+       runAsUser: 2000      # Set to repository owner UID
+       fsGroup: 2000        # Set to repository group GID
+       runAsNonRoot: true
+     trigger:
+       schedule: "0 2 * * *"
+
+**Verification**:
+
+.. code-block:: bash
+
+   # Trigger maintenance manually to test
+   kubectl patch kopiamaintenance my-maintenance -n backup-ns \
+     --type merge -p '{"spec":{"trigger":{"manual":"test-permissions"}}}'
+
+   # Watch for job creation and check logs
+   kubectl get jobs -n backup-ns -w
+
+   # Check logs of the new maintenance job
+   kubectl logs -n backup-ns job/<maintenance-job-name>
+
+Security Context for Different Storage Types
+---------------------------------------------
+
+**Filesystem Repositories (moverVolumes)**:
+
+Must match the PVC ownership:
+
+.. code-block:: yaml
+
+   podSecurityContext:
+     runAsUser: 2000    # Match PVC owner
+     fsGroup: 2000      # Match PVC group
+
+**Object Storage (S3, Azure, GCS)**:
+
+Generally doesn't require specific UIDs, but if cache is persistent:
+
+.. code-block:: yaml
+
+   podSecurityContext:
+     runAsUser: 1000    # Default is usually fine
+     fsGroup: 1000      # For cache PVC access
+     runAsNonRoot: true
+
+**NFS-backed Repositories**:
+
+May require specific UIDs based on NFS export configuration:
+
+.. code-block:: yaml
+
+   podSecurityContext:
+     runAsUser: 65534     # Often "nobody" user
+     fsGroup: 65534
+     runAsNonRoot: true
+     supplementalGroups:
+       - 100              # Additional groups if needed
+
+Common Scenarios
+----------------
+
+**Scenario 1: Repository Created by Different User**
+
+If your repository was initially created by backup jobs running as a different user:
+
+.. code-block:: yaml
+
+   # Maintenance must match the backup job user
+   spec:
+     podSecurityContext:
+       runAsUser: 2000    # Same as backup ReplicationSource
+       fsGroup: 2000
+
+**Scenario 2: Shared Repository Across Namespaces**
+
+For repositories accessed from multiple namespaces with different users:
+
+.. code-block:: yaml
+
+   # All KopiaMaintenance resources must use the same user
+   spec:
+     podSecurityContext:
+       runAsUser: 3000    # Consistent across all namespaces
+       fsGroup: 3000
+       runAsNonRoot: true
+
+**Scenario 3: Strict Security Policies**
+
+When cluster has Pod Security Standards enforcement:
+
+.. code-block:: yaml
+
+   spec:
+     podSecurityContext:
+       runAsUser: 10000     # Non-privileged UID
+       runAsGroup: 10000
+       fsGroup: 10000
+       runAsNonRoot: true
+       seccompProfile:
+         type: RuntimeDefault
+       # SELinux if required
+       seLinuxOptions:
+         level: "s0:c123,c456"
+
+**Scenario 4: Windows Containers**
+
+For Windows-based storage systems:
+
+.. code-block:: yaml
+
+   spec:
+     podSecurityContext:
+       windowsOptions:
+         gmsaCredentialSpecName: "gmsa-spec"
+         runAsUserName: "ContainerUser"
+
+Best Practices for Pod Security Context
+----------------------------------------
+
+1. **Match Repository Ownership**: Always configure ``podSecurityContext`` to match existing repository ownership rather than changing repository permissions
+
+2. **Document Security Settings**: Maintain documentation of the UIDs/GIDs used for each repository
+
+3. **Consistent Configuration**: Use the same ``podSecurityContext`` for backup (ReplicationSource) and maintenance operations
+
+4. **Test After Changes**: Always test maintenance after changing security context:
+
+   .. code-block:: bash
+
+      # Manual trigger for testing
+      kubectl patch kopiamaintenance <name> -n <namespace> \
+        --type merge -p '{"spec":{"trigger":{"manual":"test-'$(date +%s)'"}}}'
+
+5. **Security Compliance**: Set ``runAsNonRoot: true`` for security best practices
+
+6. **Avoid Root**: Never use UID 0 (root) - Kopia doesn't require root privileges
+
 Debugging with KOPIA_MANUAL_CONFIG
 -----------------------------------
 
@@ -1401,10 +1803,12 @@ check if KOPIA_MANUAL_CONFIG can be used as a workaround:
    test thoroughly before applying to production. Some settings may conflict with
    VolSync's automatic configuration.
 
+.. _kopia-logging-configuration:
+
 Kopia Logging Configuration
 ============================
 
-VolSync provides environment variables to control Kopia's file logging behavior, preventing the cache PVC from filling up with excessive logs. This is particularly important in Kubernetes environments where users typically rely on external logging solutions (Loki, ElasticSearch, Splunk, etc.) rather than file-based logs.
+VolSync provides environment variables to control Kopia's logging behavior, both for console output (what you see in ``kubectl logs``) and file logging (saved to the cache PVC). This is particularly important in Kubernetes environments where users typically rely on external logging solutions (Loki, ElasticSearch, Splunk, etc.) rather than file-based logs.
 
 The Problem: Cache PVC Filling Up
 ----------------------------------
@@ -1425,6 +1829,28 @@ The Problem: Cache PVC Filling Up
 - Manual intervention required to clean up logs
 - Wasted storage on redundant logging
 
+Understanding Console vs File Logging
+--------------------------------------
+
+Kopia supports two types of logging, each serving different purposes:
+
+**Console Logging (KOPIA_LOG_LEVEL)**
+   - Output goes to stdout/stderr
+   - Visible in ``kubectl logs`` output
+   - Captured by Kubernetes logging infrastructure
+   - Ideal for real-time debugging and monitoring
+   - No storage impact on cache PVC
+   - Automatically collected by external logging systems (Loki, ElasticSearch, etc.)
+
+**File Logging (KOPIA_FILE_LOG_LEVEL)**
+   - Saved to files in the cache directory (``/kopia/cache/logs``)
+   - Persists across pod restarts
+   - Can fill up cache PVC if not properly managed
+   - Useful for post-mortem analysis
+   - Requires manual cleanup or rotation settings
+
+**Best Practice for Kubernetes**: Use console logging (``KOPIA_LOG_LEVEL``) as your primary debugging tool since it integrates with Kubernetes native logging. File logging should be minimized to prevent cache PVC issues.
+
 Logging Configuration Environment Variables
 --------------------------------------------
 
@@ -1437,9 +1863,12 @@ VolSync exposes Kopia's native logging controls through environment variables th
    * - Variable
      - Default
      - Description
+   * - ``KOPIA_LOG_LEVEL``
+     - ``info``
+     - Log level for console/stdout logs (debug, info, warn, error). These logs appear in ``kubectl logs``. Independent of file log level
    * - ``KOPIA_FILE_LOG_LEVEL``
      - ``info``
-     - Log level for file logs (debug, info, warn, error). Provides good operational visibility without excessive verbosity
+     - Log level for file logs saved to cache directory (debug, info, warn, error). Provides good operational visibility without excessive verbosity
    * - ``KOPIA_LOG_DIR_MAX_FILES``
      - ``3``
      - Maximum number of CLI log files to retain. Optimized for Kubernetes where logs are externally collected
@@ -1482,8 +1911,9 @@ Override the default logging configuration by adding environment variables to yo
      KOPIA_PASSWORD: my-secure-password
      AWS_ACCESS_KEY_ID: AKIAIOSFODNN7EXAMPLE
      AWS_SECRET_ACCESS_KEY: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
-     
+
      # Minimal logging for production
+     KOPIA_LOG_LEVEL: "error"           # Only errors in kubectl logs
      KOPIA_FILE_LOG_LEVEL: "error"      # Only log errors to files
      KOPIA_LOG_DIR_MAX_FILES: "5"       # Keep only 5 log files
      KOPIA_LOG_DIR_MAX_AGE: "6h"        # Retain for 6 hours only
@@ -1503,20 +1933,21 @@ Override the default logging configuration by adding environment variables to yo
      KOPIA_PASSWORD: dev-password
      AWS_ACCESS_KEY_ID: AKIAIOSFODNN7EXAMPLE
      AWS_SECRET_ACCESS_KEY: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
-     
+
      # Verbose logging for debugging
-     KOPIA_FILE_LOG_LEVEL: "debug"      # Maximum verbosity
+     KOPIA_LOG_LEVEL: "debug"           # Maximum verbosity in kubectl logs
+     KOPIA_FILE_LOG_LEVEL: "debug"      # Maximum verbosity in files
      KOPIA_LOG_DIR_MAX_FILES: "20"      # Keep more files for analysis
      KOPIA_LOG_DIR_MAX_AGE: "7d"        # Keep logs for a week
 
-**Example: Disable File Logging Entirely**
+**Example: Console Logging Only (No File Logs)**
 
 .. code-block:: yaml
 
    apiVersion: v1
    kind: Secret
    metadata:
-     name: kopia-config-no-logs
+     name: kopia-config-console-only
    type: Opaque
    stringData:
      # Repository configuration
@@ -1524,9 +1955,10 @@ Override the default logging configuration by adding environment variables to yo
      KOPIA_PASSWORD: my-secure-password
      AWS_ACCESS_KEY_ID: AKIAIOSFODNN7EXAMPLE
      AWS_SECRET_ACCESS_KEY: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
-     
-     # Effectively disable file logging
-     KOPIA_FILE_LOG_LEVEL: "error"      # Only critical errors
+
+     # Console logging only - ideal for Kubernetes
+     KOPIA_LOG_LEVEL: "info"            # Normal console output in kubectl logs
+     KOPIA_FILE_LOG_LEVEL: "error"      # Minimal file logging
      KOPIA_LOG_DIR_MAX_FILES: "1"       # Minimum possible
      KOPIA_LOG_DIR_MAX_AGE: "1h"        # Very short retention
 
@@ -1548,16 +1980,19 @@ To see how much space logs are using in your cache PVC:
    # List log files
    kubectl exec <mover-pod> -n <namespace> -- ls -lh /kopia/cache/logs
 
-**Monitoring Log Rotation**
+**Monitoring Log Configuration**
 
-Verify that log rotation is working:
+Verify that logging is configured correctly:
 
 .. code-block:: bash
 
    # Check mover pod environment variables
    kubectl describe pod <mover-pod> -n <namespace> | grep -E "KOPIA_(FILE_)?LOG"
-   
-   # Watch log directory over time
+
+   # View console logs (controlled by KOPIA_LOG_LEVEL)
+   kubectl logs <mover-pod> -n <namespace> --tail=50
+
+   # Watch log directory over time (file logs)
    kubectl exec <mover-pod> -n <namespace> -- ls -lt /kopia/cache/logs | head -10
 
 **Cleaning Up Existing Logs**
@@ -1580,7 +2015,8 @@ When troubleshooting issues, temporarily increase logging:
 
    # Temporarily update your secret for debugging
    stringData:
-     KOPIA_FILE_LOG_LEVEL: "debug"      # Increase verbosity
+     KOPIA_LOG_LEVEL: "debug"           # See detailed output in kubectl logs
+     KOPIA_FILE_LOG_LEVEL: "debug"      # Save detailed logs to files
      KOPIA_LOG_DIR_MAX_FILES: "20"      # Keep more files
      KOPIA_LOG_DIR_MAX_AGE: "48h"       # Keep for 2 days
 
@@ -1620,7 +2056,8 @@ Best Practices for Logging in Kubernetes
 
       spec:
         kopia:
-          maintenanceIntervalDays: 7  # Weekly maintenance
+          # Note: maintenanceIntervalDays has been removed
+          # Use KopiaMaintenance CRD for maintenance configuration
 
 Common Scenarios and Recommendations
 -------------------------------------
@@ -1630,7 +2067,8 @@ Common Scenarios and Recommendations
 .. code-block:: yaml
 
    stringData:
-     KOPIA_FILE_LOG_LEVEL: "error"      # Minimize logging
+     KOPIA_LOG_LEVEL: "warn"            # Only warnings/errors in console
+     KOPIA_FILE_LOG_LEVEL: "error"      # Minimize file logging
      KOPIA_LOG_DIR_MAX_FILES: "5"       # Small rotation
      KOPIA_LOG_DIR_MAX_AGE: "6h"        # Short retention
 
@@ -1639,7 +2077,8 @@ Common Scenarios and Recommendations
 .. code-block:: yaml
 
    stringData:
-     KOPIA_FILE_LOG_LEVEL: "warn"       # Balanced logging
+     KOPIA_LOG_LEVEL: "info"            # Standard console logging
+     KOPIA_FILE_LOG_LEVEL: "warn"       # Balanced file logging
      KOPIA_LOG_DIR_MAX_FILES: "10"      # Moderate rotation
      KOPIA_LOG_DIR_MAX_AGE: "12h"       # Half-day retention
 
@@ -1648,7 +2087,8 @@ Common Scenarios and Recommendations
 .. code-block:: yaml
 
    stringData:
-     KOPIA_FILE_LOG_LEVEL: "info"       # Informative logging
+     KOPIA_LOG_LEVEL: "info"            # Informative console logging
+     KOPIA_FILE_LOG_LEVEL: "info"       # Informative file logging
      KOPIA_LOG_DIR_MAX_FILES: "20"      # Keep more history
      KOPIA_LOG_DIR_MAX_AGE: "3d"        # Several days retention
 
@@ -1657,7 +2097,8 @@ Common Scenarios and Recommendations
 .. code-block:: yaml
 
    stringData:
-     KOPIA_FILE_LOG_LEVEL: "info"       # More logging since no external collection
+     KOPIA_LOG_LEVEL: "info"            # Standard console output
+     KOPIA_FILE_LOG_LEVEL: "info"       # More file logging since no external collection
      KOPIA_LOG_DIR_MAX_FILES: "30"      # Extended history
      KOPIA_LOG_DIR_MAX_AGE: "7d"        # Week of logs for troubleshooting
 
@@ -1679,9 +2120,10 @@ If you're experiencing cache PVC issues with existing deployments:
 
       # Edit the secret
       kubectl edit secret kopia-config -n <namespace>
-      
+
       # Add the logging configuration
-      # KOPIA_FILE_LOG_LEVEL: "info"
+      # KOPIA_LOG_LEVEL: "info"          # Console logs (kubectl logs)
+      # KOPIA_FILE_LOG_LEVEL: "info"     # File logs
       # KOPIA_LOG_DIR_MAX_FILES: "3"
       # KOPIA_LOG_DIR_MAX_AGE: "4h"
 

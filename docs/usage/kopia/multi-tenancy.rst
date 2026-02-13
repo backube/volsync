@@ -40,6 +40,18 @@ VolSync automatically generates usernames and hostnames based on your Kubernetes
 
 **Key Design Principle**: The hostname is ALWAYS just the namespace name (unless explicitly customized). This is not a limitation but a deliberate design choice that simplifies multi-tenancy and ensures predictable behavior.
 
+How Identity Overrides Work Internally
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When you specify custom ``username`` or ``hostname`` fields in your ReplicationSource/ReplicationDestination, VolSync applies these overrides at **repository connection time**, not at snapshot creation time:
+
+1. **Environment Variables**: The custom values are set as ``KOPIA_OVERRIDE_USERNAME`` and ``KOPIA_OVERRIDE_HOSTNAME`` environment variables
+2. **Repository Connection**: These variables are used with the ``--override-username`` and ``--override-hostname`` flags when running ``kopia repository connect`` or ``kopia repository create``
+3. **Persistent Identity**: Once connected with the override identity, all subsequent operations (including ``kopia snapshot create``) automatically use that identity
+4. **No Snapshot Flags**: The ``--override-username`` and ``--override-hostname`` flags do NOT exist for ``kopia snapshot create`` - they were removed in Kopia v0.6.0
+
+This design ensures that the identity is established once at connection time and consistently used for all operations.
+
 Username generation logic
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -505,7 +517,7 @@ The API enforces validation patterns for custom usernames and hostnames:
 **Valid Examples**:
 
 - ``user1``
-- ``backup-user`` 
+- ``backup-user``
 - ``tenant.backup_job``
 - ``a`` (single character)
 
@@ -516,6 +528,57 @@ The API enforces validation patterns for custom usernames and hostnames:
 - ``.backup.user.`` (starts/ends with dot)
 - ``backup user`` (contains space)
 - ```` (empty string)
+
+Troubleshooting Identity Override Issues
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Issue: Trying to use --override-username or --override-hostname with kopia snapshot create**
+
+*Problem*: You see errors when trying to pass ``--override-username`` or ``--override-hostname`` as additional arguments.
+
+*Solution*: These flags don't exist for ``kopia snapshot create`` (removed in Kopia v0.6.0). Instead:
+
+1. Use the ``username`` and ``hostname`` fields in your ReplicationSource spec
+2. These are applied at repository connection time via environment variables
+3. Once connected, all snapshots automatically use the override identity
+
+.. code-block:: yaml
+
+   # Correct approach
+   spec:
+     kopia:
+       username: "custom-user"
+       hostname: "custom-host"
+       # DO NOT add these to additionalArgs:
+       # additionalArgs:
+       #   - "--override-username=custom-user"  # WRONG - flag doesn't exist
+       #   - "--override-hostname=custom-host"  # WRONG - flag doesn't exist
+
+**Issue: Identity not being applied as expected**
+
+*Problem*: Snapshots are created with different identity than configured.
+
+*Debugging Steps*:
+
+1. Check the mover pod logs to see the identity being used:
+
+.. code-block:: bash
+
+   kubectl logs <mover-pod> | grep -E "KOPIA_OVERRIDE|Using.*override|Creating snapshot for"
+
+2. Verify environment variables are set:
+
+.. code-block:: bash
+
+   kubectl exec <mover-pod> -- env | grep KOPIA_OVERRIDE
+
+3. Confirm the identity at connection time:
+
+.. code-block:: bash
+
+   kubectl logs <mover-pod> | grep "repository connect"
+
+The logs should show the override flags being applied during repository connection, not during snapshot creation.
 
 Identity Configuration for ReplicationDestination
 --------------------------------------------------
@@ -605,6 +668,53 @@ This is especially useful in multi-tenant scenarios where:
 
 Best practices for shared repositories
 ---------------------------------------
+
+**Repository Configuration Strategy**
+
+**Single Repository Approach (Strongly Recommended)**
+
+For optimal storage efficiency and deduplication benefits, use a single Kopia repository
+for all your PVCs within an organization or cluster:
+
+.. code-block:: yaml
+
+   # Single shared repository for ALL PVCs
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: kopia-repository-shared
+   type: Opaque
+   stringData:
+     KOPIA_REPOSITORY: s3://company-backups  # No path prefixes!
+     KOPIA_PASSWORD: secure-repository-password
+     # ... credentials
+
+This approach maximizes deduplication across all your data. Kopia's content-defined
+chunking means that duplicate data blocks (like OS files, common libraries, or
+repeated patterns) are stored only once across ALL your backups, regardless of which
+PVC they come from.
+
+**Benefits of Single Repository**:
+
+- **Maximum deduplication**: 50-80% storage reduction is common
+- **Simplified management**: One repository to monitor and maintain
+- **Automatic isolation**: Each ReplicationSource gets a unique identity
+- **Cost optimization**: Significant reduction in cloud storage costs
+- **Performance**: Kopia handles thousands of clients in a single repository efficiently
+
+**When Multiple Repositories Might Be Needed**:
+
+Only use separate repositories when you have clear requirements such as:
+
+- **Compliance**: Legal requirements for data separation (HIPAA, PCI-DSS, GDPR)
+- **Organizational boundaries**: Different departments with separate budgets
+- **Geographic constraints**: Data residency requirements
+- **Incompatible retention**: Vastly different retention policy requirements
+
+.. warning::
+   Avoid using bucket path prefixes like ``s3://bucket/app1`` and ``s3://bucket/app2``
+   unless absolutely necessary. This prevents deduplication between the paths and
+   increases storage costs.
 
 **Naming Strategies**
 

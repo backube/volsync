@@ -22,8 +22,9 @@ package kopia
 import (
 	"encoding/json"
 	"strings"
-	"testing"
 
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -34,17 +35,6 @@ const (
 	// kopiaManualConfigKey is the secret key for manual configuration
 	kopiaManualConfigKey = "KOPIA_MANUAL_CONFIG"
 )
-
-// TestManualConfigEnvironmentVariable tests that KOPIA_MANUAL_CONFIG is included in environment variables
-func TestManualConfigEnvironmentVariable(t *testing.T) {
-	tests := getManualConfigEnvTestCases()
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			testManualConfigEnvironment(t, tt)
-		})
-	}
-}
 
 type manualConfigEnvTestCase struct {
 	name               string
@@ -93,93 +83,6 @@ func getManualConfigEnvTestCases() []manualConfigEnvTestCase {
 					"caching": {"maxCacheSize": 2147483648}
 				}`,
 		},
-	}
-}
-
-func testManualConfigEnvironment(t *testing.T, tt manualConfigEnvTestCase) {
-	// Create mock owner
-	owner := &volsyncv1alpha1.ReplicationSource{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-rs",
-			Namespace: "test-namespace",
-		},
-	}
-
-	// Create mover
-	mover := &Mover{
-		username: "test-user",
-		hostname: "test-host",
-		owner:    owner,
-	}
-
-	// Create secret
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-secret",
-		},
-		Data: tt.secretData,
-	}
-
-	// Build environment variables
-	envVars := mover.buildEnvironmentVariables(secret)
-
-	// Check if KOPIA_MANUAL_CONFIG is present
-	verifyManualConfigPresence(t, tt, secret, envVars)
-}
-
-func verifyManualConfigPresence(
-	t *testing.T,
-	tt manualConfigEnvTestCase,
-	secret *corev1.Secret,
-	envVars []corev1.EnvVar,
-) {
-	found := false
-	var actualValue string
-	for _, env := range envVars {
-		if env.Name == kopiaManualConfigKey {
-			found = true
-			if env.ValueFrom != nil && env.ValueFrom.SecretKeyRef != nil {
-				// It's a secret reference, check that it references the right key
-				if env.ValueFrom.SecretKeyRef.Key != kopiaManualConfigKey {
-					t.Errorf("Expected secret key reference to be %s, got %s",
-						kopiaManualConfigKey, env.ValueFrom.SecretKeyRef.Key)
-				}
-				if env.ValueFrom.SecretKeyRef.Name != secret.Name {
-					t.Errorf("Expected secret name reference to be %s, got %s",
-						secret.Name, env.ValueFrom.SecretKeyRef.Name)
-				}
-				// The actual value would come from the secret
-				actualValue = string(tt.secretData[kopiaManualConfigKey])
-			} else {
-				actualValue = env.Value
-			}
-			break
-		}
-	}
-
-	if tt.expectManualConfig && !found {
-		t.Errorf("Expected %s to be present in environment variables", kopiaManualConfigKey)
-	}
-
-	if tt.expectManualConfig && found {
-		// Normalize JSON for comparison (remove whitespace differences)
-		expectedNorm := normalizeJSON(tt.expectedValue)
-		actualNorm := normalizeJSON(actualValue)
-		if expectedNorm != actualNorm {
-			t.Errorf("%s value mismatch\nExpected: %s\nActual: %s",
-				kopiaManualConfigKey, expectedNorm, actualNorm)
-		}
-	}
-}
-
-// TestManualConfigValidation tests JSON validation for manual configuration
-func TestManualConfigValidation(t *testing.T) {
-	tests := getManualConfigValidationTestCases()
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			testManualConfigValidation(t, tt)
-		})
 	}
 }
 
@@ -271,33 +174,6 @@ func getEdgeCaseConfigTestCases() []manualConfigValidationTestCase {
 			expectValid: true,
 			description: "Numeric values as strings should be handled",
 		},
-	}
-}
-
-func testManualConfigValidation(t *testing.T, tt manualConfigValidationTestCase) {
-	// Validate JSON syntax
-	var result map[string]interface{}
-	err := json.Unmarshal([]byte(tt.config), &result)
-
-	isValid := err == nil
-	if isValid != tt.expectValid {
-		if tt.expectValid {
-			t.Errorf("Expected config to be valid (%s), but got error: %v", tt.description, err)
-		} else {
-			t.Errorf("Expected config to be invalid (%s), but it was accepted", tt.description)
-		}
-	}
-}
-
-// TestManualConfigCompatibility tests that manual config works with different backends
-func TestManualConfigCompatibility(t *testing.T) {
-	manualConfig := `{"encryption":{"algorithm":"CHACHA20-POLY1305"},"compression":{"algorithm":"ZSTD-DEFAULT"}}`
-	backends := getBackendCompatibilityTestCases(manualConfig)
-
-	for _, backend := range backends {
-		t.Run(backend.name, func(t *testing.T) {
-			testManualConfigCompatibility(t, backend)
-		})
 	}
 }
 
@@ -398,81 +274,6 @@ func getFilesystemBackendCompatibilityTestCase(manualConfig string) backendCompa
 	}
 }
 
-func testManualConfigCompatibility(t *testing.T, backend backendCompatibilityTestCase) {
-	// Create mock owner
-	owner := &volsyncv1alpha1.ReplicationSource{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-rs",
-			Namespace: "test-namespace",
-		},
-	}
-
-	// Create mover
-	mover := &Mover{
-		username: "test-user",
-		hostname: "test-host",
-		owner:    owner,
-	}
-
-	// Create secret
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-secret",
-		},
-		Data: backend.secretData,
-	}
-
-	// Build environment variables
-	envVars := mover.buildEnvironmentVariables(secret)
-
-	// Verify KOPIA_MANUAL_CONFIG is present
-	verifyManualConfigInEnvironment(t, backend.name, envVars)
-
-	// Verify backend-specific variables are also present
-	verifyBackendSpecificVariables(t, backend.name, envVars)
-}
-
-func verifyManualConfigInEnvironment(t *testing.T, backendName string, envVars []corev1.EnvVar) {
-	found := false
-	for _, env := range envVars {
-		if env.Name == kopiaManualConfigKey {
-			found = true
-			break
-		}
-	}
-
-	if !found {
-		t.Errorf("%s: %s not found in environment variables", backendName, kopiaManualConfigKey)
-	}
-}
-
-func verifyBackendSpecificVariables(t *testing.T, backendName string, envVars []corev1.EnvVar) {
-	requiredVars := getRequiredVarsForBackend(backendName)
-	for _, reqVar := range requiredVars {
-		found := false
-		for _, env := range envVars {
-			if env.Name == reqVar {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("%s: Required variable %s not found", backendName, reqVar)
-		}
-	}
-}
-
-// TestManualConfigMultiTenancy tests that manual config preserves multi-tenancy
-func TestManualConfigMultiTenancy(t *testing.T) {
-	tests := getMultiTenancyManualConfigTestCases()
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			testManualConfigMultiTenancy(t, tt)
-		})
-	}
-}
-
 type multiTenancyManualConfigTestCase struct {
 	name             string
 	namespace        string
@@ -503,74 +304,6 @@ func getMultiTenancyManualConfigTestCases() []multiTenancyManualConfigTestCase {
 			expectedUsername: "custom-user",
 			expectedHostname: "custom-host",
 		},
-	}
-}
-
-func testManualConfigMultiTenancy(t *testing.T, tt multiTenancyManualConfigTestCase) {
-	// Create mock owner
-	owner := &volsyncv1alpha1.ReplicationSource{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      tt.sourceName,
-			Namespace: tt.namespace,
-		},
-	}
-
-	// Create mover with manual config
-	mover := &Mover{
-		username: tt.username,
-		hostname: tt.hostname,
-		owner:    owner,
-	}
-
-	// Create secret with manual config
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-secret",
-		},
-		Data: map[string][]byte{
-			"KOPIA_REPOSITORY": []byte("s3://bucket/path"),
-			"KOPIA_PASSWORD":   []byte("password"),
-			kopiaManualConfigKey: []byte(`{
-				"encryption": {"algorithm": "CHACHA20-POLY1305"},
-				"compression": {"algorithm": "ZSTD-BEST"}
-			}`),
-		},
-	}
-
-	// Build environment variables
-	envVars := mover.buildEnvironmentVariables(secret)
-
-	// Verify username and hostname overrides are preserved
-	verifyMultiTenancyOverrides(t, tt.expectedUsername, tt.expectedHostname, envVars)
-}
-
-func verifyMultiTenancyOverrides(t *testing.T, expectedUsername, expectedHostname string, envVars []corev1.EnvVar) {
-	var actualUsername, actualHostname string
-	for _, env := range envVars {
-		if env.Name == "KOPIA_OVERRIDE_USERNAME" {
-			actualUsername = env.Value
-		}
-		if env.Name == "KOPIA_OVERRIDE_HOSTNAME" {
-			actualHostname = env.Value
-		}
-	}
-
-	if actualUsername != expectedUsername {
-		t.Errorf("Expected username %s, got %s", expectedUsername, actualUsername)
-	}
-	if actualHostname != expectedHostname {
-		t.Errorf("Expected hostname %s, got %s", expectedHostname, actualHostname)
-	}
-}
-
-// TestManualConfigEdgeCases tests edge cases and error conditions
-func TestManualConfigEdgeCases(t *testing.T) {
-	tests := getEdgeCaseTestCases()
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			testManualConfigEdgeCase(t, tt)
-		})
 	}
 }
 
@@ -610,63 +343,6 @@ func getEdgeCaseTestCases() []edgeCaseTestCase {
 	}
 }
 
-func testManualConfigEdgeCase(t *testing.T, tt edgeCaseTestCase) {
-	// Create mock owner
-	owner := &volsyncv1alpha1.ReplicationSource{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-rs",
-			Namespace: "test-namespace",
-		},
-	}
-
-	// Create mover
-	mover := &Mover{
-		username: "test-user",
-		hostname: "test-host",
-		owner:    owner,
-	}
-
-	// Create secret
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-secret",
-		},
-		Data: map[string][]byte{
-			"KOPIA_REPOSITORY":   []byte("s3://bucket/path"),
-			"KOPIA_PASSWORD":     []byte("password"),
-			kopiaManualConfigKey: []byte(tt.config),
-		},
-	}
-
-	// This should not panic
-	envVars := mover.buildEnvironmentVariables(secret)
-
-	// Verify basic environment is still created
-	verifyBasicEnvironmentExists(t, tt.name, tt.description, envVars)
-}
-
-func verifyBasicEnvironmentExists(t *testing.T, testName, description string, envVars []corev1.EnvVar) {
-	if len(envVars) == 0 {
-		t.Errorf("%s: No environment variables created (%s)", testName, description)
-	}
-
-	// Verify required variables are still present
-	hasRepository := false
-	hasPassword := false
-	for _, env := range envVars {
-		if env.Name == "KOPIA_REPOSITORY" {
-			hasRepository = true
-		}
-		if env.Name == "KOPIA_PASSWORD" {
-			hasPassword = true
-		}
-	}
-
-	if !hasRepository || !hasPassword {
-		t.Errorf("%s: Required variables missing (%s)", testName, description)
-	}
-}
-
 // Helper function to normalize JSON for comparison
 func normalizeJSON(jsonStr string) string {
 	var data interface{}
@@ -702,3 +378,276 @@ func getRequiredVarsForBackend(backendName string) []string {
 		return []string{"KOPIA_REPOSITORY", "KOPIA_PASSWORD"}
 	}
 }
+
+var _ = Describe("Manual Config Environment Variable", func() {
+	DescribeTable("tests that KOPIA_MANUAL_CONFIG is included in environment variables",
+		func(tt manualConfigEnvTestCase) {
+			// Create mock owner
+			owner := &volsyncv1alpha1.ReplicationSource{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-rs",
+					Namespace: "test-namespace",
+				},
+			}
+
+			// Create mover
+			mover := &Mover{
+				username: "test-user",
+				hostname: "test-host",
+				owner:    owner,
+			}
+
+			// Create secret
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-secret",
+				},
+				Data: tt.secretData,
+			}
+
+			// Build environment variables
+			envVars := mover.buildEnvironmentVariables(secret)
+
+			// Check if KOPIA_MANUAL_CONFIG is present
+			found := false
+			var actualValue string
+			for _, env := range envVars {
+				if env.Name == kopiaManualConfigKey {
+					found = true
+					if env.ValueFrom != nil && env.ValueFrom.SecretKeyRef != nil {
+						// It's a secret reference, check that it references the right key
+						Expect(env.ValueFrom.SecretKeyRef.Key).To(Equal(kopiaManualConfigKey),
+							"Expected secret key reference to be %s, got %s",
+							kopiaManualConfigKey, env.ValueFrom.SecretKeyRef.Key)
+						Expect(env.ValueFrom.SecretKeyRef.Name).To(Equal(secret.Name),
+							"Expected secret name reference to be %s, got %s",
+							secret.Name, env.ValueFrom.SecretKeyRef.Name)
+						// The actual value would come from the secret
+						actualValue = string(tt.secretData[kopiaManualConfigKey])
+					} else {
+						actualValue = env.Value
+					}
+					break
+				}
+			}
+
+			if tt.expectManualConfig {
+				Expect(found).To(BeTrue(),
+					"Expected %s to be present in environment variables", kopiaManualConfigKey)
+				// Normalize JSON for comparison (remove whitespace differences)
+				expectedNorm := normalizeJSON(tt.expectedValue)
+				actualNorm := normalizeJSON(actualValue)
+				Expect(actualNorm).To(Equal(expectedNorm),
+					"%s value mismatch\nExpected: %s\nActual: %s",
+					kopiaManualConfigKey, expectedNorm, actualNorm)
+			}
+		},
+		Entry("manual config provided", getManualConfigEnvTestCases()[0]),
+		Entry("no manual config", getManualConfigEnvTestCases()[1]),
+		Entry("complex manual config", getManualConfigEnvTestCases()[2]),
+	)
+})
+
+var _ = Describe("Manual Config Validation", func() {
+	DescribeTable("tests JSON validation for manual configuration",
+		func(tt manualConfigValidationTestCase) {
+			// Validate JSON syntax
+			var result map[string]interface{}
+			err := json.Unmarshal([]byte(tt.config), &result)
+
+			isValid := err == nil
+			Expect(isValid).To(Equal(tt.expectValid),
+				"Config validation mismatch for %s: expected valid=%v, got valid=%v (error: %v)",
+				tt.description, tt.expectValid, isValid, err)
+		},
+		Entry("valid encryption config", getValidConfigTestCases()[0]),
+		Entry("valid compression config", getValidConfigTestCases()[1]),
+		Entry("valid splitter config", getValidConfigTestCases()[2]),
+		Entry("valid caching config", getValidConfigTestCases()[3]),
+		Entry("complete valid config", getValidConfigTestCases()[4]),
+		Entry("invalid JSON syntax", getEdgeCaseConfigTestCases()[0]),
+		Entry("empty config", getEdgeCaseConfigTestCases()[1]),
+		Entry("null values", getEdgeCaseConfigTestCases()[2]),
+		Entry("unknown fields", getEdgeCaseConfigTestCases()[3]),
+		Entry("numeric strings", getEdgeCaseConfigTestCases()[4]),
+	)
+})
+
+var _ = Describe("Manual Config Compatibility", func() {
+	manualConfig := `{"encryption":{"algorithm":"CHACHA20-POLY1305"},"compression":{"algorithm":"ZSTD-DEFAULT"}}`
+
+	DescribeTable("tests that manual config works with different backends",
+		func(backend backendCompatibilityTestCase) {
+			// Create mock owner
+			owner := &volsyncv1alpha1.ReplicationSource{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-rs",
+					Namespace: "test-namespace",
+				},
+			}
+
+			// Create mover
+			mover := &Mover{
+				username: "test-user",
+				hostname: "test-host",
+				owner:    owner,
+			}
+
+			// Create secret
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-secret",
+				},
+				Data: backend.secretData,
+			}
+
+			// Build environment variables
+			envVars := mover.buildEnvironmentVariables(secret)
+
+			// Verify KOPIA_MANUAL_CONFIG is present
+			found := false
+			for _, env := range envVars {
+				if env.Name == kopiaManualConfigKey {
+					found = true
+					break
+				}
+			}
+			Expect(found).To(BeTrue(), "%s: %s not found in environment variables", backend.name, kopiaManualConfigKey)
+
+			// Verify backend-specific variables are also present
+			requiredVars := getRequiredVarsForBackend(backend.name)
+			for _, reqVar := range requiredVars {
+				found := false
+				for _, env := range envVars {
+					if env.Name == reqVar {
+						found = true
+						break
+					}
+				}
+				Expect(found).To(BeTrue(), "%s: Required variable %s not found", backend.name, reqVar)
+			}
+		},
+		Entry("S3 backend", getCloudBackendCompatibilityTestCases(manualConfig)[0]),
+		Entry("Azure backend", getCloudBackendCompatibilityTestCases(manualConfig)[1]),
+		Entry("GCS backend", getCloudBackendCompatibilityTestCases(manualConfig)[2]),
+		Entry("B2 backend", getCloudBackendCompatibilityTestCases(manualConfig)[3]),
+		Entry("WebDAV backend", getProtocolBackendCompatibilityTestCases(manualConfig)[0]),
+		Entry("SFTP backend", getProtocolBackendCompatibilityTestCases(manualConfig)[1]),
+		Entry("Filesystem backend", getFilesystemBackendCompatibilityTestCase(manualConfig)),
+	)
+})
+
+var _ = Describe("Manual Config Multi-Tenancy", func() {
+	DescribeTable("tests that manual config preserves multi-tenancy",
+		func(tt multiTenancyManualConfigTestCase) {
+			// Create mock owner
+			owner := &volsyncv1alpha1.ReplicationSource{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      tt.sourceName,
+					Namespace: tt.namespace,
+				},
+			}
+
+			// Create mover with manual config
+			mover := &Mover{
+				username: tt.username,
+				hostname: tt.hostname,
+				owner:    owner,
+			}
+
+			// Create secret with manual config
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-secret",
+				},
+				Data: map[string][]byte{
+					"KOPIA_REPOSITORY": []byte("s3://bucket/path"),
+					"KOPIA_PASSWORD":   []byte("password"),
+					kopiaManualConfigKey: []byte(`{
+						"encryption": {"algorithm": "CHACHA20-POLY1305"},
+						"compression": {"algorithm": "ZSTD-BEST"}
+					}`),
+				},
+			}
+
+			// Build environment variables
+			envVars := mover.buildEnvironmentVariables(secret)
+
+			// Verify username and hostname overrides are preserved
+			var actualUsername, actualHostname string
+			for _, env := range envVars {
+				if env.Name == "KOPIA_OVERRIDE_USERNAME" {
+					actualUsername = env.Value
+				}
+				if env.Name == "KOPIA_OVERRIDE_HOSTNAME" {
+					actualHostname = env.Value
+				}
+			}
+
+			Expect(actualUsername).To(Equal(tt.expectedUsername), "Expected username %s, got %s", tt.expectedUsername, actualUsername)
+			Expect(actualHostname).To(Equal(tt.expectedHostname), "Expected hostname %s, got %s", tt.expectedHostname, actualHostname)
+		},
+		Entry("default multi-tenancy", getMultiTenancyManualConfigTestCases()[0]),
+		Entry("custom username and hostname", getMultiTenancyManualConfigTestCases()[1]),
+	)
+})
+
+var _ = Describe("Manual Config Edge Cases", func() {
+	DescribeTable("tests edge cases and error conditions",
+		func(tt edgeCaseTestCase) {
+			// Create mock owner
+			owner := &volsyncv1alpha1.ReplicationSource{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-rs",
+					Namespace: "test-namespace",
+				},
+			}
+
+			// Create mover
+			mover := &Mover{
+				username: "test-user",
+				hostname: "test-host",
+				owner:    owner,
+			}
+
+			// Create secret
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-secret",
+				},
+				Data: map[string][]byte{
+					"KOPIA_REPOSITORY":   []byte("s3://bucket/path"),
+					"KOPIA_PASSWORD":     []byte("password"),
+					kopiaManualConfigKey: []byte(tt.config),
+				},
+			}
+
+			// This should not panic
+			envVars := mover.buildEnvironmentVariables(secret)
+
+			// Verify basic environment is still created
+			Expect(len(envVars)).To(BeNumerically(">", 0),
+				"%s: No environment variables created (%s)", tt.name, tt.description)
+
+			// Verify required variables are still present
+			hasRepository := false
+			hasPassword := false
+			for _, env := range envVars {
+				if env.Name == "KOPIA_REPOSITORY" {
+					hasRepository = true
+				}
+				if env.Name == "KOPIA_PASSWORD" {
+					hasPassword = true
+				}
+			}
+
+			Expect(hasRepository && hasPassword).To(BeTrue(),
+				"%s: Required variables missing (%s)", tt.name, tt.description)
+		},
+		Entry("empty string", getEdgeCaseTestCases()[0]),
+		Entry("very large config", getEdgeCaseTestCases()[1]),
+		Entry("deeply nested config", getEdgeCaseTestCases()[2]),
+		Entry("unicode in config", getEdgeCaseTestCases()[3]),
+		Entry("escaped characters", getEdgeCaseTestCases()[4]),
+	)
+})

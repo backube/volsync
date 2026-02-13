@@ -241,6 +241,9 @@ type KopiaRetainPolicy struct {
 	// Yearly defines the number of snapshots to be kept yearly
 	//+optional
 	Yearly *int32 `json:"yearly,omitempty"`
+	// Latest defines the number of latest snapshots to keep
+	//+optional
+	Latest *int32 `json:"latest,omitempty"`
 }
 
 // KopiaActions defines pre/post snapshot actions
@@ -254,6 +257,7 @@ type KopiaActions struct {
 }
 
 type ReplicationSourceKopiaCA CustomCASpec
+
 
 // ReplicationSourceKopiaSpec defines the field for kopia in replicationSource.
 type ReplicationSourceKopiaSpec struct {
@@ -271,7 +275,8 @@ type ReplicationSourceKopiaSpec struct {
 	// Users can use 'kopia benchmark compression' to test which algorithm works best for their data.
 	//
 	// Supported algorithms (as of Kopia documentation):
-	// - s2 variants: s2-default, s2-better, s2-parallel-4, s2-parallel-8 (s2-parallel-n supports various concurrency levels)
+	// - s2 variants: s2-default, s2-better, s2-parallel-4, s2-parallel-8
+	//   (s2-parallel-n supports various concurrency levels)
 	// - zstd variants: zstd (standard), zstd-fastest, zstd-better-compression, zstd-best-compression
 	// - gzip variants: gzip, gzip-best-speed, gzip-best-compression
 	// - pgzip variants (parallel gzip): pgzip, pgzip-best-speed, pgzip-best-compression
@@ -292,9 +297,16 @@ type ReplicationSourceKopiaSpec struct {
 	// CacheAccessModes can be used to set the accessModes of kopia metadata cache volume
 	//+optional
 	CacheAccessModes []corev1.PersistentVolumeAccessMode `json:"cacheAccessModes,omitempty"`
-	// MaintenanceIntervalDays define how often to run maintenance
+	// MetadataCacheSizeLimitMB is the hard limit for Kopia's metadata cache in MB.
+	// If not specified, auto-calculated as 70% of CacheCapacity.
+	// Set to 0 for unlimited (Kopia default behavior).
 	//+optional
-	MaintenanceIntervalDays *int32 `json:"maintenanceIntervalDays,omitempty"`
+	MetadataCacheSizeLimitMB *int32 `json:"metadataCacheSizeLimitMB,omitempty"`
+	// ContentCacheSizeLimitMB is the hard limit for Kopia's content cache in MB.
+	// If not specified, auto-calculated as 20% of CacheCapacity.
+	// Set to 0 for unlimited (Kopia default behavior).
+	//+optional
+	ContentCacheSizeLimitMB *int32 `json:"contentCacheSizeLimitMB,omitempty"`
 	// Actions defines pre/post snapshot actions
 	//+optional
 	Actions *KopiaActions `json:"actions,omitempty"`
@@ -317,14 +329,6 @@ type ReplicationSourceKopiaSpec struct {
 	// +kubebuilder:validation:Pattern="^/.*"
 	//+optional
 	SourcePathOverride *string `json:"sourcePathOverride,omitempty"`
-	// RepositoryPVC defines a PVC to use as a filesystem-based backup repository.
-	// When specified, Kopia will write backups directly to this PVC instead of
-	// a remote repository. The PVC must exist in the same namespace as the
-	// ReplicationSource. The repository will be created at /kopia/repository
-	// within the mounted PVC for security and isolation.
-	// +kubebuilder:validation:MinLength=1
-	// +optional
-	RepositoryPVC *string `json:"repositoryPVC,omitempty"`
 	// AdditionalArgs allows specifying additional command-line arguments for Kopia.
 	// These arguments will be passed to Kopia snapshot commands during backup operations.
 	// This provides flexibility for advanced users to utilize Kopia features not directly
@@ -343,6 +347,22 @@ type ReplicationSourceKopiaStatus struct {
 	// lastMaintenance in the object holding the time of last maintenance
 	//+optional
 	LastMaintenance *metav1.Time `json:"lastMaintenance,omitempty"`
+	// nextScheduledMaintenance is the next scheduled maintenance time
+	//+optional
+	NextScheduledMaintenance *metav1.Time `json:"nextScheduledMaintenance,omitempty"`
+	// maintenanceFailures counts the number of consecutive maintenance failures
+	//+optional
+	MaintenanceFailures int `json:"maintenanceFailures,omitempty"`
+	// kopiaMaintenance is the name of the KopiaMaintenance resource managing this source's maintenance
+	//+optional
+	KopiaMaintenance string `json:"kopiaMaintenance,omitempty"`
+	// LastConfiguredMetadataCacheSizeLimitMB is the metadata cache limit that was last applied.
+	// Used to skip redundant cache configuration on subsequent runs.
+	// +optional
+	LastConfiguredMetadataCacheSizeLimitMB *int32 `json:"lastConfiguredMetadataCacheSizeLimitMB,omitempty"`
+	// LastConfiguredContentCacheSizeLimitMB is the content cache limit that was last applied.
+	// +optional
+	LastConfiguredContentCacheSizeLimitMB *int32 `json:"lastConfiguredContentCacheSizeLimitMB,omitempty"`
 }
 
 // define the Syncthing field

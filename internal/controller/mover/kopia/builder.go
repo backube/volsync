@@ -45,8 +45,10 @@ const (
 	defaultKopiaContainerImage = "quay.io/backube/volsync:latest"
 	// Command line flag will be checked first
 	// If command line flag not set, the RELATED_IMAGE_ env var will be used
-	kopiaContainerImageFlag   = "kopia-container-image"
-	kopiaContainerImageEnvVar = "RELATED_IMAGE_KOPIA_CONTAINER"
+	kopiaContainerImageFlag             = "kopia-container-image"
+	kopiaContainerImageEnvVar           = "RELATED_IMAGE_KOPIA_CONTAINER"
+	kopiaSuccessfulJobsHistoryLimitFlag = "kopia-successful-jobs-history-limit"
+	kopiaFailedJobsHistoryLimitFlag     = "kopia-failed-jobs-history-limit"
 	// defaultUsername is the fallback username when sanitization results in empty string
 	defaultUsername = "volsync-default"
 	// maxUsernameLength is the maximum reasonable length for Kopia usernames
@@ -54,8 +56,10 @@ const (
 )
 
 type Builder struct {
-	viper *viper.Viper  // For unit tests to be able to override - global viper will be used by default in Register()
-	flags *flag.FlagSet // For unit tests to be able to override - global flags will be used by default in Register()
+	viper                      *viper.Viper  // For unit tests to be able to override - global viper will be used by default in Register()
+	flags                      *flag.FlagSet // For unit tests to be able to override - global flags will be used by default in Register()
+	successfulJobsHistoryLimit int32
+	failedJobsHistoryLimit     int32
 }
 
 var _ mover.Builder = &Builder{}
@@ -96,6 +100,31 @@ func newBuilder(viperInstance *viper.Viper, flags *flag.FlagSet) (*Builder, erro
 	// Viper will check for command line flag first, then fallback to the env var
 	err := b.viper.BindEnv(kopiaContainerImageFlag, kopiaContainerImageEnvVar)
 
+	// Setup command line flags for maintenance CronJob history limits
+	b.flags.Int(kopiaSuccessfulJobsHistoryLimitFlag, 3,
+		"The successful jobs history limit for kopia maintenance cronjobs")
+	b.flags.Int(kopiaFailedJobsHistoryLimitFlag, 1,
+		"The failed jobs history limit for kopia maintenance cronjobs")
+
+	// Set defaults for viper (used when flags are not set)
+	b.viper.SetDefault(kopiaSuccessfulJobsHistoryLimitFlag, 3)
+	b.viper.SetDefault(kopiaFailedJobsHistoryLimitFlag, 1)
+
+	// Get the flag values if the flags have been parsed
+	// Otherwise, use the defaults from viper
+	if successfulLimitFlag := b.flags.Lookup(kopiaSuccessfulJobsHistoryLimitFlag); successfulLimitFlag != nil && successfulLimitFlag.Value.String() != "" {
+		// Flag was explicitly set or parsed
+		b.viper.Set(kopiaSuccessfulJobsHistoryLimitFlag, successfulLimitFlag.Value.String())
+	}
+	if failedLimitFlag := b.flags.Lookup(kopiaFailedJobsHistoryLimitFlag); failedLimitFlag != nil && failedLimitFlag.Value.String() != "" {
+		// Flag was explicitly set or parsed
+		b.viper.Set(kopiaFailedJobsHistoryLimitFlag, failedLimitFlag.Value.String())
+	}
+
+	// Read values into struct fields
+	b.successfulJobsHistoryLimit = int32(b.viper.GetInt(kopiaSuccessfulJobsHistoryLimitFlag))
+	b.failedJobsHistoryLimit = int32(b.viper.GetInt(kopiaFailedJobsHistoryLimitFlag))
+
 	return b, err
 }
 
@@ -108,6 +137,16 @@ func (kb *Builder) VersionInfo() string {
 // kopiaContainerImage is the container image name of the kopia data mover
 func (kb *Builder) getKopiaContainerImage() string {
 	return kb.viper.GetString(kopiaContainerImageFlag)
+}
+
+// GetSuccessfulJobsHistoryLimit returns the configured successful jobs history limit
+func (kb *Builder) GetSuccessfulJobsHistoryLimit() int32 {
+	return kb.successfulJobsHistoryLimit
+}
+
+// GetFailedJobsHistoryLimit returns the configured failed jobs history limit
+func (kb *Builder) GetFailedJobsHistoryLimit() int32 {
+	return kb.failedJobsHistoryLimit
 }
 
 func (kb *Builder) FromSource(client client.Client, logger logr.Logger,
@@ -185,37 +224,38 @@ func (kb *Builder) createSourceMover(client client.Client, logger logr.Logger,
 	metrics := newKopiaMetrics()
 
 	return &Mover{
-		client:                client,
-		logger:                logger.WithValues("method", "Kopia"),
-		eventRecorder:         eventRecorder,
-		owner:                 source,
-		vh:                    vh,
-		saHandler:             saHandler,
-		containerImage:        kb.getKopiaContainerImage(),
-		cacheAccessModes:      source.Spec.Kopia.CacheAccessModes,
-		cacheCapacity:         source.Spec.Kopia.CacheCapacity,
-		cacheStorageClassName: source.Spec.Kopia.CacheStorageClassName,
-		repositoryName:        source.Spec.Kopia.Repository,
-		isSource:              isSource,
-		paused:                source.Spec.Paused,
-		mainPVCName:           &source.Spec.SourcePVC,
-		customCASpec:          volsyncv1alpha1.CustomCASpec(source.Spec.Kopia.CustomCA),
-		policyConfig:          source.Spec.Kopia.PolicyConfig,
-		privileged:            privileged,
-		metrics:               metrics,
-		username:              username,
-		hostname:              hostname,
-		sourcePathOverride:    source.Spec.Kopia.SourcePathOverride,
-		maintenanceInterval:   source.Spec.Kopia.MaintenanceIntervalDays,
-		retainPolicy:          source.Spec.Kopia.Retain,
-		compression:           source.Spec.Kopia.Compression,
-		parallelism:           source.Spec.Kopia.Parallelism,
-		actions:               source.Spec.Kopia.Actions,
-		sourceStatus:          source.Status.Kopia,
-		latestMoverStatus:     source.Status.LatestMoverStatus,
-		moverConfig:           source.Spec.Kopia.MoverConfig,
-		repositoryPVC:         source.Spec.Kopia.RepositoryPVC,
-		additionalArgs:        source.Spec.Kopia.AdditionalArgs,
+		client:                   client,
+		logger:                   logger.WithValues("method", "Kopia"),
+		eventRecorder:            eventRecorder,
+		owner:                    source,
+		vh:                       vh,
+		saHandler:                saHandler,
+		containerImage:           kb.getKopiaContainerImage(),
+		cacheAccessModes:         source.Spec.Kopia.CacheAccessModes,
+		cacheCapacity:            source.Spec.Kopia.CacheCapacity,
+		cacheStorageClassName:    source.Spec.Kopia.CacheStorageClassName,
+		metadataCacheSizeLimitMB: source.Spec.Kopia.MetadataCacheSizeLimitMB,
+		contentCacheSizeLimitMB:  source.Spec.Kopia.ContentCacheSizeLimitMB,
+		repositoryName:           source.Spec.Kopia.Repository,
+		isSource:                 isSource,
+		paused:                   source.Spec.Paused,
+		mainPVCName:              &source.Spec.SourcePVC,
+		customCASpec:             volsyncv1alpha1.CustomCASpec(source.Spec.Kopia.CustomCA),
+		policyConfig:             source.Spec.Kopia.PolicyConfig,
+		privileged:               privileged,
+		metrics:                  metrics,
+		username:                 username,
+		hostname:                 hostname,
+		sourcePathOverride:       source.Spec.Kopia.SourcePathOverride,
+		retainPolicy:             source.Spec.Kopia.Retain,
+		compression:              source.Spec.Kopia.Compression,
+		parallelism:              source.Spec.Kopia.Parallelism,
+		actions:                  source.Spec.Kopia.Actions,
+		sourceStatus:             source.Status.Kopia,
+		latestMoverStatus:        source.Status.LatestMoverStatus,
+		moverConfig:              source.Spec.Kopia.MoverConfig,
+		additionalArgs:           source.Spec.Kopia.AdditionalArgs,
+		builder:                  kb,
 	}
 }
 
@@ -405,6 +445,8 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		cacheAccessModes:            destination.Spec.Kopia.CacheAccessModes,
 		cacheCapacity:               destination.Spec.Kopia.CacheCapacity,
 		cacheStorageClassName:       destination.Spec.Kopia.CacheStorageClassName,
+		metadataCacheSizeLimitMB:    destination.Spec.Kopia.MetadataCacheSizeLimitMB,
+		contentCacheSizeLimitMB:     destination.Spec.Kopia.ContentCacheSizeLimitMB,
 		cleanupCachePVC:             destination.Spec.Kopia.CleanupCachePVC,
 		repositoryName:              repositoryName,
 		isSource:                    isSource,
@@ -426,6 +468,7 @@ func (kb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		latestMoverStatus:           destination.Status.LatestMoverStatus,
 		moverConfig:                 destination.Spec.Kopia.MoverConfig,
 		additionalArgs:              destination.Spec.Kopia.AdditionalArgs,
+		builder:                     kb,
 	}, nil
 }
 

@@ -7,12 +7,31 @@ Storage Backends
 
 Kopia supports various storage backends with their respective configuration formats:
 
+.. tip::
+   **Having Connection Issues?**
+
+   Add ``KOPIA_LOG_LEVEL: "debug"`` to your repository secret for detailed
+   console output in kubectl logs, or ``KOPIA_FILE_LOG_LEVEL: "debug"`` for
+   file-based logs. See :doc:`troubleshooting` for debugging guidance.
+
+.. important::
+   **Repository Configuration Best Practice**
+
+   For optimal deduplication and storage efficiency, use a **single Kopia repository**
+   (single bucket/container without path prefixes) for all your PVCs. Kopia's
+   content-defined chunking provides excellent deduplication across all data in a
+   repository, commonly achieving 50-80% storage reduction.
+
+   Only use separate repositories or path prefixes when you have specific requirements
+   like compliance (HIPAA, PCI-DSS), organizational boundaries, or geographic constraints.
+
 .. note::
    **Alternative: Filesystem Destination**
-   
-   Instead of configuring a remote storage backend, you can now use a PersistentVolumeClaim 
-   as a filesystem-based backup destination. This is ideal for local backups, NFS storage, 
-   or air-gapped environments. See :doc:`filesystem-destination` for details.
+
+   Instead of configuring a remote storage backend, you can use a PersistentVolumeClaim
+   as a filesystem-based backup destination using the ``moverVolumes`` pattern. This is ideal
+   for local backups, NFS storage, or air-gapped environments. See :doc:`filesystem-destination`
+   for details.
 
 S3-compatible storage (AWS S3, MinIO, etc.)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -25,7 +44,10 @@ S3-compatible storage (AWS S3, MinIO, etc.)
      name: kopia-config
    type: Opaque
    stringData:
-     KOPIA_REPOSITORY: s3://my-bucket/backups
+     # RECOMMENDED: Use bucket root for maximum deduplication
+     KOPIA_REPOSITORY: s3://my-bucket
+     # AVOID: Path prefixes prevent deduplication between paths
+     # KOPIA_REPOSITORY: s3://my-bucket/backups  # Not recommended
      KOPIA_PASSWORD: my-secure-password
      AWS_ACCESS_KEY_ID: AKIAIOSFODNN7EXAMPLE
      AWS_SECRET_ACCESS_KEY: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
@@ -33,6 +55,11 @@ S3-compatible storage (AWS S3, MinIO, etc.)
      AWS_S3_ENDPOINT: http://minio.example.com:9000
      # Optional: specify region
      AWS_REGION: us-west-2
+
+.. tip::
+   **Best Practice**: Use a single S3 bucket without path prefixes for all your backups.
+   This maximizes Kopia's deduplication capabilities across all PVCs, potentially
+   reducing storage costs by 50-80%.
 
 **Environment Variable Variants**
 
@@ -58,7 +85,8 @@ variables and Kopia-specific variables are supported:
      name: kopia-config
    type: Opaque
    stringData:
-     KOPIA_REPOSITORY: s3://my-bucket/backups
+     # RECOMMENDED: Use bucket root for maximum deduplication
+     KOPIA_REPOSITORY: s3://my-bucket
      KOPIA_PASSWORD: my-secure-password
      # Kopia-specific S3 variables (alternative to AWS_* variables)
      KOPIA_S3_BUCKET: my-bucket
@@ -662,8 +690,10 @@ VolSync's Kopia mover supports a comprehensive set of environment variables for 
 
 **Filesystem Storage Variables**
 
-   When using ``repositoryPVC`` in the ReplicationSource, the controller automatically sets ``KOPIA_REPOSITORY`` to ``filesystem:///kopia/repository``.
-   For manual filesystem configurations, use ``KOPIA_REPOSITORY`` with a ``filesystem://`` URL (e.g., ``filesystem:///mnt/backup``)
+   When using ``moverVolumes`` in the ReplicationSource for a filesystem repository, the controller automatically
+   detects the first PVC and sets ``KOPIA_REPOSITORY`` to ``filesystem:///mnt/<mountPath>`` where ``<mountPath>``
+   is from the moverVolume configuration. For manual filesystem configurations, use ``KOPIA_REPOSITORY`` with a
+   ``filesystem://`` URL (e.g., ``filesystem:///mnt/backup``)
 
 **Backblaze B2 Variables**
 
@@ -728,8 +758,11 @@ VolSync's Kopia mover supports a comprehensive set of environment variables for 
 
 **Logging Control Variables**
 
+``KOPIA_LOG_LEVEL``
+   Log level for console/stdout logs visible in kubectl logs: debug, info, warn, error (default: info)
+
 ``KOPIA_FILE_LOG_LEVEL``
-   Log level for file logs: debug, info, warn, error (default: info)
+   Log level for file logs saved to cache directory: debug, info, warn, error (default: info)
 
 ``KOPIA_LOG_DIR_MAX_FILES``
    Maximum number of CLI log files to retain (default: 3)

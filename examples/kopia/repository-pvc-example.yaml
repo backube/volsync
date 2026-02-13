@@ -1,5 +1,5 @@
-# Example: Using a PVC as a Kopia filesystem repository  
-# This demonstrates the simplified repositoryPVC API for local/network storage backups
+# Example: Using a PVC as a Kopia filesystem repository with moverVolumes
+# This demonstrates the moverVolumes pattern for local/network storage backups
 ---
 # Create a namespace for the example
 apiVersion: v1
@@ -36,7 +36,7 @@ spec:
   # storageClassName: fast-ssd  # Example: use fast storage for quick backups
 ---
 # Secret containing the Kopia repository password
-# Note: KOPIA_REPOSITORY is automatically set when using repositoryPVC
+# Note: KOPIA_REPOSITORY is automatically detected from moverVolumes
 apiVersion: v1
 kind: Secret
 metadata:
@@ -45,7 +45,7 @@ metadata:
 type: Opaque
 stringData:
   # Optional: Explicitly specify filesystem repository type for clarity
-  # When repositoryPVC is set, this is automatically set to "filesystem:///kopia/repository"
+  # When moverVolumes is set, VolSync automatically detects the repository from the first PVC
   # KOPIA_REPOSITORY: "filesystem:"
   # Password is required for repository encryption (minimum 16 characters recommended)
   KOPIA_PASSWORD: "change-this-to-a-secure-password-at-least-16-chars"
@@ -59,30 +59,35 @@ metadata:
 spec:
   # Source PVC to backup
   sourcePVC: application-data
-  
+
   # Backup schedule
   trigger:
     schedule: "0 */6 * * *"  # Every 6 hours
-  
-  # Kopia configuration with repository PVC
+
+  # Kopia configuration with moverVolumes
   kopia:
     # Reference to the repository configuration secret
     repository: kopia-config
-    
-    # PVC to use as the filesystem repository
-    # The repository will be created at /kopia/repository (fixed, secure path)
-    repositoryPVC: backup-repository
-    
+
+    # Mount PVC for filesystem repository using moverVolumes
+    # The first PVC in this list is automatically detected as the Kopia repository
+    # Repository will be accessed at /mnt/kopia-repo
+    moverVolumes:
+    - mountPath: kopia-repo
+      volumeSource:
+        persistentVolumeClaim:
+          claimName: backup-repository
+
     # Retention policy
     retain:
       hourly: 24
       daily: 7
       weekly: 4
       monthly: 3
-    
+
     # Optional: Compression algorithm
     compression: "zstd"
-    
+
     # Optional: Number of parallel upload streams
     parallelism: 4
 ---
@@ -96,34 +101,35 @@ metadata:
 spec:
   trigger:
     manual: restore-trigger
-  
+
   kopia:
     # Same repository configuration as the source
     repository: kopia-config
-    
+
     # NOTE: ReplicationDestination requires the full filesystem URL in the secret
-    # The repositoryPVC field is only available for ReplicationSource
-    
+    # The moverVolumes field is only available for ReplicationSource
+    # For restore, you must mount the repository PVC and configure the URL in the secret
+
     # Destination PVC for restored data
     destinationPVC: restored-data
     copyMethod: Direct
-    
-    # ✅ NO IDENTITY CONFIGURATION NEEDED!
+
+    # NO IDENTITY CONFIGURATION NEEDED!
     # Same namespace + matching names = fully automatic identity
     # Automatically uses:
     #   username: filesystem-backup
     #   hostname: backup-example
-    
-    # ⚠️ For cross-namespace restore or different names, use sourceIdentity:
+
+    # For cross-namespace restore or different names, use sourceIdentity:
     # sourceIdentity:
-    #   sourceName: filesystem-backup     # Source ReplicationSource name  
+    #   sourceName: filesystem-backup     # Source ReplicationSource name
     #   sourceNamespace: production       # Source namespace
-    
-    # ⚠️ Or use explicit username and hostname (both required together):
-    # Use when source had custom username/hostname 
+
+    # Or use explicit username and hostname (both required together):
+    # Use when source had custom username/hostname
     # username: "custom-identity"
     # hostname: "custom-host"
-    
+
     # Optional: Restore from a previous snapshot instead of latest
     # previous: 1  # Skip latest, use previous snapshot
 ---
@@ -155,7 +161,7 @@ spec:
       storage: 500Gi
   volumeName: nfs-backup-pv
 ---
-# Example: Using NFS storage for backups
+# Example: Using NFS storage for backups with moverVolumes
 apiVersion: volsync.backube/v1alpha1
 kind: ReplicationSource
 metadata:
@@ -167,19 +173,35 @@ spec:
     schedule: "0 2 * * *"  # Daily at 2 AM
   kopia:
     repository: kopia-config
-    # Simply reference the NFS-backed PVC
-    # Repository will be at /kopia/repository (secure, fixed path)
-    repositoryPVC: nfs-backup-repository
+    # Mount NFS-backed PVC using moverVolumes pattern
+    # Repository will be at /mnt/repository
+    moverVolumes:
+    - mountPath: repository
+      volumeSource:
+        persistentVolumeClaim:
+          claimName: nfs-backup-repository
     retain:
       daily: 30
       weekly: 12
       monthly: 6
 ---
-# Benefits of the simplified repositoryPVC API:
-# 
-# 1. **Simpler Configuration**: Just specify the PVC name
-# 2. **Enhanced Security**: Fixed path prevents directory traversal attacks
-# 3. **Clear Intent**: "repositoryPVC" immediately indicates its purpose
-# 4. **No Path Sanitization**: Reduces complexity and potential bugs
-# 5. **Consistent Design**: Aligns with other VolSync fields like "sourcePVC"
-# 6. **Standard Format**: Uses Kopia's standard filesystem URL internally
+# Benefits of the moverVolumes pattern:
+#
+# 1. **Consistency**: Same pattern across all movers (restic, rclone, rsync-tls, syncthing, kopia)
+# 2. **Flexibility**: Standard volume mounting with explicit paths at /mnt/<mountPath>
+# 3. **Clear Intent**: Descriptive mount paths make purpose obvious
+# 4. **Standard Pattern**: Familiar to users of other VolSync movers
+# 5. **Kubernetes Native**: Uses standard Kubernetes volume source types
+#
+# Migration from old repositoryPVC API:
+# OLD (removed in v0.11.0):
+#   kopia:
+#     repositoryPVC: backup-storage-pvc
+#
+# NEW (v0.11.0+):
+#   kopia:
+#     moverVolumes:
+#     - mountPath: kopia-repo
+#       volumeSource:
+#         persistentVolumeClaim:
+#           claimName: backup-storage-pvc

@@ -268,6 +268,112 @@ func UpdatePodTemplateSpecFromMoverConfig(podTemplateSpec *corev1.PodTemplateSpe
 	}
 }
 
+func UpdatePodTemplateSpecWithMoverVolumes(ctx context.Context, c client.Client,
+	logger logr.Logger, namespace string,
+	podTemplateSpec *corev1.PodTemplateSpec, moverVolumes []volsyncv1alpha1.MoverVolume) error {
+	if podTemplateSpec == nil {
+		return nil
+	}
+
+	container := &podTemplateSpec.Spec.Containers[0]
+
+	for _, mv := range moverVolumes {
+		absMountPath := "/mnt/" + mv.MountPath
+		vName := "u-" + strings.ReplaceAll(mv.MountPath, "/", "-")
+
+		if mv.VolumeSource.PersistentVolumeClaim == nil && mv.VolumeSource.Secret == nil {
+			continue
+		}
+
+		// Determine affinity for PVC mounted volume, but only if it's not already set
+		// (It could be set already if we're in direct mode, or by a previous moverVolume
+		//  in this loop)
+		if mv.VolumeSource.PersistentVolumeClaim != nil &&
+			len(podTemplateSpec.Spec.NodeSelector) == 0 &&
+			len(podTemplateSpec.Spec.Tolerations) == 0 {
+			// Look up the PVC
+			addlPVC := &corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      mv.VolumeSource.PersistentVolumeClaim.ClaimName,
+					Namespace: namespace,
+				},
+			}
+			err := c.Get(ctx, client.ObjectKeyFromObject(addlPVC), addlPVC)
+			if err != nil {
+				logger.Error(err, "unable to lookup moverVolume PVC", "PVC", client.ObjectKeyFromObject(addlPVC))
+				return err
+			}
+
+			affinity, err := AffinityFromVolume(ctx, c, logger, addlPVC)
+			if err != nil {
+				logger.Error(err, "unable to determine proper affinity", "PVC", client.ObjectKeyFromObject(addlPVC))
+				return err
+			}
+			podTemplateSpec.Spec.NodeSelector = affinity.NodeSelector
+			podTemplateSpec.Spec.Tolerations = affinity.Tolerations
+		}
+
+		volumeSource := corev1.VolumeSource{
+			PersistentVolumeClaim: mv.VolumeSource.PersistentVolumeClaim,
+			Secret:                mv.VolumeSource.Secret,
+		}
+
+		container.VolumeMounts =
+			append(container.VolumeMounts, corev1.VolumeMount{
+				Name:      vName,
+				MountPath: absMountPath,
+			})
+
+		podTemplateSpec.Spec.Volumes = append(podTemplateSpec.Spec.Volumes, corev1.Volume{
+			Name:         vName,
+			VolumeSource: volumeSource,
+		})
+	}
+
+	return nil
+}
+
+func ValidateMoverVolumes(ctx context.Context, c client.Client, logger logr.Logger,
+	namespace string, moverVolumes []volsyncv1alpha1.MoverVolume) error {
+	for _, mv := range moverVolumes {
+		// Validate mount path is safe
+		if mv.MountPath == "" {
+			return fmt.Errorf("moverVolume mount path cannot be empty")
+		}
+		if strings.Contains(mv.MountPath, "/") {
+			return fmt.Errorf("moverVolume mount path cannot contain path separators: %s", mv.MountPath)
+		}
+		if strings.Contains(mv.MountPath, "..") {
+			return fmt.Errorf("moverVolume mount path cannot contain path traversal: %s", mv.MountPath)
+		}
+
+		if mv.VolumeSource.PersistentVolumeClaim != nil {
+			pvc := &corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      mv.VolumeSource.PersistentVolumeClaim.ClaimName,
+					Namespace: namespace,
+				},
+			}
+			if err := c.Get(ctx, client.ObjectKeyFromObject(pvc), pvc); err != nil {
+				logger.Error(err, "failed to get moverVolume PVC", "PVC", client.ObjectKeyFromObject(pvc))
+				return err
+			}
+		} else if mv.VolumeSource.Secret != nil {
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      mv.VolumeSource.Secret.SecretName,
+					Namespace: namespace,
+				},
+			}
+			if err := c.Get(ctx, client.ObjectKeyFromObject(secret), secret); err != nil {
+				logger.Error(err, "failed to get moverVolume Secret", "Secret", client.ObjectKeyFromObject(secret))
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // Will return a name with prefix + owner.Name unless it's too long, in which
 // case we will return prefix + owner.UID
 // (This assumes namePrefix + UID is shorter than 63 chars)

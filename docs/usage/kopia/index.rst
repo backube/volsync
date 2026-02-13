@@ -8,11 +8,14 @@ Kopia-based backup
    database_example
    backends
    filesystem-destination
+   repository-organization
    hostname-design
    multi-tenancy
    backup-configuration
    restore-configuration
    cross-namespace-restore
+   kopiamaintenance
+   kopia-maintenance-crd
    additional-args
    troubleshooting
    custom-ca
@@ -68,7 +71,8 @@ to Kopia for advanced use cases not directly exposed in the API. This enables fi
 of performance, exclusions, and other Kopia features while maintaining security.
 
 **Maintenance**: Kopia's maintenance operations (equivalent to Restic's prune)
-are more efficient and can run concurrently with backups.
+are more efficient and can run concurrently with backups. VolSync now provides
+dedicated maintenance CronJobs for decoupled, scalable maintenance operations.
 
 **Security**: The Kopia mover in VolSync supports enhanced security settings including
 ``readOnlyRootFilesystem: true`` in pod security contexts, with automatic adjustments
@@ -89,6 +93,14 @@ First, set up a repository configuration secret for your chosen storage backend.
 VolSync supports multiple storage options including S3, Azure Blob Storage, Google Cloud Storage,
 filesystem destinations via PVC, and many others.
 
+.. important::
+   **Best Practice**: Use a single Kopia repository (single S3 bucket without path prefixes)
+   for all your PVCs to maximize deduplication benefits. Kopia can achieve 50-80% storage
+   reduction when backing up similar workloads to the same repository.
+
+   See :doc:`repository-organization` for comprehensive guidance on deduplication,
+   repository structure decisions, S3 prefix usage, and storage optimization strategies.
+
 See :doc:`backends` for detailed configuration examples for all supported remote storage backends,
 or :doc:`filesystem-destination` for using PVCs as backup destinations.
 
@@ -99,7 +111,24 @@ schedule, and backup options.
 
 See :doc:`backup-configuration` for backup setup and configuration options.
 
-**3. Set up Restore Operations**
+**3. Configure Maintenance (Recommended)**
+
+VolSync provides the KopiaMaintenance CRD for managing repository maintenance operations.
+This namespace-scoped resource offers flexible triggering options and performance optimization
+through cache support.
+
+**Important Changes:**
+
+- **maintenanceIntervalDays Removed**: The ``maintenanceIntervalDays`` field has been deprecated and removed from ReplicationSource
+- **Use KopiaMaintenance CRD**: All maintenance operations should now be configured through the dedicated KopiaMaintenance CRD
+- **Flexible Triggers**: Choose between scheduled (cron) or manual (on-demand) maintenance
+- **Cache Support**: Configure persistent cache for improved performance with multiple options
+- **Migration Support**: Seamless migration from deprecated ``schedule`` field to ``trigger.schedule``
+
+See :doc:`kopiamaintenance` for the KopiaMaintenance CRD reference, trigger configuration,
+cache setup, and migration guides.
+
+**4. Set up Restore Operations**
 
 When needed, configure a ReplicationDestination to restore data from your backups.
 Identity configuration is now OPTIONAL - VolSync automatically determines the identity
@@ -111,7 +140,7 @@ the ``sourceIdentity`` helper field for cross-namespace restores, and enhanced e
 For cross-namespace restore scenarios including disaster recovery and environment cloning,
 see :doc:`cross-namespace-restore`.
 
-**4. Understand Identity Management**
+**5. Understand Identity Management**
 
 VolSync automatically manages identity for you! When no identity is specified,
 it generates a username from the destination name and namespace, and uses the
@@ -120,21 +149,34 @@ namespace as the hostname. This makes simple restores configuration-free.
 See :doc:`hostname-design` for understanding the intentional hostname design,
 and :doc:`multi-tenancy` for multi-tenancy configuration and customization options.
 
-**5. Troubleshooting**
+**6. Troubleshooting & Debugging**
 
-Leverage the enhanced error reporting and snapshot discovery features to quickly
-identify and resolve issues.
+.. important::
+   **Having Issues? Enable Debug Logging!**
 
-See :doc:`troubleshooting` for comprehensive debugging guidance.
+   Add ``KOPIA_LOG_LEVEL: "debug"`` to your repository secret for verbose console logging:
 
-**6. Advanced Customization**
+   .. code-block:: yaml
+
+      stringData:
+        KOPIA_LOG_LEVEL: "debug"      # Console output (kubectl logs)
+        KOPIA_FILE_LOG_LEVEL: "debug"  # File logs (optional)
+
+   See :doc:`troubleshooting` for complete debugging guidance, including:
+
+   - How to enable debug logging and control log retention
+   - Common issues quick reference
+   - Enhanced error reporting and snapshot discovery
+   - Preventing cache PVC from filling with logs
+
+**7. Advanced Customization**
 
 For advanced use cases, you can pass additional command-line arguments to Kopia
 for features not directly exposed by VolSync's API.
 
 See :doc:`additional-args` for using additional Kopia arguments safely.
 
-**7. Custom CA (If Needed)**
+**8. Custom CA (If Needed)**
 
 If using self-signed certificates, configure custom certificate authority settings.
 
@@ -155,11 +197,16 @@ Here's a complete example showing how to set up a basic Kopia backup:
      name: kopia-config
    type: Opaque
    stringData:
-     KOPIA_REPOSITORY: s3://my-backup-bucket/kopia-backups
+     # Single repository for ALL backups - no path prefix!
+     KOPIA_REPOSITORY: s3://my-backup-bucket
      KOPIA_PASSWORD: my-secure-password
      AWS_ACCESS_KEY_ID: AKIAIOSFODNN7EXAMPLE
      AWS_SECRET_ACCESS_KEY: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
      AWS_S3_ENDPOINT: http://minio.minio.svc.cluster.local:9000
+
+     # Optional: Enable debug logging if having issues
+     # KOPIA_LOG_LEVEL: "debug"      # Console logs visible in kubectl logs
+     # KOPIA_FILE_LOG_LEVEL: "debug"  # File logs saved to cache directory
 
 **Step 2: Create backup with policy**
 
@@ -246,8 +293,16 @@ The Kopia documentation has been organized into focused sections for easier navi
 
 :doc:`filesystem-destination`
    Comprehensive guide to using PersistentVolumeClaims as filesystem-based backup
-   destinations. Covers configuration, security, migration from remote storage,
-   and use cases for local and network-attached storage.
+   destinations with the ``moverVolumes`` pattern. Covers configuration, security,
+   migration from the deprecated ``repositoryPVC`` field, and use cases for local
+   and network-attached storage.
+
+:doc:`repository-organization`
+   Comprehensive guide to Kopia's deduplication and repository organization strategies.
+   Explains how content-addressable deduplication works, benefits of using a single
+   repository (50-80% storage reduction), when to use S3 prefixes, proper prefix
+   configuration with trailing slash handling, trade-offs between approaches, and
+   migration scenarios. Essential reading for optimizing storage costs.
 
 :doc:`hostname-design`
    Detailed explanation of VolSync's intentional hostname design where hostname equals
@@ -274,6 +329,18 @@ The Kopia documentation has been organized into focused sections for easier navi
    environment cloning, namespace migration, and testing procedures with detailed examples,
    security considerations, and troubleshooting steps.
 
+:doc:`kopiamaintenance`
+   Complete reference for the KopiaMaintenance Custom Resource Definition (CRD), a namespace-scoped
+   resource for managing Kopia repository maintenance. Features comprehensive coverage of trigger
+   support (scheduled and manual), cache configuration for performance optimization (including cachePVC,
+   cacheCapacity, cacheStorageClassName, and cacheAccessModes), migration from deprecated fields
+   (including maintenanceIntervalDays), best practices, troubleshooting, and performance tuning.
+
+:doc:`kopia-maintenance-crd`
+   Additional documentation covering advanced KopiaMaintenance topics including cluster-scoped
+   management patterns, repository selector modes, and priority-based conflict resolution for
+   complex multi-repository environments.
+
 :doc:`troubleshooting`
    Comprehensive troubleshooting guide covering enhanced error reporting, snapshot discovery,
    common error scenarios, identity mismatch issues, sourcePathOverride troubleshooting,
@@ -295,7 +362,7 @@ Quick reference for Kopia feature availability in VolSync:
 
 - Core backup and restore operations
 - All major cloud storage backends (S3, GCS, Azure, etc.)
-- Filesystem repository via PVC (ReplicationSource only)
+- Filesystem repository via PVC using moverVolumes (ReplicationSource only)
 - Retention policies (inline configuration)
 - Snapshot actions/hooks (beforeSnapshot, afterSnapshot)
 - Source path selection and overrides
@@ -322,7 +389,8 @@ Quick reference for Kopia feature availability in VolSync:
 
 **Important Notes:**
 
-- ``repositoryPVC`` is only available for ReplicationSource, not ReplicationDestination
+- ``moverVolumes`` for filesystem repositories is only available for ReplicationSource, not ReplicationDestination
+- The ``repositoryPVC`` field was deprecated and removed in v0.11.0 - use ``moverVolumes`` instead
 - Both ``AWS_*`` and ``KOPIA_*`` environment variables are supported for backends
 - Compression is set at repository creation and cannot be changed afterward
 

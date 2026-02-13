@@ -9,7 +9,10 @@ Filesystem Repository for Kopia
 Overview
 ========
 
-The filesystem repository feature allows you to use a PersistentVolumeClaim (PVC) as a backup repository for Kopia. This provides an alternative to remote storage backends like S3, Azure, or GCS, enabling backups to local or network-attached storage with a simplified and secure API.
+The filesystem repository feature allows you to use a PersistentVolumeClaim (PVC) as a backup repository for Kopia using the generic ``moverVolumes`` pattern. This provides an alternative to remote storage backends like S3, Azure, or GCS, enabling backups to local or network-attached storage.
+
+.. important::
+   **Breaking Change**: As of VolSync v0.11.0, the Kopia-specific ``repositoryPVC`` field has been replaced with the generic ``moverVolumes`` pattern for consistency with other movers (restic, rclone, rsync-tls, syncthing).
 
 Use Cases
 =========
@@ -34,13 +37,61 @@ Before using filesystem repositories, ensure:
 4. **Access Mode**: The PVC must support the access mode required by your backup jobs (typically ReadWriteOnce)
 5. **Password Secret**: A Kopia password must be provided via the repository secret for encryption
 
+Migration from repositoryPVC
+=============================
+
+.. warning::
+   **Breaking API Change**: The ``repositoryPVC`` field has been removed and replaced with ``moverVolumes``.
+
+The new ``moverVolumes`` pattern provides:
+
+- **Consistency**: Same configuration pattern across all movers (restic, rclone, rsync-tls, syncthing, kopia)
+- **Flexibility**: Standard volume mounting with explicit mount paths
+- **Clarity**: Clear mount point specification at ``/mnt/<mountPath>``
+
+Quick Migration Guide
+---------------------
+
+**Old Format (repositoryPVC)**:
+
+.. code-block:: yaml
+
+   spec:
+     kopia:
+       repositoryPVC: backup-storage-pvc
+
+**New Format (moverVolumes)**:
+
+.. code-block:: yaml
+
+   spec:
+     kopia:
+       moverVolumes:
+       - mountPath: kopia-repo
+         volumeSource:
+           persistentVolumeClaim:
+             claimName: backup-storage-pvc
+
+Key Differences
+---------------
+
++----------------------------+----------------------------------------+----------------------------------------+
+| Aspect                     | Old (repositoryPVC)                    | New (moverVolumes)                     |
++============================+========================================+========================================+
+| **Mount Location**         | ``/kopia`` (hardcoded)                 | ``/mnt/<mountPath>``                   |
+| **Repository Path**        | ``/kopia/repository`` (fixed)          | ``/mnt/<mountPath>`` (first PVC)       |
+| **Configuration**          | Single field                           | Volume array with explicit mount paths |
+| **Multiple Volumes**       | Not supported                          | Supported (first is repository)        |
+| **Consistency**            | Kopia-specific                         | Generic across all movers              |
++----------------------------+----------------------------------------+----------------------------------------+
+
 Configuration
 =============
 
 Basic Configuration
 -------------------
 
-To use a filesystem repository, specify the ``repositoryPVC`` field in your ReplicationSource:
+To use a filesystem repository, specify the ``moverVolumes`` field in your ReplicationSource:
 
 .. code-block:: yaml
 
@@ -57,7 +108,11 @@ To use a filesystem repository, specify the ``repositoryPVC`` field in your Repl
        # Reference to the repository configuration secret
        repository: kopia-password-secret
        # PVC to use as the filesystem repository
-       repositoryPVC: backup-storage-pvc
+       moverVolumes:
+       - mountPath: kopia-repo
+         volumeSource:
+           persistentVolumeClaim:
+             claimName: backup-storage-pvc
 
 Password Secret Configuration
 -----------------------------
@@ -74,40 +129,50 @@ For filesystem repositories, the secret must contain the repository password for
    type: Opaque
    stringData:
      # Optional: Explicitly specify filesystem repository type
-     # When repositoryPVC is set, this will be automatically set to "filesystem:///kopia/repository"
+     # When moverVolumes is used for the repository, you can set this to "filesystem:"
+     # VolSync will automatically detect the repository path from the first moverVolume
      KOPIA_REPOSITORY: "filesystem:"
      # Required: Password for repository encryption
      KOPIA_PASSWORD: "your-secure-repository-password"
 
 .. note::
-   When using ``repositoryPVC``, VolSync automatically sets ``KOPIA_REPOSITORY=filesystem:///kopia/repository``. 
-   You can optionally include ``KOPIA_REPOSITORY: "filesystem:"`` in the secret for clarity, but it's not required.
+   When using ``moverVolumes`` for a filesystem repository, VolSync automatically detects the first PVC in the list as the repository location. The repository is accessed at ``/mnt/<mountPath>`` where ``<mountPath>`` is the value specified in the first moverVolume entry.
 
 API Reference
 =============
 
-RepositoryPVC Field
--------------------
+moverVolumes Field
+------------------
 
-The ``repositoryPVC`` field provides a simplified API for filesystem-based repositories:
+The ``moverVolumes`` field provides a generic, consistent API for mounting additional volumes to mover pods:
 
-**repositoryPVC** (string, optional)
-   The name of the PersistentVolumeClaim to use as the backup repository.
-   
+**moverVolumes** (array, optional)
+   Array of volume mounts to add to the mover pod. Each volume is mounted at ``/mnt/<mountPath>``.
+
+   For Kopia filesystem repositories:
+
+   * The **first PVC** in the moverVolumes list is automatically detected as the Kopia repository
+   * The repository path is the mount point: ``/mnt/<mountPath>``
+   * If multiple PVCs are present, only the first is used as the repository (a warning is logged)
    * The PVC must exist in the same namespace as the ReplicationSource
-   * The PVC is mounted at ``/kopia`` within the mover pod
-   * The repository is created at the fixed path ``/kopia/repository``
-   * Minimum length: 1 character
-   * The PVC is always mounted in read-write mode for repository operations
+   * PVCs are mounted in read-write mode for repository operations
+
+**moverVolume structure**:
+
+.. code-block:: yaml
+
+   moverVolumes:
+   - mountPath: <string>           # Required: Name used in mount path /mnt/<mountPath>
+     volumeSource:                 # Required: Volume source definition
+       persistentVolumeClaim:
+         claimName: <string>       # Required: PVC name
+       # OR other volume source types (secret, configMap, etc.)
 
 .. important::
-   **Security Enhancement**: The repository path is fixed at ``/kopia/repository`` and cannot be configured. 
-   This design choice:
-   
-   * Eliminates path injection vulnerabilities
-   * Removes the need for path sanitization
-   * Provides consistent, predictable repository locations
-   * Aligns with Kopia's standard filesystem URL format
+   **Repository Detection**: VolSync automatically uses the first PVC in ``moverVolumes`` as the repository.
+   The repository path is constructed as ``filesystem:///mnt/<mountPath>`` internally.
+
+   **Best Practice**: Use descriptive mount path names like ``kopia-repo`` or ``repository`` to clearly indicate the purpose.
 
 Examples
 ========
@@ -158,8 +223,12 @@ This example backs up application data to a local storage PVC:
        schedule: "0 */6 * * *"  # Every 6 hours
      kopia:
        repository: kopia-password
-       # Simply reference the PVC - no path configuration needed
-       repositoryPVC: local-backup-storage
+       # Mount the PVC as a mover volume for the repository
+       moverVolumes:
+       - mountPath: kopia-repo
+         volumeSource:
+           persistentVolumeClaim:
+             claimName: local-backup-storage
        retain:
          hourly: 24
          daily: 7
@@ -216,8 +285,12 @@ This example uses an NFS-backed PVC as the backup repository:
        schedule: "0 1 * * *"  # Daily at 1 AM
      kopia:
        repository: kopia-secret
-       # NFS PVC as repository - simple and secure
-       repositoryPVC: nfs-backup-pvc
+       # NFS PVC as repository using moverVolumes
+       moverVolumes:
+       - mountPath: repository
+         volumeSource:
+           persistentVolumeClaim:
+             claimName: nfs-backup-pvc
        compression: "zstd"
        retain:
          daily: 30
@@ -244,7 +317,11 @@ This example combines filesystem and remote backups for comprehensive data prote
        schedule: "0 */4 * * *"  # Every 4 hours
      kopia:
        repository: kopia-password-local
-       repositoryPVC: fast-local-storage
+       moverVolumes:
+       - mountPath: local-repo
+         volumeSource:
+           persistentVolumeClaim:
+             claimName: fast-local-storage
        retain:
          hourly: 24
          daily: 3
@@ -280,35 +357,35 @@ This example combines filesystem and remote backups for comprehensive data prote
          weekly: 12
          monthly: 12
 
-Simplified API Benefits
-========================
+Benefits of moverVolumes Pattern
+=================================
 
-The new ``repositoryPVC`` field replaces the previous nested ``filesystemDestination`` structure, providing:
+The ``moverVolumes`` pattern provides several advantages:
 
-**Improved Security**
-   * Fixed repository path eliminates directory traversal vulnerabilities
-   * No user-configurable paths reduce attack surface
-   * Consistent security model across all deployments
+**Consistency Across Movers**
+   * Same configuration pattern for all movers (restic, rclone, rsync-tls, syncthing, kopia)
+   * Familiar to users of other VolSync movers
+   * Reduces learning curve when switching between movers
 
-**Simplified Configuration**
-   * Single field instead of nested structure
-   * No path configuration or validation required
-   * Clearer intent with descriptive field name
+**Flexibility**
+   * Support for multiple volume mounts (though only first PVC is used for repository)
+   * Standard Kubernetes volume source types supported
+   * Explicit mount path configuration at ``/mnt/<mountPath>``
 
-**Better Consistency**
-   * Aligns with other VolSync fields (``sourcePVC``, ``destinationPVC``)
-   * Uses standard Kopia filesystem URL format internally
-   * Same ``KOPIA_REPOSITORY`` environment variable as other backends
+**Clarity**
+   * Descriptive mount path names (e.g., ``kopia-repo``, ``repository``)
+   * Clear volume source specification
+   * Predictable mount locations
 
-**Easier Maintenance**
-   * Reduced complexity in implementation
-   * Fewer edge cases to handle
-   * Simplified troubleshooting
+**Better Integration**
+   * Aligns with Kubernetes volume mounting conventions
+   * Consistent with other VolSync mover implementations
+   * Standard ``KOPIA_REPOSITORY`` environment variable as other backends
 
-Migration from Remote to Filesystem
-====================================
+Switching from Remote to Filesystem Repository
+===============================================
 
-To switch from remote storage to a filesystem repository:
+To switch from remote storage to a filesystem repository using moverVolumes:
 
 1. **Create Repository PVC**
 
@@ -328,7 +405,7 @@ To switch from remote storage to a filesystem repository:
 
 2. **Update ReplicationSource**
 
-   Add the ``repositoryPVC`` field and update the secret:
+   Add the ``moverVolumes`` field and update the secret:
 
    .. code-block:: yaml
 
@@ -343,7 +420,11 @@ To switch from remote storage to a filesystem repository:
           schedule: "0 2 * * *"
         kopia:
           repository: kopia-password  # Now only contains KOPIA_PASSWORD
-          repositoryPVC: backup-repository
+          moverVolumes:
+          - mountPath: kopia-repo
+            volumeSource:
+              persistentVolumeClaim:
+                claimName: backup-repository
 
 3. **Verify Operation**
 
@@ -357,15 +438,15 @@ To switch from remote storage to a filesystem repository:
 Security Considerations
 =======================
 
-Enhanced Security Design
--------------------------
+Security Design
+---------------
 
-The ``repositoryPVC`` implementation includes several security enhancements:
+The ``moverVolumes`` implementation provides security through:
 
-* **Fixed Path**: Repository always at ``/kopia/repository`` - no user-configurable paths
-* **No Path Injection**: Eliminates directory traversal attack vectors
-* **Simplified Validation**: Fewer configuration options mean fewer potential misconfigurations
-* **Consistent Isolation**: Each PVC is mounted in a dedicated, isolated directory
+* **Standard Volume Mounts**: Uses Kubernetes standard volume mounting patterns
+* **Namespace Isolation**: PVCs must exist in the same namespace as the ReplicationSource
+* **Read-Write Access**: PVCs mounted with appropriate permissions for repository operations
+* **Predictable Paths**: Mount paths are at ``/mnt/<mountPath>`` - explicit and consistent
 
 Best Practices
 --------------
@@ -375,16 +456,21 @@ Best Practices
 3. **Network Storage**: When using network storage, ensure proper network segmentation
 4. **Regular Testing**: Periodically test restore operations to verify backup integrity
 5. **Capacity Monitoring**: Monitor PVC usage to prevent repository corruption from full storage
+6. **Descriptive Names**: Use clear mount path names like ``kopia-repo`` or ``repository``
 
 Technical Implementation
 -------------------------
 
-The Kopia mover handles filesystem repositories as follows:
+The Kopia mover handles filesystem repositories with moverVolumes as follows:
 
-* The repository PVC is mounted at ``/kopia``
-* The repository is initialized at ``/kopia/repository`` (fixed location)
-* VolSync automatically sets ``KOPIA_REPOSITORY=filesystem:///kopia/repository``
+* PVCs in ``moverVolumes`` are mounted at ``/mnt/<mountPath>``
+* The **first PVC** in the moverVolumes list is detected as the repository
+* VolSync automatically sets ``KOPIA_REPOSITORY=filesystem:///mnt/<mountPath>``
+* If multiple PVCs are present, only the first is used (warning logged)
 * The same parsing logic handles filesystem URLs as other backend types (s3://, azure://, etc.)
+
+.. note::
+   For more information on moverVolumes, see :doc:`../movervolumes`.
 
 Troubleshooting
 ===============
@@ -422,13 +508,14 @@ Common Issues
 
 .. code-block:: text
 
-   Error: repository not initialized at /kopia/repository
+   Error: repository not initialized at /mnt/<mountPath>
 
 **Solution**: The repository will be automatically initialized on first backup. If initialization fails, check:
 
 * PVC has sufficient space
 * PVC is writable
 * Password secret is properly configured
+* moverVolumes configuration is correct with valid mountPath
 
 **Permission Denied**
 
@@ -456,7 +543,7 @@ Common Issues
 
 .. code-block:: bash
 
-   kubectl exec -it <kopia-pod> -- df -h /kopia
+   kubectl exec -it <kopia-pod> -- df -h /mnt/<mountPath>
    kubectl patch pvc backup-pvc -n <namespace> -p '{"spec":{"resources":{"requests":{"storage":"200Gi"}}}}'
 
 Debugging Commands
@@ -478,15 +565,15 @@ Inspect the repository structure:
 
 .. code-block:: bash
 
-   # Check if repository is properly mounted
-   kubectl exec -it <kopia-pod> -n <namespace> -- ls -la /kopia
-   
+   # Check if repository is properly mounted (replace <mountPath> with your value)
+   kubectl exec -it <kopia-pod> -n <namespace> -- ls -la /mnt/<mountPath>
+
    # Verify repository initialization
-   kubectl exec -it <kopia-pod> -n <namespace> -- ls -la /kopia/repository
-   
+   kubectl exec -it <kopia-pod> -n <namespace> -- ls -la /mnt/<mountPath>
+
    # Check repository status
    kubectl exec -it <kopia-pod> -n <namespace> -- kopia repository status
-   
+
    # View repository configuration
    kubectl exec -it <kopia-pod> -n <namespace> -- env | grep KOPIA_REPOSITORY
 
@@ -517,23 +604,26 @@ Current Limitations
 -------------------
 
 * **Namespace Scope**: Repository PVC must exist in the same namespace as the ReplicationSource
-* **Single Repository**: Cannot use both ``repositoryPVC`` and remote repository configuration simultaneously
-* **Fixed Path**: Repository location is fixed at ``/kopia/repository`` for security
-* **Single PVC**: Only one repository PVC can be specified per ReplicationSource
+* **Single Repository**: The first PVC in moverVolumes is used as the repository; additional PVCs are supported but only the first is used for the repository
+* **ReplicationSource Only**: moverVolumes for filesystem repositories is only supported in ReplicationSource, not ReplicationDestination (restores require explicit repository configuration in secret)
+* **Repository Detection**: Only PVCs (not other volume types) are detected as potential repositories
 
 Compatibility Notes
 --------------------
 
-* The ``repositoryPVC`` field is available in VolSync v0.10.0 and later
-* Repositories created with ``repositoryPVC`` use standard Kopia filesystem format
+* The ``moverVolumes`` pattern is available in VolSync v0.11.0 and later
+* The ``repositoryPVC`` field was removed in v0.11.0 - migration to moverVolumes is required
+* Repositories created with moverVolumes use standard Kopia filesystem format
 * Compatible with all Kopia retention and compression settings
 * Works with existing Kopia tooling for repository maintenance
+* Existing repositories from repositoryPVC can be accessed with moverVolumes (just update the configuration)
 
 Related Documentation
 =====================
 
 * :doc:`index` - Main Kopia documentation
-* :doc:`backup-configuration` - Detailed backup configuration options including ``repositoryPVC``
+* :doc:`backup-configuration` - Detailed backup configuration options including ``moverVolumes``
 * :doc:`restore-configuration` - Restore operations from filesystem repositories
 * :doc:`troubleshooting` - Comprehensive troubleshooting guide
 * :doc:`backends` - Alternative remote storage backend configuration
+* :doc:`../movervolumes` - Generic moverVolumes documentation for all movers

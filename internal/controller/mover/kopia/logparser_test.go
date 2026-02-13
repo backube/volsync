@@ -20,7 +20,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package kopia
 
 import (
-	"testing"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -131,94 +130,81 @@ user2@host2:/backup 2024-01-01 11:00:00
 			Expect(*result).To(Equal(line))
 		})
 	})
-})
 
-// Test function is in builder_test.go to avoid duplicate RunSpecs
+	Describe("processJSONSnapshots", func() {
+		type processJSONSnapshotsTestCase struct {
+			name               string
+			jsonLines          []string
+			expectedIdentities map[string]int32
+		}
 
-// Additional unit tests using standard testing package
-func TestProcessJSONSnapshots(t *testing.T) {
-	tests := []struct {
-		name               string
-		jsonLines          []string
-		expectedIdentities map[string]int32
-	}{
-		{
-			name: "multiple snapshots same identity",
-			jsonLines: []string{
-				`{"id":"snap1","userName":"user1","hostName":"host1","path":"/data","endTime":"2024-01-01T10:00:00Z"}`,
-				`{"id":"snap2","userName":"user1","hostName":"host1","path":"/data","endTime":"2024-01-02T10:00:00Z"}`,
-			},
-			expectedIdentities: map[string]int32{
-				"user1@host1": 2,
-			},
-		},
-		{
-			name: "different identities",
-			jsonLines: []string{
-				`{"id":"snap1","userName":"user1","hostName":"host1","path":"/data","endTime":"2024-01-01T10:00:00Z"}`,
-				`{"id":"snap2","userName":"user2","hostName":"host2","path":"/data","endTime":"2024-01-02T10:00:00Z"}`,
-			},
-			expectedIdentities: map[string]int32{
-				"user1@host1": 1,
-				"user2@host2": 1,
-			},
-		},
-		{
-			name: "invalid JSON ignored",
-			jsonLines: []string{
-				`{"id":"snap1","userName":"user1","hostName":"host1","path":"/data","endTime":"2024-01-01T10:00:00Z"}`,
-				`invalid json`,
-				`{"id":"snap2","userName":"user1","hostName":"host1","path":"/data","endTime":"2024-01-02T10:00:00Z"}`,
-			},
-			expectedIdentities: map[string]int32{
-				"user1@host1": 2,
-			},
-		},
-	}
+		DescribeTable("processes JSON snapshot data correctly",
+			func(tc processJSONSnapshotsTestCase) {
+				identityMap := make(map[string]*volsyncv1alpha1.KopiaIdentityInfo)
+				processJSONSnapshots(tc.jsonLines, identityMap)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			identityMap := make(map[string]*volsyncv1alpha1.KopiaIdentityInfo)
-			processJSONSnapshots(tt.jsonLines, identityMap)
+				Expect(identityMap).To(HaveLen(len(tc.expectedIdentities)))
 
-			if len(identityMap) != len(tt.expectedIdentities) {
-				t.Errorf("expected %d identities, got %d", len(tt.expectedIdentities), len(identityMap))
-			}
-
-			for identity, expectedCount := range tt.expectedIdentities {
-				if info, exists := identityMap[identity]; !exists {
-					t.Errorf("expected identity %s not found", identity)
-				} else if info.SnapshotCount != expectedCount {
-					t.Errorf("identity %s: expected %d snapshots, got %d", identity, expectedCount, info.SnapshotCount)
+				for identity, expectedCount := range tc.expectedIdentities {
+					Expect(identityMap).To(HaveKey(identity))
+					Expect(identityMap[identity].SnapshotCount).To(Equal(expectedCount))
 				}
+			},
+			Entry("multiple snapshots same identity", processJSONSnapshotsTestCase{
+				name: "multiple snapshots same identity",
+				jsonLines: []string{
+					`{"id":"snap1","userName":"user1","hostName":"host1","path":"/data","endTime":"2024-01-01T10:00:00Z"}`,
+					`{"id":"snap2","userName":"user1","hostName":"host1","path":"/data","endTime":"2024-01-02T10:00:00Z"}`,
+				},
+				expectedIdentities: map[string]int32{
+					"user1@host1": 2,
+				},
+			}),
+			Entry("different identities", processJSONSnapshotsTestCase{
+				name: "different identities",
+				jsonLines: []string{
+					`{"id":"snap1","userName":"user1","hostName":"host1","path":"/data","endTime":"2024-01-01T10:00:00Z"}`,
+					`{"id":"snap2","userName":"user2","hostName":"host2","path":"/data","endTime":"2024-01-02T10:00:00Z"}`,
+				},
+				expectedIdentities: map[string]int32{
+					"user1@host1": 1,
+					"user2@host2": 1,
+				},
+			}),
+			Entry("invalid JSON ignored", processJSONSnapshotsTestCase{
+				name: "invalid JSON ignored",
+				jsonLines: []string{
+					`{"id":"snap1","userName":"user1","hostName":"host1","path":"/data","endTime":"2024-01-01T10:00:00Z"}`,
+					`invalid json`,
+					`{"id":"snap2","userName":"user1","hostName":"host1","path":"/data","endTime":"2024-01-02T10:00:00Z"}`,
+				},
+				expectedIdentities: map[string]int32{
+					"user1@host1": 2,
+				},
+			}),
+		)
+	})
+
+	Describe("LatestSnapshotTime", func() {
+		It("should track the latest snapshot time correctly", func() {
+			identityMap := make(map[string]*volsyncv1alpha1.KopiaIdentityInfo)
+
+			// Process snapshots with different times
+			jsonLines := []string{
+				`{"id":"snap1","userName":"user1","hostName":"host1","path":"/data","endTime":"2024-01-01T10:00:00Z"}`,
+				`{"id":"snap2","userName":"user1","hostName":"host1","path":"/data","endTime":"2024-01-03T10:00:00Z"}`,
+				`{"id":"snap3","userName":"user1","hostName":"host1","path":"/data","endTime":"2024-01-02T10:00:00Z"}`,
 			}
+
+			processJSONSnapshots(jsonLines, identityMap)
+
+			Expect(identityMap).To(HaveKey("user1@host1"))
+			info := identityMap["user1@host1"]
+			Expect(info).NotTo(BeNil())
+			Expect(info.LatestSnapshot).NotTo(BeNil())
+
+			expectedTime, _ := time.Parse(time.RFC3339, "2024-01-03T10:00:00Z")
+			Expect(info.LatestSnapshot.Time.Equal(expectedTime)).To(BeTrue())
 		})
-	}
-}
-
-func TestLatestSnapshotTime(t *testing.T) {
-	identityMap := make(map[string]*volsyncv1alpha1.KopiaIdentityInfo)
-
-	// Process snapshots with different times
-	jsonLines := []string{
-		`{"id":"snap1","userName":"user1","hostName":"host1","path":"/data","endTime":"2024-01-01T10:00:00Z"}`,
-		`{"id":"snap2","userName":"user1","hostName":"host1","path":"/data","endTime":"2024-01-03T10:00:00Z"}`,
-		`{"id":"snap3","userName":"user1","hostName":"host1","path":"/data","endTime":"2024-01-02T10:00:00Z"}`,
-	}
-
-	processJSONSnapshots(jsonLines, identityMap)
-
-	info := identityMap["user1@host1"]
-	if info == nil {
-		t.Fatal("expected identity not found")
-	}
-
-	if info.LatestSnapshot == nil {
-		t.Fatal("expected latest snapshot time to be set")
-	}
-
-	expectedTime, _ := time.Parse(time.RFC3339, "2024-01-03T10:00:00Z")
-	if !info.LatestSnapshot.Time.Equal(expectedTime) {
-		t.Errorf("expected latest time %v, got %v", expectedTime, info.LatestSnapshot.Time)
-	}
-}
+	})
+})

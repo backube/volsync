@@ -105,9 +105,10 @@ The ``kopia-config`` Secret configures the Kopia repository parameters:
       # S3 endpoint (required for non-AWS S3)
       AWS_S3_ENDPOINT: http://minio.minio.svc.cluster.local:9000
 
-The above will backup to a bucket called ``kopia-repo``. If the same bucket will
-be used for different PVCs or different uses, then make sure to specify a unique
-path under ``kopia-repo``. See `Shared S3 Bucket Notes`_ for more detail.
+The above will backup to a bucket called ``kopia-repo``. For optimal deduplication
+benefits, it is **strongly recommended** to use a single Kopia repository (single S3
+bucket without prefixes) for all your PVCs. See `Repository Configuration Best Practices`_
+for more detail.
 
 ReplicationSource with Database Consistency and Repository Policies
 --------------------------------------------------------------------
@@ -129,7 +130,6 @@ retention policies, compression, and actions to ensure consistent MySQL backups:
       trigger:
          schedule: "*/30 * * * *"
       kopia:
-        maintenanceIntervalDays: 7
         repository: kopia-config
         
         # Repository Retention Policy
@@ -195,8 +195,8 @@ In the above ``ReplicationSource`` object:
 - **Performance**: ``parallelism: 2`` enables parallel upload streams for
   faster backup operations, especially beneficial for large databases.
 
-- **Maintenance**: ``maintenanceIntervalDays: 7`` ensures weekly maintenance
-  runs to enforce retention policies and optimize repository storage.
+- **Maintenance**: Repository maintenance should be configured using the KopiaMaintenance CRD
+  (see below) to enforce retention policies and optimize repository storage.
 
 - **Consistency Actions**: The ``actions`` section defines hooks that run
   before and after snapshots:
@@ -225,12 +225,59 @@ In the above ``ReplicationSource`` object:
    maintenance runs, automatically removing snapshots that exceed the defined
    retention limits. This ensures storage efficiency without manual intervention.
 
-Now, deploy the ``kopia-config`` followed by ``ReplicationSource`` configuration.
+Configure KopiaMaintenance
+--------------------------
+
+Since the ``maintenanceIntervalDays`` field has been removed from ReplicationSource, you need to create
+a separate KopiaMaintenance resource to handle repository maintenance:
+
+.. code-block:: yaml
+
+   ---
+   apiVersion: volsync.backube/v1alpha1
+   kind: KopiaMaintenance
+   metadata:
+      name: database-maintenance
+      namespace: source
+   spec:
+      repository:
+         repository: kopia-config  # Same secret as ReplicationSource
+      trigger:
+         schedule: "0 2 * * 0"     # Weekly on Sunday at 2 AM
+      # Cache configuration for improved performance
+      cacheCapacity: 5Gi
+      cacheStorageClassName: fast-ssd
+      cacheAccessModes:
+         - ReadWriteOnce
+      resources:
+         requests:
+            memory: "512Mi"
+            cpu: "200m"
+         limits:
+            memory: "2Gi"
+            cpu: "1"
+
+This KopiaMaintenance resource will:
+
+- Run maintenance weekly on Sunday at 2 AM
+- Use a 5Gi persistent cache for improved performance
+- Enforce the retention policies defined in your ReplicationSource
+- Clean up orphaned data blocks and optimize the repository
+
+**Benefits of using KopiaMaintenance CRD:**
+
+- **Flexible scheduling**: Use cron expressions or manual triggers
+- **Performance optimization**: Configure persistent cache for faster operations
+- **Resource control**: Set specific CPU and memory limits for maintenance
+- **Independent operation**: Maintenance runs separately from backup jobs
+
+Now, deploy the ``kopia-config``, ``ReplicationSource``, and ``KopiaMaintenance`` configurations.
 
 .. code-block:: console
 
    $ kubectl create -f examples/kopia/source-kopia/source-kopia.yaml -n source
    $ kubectl create -f examples/kopia/volsync_v1alpha1_replicationsource.yaml -n source
+   $ kubectl apply -f database-maintenance.yaml -n source
 
 To verify the replication has completed, view the ReplicationSource
 ``.status`` field.
@@ -492,40 +539,73 @@ exists.
    ``mysql-backup.sql`` in the restored data. This dump can be used as an
    additional recovery option or imported into a fresh database instance.
 
-.. _Shared S3 Bucket Notes:
+.. _Repository Configuration Best Practices:
 
-===============================================
-Backing up multiple PVCs to the same S3 bucket
-===============================================
+==================================================
+Repository Configuration Best Practices
+==================================================
 
-If using the same S3 bucket for multiple backups, then be aware of the following:
+Single Repository Approach (Recommended)
+=========================================
 
-- Each PVC to be backed up will need its own separate ``kopia-config`` secret.
-- Each ``kopia-config`` secret may use the same s3 bucket name in the KOPIA_REPOSITORY, but
-  they must each have a unique path underneath.
+**For optimal deduplication benefits, it is strongly recommended to use a single Kopia
+repository for all your PVCs.** This means using a single S3 bucket (or other backend)
+without path prefixes for all your backups. This approach maximizes Kopia's deduplication
+capabilities across all your data.
 
-Example of backing up 2 PVCs, ``pvc-a`` and ``pvc-b``:
-=========================================================
+Why Use a Single Repository?
+-----------------------------
 
-A ``kopia-config`` and ``replicationsource`` needs to be created for each pvc and each replicationsource
-must refer to the correct ``kopia-config``.
+1. **Maximum Deduplication**: Kopia performs content-defined chunking and deduplication
+   at the repository level. When all PVCs share the same repository, duplicate data blocks
+   across different PVCs are stored only once, significantly reducing storage costs.
+
+2. **Simplified Management**: Managing one repository is simpler than managing multiple
+   repositories with different paths or buckets.
+
+3. **Better Storage Efficiency**: Common data patterns (like operating system files,
+   application binaries, or shared libraries) are deduplicated across all your backups.
+
+4. **Automatic Isolation**: Kopia internally manages separation between different PVCs
+   using the username/hostname combination. Each ReplicationSource automatically gets
+   a unique identity, ensuring complete isolation of snapshot histories.
+
+How Kopia Manages Multiple PVCs in One Repository
+--------------------------------------------------
+
+Kopia uses a combination of username and hostname to create unique identities for each
+backup source. VolSync automatically generates these identities based on:
+
+- **Username**: Derived from the ReplicationSource name and namespace
+- **Hostname**: Defaults to the namespace name
+
+This means each PVC backup has its own isolated snapshot history within the shared
+repository, while still benefiting from cross-PVC deduplication.
+
+Recommended Configuration for Multiple PVCs
+============================================
+
+When backing up multiple PVCs to the same repository, use the **same** repository
+configuration (same S3 bucket, no path prefixes) but with different secret names:
 
 For ``pvc-a``:
 
 .. code-block:: yaml
 
    ---
-   # Kopia-config Secret for pvc-a
+   # Shared Kopia repository configuration (RECOMMENDED APPROACH)
+   # Use the SAME repository URL for all PVCs - no path prefixes!
    apiVersion: v1
    kind: Secret
    metadata:
-      name: kopia-config-a
+      name: kopia-config-shared
+      namespace: source
    type: Opaque
    stringData:
-      # The repository url with pvc-a-backup as the subpath under the kopia-repo bucket
-      KOPIA_REPOSITORY: s3://kopia-repo/pvc-a-backup
-      # The repository encryption password
-      KOPIA_PASSWORD: my-secure-kopia-password-pvc-a
+      # Single repository URL - no path prefix for optimal deduplication
+      KOPIA_REPOSITORY: s3://kopia-repo
+      # Single repository encryption password for all PVCs
+      KOPIA_PASSWORD: my-secure-kopia-password
       # S3 credentials
       AWS_ACCESS_KEY_ID: access
       AWS_SECRET_ACCESS_KEY: password
@@ -537,15 +617,14 @@ For ``pvc-a``:
    apiVersion: volsync.backube/v1alpha1
    kind: ReplicationSource
    metadata:
-      name: replication-source-pvc-a
+      name: app-database  # Unique name creates unique identity
       namespace: source
    spec:
       sourcePVC: pvc-a
       trigger:
          schedule: "*/30 * * * *"
       kopia:
-        maintenanceIntervalDays: 7
-        repository: kopia-config-a
+        repository: kopia-config-shared  # Use shared repository
         retain:
           daily: 7
           weekly: 4
@@ -554,43 +633,28 @@ For ``pvc-a``:
         compression: zstd
         parallelism: 2
         copyMethod: Clone
+        # Identity automatically generated as:
+        # username: app-database-source
+        # hostname: source
+        # Full identity: app-database-source@source
 
 For ``pvc-b``:
 
 .. code-block:: yaml
 
    ---
-   # Kopia-config Secret for pvc-b
-   apiVersion: v1
-   kind: Secret
-   metadata:
-      name: kopia-config-b
-   type: Opaque
-   stringData:
-      # The repository url with pvc-b-backup as the subpath under the kopia-repo bucket
-      KOPIA_REPOSITORY: s3://kopia-repo/pvc-b-backup
-      # The repository encryption password - using a different key from pvc-a for additional security
-      KOPIA_PASSWORD: my-secure-kopia-password-pvc-b
-      # S3 credentials
-      AWS_ACCESS_KEY_ID: access
-      AWS_SECRET_ACCESS_KEY: password
-      # S3 endpoint (required for non-AWS S3)
-      AWS_S3_ENDPOINT: http://minio.minio.svc.cluster.local:9000
-
-   ---
-   # ReplicationSource for pvc-b
+   # ReplicationSource for pvc-b (using the SAME repository)
    apiVersion: volsync.backube/v1alpha1
    kind: ReplicationSource
    metadata:
-      name: replication-source-pvc-b
+      name: app-uploads  # Different name ensures unique identity
       namespace: source
    spec:
       sourcePVC: pvc-b
       trigger:
          schedule: "*/30 * * * *"
       kopia:
-        maintenanceIntervalDays: 7
-        repository: kopia-config-b
+        repository: kopia-config-shared  # SAME shared repository
         retain:
           daily: 7
           weekly: 4
@@ -599,11 +663,117 @@ For ``pvc-b``:
         compression: zstd
         parallelism: 2
         copyMethod: Clone
+        # Identity automatically generated as:
+        # username: app-uploads-source
+        # hostname: source
+        # Full identity: app-uploads-source@source
 
 .. note::
-   Unlike some other backup tools, Kopia supports multiple clients safely writing
-   to the same repository path. However, for organizational purposes and better
-   isolation, it's still recommended to use separate paths for different PVCs.
+   **Key Benefits of Single Repository**:
+
+   - Kopia safely supports multiple clients writing to the same repository simultaneously
+   - Each ReplicationSource maintains its own isolated snapshot history
+   - Deduplication works across ALL PVCs in the repository
+   - Storage savings can be significant when backing up similar data
+
+When to Use Separate Repositories
+==================================
+
+While a single repository is recommended for most use cases, there are specific scenarios
+where separate repositories (different buckets or path prefixes) might be appropriate:
+
+1. **Compliance Requirements**: Different data classifications requiring physical separation
+
+   - HIPAA-regulated healthcare data vs. general application data
+   - PCI-DSS payment card data vs. non-sensitive data
+   - GDPR-protected personal data with different retention requirements
+
+2. **Organizational Boundaries**: Clear separation between departments or teams
+
+   - Different departments with separate budgets and storage accounts
+   - Multi-tenant SaaS environments with strict isolation requirements
+   - Separate development, staging, and production environments
+
+3. **Different Retention Policies**: Incompatible backup retention requirements
+
+   - Long-term archival data (years) vs. short-term operational backups (days)
+   - Legal hold requirements for specific datasets
+
+4. **Performance Isolation**: Preventing one workload from impacting another
+
+   - High-frequency backup jobs vs. occasional large backups
+   - Critical production systems vs. non-critical development work
+
+5. **Geographic Requirements**: Data residency and latency considerations
+
+   - Data that must remain in specific regions for compliance
+   - Optimizing for regional performance by using local storage
+
+Example: Using Separate Repositories When Necessary
+----------------------------------------------------
+
+If you must use separate repositories (e.g., for compliance), use distinct bucket paths:
+
+.. code-block:: yaml
+
+   ---
+   # Repository for HIPAA-compliant healthcare data
+   apiVersion: v1
+   kind: Secret
+   metadata:
+      name: kopia-config-healthcare
+   type: Opaque
+   stringData:
+      KOPIA_REPOSITORY: s3://backups-hipaa/healthcare-data
+      KOPIA_PASSWORD: healthcare-encryption-key
+      # ... other credentials
+
+   ---
+   # Repository for general application data
+   apiVersion: v1
+   kind: Secret
+   metadata:
+      name: kopia-config-general
+   type: Opaque
+   stringData:
+      KOPIA_REPOSITORY: s3://backups-general/app-data
+      KOPIA_PASSWORD: general-encryption-key
+      # ... other credentials
+
+.. warning::
+   Using separate repositories means you lose deduplication benefits between them.
+   Only separate repositories when you have a clear requirement to do so.
+
+Understanding Deduplication Benefits
+=====================================
+
+To illustrate why a single repository is recommended, consider this example:
+
+**Scenario**: Backing up 10 application PVCs, each containing:
+- 500 MB of operating system libraries
+- 200 MB of common application frameworks
+- 300 MB of unique application data
+
+**With Separate Repositories** (bucket prefixes per PVC):
+- Total storage used: 10 × (500 + 200 + 300) = 10,000 MB
+- No deduplication between PVCs
+
+**With Single Repository** (recommended approach):
+- Common OS libraries stored once: 500 MB
+- Common frameworks stored once: 200 MB
+- Unique data for all apps: 10 × 300 = 3,000 MB
+- Total storage used: 500 + 200 + 3,000 = 3,700 MB
+- **Storage savings: 63%**
+
+The savings increase dramatically when:
+- You have many PVCs with similar base images
+- Applications share common libraries or frameworks
+- You're backing up multiple instances of the same application
+- Development, staging, and production environments have similar data
+
+.. tip::
+   Monitor your Kopia repository statistics to see actual deduplication ratios.
+   It's common to see 50-80% storage reduction in environments with similar workloads.
 
 Kopia Advantages for Database Backups
 ======================================

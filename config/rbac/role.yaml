@@ -32,7 +32,15 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - persistentvolumeclaims/finalizers
+  - persistentvolumes
+  verbs:
+  - get
+  - list
+  - patch
+  - watch
+- apiGroups:
+  - ""
+  resources:
   - secrets
   - serviceaccounts
   - services
@@ -43,15 +51,6 @@ rules:
   - list
   - patch
   - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - persistentvolumes
-  verbs:
-  - get
-  - list
-  - patch
   - watch
 - apiGroups:
   - ""
@@ -70,6 +69,18 @@ rules:
   - create
   - delete
   - deletecollection
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - cronjobs
+  verbs:
+  - create
+  - delete
   - get
   - list
   - patch
@@ -155,10 +166,9 @@ rules:
 - apiGroups:
   - volsync.backube
   resources:
+  - kopiamaintenances
   - replicationdestinations
-  - replicationdestinations/finalizers
   - replicationsources
-  - replicationsources/finalizers
   verbs:
   - create
   - delete
@@ -170,6 +180,13 @@ rules:
 - apiGroups:
   - volsync.backube
   resources:
+  - kopiamaintenances/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - volsync.backube
+  resources:
+  - kopiamaintenances/status
   - replicationdestinations/status
   - replicationsources/status
   verbs:

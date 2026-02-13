@@ -20,155 +20,182 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package kopia
 
 import (
-	"testing"
-
 	"github.com/go-logr/logr"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 )
 
-func TestAddAdditionalArgsEnvVar(t *testing.T) {
-	tests := []struct {
-		name           string
-		additionalArgs []string
-		expectedEnvVar string
-		expectNoEnvVar bool
-	}{
-		{
-			name: "single argument",
-			additionalArgs: []string{
-				"--one-file-system",
-			},
-			expectedEnvVar: "--one-file-system",
-		},
-		{
-			name: "multiple arguments",
-			additionalArgs: []string{
-				"--one-file-system",
-				"--parallel=8",
-				"--ignore-cache-dirs",
-			},
-			expectedEnvVar: "--one-file-system|VOLSYNC_ARG_SEP|--parallel=8|VOLSYNC_ARG_SEP|--ignore-cache-dirs",
-		},
-		{
-			name: "arguments with equals",
-			additionalArgs: []string{
-				"--compression=zstd",
-				"--upload-speed=100MB",
-			},
-			expectedEnvVar: "--compression=zstd|VOLSYNC_ARG_SEP|--upload-speed=100MB",
-		},
-		{
-			name: "arguments with special characters",
-			additionalArgs: []string{
-				"--exclude=*.tmp",
-				"--exclude=cache/",
-			},
-			expectedEnvVar: "--exclude=*.tmp|VOLSYNC_ARG_SEP|--exclude=cache/",
-		},
-		{
-			name: "arguments that would have been blocked before",
-			additionalArgs: []string{
-				"--password=secret",
-				"--config-file=/etc/kopia",
-				"--username=myuser",
-			},
-			expectedEnvVar: "--password=secret|VOLSYNC_ARG_SEP|--config-file=/etc/kopia|VOLSYNC_ARG_SEP|--username=myuser",
-		},
-		{
-			name:           "empty args",
-			additionalArgs: []string{},
-			expectNoEnvVar: true,
-		},
-		{
-			name:           "nil args",
-			additionalArgs: nil,
-			expectNoEnvVar: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			m := &Mover{
-				logger:         logr.Discard(),
-				additionalArgs: tt.additionalArgs,
-			}
-
-			envVars := []corev1.EnvVar{}
-			result := m.addAdditionalArgsEnvVar(envVars)
-
-			if tt.expectNoEnvVar {
-				// Check that no KOPIA_ADDITIONAL_ARGS was added
-				for _, env := range result {
-					if env.Name == "KOPIA_ADDITIONAL_ARGS" {
-						t.Errorf("expected no KOPIA_ADDITIONAL_ARGS env var, but found: %s", env.Value)
-					}
+var _ = Describe("Additional Args", func() {
+	Describe("addAdditionalArgsEnvVar", func() {
+		Context("when a single argument is provided", func() {
+			It("should add the argument as env var value", func() {
+				m := &Mover{
+					logger: logr.Discard(),
+					additionalArgs: []string{
+						"--one-file-system",
+					},
 				}
-			} else {
-				// Check that KOPIA_ADDITIONAL_ARGS was added with correct value
-				found := false
-				for _, env := range result {
-					if env.Name == "KOPIA_ADDITIONAL_ARGS" {
-						found = true
-						if env.Value != tt.expectedEnvVar {
-							t.Errorf("expected env var value '%s', got '%s'", tt.expectedEnvVar, env.Value)
-						}
-					}
-				}
-				if !found {
-					t.Errorf("expected KOPIA_ADDITIONAL_ARGS env var, but not found")
-				}
-			}
+
+				envVars := []corev1.EnvVar{}
+				result := m.addAdditionalArgsEnvVar(envVars)
+
+				Expect(result).To(HaveLen(1))
+				Expect(result[0].Name).To(Equal("KOPIA_ADDITIONAL_ARGS"))
+				Expect(result[0].Value).To(Equal("--one-file-system"))
+			})
 		})
-	}
-}
 
-func TestAdditionalArgsIntegration(t *testing.T) {
-	// Test that additional args are properly passed through the builder
-	t.Run("ReplicationSource includes additional args", func(t *testing.T) {
-		m := &Mover{
-			logger: logr.Discard(),
-			additionalArgs: []string{
-				"--one-file-system",
-				"--parallel=8",
-			},
-		}
+		Context("when multiple arguments are provided", func() {
+			It("should join arguments with VOLSYNC_ARG_SEP separator", func() {
+				m := &Mover{
+					logger: logr.Discard(),
+					additionalArgs: []string{
+						"--one-file-system",
+						"--parallel=8",
+						"--ignore-cache-dirs",
+					},
+				}
 
-		envVars := m.addAdditionalArgsEnvVar([]corev1.EnvVar{})
-		
-		if len(envVars) != 1 {
-			t.Errorf("expected 1 env var, got %d", len(envVars))
-		}
-		
-		if envVars[0].Name != "KOPIA_ADDITIONAL_ARGS" {
-			t.Errorf("expected env var name KOPIA_ADDITIONAL_ARGS, got %s", envVars[0].Name)
-		}
-		
-		expected := "--one-file-system|VOLSYNC_ARG_SEP|--parallel=8"
-		if envVars[0].Value != expected {
-			t.Errorf("expected env var value '%s', got '%s'", expected, envVars[0].Value)
-		}
+				envVars := []corev1.EnvVar{}
+				result := m.addAdditionalArgsEnvVar(envVars)
+
+				Expect(result).To(HaveLen(1))
+				Expect(result[0].Name).To(Equal("KOPIA_ADDITIONAL_ARGS"))
+				Expect(result[0].Value).To(Equal("--one-file-system|VOLSYNC_ARG_SEP|--parallel=8|VOLSYNC_ARG_SEP|--ignore-cache-dirs"))
+			})
+		})
+
+		Context("when arguments contain equals signs", func() {
+			It("should preserve equals signs in argument values", func() {
+				m := &Mover{
+					logger: logr.Discard(),
+					additionalArgs: []string{
+						"--compression=zstd",
+						"--upload-speed=100MB",
+					},
+				}
+
+				envVars := []corev1.EnvVar{}
+				result := m.addAdditionalArgsEnvVar(envVars)
+
+				Expect(result).To(HaveLen(1))
+				Expect(result[0].Name).To(Equal("KOPIA_ADDITIONAL_ARGS"))
+				Expect(result[0].Value).To(Equal("--compression=zstd|VOLSYNC_ARG_SEP|--upload-speed=100MB"))
+			})
+		})
+
+		Context("when arguments contain special characters", func() {
+			It("should preserve special characters in argument values", func() {
+				m := &Mover{
+					logger: logr.Discard(),
+					additionalArgs: []string{
+						"--exclude=*.tmp",
+						"--exclude=cache/",
+					},
+				}
+
+				envVars := []corev1.EnvVar{}
+				result := m.addAdditionalArgsEnvVar(envVars)
+
+				Expect(result).To(HaveLen(1))
+				Expect(result[0].Name).To(Equal("KOPIA_ADDITIONAL_ARGS"))
+				Expect(result[0].Value).To(Equal("--exclude=*.tmp|VOLSYNC_ARG_SEP|--exclude=cache/"))
+			})
+		})
+
+		Context("when arguments that would have been blocked before are provided", func() {
+			It("should allow all arguments without validation", func() {
+				m := &Mover{
+					logger: logr.Discard(),
+					additionalArgs: []string{
+						"--password=secret",
+						"--config-file=/etc/kopia",
+						"--username=myuser",
+					},
+				}
+
+				envVars := []corev1.EnvVar{}
+				result := m.addAdditionalArgsEnvVar(envVars)
+
+				Expect(result).To(HaveLen(1))
+				Expect(result[0].Name).To(Equal("KOPIA_ADDITIONAL_ARGS"))
+				Expect(result[0].Value).To(Equal("--password=secret|VOLSYNC_ARG_SEP|--config-file=/etc/kopia|VOLSYNC_ARG_SEP|--username=myuser"))
+			})
+		})
+
+		Context("when empty args are provided", func() {
+			It("should not add KOPIA_ADDITIONAL_ARGS env var", func() {
+				m := &Mover{
+					logger:         logr.Discard(),
+					additionalArgs: []string{},
+				}
+
+				envVars := []corev1.EnvVar{}
+				result := m.addAdditionalArgsEnvVar(envVars)
+
+				for _, env := range result {
+					Expect(env.Name).NotTo(Equal("KOPIA_ADDITIONAL_ARGS"))
+				}
+			})
+		})
+
+		Context("when nil args are provided", func() {
+			It("should not add KOPIA_ADDITIONAL_ARGS env var", func() {
+				m := &Mover{
+					logger:         logr.Discard(),
+					additionalArgs: nil,
+				}
+
+				envVars := []corev1.EnvVar{}
+				result := m.addAdditionalArgsEnvVar(envVars)
+
+				for _, env := range result {
+					Expect(env.Name).NotTo(Equal("KOPIA_ADDITIONAL_ARGS"))
+				}
+			})
+		})
 	})
 
-	t.Run("No validation - all args are allowed", func(t *testing.T) {
-		m := &Mover{
-			logger: logr.Discard(),
-			additionalArgs: []string{
-				"--password=secret",
-				"--config-file=/custom/config",
-				"--repository=s3://bucket",
-			},
-		}
+	Describe("Additional Args Integration", func() {
+		Context("when ReplicationSource includes additional args", func() {
+			It("should properly pass args through the builder", func() {
+				m := &Mover{
+					logger: logr.Discard(),
+					additionalArgs: []string{
+						"--one-file-system",
+						"--parallel=8",
+					},
+				}
 
-		envVars := m.addAdditionalArgsEnvVar([]corev1.EnvVar{})
-		
-		// Should include all args without validation
-		if len(envVars) != 1 {
-			t.Errorf("expected 1 env var, got %d", len(envVars))
-		}
-		
-		expected := "--password=secret|VOLSYNC_ARG_SEP|--config-file=/custom/config|VOLSYNC_ARG_SEP|--repository=s3://bucket"
-		if envVars[0].Value != expected {
-			t.Errorf("expected env var value '%s', got '%s'", expected, envVars[0].Value)
-		}
+				envVars := m.addAdditionalArgsEnvVar([]corev1.EnvVar{})
+
+				Expect(envVars).To(HaveLen(1))
+				Expect(envVars[0].Name).To(Equal("KOPIA_ADDITIONAL_ARGS"))
+
+				expected := "--one-file-system|VOLSYNC_ARG_SEP|--parallel=8"
+				Expect(envVars[0].Value).To(Equal(expected))
+			})
+		})
+
+		Context("when no validation is applied", func() {
+			It("should allow all args without validation", func() {
+				m := &Mover{
+					logger: logr.Discard(),
+					additionalArgs: []string{
+						"--password=secret",
+						"--config-file=/custom/config",
+						"--repository=s3://bucket",
+					},
+				}
+
+				envVars := m.addAdditionalArgsEnvVar([]corev1.EnvVar{})
+
+				Expect(envVars).To(HaveLen(1))
+
+				expected := "--password=secret|VOLSYNC_ARG_SEP|--config-file=/custom/config|VOLSYNC_ARG_SEP|--repository=s3://bucket"
+				Expect(envVars[0].Value).To(Equal(expected))
+			})
+		})
 	})
-}
+})

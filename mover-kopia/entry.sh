@@ -4,6 +4,11 @@
 #
 # Environment Variables for Log Configuration:
 # ---------------------------------------------
+# KOPIA_LOG_LEVEL - Set the log level for console/stdout output (default: matches KOPIA_FILE_LOG_LEVEL)
+#   Possible values: debug, info, warn, error
+#   Console logs appear in kubectl logs output
+#   This is what you see when running 'kubectl logs <pod-name>'
+#
 # KOPIA_FILE_LOG_LEVEL - Set the log level for file logs (default: info)
 #   Possible values: debug, info, warn, error
 #   Default 'info' provides good operational visibility
@@ -25,19 +30,241 @@
 #   Format: duration string like "4h", "24h", "7d"
 #   Short retention to minimize PVC disk usage
 #
+# KOPIA_FORCE_CACHE_REBUILD - Force cache clearing before connection (default: false)
+#   Set to "true" to clear corrupted cache before attempting connection
+#   Useful for recovering from cache corruption errors (mmap errors, pack index errors)
+#   Safe to use - only removes cache data that Kopia can rebuild automatically
+#
+# KOPIA_METADATA_CACHE_SIZE_LIMIT_MB - Maximum size of metadata cache in MB (default: auto)
+#   Controls the hard limit for Kopia's metadata cache
+#   If not set, auto-calculated as 70% of cache capacity
+#
+# KOPIA_CONTENT_CACHE_SIZE_LIMIT_MB - Maximum size of content cache in MB (default: auto)
+#   Controls the hard limit for Kopia's content cache
+#   If not set, auto-calculated as 20% of cache capacity
+#
 # These Kubernetes-optimized defaults minimize cache PVC disk usage since most
 # users rely on external logging systems (Loki, ElasticSearch, Fluentd, etc.)
 # for log aggregation. The local files are primarily for immediate debugging.
 # Users can override these by setting the environment variables in their
 # Kopia repository secret.
 
-echo "Starting container"
+echo "Starting kopia mover container"
 echo
 
 set -e -o pipefail
 
-echo "VolSync kopia container version: ${version:-unknown}"
-echo "$@"
+# Global state for exit trap
+OPERATION_RESULT="UNKNOWN"
+OPERATION_FAILURE_REASON=""
+KOPIA_ERROR_OUTPUT=""
+MAINTENANCE_DURATION=""
+
+# Function to log with structured prefixes and respect log level
+log_info() {
+    echo "INFO: $*"
+}
+
+log_debug() {
+    if [[ "${KOPIA_FILE_LOG_LEVEL}" == "debug" ]]; then
+        echo "DEBUG: $*"
+    fi
+}
+
+log_error() {
+    echo "ERROR: $*" >&2
+}
+
+log_warn() {
+    echo "WARN: $*"
+}
+
+log_timing() {
+    echo "TIMING: $*"
+}
+
+# Cache exhaustion detection for EmptyDir eviction scenarios
+# Returns cache usage info as "used_bytes total_bytes percentage"
+get_cache_usage() {
+    local cache_dir="${KOPIA_CACHE_DIR:-/cache}"
+    if [[ ! -d "${cache_dir}" ]]; then
+        echo "0 0 0"
+        return
+    fi
+
+    # Get actual disk usage of cache directory
+    local used_bytes
+    used_bytes=$(du -sb "${cache_dir}" 2>/dev/null | awk '{print $1}' || echo "0")
+
+    # Get capacity from env var (set by controller)
+    local capacity_bytes="${KOPIA_CACHE_CAPACITY_BYTES:-8589934592}"  # Default 8Gi
+
+    # Calculate percentage
+    local percentage=0
+    if [[ ${capacity_bytes} -gt 0 ]]; then
+        percentage=$((used_bytes * 100 / capacity_bytes))
+    fi
+
+    echo "${used_bytes} ${capacity_bytes} ${percentage}"
+}
+
+# Format bytes to human-readable (e.g., 8589934592 -> 8.0Gi)
+format_bytes() {
+    local bytes=$1
+    if [[ ${bytes} -ge 1073741824 ]]; then
+        echo "$(awk "BEGIN {printf \"%.1f\", ${bytes}/1073741824}")Gi"
+    elif [[ ${bytes} -ge 1048576 ]]; then
+        echo "$(awk "BEGIN {printf \"%.1f\", ${bytes}/1048576}")Mi"
+    elif [[ ${bytes} -ge 1024 ]]; then
+        echo "$(awk "BEGIN {printf \"%.1f\", ${bytes}/1024}")Ki"
+    else
+        echo "${bytes}B"
+    fi
+}
+
+# Check if cache is near or at capacity (called on SIGTERM)
+check_cache_exhaustion() {
+    local usage_info
+    usage_info=$(get_cache_usage)
+    local used_bytes=$(echo "${usage_info}" | awk '{print $1}')
+    local capacity_bytes=$(echo "${usage_info}" | awk '{print $2}')
+    local percentage=$(echo "${usage_info}" | awk '{print $3}')
+
+    local used_human=$(format_bytes "${used_bytes}")
+    local capacity_human=$(format_bytes "${capacity_bytes}")
+
+    if [[ ${percentage} -ge 90 ]]; then
+        echo ""
+        echo "========================================================================"
+        echo "ERROR: CACHE EXHAUSTION DETECTED"
+        echo "========================================================================"
+        echo "Cache usage: ${used_human} / ${capacity_human} (${percentage}%)"
+        echo ""
+        echo "The pod is being terminated because the Kopia cache exceeded the"
+        echo "EmptyDir volume limit. This typically happens during large restores"
+        echo "or backups when the cache grows beyond its allocated size."
+        echo ""
+        echo "SOLUTION: Increase cacheCapacity in your ReplicationSource/Destination:"
+        echo ""
+        echo "  spec:"
+        echo "    kopia:"
+        echo "      cacheCapacity: \"20Gi\"  # Increase this value"
+        echo ""
+        echo "Or use a PVC-backed cache instead of EmptyDir:"
+        echo ""
+        echo "  spec:"
+        echo "    kopia:"
+        echo "      cacheStorageClassName: \"your-storage-class\""
+        echo "      cacheCapacity: \"20Gi\""
+        echo ""
+        echo "========================================================================"
+        return 0  # Cache exhaustion detected
+    fi
+    return 1  # No exhaustion
+}
+
+# SIGTERM handler - Kubernetes sends SIGTERM before evicting/killing pods
+handle_sigterm() {
+    local exit_code=$?
+    echo ""
+    log_warn "Received SIGTERM signal - pod is being terminated"
+
+    # Check if this might be due to cache exhaustion
+    if check_cache_exhaustion; then
+        # Set global state for EXIT trap summary
+        OPERATION_RESULT="FAILURE"
+        OPERATION_FAILURE_REASON="Pod terminated due to cache exhaustion (SIGTERM)"
+        # Exit with a distinct code to indicate cache exhaustion
+        exit 137
+    fi
+
+    # Set state for non-cache-exhaustion termination
+    OPERATION_RESULT="FAILURE"
+    OPERATION_FAILURE_REASON="Pod terminated (SIGTERM)"
+    echo "Pod termination not due to cache exhaustion"
+    exit "${exit_code}"
+}
+
+# Install SIGTERM trap for cache exhaustion detection
+trap handle_sigterm SIGTERM
+
+# Output operation summary for consistent logging
+output_operation_summary() {
+    local exit_code=${1:-0}
+    local maint_duration=${MAINTENANCE_DURATION:-0}
+
+    log_info "=== OPERATION SUMMARY ==="
+    log_info "OPERATION_TYPE: ${DIRECTION:-unknown}"
+    log_info "OPERATION_RESULT: ${OPERATION_RESULT}"
+
+    if [[ "${DIRECTION}" == "maintenance" ]]; then
+        if [[ "${OPERATION_RESULT}" == "SUCCESS" ]]; then
+            log_info "MAINTENANCE_STATUS: SUCCESS"
+            log_info "MAINTENANCE_DURATION: ${maint_duration}"
+        else
+            log_info "MAINTENANCE_STATUS: FAILURE"
+            if [[ -n "${OPERATION_FAILURE_REASON}" ]]; then
+                log_info "MAINTENANCE_FAILURE_REASON: ${OPERATION_FAILURE_REASON}"
+            fi
+            if [[ -n "${KOPIA_ERROR_OUTPUT}" ]]; then
+                log_info "KOPIA_ERROR_OUTPUT_START:"
+                # Output each line with INFO prefix
+                while IFS= read -r line; do
+                    log_info "  ${line}"
+                done <<< "${KOPIA_ERROR_OUTPUT}"
+                log_info "KOPIA_ERROR_OUTPUT_END"
+            fi
+            # Include cache diagnostics on failure
+            log_info "=== Diagnostic Information ==="
+            local usage_info
+            usage_info=$(get_cache_usage)
+            local used_bytes=$(echo "${usage_info}" | awk '{print $1}')
+            local capacity_bytes=$(echo "${usage_info}" | awk '{print $2}')
+            local percentage=$(echo "${usage_info}" | awk '{print $3}')
+            log_info "CACHE_USAGE_BYTES: ${used_bytes}"
+            log_info "CACHE_CAPACITY_BYTES: ${capacity_bytes}"
+            log_info "CACHE_USAGE_PERCENT: ${percentage}"
+            if [[ ${percentage} -ge 90 ]]; then
+                log_warn "CACHE_EXHAUSTION_WARNING: Cache usage at ${percentage}%"
+            fi
+        fi
+    fi
+
+    log_info "EXIT_CODE: ${exit_code}"
+    log_info "=== Done ==="
+}
+
+# EXIT trap handler for consistent cleanup and summary output
+handle_exit() {
+    local exit_code=$?
+
+    # If result wasn't set, it's an unexpected failure
+    if [[ "${OPERATION_RESULT}" == "UNKNOWN" ]]; then
+        OPERATION_RESULT="FAILURE"
+        OPERATION_FAILURE_REASON="${OPERATION_FAILURE_REASON:-Unexpected exit with code ${exit_code}}"
+    fi
+
+    output_operation_summary "${exit_code}"
+}
+
+# Install EXIT trap for summary output
+trap handle_exit EXIT
+
+# Run a command with progress output formatting
+# Converts carriage returns to newlines so progress appears line-by-line in logs
+# Usage: run_with_progress_output command [args...]
+# Returns: exit code of the command
+run_with_progress_output() {
+    # Pipe output through tr to convert \r to \n
+    # This ensures each progress update appears on its own line in kubectl logs
+    # The 2>&1 merges stderr into stdout so both get the same treatment
+    # Note: tr is more portable than stdbuf which may not be in minimal images
+    "$@" 2>&1 | tr '\r' '\n'
+    return "${PIPESTATUS[0]}"
+}
+
+log_info "VolSync kopia container version: ${version:-unknown}"
+log_info "Arguments: $@"
 echo
 
 SCRIPT_FULLPATH="$(realpath "$0")"
@@ -82,8 +309,11 @@ fi
 
 declare -a KOPIA
 # Set both cache and log directories to writable mounted location
+log_info "Setting cache directory: ${KOPIA_CACHE_DIR}"
 export KOPIA_CACHE_DIRECTORY="${KOPIA_CACHE_DIR}"
 export KOPIA_LOG_DIR="${KOPIA_CACHE_DIR}/logs"
+log_debug "KOPIA_CACHE_DIRECTORY set to: ${KOPIA_CACHE_DIRECTORY}"
+log_debug "KOPIA_LOG_DIR set to: ${KOPIA_LOG_DIR}"
 
 # Disable update checking
 export KOPIA_CHECK_FOR_UPDATES=false
@@ -111,9 +341,18 @@ export KOPIA_CONTENT_LOG_DIR_MAX_AGE="${KOPIA_CONTENT_LOG_DIR_MAX_AGE:-4h}"
 # Users can set to 'debug' if troubleshooting, or 'warn' to reduce further
 export KOPIA_FILE_LOG_LEVEL="${KOPIA_FILE_LOG_LEVEL:-info}"
 
+# Set default console log level to info (independent of file log level)
+# This controls what appears in kubectl logs output
+# Users can set different verbosity for console vs files as needed
+export KOPIA_LOG_LEVEL="${KOPIA_LOG_LEVEL:-info}"
+
 # Create necessary directories upfront
+log_info "Creating cache and log directories..."
+log_debug "Creating directory: ${KOPIA_CACHE_DIR}/logs"
 mkdir -p "${KOPIA_CACHE_DIR}/logs"
+log_debug "Setting permissions on: ${KOPIA_CACHE_DIR}/logs"
 chmod 755 "${KOPIA_CACHE_DIR}/logs"
+log_info "Cache and log directories created successfully"
 
 # DEBUG: Show environment and directory setup
 echo "=== DEBUG: Environment Setup ==="
@@ -121,11 +360,19 @@ echo "HOME: ${HOME}"
 echo "KOPIA_CACHE_DIR: ${KOPIA_CACHE_DIR}"
 echo "KOPIA_CACHE_DIRECTORY: ${KOPIA_CACHE_DIRECTORY}"
 echo "KOPIA_LOG_DIR: ${KOPIA_LOG_DIR}"
+echo "KOPIA_CACHE_CAPACITY_BYTES: ${KOPIA_CACHE_CAPACITY_BYTES:-8589934592} ($(format_bytes ${KOPIA_CACHE_CAPACITY_BYTES:-8589934592}))"
 echo "Current user: $(whoami)"
 echo "Current working directory: $(pwd)"
 echo "Cache directory writable: $(test -w ${KOPIA_CACHE_DIR} && echo 'Yes' || echo 'No')"
 echo "Log directory exists: $(test -d ${KOPIA_LOG_DIR} && echo 'Yes' || echo 'No')"
 echo "Contents of cache directory: $(ls -la ${KOPIA_CACHE_DIR} 2>/dev/null || echo 'Directory does not exist')"
+
+# Show current cache usage
+cache_info=$(get_cache_usage)
+cache_used=$(echo "${cache_info}" | awk '{print $1}')
+cache_capacity=$(echo "${cache_info}" | awk '{print $2}')
+cache_pct=$(echo "${cache_info}" | awk '{print $3}')
+echo "Cache usage: $(format_bytes ${cache_used}) / $(format_bytes ${cache_capacity}) (${cache_pct}%)"
 echo ""
 echo "=== ENVIRONMENT VARIABLES STATUS ==="
 echo "KOPIA_REPOSITORY: $([ -n "${KOPIA_REPOSITORY}" ] && echo "[SET]" || echo "[NOT SET]")"
@@ -148,9 +395,11 @@ echo "KOPIA_SHALLOW: $([ -n "${KOPIA_SHALLOW}" ] && echo "[SET]" || echo "[NOT S
 echo "KOPIA_PREVIOUS: $([ -n "${KOPIA_PREVIOUS}" ] && echo "[SET]" || echo "[NOT SET]")"
 echo "KOPIA_ENABLE_FILE_DELETION: $([ -n "${KOPIA_ENABLE_FILE_DELETION}" ] && echo "[SET]" || echo "[NOT SET]")"
 echo "KOPIA_ADDITIONAL_ARGS: $([ -n "${KOPIA_ADDITIONAL_ARGS}" ] && echo "[SET]" || echo "[NOT SET]")"
+echo "KOPIA_CACHE_CAPACITY_BYTES: $([ -n "${KOPIA_CACHE_CAPACITY_BYTES}" ] && echo "[SET] ($(format_bytes ${KOPIA_CACHE_CAPACITY_BYTES}))" || echo "[NOT SET] (default: 8Gi)")"
 echo ""
 echo "=== Log Configuration ==="
-echo "KOPIA_FILE_LOG_LEVEL: ${KOPIA_FILE_LOG_LEVEL}"
+echo "KOPIA_LOG_LEVEL: ${KOPIA_LOG_LEVEL}"  # Console/stdout log level
+echo "KOPIA_FILE_LOG_LEVEL: ${KOPIA_FILE_LOG_LEVEL}"  # File log level
 echo "KOPIA_LOG_DIR_MAX_FILES: ${KOPIA_LOG_DIR_MAX_FILES}"
 echo "KOPIA_LOG_DIR_MAX_AGE: ${KOPIA_LOG_DIR_MAX_AGE}"
 echo "KOPIA_CONTENT_LOG_DIR_MAX_FILES: ${KOPIA_CONTENT_LOG_DIR_MAX_FILES}"
@@ -169,6 +418,8 @@ echo "SFTP_USERNAME: $([ -n "${SFTP_USERNAME}" ] && echo "[SET]" || echo "[NOT S
 echo "SFTP_PASSWORD: $([ -n "${SFTP_PASSWORD}" ] && echo "[SET]" || echo "[NOT SET]")"
 echo "SFTP_PATH: $([ -n "${SFTP_PATH}" ] && echo "[SET]" || echo "[NOT SET]")"
 echo "SFTP_KEY_FILE: $([ -n "${SFTP_KEY_FILE}" ] && echo "[SET]" || echo "[NOT SET]")"
+echo "SFTP_KNOWN_HOSTS: $([ -n "${SFTP_KNOWN_HOSTS}" ] && echo "[SET]" || echo "[NOT SET]")"
+echo "SFTP_KNOWN_HOSTS_DATA: $([ -n "${SFTP_KNOWN_HOSTS_DATA}" ] && echo "[SET]" || echo "[NOT SET]")"
 echo "RCLONE_REMOTE_PATH: $([ -n "${RCLONE_REMOTE_PATH}" ] && echo "[SET]" || echo "[NOT SET]")"
 echo "RCLONE_EXE: $([ -n "${RCLONE_EXE}" ] && echo "[SET]" || echo "[NOT SET]")"
 echo "RCLONE_CONFIG: $([ -n "${RCLONE_CONFIG}" ] && echo "[SET]" || echo "[NOT SET]")"
@@ -177,15 +428,24 @@ echo "GOOGLE_DRIVE_CREDENTIALS: $([ -n "${GOOGLE_DRIVE_CREDENTIALS}" ] && echo "
 echo "=== END DEBUG ==="
 echo ""
 
-KOPIA=("kopia" "--config-file=${KOPIA_CACHE_DIR}/kopia.config" "--log-dir=${KOPIA_CACHE_DIR}/logs" "--file-log-level=${KOPIA_FILE_LOG_LEVEL}" "--log-dir-max-files=${KOPIA_LOG_DIR_MAX_FILES}" "--log-dir-max-age=${KOPIA_LOG_DIR_MAX_AGE}")
+KOPIA=("kopia" "--config-file=${KOPIA_CACHE_DIR}/kopia.config" "--log-dir=${KOPIA_CACHE_DIR}/logs" "--log-level=${KOPIA_LOG_LEVEL}" "--file-log-level=${KOPIA_FILE_LOG_LEVEL}" "--log-dir-max-files=${KOPIA_LOG_DIR_MAX_FILES}" "--log-dir-max-age=${KOPIA_LOG_DIR_MAX_AGE}")
+
+# Kopia uses 'repository set-client' command to set client identity after connection.
+# The client identity (username@hostname) determines snapshot ownership.
+# We no longer use environment variables KOPIA_USERNAME/KOPIA_HOSTNAME as they don't
+# affect the client identity for an already connected repository.
+
 if [[ -n "${CUSTOM_CA}" ]]; then
     echo "Using custom CA certificate at: ${CUSTOM_CA}"
     # Note: Custom CA is now handled via --root-ca-pem-path flag in S3 connect/create commands
     # The KOPIA_CA_CERT environment variable is not used by Kopia for S3 connections
 fi
 
-echo "=== Kopia Version ==="
+log_info "=== Checking Kopia Version ==="
+KOPIA_START_TIME=$(date +%s)
 "${KOPIA[@]}" --version
+KOPIA_END_TIME=$(date +%s)
+log_timing "Kopia version check took $((KOPIA_END_TIME - KOPIA_START_TIME)) seconds"
 echo "====================="
 
 # Print an error message and exit
@@ -196,11 +456,159 @@ function error {
     exit "$1"
 }
 
+# Function removed: log_repository_health is no longer needed
+# Repository health monitoring should be done through metrics/monitoring systems
+
 # Error and exit if a variable isn't defined
 # check_var_defined "MY_VAR"
 function check_var_defined {
     if [[ -z ${!1} ]]; then
         error 1 "$1 must be defined"
+    fi
+}
+
+# Detect if error output indicates cache corruption
+# is_cache_corruption_error "error_output"
+# Returns: 0 if cache corruption detected, 1 otherwise
+function is_cache_corruption_error {
+    local error_output="$1"
+
+    # Check for specific cache corruption indicators
+    # Be precise to avoid false positives on network/auth errors
+    if echo "${error_output}" | grep -q -E "mmap.*error|unable to open pack index|error loading indexes|index.*corrupt|cache.*corrupt|bad index blob"; then
+        log_info "Detected cache corruption error in output"
+        return 0
+    fi
+
+    # Check for specific mmap errno values (ENOMEM=12, EINVAL=22, ENOSPC=28)
+    if echo "${error_output}" | grep -q -E "errno (12|22|28)"; then
+        log_info "Detected mmap-related errno indicating corruption"
+        return 0
+    fi
+
+    return 1
+}
+
+# Safely clear corrupted cache directories
+# clear_corrupted_cache
+# This only removes cache data that Kopia can rebuild, keeping config and logs
+function clear_corrupted_cache {
+    log_warn "=== Clearing corrupted cache directories ==="
+
+    # SAFETY CHECK 1: Verify own-writes is empty (contains uncommitted backup data)
+    if [[ -d "${KOPIA_CACHE_DIR}/own-writes" ]]; then
+        local own_writes_count=$(find "${KOPIA_CACHE_DIR}/own-writes" -type f 2>/dev/null | wc -l)
+        if [[ ${own_writes_count} -gt 0 ]]; then
+            log_error "ERROR: own-writes directory contains ${own_writes_count} uncommitted files"
+            log_error "This indicates an interrupted backup with pending data."
+            log_error "Clearing cache would risk data loss. Please investigate manually."
+            log_error "Path: ${KOPIA_CACHE_DIR}/own-writes"
+            return 1
+        fi
+    fi
+
+    # SAFETY CHECK 2: Prevent symlink attacks
+    local -a dirs_to_clear=("indexes" "index-blobs" "contents" "blob-list")
+    for dir in "${dirs_to_clear[@]}"; do
+        if [[ -L "${KOPIA_CACHE_DIR}/${dir}" ]]; then
+            log_error "SECURITY: ${dir} is a symlink, refusing to delete"
+            log_error "Path: $(ls -l ${KOPIA_CACHE_DIR}/${dir})"
+            log_error "This may indicate a security issue. Please investigate."
+            return 1
+        fi
+    done
+
+    # SAFETY CHECK 3: Acquire lock to prevent concurrent operations
+    local lockfile="${KOPIA_CACHE_DIR}/.cache-cleanup.lock"
+    if ! mkdir "${lockfile}" 2>/dev/null; then
+        log_warn "Another process is already clearing cache, skipping"
+        return 1
+    fi
+    # Set trap to always remove lock
+    trap "rmdir ${lockfile} 2>/dev/null || true" RETURN
+
+    # SAFETY CHECK 4: Rate limiting - prevent cache-clearing loops
+    local cache_clear_marker="${KOPIA_CACHE_DIR}/.last-cache-clear"
+    if [[ -f "${cache_clear_marker}" ]]; then
+        local last_clear=$(cat "${cache_clear_marker}" 2>/dev/null || echo 0)
+        local now=$(date +%s)
+        local elapsed=$((now - last_clear))
+
+        if [[ ${elapsed} -lt 300 ]]; then  # Less than 5 minutes
+            log_error "ERROR: Cache was cleared ${elapsed} seconds ago (less than 5 minutes)"
+            log_error "Repeated cache corruption may indicate a deeper problem:"
+            log_error "  - Filesystem issues (check dmesg)"
+            log_error "  - Memory pressure (check available RAM)"
+            log_error "  - Disk corruption (run fsck)"
+            log_error "Please investigate the root cause before retrying."
+            return 1
+        fi
+    fi
+
+    log_info "All safety checks passed, proceeding with cache cleanup"
+    local cleared_something=false
+
+    # Clear index cache (safe to remove, will be rebuilt)
+    if [[ -d "${KOPIA_CACHE_DIR}/indexes" ]]; then
+        log_info "Removing corrupted index cache at ${KOPIA_CACHE_DIR}/indexes"
+        # Use find for robust deletion (handles hidden files, empty dirs, etc)
+        if find "${KOPIA_CACHE_DIR}/indexes/" -mindepth 1 -delete 2>/dev/null; then
+            log_info "Successfully cleared index cache"
+            cleared_something=true
+        else
+            log_warn "Could not fully clear index cache (some files may be read-only)"
+        fi
+    fi
+
+    # Clear index-blobs cache (safe to remove, will be rebuilt)
+    if [[ -d "${KOPIA_CACHE_DIR}/index-blobs" ]]; then
+        log_info "Removing index-blobs cache at ${KOPIA_CACHE_DIR}/index-blobs"
+        if find "${KOPIA_CACHE_DIR}/index-blobs/" -mindepth 1 -delete 2>/dev/null; then
+            log_info "Successfully cleared index-blobs cache"
+            cleared_something=true
+        else
+            log_warn "Could not fully clear index-blobs cache"
+        fi
+    fi
+
+    # Clear contents cache (safe to remove, will be rebuilt)
+    if [[ -d "${KOPIA_CACHE_DIR}/contents" ]]; then
+        log_info "Removing contents cache at ${KOPIA_CACHE_DIR}/contents"
+        if find "${KOPIA_CACHE_DIR}/contents/" -mindepth 1 -delete 2>/dev/null; then
+            log_info "Successfully cleared contents cache"
+            cleared_something=true
+        else
+            log_warn "Could not fully clear contents cache"
+        fi
+    fi
+
+    # Clear blob-list cache (safe to remove, will be rebuilt)
+    if [[ -d "${KOPIA_CACHE_DIR}/blob-list" ]]; then
+        log_info "Removing blob-list cache at ${KOPIA_CACHE_DIR}/blob-list"
+        if find "${KOPIA_CACHE_DIR}/blob-list/" -mindepth 1 -delete 2>/dev/null; then
+            log_info "Successfully cleared blob-list cache"
+            cleared_something=true
+        else
+            log_warn "Could not fully clear blob-list cache"
+        fi
+    fi
+
+    # Note: We intentionally do NOT remove:
+    # - kopia.config (connection configuration)
+    # - kopia.repository (repository metadata)
+    # - kopia.blobcfg (blob configuration)
+    # - logs/ (diagnostic logs)
+    # - metadata/ (important metadata)
+    # - own-writes/ (uncommitted backup data - CRITICAL!)
+
+    if [[ "${cleared_something}" == "true" ]]; then
+        # Record successful cache clear for rate limiting
+        date +%s > "${cache_clear_marker}"
+        log_info "Cache clearing completed. Kopia will rebuild these on next connection."
+        return 0
+    else
+        log_warn "No cache directories were cleared"
+        return 1
     fi
 }
 
@@ -243,18 +651,72 @@ function check_contents {
     fi
 }
 
-# Add username/hostname overrides to command array if specified
-# add_user_overrides command_array_name
-function add_user_overrides {
-    local -n cmd_array=$1
-    
-    if [[ -n "${KOPIA_OVERRIDE_USERNAME}" ]]; then
-        echo "Using username override: ${KOPIA_OVERRIDE_USERNAME}"
-        cmd_array+=(--override-username="${KOPIA_OVERRIDE_USERNAME}")
+# Set the client identity using 'kopia repository set-client' command
+# This must be called AFTER successfully connecting to the repository
+function set_client_identity {
+    # Client identity logic for both regular and maintenance modes
+
+    # For maintenance mode, set the maintenance identity
+    if [[ "${DIRECTION}" == "maintenance" ]]; then
+        local username="${KOPIA_OVERRIDE_MAINTENANCE_USERNAME:-maintenance}"
+        local hostname="volsync"
+
+        # Parse username if it contains @ (format: user@host)
+        if [[ "${username}" == *"@"* ]]; then
+            hostname="${username##*@}"
+            username="${username%%@*}"
+        fi
+
+        log_info "Setting maintenance identity to '${username}@${hostname}'"
+        local should_set_identity=true
+    elif [[ -n "${KOPIA_OVERRIDE_USERNAME}" ]] || [[ -n "${KOPIA_OVERRIDE_HOSTNAME}" ]]; then
+        local username=""
+        local hostname=""
+
+        if [[ -n "${KOPIA_OVERRIDE_USERNAME}" ]]; then
+            username="${KOPIA_OVERRIDE_USERNAME}"
+        else
+            # Get current system username if only hostname override is set
+            username="$(whoami)"
+        fi
+
+        if [[ -n "${KOPIA_OVERRIDE_HOSTNAME}" ]]; then
+            hostname="${KOPIA_OVERRIDE_HOSTNAME}"
+        else
+            # Get current system hostname if only username override is set
+            hostname="$(hostname)"
+        fi
+
+        log_info "Setting client identity to '${username}@${hostname}'"
+        local should_set_identity=true
+    else
+        local should_set_identity=false
     fi
-    if [[ -n "${KOPIA_OVERRIDE_HOSTNAME}" ]]; then
-        echo "Using hostname override: ${KOPIA_OVERRIDE_HOSTNAME}"
-        cmd_array+=(--override-hostname="${KOPIA_OVERRIDE_HOSTNAME}")
+
+    # Execute the set-client command if we need to set identity
+    if [[ "${should_set_identity}" == "true" ]]; then
+        log_info "Applying client identity configuration..."
+        local SET_CLIENT_CMD=("${KOPIA[@]}" repository set-client)
+
+        if [[ -n "${username}" ]]; then
+            SET_CLIENT_CMD+=("--username=${username}")
+        fi
+
+        if [[ -n "${hostname}" ]]; then
+            SET_CLIENT_CMD+=("--hostname=${hostname}")
+        fi
+
+        if "${SET_CLIENT_CMD[@]}" 2>&1; then
+            log_info " Client identity set successfully to ${username}@${hostname}"
+        else
+            local exit_code=$?
+            log_error "✗ Failed to set client identity (exit code: ${exit_code})"
+            # Don't fail here, as the repository is connected and can still work
+            # Just warn about potential ownership issues
+            echo "Warning: Client identity could not be set. Maintenance may fail due to ownership mismatch."
+        fi
+    else
+        log_info "Skipping client identity configuration"
     fi
 }
 
@@ -280,6 +742,25 @@ function add_additional_args {
         
         echo "Added ${#ADDITIONAL_ARGS_ARRAY[@]} additional arguments"
     fi
+}
+
+# Execute repository connect or create command with all necessary additions
+# execute_repository_command command_array_name operation_type
+function execute_repository_command {
+    local array_name=$1
+    local -n cmd_array_ref=$array_name
+    local operation_type=$2  # "connect" or "create"
+
+    # For create operations, add manual config params
+    if [[ "${operation_type}" == "create" ]]; then
+        add_manual_config_params "$array_name"
+    fi
+
+    # ALWAYS add additional arguments last
+    add_additional_args "$array_name"
+
+    # Execute the command
+    "${cmd_array_ref[@]}"
 }
 
 # Apply manual repository configuration from JSON if provided
@@ -625,6 +1106,42 @@ function apply_json_repository_config {
     fi
 }
 
+# Detect and warn about S3 prefix conflicts
+# This function checks if both KOPIA_REPOSITORY contains a prefix and KOPIA_S3_BUCKET is set
+# which could lead to conflicting or duplicate paths
+function check_s3_prefix_conflicts {
+    # Only check if KOPIA_S3_BUCKET is explicitly set
+    if [[ -n "${KOPIA_S3_BUCKET}" ]]; then
+        # Check if KOPIA_REPOSITORY also contains an S3 URL with a prefix
+        if [[ "${KOPIA_REPOSITORY}" =~ ^s3://[^/]+/(.+) ]]; then
+            local repo_prefix="${BASH_REMATCH[1]}"
+
+            echo "=== S3 PREFIX CONFLICT WARNING ==="
+            echo "Both KOPIA_S3_BUCKET and KOPIA_REPOSITORY with prefix are specified:"
+            echo "  KOPIA_S3_BUCKET: ${KOPIA_S3_BUCKET}"
+            echo "  KOPIA_REPOSITORY: ${KOPIA_REPOSITORY} (contains prefix: ${repo_prefix})"
+            echo ""
+            echo "This configuration may lead to unexpected behavior:"
+            echo "  - When KOPIA_S3_BUCKET is set, it takes precedence over the bucket in KOPIA_REPOSITORY"
+            echo "  - The prefix from KOPIA_REPOSITORY will still be used"
+            echo "  - This could result in a path like: s3://${KOPIA_S3_BUCKET}/${repo_prefix}"
+            echo ""
+            echo "Recommended solutions:"
+            echo "  1. Use ONLY KOPIA_REPOSITORY with the full S3 URL (including prefix)"
+            echo "  2. OR use KOPIA_S3_BUCKET with KOPIA_S3_PREFIX (if needed)"
+            echo "  3. Avoid mixing both configuration methods"
+            echo "==================================="
+            echo ""
+
+            # Log the resolved configuration for clarity
+            echo "Resolved configuration will use:"
+            echo "  Bucket: ${KOPIA_S3_BUCKET}"
+            echo "  Prefix: ${repo_prefix}"
+            echo ""
+        fi
+    fi
+}
+
 # Connect to or create the repository
 function apply_compression_policy {
     if [[ -n "${KOPIA_COMPRESSION}" ]]; then
@@ -658,7 +1175,8 @@ function apply_compression_policy {
 }
 
 function ensure_connected {
-    echo "=== Connecting to repository ==="
+    log_info "=== Starting repository connection process ==="
+    local connection_start_time=$(date +%s)
     
     # Apply JSON repository configuration first
     apply_json_repository_config
@@ -667,18 +1185,37 @@ function ensure_connected {
     apply_manual_config
     
     # Try to connect to existing repository (let errors display naturally)
+    log_info "Checking existing repository connection status..."
+    local status_check_start=$(date +%s)
     if ! timeout 10s "${KOPIA[@]}" repository status >/dev/null 2>&1; then
-        echo "Repository not connected, attempting to connect or create..."
+        local status_check_end=$(date +%s)
+        log_timing "Repository status check took $((status_check_end - status_check_start)) seconds (not connected)"
+        log_info "Repository not connected, attempting to connect or create..."
         echo ""
-        
+
+        # Check if forced cache rebuild is requested
+        if [[ "${KOPIA_FORCE_CACHE_REBUILD}" == "true" ]]; then
+            log_warn "KOPIA_FORCE_CACHE_REBUILD is set, clearing cache before connection..."
+            clear_corrupted_cache
+            echo ""
+        fi
+
         # Disable exit on error for connection attempts
         set +e
         
         # Try JSON config file first if available
         if [[ -n "${KOPIA_JSON_CONFIG_FILE}" && -f "${KOPIA_JSON_CONFIG_FILE}" ]]; then
-            echo "Attempting to connect using JSON configuration file..."
-            "${KOPIA[@]}" repository connect from-config --file="${KOPIA_JSON_CONFIG_FILE}"
+            log_info "Attempting to connect using JSON configuration file..."
+            local json_connect_start=$(date +%s)
+            # Build command array for JSON config connection
+            declare -a JSON_CONFIG_CMD
+            JSON_CONFIG_CMD=("${KOPIA[@]}" repository connect from-config --file="${KOPIA_JSON_CONFIG_FILE}")
+            # Add additional args for JSON config
+            add_additional_args "JSON_CONFIG_CMD"
+            "${JSON_CONFIG_CMD[@]}"
             local json_result=$?
+            local json_connect_end=$(date +%s)
+            log_timing "JSON config connection attempt took $((json_connect_end - json_connect_start)) seconds"
             
             if [[ $json_result -ne 0 ]]; then
                 echo "JSON config connection failed, trying other methods..."
@@ -692,21 +1229,48 @@ function ensure_connected {
         
         # Try to connect from legacy config file
         if [[ -f /credentials/repository.config ]]; then
-            echo "Attempting to connect from config file..."
-            "${KOPIA[@]}" repository connect from-config --config-file /credentials/repository.config
+            log_info "Attempting to connect from config file..."
+            local config_connect_start=$(date +%s)
+            # Build command array for legacy config connection
+            declare -a LEGACY_CONFIG_CMD
+            LEGACY_CONFIG_CMD=("${KOPIA[@]}" repository connect from-config --config-file /credentials/repository.config)
+            # Add additional args for legacy config
+            add_additional_args "LEGACY_CONFIG_CMD"
+            "${LEGACY_CONFIG_CMD[@]}"
             local config_result=$?
+            local config_connect_end=$(date +%s)
+            log_timing "Config file connection attempt took $((config_connect_end - config_connect_start)) seconds"
             
             if [[ $config_result -ne 0 ]]; then
-                echo "Config connection failed, trying direct connection..."
+                log_info "Config connection failed, trying direct connection..."
                 echo ""
+                local direct_connect_start=$(date +%s)
                 connect_repository
                 local direct_result=$?
-                
-                if [[ $direct_result -ne 0 ]]; then
-                    echo "Direct connection failed, creating new repository..."
+                local direct_connect_end=$(date +%s)
+                log_timing "Direct connection attempt took $((direct_connect_end - direct_connect_start)) seconds"
+
+                # Handle cache corruption specially
+                if [[ $direct_result -eq 2 ]]; then
+                    log_warn "Cache corruption detected, clearing cache and retrying..."
+                    clear_corrupted_cache
                     echo ""
+                    log_info "Retrying connection after cache cleanup..."
+                    connect_repository
+                    direct_result=$?
+
+                    if [[ $direct_result -ne 0 ]]; then
+                        set -e
+                        error 1 "Connection failed even after cache cleanup"
+                    fi
+                elif [[ $direct_result -ne 0 ]]; then
+                    log_info "Direct connection failed, creating new repository..."
+                    echo ""
+                    local create_repo_start=$(date +%s)
                     create_repository
                     local create_result=$?
+                    local create_repo_end=$(date +%s)
+                    log_timing "Repository creation attempt took $((create_repo_end - create_repo_start)) seconds"
                     if [[ $create_result -ne 0 ]]; then
                         set -e  # Re-enable exit on error
                         error 1 "Failed to create repository"
@@ -718,8 +1282,21 @@ function ensure_connected {
             echo "Attempting to connect to existing repository..."
             connect_repository
             local direct_result=$?
-            
-            if [[ $direct_result -ne 0 ]]; then
+
+            # Handle cache corruption specially
+            if [[ $direct_result -eq 2 ]]; then
+                log_warn "Cache corruption detected, clearing cache and retrying..."
+                clear_corrupted_cache
+                echo ""
+                log_info "Retrying connection after cache cleanup..."
+                connect_repository
+                direct_result=$?
+
+                if [[ $direct_result -ne 0 ]]; then
+                    set -e
+                    error 1 "Connection failed even after cache cleanup"
+                fi
+            elif [[ $direct_result -ne 0 ]]; then
                 echo "Connection failed, creating new repository..."
                 echo ""
                 create_repository
@@ -734,37 +1311,83 @@ function ensure_connected {
         # Re-enable exit on error
         set -e
     else
-        echo "Repository already connected"
+        local status_check_end=$(date +%s)
+        log_timing "Repository status check took $((status_check_end - status_check_start)) seconds (already connected)"
+        log_info "Repository already connected"
     fi
     
     echo ""
-    
+
+    # Set client identity after successful connection (for snapshot ownership)
+    set_client_identity
+
+    # Verify the client identity was set correctly
+    log_info "Verifying client identity after set-client command..."
+    "${KOPIA[@]}" repository status | grep -E "User|Host" || true
+
     # Set cache directory after successful connection
-    echo "=== Setting cache directory ==="
-    declare -a CACHE_CMD
-    CACHE_CMD=("${KOPIA[@]}" cache set --cache-directory="${KOPIA_CACHE_DIR}")
-    
-    # Apply manual cache configuration if specified
-    if [[ -n "${KOPIA_MANUAL_CACHING_CONFIG}" && "${KOPIA_MANUAL_CACHING_CONFIG}" != "null" ]]; then
-        echo "Applying manual cache configuration..."
-        
-        local max_cache_size
-        max_cache_size=$(echo "${KOPIA_MANUAL_CACHING_CONFIG}" | jq -r '.maxCacheSize // empty')
-        
-        if [[ -n "${max_cache_size}" && "${max_cache_size}" != "null" ]]; then
-            if [[ "${max_cache_size}" =~ ^[0-9]+$ ]]; then
-                echo "  Using maximum cache size: ${max_cache_size} bytes"
-                CACHE_CMD+=(--max-size="${max_cache_size}")
+    log_info "=== Configuring cache directory after connection ==="
+    log_debug "Cache directory path: ${KOPIA_CACHE_DIR}"
+    local cache_start_time=$(date +%s)
+
+    # Check if cache configuration can be skipped (limits unchanged from previous run)
+    if [[ "${KOPIA_SKIP_CACHE_CONFIG}" == "true" ]]; then
+        log_info "Cache limits unchanged from previous run, skipping kopia cache set"
+        log_info "  Metadata limit: ${KOPIA_METADATA_CACHE_SIZE_LIMIT_MB:-auto} MB"
+        log_info "  Content limit: ${KOPIA_CONTENT_CACHE_SIZE_LIMIT_MB:-auto} MB"
+    else
+        log_info "Configuring cache limits (first run or limits changed)"
+        declare -a CACHE_CMD
+        CACHE_CMD=("${KOPIA[@]}" cache set --cache-directory="${KOPIA_CACHE_DIR}")
+
+        # Apply metadata cache size limit if specified
+        if [[ -n "${KOPIA_METADATA_CACHE_SIZE_LIMIT_MB}" ]]; then
+            if [[ "${KOPIA_METADATA_CACHE_SIZE_LIMIT_MB}" =~ ^[0-9]+$ ]]; then
+                log_info "Setting metadata cache size limit: ${KOPIA_METADATA_CACHE_SIZE_LIMIT_MB} MB"
+                CACHE_CMD+=(--metadata-cache-size-limit-mb="${KOPIA_METADATA_CACHE_SIZE_LIMIT_MB}")
             else
-                echo "  WARNING: Invalid cache max size '${max_cache_size}', must be numeric in bytes"
+                log_warn "WARNING: Invalid metadata cache size limit '${KOPIA_METADATA_CACHE_SIZE_LIMIT_MB}', must be numeric"
             fi
         fi
+
+        # Apply content cache size limit if specified
+        if [[ -n "${KOPIA_CONTENT_CACHE_SIZE_LIMIT_MB}" ]]; then
+            if [[ "${KOPIA_CONTENT_CACHE_SIZE_LIMIT_MB}" =~ ^[0-9]+$ ]]; then
+                log_info "Setting content cache size limit: ${KOPIA_CONTENT_CACHE_SIZE_LIMIT_MB} MB"
+                CACHE_CMD+=(--content-cache-size-limit-mb="${KOPIA_CONTENT_CACHE_SIZE_LIMIT_MB}")
+            else
+                log_warn "WARNING: Invalid content cache size limit '${KOPIA_CONTENT_CACHE_SIZE_LIMIT_MB}', must be numeric"
+            fi
+        fi
+
+        # Apply manual cache configuration if specified
+        if [[ -n "${KOPIA_MANUAL_CACHING_CONFIG}" && "${KOPIA_MANUAL_CACHING_CONFIG}" != "null" ]]; then
+            echo "Applying manual cache configuration..."
+
+            local max_cache_size
+            max_cache_size=$(echo "${KOPIA_MANUAL_CACHING_CONFIG}" | jq -r '.maxCacheSize // empty')
+
+            if [[ -n "${max_cache_size}" && "${max_cache_size}" != "null" ]]; then
+                if [[ "${max_cache_size}" =~ ^[0-9]+$ ]]; then
+                    echo "  Using maximum cache size: ${max_cache_size} bytes"
+                    CACHE_CMD+=(--max-size="${max_cache_size}")
+                else
+                    echo "  WARNING: Invalid cache max size '${max_cache_size}', must be numeric in bytes"
+                fi
+            fi
+        fi
+
+        log_debug "Executing cache command: ${CACHE_CMD[*]}"
+        if ! "${CACHE_CMD[@]}"; then
+            error 1 "Failed to set cache directory"
+        fi
     fi
-    
-    if ! "${CACHE_CMD[@]}"; then
-        error 1 "Failed to set cache directory"
-    fi
-    echo "Cache directory configured successfully"
+    local cache_end_time=$(date +%s)
+    log_timing "Cache directory configuration took $((cache_end_time - cache_start_time)) seconds"
+    log_info "Cache directory ready at ${KOPIA_CACHE_DIR}"
+
+    local connection_end_time=$(date +%s)
+    log_timing "Total repository connection process took $((connection_end_time - connection_start_time)) seconds"
     echo ""
     
     # Apply policy configuration after connection
@@ -774,11 +1397,14 @@ function ensure_connected {
 
 function connect_repository {
     echo "=== Connecting to existing repository ==="
-    
+
     # Determine repository type from environment variables and connect
     # Check both explicit KOPIA_S3_BUCKET and s3:// repository URL pattern
     if [[ -n "${KOPIA_S3_BUCKET}" ]] || [[ "${KOPIA_REPOSITORY}" =~ ^s3:// ]]; then
         echo "Connecting to S3 repository"
+
+        # Check for potential prefix conflicts before proceeding
+        check_s3_prefix_conflicts
         echo ""
         echo "=== S3 Connection Debug ==="
         echo "KOPIA_S3_BUCKET: $([ -n "${KOPIA_S3_BUCKET}" ] && echo "[SET]" || echo "[NOT SET]")"
@@ -790,9 +1416,11 @@ function connect_repository {
         echo "KOPIA_S3_DISABLE_TLS: $([ -n "${KOPIA_S3_DISABLE_TLS}" ] && echo "[SET]" || echo "[NOT SET]")"
         echo "AWS_S3_DISABLE_TLS: $([ -n "${AWS_S3_DISABLE_TLS}" ] && echo "[SET]" || echo "[NOT SET]")"
         echo "KOPIA_PASSWORD: $([ -n "${KOPIA_PASSWORD}" ] && echo "[SET]" || echo "[NOT SET]")"
-        
+
         # Extract bucket name from repository URL if not explicitly set
         local S3_BUCKET="${KOPIA_S3_BUCKET}"
+        # AWS S3 bucket names must be lowercase only (a-z, 0-9, dots, and hyphens)
+        # See: https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html
         if [[ -z "${S3_BUCKET}" ]] && [[ "${KOPIA_REPOSITORY}" =~ ^s3://([a-z0-9][a-z0-9.-]{1,61}[a-z0-9])/?(.*)$ ]]; then
             S3_BUCKET="${BASH_REMATCH[1]}"
             # Validate S3 bucket name format
@@ -850,11 +1478,17 @@ function connect_repository {
             S3_PREFIX="${BASH_REMATCH[1]}"
             # Validate S3 prefix for security
             if [[ "${S3_PREFIX}" =~ ^[a-zA-Z0-9._/-]+$ ]] && [[ ! "${S3_PREFIX}" =~ \.\. ]]; then
-                # Remove trailing slash from S3 prefix for consistency
-                # Kopia handles S3 paths correctly without trailing slashes
-                if [[ -n "${S3_PREFIX}" ]] && [[ "${S3_PREFIX}" =~ /$ ]]; then
-                    S3_PREFIX="${S3_PREFIX%/}"
-                    echo "Removed trailing slash from S3 prefix for consistency"
+                # Normalize multiple consecutive slashes to single slash
+                while [[ "${S3_PREFIX}" =~ // ]]; do
+                    S3_PREFIX="${S3_PREFIX//\/\//\/}"
+                done
+
+                # Ensure S3 prefix has a trailing slash for proper directory separation
+                # Per Kopia docs: "Put trailing slash (/) if you want to use prefix as directory"
+                # Without it, Kopia concatenates prefix with filenames (e.g., "myappkopia.repository")
+                if [[ -n "${S3_PREFIX}" ]] && [[ ! "${S3_PREFIX}" =~ /$ ]]; then
+                    S3_PREFIX="${S3_PREFIX}/"
+                    echo "Added trailing slash to S3 prefix for proper directory separation"
                 fi
                 echo "Using S3 prefix: ${S3_PREFIX}"
                 if [[ -n "${S3_PREFIX}" ]]; then
@@ -879,28 +1513,56 @@ function connect_repository {
             S3_CONNECT_CMD+=(--root-ca-pem-path="${CUSTOM_CA}")
         fi
         
-        # Add username/hostname overrides if specified
-        add_user_overrides S3_CONNECT_CMD
-        
         echo "=== End S3 Connection Debug ==="
         echo ""
         echo "Executing connection command..."
-        "${S3_CONNECT_CMD[@]}"
+
+        # Capture both stdout and stderr to detect errors
+        local error_output
+        error_output=$(execute_repository_command "S3_CONNECT_CMD" "connect" 2>&1)
+        local connect_result=$?
+
+        # Display output
+        echo "${error_output}"
+
+        # Check for cache corruption errors
+        if [[ $connect_result -ne 0 ]] && is_cache_corruption_error "${error_output}"; then
+            log_warn "Cache corruption detected. Will attempt recovery."
+            return 2  # Special return code for cache corruption
+        fi
+
+        return $connect_result
     elif [[ -n "${KOPIA_AZURE_CONTAINER}" ]]; then
         echo "Connecting to Azure repository"
         AZURE_CONNECT_CMD=("${KOPIA[@]}" repository connect azure \
             --container="${KOPIA_AZURE_CONTAINER}" \
             --storage-account="${KOPIA_AZURE_STORAGE_ACCOUNT}" \
             --storage-key="${KOPIA_AZURE_STORAGE_KEY}")
-        add_user_overrides AZURE_CONNECT_CMD
-        "${AZURE_CONNECT_CMD[@]}"
+
+        local error_output
+        error_output=$(execute_repository_command "AZURE_CONNECT_CMD" "connect" 2>&1)
+        local connect_result=$?
+        echo "${error_output}"
+        if [[ $connect_result -ne 0 ]] && is_cache_corruption_error "${error_output}"; then
+            log_warn "Cache corruption detected. Will attempt recovery."
+            return 2
+        fi
+        return $connect_result
     elif [[ -n "${KOPIA_GCS_BUCKET}" ]]; then
         echo "Connecting to GCS repository"
         GCS_CONNECT_CMD=("${KOPIA[@]}" repository connect gcs \
             --bucket="${KOPIA_GCS_BUCKET}" \
             --credentials-file="${GOOGLE_APPLICATION_CREDENTIALS}")
-        add_user_overrides GCS_CONNECT_CMD
-        "${GCS_CONNECT_CMD[@]}"
+
+        local error_output
+        error_output=$(execute_repository_command "GCS_CONNECT_CMD" "connect" 2>&1)
+        local connect_result=$?
+        echo "${error_output}"
+        if [[ $connect_result -ne 0 ]] && is_cache_corruption_error "${error_output}"; then
+            log_warn "Cache corruption detected. Will attempt recovery."
+            return 2
+        fi
+        return $connect_result
     elif [[ "${KOPIA_REPOSITORY}" =~ ^filesystem:// ]]; then
         echo "Connecting to filesystem repository"
         # Extract path from filesystem:// URL
@@ -912,33 +1574,57 @@ function connect_repository {
             echo "ERROR: Invalid filesystem URL format. Expected filesystem:///path"
             return 1
         fi
-        
+
         # Validate path for security (no path traversal)
         if [[ "${FS_PATH}" =~ \.\./ ]] || [[ ! "${FS_PATH}" =~ ^/ ]]; then
             echo "ERROR: Invalid filesystem path. Path must be absolute and cannot contain .."
             return 1
         fi
-        
+
         echo "Using filesystem path: ${FS_PATH}"
         FS_CONNECT_CMD=("${KOPIA[@]}" repository connect filesystem --path="${FS_PATH}")
-        add_user_overrides FS_CONNECT_CMD
-        "${FS_CONNECT_CMD[@]}"
+
+        local error_output
+        error_output=$(execute_repository_command "FS_CONNECT_CMD" "connect" 2>&1)
+        local connect_result=$?
+        echo "${error_output}"
+        if [[ $connect_result -ne 0 ]] && is_cache_corruption_error "${error_output}"; then
+            log_warn "Cache corruption detected. Will attempt recovery."
+            return 2
+        fi
+        return $connect_result
     elif [[ -n "${KOPIA_B2_BUCKET}" ]]; then
         echo "Connecting to Backblaze B2 repository"
         B2_CONNECT_CMD=("${KOPIA[@]}" repository connect b2 \
             --bucket="${KOPIA_B2_BUCKET}" \
             --key-id="${B2_ACCOUNT_ID}" \
             --key="${B2_APPLICATION_KEY}")
-        add_user_overrides B2_CONNECT_CMD
-        "${B2_CONNECT_CMD[@]}"
+
+        local error_output
+        error_output=$(execute_repository_command "B2_CONNECT_CMD" "connect" 2>&1)
+        local connect_result=$?
+        echo "${error_output}"
+        if [[ $connect_result -ne 0 ]] && is_cache_corruption_error "${error_output}"; then
+            log_warn "Cache corruption detected. Will attempt recovery."
+            return 2
+        fi
+        return $connect_result
     elif [[ -n "${WEBDAV_URL}" ]]; then
         echo "Connecting to WebDAV repository"
         WEBDAV_CONNECT_CMD=("${KOPIA[@]}" repository connect webdav \
             --url="${WEBDAV_URL}" \
-            --username="${WEBDAV_USERNAME}" \
-            --password="${WEBDAV_PASSWORD}")
-        add_user_overrides WEBDAV_CONNECT_CMD
-        "${WEBDAV_CONNECT_CMD[@]}"
+            --webdav-username="${WEBDAV_USERNAME}" \
+            --webdav-password="${WEBDAV_PASSWORD}")
+
+        local error_output
+        error_output=$(execute_repository_command "WEBDAV_CONNECT_CMD" "connect" 2>&1)
+        local connect_result=$?
+        echo "${error_output}"
+        if [[ $connect_result -ne 0 ]] && is_cache_corruption_error "${error_output}"; then
+            log_warn "Cache corruption detected. Will attempt recovery."
+            return 2
+        fi
+        return $connect_result
     elif [[ -n "${SFTP_HOST}" ]]; then
         echo "Connecting to SFTP repository"
         SFTP_CONNECT_CMD=("${KOPIA[@]}" repository connect sftp \
@@ -949,13 +1635,27 @@ function connect_repository {
             SFTP_CONNECT_CMD+=(--port="${SFTP_PORT}")
         fi
         if [[ -n "${SFTP_PASSWORD}" ]]; then
-            SFTP_CONNECT_CMD+=(--password="${SFTP_PASSWORD}")
+            SFTP_CONNECT_CMD+=(--sftp-password="${SFTP_PASSWORD}")
         fi
         if [[ -n "${SFTP_KEY_FILE}" ]]; then
             SFTP_CONNECT_CMD+=(--keyfile="${SFTP_KEY_FILE}")
         fi
-        add_user_overrides SFTP_CONNECT_CMD
-        "${SFTP_CONNECT_CMD[@]}"
+        if [[ -n "${SFTP_KNOWN_HOSTS}" ]]; then
+            SFTP_CONNECT_CMD+=(--known-hosts="${SFTP_KNOWN_HOSTS}")
+        fi
+        if [[ -n "${SFTP_KNOWN_HOSTS_DATA}" ]]; then
+            SFTP_CONNECT_CMD+=(--known-hosts-data="${SFTP_KNOWN_HOSTS_DATA}")
+        fi
+
+        local error_output
+        error_output=$(execute_repository_command "SFTP_CONNECT_CMD" "connect" 2>&1)
+        local connect_result=$?
+        echo "${error_output}"
+        if [[ $connect_result -ne 0 ]] && is_cache_corruption_error "${error_output}"; then
+            log_warn "Cache corruption detected. Will attempt recovery."
+            return 2
+        fi
+        return $connect_result
     elif [[ -n "${RCLONE_REMOTE_PATH}" ]]; then
         echo "Connecting to Rclone repository"
         RCLONE_CONNECT_CMD=("${KOPIA[@]}" repository connect rclone \
@@ -966,15 +1666,31 @@ function connect_repository {
         if [[ -n "${RCLONE_CONFIG}" ]]; then
             RCLONE_CONNECT_CMD+=(--rclone-config="${RCLONE_CONFIG}")
         fi
-        add_user_overrides RCLONE_CONNECT_CMD
-        "${RCLONE_CONNECT_CMD[@]}"
+
+        local error_output
+        error_output=$(execute_repository_command "RCLONE_CONNECT_CMD" "connect" 2>&1)
+        local connect_result=$?
+        echo "${error_output}"
+        if [[ $connect_result -ne 0 ]] && is_cache_corruption_error "${error_output}"; then
+            log_warn "Cache corruption detected. Will attempt recovery."
+            return 2
+        fi
+        return $connect_result
     elif [[ -n "${GOOGLE_DRIVE_FOLDER_ID}" ]]; then
         echo "Connecting to Google Drive repository"
         GDRIVE_CONNECT_CMD=("${KOPIA[@]}" repository connect gdrive \
             --folder-id="${GOOGLE_DRIVE_FOLDER_ID}" \
             --credentials-file="${GOOGLE_DRIVE_CREDENTIALS}")
-        add_user_overrides GDRIVE_CONNECT_CMD
-        "${GDRIVE_CONNECT_CMD[@]}"
+
+        local error_output
+        error_output=$(execute_repository_command "GDRIVE_CONNECT_CMD" "connect" 2>&1)
+        local connect_result=$?
+        echo "${error_output}"
+        if [[ $connect_result -ne 0 ]] && is_cache_corruption_error "${error_output}"; then
+            log_warn "Cache corruption detected. Will attempt recovery."
+            return 2
+        fi
+        return $connect_result
     else
         # Check if we have a generic filesystem:// URL that wasn't matched
         if [[ "${KOPIA_REPOSITORY}" =~ ^filesystem:// ]]; then
@@ -988,11 +1704,14 @@ function connect_repository {
 
 function create_repository {
     echo "=== Creating repository ==="
-    
+
     # Determine repository type from environment variables
     # Check both explicit KOPIA_S3_BUCKET and s3:// repository URL pattern
     if [[ -n "${KOPIA_S3_BUCKET}" ]] || [[ "${KOPIA_REPOSITORY}" =~ ^s3:// ]]; then
         echo "Creating S3 repository"
+
+        # Check for potential prefix conflicts before proceeding
+        check_s3_prefix_conflicts
         echo ""
         echo "=== S3 Creation Debug ==="
         echo "KOPIA_S3_BUCKET: $([ -n "${KOPIA_S3_BUCKET}" ] && echo "[SET]" || echo "[NOT SET]")"
@@ -1005,9 +1724,11 @@ function create_repository {
         echo "AWS_S3_DISABLE_TLS: $([ -n "${AWS_S3_DISABLE_TLS}" ] && echo "[SET]" || echo "[NOT SET]")"
         echo "KOPIA_PASSWORD: $([ -n "${KOPIA_PASSWORD}" ] && echo "[SET]" || echo "[NOT SET]")"
         echo "KOPIA_CACHE_DIR: $([ -n "${KOPIA_CACHE_DIR}" ] && echo "[SET]" || echo "[NOT SET]")"
-        
+
         # Extract bucket name from repository URL if not explicitly set
         local S3_BUCKET="${KOPIA_S3_BUCKET}"
+        # AWS S3 bucket names must be lowercase only (a-z, 0-9, dots, and hyphens)
+        # See: https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html
         if [[ -z "${S3_BUCKET}" ]] && [[ "${KOPIA_REPOSITORY}" =~ ^s3://([a-z0-9][a-z0-9.-]{1,61}[a-z0-9])/?(.*)$ ]]; then
             S3_BUCKET="${BASH_REMATCH[1]}"
             # Validate S3 bucket name format
@@ -1069,11 +1790,17 @@ function create_repository {
             S3_PREFIX="${BASH_REMATCH[1]}"
             # Validate S3 prefix for security
             if [[ "${S3_PREFIX}" =~ ^[a-zA-Z0-9._/-]+$ ]] && [[ ! "${S3_PREFIX}" =~ \.\. ]]; then
-                # Ensure S3 prefix has a trailing slash for proper path separation
-                # This prevents ambiguous file paths in S3 storage
+                # Normalize multiple consecutive slashes to single slash
+                while [[ "${S3_PREFIX}" =~ // ]]; do
+                    S3_PREFIX="${S3_PREFIX//\/\//\/}"
+                done
+
+                # Ensure S3 prefix has a trailing slash for proper directory separation
+                # Per Kopia docs: "Put trailing slash (/) if you want to use prefix as directory"
+                # Without it, Kopia concatenates prefix with filenames (e.g., "myappkopia.repository")
                 if [[ -n "${S3_PREFIX}" ]] && [[ ! "${S3_PREFIX}" =~ /$ ]]; then
                     S3_PREFIX="${S3_PREFIX}/"
-                    echo "Added trailing slash to S3 prefix for proper path separation"
+                    echo "Added trailing slash to S3 prefix for proper directory separation"
                 fi
                 echo "Using S3 prefix: ${S3_PREFIX}"
                 if [[ -n "${S3_PREFIX}" ]]; then
@@ -1098,33 +1825,23 @@ function create_repository {
             S3_CREATE_CMD+=(--root-ca-pem-path="${CUSTOM_CA}")
         fi
         
-        # Add username/hostname overrides if specified
-        add_user_overrides S3_CREATE_CMD
-        
-        # Add manual configuration parameters if specified
-        add_manual_config_params S3_CREATE_CMD
-        
         echo "=== End S3 Creation Debug ==="
         echo ""
         echo "Executing creation command..."
-        "${S3_CREATE_CMD[@]}"
+        execute_repository_command "S3_CREATE_CMD" "create"
     elif [[ -n "${KOPIA_AZURE_CONTAINER}" ]]; then
         echo "Creating Azure repository"
         AZURE_CREATE_CMD=("${KOPIA[@]}" repository create azure \
             --container="${KOPIA_AZURE_CONTAINER}" \
             --storage-account="${KOPIA_AZURE_STORAGE_ACCOUNT}" \
             --storage-key="${KOPIA_AZURE_STORAGE_KEY}")
-        add_user_overrides AZURE_CREATE_CMD
-        add_manual_config_params AZURE_CREATE_CMD
-        "${AZURE_CREATE_CMD[@]}"
+        execute_repository_command "AZURE_CREATE_CMD" "create"
     elif [[ -n "${KOPIA_GCS_BUCKET}" ]]; then
         echo "Creating GCS repository"
         GCS_CREATE_CMD=("${KOPIA[@]}" repository create gcs \
             --bucket="${KOPIA_GCS_BUCKET}" \
             --credentials-file="${GOOGLE_APPLICATION_CREDENTIALS}")
-        add_user_overrides GCS_CREATE_CMD
-        add_manual_config_params GCS_CREATE_CMD
-        "${GCS_CREATE_CMD[@]}"
+        execute_repository_command "GCS_CREATE_CMD" "create"
     elif [[ "${KOPIA_REPOSITORY}" =~ ^filesystem:// ]]; then
         echo "Creating filesystem repository"
         # Extract path from filesystem:// URL
@@ -1145,27 +1862,21 @@ function create_repository {
         
         echo "Using filesystem path: ${FS_PATH}"
         FS_CREATE_CMD=("${KOPIA[@]}" repository create filesystem --path="${FS_PATH}")
-        add_user_overrides FS_CREATE_CMD
-        add_manual_config_params FS_CREATE_CMD
-        "${FS_CREATE_CMD[@]}"
+        execute_repository_command "FS_CREATE_CMD" "create"
     elif [[ -n "${KOPIA_B2_BUCKET}" ]]; then
         echo "Creating Backblaze B2 repository"
         B2_CREATE_CMD=("${KOPIA[@]}" repository create b2 \
             --bucket="${KOPIA_B2_BUCKET}" \
             --key-id="${B2_ACCOUNT_ID}" \
             --key="${B2_APPLICATION_KEY}")
-        add_user_overrides B2_CREATE_CMD
-        add_manual_config_params B2_CREATE_CMD
-        "${B2_CREATE_CMD[@]}"
+        execute_repository_command "B2_CREATE_CMD" "create"
     elif [[ -n "${WEBDAV_URL}" ]]; then
         echo "Creating WebDAV repository"
         WEBDAV_CREATE_CMD=("${KOPIA[@]}" repository create webdav \
             --url="${WEBDAV_URL}" \
-            --username="${WEBDAV_USERNAME}" \
-            --password="${WEBDAV_PASSWORD}")
-        add_user_overrides WEBDAV_CREATE_CMD
-        add_manual_config_params WEBDAV_CREATE_CMD
-        "${WEBDAV_CREATE_CMD[@]}"
+            --webdav-username="${WEBDAV_USERNAME}" \
+            --webdav-password="${WEBDAV_PASSWORD}")
+        execute_repository_command "WEBDAV_CREATE_CMD" "create"
     elif [[ -n "${SFTP_HOST}" ]]; then
         echo "Creating SFTP repository"
         SFTP_CREATE_CMD=("${KOPIA[@]}" repository create sftp \
@@ -1176,14 +1887,18 @@ function create_repository {
             SFTP_CREATE_CMD+=(--port="${SFTP_PORT}")
         fi
         if [[ -n "${SFTP_PASSWORD}" ]]; then
-            SFTP_CREATE_CMD+=(--password="${SFTP_PASSWORD}")
+            SFTP_CREATE_CMD+=(--sftp-password="${SFTP_PASSWORD}")
         fi
         if [[ -n "${SFTP_KEY_FILE}" ]]; then
             SFTP_CREATE_CMD+=(--keyfile="${SFTP_KEY_FILE}")
         fi
-        add_user_overrides SFTP_CREATE_CMD
-        add_manual_config_params SFTP_CREATE_CMD
-        "${SFTP_CREATE_CMD[@]}"
+        if [[ -n "${SFTP_KNOWN_HOSTS}" ]]; then
+            SFTP_CREATE_CMD+=(--known-hosts="${SFTP_KNOWN_HOSTS}")
+        fi
+        if [[ -n "${SFTP_KNOWN_HOSTS_DATA}" ]]; then
+            SFTP_CREATE_CMD+=(--known-hosts-data="${SFTP_KNOWN_HOSTS_DATA}")
+        fi
+        execute_repository_command "SFTP_CREATE_CMD" "create"
     elif [[ -n "${RCLONE_REMOTE_PATH}" ]]; then
         echo "Creating Rclone repository"
         RCLONE_CREATE_CMD=("${KOPIA[@]}" repository create rclone \
@@ -1194,24 +1909,21 @@ function create_repository {
         if [[ -n "${RCLONE_CONFIG}" ]]; then
             RCLONE_CREATE_CMD+=(--rclone-config="${RCLONE_CONFIG}")
         fi
-        add_user_overrides RCLONE_CREATE_CMD
-        add_manual_config_params RCLONE_CREATE_CMD
-        "${RCLONE_CREATE_CMD[@]}"
+        execute_repository_command "RCLONE_CREATE_CMD" "create"
     elif [[ -n "${GOOGLE_DRIVE_FOLDER_ID}" ]]; then
         echo "Creating Google Drive repository"
         GDRIVE_CREATE_CMD=("${KOPIA[@]}" repository create gdrive \
             --folder-id="${GOOGLE_DRIVE_FOLDER_ID}" \
             --credentials-file="${GOOGLE_DRIVE_CREDENTIALS}")
-        add_user_overrides GDRIVE_CREATE_CMD
-        add_manual_config_params GDRIVE_CREATE_CMD
-        "${GDRIVE_CREATE_CMD[@]}"
+        execute_repository_command "GDRIVE_CREATE_CMD" "create"
     else
         error 1 "No repository configuration found"
     fi
 }
 
 function do_backup {
-    echo "=== Starting backup ==="
+    log_info "=== Starting backup operation ==="
+    local backup_start_time=$(date +%s)
     
     # Apply compression policy after connection but before backup
     if ! apply_compression_policy; then
@@ -1241,7 +1953,10 @@ function do_backup {
         echo "Using source path override: ${KOPIA_SOURCE_PATH_OVERRIDE}"
         SNAPSHOT_CMD+=(--override-source="${KOPIA_SOURCE_PATH_OVERRIDE}")
     fi
-    
+
+    # Note: The client identity for snapshots is set via 'repository set-client' command
+    # which is executed in the set_client_identity() function after repository connection
+
     # Add additional arguments if specified
     add_additional_args SNAPSHOT_CMD
     
@@ -1252,37 +1967,173 @@ function do_backup {
         fi
     fi
     
-    # Create snapshot with error handling - ensure real-time progress output
-    # Execute with explicit file descriptor handling to ensure real-time output
-    echo "Snapshotting ${KOPIA_OVERRIDE_USERNAME:-$(whoami)}@${KOPIA_OVERRIDE_HOSTNAME:-$(hostname)}:${KOPIA_SOURCE_PATH_OVERRIDE:-$DATA_DIR} ..."
-    if ! "${SNAPSHOT_CMD[@]}" </dev/null; then
+    # Create snapshot with progress output formatting
+    # This converts carriage returns to newlines so progress appears line-by-line in logs
+    log_info "Creating snapshot for ${KOPIA_OVERRIDE_USERNAME:-$(whoami)}@${KOPIA_OVERRIDE_HOSTNAME:-$(hostname)}:${KOPIA_SOURCE_PATH_OVERRIDE:-$DATA_DIR}"
+    log_debug "Snapshot command: ${SNAPSHOT_CMD[*]}"
+
+    local snapshot_start_time=$(date +%s)
+    log_info "Starting kopia snapshot creation..."
+
+    if ! run_with_progress_output "${SNAPSHOT_CMD[@]}"; then
+        local snapshot_end_time=$(date +%s)
+        log_timing "Snapshot creation failed after $((snapshot_end_time - snapshot_start_time)) seconds"
         error 1 "Failed to create snapshot"
     fi
-    
-    echo "Snapshot created successfully"
+
+    local snapshot_end_time=$(date +%s)
+    log_timing "Snapshot creation completed in $((snapshot_end_time - snapshot_start_time)) seconds"
+    log_info "Snapshot created successfully"
     
     # Run after-snapshot action if specified (check if actions are enabled)
     if [[ -n "${KOPIA_AFTER_SNAPSHOT}" ]] && [[ "${KOPIA_ACTIONS_ENABLED}" != "false" ]]; then
         if ! execute_action "${KOPIA_AFTER_SNAPSHOT}" "after-snapshot"; then
-            echo "WARNING: After-snapshot action failed, but snapshot was created successfully"
+            log_error "WARNING: After-snapshot action failed, but snapshot was created successfully"
             # Don't exit here since the snapshot was already created
+        fi
+    fi
+
+    local backup_end_time=$(date +%s)
+    log_timing "Total backup operation took $((backup_end_time - backup_start_time)) seconds"
+}
+
+function ensure_maintenance_ownership {
+    log_info "=== Checking maintenance ownership ===="
+
+    # Use dedicated maintenance identity (complete user@host format)
+    local expected_owner
+    if [[ -n "${KOPIA_OVERRIDE_MAINTENANCE_USERNAME}" ]]; then
+        # If the username doesn't contain @, append @volsync
+        if [[ "${KOPIA_OVERRIDE_MAINTENANCE_USERNAME}" == *"@"* ]]; then
+            expected_owner="${KOPIA_OVERRIDE_MAINTENANCE_USERNAME}"
+        else
+            expected_owner="${KOPIA_OVERRIDE_MAINTENANCE_USERNAME}@volsync"
+        fi
+    else
+        expected_owner="maintenance@volsync"
+    fi
+
+    log_info "Expected maintenance owner: ${expected_owner}"
+
+    # Check current maintenance owner
+    local maintenance_info
+    if maintenance_info=$("${KOPIA[@]}" maintenance info 2>&1); then
+        # Extract current owner from maintenance info
+        local current_owner=""
+        if echo "${maintenance_info}" | grep -q "Owner:"; then
+            current_owner=$(echo "${maintenance_info}" | grep "Owner:" | sed 's/.*Owner: *//' | sed 's/ .*//')
+            log_info "Current maintenance owner: ${current_owner}"
+        fi
+
+        # Check if we're already the owner
+        if [[ "${current_owner}" == "${expected_owner}" ]]; then
+            log_info " Already maintenance owner"
+            return 0
+        fi
+
+        # Check if another owner is set
+        if [[ -n "${current_owner}" ]] && [[ "${current_owner}" != "${expected_owner}" ]]; then
+            log_warn "Repository has different maintenance owner: ${current_owner}"
+            log_warn "Expected: ${expected_owner}"
+
+            # Try to take ownership anyway (in case the other owner is no longer active)
+            log_info "Attempting to claim maintenance ownership..."
+            if "${KOPIA[@]}" maintenance set --owner="${expected_owner}" 2>&1; then
+                log_info " Successfully claimed maintenance ownership"
+                return 0
+            else
+                log_error "✗ Cannot claim maintenance ownership from ${current_owner}"
+                log_error "This repository's maintenance is managed by another user/system"
+                return 1
+            fi
+        fi
+
+        # No owner set, claim it
+        log_info "No maintenance owner set, claiming ownership..."
+        if "${KOPIA[@]}" maintenance set --owner="${expected_owner}" 2>&1; then
+            log_info " Successfully set as maintenance owner"
+            return 0
+        else
+            log_warn "Failed to set maintenance ownership"
+            return 1
+        fi
+    else
+        log_warn "Could not retrieve maintenance info, attempting to set ownership anyway..."
+
+        # Try to set ownership even if info command failed
+        if "${KOPIA[@]}" maintenance set --owner="${expected_owner}" 2>&1; then
+            log_info " Successfully set maintenance ownership"
+            return 0
+        else
+            log_error "Failed to set maintenance ownership"
+            return 1
         fi
     fi
 }
 
 function do_maintenance {
-    echo "=== Starting maintenance ==="
-    if ! "${KOPIA[@]}" maintenance run --full; then
-        echo "Warning: Maintenance operation failed, but continuing"
-        # Don't fail the entire operation for maintenance issues
-        return 0
+    log_info "=== Starting maintenance operation ===="
+    local maint_start_time=$(date +%s)
+
+    # Set the maintenance identity first
+    set_client_identity
+
+    # Ensure we have maintenance ownership
+    if ! ensure_maintenance_ownership; then
+        OPERATION_FAILURE_REASON="Could not establish maintenance ownership - another process/user owns maintenance for this repository"
+        OPERATION_RESULT="FAILURE"
+        log_error "${OPERATION_FAILURE_REASON}"
+        return 1
     fi
-    echo "Maintenance completed successfully"
+
+    # Enable quick cycle scheduling (for automatic maintenance between runs)
+    log_info "Enabling quick cycle scheduling..."
+    if ! "${KOPIA[@]}" maintenance set --enable-quick=true 2>&1; then
+        log_warn "Failed to enable quick cycle scheduling (non-fatal)"
+    fi
+
+    # Run quick maintenance cycle first (handles index compaction)
+    log_info "Running Kopia quick maintenance..."
+    local quick_maint_output
+    local quick_exit_code=0
+    quick_maint_output=$("${KOPIA[@]}" maintenance run 2>&1) || quick_exit_code=$?
+    echo "${quick_maint_output}"
+
+    if [[ ${quick_exit_code} -ne 0 ]]; then
+        log_warn "Quick maintenance failed (exit code ${quick_exit_code}), continuing with full maintenance..."
+    fi
+
+    # Run full maintenance cycle
+    log_info "Running Kopia full maintenance..."
+    local full_maint_output
+    local maint_exit_code=0
+    full_maint_output=$("${KOPIA[@]}" maintenance run --full 2>&1) || maint_exit_code=$?
+    echo "${full_maint_output}"
+
+    if [[ ${maint_exit_code} -ne 0 ]]; then
+        KOPIA_ERROR_OUTPUT="${full_maint_output}"
+        OPERATION_FAILURE_REASON="Kopia maintenance run --full failed with exit code ${maint_exit_code}"
+        OPERATION_RESULT="FAILURE"
+        log_error "${OPERATION_FAILURE_REASON}"
+        return ${maint_exit_code}
+    fi
+
+    local maint_end_time=$(date +%s)
+    MAINTENANCE_DURATION=$((maint_end_time - maint_start_time))
+    log_info "Maintenance operation completed successfully in ${MAINTENANCE_DURATION} seconds"
+
+    # Set success state
+    OPERATION_RESULT="SUCCESS"
+
+    return 0
 }
+
+# Function removed: do_retention_global is no longer needed
+# Global retention should be configured through the KopiaMaintenance CRD if needed
 
 function do_retention {
     echo "=== Applying retention policy ==="
-    
+
     declare -a POLICY_CMD
     POLICY_CMD=("${KOPIA[@]}" "policy" "set" "${DATA_DIR}")
     
@@ -1302,7 +2153,10 @@ function do_retention {
     if [[ -n "${KOPIA_RETAIN_YEARLY}" ]]; then
         POLICY_CMD+=(--keep-annual="${KOPIA_RETAIN_YEARLY}")
     fi
-    
+    if [[ -n "${KOPIA_RETAIN_LATEST}" ]]; then
+        POLICY_CMD+=(--keep-latest="${KOPIA_RETAIN_LATEST}")
+    fi
+
     # Apply policy if any retention options are set
     if [[ ${#POLICY_CMD[@]} -gt 4 ]]; then
         if ! "${POLICY_CMD[@]}"; then
@@ -1358,7 +2212,6 @@ function select_snapshot_to_restore {
     
     # Build the full identity string for listing snapshots
     # When using overrides, we need to specify the full identity: username@hostname:path
-    local identity_string=""
     # Check if source path override is specified
     local snapshot_path=""
     if [[ -n "${KOPIA_SOURCE_PATH_OVERRIDE}" ]]; then
@@ -1374,14 +2227,16 @@ function select_snapshot_to_restore {
         snapshot_path="${DATA_DIR}"
     fi
     
+    # Build the identity string for listing snapshots
+    local identity_string
     if [[ -n "${KOPIA_OVERRIDE_USERNAME}" ]] && [[ -n "${KOPIA_OVERRIDE_HOSTNAME}" ]]; then
         identity_string="${KOPIA_OVERRIDE_USERNAME}@${KOPIA_OVERRIDE_HOSTNAME}:${snapshot_path}"
         echo "Looking for snapshots with identity: ${identity_string}" >&2
     else
-        # No overrides, use default behavior
+        # No overrides, use just the path
         identity_string="${snapshot_path}"
     fi
-    
+
     # List snapshots for the specific identity
     local snapshot_list_cmd=("${KOPIA[@]}" snapshot list "${identity_string}" --json)
     
@@ -1389,16 +2244,26 @@ function select_snapshot_to_restore {
     local -i previous_offset=${KOPIA_PREVIOUS-0}
     
     # List snapshots and find the appropriate one
-    # Capture both stdout and stderr to handle cases where no snapshots exist
+    # Capture stdout (JSON) and stderr (warnings/errors) separately
+    # to avoid kopia warnings (like "too many index blobs") corrupting JSON output
     local snapshot_output
     local snapshot_stderr
-    snapshot_output=$("${snapshot_list_cmd[@]}" 2>&1) || true
-    
-    # Check if the output indicates no snapshots found
-    if [[ "${snapshot_output}" == $'[\n]' ]] || [[ "${snapshot_output}" == "" ]] || 
-       [[ "${snapshot_output}" =~ "unable to find snapshots" ]] || 
-       [[ "${snapshot_output}" =~ "no snapshot manifests found" ]]; then
+    local stderr_file
+    stderr_file=$(mktemp)
+    snapshot_output=$("${snapshot_list_cmd[@]}" 2>"${stderr_file}") || true
+    snapshot_stderr=$(cat "${stderr_file}")
+    rm -f "${stderr_file}"
+
+    # Check if stderr indicates no snapshots found
+    if [[ "${snapshot_stderr}" =~ "unable to find snapshots" ]] ||
+       [[ "${snapshot_stderr}" =~ "no snapshot manifests found" ]]; then
         # No snapshots found for this identity
+        return 0
+    fi
+
+    # Check if stdout is empty or just an empty array
+    if [[ "${snapshot_output}" == "[]" ]] || [[ "${snapshot_output}" == $'[\n]' ]] || [[ "${snapshot_output}" == "" ]]; then
+        # No snapshots found
         return 0
     fi
     
@@ -1424,7 +2289,8 @@ function select_snapshot_to_restore {
 }
 
 function do_restore {
-    echo "=== Starting restore ==="
+    log_info "=== Starting restore operation ==="
+    local restore_start_time=$(date +%s)
     
     # Apply compression policy after connection (if set for destination)
     if ! apply_compression_policy; then
@@ -1488,35 +2354,57 @@ function do_restore {
     # Add additional arguments if specified
     add_additional_args RESTORE_CMD
     
-    # Execute the restore command
-    if ! "${RESTORE_CMD[@]}"; then
-        
+    # Execute the restore command with progress output formatting
+    # This converts carriage returns to newlines so progress appears line-by-line
+    log_info "Executing restore command..."
+    log_debug "Restore command: ${RESTORE_CMD[*]}"
+
+    local restore_exec_start=$(date +%s)
+    if ! run_with_progress_output "${RESTORE_CMD[@]}"; then
+        local restore_exec_end=$(date +%s)
+        log_timing "Restore execution failed after $((restore_exec_end - restore_exec_start)) seconds"
+
         # If discovery mode is enabled and restore failed, show available snapshots
         if [[ "${KOPIA_DISCOVER_SNAPSHOTS}" == "true" ]]; then
-            echo "Failed to restore snapshot: ${snapshot_id}"
+            log_error "Failed to restore snapshot: ${snapshot_id}"
             discover_available_snapshots
         fi
-        
+
         error 1 "Failed to restore snapshot: ${snapshot_id}"
     fi
-    
-    echo "Snapshot restore completed successfully"
+
+    local restore_exec_end=$(date +%s)
+    log_timing "Restore execution took $((restore_exec_end - restore_exec_start)) seconds"
+
+    local restore_end_time=$(date +%s)
+    log_timing "Total restore operation took $((restore_end_time - restore_start_time)) seconds"
+    log_info "Snapshot restore completed successfully"
 }
 
 echo "Testing mandatory env variables"
 # Check the mandatory env variables
-for var in KOPIA_PASSWORD \
-           DATA_DIR \
-           ; do
-    check_var_defined $var
-done
+check_var_defined KOPIA_PASSWORD
+
+# For non-maintenance operations, also check DATA_DIR
+if [[ "${DIRECTION}" != "maintenance" ]]; then
+    check_var_defined DATA_DIR
+fi
 
 # Validate cache directory is writable
 if [[ ! -w "${KOPIA_CACHE_DIR}" ]]; then
     error 1 "Cache directory ${KOPIA_CACHE_DIR} is not writable"
 fi
 
-echo "Cache directory validation passed"
+log_info "Cache directory validation passed"
+
+if [[ "${DIRECTION}" != "maintenance" ]]; then
+    # Validate data directory exists and is accessible for backup/restore
+    if [[ ! -d "${DATA_DIR}" ]]; then
+        error 1 "Data directory ${DATA_DIR} does not exist"
+    fi
+    log_info "Data directory validation passed"
+fi
+
 echo ""
 
 # Cache directory already configured above
@@ -1525,20 +2413,36 @@ echo ""
 export KOPIA_PASSWORD
 
 START_TIME=$SECONDS
+OPERATION_START_TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+log_info "=== Starting kopia operations ==="
+log_info "Operation start time: ${OPERATION_START_TIMESTAMP}"
+log_info "Operation mode: ${DIRECTION:-command-based}"
 
 # Determine operation based on DIRECTION or arguments
 if [[ "${DIRECTION}" == "source" ]]; then
-    echo "=== Running as SOURCE ==="
+    log_info "=== Running as SOURCE ===="
     check_contents
     ensure_connected
     do_backup
     do_retention
-    do_maintenance
+    # Maintenance is now handled by the KopiaMaintenance CRD, not during backups
 elif [[ "${DIRECTION}" == "destination" ]]; then
-    echo "=== Running as DESTINATION ==="
+    log_info "=== Running as DESTINATION ===="
     ensure_connected
     do_restore
     sync -f "${DATA_DIR}"
+elif [[ "${DIRECTION}" == "maintenance" ]]; then
+    log_info "=== Running MAINTENANCE ONLY ===="
+    # Maintenance mode for KopiaMaintenance CRD
+    # The CRD handles scheduling, but we need to ensure proper ownership
+
+    # Connect to repository
+    ensure_connected
+
+    # Run maintenance with ownership handling
+    do_maintenance
+
+    log_info "Maintenance operation completed"
 else
     # Execute operations based on arguments (current VolSync approach)
     for op in "$@"; do
@@ -1555,8 +2459,8 @@ else
                 sync -f "${DATA_DIR}"
                 ;;
             "maintenance")
-                ensure_connected
-                do_maintenance
+                log_error "Command-based maintenance no longer supported. Use KopiaMaintenance CRD."
+                exit 1
                 ;;
             *)
                 error 2 "unknown operation: $op"
@@ -1564,6 +2468,3 @@ else
         esac
     done
 fi
-
-echo "Kopia completed in $(( SECONDS - START_TIME ))s"
-echo "=== Done ==="

@@ -55,16 +55,6 @@ func setConditionScheduled(r ReplicationMachine, _ logr.Logger) {
 		})
 }
 
-func setConditionCleanup(r ReplicationMachine, _ logr.Logger) {
-	apimeta.SetStatusCondition(r.Conditions(),
-		metav1.Condition{
-			Type:    volsyncv1alpha1.ConditionSynchronizing,
-			Status:  metav1.ConditionFalse,
-			Reason:  volsyncv1alpha1.SynchronizingReasonCleanup,
-			Message: "Cleaning up",
-		})
-}
-
 func setConditionError(r ReplicationMachine, _ logr.Logger, err error) {
 	apimeta.SetStatusCondition(r.Conditions(),
 		metav1.Condition{
@@ -72,5 +62,15 @@ func setConditionError(r ReplicationMachine, _ logr.Logger, err error) {
 			Status:  metav1.ConditionFalse,
 			Reason:  volsyncv1alpha1.SynchronizingReasonError,
 			Message: err.Error(),
+		})
+}
+
+func setConditionCleanup(r ReplicationMachine, _ logr.Logger) {
+	apimeta.SetStatusCondition(r.Conditions(),
+		metav1.Condition{
+			Type:    volsyncv1alpha1.ConditionSynchronizing,
+			Status:  metav1.ConditionFalse,
+			Reason:  volsyncv1alpha1.SynchronizingReasonCleanup,
+			Message: "Cleanup in-progress",
 		})
 }

@@ -58,15 +58,23 @@ const (
 	kopiaCAMountPath        = "/customCA"
 	kopiaCAFilename         = "ca.crt"
 	credentialDir           = "/credentials"
-	repositoryPVCVolName    = "repository-pvc"
-	repositoryPVCMountPath  = "/kopia"
-	repositoryPath          = "/kopia/repository"
 	gcsCredentialFile       = "gcs.json"
 	kopiaPolicyMountPath    = "/kopia-config"
 	defaultGlobalPolicyFile = "global-policy.json"
 	defaultRepoConfigFile   = "repository.config"
 	operationBackup         = "backup"
 	operationRestore        = "restore"
+	// Environment variable names for Kopia configuration
+	envKopiaOverrideUsername = "KOPIA_OVERRIDE_USERNAME"
+	envKopiaOverrideHostname = "KOPIA_OVERRIDE_HOSTNAME"
+	// Dedicated maintenance environment variables
+	envKopiaOverrideMaintenanceUsername = "KOPIA_OVERRIDE_MAINTENANCE_USERNAME"
+	envKopiaOverrideMaintenanceHostname = "KOPIA_OVERRIDE_MAINTENANCE_HOSTNAME"
+	envSftpPassword                     = "SFTP_PASSWORD"
+	envKopiaAdditionalArgs              = "KOPIA_ADDITIONAL_ARGS"
+	// Mount path prefix for mover volumes
+	moverVolumesMountPrefix = "/mnt"
+	kopiaRepositoryEnvVar   = "KOPIA_REPOSITORY"
 )
 
 // PolicyConfigSecret wraps a Secret for policy configuration mounting
@@ -97,42 +105,42 @@ func (p *PolicyConfigConfigMap) GetVolumeSource(_ string) corev1.VolumeSource {
 	}
 }
 
-
 // Mover is the reconciliation logic for the Kopia-based data mover.
 type Mover struct {
-	client                client.Client
-	logger                logr.Logger
-	eventRecorder         events.EventRecorder
-	owner                 client.Object
-	vh                    *volumehandler.VolumeHandler
-	saHandler             utils.SAHandler
-	containerImage        string
-	cacheAccessModes      []corev1.PersistentVolumeAccessMode
-	cacheCapacity         *resource.Quantity
-	cacheStorageClassName *string
-	repositoryName        string
-	isSource              bool
-	paused                bool
-	mainPVCName           *string
-	customCASpec          volsyncv1alpha1.CustomCASpec
-	policyConfig          *volsyncv1alpha1.KopiaPolicySpec
-	privileged            bool
-	latestMoverStatus     *volsyncv1alpha1.MoverStatus
-	moverConfig           volsyncv1alpha1.MoverConfig
-	metrics               kopiaMetrics
+	client                   client.Client
+	logger                   logr.Logger
+	eventRecorder            events.EventRecorder
+	owner                    client.Object
+	vh                       *volumehandler.VolumeHandler
+	saHandler                utils.SAHandler
+	containerImage           string
+	cacheAccessModes         []corev1.PersistentVolumeAccessMode
+	cacheCapacity            *resource.Quantity
+	cacheStorageClassName    *string
+	metadataCacheSizeLimitMB *int32
+	contentCacheSizeLimitMB  *int32
+	repositoryName           string
+	isSource                 bool
+	paused                   bool
+	mainPVCName              *string
+	customCASpec             volsyncv1alpha1.CustomCASpec
+	policyConfig             *volsyncv1alpha1.KopiaPolicySpec
+	privileged               bool
+	latestMoverStatus        *volsyncv1alpha1.MoverStatus
+	moverConfig              volsyncv1alpha1.MoverConfig
+	metrics                  kopiaMetrics
+	builder                  *Builder
 	// User identity for multi-tenancy
 	username string
 	hostname string
 	// Source-only fields
-	sourcePathOverride  *string
-	maintenanceInterval *int32
-	retainPolicy        *volsyncv1alpha1.KopiaRetainPolicy
-	compression         string
-	parallelism         *int32
-	actions             *volsyncv1alpha1.KopiaActions
-	sourceStatus        *volsyncv1alpha1.ReplicationSourceKopiaStatus
-	repositoryPVC       *string
-	additionalArgs      []string
+	sourcePathOverride *string
+	retainPolicy       *volsyncv1alpha1.KopiaRetainPolicy
+	compression        string
+	parallelism        *int32
+	actions            *volsyncv1alpha1.KopiaActions
+	sourceStatus       *volsyncv1alpha1.ReplicationSourceKopiaStatus
+	additionalArgs     []string
 	// Destination-only fields
 	restoreAsOf                 *string
 	shallow                     *int32
@@ -141,6 +149,9 @@ type Mover struct {
 	cleanupCachePVC             bool
 	enableFileDeletionOnRestore bool
 	destinationStatus           *volsyncv1alpha1.ReplicationDestinationKopiaStatus
+	// Calculated cache limits for status update after successful job
+	calculatedMetadataCacheLimit *int32
+	calculatedContentCacheLimit  *int32
 }
 
 var _ mover.Mover = &Mover{}
@@ -158,6 +169,14 @@ func (m *Mover) Name() string { return kopiaMoverName }
 func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 	if m.paused {
 		return mover.Complete(), nil
+	}
+
+	// Reconcile maintenance CronJobs for sources (non-blocking)
+	if m.isSource {
+		if err := m.ReconcileMaintenance(ctx); err != nil {
+			// Log error but don't fail the sync operation
+			m.logger.Error(err, "Failed to reconcile maintenance CronJobs")
+		}
 	}
 
 	// Record operation start time for metrics
@@ -204,9 +223,11 @@ func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 		duration := time.Since(operationStart)
 		m.recordOperationSuccess(operation, duration)
 
-		// Record maintenance if applicable
-		if m.isSource && m.shouldRunMaintenance() {
-			m.recordMaintenanceOperation()
+		// Update maintenance status for sources
+		if m.isSource {
+			if _, statusErr := m.GetMaintenanceStatus(ctx); statusErr != nil {
+				m.logger.Error(statusErr, "Failed to update maintenance status")
+			}
 		}
 	}
 
@@ -341,12 +362,39 @@ func (m *Mover) ensureCache(ctx context.Context,
 	return cacheVh.EnsureNewPVC(ctx, m.logger, cacheName, isTemporary)
 }
 
+// calculateCacheLimits returns auto-calculated cache limits based on CacheCapacity.
+// Returns (0, 0) if no CacheCapacity is set (no auto-calculation).
+// Allocates 70% for metadata cache, 20% for content cache, leaving 10% for other files.
+func (m *Mover) calculateCacheLimits() (metadataMB, contentMB int32) {
+	if m.cacheCapacity == nil {
+		return 0, 0
+	}
+
+	capacityBytes := m.cacheCapacity.Value()
+	capacityMB := capacityBytes / (1024 * 1024)
+
+	metadataMB = int32(float64(capacityMB) * 0.70)
+	contentMB = int32(float64(capacityMB) * 0.20)
+	return metadataMB, contentMB
+}
+
+// getCacheCapacityBytes returns the effective cache capacity in bytes.
+// Returns the configured capacity, or the default 8Gi if not specified.
+// This is used to pass the limit to entry.sh for cache exhaustion detection.
+func (m *Mover) getCacheCapacityBytes() int64 {
+	if m.cacheCapacity != nil {
+		return m.cacheCapacity.Value()
+	}
+	// Default EmptyDir limit is 8Gi (matches configureCacheVolume default)
+	defaultLimit := resource.MustParse("8Gi")
+	return defaultLimit.Value()
+}
+
 func (m *Mover) validateRepository(ctx context.Context) (*corev1.Secret, error) {
-	// If using repository PVC, validate the PVC first
-	if m.repositoryPVC != nil {
-		if err := m.validateRepositoryPVC(ctx); err != nil {
-			return nil, err
-		}
+	// Validate mover volumes if specified
+	if err := utils.ValidateMoverVolumes(ctx, m.client, m.logger, m.owner.GetNamespace(),
+		m.moverConfig.MoverVolumes); err != nil {
+		return nil, err
 	}
 
 	secret := &corev1.Secret{
@@ -362,40 +410,6 @@ func (m *Mover) validateRepository(ctx context.Context) (*corev1.Secret, error) 
 		return nil, err
 	}
 	return secret, nil
-}
-
-// validateRepositoryPVC validates that the repository PVC exists and is bound
-func (m *Mover) validateRepositoryPVC(ctx context.Context) error {
-	if m.repositoryPVC == nil {
-		return nil
-	}
-
-	pvc := &corev1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      *m.repositoryPVC,
-			Namespace: m.owner.GetNamespace(),
-		},
-	}
-
-	if err := m.client.Get(ctx, client.ObjectKeyFromObject(pvc), pvc); err != nil {
-		m.logger.Error(err, "Failed to get repository PVC",
-			"pvc", *m.repositoryPVC)
-		return fmt.Errorf("repository PVC %s not found: %w",
-			*m.repositoryPVC, err)
-	}
-
-	// Check if PVC is bound
-	if pvc.Status.Phase != corev1.ClaimBound {
-		m.logger.Info("Repository PVC is not bound yet",
-			"pvc", *m.repositoryPVC,
-			"phase", pvc.Status.Phase)
-		return fmt.Errorf("repository PVC %s is not bound (phase: %s)",
-			*m.repositoryPVC, pvc.Status.Phase)
-	}
-
-	m.logger.V(1).Info("Repository PVC validated successfully",
-		"pvc", *m.repositoryPVC)
-	return nil
 }
 
 func (m *Mover) validatePolicyConfig(ctx context.Context) (utils.CustomCAObject, error) {
@@ -563,14 +577,14 @@ func (m *Mover) configureJobSpec(ctx context.Context, job *batchv1.Job, cachePVC
 	m.configurePolicyConfig(podSpec, policyConfigObj)
 	m.configureCredentials(podSpec, repo)
 
-	// Configure repository PVC if specified
-	if err := m.configureRepositoryPVC(podSpec); err != nil {
-		logger.Error(err, "failed to configure repository PVC")
-		return err
-	}
-
 	// Update the job securityContext, podLabels and resourceRequirements from moverConfig (if specified)
 	utils.UpdatePodTemplateSpecFromMoverConfig(&job.Spec.Template, m.moverConfig, corev1.ResourceRequirements{})
+
+	// Mount any additional volumes specified in moverConfig.MoverVolumes
+	if err := utils.UpdatePodTemplateSpecWithMoverVolumes(ctx, m.client, logger, m.owner.GetNamespace(),
+		&job.Spec.Template, m.moverConfig.MoverVolumes); err != nil {
+		return err
+	}
 
 	m.configureSecurityContext(podSpec)
 	return nil
@@ -639,17 +653,43 @@ func (m *Mover) buildRepositoryEnvironmentVariables(repo *corev1.Secret) []corev
 		utils.EnvFromSecret(repo.Name, "KOPIA_MANUAL_CONFIG", true),
 	}
 
-	// If using repository PVC, set KOPIA_REPOSITORY to filesystem:// URL
-	// Otherwise, get it from the secret
-	if m.repositoryPVC != nil {
-		// Use filesystem:// URL for PVC-based repositories
+	// Detect Kopia repository from moverVolumes.
+	// If a PVC is present in moverVolumes, it will be used as a filesystem repository.
+	// The repository will be located at /mnt/<mountPath>.
+	// Only the first PVC found is used; if multiple PVCs are present, a warning is logged.
+	// If no PVC is found, the repository URL is read from the secret (supports remote backends).
+	var repositoryPath string
+	pvcCount := 0
+
+	for _, vol := range m.moverConfig.MoverVolumes {
+		if vol.VolumeSource.PersistentVolumeClaim != nil {
+			pvcCount++
+			// Use the first PVC found as repository
+			if repositoryPath == "" {
+				repositoryPath = fmt.Sprintf("%s/%s", moverVolumesMountPrefix, vol.MountPath)
+			}
+		}
+	}
+
+	// Warn if multiple PVCs found (only first is used as repository)
+	if pvcCount > 1 {
+		m.logger.Info("Multiple PVCs found in moverVolumes, using first PVC as Kopia repository",
+			"pvcCount", pvcCount)
+	}
+
+	// If repository path found, set KOPIA_REPOSITORY to filesystem
+	if repositoryPath != "" {
 		envVars = append(envVars, corev1.EnvVar{
-			Name:  "KOPIA_REPOSITORY",
-			Value: "filesystem://" + repositoryPath,
+			Name:  kopiaRepositoryEnvVar,
+			Value: fmt.Sprintf("filesystem://%s", repositoryPath),
 		})
 	} else {
-		// Get repository URL from secret for other backends
-		envVars = append(envVars, utils.EnvFromSecret(repo.Name, "KOPIA_REPOSITORY", false))
+		// Get repository URL from secret (supports all backend types including filesystem and remote)
+		envVars = append(envVars, utils.EnvFromSecret(repo.Name, kopiaRepositoryEnvVar, false))
+
+		// Warn if secret might contain filesystem URL but no PVC in moverVolumes
+		m.logger.V(1).Info("No PVC found in moverVolumes, using repository URL from secret. " +
+			"If using filesystem repository, ensure a PVC is specified in moverVolumes")
 	}
 
 	return envVars
@@ -742,9 +782,11 @@ func (m *Mover) buildSFTPEnvironmentVariables(repo *corev1.Secret) []corev1.EnvV
 		utils.EnvFromSecret(repo.Name, "SFTP_HOST", true),
 		utils.EnvFromSecret(repo.Name, "SFTP_PORT", true),
 		utils.EnvFromSecret(repo.Name, "SFTP_USERNAME", true),
-		utils.EnvFromSecret(repo.Name, "SFTP_PASSWORD", true),
+		utils.EnvFromSecret(repo.Name, envSftpPassword, true),
 		utils.EnvFromSecret(repo.Name, "SFTP_PATH", true),
 		utils.EnvFromSecret(repo.Name, "SFTP_KEY_FILE", true),
+		utils.EnvFromSecret(repo.Name, "SFTP_KNOWN_HOSTS", true),
+		utils.EnvFromSecret(repo.Name, "SFTP_KNOWN_HOSTS_DATA", true),
 	}
 }
 
@@ -766,11 +808,11 @@ func (m *Mover) addIdentityEnvironmentVariables(envVars []corev1.EnvVar) []corev
 
 	envVars = append(envVars,
 		corev1.EnvVar{
-			Name:  "KOPIA_OVERRIDE_USERNAME",
+			Name:  envKopiaOverrideUsername,
 			Value: m.username,
 		},
 		corev1.EnvVar{
-			Name:  "KOPIA_OVERRIDE_HOSTNAME",
+			Name:  envKopiaOverrideHostname,
 			Value: m.hostname,
 		},
 	)
@@ -807,9 +849,6 @@ func (m *Mover) addSourceEnvVars(envVars []corev1.EnvVar) []corev1.EnvVar {
 		envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_SOURCE_PATH_OVERRIDE", Value: *m.sourcePathOverride})
 	}
 
-	// Repository path is now set in KOPIA_REPOSITORY as filesystem:// URL
-	// when using repository PVC - handled in buildRepositoryEnvironmentVariables
-
 	// Add retention policy
 	envVars = m.addRetentionPolicyEnvVars(envVars)
 
@@ -818,6 +857,9 @@ func (m *Mover) addSourceEnvVars(envVars []corev1.EnvVar) []corev1.EnvVar {
 
 	// Add additional args if specified
 	envVars = m.addAdditionalArgsEnvVar(envVars)
+
+	// Add cache limit env vars
+	envVars = m.addCacheLimitEnvVars(envVars)
 
 	return envVars
 }
@@ -841,10 +883,13 @@ func (m *Mover) addDestinationEnvVars(envVars []corev1.EnvVar) []corev1.EnvVar {
 	if m.enableFileDeletionOnRestore {
 		envVars = append(envVars, corev1.EnvVar{Name: "KOPIA_ENABLE_FILE_DELETION", Value: "true"})
 	}
-	
+
 	// Add additional args if specified
 	envVars = m.addAdditionalArgsEnvVar(envVars)
-	
+
+	// Add cache limit env vars
+	envVars = m.addCacheLimitEnvVars(envVars)
+
 	return envVars
 }
 
@@ -874,6 +919,10 @@ func (m *Mover) addRetentionPolicyEnvVars(envVars []corev1.EnvVar) []corev1.EnvV
 		envVars = append(envVars, corev1.EnvVar{
 			Name: "KOPIA_RETAIN_YEARLY", Value: strconv.Itoa(int(*m.retainPolicy.Yearly))})
 	}
+	if m.retainPolicy.Latest != nil {
+		envVars = append(envVars, corev1.EnvVar{
+			Name: "KOPIA_RETAIN_LATEST", Value: strconv.Itoa(int(*m.retainPolicy.Latest))})
+	}
 	return envVars
 }
 
@@ -892,28 +941,118 @@ func (m *Mover) addActionsEnvVars(envVars []corev1.EnvVar) []corev1.EnvVar {
 	return envVars
 }
 
-// validateAdditionalArgs validates that additional arguments are valid
-func (m *Mover) validateAdditionalArgs() error {
-	// No validation - allow users to use any Kopia flags they need
-	// Users are responsible for providing valid flags
-	return nil
-}
-
 // addAdditionalArgsEnvVar adds additional arguments as an environment variable
 func (m *Mover) addAdditionalArgsEnvVar(envVars []corev1.EnvVar) []corev1.EnvVar {
 	if len(m.additionalArgs) == 0 {
 		return envVars
 	}
-	
+
 	// Join all additional args with a special delimiter that's unlikely to appear in args
 	// We'll use "|VOLSYNC_ARG_SEP|" as the delimiter
 	argsString := strings.Join(m.additionalArgs, "|VOLSYNC_ARG_SEP|")
-	
+
 	envVars = append(envVars, corev1.EnvVar{
-		Name:  "KOPIA_ADDITIONAL_ARGS",
+		Name:  envKopiaAdditionalArgs,
 		Value: argsString,
 	})
-	
+
+	return envVars
+}
+
+// shouldSkipCacheConfig determines if cache configuration can be skipped because
+// the limits haven't changed since the last successful configuration.
+// Returns true if both metadata and content limits match the last configured values.
+func (m *Mover) shouldSkipCacheConfig(metadataLimit, contentLimit *int32) bool {
+	var lastMetadata, lastContent *int32
+
+	// Get last configured limits from the appropriate status based on source/destination
+	if m.isSource && m.sourceStatus != nil {
+		lastMetadata = m.sourceStatus.LastConfiguredMetadataCacheSizeLimitMB
+		lastContent = m.sourceStatus.LastConfiguredContentCacheSizeLimitMB
+	} else if !m.isSource && m.destinationStatus != nil {
+		lastMetadata = m.destinationStatus.LastConfiguredMetadataCacheSizeLimitMB
+		lastContent = m.destinationStatus.LastConfiguredContentCacheSizeLimitMB
+	}
+
+	// If we have no previous configuration, we cannot skip
+	if lastMetadata == nil && lastContent == nil {
+		return false
+	}
+
+	// Compare metadata limits
+	metadataMatch := false
+	if metadataLimit == nil && lastMetadata == nil {
+		metadataMatch = true
+	} else if metadataLimit != nil && lastMetadata != nil {
+		metadataMatch = *metadataLimit == *lastMetadata
+	}
+
+	// Compare content limits
+	contentMatch := false
+	if contentLimit == nil && lastContent == nil {
+		contentMatch = true
+	} else if contentLimit != nil && lastContent != nil {
+		contentMatch = *contentLimit == *lastContent
+	}
+
+	return metadataMatch && contentMatch
+}
+
+// addCacheLimitEnvVars adds cache size limit environment variables.
+// Called from both addSourceEnvVars and addDestinationEnvVars since
+// both source and destination jobs connect to the repository and use cache.
+func (m *Mover) addCacheLimitEnvVars(envVars []corev1.EnvVar) []corev1.EnvVar {
+	metadataLimit := m.metadataCacheSizeLimitMB
+	contentLimit := m.contentCacheSizeLimitMB
+
+	// Auto-calculate if not explicitly set (nil means auto, 0 means unlimited)
+	if metadataLimit == nil || contentLimit == nil {
+		autoMeta, autoContent := m.calculateCacheLimits()
+		if metadataLimit == nil && autoMeta > 0 {
+			metadataLimit = &autoMeta
+		}
+		if contentLimit == nil && autoContent > 0 {
+			contentLimit = &autoContent
+		}
+	}
+
+	// Store the calculated limits for status update after successful job completion
+	m.calculatedMetadataCacheLimit = metadataLimit
+	m.calculatedContentCacheLimit = contentLimit
+
+	// Check if we can skip cache configuration because limits haven't changed
+	if m.shouldSkipCacheConfig(metadataLimit, contentLimit) {
+		m.logger.V(1).Info("Cache limits unchanged, skipping cache configuration",
+			"metadataLimit", metadataLimit, "contentLimit", contentLimit)
+		envVars = append(envVars, corev1.EnvVar{
+			Name:  "KOPIA_SKIP_CACHE_CONFIG",
+			Value: "true",
+		})
+	}
+
+	// Always add the limit env vars (for first run or when changed)
+	if metadataLimit != nil && *metadataLimit > 0 {
+		envVars = append(envVars, corev1.EnvVar{
+			Name:  "KOPIA_METADATA_CACHE_SIZE_LIMIT_MB",
+			Value: strconv.Itoa(int(*metadataLimit)),
+		})
+	}
+	if contentLimit != nil && *contentLimit > 0 {
+		envVars = append(envVars, corev1.EnvVar{
+			Name:  "KOPIA_CONTENT_CACHE_SIZE_LIMIT_MB",
+			Value: strconv.Itoa(int(*contentLimit)),
+		})
+	}
+
+	// Add cache capacity for monitoring (helps entry.sh detect cache exhaustion on eviction)
+	cacheCapacityBytes := m.getCacheCapacityBytes()
+	if cacheCapacityBytes > 0 {
+		envVars = append(envVars, corev1.EnvVar{
+			Name:  "KOPIA_CACHE_CAPACITY_BYTES",
+			Value: strconv.FormatInt(cacheCapacityBytes, 10),
+		})
+	}
+
 	return envVars
 }
 
@@ -1168,52 +1307,6 @@ func (m *Mover) configureFilePolicyConfig(podSpec *corev1.PodSpec, policyConfigO
 		"repoConfigFile", repoConfigFile)
 }
 
-// configureRepositoryPVC configures the pod to use a filesystem-based repository
-// backed by a user-provided PVC. The PVC is mounted at /kopia and
-// the repository is created at /kopia/repository for security and isolation.
-func (m *Mover) configureRepositoryPVC(podSpec *corev1.PodSpec) error {
-	if m.repositoryPVC == nil {
-		return nil
-	}
-
-	// Check for mount path conflicts
-	for _, vm := range podSpec.Containers[0].VolumeMounts {
-		if vm.MountPath == repositoryPVCMountPath {
-			m.logger.Error(nil, "Mount path conflict detected for repository PVC",
-				"mountPath", repositoryPVCMountPath,
-				"existingVolume", vm.Name)
-			return fmt.Errorf("mount path %s is already in use by volume %s", repositoryPVCMountPath, vm.Name)
-		}
-	}
-
-	volumeName := repositoryPVCVolName
-
-	// Add volume mount for the repository PVC
-	podSpec.Containers[0].VolumeMounts = append(podSpec.Containers[0].VolumeMounts, corev1.VolumeMount{
-		Name:      volumeName,
-		MountPath: repositoryPVCMountPath,
-		ReadOnly:  false, // Repository needs write access
-	})
-
-	// Add volume for the PVC
-	podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
-		Name: volumeName,
-		VolumeSource: corev1.VolumeSource{
-			PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-				ClaimName: *m.repositoryPVC,
-				ReadOnly:  false, // Repository needs write access
-			},
-		},
-	})
-
-	m.logger.V(1).Info("Configured repository PVC",
-		"pvc", *m.repositoryPVC,
-		"mountPath", repositoryPVCMountPath,
-		"repositoryPath", repositoryPath)
-
-	return nil
-}
-
 // configureCredentials sets up all credential files in a unified manner to avoid mount conflicts
 func (m *Mover) configureCredentials(podSpec *corev1.PodSpec, repo *corev1.Secret) {
 	container := &podSpec.Containers[0]
@@ -1360,14 +1453,6 @@ func (m *Mover) handleJobStatus(ctx context.Context, job *batchv1.Job,
 
 	logger.Info("job completed")
 
-	if m.isSource {
-		if m.shouldRunMaintenance() {
-			now := metav1.Now()
-			m.sourceStatus.LastMaintenance = &now
-			logger.Info("maintenance completed", ".Status.Kopia.LastMaintenance", m.sourceStatus.LastMaintenance)
-		}
-	}
-
 	// update status with mover logs from successful job
 	// Use Kopia-specific filter for better log extraction
 	logFilter := utils.AllLines
@@ -1474,6 +1559,9 @@ func (m *Mover) handleJobCompletion(ctx context.Context, job *batchv1.Job,
 	}
 
 	// Job completed successfully
+	// Update the cache limit status with the limits that were configured
+	m.updateCacheLimitStatus()
+
 	// Clear discovery status on successful restore
 	if !m.isSource && m.destinationStatus != nil {
 		m.destinationStatus.AvailableIdentities = nil
@@ -1493,19 +1581,23 @@ func (m *Mover) handleJobCompletion(ctx context.Context, job *batchv1.Job,
 	return mover.Complete(), nil
 }
 
-func (m *Mover) shouldRunMaintenance() bool {
-	if m.maintenanceInterval == nil || *m.maintenanceInterval <= 0 {
-		return false
+// updateCacheLimitStatus updates the status with the cache limits that were configured
+// during this successful job run. This enables skipping cache configuration on subsequent
+// runs when limits haven't changed.
+func (m *Mover) updateCacheLimitStatus() {
+	if m.isSource && m.sourceStatus != nil {
+		m.sourceStatus.LastConfiguredMetadataCacheSizeLimitMB = m.calculatedMetadataCacheLimit
+		m.sourceStatus.LastConfiguredContentCacheSizeLimitMB = m.calculatedContentCacheLimit
+		m.logger.V(1).Info("Updated source cache limit status",
+			"metadataLimit", m.calculatedMetadataCacheLimit,
+			"contentLimit", m.calculatedContentCacheLimit)
+	} else if !m.isSource && m.destinationStatus != nil {
+		m.destinationStatus.LastConfiguredMetadataCacheSizeLimitMB = m.calculatedMetadataCacheLimit
+		m.destinationStatus.LastConfiguredContentCacheSizeLimitMB = m.calculatedContentCacheLimit
+		m.logger.V(1).Info("Updated destination cache limit status",
+			"metadataLimit", m.calculatedMetadataCacheLimit,
+			"contentLimit", m.calculatedContentCacheLimit)
 	}
-
-	if m.sourceStatus == nil || m.sourceStatus.LastMaintenance == nil {
-		return true
-	}
-
-	lastMaintenance := m.sourceStatus.LastMaintenance.Time
-	nextMaintenance := lastMaintenance.Add(time.Duration(*m.maintenanceInterval) * 24 * time.Hour)
-
-	return time.Now().After(nextMaintenance)
 }
 
 // recordOperationSuccess records metrics for successful operations
@@ -1532,14 +1624,6 @@ func (m *Mover) recordOperationFailure(operation, failureReason string) {
 	if operation == operationBackup {
 		m.metrics.SnapshotCreationFailure.With(labels).Inc()
 	}
-}
-
-// recordMaintenanceOperation records metrics for maintenance operations
-func (m *Mover) recordMaintenanceOperation() {
-	labels := m.getMetricLabels("maintenance")
-	labels["maintenance_type"] = "scheduled"
-
-	m.metrics.MaintenanceOperations.With(labels).Inc()
 }
 
 // recordJobRetry records metrics for job retries
@@ -1642,6 +1726,10 @@ func (m *Mover) recordPolicyCompliance() {
 			retentionLabels["retention_type"] = "yearly"
 			m.metrics.RetentionCompliance.With(retentionLabels).Set(1)
 		}
+		if m.retainPolicy.Latest != nil {
+			retentionLabels["retention_type"] = "latest"
+			m.metrics.RetentionCompliance.With(retentionLabels).Set(1)
+		}
 	}
 
 	// Check policy configuration compliance
@@ -1720,4 +1808,78 @@ func (m *Mover) updateDestinationDiscoveryStatus() {
 		"requestedIdentity", requestedIdentity,
 		"availableIdentities", len(availableIdentities),
 		"errorMsg", errorMsg)
+}
+
+// ReconcileMaintenance ensures a maintenance CronJob exists for this source's repository
+func (m *Mover) ReconcileMaintenance(ctx context.Context) error {
+	// Only handle maintenance for sources
+	if !m.isSource {
+		return nil
+	}
+
+	// Get the ReplicationSource
+	source, ok := m.owner.(*volsyncv1alpha1.ReplicationSource)
+	if !ok {
+		return fmt.Errorf("owner is not a ReplicationSource")
+	}
+
+	// Create maintenance manager
+	maintenanceManager := NewMaintenanceManager(m.client, m.logger, m.containerImage, m.builder)
+
+	// Reconcile maintenance CronJob for this source
+	if err := maintenanceManager.ReconcileMaintenanceForSource(ctx, source); err != nil {
+		return fmt.Errorf("failed to reconcile maintenance CronJob: %w", err)
+	}
+
+	// Cleanup orphaned maintenance CronJobs in the namespace
+	if err := maintenanceManager.CleanupOrphanedMaintenanceCronJobs(ctx, source.Namespace); err != nil {
+		// Log but don't fail the reconciliation
+		m.logger.Error(err, "Failed to cleanup orphaned maintenance CronJobs")
+	}
+
+	return nil
+}
+
+// GetMaintenanceStatus returns the status of maintenance operations
+func (m *Mover) GetMaintenanceStatus(ctx context.Context) (*volsyncv1alpha1.ReplicationSourceKopiaStatus, error) {
+	if !m.isSource {
+		return nil, nil
+	}
+
+	// Get the ReplicationSource
+	source, ok := m.owner.(*volsyncv1alpha1.ReplicationSource)
+	if !ok {
+		return nil, fmt.Errorf("owner is not a ReplicationSource")
+	}
+
+	// Create maintenance manager
+	maintenanceManager := NewMaintenanceManager(m.client, m.logger, m.containerImage, m.builder)
+
+	// Get maintenance CronJobs for this namespace
+	cronJobs, err := maintenanceManager.GetMaintenanceCronJobsForNamespace(ctx, source.Namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	// Find the CronJob for this repository
+	repoConfig := &RepositoryConfig{
+		Repository: source.Spec.Kopia.Repository,
+		CustomCA:   (*volsyncv1alpha1.CustomCASpec)(&source.Spec.Kopia.CustomCA),
+		Namespace:  source.Namespace,
+		Schedule:   defaultMaintenanceSchedule,
+	}
+	repoHash := repoConfig.Hash()
+
+	for _, cronJob := range cronJobs {
+		if cronJob.Labels[maintenanceRepositoryLabel] == repoHash {
+			// Found the maintenance CronJob for this repository
+			// Check if it has run recently by looking at the last schedule time
+			if cronJob.Status.LastScheduleTime != nil {
+				m.sourceStatus.LastMaintenance = cronJob.Status.LastScheduleTime
+			}
+			break
+		}
+	}
+
+	return m.sourceStatus, nil
 }
