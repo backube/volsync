@@ -1,0 +1,136 @@
+---
+- hosts: localhost
+  tags:
+    - cli
+    - rsync_tls
+    - privileged
+  tasks:
+    - name: Create namespace
+      include_role:
+        name: create_namespace
+
+    - name: Probe cluster information
+      include_role:
+        name: gather_cluster_info
+
+    - name: Enable privileged movers
+      include_role:
+        name: enable_privileged_mover
+
+    - name: Create source PVC
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          kind: PersistentVolumeClaim
+          apiVersion: v1
+          metadata:
+            name: data-source
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 1Gi
+
+    - name: Create destination PVC
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          kind: PersistentVolumeClaim
+          apiVersion: v1
+          metadata:
+            name: data-dest
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 1Gi
+
+    # Both PVCs are empty. We use this role because it mounts both PVCs on the
+    # same Pod, forcing them to be co-located.
+    - name: Ensure both PVCs are provisioned in same zone
+      include_role:
+        name: compare_pvc_data
+      vars:
+        pvc1_name: data-source
+        pvc2_name: data-dest
+
+    - name: Write data into the source PVC
+      include_role:
+        name: write_to_pvc
+      vars:
+        data: 'data'
+        path: '/datafile'
+        pvc_name: 'data-source'
+
+    - name: Create replication relationship with rsync-tls
+      include_role:
+        name: cli
+      vars:
+        params:
+          - "replication"
+          - "-r"
+          - "replication"
+          - "create"
+          - "--rsynctls"
+          - "true"
+
+    - name: Set source of replication
+      include_role:
+        name: cli
+      vars:
+        params:
+          - "replication"
+          - "-r"
+          - "replication"
+          - "set-source"
+          - "--pvcname"
+          - "{{namespace}}/data-source"
+          - "--copymethod"
+          - "Snapshot"
+
+    - name: Set destination of replication
+      include_role:
+        name: cli
+      vars:
+        params:
+          - "replication"
+          - "-r"
+          - "replication"
+          - "set-destination"
+          - "--destination"
+          - "{{namespace}}/data-dest"
+          - "--copymethod"
+          - "Direct"
+      when: podSecurityContext is not defined
+
+    - name: Trigger synchronization
+      include_role:
+        name: cli
+      vars:
+        params:
+          - "replication"
+          - "-r"
+          - "replication"
+          - "sync"
+        timeout: 900  # Command doesn't return until sync completes
+
+    - name: Clean up replication resources
+      include_role:
+        name: cli
+      vars:
+        params:
+          - "replication"
+          - "-r"
+          - "replication"
+          - "delete"
+
+    - name: Verify contents of PVC
+      include_role:
+        name: compare_pvc_data
+      vars:
+        pvc1_name: data-source
+        pvc2_name: data-dest

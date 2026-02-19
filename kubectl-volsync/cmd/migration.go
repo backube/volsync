@@ -19,13 +19,11 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/klog/v2"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/component-base/logs"
 	"k8s.io/kubectl/pkg/util/i18n"
 	"k8s.io/kubectl/pkg/util/templates"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -36,18 +34,41 @@ import (
 // MigrationRelationship defines the "type" of migration Relationships
 const MigrationRelationshipType RelationshipType = "migration"
 
+const (
+	defaultLocalStunnelPort       = 9000
+	defaultDestinationStunnelPort = 8000
+)
+
 // migrationRelationship holds the config state for migration-type
 // relationships
 type migrationRelationship struct {
 	Relationship
-	data *migrationRelationshipData
+	data *migrationRelationshipDataV2
+	mh   migrationHandler
+}
+
+type migrationHandler interface {
+	EnsureReplicationDestination(ctx context.Context, c client.Client,
+		destConfig *migrationRelationshipDestinationV2) (*volsyncv1alpha1.ReplicationDestination, error)
+	WaitForRDStatus(ctx context.Context, c client.Client,
+		replicationDestination *volsyncv1alpha1.ReplicationDestination) (*volsyncv1alpha1.ReplicationDestination, error)
+	RunMigration(ctx context.Context, c client.Client, source string, destConfig *migrationRelationshipDestinationV2,
+		sTunnelLocalPort int32) error
+}
+
+// Old v1 version of the data
+type migrationRelationshipData struct {
+	Version     int
+	Destination *migrationRelationshipDestination
 }
 
 // migrationRelationshipData is the state that will be saved to the
 // relationship config file
-type migrationRelationshipData struct {
-	Version     int
-	Destination *migrationRelationshipDestination
+type migrationRelationshipDataV2 struct {
+	Version int
+	// True if the ReplicationDestination should use RsyncTLS
+	IsRsyncTLS  bool
+	Destination *migrationRelationshipDestinationV2
 }
 
 type migrationRelationshipDestination struct {
@@ -65,18 +86,48 @@ type migrationRelationshipDestination struct {
 	Destination volsyncv1alpha1.ReplicationDestinationRsyncSpec
 }
 
+type migrationRelationshipDestinationV2 struct {
+	// Cluster context name
+	Cluster string
+	// Namespace on destination cluster
+	Namespace string
+	// Name of PVC being replicated
+	PVCName string
+	// Name of the ReplicationDestination object
+	RDName string
+	// Name of Secret holding ssh or psk secret
+	//RsyncSecretName string //TODO: is this necessary? doesn't seem to get written to conf file in ~/.volsync
+	// Service Type for the ReplicationDestination
+	ServiceType *corev1.ServiceType
+	// Copy Method for the ReplicationDestination (will always be Direct for migration)
+	CopyMethod volsyncv1alpha1.CopyMethodType
+	// MoverSecurityContext allows specifying the PodSecurityContext that will
+	// be used by the data mover
+	MoverSecurityContext *corev1.PodSecurityContext
+}
+
 func (mr *migrationRelationship) Save() error {
 	err := mr.SetData(mr.data)
 	if err != nil {
 		return err
 	}
 
-	if mr.data.Destination != nil && mr.data.Destination.Destination.Capacity != nil {
-		mr.Set("data.destination.destination.replicationdestinationvolumeoptions.capacity",
-			mr.data.Destination.Destination.Capacity.String())
-	}
-
 	return mr.Relationship.Save()
+}
+
+func (mr *migrationRelationship) convertDataToV2(datav1 *migrationRelationshipData) {
+	mr.data = &migrationRelationshipDataV2{
+		Version:    2,
+		IsRsyncTLS: false, // Rsync TLS support wasn't there in v1
+		Destination: &migrationRelationshipDestinationV2{
+			RDName:      datav1.Destination.RDName,
+			PVCName:     datav1.Destination.PVCName,
+			Namespace:   datav1.Destination.Namespace,
+			Cluster:     datav1.Destination.Cluster,
+			ServiceType: datav1.Destination.Destination.ServiceType,
+			CopyMethod:  volsyncv1alpha1.CopyMethodDirect, // Default, but wasn't specified in v1
+		},
+	}
 }
 
 func newMigrationRelationship(cmd *cobra.Command) (*migrationRelationship, error) {
@@ -87,8 +138,8 @@ func newMigrationRelationship(cmd *cobra.Command) (*migrationRelationship, error
 
 	return &migrationRelationship{
 		Relationship: *r,
-		data: &migrationRelationshipData{
-			Version: 1,
+		data: &migrationRelationshipDataV2{
+			Version: 2,
 		},
 	}, nil
 }
@@ -107,6 +158,9 @@ var migrationCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(migrationCmd)
+
+	// Add logging flags to all sub-commands
+	logs.AddFlags(migrationCmd.PersistentFlags())
 
 	migrationCmd.PersistentFlags().StringP("relationship", "r", "", "relationship name")
 	cobra.CheckErr(migrationCmd.MarkPersistentFlagRequired("relationship"))
@@ -127,63 +181,25 @@ func loadMigrationRelationship(cmd *cobra.Command) (*migrationRelationship, erro
 	version := mr.GetInt("data.version")
 	switch version {
 	case 1:
+		// version2 is now the default, read in the v1 data and migrate to v2
+		datav1 := &migrationRelationshipData{}
+		if err := mr.GetData(&datav1); err != nil {
+			return nil, err
+		}
+		mr.convertDataToV2(datav1) // Convert from v1 to v2
+	case 2:
 		if err := mr.GetData(&mr.data); err != nil {
 			return nil, err
 		}
 	default:
 		return nil, fmt.Errorf("unsupported config file version %d", version)
 	}
+
+	if mr.data.IsRsyncTLS {
+		mr.mh = &migrationHandlerRsyncTLS{}
+	} else {
+		mr.mh = &migrationHandlerRsync{}
+	}
+
 	return mr, nil
-}
-
-func (mrd *migrationRelationshipDestination) waitForRDStatus(ctx context.Context, client client.Client) (
-	*volsyncv1alpha1.ReplicationDestination, error) {
-	// wait for migrationdestination to become ready
-	var (
-		rd  *volsyncv1alpha1.ReplicationDestination
-		err error
-	)
-	klog.Infof("waiting for keys & address of destination to be available")
-	err = wait.PollUntilContextTimeout(ctx, 5*time.Second, defaultRsyncKeyTimeout, true, /*immediate*/
-		func(ctx context.Context) (bool, error) {
-			rd, err = mrd.getDestination(ctx, client)
-			if err != nil {
-				return false, err
-			}
-			if rd.Status == nil || rd.Status.Rsync == nil {
-				return false, nil
-			}
-			if rd.Status.Rsync.Address == nil {
-				klog.V(2).Infof("Waiting for MigrationDestination %s RSync address to populate", rd.Name)
-				return false, nil
-			}
-
-			if rd.Status.Rsync.SSHKeys == nil {
-				klog.V(2).Infof("Waiting for MigrationDestination %s RSync sshkeys to populate", rd.Name)
-				return false, nil
-			}
-
-			klog.V(2).Infof("Found MigrationDestination RSync Address: %s", *rd.Status.Rsync.Address)
-			return true, nil
-		})
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch rd status: %w,", err)
-	}
-
-	return rd, nil
-}
-
-func (mrd *migrationRelationshipDestination) getDestination(ctx context.Context, client client.Client) (
-	*volsyncv1alpha1.ReplicationDestination, error) {
-	nsName := types.NamespacedName{
-		Namespace: mrd.Namespace,
-		Name:      mrd.RDName,
-	}
-	rd := &volsyncv1alpha1.ReplicationDestination{}
-	err := client.Get(ctx, nsName, rd)
-	if err != nil {
-		return nil, err
-	}
-
-	return rd, nil
 }

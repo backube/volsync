@@ -37,6 +37,9 @@ type replicationSetSource struct {
 	pvcName                 XClusterName
 	storageClassName        *string
 	volumeSnapshotClassName *string
+	// MoverSecurity context to use for the ReplicationDestination
+	// Individual fields will come from cli parameters
+	MoverSecurityContext *corev1.PodSecurityContext
 }
 
 // replicationSetSourceCmd represents the replicationSetSource command
@@ -71,6 +74,9 @@ func init() {
 		"name of the StorageClass to use for the cloned volume")
 	replicationSetSourceCmd.Flags().String("volumesnapshotclass", "",
 		"name of the VolumeSnapshotClass to use for volume snapshots")
+
+	// MoverSecurityContext flags - will only apply if rsyncTLS is true
+	addCLIRsyncTLSMoverSecurityContextFlags(replicationSetSourceCmd, false)
 }
 
 func newReplicationSetSource(cmd *cobra.Command) (*replicationSetSource, error) {
@@ -113,6 +119,12 @@ func newReplicationSetSource(cmd *cobra.Command) (*replicationSetSource, error) 
 		rss.volumeSnapshotClassName = &vscName
 	}
 
+	// Parse moverSecurityContext flags into a desired MoverSecurityContext
+	rss.MoverSecurityContext, err = parseCLIRsyncTLSMoverSecurityContextFlags(cmd)
+	if err != nil {
+		return nil, err
+	}
+
 	return rss, nil
 }
 
@@ -124,21 +136,28 @@ func (rss *replicationSetSource) Run(ctx context.Context) error {
 	_ = rss.rel.DeleteSource(ctx, srcClient)
 	_ = rss.rel.DeleteDestination(ctx, dstClient)
 
-	rss.rel.data.Source = &replicationRelationshipSource{
+	if !rss.rel.data.IsRsyncTLS {
+		// the rsync (ssh) handler will ignore moversecuritycontext,
+		// but remove it here in case someone passes in these flags when
+		// using rsync ssh so it doesn't end up in the saved yaml
+		// and confuse anyone
+		rss.MoverSecurityContext = nil
+	}
+
+	rss.rel.data.Source = &replicationRelationshipSourceV2{
 		Cluster:   rss.pvcName.Cluster,
 		Namespace: rss.pvcName.Namespace,
 		// The RS name needs to be unique since it's possible to have a single
 		// PVC be the source of multiple replications
 		RSName:  rss.pvcName.Name + "-" + krand.String(5),
 		PVCName: rss.pvcName.Name,
-		Source: volsyncv1alpha1.ReplicationSourceRsyncSpec{
-			ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
-				AccessModes:             rss.accessModes,
-				CopyMethod:              rss.copyMethod,
-				StorageClassName:        rss.storageClassName,
-				VolumeSnapshotClassName: rss.volumeSnapshotClassName,
-			},
+		ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
+			AccessModes:             rss.accessModes,
+			CopyMethod:              rss.copyMethod,
+			StorageClassName:        rss.storageClassName,
+			VolumeSnapshotClassName: rss.volumeSnapshotClassName,
 		},
+		MoverSecurityContext: rss.MoverSecurityContext,
 	}
 
 	var err error

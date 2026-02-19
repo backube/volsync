@@ -13,6 +13,46 @@
         mountPath: {}
   - entrypoint:
     - volsync-custom-scorecard-tests
+    - test_replication_sched_snap.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_replication_sched_snap.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_replication_sync_direct.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_replication_sync_direct.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_replication_sync_direct_tls_normal.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_replication_sync_direct_tls_normal.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_replication_sync_direct_tls_priv.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_replication_sync_direct_tls_priv.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
     - test_restic_manual_normal.yml
     image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:

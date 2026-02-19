@@ -47,6 +47,8 @@ type migrationCreate struct {
 	DestinationPVC string
 	// Name of the ReplicationDestination object
 	RDName string
+	// True if the ReplicationDestination should use RsyncTLS
+	IsRsyncTLS bool
 	// copyMethod describes how a point-in-time (PiT) image of the destination
 	// volume should be created
 	CopyMethod volsyncv1alpha1.CopyMethodType
@@ -64,6 +66,9 @@ type migrationCreate struct {
 	client client.Client
 	// PVC object associated with pvcName used to create destination object
 	PVC *corev1.PersistentVolumeClaim
+	// MoverSecurity context to use for the ReplicationDestination
+	// Individual fields will come from cli parameters
+	MoverSecurityContext *corev1.PodSecurityContext
 }
 
 // migrationCreateCmd represents the create command
@@ -101,6 +106,11 @@ func initMigrationCreateCmd(migrationCreateCmd *cobra.Command) {
 	migrationCreateCmd.Flags().String("storageclass", "", "StorageClass name for the PVC")
 	migrationCreateCmd.Flags().String("servicetype", "LoadBalancer",
 		"Service Type or ingress methods for a service. viz: ClusterIP, LoadBalancer")
+	migrationCreateCmd.Flags().String("rdname", "", "name of the ReplicationDestination to create")
+	migrationCreateCmd.Flags().Bool("rsynctls", false, "if true, will use rsync-tls")
+
+	// MoverSecurityContext flags - will only apply if rsyncTLS is true
+	addCLIRsyncTLSMoverSecurityContextFlags(migrationCreateCmd, true)
 }
 
 func newMigrationCreate(cmd *cobra.Command) (*migrationCreate, error) {
@@ -114,6 +124,13 @@ func newMigrationCreate(cmd *cobra.Command) (*migrationCreate, error) {
 
 	if err = mc.parseCLI(cmd); err != nil {
 		return nil, err
+	}
+
+	mc.mr.data.IsRsyncTLS = mc.IsRsyncTLS
+	if mc.IsRsyncTLS {
+		mc.mr.mh = &migrationHandlerRsyncTLS{}
+	} else {
+		mc.mr.mh = &migrationHandlerRsync{}
 	}
 
 	return mc, nil
@@ -181,15 +198,38 @@ func (mc *migrationCreate) parseCLI(cmd *cobra.Command) error {
 		return fmt.Errorf("unsupported service type: %v", corev1.ServiceType(serviceType))
 	}
 	mc.ServiceType = (*corev1.ServiceType)(&serviceType)
-	mc.RDName = mc.Namespace + "-" + mc.DestinationPVC + "-migration-dest"
+
+	rdName, err := cmd.Flags().GetString("rdname")
+	if err != nil {
+		return fmt.Errorf("failed to fetch rdname, %w", err)
+	}
+	if rdName == "" {
+		rdName = mc.DestinationPVC + "-mig-dst" // Generate default value
+	}
+	mc.RDName = rdName
+
+	isRsyncTLS, err := cmd.Flags().GetBool("rsynctls")
+	if err != nil {
+		return fmt.Errorf("failed to fetch rsynctls, %w", err)
+	}
+	mc.IsRsyncTLS = isRsyncTLS
+
+	if isRsyncTLS {
+		// Parse the moverSecurityContext flags (these flags will not apply to the
+		// rsync ssh case)
+		mc.MoverSecurityContext, err = parseCLIRsyncTLSMoverSecurityContextFlags(cmd)
+		if err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
 
 //nolint:funlen
 func (mc *migrationCreate) newMigrationRelationshipDestination() (
-	*migrationRelationshipDestination, error) {
-	mrd := &migrationRelationshipDestination{}
+	*migrationRelationshipDestinationV2, error) {
+	mrd := &migrationRelationshipDestinationV2{}
 
 	// Assign the values from migrationCreate built after parsing cmd args
 	mrd.RDName = mc.RDName
@@ -203,8 +243,12 @@ func (mc *migrationCreate) newMigrationRelationshipDestination() (
 		}
 	}
 
-	mrd.Destination.DestinationPVC = &mc.DestinationPVC
-	mrd.Destination.ServiceType = mc.ServiceType
+	// Some migration create Cli parameters such as capacity, storageclassname, accesmodes etc are not
+	// saved to the migrationrelationship .yaml file.  These are only used at create time when the
+	// destination PVC and ReplicationDestination will be created.
+
+	mrd.ServiceType = mc.ServiceType
+	mrd.CopyMethod = mc.CopyMethod
 
 	return mrd, nil
 }
@@ -239,13 +283,14 @@ func (mc *migrationCreate) Run(ctx context.Context) error {
 	}
 
 	// Creates the RD if it doesn't exist
-	_, err = mc.ensureReplicationDestination(ctx)
+	rd, err := mc.mr.mh.EnsureReplicationDestination(ctx, mc.client, mc.mr.data.Destination)
+	//_, err = mc.ensureReplicationDestination(ctx)
 	if err != nil {
 		return err
 	}
 
 	// Wait for ReplicationDestination to post address, sshkeys
-	_, err = mc.mr.data.Destination.waitForRDStatus(ctx, mc.client)
+	_, err = mc.mr.mh.WaitForRDStatus(ctx, mc.client, rd)
 	if err != nil {
 		return err
 	}
@@ -332,30 +377,4 @@ func (mc *migrationCreate) getDestinationPVC(ctx context.Context) (*corev1.Persi
 		return nil, err
 	}
 	return destPVC, nil
-}
-
-func (mc *migrationCreate) ensureReplicationDestination(ctx context.Context) (
-	*volsyncv1alpha1.ReplicationDestination, error) {
-	mrd := mc.mr.data.Destination
-	rd := &volsyncv1alpha1.ReplicationDestination{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      mrd.RDName,
-			Namespace: mrd.Namespace,
-		},
-		Spec: volsyncv1alpha1.ReplicationDestinationSpec{
-			Rsync: &volsyncv1alpha1.ReplicationDestinationRsyncSpec{
-				ReplicationDestinationVolumeOptions: volsyncv1alpha1.ReplicationDestinationVolumeOptions{
-					DestinationPVC: mrd.Destination.DestinationPVC,
-				},
-				ServiceType: mrd.Destination.ServiceType,
-			},
-		},
-	}
-	if err := mc.client.Create(ctx, rd); err != nil {
-		return nil, err
-	}
-	klog.Infof("Created ReplicationDestination: \"%s\" in Namespace: \"%s\"",
-		rd.Name, rd.Namespace)
-
-	return rd, nil
 }
