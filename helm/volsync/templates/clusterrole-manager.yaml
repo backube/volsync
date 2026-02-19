@@ -21,6 +21,18 @@ rules:
 - apiGroups:
   - batch
   resources:
+  - cronjobs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - batch
+  resources:
   - jobs
   verbs:
   - create
@@ -71,18 +83,6 @@ rules:
   - create
   - delete
   - deletecollection
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - persistentvolumeclaims/finalizers
-  verbs:
-  - create
-  - delete
   - get
   - list
   - patch
@@ -235,7 +235,7 @@ rules:
 - apiGroups:
   - volsync.backube
   resources:
-  - replicationdestinations
+  - kopiamaintenances
   verbs:
   - create
   - delete
@@ -247,7 +247,21 @@ rules:
 - apiGroups:
   - volsync.backube
   resources:
-  - replicationdestinations/finalizers
+  - kopiamaintenances/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - volsync.backube
+  resources:
+  - kopiamaintenances/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - volsync.backube
+  resources:
+  - replicationdestinations
   verbs:
   - create
   - delete
@@ -268,18 +282,6 @@ rules:
   - volsync.backube
   resources:
   - replicationsources
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - volsync.backube
-  resources:
-  - replicationsources/finalizers
   verbs:
   - create
   - delete

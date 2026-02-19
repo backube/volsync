@@ -1,38 +1,53 @@
 # Default values for volsync.
 replicaCount: 1
+revisionHistoryLimit: 3
 
 image:
-  repository: quay.io/backube/volsync
+  repository: ghcr.io/perfectra1n/volsync
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
   # Directly specifies the SHA hash of the container image to deploy
   image: ""
 rclone:
-  repository: quay.io/backube/volsync
+  repository: ghcr.io/perfectra1n/volsync
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
   image: ""
 restic:
-  repository: quay.io/backube/volsync
+  repository: ghcr.io/perfectra1n/volsync
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
   image: ""
 rsync:
-  repository: quay.io/backube/volsync
+  repository: ghcr.io/perfectra1n/volsync
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
   image: ""
 rsync-tls:
-  repository: quay.io/backube/volsync
+  repository: ghcr.io/perfectra1n/volsync
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
   image: ""
 syncthing:
-  repository: quay.io/backube/volsync
+  repository: ghcr.io/perfectra1n/volsync
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
   image: ""
+kopia:
+  repository: ghcr.io/perfectra1n/volsync
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+  image: ""
+  # Kopia maintenance CronJob configuration
+  maintenance:
+    # History limits for maintenance CronJobs
+    # successfulJobsHistoryLimit: Number of successful maintenance Jobs to keep (default: 3)
+    # Keeping history helps with troubleshooting and tracking maintenance execution
+    successfulJobsHistoryLimit: 3
+    # failedJobsHistoryLimit: Number of failed maintenance Jobs to keep (default: 1)
+    # Failed jobs are retained to help diagnose issues
+    failedJobsHistoryLimit: 1
 
 manageCRDs: true
 
