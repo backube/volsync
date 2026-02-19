@@ -77,7 +77,7 @@ fi
 START_TIME=$SECONDS
 case "${DIRECTION}" in
 source)
-    find "${MOUNT_PATH}" -path "${MOUNT_PATH}/lost+found" -prune -o -print | getfacl - > /tmp/permissions.facl
+    find "${MOUNT_PATH}" -path "${MOUNT_PATH}/lost+found" -prune -o -print | getfacl -P - > /tmp/permissions.facl
     rclone sync "${RCLONE_FLAGS_SYNC[@]}" --exclude "lost+found/**" "${MOUNT_PATH}" "${RCLONE_CONFIG_SECTION}:${RCLONE_DEST_PATH}" --log-level DEBUG
     rclone copy "${RCLONE_FLAGS_COPY[@]}" --include permissions.facl /tmp "${RCLONE_CONFIG_SECTION}:${RCLONE_DEST_PATH}" --log-level DEBUG
     ;;
