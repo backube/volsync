@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## 0.15.0
+
 ### Changed
 
 - moverVolumes updated to allow NFS type volumeMounts
@@ -407,7 +409,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for rsync & rclone replication
 - Helm chart to deploy operator
 
-[Unreleased]: https://github.com/backube/volsync/compare/release-0.14...HEAD
+[Unreleased]: https://github.com/backube/volsync/compare/release-0.15...HEAD
+[0.15.0]: https://github.com/backube/volsync/compare/release-0.14...v0.15.0
 [0.14.0]: https://github.com/backube/volsync/compare/release-0.13...v0.14.0
 [0.13.1]: https://github.com/backube/volsync/compare/release-0.13.0...v0.13.1
 [0.13.0]: https://github.com/backube/volsync/compare/release-0.12...v0.13.0
