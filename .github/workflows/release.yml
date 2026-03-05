@@ -25,6 +25,10 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-24.04, ubuntu-24.04-arm]
+        GOOS: [linux, darwin]
+
+    env:
+      GOOS: ${{ matrix.GOOS }}
 
     steps:
       - name: Checkout source
@@ -48,10 +52,11 @@ jobs:
 
       - name: Install kubectl
         run: |
-          curl -fsSLO "https://dl.k8s.io/release/v${KUBECTL_VERSION}/bin/linux/${{ env.ARCH }}/kubectl"
+          curl -fsSLO "https://dl.k8s.io/release/v${KUBECTL_VERSION}/bin/${{ env.GOOS }}/${{ env.ARCH }}/kubectl"
           sudo install ./kubectl /usr/local/bin/
           kubectl version --client
           kubectl version --client | grep -q ${KUBECTL_VERSION}
+        if: ${{ env.GOOS == 'linux' }}
 
       - name: Install krew
         # https://krew.sigs.k8s.io/docs/user-guide/setup/install/
@@ -63,16 +68,24 @@ jobs:
           tar zxvf "${KREW}.tar.gz"
           ./"${KREW}" install krew
           echo "${KREW_ROOT:-$HOME/.krew}/bin" >> $GITHUB_PATH
+        if: ${{ env.GOOS == 'linux' }}
 
+      # Build & test linux versions of kubectl-volsync
       - name: Test build/install of plugin via krew
         run: make test-krew # Will build the plugin and output to bin/kubectl-volsync.tar.gz
+        if: ${{ env.GOOS == 'linux' }}
+
+      # Build (no test) darwin versions of kubectl-volsync
+      - name: Build darwin kubectl-volsync binary
+        run: make cli
+        if: ${{ env.GOOS == 'darwin' }}
 
       - name: Attach kubectl-volsync asset to release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp bin/kubectl-volsync.tar.gz bin/kubectl-volsync-linux-${{ env.ARCH }}.tar.gz
-          gh release upload ${{github.event.release.tag_name}} bin/kubectl-volsync-linux-${{ env.ARCH }}.tar.gz
+          cp bin/kubectl-volsync.tar.gz bin/kubectl-volsync-${{ env.GOOS }}-${{ env.ARCH }}.tar.gz
+          gh release upload ${{github.event.release.tag_name}} bin/kubectl-volsync-${{ env.GOOS }}-${{ env.ARCH }}.tar.gz
 
   publish-kubectl-volsync:
     name: open PR in krew-index for kubectl-volsync
