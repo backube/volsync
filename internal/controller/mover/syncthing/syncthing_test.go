@@ -606,6 +606,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 			When("Syncthing server does not exist", func() {
 
 				JustBeforeEach(func() {
+					// nolint:gosec
 					mover.apiConfig = api.APIConfig{
 						APIURL: "https://my-fake-api-address-123",
 						APIKey: "not-a-real-api-key",

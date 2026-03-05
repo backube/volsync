@@ -83,7 +83,7 @@ type SystemConnections struct {
 // nolint:revive
 type APIConfig struct {
 	APIURL string `json:"apiURL"`
-	APIKey string `json:"apiKey"`
+	APIKey string `json:"apiKey"` // nolint:gosec
 	// don't marshal this field
 	TLSConfig *tls.Config
 	Client    *http.Client
