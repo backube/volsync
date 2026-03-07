@@ -40,3 +40,29 @@ spec:
     - from: "LICENSE"
       to: "."
     bin: kubectl-volsync
+  - selector:
+      matchLabels:
+        os: darwin
+        arch: amd64
+    # This URL requires the artifact to be added to the release page as an
+    # "Asset"
+    {{addURIAndSha "https://github.com/backube/volsync/releases/download/{{ .TagName }}/kubectl-volsync-darwin-amd64.tar.gz" .TagName }}
+    files:
+    - from: "./kubectl-volsync"
+      to: "."
+    - from: "LICENSE"
+      to: "."
+    bin: kubectl-volsync
+  - selector:
+      matchLabels:
+        os: darwin
+        arch: arm64
+    # This URL requires the artifact to be added to the release page as an
+    # "Asset"
+    {{addURIAndSha "https://github.com/backube/volsync/releases/download/{{ .TagName }}/kubectl-volsync-darwin-arm64.tar.gz" .TagName }}
+    files:
+    - from: "./kubectl-volsync"
+      to: "."
+    - from: "LICENSE"
+      to: "."
+    bin: kubectl-volsync
