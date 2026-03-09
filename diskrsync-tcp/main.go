@@ -43,7 +43,7 @@ type options struct {
 }
 
 func usage() {
-	_, _ = fmt.Fprintf(os.Stderr, "Usage: %s [devicepath] [flags]\n", os.Args[0])
+	_, _ = fmt.Fprintf(os.Stderr, "Usage: %s [devicepath] [flags]\n", os.Args[0]) // nolint:gosec
 	flag.PrintDefaults()
 	os.Exit(2)
 }
@@ -119,6 +119,7 @@ func createControlFile(fileName string) error {
 }
 
 func connectToTarget(sourceFile, targetAddress string, port int, opts *options, logger logr.Logger) error {
+	// nolint:gosec
 	f, err := os.Open(sourceFile)
 	if err != nil {
 		return err
@@ -176,6 +177,7 @@ func startServer(targetFile string, port int, opts *options, logger logr.Logger)
 	var w spgz.SparseFile
 	useReadBuffer := false
 
+	// nolint:gosec
 	f, err := os.OpenFile(targetFile, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		return err

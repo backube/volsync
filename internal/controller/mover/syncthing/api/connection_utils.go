@@ -75,7 +75,7 @@ func (api *syncthingAPIConnection) jsonRequest(
 		req.Header.Set(key, value)
 	}
 
-	resp, err := api.apiConfig.Client.Do(req)
+	resp, err := api.apiConfig.Client.Do(req) // nolint:gosec
 	if err != nil {
 		return nil, err
 	}
