@@ -56,3 +56,8 @@ const (
 	EvRVolPopPVCCreationSuccess              = "VolSyncPopulatorPVCCreated"
 	EvRVolPopPVCCreationError                = "VolSyncPopulatorPVCCreationError"
 )
+
+// Volume Populator Even "action" strings
+const (
+	EVAVolPopProvision = "Provision Volume"
+)
