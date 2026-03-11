@@ -37,7 +37,9 @@ import (
 
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumesnapshot/v1"
 	volumepopulatorv1beta1 "github.com/kubernetes-csi/volume-data-source-validator/client/apis/volumepopulator/v1beta1"
+	ocpconfigv1 "github.com/openshift/api/config/v1"
 	ocpsecurityv1 "github.com/openshift/api/security/v1"
+	ocptls "github.com/openshift/controller-runtime-common/pkg/tls"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"go.uber.org/zap/zapcore"
@@ -80,6 +82,7 @@ func init() {
 	utilruntime.Must(volsyncv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(ocpsecurityv1.AddToScheme(scheme))
 	utilruntime.Must(volumepopulatorv1beta1.AddToScheme(scheme))
+	utilruntime.Must(ocpconfigv1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
@@ -165,16 +168,10 @@ func addCommandFlags(probeAddr *string, metricsAddr *string, enableLeaderElectio
 }
 
 // Prereq CRs we want to always be present in certain environments but do not want to reconcile often (just at startup)
-func ensureCRs(cfg *rest.Config) {
-	setupClient, err := client.New(cfg, client.Options{Scheme: scheme})
-	if err != nil {
-		setupLog.Error(err, "error creating client")
-		os.Exit(1)
-	}
-
+func ensureCRs(setupClient client.Client) {
 	// Privileged mover SCC required in OpenShift envs
 	setupLog.Info("Privileged Mover SCC", "scc-name", utils.SCCName)
-	err = platform.EnsureVolSyncMoverSCCIfOpenShift(context.Background(), setupClient, setupLog,
+	err := platform.EnsureVolSyncMoverSCCIfOpenShift(context.Background(), setupClient, setupLog,
 		utils.SCCName, volsyncMoverSCCYamlRaw)
 	if err != nil {
 		setupLog.Error(err, "unable to reconcile volsync mover scc", "scc-name", utils.SCCName)
@@ -223,6 +220,30 @@ func main() {
 	renewDeadline := 107 * time.Second
 	retryPeriod := 26 * time.Second
 
+	cfg := ctrl.GetConfigOrDie()
+	setupClient, err := client.New(cfg, client.Options{Scheme: scheme})
+	if err != nil {
+		setupLog.Error(err, "error creating client")
+		os.Exit(1)
+	}
+
+	// Fetch the TLS profile from the APIServer resource.
+	tlsSecurityProfileSpec, err := ocptls.FetchAPIServerTLSProfile(context.Background(), setupClient)
+	if err != nil {
+		setupLog.Error(err, "unable to get TLS profile from API server")
+		os.Exit(1)
+	}
+	setupLog.Info("Using TLS profile",
+		"minTLSVersion", tlsSecurityProfileSpec.MinTLSVersion,
+		"ciphers", tlsSecurityProfileSpec.Ciphers)
+
+	// Create the TLS configuration function for the server endpoints.
+	tlsConfig, unsupportedCiphers := ocptls.NewTLSConfigFromProfile(tlsSecurityProfileSpec)
+	if len(unsupportedCiphers) > 0 {
+		setupLog.Info("TLS configuration contains unsupported ciphers that will be ignored",
+			"unsupportedCiphers", unsupportedCiphers)
+	}
+
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
 	// prevent from being vulnerable to the HTTP/2 Stream Cancellation and
@@ -233,10 +254,11 @@ func main() {
 		setupLog.Info("disabling http/2")
 		c.NextProtos = []string{"http/1.1"}
 	}
-
 	if !enableHTTP2 {
 		tlsOpts = append(tlsOpts, disableHTTP2)
 	}
+
+	tlsOpts = append(tlsOpts, tlsConfig)
 
 	// Create watchers for metrics and webhooks certificates
 	var metricsCertWatcher *certwatcher.CertWatcher
@@ -320,7 +342,11 @@ func main() {
 		})
 	}
 
-	cfg := ctrl.GetConfigOrDie()
+	// Create a context that can be cancelled when there is a need to shut down the manager	.
+	ctx, cancel := context.WithCancel(ctrl.SetupSignalHandler())
+	// Ensure the context is cancelled when the program exits.
+	defer cancel()
+
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsServerOptions,
@@ -342,8 +368,30 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Setup TLS Security Profile Watcher to monitor for TLS profile changes.
+	// When the cluster's TLS profile changes, the operator will gracefully shutdown
+	// and restart to pick up the new configuration.
+	tlsProfileWatcher := &ocptls.SecurityProfileWatcher{
+		Client:                mgr.GetClient(),
+		InitialTLSProfileSpec: tlsSecurityProfileSpec,
+		OnProfileChange: func(_ context.Context, oldProfile, newProfile ocpconfigv1.TLSProfileSpec) {
+			setupLog.Info("TLS security profile has changed, initiating graceful shutdown to reload configuration",
+				"oldMinTLSVersion", oldProfile.MinTLSVersion,
+				"newMinTLSVersion", newProfile.MinTLSVersion,
+				"oldCiphers", oldProfile.Ciphers,
+				"newCiphers", newProfile.Ciphers)
+			// Cancel the context to trigger a graceful shutdown of the manager.
+			// The operator will be restarted by the deployment controller.
+			cancel()
+		},
+	}
+	if err := tlsProfileWatcher.SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to set up TLS security profile watcher")
+		os.Exit(1)
+	}
+
 	// Before starting controllers - create or patch volsync mover SCC and VolumePopulator CR if necessary
-	ensureCRs(cfg)
+	ensureCRs(setupClient)
 
 	initPodLogsClient(cfg)
 
@@ -353,19 +401,21 @@ func main() {
 		os.Exit(1)
 	}
 	if err = (&controller.ReplicationSourceReconciler{
-		Client:        mgr.GetClient(),
-		Log:           ctrl.Log.WithName("controller").WithName("ReplicationSource"),
-		Scheme:        mgr.GetScheme(),
-		EventRecorder: mgr.GetEventRecorder("volsync-controller"),
+		Client:                 mgr.GetClient(),
+		Log:                    ctrl.Log.WithName("controller").WithName("ReplicationSource"),
+		Scheme:                 mgr.GetScheme(),
+		EventRecorder:          mgr.GetEventRecorder("volsync-controller"),
+		TLSSecurityProfileSpec: tlsSecurityProfileSpec,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ReplicationSource")
 		os.Exit(1)
 	}
 	if err = (&controller.ReplicationDestinationReconciler{
-		Client:        mgr.GetClient(),
-		Log:           ctrl.Log.WithName("controller").WithName("ReplicationDestination"),
-		Scheme:        mgr.GetScheme(),
-		EventRecorder: mgr.GetEventRecorder("volsync-controller"),
+		Client:                 mgr.GetClient(),
+		Log:                    ctrl.Log.WithName("controller").WithName("ReplicationDestination"),
+		Scheme:                 mgr.GetScheme(),
+		EventRecorder:          mgr.GetEventRecorder("volsync-controller"),
+		TLSSecurityProfileSpec: tlsSecurityProfileSpec,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ReplicationDestination")
 		os.Exit(1)
@@ -408,7 +458,7 @@ func main() {
 		os.Exit(1)
 	}
 	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
