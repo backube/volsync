@@ -127,6 +127,17 @@ socket = l:TCP_KEEPIDLE=180
 socket = r:SO_KEEPALIVE=1
 socket = r:TCP_KEEPIDLE=180
 syslog = no
+STUNNEL_CONF
+
+    if [[ -n ${SSL_VERSION_MIN} ]]; then
+        # Append sslVersionMin to stunnel conf
+        cat - >> "$STUNNEL_CONF" <<STUNNEL_CONF
+sslVersionMin = $SSL_VERSION_MIN
+STUNNEL_CONF
+    fi
+
+    # Add rsync section to stunnel conf
+    cat - >> "$STUNNEL_CONF" <<STUNNEL_CONF
 
 [rsync]
 ciphers = PSK
