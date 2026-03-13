@@ -34,7 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/component-helpers/storage/volume"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -181,7 +181,7 @@ type VolumePopulatorReconciler struct {
 	client.Client
 	Log           logr.Logger
 	Scheme        *runtime.Scheme
-	EventRecorder record.EventRecorder
+	EventRecorder events.EventRecorder
 }
 
 type vpResult struct {
@@ -263,8 +263,8 @@ func (r *VolumePopulatorReconciler) reconcilePVC(ctx context.Context, logger log
 	}
 
 	// *** At this point the volume population is done and we're just cleaning up ***
-	r.EventRecorder.Eventf(pvc, corev1.EventTypeNormal, volsyncv1alpha1.EvRVolPopPVCPopulatorFinished,
-		"Populator finished")
+	r.EventRecorder.Eventf(pvc, nil, corev1.EventTypeNormal, volsyncv1alpha1.EvRVolPopPVCPopulatorFinished,
+		volsyncv1alpha1.EVAVolPopProvision, "Populator finished")
 
 	// Cleanup
 	if err := r.cleanup(ctx, logger, pvc, pvcPrime); err != nil {
@@ -331,8 +331,8 @@ func (r *VolumePopulatorReconciler) reconcilePVCPrime(ctx context.Context, logge
 				return nil, &vpResult{ctrl.Result{}, err}
 			}
 			logger.Error(err, "ReplicationDestination not found, cannot populate volume yet")
-			r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, volsyncv1alpha1.EvVolPopPVCReplicationDestMissing,
-				"Unable to populate volume: %s", err)
+			r.EventRecorder.Eventf(pvc, nil, corev1.EventTypeWarning, volsyncv1alpha1.EvVolPopPVCReplicationDestMissing,
+				volsyncv1alpha1.EVAVolPopProvision, "Unable to populate volume: %s", err)
 			// Do not return error - will rely on watches to reconcile once the rd is created
 			return nil, &vpResult{ctrl.Result{}, nil}
 		}
@@ -341,7 +341,8 @@ func (r *VolumePopulatorReconciler) reconcilePVCPrime(ctx context.Context, logge
 
 		if rd.Status == nil || rd.Status.LatestImage == nil {
 			logger.Info("ReplicationDestination has no latestImage, cannot populate volume yet")
-			r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, volsyncv1alpha1.EvRVolPopPVCReplicationDestNoLatestImage,
+			r.EventRecorder.Eventf(pvc, rd, corev1.EventTypeWarning, volsyncv1alpha1.EvRVolPopPVCReplicationDestNoLatestImage,
+				volsyncv1alpha1.EVAVolPopProvision,
 				"Unable to populate volume, waiting for replicationdestination to have latestImage")
 			// We'll get called again later when the replicationdestination is updated (see watches on repldest)
 			return nil, &vpResult{ctrl.Result{}, nil}
@@ -353,8 +354,8 @@ func (r *VolumePopulatorReconciler) reconcilePVCPrime(ctx context.Context, logge
 			// This means the replicationdestination is using "Direct" (aka "None") CopyMethod
 			dataSourceRefErr := fmt.Errorf("ReplicationDestination latestImage is not a volumesnapshot")
 			logger.Error(dataSourceRefErr, "Unable to populate volume")
-			r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, volsyncv1alpha1.EvRVolPopPVCPopulatorError,
-				"Unable to populate volume: %s", dataSourceRefErr)
+			r.EventRecorder.Eventf(pvc, rd, corev1.EventTypeWarning, volsyncv1alpha1.EvRVolPopPVCPopulatorError,
+				volsyncv1alpha1.EVAVolPopProvision, "Unable to populate volume: %s", dataSourceRefErr)
 			// Do not return error here - no use retrying
 			return nil, &vpResult{ctrl.Result{}, nil}
 		}
@@ -398,13 +399,13 @@ func (r *VolumePopulatorReconciler) reconcilePVCPrime(ctx context.Context, logge
 		logger.Info("Creating temp populator pvc from snapshot", "volpop pvc name", pvcPrime.GetName())
 		err = r.Create(ctx, pvcPrime)
 		if err != nil {
-			r.EventRecorder.Eventf(pvc, corev1.EventTypeWarning, volsyncv1alpha1.EvRVolPopPVCCreationError,
-				"Failed to create populator PVC: %s", err)
+			r.EventRecorder.Eventf(pvc, pvcPrime, corev1.EventTypeWarning, volsyncv1alpha1.EvRVolPopPVCCreationError,
+				volsyncv1alpha1.EVAVolPopProvision, "Failed to create populator PVC: %s", err)
 			return nil, &vpResult{ctrl.Result{}, err}
 		}
 
-		r.EventRecorder.Eventf(pvc, corev1.EventTypeNormal, volsyncv1alpha1.EvRVolPopPVCCreationSuccess,
-			"Populator pvc created from snapshot %s", latestImage.Name)
+		r.EventRecorder.Eventf(pvc, pvcPrime, corev1.EventTypeNormal, volsyncv1alpha1.EvRVolPopPVCCreationSuccess,
+			volsyncv1alpha1.EVAVolPopProvision, "Populator pvc created from snapshot %s", latestImage.Name)
 	}
 
 	return pvcPrime, nil

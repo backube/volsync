@@ -35,7 +35,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -60,7 +59,7 @@ type ReplicationSourceReconciler struct {
 	client.Client
 	Log           logr.Logger
 	Scheme        *runtime.Scheme
-	EventRecorder record.EventRecorder
+	EventRecorder events.EventRecorder
 }
 
 type rsMachine struct {
@@ -117,8 +116,7 @@ func (r *ReplicationSourceReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return result, err
 	}
 
-	rsm, err := newRSMachine(inst, r.Client, logger,
-		record.NewEventRecorderAdapter(mover.NewEventRecorderLogger(r.EventRecorder)), privilegedMoverOk)
+	rsm, err := newRSMachine(inst, r.Client, logger, r.EventRecorder, privilegedMoverOk)
 
 	// Using only external method
 	if errors.Is(err, mover.ErrNoMoverFound) && inst.Spec.External != nil {

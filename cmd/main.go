@@ -356,7 +356,7 @@ func main() {
 		Client:        mgr.GetClient(),
 		Log:           ctrl.Log.WithName("controller").WithName("ReplicationSource"),
 		Scheme:        mgr.GetScheme(),
-		EventRecorder: mgr.GetEventRecorderFor("volsync-controller"),
+		EventRecorder: mgr.GetEventRecorder("volsync-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ReplicationSource")
 		os.Exit(1)
@@ -365,7 +365,7 @@ func main() {
 		Client:        mgr.GetClient(),
 		Log:           ctrl.Log.WithName("controller").WithName("ReplicationDestination"),
 		Scheme:        mgr.GetScheme(),
-		EventRecorder: mgr.GetEventRecorderFor("volsync-controller"),
+		EventRecorder: mgr.GetEventRecorder("volsync-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ReplicationDestination")
 		os.Exit(1)
@@ -380,7 +380,7 @@ func main() {
 		Client:        mgr.GetClient(),
 		Log:           ctrl.Log.WithName("controller").WithName("VolumePopulator"),
 		Scheme:        mgr.GetScheme(),
-		EventRecorder: mgr.GetEventRecorderFor("volsync-controller"),
+		EventRecorder: mgr.GetEventRecorder("volsync-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VolumePopulator")
 		os.Exit(1)

@@ -33,7 +33,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -127,7 +127,7 @@ var _ = BeforeSuite(func() {
 		Client:        k8sManager.GetClient(),
 		Log:           ctrl.Log.WithName("controllers").WithName("Destination"),
 		Scheme:        k8sManager.GetScheme(),
-		EventRecorder: &record.FakeRecorder{},
+		EventRecorder: &events.FakeRecorder{},
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -135,7 +135,7 @@ var _ = BeforeSuite(func() {
 		Client:        k8sManager.GetClient(),
 		Log:           ctrl.Log.WithName("controllers").WithName("Source"),
 		Scheme:        k8sManager.GetScheme(),
-		EventRecorder: &record.FakeRecorder{},
+		EventRecorder: &events.FakeRecorder{},
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -147,7 +147,7 @@ var _ = BeforeSuite(func() {
 		Client:        k8sManager.GetClient(),
 		Log:           ctrl.Log.WithName("controllers").WithName("VolumePopulator"),
 		Scheme:        k8sManager.GetScheme(),
-		EventRecorder: &record.FakeRecorder{},
+		EventRecorder: &events.FakeRecorder{},
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
