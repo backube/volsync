@@ -25,7 +25,6 @@ import (
 
 	"github.com/go-logr/logr"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumesnapshot/v1"
-	ocpconfigv1 "github.com/openshift/api/config/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -58,10 +57,9 @@ const (
 // ReplicationSourceReconciler reconciles a ReplicationSource object
 type ReplicationSourceReconciler struct {
 	client.Client
-	Log                    logr.Logger
-	Scheme                 *runtime.Scheme
-	EventRecorder          events.EventRecorder
-	TLSSecurityProfileSpec ocpconfigv1.TLSProfileSpec
+	Log           logr.Logger
+	Scheme        *runtime.Scheme
+	EventRecorder events.EventRecorder
 }
 
 type rsMachine struct {

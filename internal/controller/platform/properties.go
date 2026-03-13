@@ -21,9 +21,9 @@ import (
 	"context"
 
 	"github.com/go-logr/logr"
+	ocpconfigv1 "github.com/openshift/api/config/v1"
 	ocpsecurityv1 "github.com/openshift/api/security/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -32,42 +32,77 @@ import (
 )
 
 // Properties contains properties about the environment in which we are running
+var properties *Properties
+
 type Properties struct {
-	IsOpenShift        bool // True if we are running on OpenShift
-	HasSCCRestrictedV2 bool // True if the SecurityContextConstraints "restricted-v2" exists
+	IsOpenShift            bool                        // True if we are running on OpenShift
+	TLSSecurityProfileSpec *ocpconfigv1.TLSProfileSpec // Will be nil if not on OpenShift
 }
 
 //nolint:lll
 //+kubebuilder:rbac:groups=security.openshift.io,resources=securitycontextconstraints,verbs=get;list;watch;create;patch;update
+//+kubebuilder:rbac:groups=config.openshift.io,resources=apiservers,verbs=get;list;watch
 
 // Retrieves properties of the running cluster
-func GetProperties(ctx context.Context, client client.Client, logger logr.Logger) (Properties, error) {
-	if err := ocpsecurityv1.AddToScheme(client.Scheme()); err != nil {
+func GetProperties(ctx context.Context, k8sClient client.Client, logger logr.Logger) (Properties, error) {
+	if properties != nil {
+		// Use cached value if it's set
+		return *properties, nil
+	}
+
+	if err := ocpsecurityv1.AddToScheme(k8sClient.Scheme()); err != nil {
 		logger.Error(err, "unable to add scheme for security.openshift.io")
+		return Properties{}, err
+	}
+	if err := ocpconfigv1.AddToScheme(k8sClient.Scheme()); err != nil {
+		logger.Error(err, "unable to add scheme for config.openshift.io")
 		return Properties{}, err
 	}
 
 	var err error
 	p := Properties{}
 
-	if p.IsOpenShift, err = isOpenShift(ctx, client, logger); err != nil {
+	if p.IsOpenShift, err = isOpenShift(ctx, k8sClient, logger); err != nil {
 		return Properties{}, err
 	}
 	if p.IsOpenShift {
-		if p.HasSCCRestrictedV2, err = hasSCCRestrictedV2(ctx, client, logger); err != nil {
+		if p.TLSSecurityProfileSpec, err = getTLSProfile(ctx, k8sClient, logger); err != nil {
 			return Properties{}, err
 		}
 	}
+
+	// Cache properties for subsequent calls
+	properties = &p
+
 	return p, nil
+}
+
+// For test usage, clear out our cached properties
+func clearProperties() {
+	properties = nil
+}
+
+// Checks to determine whether this is OpenShift by looking for any SecurityContextConstraint objects
+func isOpenShift(ctx context.Context, k8sClient client.Client, logger logr.Logger) (bool, error) {
+	SCCs := ocpsecurityv1.SecurityContextConstraintsList{}
+	err := k8sClient.List(ctx, &SCCs)
+	if len(SCCs.Items) > 0 {
+		return true, nil
+	}
+	if err == nil || utils.IsCRDNotPresentError(err) {
+		return false, nil
+	}
+	logger.Error(err, "error while looking for SCCs")
+	return false, err
 }
 
 func EnsureVolSyncMoverSCCIfOpenShift(ctx context.Context, k8sClient client.Client, logger logr.Logger,
 	sccName string, sccRaw []byte) error {
-	openShift, err := isOpenShift(ctx, k8sClient, logger)
+	p, err := GetProperties(ctx, k8sClient, logger)
 	if err != nil {
 		return err
 	}
-	if !openShift {
+	if !p.IsOpenShift {
 		return nil // Not OpenShift, nothing to do here
 	}
 
@@ -114,36 +149,4 @@ func EnsureVolSyncMoverSCCIfOpenShift(ctx context.Context, k8sClient client.Clie
 
 	// Patch currentScc with our volsync mover scc
 	return k8sClient.Patch(ctx, volsyncMoverScc, client.MergeFrom(currentScc))
-}
-
-// Checks to determine whether this is OpenShift by looking for any SecurityContextConstraint objects
-func isOpenShift(ctx context.Context, c client.Client, l logr.Logger) (bool, error) {
-	SCCs := ocpsecurityv1.SecurityContextConstraintsList{}
-	err := c.List(ctx, &SCCs)
-	if len(SCCs.Items) > 0 {
-		return true, nil
-	}
-	if err == nil || utils.IsCRDNotPresentError(err) {
-		return false, nil
-	}
-	l.Error(err, "error while looking for SCCs")
-	return false, err
-}
-
-func hasSCCRestrictedV2(ctx context.Context, c client.Client, l logr.Logger) (bool, error) {
-	scc := ocpsecurityv1.SecurityContextConstraints{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "restricted-v2",
-		},
-	}
-	// The following assumes SCC is a valid type (i.e., it's OpenShift)
-	err := c.Get(ctx, client.ObjectKeyFromObject(&scc), &scc)
-	if err == nil {
-		return true, nil
-	}
-	if kerrors.IsNotFound(err) {
-		return false, nil
-	}
-	l.Error(err, "error while looking for restricted-v2 SCC")
-	return false, err
 }
