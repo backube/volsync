@@ -224,6 +224,147 @@ type ReplicationSourceResticStatus struct {
 	LastUnlocked string `json:"lastUnlocked,omitempty"`
 }
 
+// KopiaRetainPolicy defines the retention policy for Kopia backups
+type KopiaRetainPolicy struct {
+	// Hourly defines the number of snapshots to be kept hourly
+	//+optional
+	Hourly *int32 `json:"hourly,omitempty"`
+	// Daily defines the number of snapshots to be kept daily
+	//+optional
+	Daily *int32 `json:"daily,omitempty"`
+	// Weekly defines the number of snapshots to be kept weekly
+	//+optional
+	Weekly *int32 `json:"weekly,omitempty"`
+	// Monthly defines the number of snapshots to be kept monthly
+	//+optional
+	Monthly *int32 `json:"monthly,omitempty"`
+	// Yearly defines the number of snapshots to be kept yearly
+	//+optional
+	Yearly *int32 `json:"yearly,omitempty"`
+	// Latest defines the number of latest snapshots to keep
+	//+optional
+	Latest *int32 `json:"latest,omitempty"`
+}
+
+// KopiaActions defines pre/post snapshot actions
+type KopiaActions struct {
+	// BeforeSnapshot defines a command to run before snapshot
+	//+optional
+	BeforeSnapshot string `json:"beforeSnapshot,omitempty"`
+	// AfterSnapshot defines a command to run after snapshot
+	//+optional
+	AfterSnapshot string `json:"afterSnapshot,omitempty"`
+}
+
+type ReplicationSourceKopiaCA CustomCASpec
+
+
+// ReplicationSourceKopiaSpec defines the field for kopia in replicationSource.
+type ReplicationSourceKopiaSpec struct {
+	ReplicationSourceVolumeOptions `json:",inline"`
+	// Repository is the secret name containing repository info
+	Repository string `json:"repository,omitempty"`
+	// customCA is a custom CA that will be used to verify the remote
+	CustomCA ReplicationSourceKopiaCA `json:"customCA,omitempty"`
+	// Retain define the retention policy
+	//+optional
+	Retain *KopiaRetainPolicy `json:"retain,omitempty"`
+	// Compression defines the compression algorithm to use for snapshots.
+	// Note: Validation isn't performed on compression algorithm input - Kopia handles validation.
+	// The list may change as Kopia adds new algorithms.
+	// Users can use 'kopia benchmark compression' to test which algorithm works best for their data.
+	//
+	// Supported algorithms (as of Kopia documentation):
+	// - s2 variants: s2-default, s2-better, s2-parallel-4, s2-parallel-8
+	//   (s2-parallel-n supports various concurrency levels)
+	// - zstd variants: zstd (standard), zstd-fastest, zstd-better-compression, zstd-best-compression
+	// - gzip variants: gzip, gzip-best-speed, gzip-best-compression
+	// - pgzip variants (parallel gzip): pgzip, pgzip-best-speed, pgzip-best-compression
+	// - deflate variants: deflate-best-speed, deflate-default, deflate-best-compression
+	// - Other: lz4, none (no compression)
+	//+optional
+	Compression string `json:"compression,omitempty"`
+	// Parallelism defines the number of parallel upload streams
+	//+optional
+	Parallelism *int32 `json:"parallelism,omitempty"`
+	// cacheCapacity can be used to set the size of the kopia metadata cache volume
+	//+optional
+	CacheCapacity *resource.Quantity `json:"cacheCapacity,omitempty"`
+	// cacheStorageClassName can be used to set the StorageClass of the kopia
+	// metadata cache volume
+	//+optional
+	CacheStorageClassName *string `json:"cacheStorageClassName,omitempty"`
+	// CacheAccessModes can be used to set the accessModes of kopia metadata cache volume
+	//+optional
+	CacheAccessModes []corev1.PersistentVolumeAccessMode `json:"cacheAccessModes,omitempty"`
+	// MetadataCacheSizeLimitMB is the hard limit for Kopia's metadata cache in MB.
+	// If not specified, auto-calculated as 70% of CacheCapacity.
+	// Set to 0 for unlimited (Kopia default behavior).
+	//+optional
+	MetadataCacheSizeLimitMB *int32 `json:"metadataCacheSizeLimitMB,omitempty"`
+	// ContentCacheSizeLimitMB is the hard limit for Kopia's content cache in MB.
+	// If not specified, auto-calculated as 20% of CacheCapacity.
+	// Set to 0 for unlimited (Kopia default behavior).
+	//+optional
+	ContentCacheSizeLimitMB *int32 `json:"contentCacheSizeLimitMB,omitempty"`
+	// Actions defines pre/post snapshot actions
+	//+optional
+	Actions *KopiaActions `json:"actions,omitempty"`
+	// PolicyConfig defines configuration for Kopia policy files
+	//+optional
+	PolicyConfig *KopiaPolicySpec `json:"policyConfig,omitempty"`
+	// Username override for Kopia repository access.
+	// If not specified, defaults to the ReplicationSource name with namespace appended.
+	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$"
+	//+optional
+	Username *string `json:"username,omitempty"`
+	// Hostname override for Kopia repository access.
+	// If not specified, defaults to the namespace name.
+	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$"
+	//+optional
+	Hostname *string `json:"hostname,omitempty"`
+	// SourcePathOverride allows specifying a different path name in the snapshot
+	// than the actual filesystem path being backed up. This is useful when backing up
+	// from temporary mounts or snapshots while preserving the original path identity.
+	// +kubebuilder:validation:Pattern="^/.*"
+	//+optional
+	SourcePathOverride *string `json:"sourcePathOverride,omitempty"`
+	// AdditionalArgs allows specifying additional command-line arguments for Kopia.
+	// These arguments will be passed to Kopia snapshot commands during backup operations.
+	// This provides flexibility for advanced users to utilize Kopia features not directly
+	// exposed by VolSync. Use with caution as invalid arguments may cause backup failures.
+	// Security-sensitive flags like --password and --config-file are not allowed.
+	// Example: ["--one-file-system", "--ignore-cache-dirs"]
+	// +kubebuilder:validation:MaxItems=20
+	// +optional
+	AdditionalArgs []string `json:"additionalArgs,omitempty"`
+
+	MoverConfig `json:",inline"`
+}
+
+// ReplicationSourceKopiaStatus defines the field for ReplicationSourceStatus in ReplicationSourceStatus
+type ReplicationSourceKopiaStatus struct {
+	// lastMaintenance in the object holding the time of last maintenance
+	//+optional
+	LastMaintenance *metav1.Time `json:"lastMaintenance,omitempty"`
+	// nextScheduledMaintenance is the next scheduled maintenance time
+	//+optional
+	NextScheduledMaintenance *metav1.Time `json:"nextScheduledMaintenance,omitempty"`
+	// maintenanceFailures counts the number of consecutive maintenance failures
+	//+optional
+	MaintenanceFailures int `json:"maintenanceFailures,omitempty"`
+	// kopiaMaintenance is the name of the KopiaMaintenance resource managing this source's maintenance
+	//+optional
+	KopiaMaintenance string `json:"kopiaMaintenance,omitempty"`
+	// LastConfiguredMetadataCacheSizeLimitMB is the metadata cache limit that was last applied.
+	// Used to skip redundant cache configuration on subsequent runs.
+	// +optional
+	LastConfiguredMetadataCacheSizeLimitMB *int32 `json:"lastConfiguredMetadataCacheSizeLimitMB,omitempty"`
+	// LastConfiguredContentCacheSizeLimitMB is the content cache limit that was last applied.
+	// +optional
+	LastConfiguredContentCacheSizeLimitMB *int32 `json:"lastConfiguredContentCacheSizeLimitMB,omitempty"`
+}
+
 // define the Syncthing field
 type ReplicationSourceSyncthingSpec struct {
 	// List of Syncthing peers to be connected for syncing
@@ -267,6 +408,9 @@ type ReplicationSourceSpec struct {
 	// syncthing defines the configuration when using Syncthing-based replication.
 	//+optional
 	Syncthing *ReplicationSourceSyncthingSpec `json:"syncthing,omitempty"`
+	// kopia defines the configuration when using Kopia-based replication.
+	//+optional
+	Kopia *ReplicationSourceKopiaSpec `json:"kopia,omitempty"`
 	// external defines the configuration when using an external replication
 	// provider.
 	//+optional
@@ -341,6 +485,9 @@ type ReplicationSourceStatus struct {
 	// contains status information when Syncthing-based replication is used.
 	//+optional
 	Syncthing *ReplicationSourceSyncthingStatus `json:"syncthing,omitempty"`
+	// kopia contains status information for Kopia-based replication.
+	//+optional
+	Kopia *ReplicationSourceKopiaStatus `json:"kopia,omitempty"`
 }
 
 // A ReplicationSource is a VolSync resource that you can use to define the source PVC and replication mover type,
