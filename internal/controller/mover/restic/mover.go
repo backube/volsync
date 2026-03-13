@@ -462,6 +462,9 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 			utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_KEY", true),
 			utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_SAS", true),     // New in v0.14.0
 			utils.EnvFromSecret(repo.Name, "AZURE_ENDPOINT_SUFFIX", true), // New in v0.16.0
+			utils.EnvFromSecret(repo.Name, "AZURE_TENANT_ID", true),
+			utils.EnvFromSecret(repo.Name, "AZURE_CLIENT_ID", true),
+			utils.EnvFromSecret(repo.Name, "AZURE_FEDERATED_TOKEN_FILE", true),
 			// AZURE_FORCE_CLI_CREDENTIAL <- not implementing, requires azure cli or local credentials stored from cli?
 			utils.EnvFromSecret(repo.Name, "GOOGLE_PROJECT_ID", true),
 			utils.EnvFromSecret(repo.Name, "RESTIC_REST_USERNAME", true), // New in v0.16.1
