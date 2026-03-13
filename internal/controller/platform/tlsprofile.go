@@ -19,6 +19,7 @@ package platform
 
 import (
 	"context"
+	"fmt"
 
 	"crypto/tls"
 
@@ -91,4 +92,20 @@ func InitTLSSecurityProfileWatcherWithManager(mgr manager.Manager,
 	}
 
 	return tlsProfileWatcher.SetupWithManager(mgr)
+}
+
+// Parse string version of ocpconfigv1.TLSProtocolVersion in format that others (such as stunnel) can interpret
+func ParseTLSVersion(version ocpconfigv1.TLSProtocolVersion) (string, error) {
+	switch version {
+	case ocpconfigv1.VersionTLS10:
+		return "TLSv1", nil // Note: it looks like some other places may use "TLSv1.0"
+	case ocpconfigv1.VersionTLS11:
+		return "TLSv1.1", nil
+	case ocpconfigv1.VersionTLS12:
+		return "TLSv1.2", nil
+	case ocpconfigv1.VersionTLS13:
+		return "TLSv1.3", nil
+	default:
+		return "", fmt.Errorf("unknown TLS version: %s", version)
+	}
 }

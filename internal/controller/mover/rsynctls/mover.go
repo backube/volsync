@@ -42,6 +42,7 @@ import (
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	vserrors "github.com/backube/volsync/internal/controller/errors"
 	"github.com/backube/volsync/internal/controller/mover"
+	"github.com/backube/volsync/internal/controller/platform"
 	"github.com/backube/volsync/internal/controller/utils"
 	"github.com/backube/volsync/internal/controller/volumehandler"
 )
@@ -497,6 +498,25 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
 				Name:  "PRIVILEGED_MOVER",
 				Value: "0",
+			})
+		}
+
+		tlsProfileSpec, err := platform.GetTLSProfileIfOpenShift(ctx, m.client, logger)
+		if err != nil {
+			return err
+		}
+		if tlsProfileSpec != nil {
+			// TLS ProfileSpec is set, this is OpenShift
+			minTLSVersion, err := platform.ParseTLSVersion(tlsProfileSpec.MinTLSVersion)
+			if err != nil {
+				logger.Error(err, "Unable to parse minTLSVersion from TLSProfileSpec",
+					"tlsProfileSpec.MinTLSVersion", tlsProfileSpec.MinTLSVersion)
+				return err
+			}
+			// Set env var to set sslVersionMin in sTunnel
+			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
+				Name:  "SSL_VERSION_MIN",
+				Value: minTLSVersion,
 			})
 		}
 
