@@ -121,7 +121,7 @@ RUN microdnf --refresh update -y && \
         openssh         `# rsync/ssh - ssh key generation in operator` \
         openssh-clients `# rsync/ssh - ssh client` \
         openssh-server  `# rsync/ssh - ssh server` \
-        perl            `# rsync/ssh - rrsync script` \
+        python3         `# rsync/ssh - rrsync script` \
         stunnel         `# rsync-tls` \
         openssl         `# syncthing - server certs` \
         vim-minimal     `# for mover debug` \
