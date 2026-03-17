@@ -34,7 +34,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -50,7 +49,7 @@ type ReplicationDestinationReconciler struct {
 	client.Client
 	Log           logr.Logger
 	Scheme        *runtime.Scheme
-	EventRecorder record.EventRecorder
+	EventRecorder events.EventRecorder
 }
 
 type rdMachine struct {
@@ -111,8 +110,7 @@ func (r *ReplicationDestinationReconciler) Reconcile(ctx context.Context, req ct
 		return result, err
 	}
 
-	rdm, err := newRDMachine(inst, r.Client, logger,
-		record.NewEventRecorderAdapter(mover.NewEventRecorderLogger(r.EventRecorder)), privilegedMoverOk)
+	rdm, err := newRDMachine(inst, r.Client, logger, r.EventRecorder, privilegedMoverOk)
 
 	// Using only external method
 	if errors.Is(err, mover.ErrNoMoverFound) && inst.Spec.External != nil {
