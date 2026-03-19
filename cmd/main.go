@@ -37,6 +37,7 @@ import (
 
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumesnapshot/v1"
 	volumepopulatorv1beta1 "github.com/kubernetes-csi/volume-data-source-validator/client/apis/volumepopulator/v1beta1"
+	ocpconfigv1 "github.com/openshift/api/config/v1"
 	ocpsecurityv1 "github.com/openshift/api/security/v1"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -80,6 +81,7 @@ func init() {
 	utilruntime.Must(volsyncv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(ocpsecurityv1.AddToScheme(scheme))
 	utilruntime.Must(volumepopulatorv1beta1.AddToScheme(scheme))
+	utilruntime.Must(ocpconfigv1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
@@ -165,16 +167,10 @@ func addCommandFlags(probeAddr *string, metricsAddr *string, enableLeaderElectio
 }
 
 // Prereq CRs we want to always be present in certain environments but do not want to reconcile often (just at startup)
-func ensureCRs(cfg *rest.Config) {
-	setupClient, err := client.New(cfg, client.Options{Scheme: scheme})
-	if err != nil {
-		setupLog.Error(err, "error creating client")
-		os.Exit(1)
-	}
-
+func ensureCRs(setupClient client.Client) {
 	// Privileged mover SCC required in OpenShift envs
 	setupLog.Info("Privileged Mover SCC", "scc-name", utils.SCCName)
-	err = platform.EnsureVolSyncMoverSCCIfOpenShift(context.Background(), setupClient, setupLog,
+	err := platform.EnsureVolSyncMoverSCCIfOpenShift(context.Background(), setupClient, setupLog,
 		utils.SCCName, volsyncMoverSCCYamlRaw)
 	if err != nil {
 		setupLog.Error(err, "unable to reconcile volsync mover scc", "scc-name", utils.SCCName)
@@ -223,6 +219,18 @@ func main() {
 	renewDeadline := 107 * time.Second
 	retryPeriod := 26 * time.Second
 
+	cfg := ctrl.GetConfigOrDie()
+	setupClient, err := client.New(cfg, client.Options{Scheme: scheme})
+	if err != nil {
+		setupLog.Error(err, "error creating client")
+		os.Exit(1)
+	}
+
+	// Create a context that can be cancelled when there is a need to shut down the manager	.
+	ctx, cancel := context.WithCancel(ctrl.SetupSignalHandler())
+	// Ensure the context is cancelled when the program exits.
+	defer cancel()
+
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
 	// prevent from being vulnerable to the HTTP/2 Stream Cancellation and
@@ -233,9 +241,19 @@ func main() {
 		setupLog.Info("disabling http/2")
 		c.NextProtos = []string{"http/1.1"}
 	}
-
 	if !enableHTTP2 {
 		tlsOpts = append(tlsOpts, disableHTTP2)
+	}
+
+	// Fetch the TLS profile from the APIServer resource (OpenShift only)
+	tlsSecurityProfileSpec, err := platform.GetTLSProfileIfOpenShift(ctx, setupClient, setupLog)
+	if err != nil {
+		setupLog.Error(err, "Unable to get TLS Security Profile from OpenShift")
+		os.Exit(1)
+	}
+	if tlsSecurityProfileSpec != nil {
+		tlsConfig := platform.GetTLSConfigFromProfile(*tlsSecurityProfileSpec, setupLog)
+		tlsOpts = append(tlsOpts, tlsConfig)
 	}
 
 	// Create watchers for metrics and webhooks certificates
@@ -320,7 +338,6 @@ func main() {
 		})
 	}
 
-	cfg := ctrl.GetConfigOrDie()
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsServerOptions,
@@ -342,8 +359,20 @@ func main() {
 		os.Exit(1)
 	}
 
+	if tlsSecurityProfileSpec != nil {
+		// Will only be true for OpenShift clusters
+		// Setup TLS Security Profile Watcher to monitor for TLS profile changes.
+		// When the cluster's TLS profile changes, the operator will gracefully shutdown
+		// and restart to pick up the new configuration.
+		err = platform.InitTLSSecurityProfileWatcherWithManager(mgr, *tlsSecurityProfileSpec, setupLog, cancel)
+		if err != nil {
+			setupLog.Error(err, "unable to set up TLS security profile watcher")
+			os.Exit(1)
+		}
+	}
+
 	// Before starting controllers - create or patch volsync mover SCC and VolumePopulator CR if necessary
-	ensureCRs(cfg)
+	ensureCRs(setupClient)
 
 	initPodLogsClient(cfg)
 
@@ -408,7 +437,7 @@ func main() {
 		os.Exit(1)
 	}
 	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}

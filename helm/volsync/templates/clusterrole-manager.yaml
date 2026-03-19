@@ -158,6 +158,14 @@ rules:
   - patch
   - update
 - apiGroups:
+  - config.openshift.io
+  resources:
+  - apiservers
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - populator.storage.k8s.io
   resources:
   - volumepopulators
