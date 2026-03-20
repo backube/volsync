@@ -11,8 +11,8 @@ require (
 	github.com/kubernetes-csi/volume-data-source-validator/client v0.0.0-20250919142814-90ffb8220766
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1
-	github.com/openshift/api v0.0.0-20260213155647-8fe9fe363807 // release-4.14
-	github.com/openshift/controller-runtime-common v0.0.0-20260307102856-5db94f69ad3a
+	github.com/openshift/api v0.0.0-20260317165824-54a3998d81eb // release-4.14
+	github.com/openshift/controller-runtime-common v0.0.0-20260318085703-1812aed6dbd2
 	github.com/prometheus/client_golang v1.23.2
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/cobra v1.10.2
@@ -29,7 +29,7 @@ require (
 	k8s.io/component-helpers v0.35.2
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/kubectl v0.35.2
-	k8s.io/utils v0.0.0-20260108192941-914a6e750570
+	k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2
 	sigs.k8s.io/controller-runtime v0.23.3
 )
 
@@ -61,7 +61,6 @@ require (
 	github.com/go-openapi/swag v0.23.0 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
-	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/cel-go v0.26.0 // indirect
