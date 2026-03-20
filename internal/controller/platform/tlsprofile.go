@@ -109,3 +109,22 @@ func ParseTLSVersion(version ocpconfigv1.TLSProtocolVersion) (string, error) {
 		return "", fmt.Errorf("unknown TLS version: %s", version)
 	}
 }
+
+func ParseTLS13CipherSuitesForStunnelPSK(tlsSecurityProfileSpec ocpconfigv1.TLSProfileSpec) string {
+	cipherSuites := ""
+	for _, cipher := range tlsSecurityProfileSpec.Ciphers {
+		// Stunnel "ciphersuites" in the stunnel.conf are for TLS 1.3 only
+		// only allow these specific ciphers which are supported by stunnel with TLS 1.3 and work with PSK
+		// This means if a user specifies only invalid ciphers, we will just allow the default (i.e. return "")
+		if cipher != "TLS_AES_128_GCM_SHA256" && cipher != "TLS_CHACHA20_POLY1305_SHA256" {
+			// Note: not including TLS_AES_256_GCM_SHA384 right now as it doesn't appear to work with TLS 1.3 & PSK
+			continue
+		}
+		if cipherSuites == "" {
+			cipherSuites = cipher
+		} else {
+			cipherSuites = cipherSuites + ":" + cipher
+		}
+	}
+	return cipherSuites
+}

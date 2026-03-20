@@ -34,7 +34,6 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	ocpconfigv1 "github.com/openshift/api/config/v1"
@@ -43,8 +42,6 @@ import (
 
 	"github.com/backube/volsync/internal/controller/utils"
 )
-
-var logger = zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
 
 var _ = Describe("A cluster w/o StorageContextConstraints", func() {
 	BeforeEach(func() {
