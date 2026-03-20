@@ -518,6 +518,18 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 				Name:  "SSL_VERSION_MIN",
 				Value: minTLSVersion,
 			})
+
+			// CIPHERSUITES in stunnel is only applicable for TLS 1.3
+			tls13CipherSuitesList := platform.ParseTLS13CipherSuitesForStunnelPSK(*tlsProfileSpec)
+			if tls13CipherSuitesList != "" {
+				// Set cipherSuites to use for sTunnel (currently this is the list of permitted TLS 1.3 ciphersuites)
+				// We currently set ciphers = PSK in the sTunnel config (see server.sh)
+				// However "ciphers" will be ignored for TLS 1.3, and it should use the "cipherSuites" we set instead
+				podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
+					Name:  "CIPHERSUITES_LIST",
+					Value: tls13CipherSuitesList,
+				})
+			}
 		}
 
 		// Run mover in debug mode if required

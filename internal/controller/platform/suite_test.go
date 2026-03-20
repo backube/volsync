@@ -47,6 +47,8 @@ var testEnv *envtest.Environment
 var cancel context.CancelFunc
 var ctx context.Context
 
+var logger = zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
+
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
 
