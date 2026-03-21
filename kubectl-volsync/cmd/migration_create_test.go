@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -10,6 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	krand "k8s.io/apimachinery/pkg/util/rand"
+	"k8s.io/utils/ptr"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
@@ -24,15 +26,17 @@ var _ = Describe("migration", func() {
 	)
 
 	BeforeEach(func() {
-		ns = &corev1.Namespace{}
-		cmd = &cobra.Command{}
-		mc = &migrationCreate{}
-		var err error
-
+		// Default values for tests
 		migrationCmdArgs = map[string]string{
 			"capacity": "2Gi",
 			"pvcname":  "dest/volsync",
 		}
+	})
+
+	JustBeforeEach(func() {
+		ns = &corev1.Namespace{}
+		cmd = &cobra.Command{}
+		var err error
 
 		initMigrationCreateCmd(cmd)
 		cmd.Flags().String("relationship", "test", "")
@@ -41,16 +45,11 @@ var _ = Describe("migration", func() {
 		Expect(err).NotTo(HaveOccurred())
 		cmd.Flags().String("config-dir", dirname, "")
 
-		mr, err := newMigrationRelationship(cmd)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(mr).ToNot(BeNil())
-		mc.mr = mr
-
 		err = migrationCmdArgsSet(cmd, migrationCmdArgs)
 		Expect(err).ToNot(HaveOccurred())
 
-		err = mc.parseCLI(cmd)
-		Expect(err).NotTo(HaveOccurred())
+		mc, err = newMigrationCreate(cmd)
+		Expect(err).ToNot(HaveOccurred())
 
 		mc.client = k8sClient
 		mc.Namespace = "foo-" + krand.String(5)
@@ -98,6 +97,71 @@ var _ = Describe("migration", func() {
 		Expect(err).To(HaveOccurred())
 	})
 
+	Describe("Rsync-TLS moverSecurityContext flags", func() {
+		moverSecCtxParams := map[string]string{
+			"runasuser":          "5001",
+			"runasgroup":         "201",
+			"fsgroup":            "202",
+			"runasnonroot":       "true",
+			"seccompprofiletype": "RuntimeDefault",
+		}
+
+		Context("When rsync-tls is not used", func() {
+			It("Should ignore the moverSecurityContext flags", func() {
+				Expect(mc.IsRsyncTLS).To(BeFalse())
+
+				for k, v := range moverSecCtxParams {
+					Expect(cmd.Flags().Set(k, v)).To(Succeed())
+					Expect(mc.parseCLI(cmd)).To(Succeed())
+
+					// Mover Security context should not be set (params ignored when rsynctls is not used)
+					Expect(mc.MoverSecurityContext).To(BeNil())
+				}
+			})
+		})
+		Context("When rsync-tls is used", func() {
+			BeforeEach(func() {
+				migrationCmdArgs["rsynctls"] = "True"
+			})
+
+			Context("Parsing flags when they are set individually", func() {
+				for k := range moverSecCtxParams {
+					Context(fmt.Sprintf("When only the %s moverSecurityContext flag is set", k), func() {
+						flagName := k
+						flagValue := moverSecCtxParams[k]
+						It("Should parse the flag correctly", func() {
+							Expect(mc.IsRsyncTLS).To(BeTrue())
+							Expect(cmd.Flags().Set(flagName, flagValue)).To(Succeed())
+							Expect(mc.parseCLI(cmd)).To(Succeed())
+							Expect(mc.MoverSecurityContext).NotTo(BeNil())
+						})
+					})
+				}
+			})
+
+			Context("When using moverSecurityContext flags", func() {
+				BeforeEach(func() {
+					for k, v := range moverSecCtxParams {
+						migrationCmdArgs[k] = v
+					}
+				})
+				It("Should configure the moverSecurityContext correctly", func() {
+					Expect(mc.IsRsyncTLS).To(BeTrue())
+					Expect(mc.MoverSecurityContext).NotTo(BeNil())
+					Expect(mc.MoverSecurityContext).To(Equal(&corev1.PodSecurityContext{
+						RunAsUser:    ptr.To[int64](5001),
+						RunAsGroup:   ptr.To[int64](201),
+						FSGroup:      ptr.To[int64](202),
+						RunAsNonRoot: ptr.To[bool](true),
+						SeccompProfile: &corev1.SeccompProfile{
+							Type: corev1.SeccompProfileTypeRuntimeDefault,
+						},
+					}))
+				})
+			})
+		})
+	})
+
 	It("Ensure namespace creation", func() {
 		ns = &corev1.Namespace{}
 		Expect(k8sClient.Get(context.Background(), types.NamespacedName{Name: mc.Namespace}, ns)).To(Succeed())
@@ -133,50 +197,129 @@ var _ = Describe("migration", func() {
 
 	})
 
-	It("Ensure replicationdestination creation", func() {
-		// Create a PVC
-		PVC, err := mc.ensureDestPVC(context.Background())
-		Expect(err).NotTo(HaveOccurred())
-		Expect(PVC).NotTo(BeNil())
-		PVC = &corev1.PersistentVolumeClaim{}
-		Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: mc.Namespace,
-			Name: mc.DestinationPVC}, PVC)).To(Succeed())
+	Context("When using rsync (the default)", func() {
+		//nolint:dupl
+		It("Ensure replicationdestination creation", func() {
+			// Create a PVC
+			PVC, err := mc.ensureDestPVC(context.Background())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(PVC).NotTo(BeNil())
+			PVC = &corev1.PersistentVolumeClaim{}
+			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: mc.Namespace,
+				Name: mc.DestinationPVC}, PVC)).To(Succeed())
 
-		mrd, err := mc.newMigrationRelationshipDestination()
-		Expect(err).ToNot(HaveOccurred())
-		Expect(mrd).ToNot(BeNil())
-		mc.mr.data.Destination = mrd
+			mrd, err := mc.newMigrationRelationshipDestination()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(mrd).ToNot(BeNil())
+			mc.mr.data.Destination = mrd
 
-		// Create replicationdestination
-		rd, err := mc.ensureReplicationDestination(context.Background())
-		Expect(err).ToNot(HaveOccurred())
-		Expect(rd).ToNot(BeNil())
-		rd = &volsyncv1alpha1.ReplicationDestination{}
-		Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: mc.Namespace,
-			Name: mc.RDName}, rd)).To(Succeed())
+			// data version should be 2
+			Expect(mc.mr.data.Version).To(Equal(2))
 
-		// Post status field in rd to mock controller
-		address := "Volsync-mock-address"
-		sshKey := "Volsync-mock-sshKey"
-		rd.Status = &volsyncv1alpha1.ReplicationDestinationStatus{
-			Rsync: &volsyncv1alpha1.ReplicationDestinationRsyncStatus{
-				Address: &address,
-				SSHKeys: &sshKey,
-			}}
-		Expect(k8sClient.Status().Update(context.Background(), rd)).To(Succeed())
-		// Wait for mock address and sshKey to pop up
-		_, err = mc.mr.data.Destination.waitForRDStatus(context.Background(), mc.client)
-		Expect(err).ToNot(HaveOccurred())
-		// Retry creation of replicationdestination and it should fail as destination already exists
-		rd, err = mc.ensureReplicationDestination(context.Background())
-		Expect(err).To(HaveOccurred())
-		Expect(rd).To(BeNil())
-		rd = &volsyncv1alpha1.ReplicationDestination{}
-		Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: mc.Namespace,
-			Name: mc.RDName}, rd)).To(Succeed())
-		// Should return existing address and sshkey
-		_, err = mc.mr.data.Destination.waitForRDStatus(context.Background(), mc.client)
-		Expect(err).ToNot(HaveOccurred())
+			// Should use rsync SSH by default
+			Expect(mc.mr.data.IsRsyncTLS).To(BeFalse())
+			// Check the migrationHandler is RsyncTLS
+			_, ok := mc.mr.mh.(*migrationHandlerRsync)
+			Expect(ok).To(BeTrue())
+
+			// Create replicationdestination
+			rd, err := mc.mr.mh.EnsureReplicationDestination(context.Background(), mc.client, mc.mr.data.Destination)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(rd).ToNot(BeNil())
+			rd = &volsyncv1alpha1.ReplicationDestination{}
+			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: mc.Namespace,
+				Name: mc.RDName}, rd)).To(Succeed())
+
+			Expect(rd.Spec.Rsync).NotTo(BeNil()) // Rsync Spec should be used
+			Expect(rd.Spec.RsyncTLS).To(BeNil())
+
+			// Post status field in rd to mock controller
+			address := "Volsync-mock-address"
+			sshKey := "Volsync-mock-sshKey"
+			rd.Status = &volsyncv1alpha1.ReplicationDestinationStatus{
+				Rsync: &volsyncv1alpha1.ReplicationDestinationRsyncStatus{
+					Address: &address,
+					SSHKeys: &sshKey,
+				}}
+			Expect(k8sClient.Status().Update(context.Background(), rd)).To(Succeed())
+			// Wait for mock address and sshKey to pop up
+			_, err = mc.mr.mh.WaitForRDStatus(context.Background(), mc.client, rd)
+			Expect(err).ToNot(HaveOccurred())
+			// Retry creation of replicationdestination and it should fail as destination already exists
+			rd, err = mc.mr.mh.EnsureReplicationDestination(context.Background(), mc.client, mc.mr.data.Destination)
+			Expect(err).To(HaveOccurred())
+			Expect(rd).To(BeNil())
+			rd = &volsyncv1alpha1.ReplicationDestination{}
+			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: mc.Namespace,
+				Name: mc.RDName}, rd)).To(Succeed())
+			// Should return existing address and sshkey
+			_, err = mc.mr.mh.WaitForRDStatus(context.Background(), mc.client, rd)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+	})
+	Context("When using rsync-tls", func() {
+		BeforeEach(func() {
+			migrationCmdArgs["rsynctls"] = "true"
+		})
+		//nolint:dupl
+		It("Ensure replicationdestination (rsynctls) creation", func() {
+			// Create a PVC
+			PVC, err := mc.ensureDestPVC(context.Background())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(PVC).NotTo(BeNil())
+			PVC = &corev1.PersistentVolumeClaim{}
+			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: mc.Namespace,
+				Name: mc.DestinationPVC}, PVC)).To(Succeed())
+
+			mrd, err := mc.newMigrationRelationshipDestination()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(mrd).ToNot(BeNil())
+			mc.mr.data.Destination = mrd
+
+			// data version should be 2
+			Expect(mc.mr.data.Version).To(Equal(2))
+
+			// Should use rsync TLS by default
+			Expect(mc.mr.data.IsRsyncTLS).To(BeTrue())
+			// Check the migrationHandler is RsyncTLS
+			_, ok := mc.mr.mh.(*migrationHandlerRsyncTLS)
+			Expect(ok).To(BeTrue())
+
+			// Create replicationdestination
+			rd, err := mc.mr.mh.EnsureReplicationDestination(context.Background(), mc.client, mc.mr.data.Destination)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(rd).ToNot(BeNil())
+			rd = &volsyncv1alpha1.ReplicationDestination{}
+			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: mc.Namespace,
+				Name: mc.RDName}, rd)).To(Succeed())
+
+			Expect(rd.Spec.RsyncTLS).NotTo(BeNil()) // RsyncTLS Spec should be used
+			Expect(rd.Spec.Rsync).To(BeNil())
+
+			// Post status field in rd to mock controller
+			address := "Volsync-mock-address"
+			keys := "Volsync-mock-ks"
+			rd.Status = &volsyncv1alpha1.ReplicationDestinationStatus{
+				RsyncTLS: &volsyncv1alpha1.ReplicationDestinationRsyncTLSStatus{
+					Address:   &address,
+					KeySecret: &keys,
+				}}
+			Expect(k8sClient.Status().Update(context.Background(), rd)).To(Succeed())
+			// Wait for mock address and keySecret to pop up
+			_, err = mc.mr.mh.WaitForRDStatus(context.Background(), mc.client, rd)
+			Expect(err).ToNot(HaveOccurred())
+			// Retry creation of replicationdestination and it should fail as destination already exists
+			rd, err = mc.mr.mh.EnsureReplicationDestination(context.Background(), mc.client, mc.mr.data.Destination)
+			Expect(err).To(HaveOccurred())
+			Expect(rd).To(BeNil())
+			rd = &volsyncv1alpha1.ReplicationDestination{}
+			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: mc.Namespace,
+				Name: mc.RDName}, rd)).To(Succeed())
+			// Should return existing address and keysec
+			_, err = mc.mr.mh.WaitForRDStatus(context.Background(), mc.client, rd)
+			Expect(err).ToNot(HaveOccurred())
+		})
 	})
 })
 
