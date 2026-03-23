@@ -117,6 +117,7 @@ WORKDIR /
 
 RUN microdnf --refresh update -y && \
     microdnf --nodocs --setopt=install_weak_deps=0 install -y \
+        findutils        `# used by various mover scripts` \
         acl             `# rclone - getfacl/setfacl` \
         openssh         `# rsync/ssh - ssh key generation in operator` \
         openssh-clients `# rsync/ssh - ssh client` \
