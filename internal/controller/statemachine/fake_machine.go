@@ -42,6 +42,7 @@ type fakeMachine struct {
 	DurationObservation time.Duration
 	SyncResult          mover.Result
 	SyncErr             error
+	SyncResultRecorded  bool
 	CleanupResult       mover.Result
 	CleanupError        error
 }
@@ -72,7 +73,9 @@ func (f *fakeMachine) Conditions() *[]metav1.Condition        { return &f.Cond }
 func (f *fakeMachine) SetOutOfSync(oos bool)                  { f.OOSync = oos }
 func (f *fakeMachine) IncMissedIntervals()                    { f.MissedIntervals++ }
 func (f *fakeMachine) ObserveSyncDuration(t time.Duration)    { f.DurationObservation = t }
-func (f *fakeMachine) RecordSyncResult(success bool)          {}
+func (f *fakeMachine) RecordSyncResult(success bool) {
+	f.SyncResultRecorded = true
+}
 func (f *fakeMachine) Synchronize(_ context.Context) (mover.Result, error) {
 	return f.SyncResult, f.SyncErr
 }
