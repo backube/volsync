@@ -35,8 +35,6 @@ extensions = [
         'sphinx_rtd_theme',
         # https://sphinx-tabs.readthedocs.io/en/latest/
         'sphinx_tabs.tabs',
-        # https://sphinx-toolbox.readthedocs.io/en/stable/extensions/collapse.html
-        'sphinx_toolbox.collapse',
 ]
 
 # Add any paths that contain templates here, relative to this directory.
