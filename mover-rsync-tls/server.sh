@@ -143,12 +143,6 @@ STUNNEL_CONF
 sslVersionMin = $SSL_VERSION_MIN
 STUNNEL_CONF
     fi
-    if [[ -n ${CIPHERSUITES_LIST} ]]; then
-        # Append ciphersuites to stunnel conf
-        cat - >> "$STUNNEL_CONF" <<STUNNEL_CONF
-ciphersuites = $CIPHERSUITES_LIST
-STUNNEL_CONF
-    fi
 
     # Add the rest of the rsync section to stunnel conf
     cat - >> "$STUNNEL_CONF" <<STUNNEL_CONF
@@ -203,12 +197,6 @@ STUNNEL_CONF
         # Append sslVersionMin to stunnel conf
         cat - >> "$STUNNEL_CONF" <<STUNNEL_CONF
 sslVersionMin = $SSL_VERSION_MIN
-STUNNEL_CONF
-    fi
-    if [[ -n ${CIPHERSUITES_LIST} ]]; then
-        # Append ciphersuites to stunnel conf
-        cat - >> "$STUNNEL_CONF" <<STUNNEL_CONF
-ciphersuites = $CIPHERSUITES_LIST
 STUNNEL_CONF
     fi
 

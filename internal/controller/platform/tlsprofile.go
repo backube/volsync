@@ -95,36 +95,22 @@ func InitTLSSecurityProfileWatcherWithManager(mgr manager.Manager,
 }
 
 // Parse string version of ocpconfigv1.TLSProtocolVersion in format that others (such as stunnel) can interpret
-func ParseTLSVersion(version ocpconfigv1.TLSProtocolVersion) (string, error) {
+// For our stunnel implementation (used by rsync-tls) we will use tlsv1.3 as the minimum
+// unless something higher is picked (in future). No need to support older TLS versions
+// as we're not allowing generic clients, only our rsync-tls client from replicationsource
+func ParseTLSVersionForStunnelPSK(version ocpconfigv1.TLSProtocolVersion) (string, error) {
 	switch version {
 	case ocpconfigv1.VersionTLS10:
-		return "TLSv1", nil // Note: it looks like some other places may use "TLSv1.0"
+		fallthrough
 	case ocpconfigv1.VersionTLS11:
-		return "TLSv1.1", nil
+		fallthrough
 	case ocpconfigv1.VersionTLS12:
-		return "TLSv1.2", nil
+		fallthrough
 	case ocpconfigv1.VersionTLS13:
 		return "TLSv1.3", nil
+	// Unfortunately this will need an update when new TLS versions become
+	// available so we can convert to the format expected by openssl/stunnel
 	default:
 		return "", fmt.Errorf("unknown TLS version: %s", version)
 	}
-}
-
-func ParseTLS13CipherSuitesForStunnelPSK(tlsSecurityProfileSpec ocpconfigv1.TLSProfileSpec) string {
-	cipherSuites := ""
-	for _, cipher := range tlsSecurityProfileSpec.Ciphers {
-		// Stunnel "ciphersuites" in the stunnel.conf are for TLS 1.3 only
-		// only allow these specific ciphers which are supported by stunnel with TLS 1.3 and work with PSK
-		// This means if a user specifies only invalid ciphers, we will just allow the default (i.e. return "")
-		if cipher != "TLS_AES_128_GCM_SHA256" && cipher != "TLS_CHACHA20_POLY1305_SHA256" {
-			// Note: not including TLS_AES_256_GCM_SHA384 right now as it doesn't appear to work with TLS 1.3 & PSK
-			continue
-		}
-		if cipherSuites == "" {
-			cipherSuites = cipher
-		} else {
-			cipherSuites = cipherSuites + ":" + cipher
-		}
-	}
-	return cipherSuites
 }
