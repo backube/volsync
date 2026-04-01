@@ -358,6 +358,7 @@ var _ = Describe("A cluster w/ StorageContextConstraints", func() {
 			cancelFuncCalled := false
 
 			var testManagerCancel context.CancelFunc
+			var testManagerDone chan struct{}
 
 			BeforeEach(func() {
 				cancelFuncCalled = false
@@ -383,19 +384,20 @@ var _ = Describe("A cluster w/ StorageContextConstraints", func() {
 
 				var testManagerCtx context.Context
 				testManagerCtx, testManagerCancel = context.WithCancel(ctx)
-				// Start the manager
+				testManagerDone = make(chan struct{})
+				// Start the manager; wait for Start to return in AfterEach so the next test
+				// does not register another controller (with same name) while this mgr is running
 				go func() {
 					defer GinkgoRecover()
-					err = testManager.Start(testManagerCtx)
+					defer close(testManagerDone)
+					err := testManager.Start(testManagerCtx)
 					Expect(err).NotTo(HaveOccurred())
+					logger.Info("test manager stopped")
 				}()
 			})
 			AfterEach(func() {
 				testManagerCancel()
-
-				Eventually(func() bool {
-					return cancelFuncCalled
-				}, maxWait, interval).Should(BeTrue())
+				Eventually(testManagerDone, maxWait, interval).Should(BeClosed())
 			})
 
 			It("Should not call cancel function if no TLS profile change", func() {
