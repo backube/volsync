@@ -32,8 +32,10 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/config"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	ocpconfigv1 "github.com/openshift/api/config/v1"
@@ -366,6 +368,13 @@ var _ = Describe("A cluster w/ StorageContextConstraints", func() {
 				testManager, err := ctrl.NewManager(cfg, ctrl.Options{
 					Scheme:  scheme.Scheme,
 					Metrics: metricsserver.Options{BindAddress: "0"},
+					// Set global controller options - allow dup controller names as these don't get unregistered
+					// when tearing down the manager - so our TLSSecurityProfileWatcher will fail the dup name
+					// validation (we don't have the option of setting the name ourself) when this runs multiple
+					// times for separate tests
+					Controller: config.Controller{
+						SkipNameValidation: ptr.To(true),
+					},
 				})
 				Expect(err).ToNot(HaveOccurred())
 
