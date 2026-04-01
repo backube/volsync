@@ -360,6 +360,8 @@ var _ = Describe("A cluster w/ StorageContextConstraints", func() {
 			var testManagerCancel context.CancelFunc
 
 			BeforeEach(func() {
+				cancelFuncCalled = false
+
 				testManager, err := ctrl.NewManager(cfg, ctrl.Options{
 					Scheme:  scheme.Scheme,
 					Metrics: metricsserver.Options{BindAddress: "0"},
@@ -390,6 +392,10 @@ var _ = Describe("A cluster w/ StorageContextConstraints", func() {
 			})
 			AfterEach(func() {
 				testManagerCancel()
+
+				Eventually(func() bool {
+					return cancelFuncCalled
+				}, maxWait, interval).Should(BeTrue())
 			})
 
 			It("Should not call cancel function if no TLS profile change", func() {
