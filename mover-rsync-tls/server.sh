@@ -72,6 +72,11 @@ if [[ ! -d $TARGET ]] && ! test -b $BLOCK_TARGET; then
     exit 1
 fi
 
+if [[ -n ${SSL_VERSION_MIN} ]]; then
+    # Append sslVersionMin to stunnel conf
+    SSLVERSIONMIN="sslVersionMin = ${SSL_VERSION_MIN}"
+fi
+
 if [[ -d $TARGET ]]; then
     ##############################
     ## Filesystem volume, use rsync
@@ -131,6 +136,7 @@ syslog = no
 [rsync]
 ciphers = PSK
 PSKsecrets = $PSK_FILE
+$SSLVERSIONMIN
 ; Port to listen for incoming connections from remote
 accept = $STUNNEL_LISTEN_PORT
 ; We are the server
@@ -176,6 +182,7 @@ syslog = no
 [diskrsync]
 ciphers = PSK
 PSKsecrets = $PSK_FILE
+$SSLVERSIONMIN
 ; Port to listen for incoming connections from remote
 accept = $STUNNEL_LISTEN_PORT
 ; We are the server

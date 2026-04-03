@@ -32,9 +32,10 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/config"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	ocpconfigv1 "github.com/openshift/api/config/v1"
@@ -43,8 +44,6 @@ import (
 
 	"github.com/backube/volsync/internal/controller/utils"
 )
-
-var logger = zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
 
 var _ = Describe("A cluster w/o StorageContextConstraints", func() {
 	BeforeEach(func() {
@@ -361,11 +360,21 @@ var _ = Describe("A cluster w/ StorageContextConstraints", func() {
 			cancelFuncCalled := false
 
 			var testManagerCancel context.CancelFunc
+			var testManagerDone chan struct{}
 
 			BeforeEach(func() {
+				cancelFuncCalled = false
+
 				testManager, err := ctrl.NewManager(cfg, ctrl.Options{
 					Scheme:  scheme.Scheme,
 					Metrics: metricsserver.Options{BindAddress: "0"},
+					// Set global controller options - allow dup controller names as these don't get unregistered
+					// when tearing down the manager - so our TLSSecurityProfileWatcher will fail the dup name
+					// validation (we don't have the option of setting the name ourself) when this runs multiple
+					// times for separate tests
+					Controller: config.Controller{
+						SkipNameValidation: ptr.To(true),
+					},
 				})
 				Expect(err).ToNot(HaveOccurred())
 
@@ -384,15 +393,20 @@ var _ = Describe("A cluster w/ StorageContextConstraints", func() {
 
 				var testManagerCtx context.Context
 				testManagerCtx, testManagerCancel = context.WithCancel(ctx)
-				// Start the manager
+				testManagerDone = make(chan struct{})
+				// Start the manager; wait for Start to return in AfterEach so the next test
+				// does not register another controller (with same name) while this mgr is running
 				go func() {
 					defer GinkgoRecover()
-					err = testManager.Start(testManagerCtx)
+					defer close(testManagerDone)
+					err := testManager.Start(testManagerCtx)
 					Expect(err).NotTo(HaveOccurred())
+					logger.Info("test manager stopped")
 				}()
 			})
 			AfterEach(func() {
 				testManagerCancel()
+				Eventually(testManagerDone, maxWait, interval).Should(BeClosed())
 			})
 
 			It("Should not call cancel function if no TLS profile change", func() {

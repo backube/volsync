@@ -19,6 +19,7 @@ package platform
 
 import (
 	"context"
+	"fmt"
 
 	"crypto/tls"
 
@@ -91,4 +92,25 @@ func InitTLSSecurityProfileWatcherWithManager(mgr manager.Manager,
 	}
 
 	return tlsProfileWatcher.SetupWithManager(mgr)
+}
+
+// Parse string version of ocpconfigv1.TLSProtocolVersion in format that others (such as stunnel) can interpret
+// For our stunnel implementation (used by rsync-tls) we will use tlsv1.3 as the minimum
+// unless something higher is picked (in future). No need to support older TLS versions
+// as we're not allowing generic clients, only our rsync-tls client from replicationsource
+func ParseTLSVersionForStunnelPSK(version ocpconfigv1.TLSProtocolVersion) (string, error) {
+	switch version {
+	case ocpconfigv1.VersionTLS10:
+		fallthrough
+	case ocpconfigv1.VersionTLS11:
+		fallthrough
+	case ocpconfigv1.VersionTLS12:
+		fallthrough
+	case ocpconfigv1.VersionTLS13:
+		return "TLSv1.3", nil
+	// Unfortunately this will need an update when new TLS versions become
+	// available so we can convert to the format expected by openssl/stunnel
+	default:
+		return "", fmt.Errorf("unknown TLS version: %s", version)
+	}
 }
