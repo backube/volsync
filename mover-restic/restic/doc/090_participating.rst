@@ -71,8 +71,17 @@ The program can be built with debug support like this:
     $ go run build.go -tags debug
 
 This will make the ``restic debug <subcommand>`` available which can be used to
-inspect internal data structures. In addition, this enables profiling support
-which can help with investigation performance and memory usage issues.
+inspect internal data structures.
+
+In addition, this enables profiling flags such as ``--cpu-profile`` and
+``--mem-profile`` which can help with investigation performance and memory usage
+issues. See ``restic help`` for more details and a few additional
+``--...-profile`` flags.
+
+Running Restic with profiling enabled generates a ``.pprof`` file such as
+``cpu.pprof``. To view a profile in a web browser, first make sure that the
+``dot`` command from `Graphviz <https://graphviz.org/>`__ is in the PATH. Then,
+run ``go tool pprof -http : cpu.pprof``.
 
 
 ************
@@ -121,14 +130,17 @@ Backward compatibility for backups is important so that our users are
 always able to restore saved data. Therefore restic follows `Semantic
 Versioning <https://semver.org>`__ to clearly define which versions are
 compatible. The repository and data structures contained therein are
-considered the "Public API" in the sense of Semantic Versioning. This
-goes for all released versions of restic, this may not be the case for
-the master branch.
+considered the "Public API" in the sense of Semantic Versioning.
 
-We guarantee backward compatibility of all repositories within one major
-version; as long as we do not increment the major version, data can be
-read and restored. We strive to be fully backward compatible to all
-prior versions.
+Once version 1.0.0 is released, we guarantee backward compatibility of
+all repositories within one major version; as long as we do not
+increment the major version, data can be read and restored. We strive
+to be fully backward compatible to all prior versions.
+
+During initial development (versions prior to 1.0.0), maintainers and
+developers will do their utmost to keep backwards compatibility and
+stability, although there might be breaking changes without increasing
+the major version.
 
 **********************
 Building documentation
