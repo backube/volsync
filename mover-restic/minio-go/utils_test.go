@@ -21,7 +21,11 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"mime"
+	"net/http"
 	"net/url"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -204,7 +208,6 @@ func TestIsValidEndpointURL(t *testing.T) {
 				t.Errorf("Test %d: Expected to fail with error \"%s\", but instead failed with error \"%s\" instead", i+1, testCase.err, err)
 			}
 		}
-
 	}
 }
 
@@ -292,7 +295,6 @@ func TestIsValidExpiry(t *testing.T) {
 				t.Errorf("Test %d: Expected to fail with error \"%s\", but instead failed with error \"%s\" instead", i+1, testCase.err.Error(), err.Error())
 			}
 		}
-
 	}
 }
 
@@ -331,7 +333,6 @@ func TestIsValidBucketName(t *testing.T) {
 				t.Errorf("Test %d: Expected to fail with error \"%s\", but instead failed with error \"%s\" instead", i+1, testCase.err.Error(), err.Error())
 			}
 		}
-
 	}
 }
 
@@ -466,6 +467,77 @@ func TestFullObjectChecksum64(t *testing.T) {
 			}
 			if gotCRC.Encoded() != want {
 				t.Errorf("Checksum %v does not match the expected CRC got:%s want:%s", cs.String(), gotCRC.Encoded(), want)
+			}
+		})
+	}
+}
+
+func TestExtractObjMetadata(t *testing.T) {
+	tests := []struct {
+		name   string
+		header http.Header
+		want   http.Header
+	}{
+		{
+			name: "Test with valid header",
+			header: http.Header{
+				"X-Minio-Meta-Test": []string{"test"},
+			},
+			want: http.Header{
+				"X-Minio-Meta-Test": []string{"test"},
+			},
+		},
+		{
+			name: "Test with valid header with QEncoding characters",
+			header: http.Header{
+				"X-Minio-Meta-Test": []string{mime.QEncoding.Encode("UTF-8", "öha, das")},
+			},
+			want: http.Header{
+				"X-Minio-Meta-Test": []string{"öha, das"},
+			},
+		},
+		{
+			name: "Test with valid header with BEncoding characters",
+			header: http.Header{
+				"X-Minio-Meta-Test": []string{mime.BEncoding.Encode("UTF-8", "öha, das")},
+			},
+			want: http.Header{
+				"X-Minio-Meta-Test": []string{"öha, das"},
+			},
+		},
+		{
+			name: "Test with valid header with multi-QEncoding characters",
+			header: http.Header{
+				"X-Minio-Meta-Test": []string{mime.QEncoding.Encode("UTF-8", strings.Repeat("öha, das", 100))},
+			},
+			want: http.Header{
+				"X-Minio-Meta-Test": []string{strings.Repeat("öha, das", 100)},
+			},
+		},
+		{
+			name: "Test with valid header with multi-BEncoding characters",
+			header: http.Header{
+				"X-Minio-Meta-Test": []string{mime.BEncoding.Encode("UTF-8", strings.Repeat("öha, das", 100))},
+			},
+			want: http.Header{
+				"X-Minio-Meta-Test": []string{strings.Repeat("öha, das", 100)},
+			},
+		},
+		{
+			name: "Test with valid header with multi-BEncoding characters",
+			header: http.Header{
+				"X-Minio-Meta-Test": []string{mime.BEncoding.Encode("UTF-8", strings.Repeat("öha, das", 100)), mime.BEncoding.Encode("UTF-8", strings.Repeat("öha, das123", 100))},
+			},
+			want: http.Header{
+				"X-Minio-Meta-Test": []string{strings.Repeat("öha, das", 100), strings.Repeat("öha, das123", 100)},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractObjMetadata(tt.header)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("extractObjMetadata() = %v, want %v", got, tt.want)
 			}
 		})
 	}

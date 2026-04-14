@@ -1,5 +1,6 @@
 # Table of Contents
 
+* [Changelog for 0.18.1](#changelog-for-restic-0181-2025-09-21)
 * [Changelog for 0.18.0](#changelog-for-restic-0180-2025-03-27)
 * [Changelog for 0.17.3](#changelog-for-restic-0173-2024-11-08)
 * [Changelog for 0.17.2](#changelog-for-restic-0172-2024-10-27)
@@ -39,6 +40,106 @@
 * [Changelog for 0.6.0](#changelog-for-restic-060-2017-05-29)
 
 
+# Changelog for restic 0.18.1 (2025-09-21)
+The following sections list the changes in restic 0.18.1 relevant to
+restic users. The changes are ordered by importance.
+
+## Summary
+
+ * Fix #5324: Correctly handle `backup --stdin-filename` with directory paths
+ * Fix #5325: Accept `RESTIC_HOST` environment variable in `forget` command
+ * Fix #5342: Ignore "chmod not supported" errors when writing files
+ * Fix #5344: Ignore `EOPNOTSUPP` errors for extended attributes
+ * Fix #5421: Fix rare crash if directory is removed during backup
+ * Fix #5429: Stop retrying uploads when rest-server runs out of space
+ * Fix #5467: Improve handling of download retries in `check` command
+
+## Details
+
+ * Bugfix #5324: Correctly handle `backup --stdin-filename` with directory paths
+
+   In restic 0.18.0, the `backup` command failed if a filename that includes at
+   least a directory was passed to `--stdin-filename`. For example,
+   `--stdin-filename /foo/bar` resulted in the following error:
+
+   ```
+   Fatal: unable to save snapshot: open /foo: no such file or directory
+   ```
+
+   This has now been fixed.
+
+   https://github.com/restic/restic/issues/5324
+   https://github.com/restic/restic/pull/5356
+
+ * Bugfix #5325: Accept `RESTIC_HOST` environment variable in `forget` command
+
+   The `forget` command did not use the host name from the `RESTIC_HOST`
+   environment variable when filtering snapshots. This has now been fixed.
+
+   https://github.com/restic/restic/issues/5325
+   https://github.com/restic/restic/pull/5327
+
+ * Bugfix #5342: Ignore "chmod not supported" errors when writing files
+
+   Restic 0.18.0 introduced a bug that caused `chmod xxx: operation not supported`
+   errors to appear when writing to a local file repository that did not support
+   chmod (like CIFS or WebDAV mounted via FUSE). Restic now ignores those errors.
+
+   https://github.com/restic/restic/issues/5342
+
+ * Bugfix #5344: Ignore `EOPNOTSUPP` errors for extended attributes
+
+   Restic 0.18.0 added extended attribute support for NetBSD 10+, but not all
+   NetBSD filesystems support extended attributes. Other BSD systems can likewise
+   return `EOPNOTSUPP`, so restic now ignores these errors.
+
+   https://github.com/restic/restic/issues/5344
+
+ * Bugfix #5421: Fix rare crash if directory is removed during backup
+
+   In restic 0.18.0, the `backup` command could crash if a directory was removed
+   between reading its metadata and listing its directory content. This has now
+   been fixed.
+
+   https://github.com/restic/restic/pull/5421
+
+ * Bugfix #5429: Stop retrying uploads when rest-server runs out of space
+
+   When rest-server returns a `507 Insufficient Storage` error, it indicates that
+   no more storage capacity is available. Restic now correctly stops retrying
+   uploads in this case.
+
+   https://github.com/restic/restic/issues/5429
+   https://github.com/restic/restic/pull/5452
+
+ * Bugfix #5467: Improve handling of download retries in `check` command
+
+   In very rare cases, the `check` command could unnecessarily report repository
+   damage if the backend returned incomplete, corrupted data on the first download
+   try which is afterwards resolved by a download retry.
+
+   This could result in an error output like the following:
+
+   ```
+   Load(<data/34567890ab>, 33918928, 0) returned error, retrying after 871.35598ms: readFull: unexpected EOF
+   Load(<data/34567890ab>, 33918928, 0) operation successful after 1 retries
+   check successful on second attempt, original error pack 34567890ab[...] contains 6 errors: [blob 12345678[...]: decrypting blob <data/12345678> from 34567890 failed: ciphertext verification failed ...]
+   [...]
+   Fatal: repository contains errors
+   ```
+
+   This fix only applies to a very specific case where the log shows `operation
+   successful after 1 retries` followed by a `check successful on second attempt,
+   original error` that only reports `ciphertext verification failed` errors in the
+   pack file. If any other errors are reported in the pack file, then the
+   repository still has to be considered as damaged.
+
+   Now, only the check result of the last download retry is reported as intended.
+
+   https://github.com/restic/restic/issues/5467
+   https://github.com/restic/restic/pull/5495
+
+
 # Changelog for restic 0.18.0 (2025-03-27)
 The following sections list the changes in restic 0.18.0 relevant to
 restic users. The changes are ordered by importance.
@@ -54,7 +155,7 @@ restic users. The changes are ordered by importance.
  * Fix #5249: Fix creation of oversized index by `repair index --read-all-packs`
  * Fix #5259: Fix rare crash in command output
  * Chg #4938: Update dependencies and require Go 1.23 or newer
- * Chg #5162: Promote feature flags
+ * Chg #5162: Graduate feature flags
  * Enh #1378: Add JSON support to `check` command
  * Enh #2511: Support generating shell completions to stdout
  * Enh #3697: Allow excluding online-only cloud files (e.g. OneDrive)
@@ -76,7 +177,7 @@ restic users. The changes are ordered by importance.
  * Enh #5173: Add experimental S3 cold storage support
  * Enh #5174: Add xattr support for NetBSD 10+
  * Enh #5251: Improve retry handling for flaky `rclone` backends
- * Enh #52897: Make `recover` automatically rebuild index when needed
+ * Enh #5287: Make `recover` automatically rebuild index when needed
 
 ## Details
 
@@ -208,7 +309,7 @@ restic users. The changes are ordered by importance.
 
    https://github.com/restic/restic/pull/4938
 
- * Change #5162: Promote feature flags
+ * Change #5162: Graduate feature flags
 
    The `deprecate-legacy-index`, `deprecate-s3-legacy-layout`,
    `explicit-s3-anonymous-auth` and `safe-forget-keep-tags` features are now stable
@@ -408,13 +509,13 @@ restic users. The changes are ordered by importance.
 
    https://github.com/restic/restic/pull/5251
 
- * Enhancement #52897: Make `recover` automatically rebuild index when needed
+ * Enhancement #5287: Make `recover` automatically rebuild index when needed
 
    When trying to recover data from an interrupted snapshot, it was previously
    necessary to manually run `repair index` before runnning `recover`. This now
    happens automatically so that only `recover` is necessary.
 
-   https://github.com/restic/restic/issues/52897
+   https://github.com/restic/restic/issues/5287
    https://github.com/restic/restic/pull/5296
 
 
