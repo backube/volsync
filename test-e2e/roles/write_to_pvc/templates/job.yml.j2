@@ -21,7 +21,7 @@ spec:
               set -x -e -o pipefail
 
               id
-              mkdir -p `dirname /mnt/{{ path }}`
+              mkdir -p "$(dirname '/mnt/{{ path }}')"
               echo '{{ data }}' > '/mnt/{{ path }}'
               stat '/mnt/{{ path }}'
 
@@ -31,6 +31,13 @@ spec:
                 counter=$((counter+1))
               done
 
+{% if symlinks is defined %}
+{% for symlink in symlinks %}
+              mkdir -p "$(dirname '/mnt/{{ symlink.path }}')"
+              ln -s '{{ symlink.target }}' '/mnt/{{ symlink.path }}'
+              stat '/mnt/{{ symlink.path }}'
+{% endfor %}
+{% endif %}
               sync
           securityContext:
             allowPrivilegeEscalation: false
