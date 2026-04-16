@@ -88,9 +88,16 @@ type APIConfig struct {
 }
 
 type SyncthingConnection interface {
-	// API Functions, these are meant to define communication with the Syncthing API.
+	// Fetch retrieves the latest configuration, system status, and connections from the Syncthing API.
 	Fetch() (*Syncthing, error)
-	PublishConfig(config.Configuration) error
+	// AddOrUpdateDevice adds a new device or updates an existing one via POST /rest/config/devices.
+	AddOrUpdateDevice(device config.DeviceConfiguration) error
+	// RemoveDevice removes a device by ID via DELETE /rest/config/devices/{id}.
+	RemoveDevice(deviceID string) error
+	// PatchFolderDevices updates only the devices list on a folder via PATCH /rest/config/folders/{id}.
+	PatchFolderDevices(folderID string, devices []config.FolderDeviceConfiguration) error
+	// PatchGUI updates only the user and password on the GUI config via PATCH /rest/config/gui.
+	PatchGUI(user, password string) error
 }
 
 // Syncthing Defines a Syncthing API object which contains a subset of the information

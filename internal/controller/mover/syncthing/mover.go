@@ -43,6 +43,7 @@ import (
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/internal/controller/mover"
 	"github.com/backube/volsync/internal/controller/mover/syncthing/api"
+	"github.com/backube/volsync/internal/controller/mover/syncthing/lib/config"
 	"github.com/backube/volsync/internal/controller/utils"
 	"github.com/backube/volsync/internal/controller/volumehandler"
 )
@@ -716,12 +717,14 @@ func (m *Mover) validatePeerList() error {
 	return nil
 }
 
-// ensureIsConfigured Takes the given syncthing state and updates it with the necessary information
-// from the peerList as well as the given apiSecret. An error is returned when we are unsuccessful in
-// updating the configuration.
+// ensureIsConfigured Configures the current Syncthing instance with the devices
+// from the peerList as well as the given apiSecret using granular API endpoints.
+// This avoids PUT /rest/config which would drop unknown fields.
 //
 // If there is no User/Password set on the object, or a user is set but doesn't match the value in the secret,
 // then ensureIsConfigured will update the Syncthing state to match the values in the secret.
+//
+//nolint:cyclop,funlen
 func (m *Mover) ensureIsConfigured(apiSecret *corev1.Secret, syncthing *api.Syncthing) error {
 	// nil check
 	if apiSecret == nil || syncthing == nil {
@@ -737,37 +740,76 @@ func (m *Mover) ensureIsConfigured(apiSecret *corev1.Secret, syncthing *api.Sync
 		}
 	}
 
-	// check if the syncthing is configured
-	hasChanged := false
+	// Update devices using granular API calls
 	if syncthingNeedsReconfigure(m.peerList, syncthing) {
 		m.logger.V(4).Info("devices need to be reconfigured")
-		// configure the syncthing state with the new devices
-		if err := updateSyncthingDevices(m.peerList, syncthing); err != nil {
-			return err
+
+		// Build set of desired peer IDs
+		desiredPeers := map[string]struct{}{}
+		for _, peer := range m.peerList {
+			desiredPeers[peer.ID] = struct{}{}
 		}
-		hasChanged = true
+
+		// Remove stale devices (not self, not introduced, not in peerList)
+		for _, device := range syncthing.Configuration.Devices {
+			if device.DeviceID == syncthing.MyID() || device.IntroducedBy != "" {
+				continue
+			}
+			if _, wanted := desiredPeers[device.DeviceID]; !wanted {
+				if err := m.syncthingConnection.RemoveDevice(device.DeviceID); err != nil {
+					return err
+				}
+			}
+		}
+
+		// Add/update devices from peerList
+		for _, peer := range m.peerList {
+			if err := m.syncthingConnection.AddOrUpdateDevice(config.DeviceConfiguration{
+				DeviceID:   peer.ID,
+				Addresses:  []string{peer.Address},
+				Introducer: peer.Introducer,
+			}); err != nil {
+				return err
+			}
+		}
+
+		// Build folder device list: self + introduced + peerList
+		folderDevices := []config.FolderDeviceConfiguration{
+			{DeviceID: syncthing.MyID()},
+		}
+		for _, device := range syncthing.Configuration.Devices {
+			if device.IntroducedBy != "" {
+				folderDevices = append(folderDevices, config.FolderDeviceConfiguration{
+					DeviceID:     device.DeviceID,
+					IntroducedBy: device.IntroducedBy,
+				})
+			}
+		}
+		for _, peer := range m.peerList {
+			folderDevices = append(folderDevices, config.FolderDeviceConfiguration{DeviceID: peer.ID})
+		}
+
+		// Update folder sharing
+		for _, folder := range syncthing.Configuration.Folders {
+			if err := m.syncthingConnection.PatchFolderDevices(folder.ID, folderDevices); err != nil {
+				return err
+			}
+		}
 	}
 
-	// set the user and password if not already set
+	// Update GUI credentials if needed
 	if syncthing.Configuration.GUI.User != string(apiSecret.Data[usernameDataKey]) ||
 		syncthing.Configuration.GUI.Password == "" {
 		m.logger.Info("setting user and password")
-		syncthing.Configuration.GUI.User = string(apiSecret.Data[usernameDataKey])
-		syncthing.Configuration.GUI.Password = string(apiSecret.Data[passwordDataKey])
-		hasChanged = true
-	}
-
-	// update the config
-	if hasChanged {
-		// get syncthing object & update the remote config w/ it
-		m.logger.Info("syncthing needs to be updated")
-		m.logger.V(4).Info("updating with config", "config", syncthing.Configuration)
-		err := m.syncthingConnection.PublishConfig(syncthing.Configuration)
-		if err != nil {
-			m.logger.Error(err, "error updating syncthing config")
+		if err := m.syncthingConnection.PatchGUI(
+			string(apiSecret.Data[usernameDataKey]),
+			string(apiSecret.Data[passwordDataKey]),
+		); err != nil {
+			m.logger.Error(err, "error updating syncthing GUI credentials")
 			return err
 		}
 	}
+
 	return nil
 }
 
