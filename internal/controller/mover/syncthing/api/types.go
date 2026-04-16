@@ -27,49 +27,23 @@ import (
 	"github.com/backube/volsync/internal/controller/mover/syncthing/lib/config"
 )
 
-// DialStatus Provides us with information as to whether or not we are able to
-// dial a given device, when the last time we dialed was, and what the error is, if any.
-type DialStatus struct {
-	When  string  `json:"when"`
-	Error *string `json:"error"`
-	OK    bool    `json:"ok"`
-}
-
-// SystemStatus Details information about the running Syncthing system, including the
-// device ID, CPU usage, allocated memory, number of goroutines, when it started, and so on and so forth.
+// SystemStatus contains the fields from /rest/system/status that the mover uses.
+// The full response includes many more fields (alloc, cpuPercent, goroutines, etc.)
+// which Go's JSON decoder silently ignores.
 type SystemStatus struct {
-	Alloc                int                   `json:"alloc"`
-	CPUPercent           int                   `json:"cpuPercent"`
-	Goroutines           int                   `json:"goroutines"`
-	GUIAddressOverridden bool                  `json:"guiAddressOverridden"`
-	GUIAddressUsed       string                `json:"guiAddressUsed"`
-	LastDialStatus       map[string]DialStatus `json:"lastDialStatus"`
-	MyID                 string                `json:"myID"`
+	MyID string `json:"myID"`
 }
 
-// TotalStats Describes the total traffic to/from a given Syncthing node.
-type TotalStats struct {
-	At            string `json:"at"`
-	InBytesTotal  int    `json:"inBytesTotal"`
-	OutBytesTotal int    `json:"outBytesTotal"`
-}
-
-// ConnectionStats Details statistics about this Syncthing connection.
+// ConnectionStats contains the per-device fields from /rest/system/connections
+// that the mover uses. The full response includes additional fields
+// (paused, clientVersion, type, etc.) which Go's JSON decoder silently ignores.
 type ConnectionStats struct {
-	TotalStats
-	Connected     bool   `json:"connected"`
-	Paused        bool   `json:"paused"`
-	At            string `json:"at"`
-	StartedAt     string `json:"startedAt"`
-	ClientVersion string `json:"clientVersion"`
-	Address       string `json:"address"`
-	Type          string `json:"type"`
+	Connected bool   `json:"connected"`
+	Address   string `json:"address"`
 }
 
-// SystemConnections Describes the devices which are connected to the Syncthing
-// device, in addition to statistics about the total traffic to and from this node.
+// SystemConnections contains the fields from /rest/system/connections that the mover uses.
 type SystemConnections struct {
-	Total       TotalStats                 `json:"total"`
 	Connections map[string]ConnectionStats `json:"connections"`
 }
 
