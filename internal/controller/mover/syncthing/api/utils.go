@@ -26,14 +26,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 
-	"github.com/syncthing/syncthing/lib/config"
+	"github.com/backube/volsync/internal/controller/mover/syncthing/lib/config"
 )
 
 // GetDeviceFromID Returns a pointer to the device with the given ID,
 // along with a boolean indicating whether the device was found.
 func (s *Syncthing) GetDeviceFromID(id string) (*config.DeviceConfiguration, bool) {
 	for _, device := range s.Configuration.Devices {
-		if device.DeviceID.GoString() == id {
+		if device.DeviceID == id {
 			return &device, true
 		}
 	}
@@ -78,7 +78,7 @@ func CreateSyncthingTestServer(state *Syncthing, serverAPIKey string) *httptest.
 	setConnections := func(s *Syncthing) {
 		connections := make(map[string]ConnectionStats, 0)
 		for _, device := range s.Configuration.Devices {
-			connections[device.DeviceID.GoString()] = ConnectionStats{
+			connections[device.DeviceID] = ConnectionStats{
 				Connected:     true,
 				Paused:        false,
 				Address:       device.Addresses[0],

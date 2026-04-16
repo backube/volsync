@@ -30,8 +30,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/syncthing/syncthing/lib/config"
-	"github.com/syncthing/syncthing/lib/protocol"
+	"github.com/backube/volsync/internal/controller/mover/syncthing/lib/config"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -597,10 +596,10 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 
 		Context("Syncthing API is being used properly", func() {
 			var (
-				myID, _    = protocol.DeviceIDFromString("ZNWFSWE-RWRV2BD-45BLMCV-LTDE2UR-4LJDW6J-R5BPWEB-TXD27XJ-IZF5RA4")
-				device1, _ = protocol.DeviceIDFromString("AIR6LPZ-7K4PTTV-UXQSMUU-CPQ5YWH-OEDFIIQ-JUG777G-2YQXXR5-YD6AWQR")
-				device2, _ = protocol.DeviceIDFromString("GYRZZQB-IRNPV4Z-T7TC52W-EQYJ3TT-FDQW6MW-DFLMU42-SSSU6EM-FBK2VAY")
-				device3, _ = protocol.DeviceIDFromString("VNPQDOJ-3V7DEWN-QBCTXF2-LSVNMHL-XTGL4GX-NCGQEXQ-THHBVWR-HVVMEQR")
+				myID    = "ZNWFSWE-RWRV2BD-45BLMCV-LTDE2UR-4LJDW6J-R5BPWEB-TXD27XJ-IZF5RA4"
+				device1 = "AIR6LPZ-7K4PTTV-UXQSMUU-CPQ5YWH-OEDFIIQ-JUG777G-2YQXXR5-YD6AWQR"
+				device2 = "GYRZZQB-IRNPV4Z-T7TC52W-EQYJ3TT-FDQW6MW-DFLMU42-SSSU6EM-FBK2VAY"
+				device3 = "VNPQDOJ-3V7DEWN-QBCTXF2-LSVNMHL-XTGL4GX-NCGQEXQ-THHBVWR-HVVMEQR"
 			)
 
 			When("Syncthing server does not exist", func() {
@@ -663,7 +662,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 				JustBeforeEach(func() {
 					// set status to 10
 					syncthingState.Configuration.Version = 10
-					syncthingState.SystemStatus.MyID = myID.GoString()
+					syncthingState.SystemStatus.MyID = myID
 					syncthingState.SystemConnections.Total = api.TotalStats{At: "test"}
 
 					ts = api.CreateSyncthingTestServer(syncthingState, apiKey)
@@ -696,7 +695,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					syncthing, err := mover.syncthingConnection.Fetch()
 					Expect(err).ToNot(HaveOccurred())
 					Expect(syncthing.Configuration.Version).To(Equal(10))
-					Expect(syncthing.SystemStatus.MyID).To(Equal(myID.GoString()))
+					Expect(syncthing.SystemStatus.MyID).To(Equal(myID))
 					Expect(syncthing.SystemConnections.Total.At).To(Equal("test"))
 				})
 
@@ -716,11 +715,11 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					mover.peerList = []volsyncv1alpha1.SyncthingPeer{
 						{
 							Address: "tcp://127.0.0.1:22000", //nolint:goconst
-							ID:      device1.GoString(),
+							ID:      device1,
 						},
 						{
 							Address: "tcp://127.0.0.2:22000",
-							ID:      device2.GoString(),
+							ID:      device2,
 						},
 					}
 					// pull syncthing state from server
@@ -733,10 +732,8 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 
 					// make sure that our peers can be found on the server
 					for i, peer := range mover.peerList {
-						devID, err := protocol.DeviceIDFromString(peer.ID)
-						Expect(err).ToNot(HaveOccurred())
 						expected := config.DeviceConfiguration{
-							DeviceID:   devID,
+							DeviceID:   peer.ID,
 							Addresses:  []string{peer.Address},
 							Introducer: peer.Introducer,
 						}
@@ -759,11 +756,11 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					mover.peerList = []volsyncv1alpha1.SyncthingPeer{
 						{
 							Address: "tcp://127.0.0.1:22000",
-							ID:      device1.GoString(),
+							ID:      device1,
 						},
 						{
 							Address: "tcp://127.0.0.2:22000",
-							ID:      device2.GoString(),
+							ID:      device2,
 						},
 					}
 
@@ -796,11 +793,11 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					JustBeforeEach(func() {
 						// add some connections here
 						syncthingState.SystemConnections.Connections = map[string]api.ConnectionStats{
-							myID.GoString(): {
+							myID: {
 								Connected: false,
 								Address:   "",
 							},
-							device3.GoString(): {
+							device3: {
 								Connected: true,
 								Address:   device3Config.Addresses[0],
 							},
@@ -843,10 +840,10 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 
 						// ensure that volsync properly set these fields
 						// ID should be the other peer's; not the local one
-						Expect(peer.ID).To(Equal(device3.GoString()))
+						Expect(peer.ID).To(Equal(device3))
 						Expect(peer.Address).To(Equal(device3Config.Addresses[0]))
 						Expect(peer.Connected).To(BeTrue())
-						Expect(peer.IntroducedBy).To(Equal(device3Config.IntroducedBy.GoString()))
+						Expect(peer.IntroducedBy).To(Equal(device3Config.IntroducedBy))
 						Expect(peer.Name).To(Equal(device3Config.Name))
 					})
 				})
@@ -860,7 +857,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 							// set the peerlist to itself
 							mover.peerList = []volsyncv1alpha1.SyncthingPeer{
 								{
-									ID:      myID.GoString(),
+									ID:      myID,
 									Address: "tcp://127.0.0.1:22000",
 								},
 							}
@@ -1578,11 +1575,11 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 // are working as expected.
 var _ = Describe("Syncthing utils", func() {
 	var (
-		myID, _    = protocol.DeviceIDFromString("ZNWFSWE-RWRV2BD-45BLMCV-LTDE2UR-4LJDW6J-R5BPWEB-TXD27XJ-IZF5RA4")
-		device1, _ = protocol.DeviceIDFromString("AIR6LPZ-7K4PTTV-UXQSMUU-CPQ5YWH-OEDFIIQ-JUG777G-2YQXXR5-YD6AWQR")
-		device2, _ = protocol.DeviceIDFromString("GYRZZQB-IRNPV4Z-T7TC52W-EQYJ3TT-FDQW6MW-DFLMU42-SSSU6EM-FBK2VAY")
-		device3, _ = protocol.DeviceIDFromString("VNPQDOJ-3V7DEWN-QBCTXF2-LSVNMHL-XTGL4GX-NCGQEXQ-THHBVWR-HVVMEQR")
-		device4, _ = protocol.DeviceIDFromString("E3TWU3G-UGFHTJE-SJLCDYH-KGQR3R6-7QMOM43-FOC3UFT-H4H54DC-GMK5RAO")
+		myID    = "ZNWFSWE-RWRV2BD-45BLMCV-LTDE2UR-4LJDW6J-R5BPWEB-TXD27XJ-IZF5RA4"
+		device1 = "AIR6LPZ-7K4PTTV-UXQSMUU-CPQ5YWH-OEDFIIQ-JUG777G-2YQXXR5-YD6AWQR"
+		device2 = "GYRZZQB-IRNPV4Z-T7TC52W-EQYJ3TT-FDQW6MW-DFLMU42-SSSU6EM-FBK2VAY"
+		device3 = "VNPQDOJ-3V7DEWN-QBCTXF2-LSVNMHL-XTGL4GX-NCGQEXQ-THHBVWR-HVVMEQR"
+		device4 = "E3TWU3G-UGFHTJE-SJLCDYH-KGQR3R6-7QMOM43-FOC3UFT-H4H54DC-GMK5RAO"
 	)
 
 	Context("Syncthing object is used", func() {
@@ -1595,7 +1592,7 @@ var _ = Describe("Syncthing utils", func() {
 
 			// initialize these pointer fields
 			syncthing = api.Syncthing{}
-			syncthing.SystemStatus.MyID = myID.GoString()
+			syncthing.SystemStatus.MyID = myID
 		})
 
 		When("devices are called to update", func() {
@@ -1611,11 +1608,11 @@ var _ = Describe("Syncthing utils", func() {
 				// create a peer list
 				peerList := []volsyncv1alpha1.SyncthingPeer{
 					{
-						ID:      device1.GoString(),
+						ID:      device1,
 						Address: "tcp://127.0.0.1:22000",
 					},
 					{
-						ID:      device2.GoString(),
+						ID:      device2,
 						Address: "tcp://192.168.1.1:22000",
 					},
 				}
@@ -1628,10 +1625,10 @@ var _ = Describe("Syncthing utils", func() {
 				// ensure that we can discover all of the devices on the local object
 				discovered := 0
 				for _, device := range syncthing.Configuration.Devices {
-					if device.DeviceID.GoString() == device1.GoString() {
+					if device.DeviceID == device1 {
 						discovered++
 					}
-					if device.DeviceID.GoString() == device2.GoString() {
+					if device.DeviceID == device2 {
 						discovered++
 					}
 				}
@@ -1668,7 +1665,7 @@ var _ = Describe("Syncthing utils", func() {
 					err := updateSyncthingDevices([]volsyncv1alpha1.SyncthingPeer{}, &syncthing)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(syncthing.Configuration.Devices).To(HaveLen(1))
-					Expect(syncthing.Configuration.Devices[0].DeviceID.GoString()).To(Equal(syncthing.SystemStatus.MyID))
+					Expect(syncthing.Configuration.Devices[0].DeviceID).To(Equal(syncthing.SystemStatus.MyID))
 				})
 
 				It("only reconfigures when other syncthing devices are provided", func() {
@@ -1678,7 +1675,7 @@ var _ = Describe("Syncthing utils", func() {
 					// pass a peer list containing self to ensure that Syncthing doesn't need to be reconfigured
 					Expect(syncthingNeedsReconfigure([]volsyncv1alpha1.SyncthingPeer{
 						{
-							ID:      myID.GoString(),
+							ID:      myID,
 							Address: "tcp://127.0.0.1:22000",
 						},
 					}, &syncthing)).To(BeFalse())
@@ -1686,8 +1683,8 @@ var _ = Describe("Syncthing utils", func() {
 					// specify a peer
 					Expect(syncthingNeedsReconfigure([]volsyncv1alpha1.SyncthingPeer{
 						{
-							ID:      device1.GoString(),
-							Address: "tcp://[::1]:22000", //nolint:goconst
+							ID:      device1,
+							Address: "tcp://[::1]:22000",
 						},
 					}, &syncthing)).To(BeTrue())
 				})
@@ -1708,7 +1705,7 @@ var _ = Describe("Syncthing utils", func() {
 					// specify ourself as a peer
 					peerList = []volsyncv1alpha1.SyncthingPeer{
 						{
-							ID:      myID.GoString(),
+							ID:      myID,
 							Address: "",
 						},
 					}
@@ -1718,7 +1715,7 @@ var _ = Describe("Syncthing utils", func() {
 					// specify a peer
 					peerList = []volsyncv1alpha1.SyncthingPeer{
 						{
-							ID:      device1.GoString(),
+							ID:      device1,
 							Address: "tcp://[::1]:22000",
 						},
 					}
@@ -1731,15 +1728,22 @@ var _ = Describe("Syncthing utils", func() {
 				BeforeEach(func() {
 					syncthingPeers := []volsyncv1alpha1.SyncthingPeer{
 						{
-							ID:      device1.GoString(),
+							ID:      device1,
 							Address: "tcp://[::1]:22000",
 						},
 						{
-							ID:      device2.GoString(),
+5:
+							Address: "tcp://127.0.0.1:22000", //nolint:goconst
+							ID:      device1,
+6:
+							ID:      device1,
+							Address: "tcp://[::1]:22000", //nolint:goconst
+7:
+							ID:      device2,
 							Address: "tcp://[::2]:22000", //nolint:goconst
 						},
 						{
-							ID:      device3.GoString(),
+							ID:      device3,
 							Address: "tcp://[::3]:22000", //nolint:goconst
 						},
 					}
@@ -1751,15 +1755,15 @@ var _ = Describe("Syncthing utils", func() {
 					// create a peerlist with the same devices as the current config
 					peerList := []volsyncv1alpha1.SyncthingPeer{
 						{
-							ID:      device1.GoString(),
+							ID:      device1,
 							Address: "tcp://[::1]:22000",
 						},
 						{
-							ID:      device2.GoString(),
+							ID:      device2,
 							Address: "tcp://[::2]:22000",
 						},
 						{
-							ID:      device3.GoString(),
+							ID:      device3,
 							Address: "tcp://[::3]:22000",
 						},
 					}
@@ -1826,14 +1830,14 @@ var _ = Describe("Syncthing utils", func() {
 					replicaPeerList := make([]volsyncv1alpha1.SyncthingPeer, 0, len(syncthing.Configuration.Devices))
 					for _, device := range syncthing.Configuration.Devices {
 						replicaPeerList = append(replicaPeerList, volsyncv1alpha1.SyncthingPeer{
-							ID:      device.DeviceID.GoString(),
+							ID:      device.DeviceID,
 							Address: device.Addresses[0],
 						})
 					}
 					// specify an additional peer
 					replicaPeerList = append(replicaPeerList,
 						volsyncv1alpha1.SyncthingPeer{
-							ID:      device4.GoString(),
+							ID:      device4,
 							Address: "tcp://256.256.256.256:22000",
 						},
 					)
@@ -1846,7 +1850,7 @@ var _ = Describe("Syncthing utils", func() {
 					// expect to find the new peer in the config
 					found := false
 					for _, device := range syncthing.Configuration.Devices {
-						found = device.DeviceID.GoString() == device4.GoString()
+						found = device.DeviceID == device4
 						if found {
 							break
 						}
@@ -1856,7 +1860,7 @@ var _ = Describe("Syncthing utils", func() {
 					// expect to find the new peer in the folder
 					found = false
 					for _, device := range syncthing.Configuration.Folders[0].Devices {
-						found = device.DeviceID.GoString() == device4.GoString()
+						found = device.DeviceID == device4
 						if found {
 							break
 						}
@@ -1868,15 +1872,15 @@ var _ = Describe("Syncthing utils", func() {
 					// create a smaller peerlist with a subset of the devices in the current config
 					peerList := []volsyncv1alpha1.SyncthingPeer{
 						{
-							ID:      device1.GoString(),
+							ID:      device1,
 							Address: "tcp://[::1]:22000",
 						},
 						{
-							ID:      device2.GoString(),
+							ID:      device2,
 							Address: "tcp://[::2]:22000",
 						},
 						{
-							ID:      device3.GoString(),
+							ID:      device3,
 							Address: "tcp://[::3]:22000",
 						},
 					}
@@ -1913,7 +1917,7 @@ var _ = Describe("Syncthing utils", func() {
 						foundOne := false
 						// peer must exist in the devices
 						for _, peer := range peerListSubset {
-							if device.DeviceID.GoString() == peer.ID {
+							if device.DeviceID == peer.ID {
 								found++
 								foundOne = true
 								break
@@ -1928,7 +1932,7 @@ var _ = Describe("Syncthing utils", func() {
 					for _, device := range syncthing.Configuration.Folders[0].Devices {
 						foundOne := false
 						for _, peer := range peerListSubset {
-							if device.DeviceID.GoString() == peer.ID {
+							if device.DeviceID == peer.ID {
 								found++
 								foundOne = true
 								break
