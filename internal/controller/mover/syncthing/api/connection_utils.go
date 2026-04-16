@@ -30,7 +30,8 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
-	"github.com/syncthing/syncthing/lib/config"
+
+	"github.com/backube/volsync/internal/controller/mover/syncthing/lib/config"
 )
 
 // syncthingAPIConnection Is an API Connection struct which implements the SyncthingConnection

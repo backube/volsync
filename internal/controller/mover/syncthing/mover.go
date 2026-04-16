@@ -827,16 +827,14 @@ func (m *Mover) getConnectedPeers(syncthing *api.Syncthing) []volsyncv1alpha1.Sy
 		//  - https://docs.syncthing.net/rest/system-connections-get.html
 		//  - https://forum.syncthing.net/t/specifying-protocols-without-global-announce-or-relay/18565
 		tcpAddress := asTCPAddress(connectionInfo.Address)
-		introducedBy := device.IntroducedBy
-		deviceName := device.Name
 
 		// check connection status
 		connectedPeers = append(connectedPeers, volsyncv1alpha1.SyncthingPeerStatus{
 			ID:           deviceID,
 			Address:      tcpAddress,
 			Connected:    connectionInfo.Connected,
-			Name:         deviceName,
-			IntroducedBy: introducedBy.GoString(),
+			Name:         device.Name,
+			IntroducedBy: device.IntroducedBy,
 		})
 	}
 	return connectedPeers
