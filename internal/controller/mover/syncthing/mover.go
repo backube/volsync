@@ -113,7 +113,6 @@ type Mover struct {
 	configStorageClass  *string
 	configAccessModes   []corev1.PersistentVolumeAccessMode
 	containerImage      string
-	paused              bool
 	dataPVCName         *string
 	peerList            []volsyncv1alpha1.SyncthingPeer
 	status              *volsyncv1alpha1.ReplicationSourceSyncthingStatus
