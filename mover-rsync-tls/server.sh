@@ -227,7 +227,19 @@ if [[ -s $CONTROL_FILE_SYMLINK_MUNGING_FILE ]]; then
     while IFS= read -r symlink; do
         symlinkfullpath="${TARGET}/${symlink}"
         echo "Processing symlink: ${symlinkfullpath}"
+
+        symlink_uid_gid=""
+        if [[ $PRIVILEGED_MOVER -ne 0 ]]; then
+            # If privileged mover, save uid/gid of the symlink for later
+            symlink_uid_gid=$(stat -c '%u:%g' "${symlinkfullpath}")
+        fi
+
         munge-symlinks --unmunge "${symlinkfullpath}"
+
+        if [[ $PRIVILEGED_MOVER -ne 0 && -n "${symlink_uid_gid}" ]]; then
+            # If privileged mover, restore uid/gid of the symlink after unmunging
+            chown -h "${symlink_uid_gid}" "${symlinkfullpath}"
+        fi
     done < "$CONTROL_FILE_SYMLINK_MUNGING_FILE"
 fi
 
