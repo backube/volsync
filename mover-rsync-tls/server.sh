@@ -72,10 +72,18 @@ if [[ ! -d $TARGET ]] && ! test -b $BLOCK_TARGET; then
     exit 1
 fi
 
+SSLVERSIONMIN="sslVersionMin = TLSv1.3"
 if [[ -n ${SSL_VERSION_MIN} ]]; then
     # Append sslVersionMin to stunnel conf
     SSLVERSIONMIN="sslVersionMin = ${SSL_VERSION_MIN}"
 fi
+
+# Notes:
+# Below we are setting ciphers = kPSK in stunnel.conf as we're already going
+# to default to TLSv1.3 as the minimum.  The ciphers setting only applies to
+# TLSv1.2 and below, but with ciphers = PSK startup will still run a "per-day"
+# regeneration job that will regenerate DH parameters - we can bypass this
+# by setting ciphers = kPSK to avoid any Kx=DH ciphers.
 
 if [[ -d $TARGET ]]; then
     ##############################
@@ -134,7 +142,7 @@ socket = r:TCP_KEEPIDLE=180
 syslog = no
 
 [rsync]
-ciphers = PSK
+ciphers = kPSK
 PSKsecrets = $PSK_FILE
 $SSLVERSIONMIN
 ; Port to listen for incoming connections from remote
@@ -180,7 +188,7 @@ socket = r:TCP_KEEPIDLE=180
 syslog = no
 
 [diskrsync]
-ciphers = PSK
+ciphers = kPSK
 PSKsecrets = $PSK_FILE
 $SSLVERSIONMIN
 ; Port to listen for incoming connections from remote
