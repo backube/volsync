@@ -264,3 +264,6 @@
         pvc1_name: data-source
         pvc2_name: data-dest
         timeout: 900
+        # Skip comparing uids/gids on symlinks for older k8s versions - old host-path driver (<1.17.1) had an issue with
+        # restoring symlinks in a snapshot, which meant symlinks were created with uid/gid of 0
+        skip_symlink_ownership_check: "{{ cluster_info.kubernetes_minor_version < 24 }}"

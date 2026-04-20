@@ -74,6 +74,9 @@ spec:
                 grep -v lost+found | \
                 sort > /tmp/attributes-mnt2
 
+{% if skip_symlink_ownership_check | default(false) %}
+              sed -i 's/\(symbolic link\) uid:[0-9]*/\1/; s/\(symbolic link.*\) gid:[0-9]*/\1/' /tmp/attributes-mnt /tmp/attributes-mnt2
+{% endif %}
               echo "Looking for differences:"
               diff /tmp/attributes-mnt /tmp/attributes-mnt2
               echo "... none found"
