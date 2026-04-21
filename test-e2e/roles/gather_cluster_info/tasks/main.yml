@@ -36,12 +36,19 @@
             }
           }, recursive=True) }}
 
+- name: Save kubernetes minor version as integer
+  ansible.builtin.set_fact:
+    cluster_info: >
+      {{ cluster_info | combine({
+        'kubernetes_minor_version': cluster_info.version.server.kubernetes.minor | regex_replace("[A-Za-z+]", "") | int
+      }, recursive=True) }}
+
 # AnyVolumeDataSource feature gate enabled by default in 1.24 and above
 - name: Determine if volume populator is supported
   ansible.builtin.set_fact:
     cluster_info: >
       {{ cluster_info | combine({
-        'volumepopulator_supported': cluster_info.version.server.kubernetes.minor | regex_replace("[A-Za-z+]", "") | int >= 24
+        'volumepopulator_supported': cluster_info.kubernetes_minor_version >= 24
       }, recursive=True) }}
 
 - name: Print volumepopulator_supported

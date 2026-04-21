@@ -23,20 +23,47 @@ spec:
               id
 
               echo "Validating contents: PVC1 -> PVC2"
-              find /mnt -type f | \
-                xargs sha256sum | \
+              find /mnt -type f -print0 | \
+                xargs -0 sha256sum | \
                 sed 's| /mnt/| /mnt2/|g' | \
                 grep -v lost+found | \
                 sha256sum -c
 
               echo "Validating contents: PVC2 -> PVC1"
-              find /mnt2 -type f | \
-                xargs sha256sum | \
+              find /mnt2 -type f -print0 | \
+                xargs -0 sha256sum | \
                 sed 's| /mnt2/| /mnt/|' | \
                 grep -v lost+found | \
                 sha256sum -c
 
               echo "... all file contents matched"
+
+              echo "Validating symlinks: PVC1 -> PVC2"
+              find /mnt -type l | { grep -v lost+found || true; } | sort | while IFS= read -r f; do
+                f2=$(echo "$f" | sed 's|^/mnt/|/mnt2/|')
+                if [ ! -L "$f2" ]; then
+                  echo "MISSING SYMLINK: $f exists but $f2 does not"
+                  exit 1
+                fi
+                link1=$(readlink "$f")
+                link2=$(readlink "$f2")
+                if [ "$link1" != "$link2" ]; then
+                  echo "MISMATCH: $f -> $link1, but $f2 -> $link2"
+                  exit 1
+                fi
+                echo "OK: $f -> $link1"
+              done
+
+              echo "Validating symlinks: PVC2 -> PVC1"
+              find /mnt2 -type l | { grep -v lost+found || true; } | sort | while IFS= read -r f; do
+                f1=$(echo "$f" | sed 's|^/mnt2/|/mnt/|')
+                if [ ! -L "$f1" ]; then
+                  echo "EXTRA SYMLINK: $f exists but $f1 does not"
+                  exit 1
+                fi
+              done
+
+              echo "... all symlinks matched"
 
               echo "File attributes:"
               find /mnt -exec stat -c "{{ properties_to_verify }}" {} \; | \
@@ -47,6 +74,9 @@ spec:
                 grep -v lost+found | \
                 sort > /tmp/attributes-mnt2
 
+{% if skip_symlink_ownership_check | default(false) %}
+              sed -i 's/\(symbolic link\) uid:[0-9]*/\1/; s/\(symbolic link.*\) gid:[0-9]*/\1/' /tmp/attributes-mnt /tmp/attributes-mnt2
+{% endif %}
               echo "Looking for differences:"
               diff /tmp/attributes-mnt /tmp/attributes-mnt2
               echo "... none found"

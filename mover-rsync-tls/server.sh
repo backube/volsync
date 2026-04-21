@@ -4,6 +4,7 @@ set -e -o pipefail
 
 RSYNC_PID_FILE=/tmp/rsyncd.pid
 CONTROL_FILE=/tmp/control/complete
+CONTROL_FILE_SYMLINK_MUNGING_FILE=/tmp/control/symlink-munging-file
 RSYNCD_CONF=/tmp/rsyncd.conf
 STUNNEL_CONF=/tmp/stunnel.conf
 STUNNEL_PID_FILE=/tmp/stunnel.pid
@@ -110,7 +111,7 @@ log file = $RSYNC_LOG
 max verbosity = 10
 use chroot = false
 numeric ids = true
-munge symlinks = false
+munge symlinks = true
 open noatime = true
 reverse lookup = false
 transfer logging = true
@@ -166,6 +167,7 @@ STUNNEL_CONF
     TAIL_PID="$!"
 
     rm -f "$CONTROL_FILE"
+    rm -f "$CONTROL_FILE_SYMLINK_MUNGING_FILE"
 fi
 
 if test -b $BLOCK_TARGET; then
@@ -217,6 +219,29 @@ while [[ ! -e $CONTROL_FILE ]]; do
 done
 
 sleep 5  # Give time for the rsync connection to finish
+
+# Before shutting down, read the symlink munging file if it exists, and process
+if [[ -s $CONTROL_FILE_SYMLINK_MUNGING_FILE ]]; then
+    echo "Symlink munging file found, processing..."
+    #while read -r symlink; do
+    while IFS= read -r symlink; do
+        symlinkfullpath="${TARGET}/${symlink}"
+        echo "Processing symlink: ${symlinkfullpath}"
+
+        symlink_uid_gid=""
+        if [[ $PRIVILEGED_MOVER -ne 0 ]]; then
+            # If privileged mover, save uid/gid of the symlink for later
+            symlink_uid_gid=$(stat -c '%u:%g' "${symlinkfullpath}")
+        fi
+
+        munge-symlinks --unmunge "${symlinkfullpath}"
+
+        if [[ $PRIVILEGED_MOVER -ne 0 && -n "${symlink_uid_gid}" ]]; then
+            # If privileged mover, restore uid/gid of the symlink after unmunging
+            chown -h "${symlink_uid_gid}" "${symlinkfullpath}"
+        fi
+    done < "$CONTROL_FILE_SYMLINK_MUNGING_FILE"
+fi
 
 ##############################
 ## Terminate stunnel

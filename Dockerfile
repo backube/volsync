@@ -122,14 +122,14 @@ RUN microdnf --refresh update -y && \
         openssh         `# rsync/ssh - ssh key generation in operator` \
         openssh-clients `# rsync/ssh - ssh client` \
         openssh-server  `# rsync/ssh - ssh server` \
-        python3         `# rsync/ssh - rrsync script` \
+        python3         `# rsync/ssh - rrsync, munge-symlinks scripts` \
         stunnel         `# rsync-tls` \
         openssl         `# syncthing - server certs` \
         vim-minimal     `# for mover debug` \
         tar             `# for mover debug` \
     && microdnf --setopt=install_weak_deps=0 install -y \
         `# docs are needed so rrsync gets installed for ssh variant` \
-        rsync           `# rsync/ssh, rsync-tls - rsync, rrsync` \
+        rsync           `# rsync/ssh, rsync-tls - rsync, rrsync, munge-symlinks` \
     && microdnf clean all && \
     rm -rf /var/cache/yum
 
@@ -158,6 +158,7 @@ RUN chmod a+rx /mover-rsync/*.sh
 RUN ln -s /keys/destination /etc/ssh/ssh_host_rsa_key && \
     ln -s /keys/destination.pub /etc/ssh/ssh_host_rsa_key.pub && \
     install /usr/share/doc/rsync/support/rrsync /usr/local/bin && \
+    install /usr/share/doc/rsync/support/munge-symlinks /usr/local/bin && \
     \
     SSHD_CONFIG="/etc/ssh/sshd_config" && \
     sed -ir 's|^[#\s]*\(.*/etc/ssh/ssh_host_ecdsa_key\)$|#\1|' "$SSHD_CONFIG" && \
