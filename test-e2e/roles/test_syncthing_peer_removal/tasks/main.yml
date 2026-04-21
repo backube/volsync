@@ -1,13 +1,19 @@
 ---
-# This role tests that removing a peer from a ReplicationSource's
-# .spec.syncthing.peers list causes VolSync to remove the device
-# from Syncthing and the peer to disappear from .status.syncthing.peers.
+# This role tests the full peer lifecycle: add, remove, and re-add.
+#
+# It verifies that removing a peer from .spec.syncthing.peers causes VolSync
+# to remove the device and the peer to disappear from .status.syncthing.peers,
+# and that re-adding the peer restores the connection with correct status fields.
 #
 # Flow:
 #   1. Set up 3 connected syncthings and verify data sync (baseline)
-#   2. Remove syncthing-2 from syncthing-0 and syncthing-1 (and vice versa)
-#   3. Verify syncthing-2 disappears from status of syncthing-0 and syncthing-1
-#   4. Verify syncthing-0 and syncthing-1 remain connected
+#   2. Verify status fields are fully populated (ID, Address, Connected)
+#   3. Remove syncthing-2 from syncthing-0 and syncthing-1 (and vice versa)
+#   4. Verify syncthing-2 disappears from status of syncthing-0 and syncthing-1
+#   5. Verify syncthing-0 and syncthing-1 remain connected
+#   6. Re-add syncthing-2 to syncthing-0 and syncthing-1
+#   7. Verify syncthing-2 reconnects with correct status fields
+#   8. Verify data sync still works after re-addition
 
 # ── Validation ──────────────────────────────────────────────────
 
@@ -128,6 +134,15 @@
   loop_control:
     loop_var: instances
 
+# ── Verify status fields are fully populated ────────────────────
+
+- name: Verify status fields for each syncthing
+  include_tasks:
+    file: verify_status_fields.yml
+  loop: "{{ syncthings | ansible.builtin.combinations(2) | list }}"
+  loop_control:
+    loop_var: instances
+
 # ── Baseline: verify data sync works ────────────────────────────
 
 - name: Write data into first PVC
@@ -195,3 +210,68 @@
     instances:
       - "{{ syncthings[0] }}"
       - "{{ syncthings[1] }}"
+
+# ── Re-add peer 2 to peers 0 and 1 ─────────────────────────────
+
+- name: Re-connect syncthing-2 to syncthing-0
+  include_tasks:
+    file: "{{ role_path }}/../test_syncthing_cluster_sync/tasks/connect.yml"
+  vars:
+    instances:
+      - "{{ syncthings[0] }}"
+      - "{{ syncthings[2] }}"
+
+- name: Re-connect syncthing-2 to syncthing-1
+  include_tasks:
+    file: "{{ role_path }}/../test_syncthing_cluster_sync/tasks/connect.yml"
+  vars:
+    instances:
+      - "{{ syncthings[1] }}"
+      - "{{ syncthings[2] }}"
+
+- name: Wait for syncthing-2 to reconnect to syncthing-0
+  include_tasks:
+    file: "{{ role_path }}/../test_syncthing_cluster_sync/tasks/await_connected.yml"
+  vars:
+    instances:
+      - "{{ syncthings[0] }}"
+      - "{{ syncthings[2] }}"
+
+- name: Wait for syncthing-2 to reconnect to syncthing-1
+  include_tasks:
+    file: "{{ role_path }}/../test_syncthing_cluster_sync/tasks/await_connected.yml"
+  vars:
+    instances:
+      - "{{ syncthings[1] }}"
+      - "{{ syncthings[2] }}"
+
+# ── Verify status fields after re-addition ──────────────────────
+
+- name: Verify status fields after re-adding syncthing-2
+  include_tasks:
+    file: verify_status_fields.yml
+  loop: "{{ syncthings | ansible.builtin.combinations(2) | list }}"
+  loop_control:
+    loop_var: instances
+
+# ── Verify data sync works after re-addition ────────────────────
+
+- name: Write new data into syncthing-2 PVC
+  include_role:
+    name: write_to_pvc
+  vars:
+    data: 'hello after re-addition'
+    path: /testdata2.txt
+    pvc_name: "{{ syncthings[2].Name }}"
+    namespace: "{{ syncthings[2].Namespace }}"
+
+- name: Ensure new data synchronized to syncthing-0 and syncthing-1
+  include_role:
+    name: pvc_has_data
+  vars:
+    data: 'hello after re-addition'
+    path: /testdata2.txt
+    pvc_name: "{{ item.Name }}"
+    namespace: "{{ item.Namespace }}"
+    timeout: 300
+  loop: "{{ syncthings[:2] }}"
