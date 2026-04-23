@@ -41,5 +41,6 @@ helm upgrade --install --create-namespace -n volsync-system \
     --set rsync.tag="${KIND_TAG}" \
     --set rsync-tls.tag="${KIND_TAG}" \
     --set syncthing.tag="${KIND_TAG}" \
+    --set kopia.tag="${KIND_TAG}" \
     --wait --timeout=300s \
     volsync ./helm/volsync
