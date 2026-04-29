@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Restic updated to v0.18.1
+- Rclone updated to v1.73.5
+- controller-runtime updated to v0.23.2, migrated to events.EventRecorder
+- Krew plugin now released for macOS
+- Restic supports Azure workload identity env vars
+- Dropped unnecessary perl package from container image, replaced with python3
+- Removed unused Syncthing insecureAllowOldTLSVersions option
+
+### Fixed
+
+- rsync-tls now properly munges/unmunges symlinks during sync
+- Rclone getfacl no longer follows symlinks
+
+### Security
+
+- rsync-tls enforces TLS 1.3 as minimum version
+- rsync-tls Prevent stunnel DH param regeneration on every run
+- rsync-tls sets ciphers per OpenShift TLS profile compliance
+- Controller metrics endpoint checks central OpenShift TLS profile
+
 ## 0.15.0
 
 ### Changed

@@ -25,13 +25,31 @@ annotations: # https://artifacthub.io/docs/topics/annotations/helm/
   # Kinds: added, changed, deprecated, removed, fixed, and security
   artifacthub.io/changes: |
     - kind: changed
-      description: moverVolumes updated to allow NFS type volumeMounts
+      description: Restic updated to v0.18.1
     - kind: changed
-      description: Rclone updated to v1.73.1
+      description: Rclone updated to v1.73.5
     - kind: changed
-      description: kube-rbac-proxy container no longer used. Built in auth for metrics provided by controller-runtime
+      description: controller-runtime updated to v0.23.2, migrated to events.EventRecorder
+    - kind: changed
+      description: Krew plugin now released for macOS
+    - kind: changed
+      description: Restic supports Azure workload identity env vars
+    - kind: changed
+      description: Dropped unnecessary perl package from container image, replaced with python3
+    - kind: changed
+      description: Removed unused Syncthing insecureAllowOldTLSVersions option
     - kind: fixed
-      description: Exclude lost+found for Rclone
+      description: rsync-tls now properly munges/unmunges symlinks during sync
+    - kind: fixed
+      description: Rclone getfacl no longer follows symlinks
+    - kind: security
+      description: rsync-tls enforces TLS 1.3 as minimum version
+    - kind: security
+      description: rsync-tls Prevent stunnel DH param regeneration on every run
+    - kind: security
+      description: rsync-tls sets ciphers per OpenShift TLS profile compliance
+    - kind: security
+      description: Controller metrics endpoint checks central OpenShift TLS profile
   artifacthub.io/crds: |
     - kind: ReplicationDestination
       version: v1alpha1
