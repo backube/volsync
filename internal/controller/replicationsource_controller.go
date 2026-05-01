@@ -353,6 +353,14 @@ func (m *rsMachine) ObserveSyncDuration(duration time.Duration) {
 	m.metrics.SyncDurations.Observe(duration.Seconds())
 }
 
+func (m *rsMachine) RecordSyncResult(success bool) {
+	if success {
+		m.metrics.SyncResults.WithLabelValues("Successful").Inc()
+	} else {
+		m.metrics.SyncResults.WithLabelValues("Failed").Inc()
+	}
+}
+
 func (m *rsMachine) Synchronize(ctx context.Context) (mover.Result, error) {
 	return m.mover.Synchronize(ctx)
 }
