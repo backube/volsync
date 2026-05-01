@@ -192,7 +192,7 @@ fi
 if [[ $KUBE_MINOR -ge 24 ]]; then # Volume Populators should work (AnyVolumeDataSource feature gate enabled by default)
   # Install the volume-data-source-validator (For validating PVC dataRefSource against known VolumePopulators)
   # renovate: datasource=github-releases depName=kubernetes-csi/volume-data-source-validator versioning=semver-coerced
-  TAG="v1.5.0" # https://github.com/kubernetes-csi/volume-data-source-validator/releases
+  TAG="v1.6.0" # https://github.com/kubernetes-csi/volume-data-source-validator/releases
   log "Deploying volume data source validator: ${TAG}"
   kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/volume-data-source-validator/${TAG}/client/config/crd/populator.storage.k8s.io_volumepopulators.yaml"
   kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/volume-data-source-validator/${TAG}/deploy/kubernetes/rbac-data-source-validator.yaml"
