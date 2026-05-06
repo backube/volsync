@@ -75,9 +75,9 @@ jobs:
         run: make test-krew # Will build the plugin and output to bin/kubectl-volsync.tar.gz
         if: ${{ env.GOOS == 'linux' }}
 
-      # Build (no test) darwin versions of kubectl-volsync
+      # Build (no test) darwin versions of kubectl-volsync pkged as .tar.gz
       - name: Build darwin kubectl-volsync binary
-        run: make cli
+        run: make krew-plugin-manifest
         if: ${{ env.GOOS == 'darwin' }}
 
       - name: Attach kubectl-volsync asset to release
