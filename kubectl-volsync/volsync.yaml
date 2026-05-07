@@ -20,8 +20,8 @@ spec:
           arch: amd64
       # This URL requires the artifact to be added to the release page as an
       # "Asset"
-      uri: https://github.com/backube/volsync/releases/download/v0.12.0/kubectl-volsync.tar.gz
-      sha256: 609d820db0df34482f8e120c794a59c4e9db92fef4bf8a57115bf321fdc604a5
+      uri: https://github.com/backube/volsync/releases/download/v0.12.0/kubectl-volsync-linux-amd64.tar.gz
+      sha256: 0000000000000000000000000000000000000000000000000000000000000000
       files:
         - from: "./kubectl-volsync"
           to: "."
@@ -34,8 +34,36 @@ spec:
           arch: arm64
       # This URL requires the artifact to be added to the release page as an
       # "Asset"
-      uri: https://github.com/backube/volsync/releases/download/v0.12.0/kubectl-volsync.tar.gz
-      sha256: 609d820db0df34482f8e120c794a59c4e9db92fef4bf8a57115bf321fdc604a5
+      uri: https://github.com/backube/volsync/releases/download/v0.12.0/kubectl-volsync-linux-arm64.tar.gz
+      sha256: 0000000000000000000000000000000000000000000000000000000000000000
+      files:
+        - from: "./kubectl-volsync"
+          to: "."
+        - from: "LICENSE"
+          to: "."
+      bin: kubectl-volsync
+    - selector:
+        matchLabels:
+          os: darwin
+          arch: amd64
+      # This URL requires the artifact to be added to the release page as an
+      # "Asset"
+      uri: https://github.com/backube/volsync/releases/download/v0.12.0/kubectl-volsync-darwin-amd64.tar.gz
+      sha256: 0000000000000000000000000000000000000000000000000000000000000000
+      files:
+        - from: "./kubectl-volsync"
+          to: "."
+        - from: "LICENSE"
+          to: "."
+      bin: kubectl-volsync
+    - selector:
+        matchLabels:
+          os: darwin
+          arch: arm64
+      # This URL requires the artifact to be added to the release page as an
+      # "Asset"
+      uri: https://github.com/backube/volsync/releases/download/v0.12.0/kubectl-volsync-darwin-arm64.tar.gz
+      sha256: 0000000000000000000000000000000000000000000000000000000000000000
       files:
         - from: "./kubectl-volsync"
           to: "."
