@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Restic updated to v0.18.1
-- Rclone updated to v1.73.5
+- Rclone updated to v1.74.1
 - controller-runtime updated to v0.23.2, migrated to events.EventRecorder
 - Krew plugin now released for macOS
 - Restic supports Azure workload identity env vars
