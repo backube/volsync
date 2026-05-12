@@ -27,7 +27,7 @@ annotations: # https://artifacthub.io/docs/topics/annotations/helm/
     - kind: changed
       description: Restic updated to v0.18.1
     - kind: changed
-      description: Rclone updated to v1.73.5
+      description: Rclone updated to v1.74.1
     - kind: changed
       description: controller-runtime updated to v0.23.2, migrated to events.EventRecorder
     - kind: changed
