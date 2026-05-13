@@ -10,7 +10,7 @@ require (
 	github.com/kubernetes-csi/external-snapshotter/client/v8 v8.4.0
 	github.com/kubernetes-csi/volume-data-source-validator/client v0.0.0-20250919142814-90ffb8220766
 	github.com/onsi/ginkgo/v2 v2.28.1
-	github.com/onsi/gomega v1.39.1
+	github.com/onsi/gomega v1.40.0
 	github.com/openshift/api v0.0.0-20260213155647-8fe9fe363807 // release-4.14
 	github.com/openshift/controller-runtime-common v0.0.0-20260307102856-5db94f69ad3a
 	github.com/prometheus/client_golang v1.23.2
