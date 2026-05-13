@@ -107,6 +107,13 @@ the permissions of the mover to that of the primary workload in the Namespace.
 As general guidance, if the primary workload specifies a security context, that
 same security context should be used for VolSync.
 
+.. note::
+  The Kopia mover supports ``readOnlyRootFilesystem: true`` security setting for
+  enhanced security. When this setting is used, the mover automatically adjusts
+  its volume mount paths to ensure compatibility with Kopia's atomic file operations.
+  For restore operations, data is mounted at ``/restore/data`` with an additional
+  emptyDir volume at ``/restore`` to handle temporary files.
+
 Privilege escalation when using privileged movers
 =================================================
 
