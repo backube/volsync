@@ -43,7 +43,7 @@ jobs:
     # Local registry is reqruied till https://github.com/docker/cli/issues/3350 is solved.
     services:
       registry:
-        image: registry:3.1.0
+        image: registry:3.1.1
         ports:
           - 5000:5000
 
