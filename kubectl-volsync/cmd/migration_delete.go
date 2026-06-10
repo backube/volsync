@@ -18,12 +18,14 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/spf13/cobra"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/kubectl/pkg/util/i18n"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 )
 
 type migrationDelete struct {
@@ -82,14 +84,17 @@ func newMigrationDelete() *migrationDelete {
 
 func (md *migrationDelete) deleteReplicationDestination(ctx context.Context) error {
 	mrd := md.mr.data.Destination
-	rd, err := mrd.getDestination(ctx, md.client)
-	if err != nil {
-		return fmt.Errorf("get ReplicationDestination returned:%w", err)
+
+	rd := &volsyncv1alpha1.ReplicationDestination{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      mrd.RDName,
+			Namespace: mrd.Namespace,
+		},
 	}
 
-	err = md.client.Delete(ctx, rd)
+	err := md.client.Delete(ctx, rd)
 	if err != nil {
-		return err
+		return err // Note this will return error if the RD doesn't exist
 	}
 
 	klog.Infof("Deleted ReplicationDestination: \"%s\"", mrd.RDName)
