@@ -33,6 +33,7 @@ type volsyncMetrics struct {
 	MissedIntervals prometheus.Counter
 	OutOfSync       prometheus.Gauge
 	SyncDurations   prometheus.Observer
+	SyncResults     *prometheus.CounterVec
 }
 
 var (
@@ -69,6 +70,14 @@ var (
 		},
 		metricLabels,
 	)
+	syncResults = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name:      "sync_results_total",
+			Namespace: metricsNamespace,
+			Help:      "Count of replication sync results by outcome",
+		},
+		append(metricLabels, "result"),
+	)
 )
 
 func newVolSyncMetrics(labels prometheus.Labels) volsyncMetrics {
@@ -76,10 +85,11 @@ func newVolSyncMetrics(labels prometheus.Labels) volsyncMetrics {
 		MissedIntervals: missedIntervals.With(labels),
 		OutOfSync:       outOfSync.With(labels),
 		SyncDurations:   syncDurations.With(labels),
+		SyncResults:     syncResults.MustCurryWith(labels),
 	}
 }
 
 func init() {
 	// Register custom metrics with the global prometheus registry
-	metrics.Registry.MustRegister(missedIntervals, outOfSync, syncDurations)
+	metrics.Registry.MustRegister(missedIntervals, outOfSync, syncDurations, syncResults)
 }

@@ -103,8 +103,10 @@ func doInitialState(_ context.Context, r ReplicationMachine, l logr.Logger) (ctr
 func doSynchronizingState(ctx context.Context, r ReplicationMachine, l logr.Logger) (ctrl.Result, error) {
 	result, err := r.Synchronize(ctx)
 	if err != nil {
+		r.RecordSyncResult(false)
 		return ctrl.Result{}, err
 	}
+	r.RecordSyncResult(true)
 	if result.Completed {
 		// Just finished a sync, so we're in-sync
 		r.SetOutOfSync(false)

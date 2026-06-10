@@ -52,6 +52,7 @@ type ReplicationMachine interface {
 	SetOutOfSync(bool)
 	IncMissedIntervals()
 	ObserveSyncDuration(time.Duration)
+	RecordSyncResult(success bool)
 
 	Synchronize(ctx context.Context) (mover.Result, error)
 	Cleanup(ctx context.Context) (mover.Result, error)
