@@ -2295,6 +2295,7 @@ var _ = Describe("Restic as a destination", func() {
 					})
 				})
 			})
+			//nolint:dupl
 			When("RCLONE_ env vars are in the restic secret", func() {
 				BeforeEach(func() {
 					repo.StringData = map[string]string{
@@ -2389,6 +2390,89 @@ var _ = Describe("Restic as a destination", func() {
 							}
 						}
 						Expect(found).To(BeTrue())
+					})
+				})
+			})
+
+			Context("Optional restic env vars", func() {
+				//nolint:dupl
+				When("some optional env vars are in the secret", func() {
+					BeforeEach(func() {
+						repo.StringData = map[string]string{
+							"RESTIC_REPOSITORY":     "myrepo",
+							"RESTIC_PASSWORD":       "pass123",
+							"AWS_ACCESS_KEY_ID":     "test-aws-key",
+							"AWS_SECRET_ACCESS_KEY": "test-aws-secret",
+							"RESTIC_COMPRESSION":    "auto",
+							"AZURE_ACCOUNT_NAME":    "teststorage",
+							// Issue #2032: Deliberately NOT setting Azure Workload Identity vars:
+							// AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_FEDERATED_TOKEN_FILE
+							// Also not setting: B2_ACCOUNT_ID, OS_AUTH_URL
+						}
+					})
+					It("should only set env vars that are present in the secret", func() {
+						j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo, nil)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(j).To(BeNil()) // hasn't completed
+						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+						job = &batchv1.Job{}
+						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+
+						env := job.Spec.Template.Spec.Containers[0].Env
+
+						// Mandatory vars should always be present
+						verifyEnvVarFromSecret(env, "RESTIC_REPOSITORY", repo.GetName(), false)
+						verifyEnvVarFromSecret(env, "RESTIC_PASSWORD", repo.GetName(), false)
+
+						// Optional vars that ARE in the secret should be present
+						verifyEnvVarFromSecret(env, "AWS_ACCESS_KEY_ID", repo.GetName(), true)
+						verifyEnvVarFromSecret(env, "AWS_SECRET_ACCESS_KEY", repo.GetName(), true)
+						verifyEnvVarFromSecret(env, "RESTIC_COMPRESSION", repo.GetName(), true)
+						verifyEnvVarFromSecret(env, "AZURE_ACCOUNT_NAME", repo.GetName(), true)
+
+						// Issue #2032: Azure Workload Identity vars NOT in secret should NOT be set
+						for _, envVar := range env {
+							Expect(envVar.Name).NotTo(Equal("AZURE_TENANT_ID"),
+								"AZURE_TENANT_ID should not be set when not in secret (workload identity)")
+							Expect(envVar.Name).NotTo(Equal("AZURE_CLIENT_ID"),
+								"AZURE_CLIENT_ID should not be set when not in secret (workload identity)")
+							Expect(envVar.Name).NotTo(Equal("AZURE_FEDERATED_TOKEN_FILE"),
+								"AZURE_FEDERATED_TOKEN_FILE should not be set when not in secret (workload identity)")
+							// Also verify other optional vars aren't set
+							Expect(envVar.Name).NotTo(Equal("B2_ACCOUNT_ID"))
+							Expect(envVar.Name).NotTo(Equal("OS_AUTH_URL"))
+						}
+					})
+				})
+				//nolint:dupl
+				When("Azure Workload Identity env vars are in the secret", func() {
+					BeforeEach(func() {
+						repo.StringData = map[string]string{
+							"RESTIC_REPOSITORY":          "myrepo",
+							"RESTIC_PASSWORD":            "pass123",
+							"AZURE_TENANT_ID":            "tenant-123",
+							"AZURE_CLIENT_ID":            "client-456",
+							"AZURE_FEDERATED_TOKEN_FILE": "/var/run/secrets/azure/token",
+						}
+					})
+					It("should set the Azure Workload Identity env vars in the job", func() {
+						j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo, nil)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(j).To(BeNil()) // hasn't completed
+						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+						job = &batchv1.Job{}
+						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+
+						env := job.Spec.Template.Spec.Containers[0].Env
+
+						// Mandatory vars should always be present
+						verifyEnvVarFromSecret(env, "RESTIC_REPOSITORY", repo.GetName(), false)
+						verifyEnvVarFromSecret(env, "RESTIC_PASSWORD", repo.GetName(), false)
+
+						// Azure Workload Identity vars should be present when in the secret
+						verifyEnvVarFromSecret(env, "AZURE_TENANT_ID", repo.GetName(), true)
+						verifyEnvVarFromSecret(env, "AZURE_CLIENT_ID", repo.GetName(), true)
+						verifyEnvVarFromSecret(env, "AZURE_FEDERATED_TOKEN_FILE", repo.GetName(), true)
 					})
 				})
 			})
