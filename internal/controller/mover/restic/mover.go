@@ -415,61 +415,10 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 			// location and its password.
 			utils.EnvFromSecret(repo.Name, "RESTIC_REPOSITORY", false),
 			utils.EnvFromSecret(repo.Name, "RESTIC_PASSWORD", false),
-
-			// Optional variables
-			utils.EnvFromSecret(repo.Name, "RESTIC_COMPRESSION", true), // New in v0.14.0
-			utils.EnvFromSecret(repo.Name, "RESTIC_PACK_SIZE", true),   // New in v0.14.0
-
-			utils.EnvFromSecret(repo.Name, "RESTIC_READ_CONCURRENCY", true), // New in v0.15.0
-
-			// Optional variables based on what backend is used for restic
-			utils.EnvFromSecret(repo.Name, "AWS_ACCESS_KEY_ID", true),
-			utils.EnvFromSecret(repo.Name, "AWS_SECRET_ACCESS_KEY", true),
-			utils.EnvFromSecret(repo.Name, "AWS_SESSION_TOKEN", true), // New in v0.14.0
-			utils.EnvFromSecret(repo.Name, "AWS_DEFAULT_REGION", true),
-			utils.EnvFromSecret(repo.Name, "AWS_PROFILE", true),
-			// AWS_SHARED_CREDENTIALS_FILE <- not implementing
-			utils.EnvFromSecret(repo.Name, "RESTIC_AWS_ASSUME_ROLE_ARN", true),          // New in v0.17.0
-			utils.EnvFromSecret(repo.Name, "RESTIC_AWS_ASSUME_ROLE_SESSION_NAME", true), // New in v0.17.0
-			utils.EnvFromSecret(repo.Name, "RESTIC_AWS_ASSUME_ROLE_EXTERNAL_ID", true),  // New in v0.17.0
-			utils.EnvFromSecret(repo.Name, "RESTIC_AWS_ASSUME_ROLE_POLICY", true),       // New in v0.17.0
-			utils.EnvFromSecret(repo.Name, "RESTIC_AWS_ASSUME_ROLE_REGION", true),       // New in v0.17.0
-			utils.EnvFromSecret(repo.Name, "RESTIC_AWS_ASSUME_ROLE_STS_ENDPOINT", true), // New in v0.17.0
-			utils.EnvFromSecret(repo.Name, "ST_AUTH", true),
-			utils.EnvFromSecret(repo.Name, "ST_USER", true),
-			utils.EnvFromSecret(repo.Name, "ST_KEY", true),
-			utils.EnvFromSecret(repo.Name, "OS_AUTH_URL", true),
-			utils.EnvFromSecret(repo.Name, "OS_REGION_NAME", true),
-			utils.EnvFromSecret(repo.Name, "OS_USERNAME", true),
-			utils.EnvFromSecret(repo.Name, "OS_USER_ID", true),
-			utils.EnvFromSecret(repo.Name, "OS_PASSWORD", true),
-			utils.EnvFromSecret(repo.Name, "OS_TENANT_ID", true),
-			utils.EnvFromSecret(repo.Name, "OS_TENANT_NAME", true),
-			utils.EnvFromSecret(repo.Name, "OS_USER_DOMAIN_NAME", true),
-			utils.EnvFromSecret(repo.Name, "OS_USER_DOMAIN_ID", true),
-			utils.EnvFromSecret(repo.Name, "OS_PROJECT_NAME", true),
-			utils.EnvFromSecret(repo.Name, "OS_PROJECT_DOMAIN_NAME", true),
-			utils.EnvFromSecret(repo.Name, "OS_PROJECT_DOMAIN_ID", true),
-			utils.EnvFromSecret(repo.Name, "OS_TRUST_ID", true),
-			utils.EnvFromSecret(repo.Name, "OS_APPLICATION_CREDENTIAL_ID", true),
-			utils.EnvFromSecret(repo.Name, "OS_APPLICATION_CREDENTIAL_NAME", true),
-			utils.EnvFromSecret(repo.Name, "OS_APPLICATION_CREDENTIAL_SECRET", true),
-			utils.EnvFromSecret(repo.Name, "OS_STORAGE_URL", true),
-			utils.EnvFromSecret(repo.Name, "OS_AUTH_TOKEN", true),
-			utils.EnvFromSecret(repo.Name, "B2_ACCOUNT_ID", true),
-			utils.EnvFromSecret(repo.Name, "B2_ACCOUNT_KEY", true),
-			utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_NAME", true),
-			utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_KEY", true),
-			utils.EnvFromSecret(repo.Name, "AZURE_ACCOUNT_SAS", true),     // New in v0.14.0
-			utils.EnvFromSecret(repo.Name, "AZURE_ENDPOINT_SUFFIX", true), // New in v0.16.0
-			utils.EnvFromSecret(repo.Name, "AZURE_TENANT_ID", true),
-			utils.EnvFromSecret(repo.Name, "AZURE_CLIENT_ID", true),
-			utils.EnvFromSecret(repo.Name, "AZURE_FEDERATED_TOKEN_FILE", true),
-			// AZURE_FORCE_CLI_CREDENTIAL <- not implementing, requires azure cli or local credentials stored from cli?
-			utils.EnvFromSecret(repo.Name, "GOOGLE_PROJECT_ID", true),
-			utils.EnvFromSecret(repo.Name, "RESTIC_REST_USERNAME", true), // New in v0.16.1
-			utils.EnvFromSecret(repo.Name, "RESTIC_REST_PASSWORD", true), // New in v0.16.1
 		}
+
+		// Append optional restic env vars from the secret
+		envVars = appendResticOptionalEnvVars(repo, envVars)
 
 		// Rclone env vars for restic if they are in the secret
 		envVars = utils.AppendRCloneEnvVars(repo, envVars)
@@ -707,4 +656,69 @@ func generateForgetOptions(policy *volsyncv1alpha1.ResticRetainPolicy) string {
 		return defaultForget
 	}
 	return forget
+}
+
+var resticOptionalEnvVars = [...]string{
+	"RESTIC_COMPRESSION", // New in v0.14.0
+	"RESTIC_PACK_SIZE",   // New in v0.14.0
+
+	"RESTIC_READ_CONCURRENCY", // New in v0.15.0
+
+	// Optional variables based on what backend is used for restic
+	"AWS_ACCESS_KEY_ID",
+	"AWS_SECRET_ACCESS_KEY",
+	"AWS_SESSION_TOKEN", // New in v0.14.0
+	"AWS_DEFAULT_REGION",
+	"AWS_PROFILE",
+	// AWS_SHARED_CREDENTIALS_FILE <- not implementing
+	"RESTIC_AWS_ASSUME_ROLE_ARN",          // New in v0.17.0
+	"RESTIC_AWS_ASSUME_ROLE_SESSION_NAME", // New in v0.17.0
+	"RESTIC_AWS_ASSUME_ROLE_EXTERNAL_ID",  // New in v0.17.0
+	"RESTIC_AWS_ASSUME_ROLE_POLICY",       // New in v0.17.0
+	"RESTIC_AWS_ASSUME_ROLE_REGION",       // New in v0.17.0
+	"RESTIC_AWS_ASSUME_ROLE_STS_ENDPOINT", // New in v0.17.0
+	"ST_AUTH",
+	"ST_USER",
+	"ST_KEY",
+	"OS_AUTH_URL",
+	"OS_REGION_NAME",
+	"OS_USERNAME",
+	"OS_USER_ID",
+	"OS_PASSWORD",
+	"OS_TENANT_ID",
+	"OS_TENANT_NAME",
+	"OS_USER_DOMAIN_NAME",
+	"OS_USER_DOMAIN_ID",
+	"OS_PROJECT_NAME",
+	"OS_PROJECT_DOMAIN_NAME",
+	"OS_PROJECT_DOMAIN_ID",
+	"OS_TRUST_ID",
+	"OS_APPLICATION_CREDENTIAL_ID",
+	"OS_APPLICATION_CREDENTIAL_NAME",
+	"OS_APPLICATION_CREDENTIAL_SECRET",
+	"OS_STORAGE_URL",
+	"OS_AUTH_TOKEN",
+	"B2_ACCOUNT_ID",
+	"B2_ACCOUNT_KEY",
+	"AZURE_ACCOUNT_NAME",
+	"AZURE_ACCOUNT_KEY",
+	"AZURE_ACCOUNT_SAS",     // New in v0.14.0
+	"AZURE_ENDPOINT_SUFFIX", // New in v0.16.0
+	"AZURE_TENANT_ID",
+	"AZURE_CLIENT_ID",
+	"AZURE_FEDERATED_TOKEN_FILE",
+	// AZURE_FORCE_CLI_CREDENTIAL <- not implementing, requires azure cli or local credentials stored from cli?
+	"GOOGLE_PROJECT_ID",
+	"RESTIC_REST_USERNAME", // New in v0.16.1
+	"RESTIC_REST_PASSWORD", // New in v0.16.1
+}
+
+func appendResticOptionalEnvVars(secret *corev1.Secret, envVars []corev1.EnvVar) []corev1.EnvVar {
+	for _, key := range resticOptionalEnvVars {
+		if _, ok := secret.Data[key]; ok {
+			envVars = append(envVars, utils.EnvFromSecret(secret.Name, key, true))
+		}
+	}
+
+	return envVars
 }
