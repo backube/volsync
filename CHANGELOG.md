@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## 0.16.0
+### Fixed
+
+- Restic optional env vars - only set in job if key exists in secret
+
+## [0.16.0]
 
 ### Changed
 
@@ -31,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - rsync-tls sets ciphers per OpenShift TLS profile compliance
 - Controller metrics endpoint checks central OpenShift TLS profile
 
-## 0.15.0
+## [0.15.0]
 
 ### Changed
 
