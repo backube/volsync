@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Restic optional env vars - only set in job if key exists in secret
+
+## [0.16.0]
+
 ### Changed
 
 - Restic updated to v0.18.1
@@ -29,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - rsync-tls sets ciphers per OpenShift TLS profile compliance
 - Controller metrics endpoint checks central OpenShift TLS profile
 
-## 0.15.0
+## [0.15.0]
 
 ### Changed
 
@@ -431,7 +437,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for rsync & rclone replication
 - Helm chart to deploy operator
 
-[Unreleased]: https://github.com/backube/volsync/compare/release-0.15...HEAD
+[Unreleased]: https://github.com/backube/volsync/compare/release-0.16...HEAD
+[0.16.0]: https://github.com/backube/volsync/compare/release-0.15...v0.16.0
 [0.15.0]: https://github.com/backube/volsync/compare/release-0.14...v0.15.0
 [0.14.0]: https://github.com/backube/volsync/compare/release-0.13...v0.14.0
 [0.13.1]: https://github.com/backube/volsync/compare/release-0.13.0...v0.13.1
