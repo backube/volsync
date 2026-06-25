@@ -1,0 +1,55 @@
+---
+
+- name: Check for required variables
+  fail: msg="Variable {{ item }} must be defined to use this role"
+  when: vars[var_check] is undefined
+  with_items:
+    - minio_namespace
+    - namespace
+    - kopia_secret_name
+  loop_control:
+    loop_var: var_check
+
+- include_role:
+    name: get_minio_credentials
+
+- name: Get bucket name to use (default is 'kopia-e2e')
+  ansible.builtin.set_fact:
+    bucket_name: "{{ bucket_name | default('kopia-e2e') }}"
+
+- name: Get path name to use under the bucket (default is namespace name)
+  ansible.builtin.set_fact:
+    path_name: "{{ path_name | default(namespace) }}"
+
+# Path in kopia includes the namespace for test isolation
+# While Kopia supports multiple clients in the same repository, separate paths
+# prevent test interference and provide cleaner test environments
+- name: Determine repo URL
+  set_fact:
+    repo_url: "s3://{{ bucket_name }}/{{ path_name }}"
+
+- name: Determine s3 endpoint URL
+  set_fact:
+    s3_endpoint: "http://minio.{{ minio_namespace }}.svc.cluster.local:9000"
+
+- name: Set endpoint URL to use TLS
+  set_fact:
+    s3_endpoint: "https://minio.{{ minio_namespace }}.svc.cluster.local:9000"
+  when: use_tls is defined and use_tls == true
+
+- name: Create kopia secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "{{ kopia_secret_name }}"
+        namespace: "{{ namespace }}"
+      type: Opaque
+      stringData:
+        KOPIA_REPOSITORY: "{{ repo_url }}"
+        KOPIA_PASSWORD: ThisIsTheKopiaPassword{{ namespace }}
+        AWS_ACCESS_KEY_ID: "{{ minio_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ minio_secret_key }}"
+        AWS_S3_ENDPOINT: "{{ s3_endpoint }}"

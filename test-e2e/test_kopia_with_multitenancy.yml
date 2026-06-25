@@ -1,0 +1,305 @@
+---
+- hosts: localhost
+  tags:
+    - e2e
+    - kopia
+    - multitenancy
+    - unprivileged
+  vars:
+    kopia_secret_name: kopia-secret-multitenancy
+  tasks:
+    - include_role:
+        name: create_namespace
+
+    - include_role:
+        name: gather_cluster_info
+
+    # We're running everything as a normal user
+    - name: Define podSecurityContext
+      ansible.builtin.set_fact:
+        podSecurityContext:
+          fsGroup: 5678
+          runAsGroup: 5678
+          runAsNonRoot: true
+          runAsUser: 1234
+          seccompProfile:
+            type: RuntimeDefault
+      when: not cluster_info.is_openshift
+
+    - include_role:
+        name: create_kopia_secret
+      vars:
+        minio_namespace: minio
+
+    - name: Create source PVC for app1
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          kind: PersistentVolumeClaim
+          apiVersion: v1
+          metadata:
+            name: app1-source
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 1Gi
+
+    - name: Create source PVC for app2
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          kind: PersistentVolumeClaim
+          apiVersion: v1
+          metadata:
+            name: app2-source
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 1Gi
+
+    - name: Write data into app1 PVC
+      include_role:
+        name: write_to_pvc
+      vars:
+        data: 'app1-data'
+        path: '/app1-datafile'
+        pvc_name: 'app1-source'
+
+    - name: Write data into app2 PVC
+      include_role:
+        name: write_to_pvc
+      vars:
+        data: 'app2-data'
+        path: '/app2-datafile'
+        pvc_name: 'app2-source'
+
+    # Test custom username/hostname for app1
+    - name: Backup app1 with custom identity (w/ mSC)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationSource
+          metadata:
+            name: app1-source
+            namespace: "{{ namespace }}"
+          spec:
+            sourcePVC: app1-source
+            trigger:
+              manual: app1-backup
+            kopia:
+              repository: "{{ kopia_secret_name }}"
+              username: "myapp1"
+              hostname: "test-cluster"
+              compression: zstd
+              copyMethod: Snapshot
+              cacheCapacity: 1Gi
+              moverSecurityContext: "{{ podSecurityContext }}"
+      when: podSecurityContext is defined
+
+    - name: Backup app1 with custom identity (w/o mSC)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationSource
+          metadata:
+            name: app1-source
+            namespace: "{{ namespace }}"
+          spec:
+            sourcePVC: app1-source
+            trigger:
+              manual: app1-backup
+            kopia:
+              repository: "{{ kopia_secret_name }}"
+              username: "myapp1"
+              hostname: "test-cluster"
+              compression: zstd
+              copyMethod: Snapshot
+              cacheCapacity: 1Gi
+      when: podSecurityContext is not defined
+
+    # Test default username/hostname for app2
+    - name: Backup app2 with default identity (w/ mSC)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationSource
+          metadata:
+            name: app2-source
+            namespace: "{{ namespace }}"
+          spec:
+            sourcePVC: app2-source
+            trigger:
+              manual: app2-backup
+            kopia:
+              repository: "{{ kopia_secret_name }}"
+              # No username/hostname specified - should use defaults
+              compression: zstd
+              copyMethod: Snapshot
+              cacheCapacity: 1Gi
+              moverSecurityContext: "{{ podSecurityContext }}"
+      when: podSecurityContext is defined
+
+    - name: Backup app2 with default identity (w/o mSC)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationSource
+          metadata:
+            name: app2-source
+            namespace: "{{ namespace }}"
+          spec:
+            sourcePVC: app2-source
+            trigger:
+              manual: app2-backup
+            kopia:
+              repository: "{{ kopia_secret_name }}"
+              # No username/hostname specified - should use defaults
+              compression: zstd
+              copyMethod: Snapshot
+              cacheCapacity: 1Gi
+      when: podSecurityContext is not defined
+
+    - name: Wait for app1 backup to complete
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationSource
+        name: app1-source
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastManualSync is defined and
+        res.resources[0].status.lastManualSync=="app1-backup" and
+        res.resources[0].status.latestMoverStatus is defined and
+        res.resources[0].status.latestMoverStatus.result == "Successful" and
+        res.resources[0].status.latestMoverStatus.logs is search("Using username override: myapp1") and
+        res.resources[0].status.latestMoverStatus.logs is search("Using hostname override: test-cluster")
+      delay: 1
+      retries: 300
+
+    - name: Wait for app2 backup to complete  
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationSource
+        name: app2-source
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastManualSync is defined and
+        res.resources[0].status.lastManualSync=="app2-backup" and
+        res.resources[0].status.latestMoverStatus is defined and
+        res.resources[0].status.latestMoverStatus.result == "Successful" and
+        res.resources[0].status.latestMoverStatus.logs is search("snapshot.*created") and
+        res.resources[0].status.latestMoverStatus.logs is search("Kopia completed in.*")
+      delay: 1
+      retries: 300
+
+    # Verify that app1 can only restore its own snapshots (custom identity)
+    - name: Create dest PVC for app1 restore
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          kind: PersistentVolumeClaim
+          apiVersion: v1
+          metadata:
+            name: app1-dest
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 1Gi
+
+    - name: Restore app1 data with matching identity (w/ mSC)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationDestination
+          metadata:
+            name: app1-restore
+            namespace: "{{ namespace }}"
+          spec:
+            trigger:
+              manual: app1-restore
+            kopia:
+              repository: "{{ kopia_secret_name }}"
+              username: "myapp1"       # Must match source
+              hostname: "test-cluster" # Must match source
+              destinationPVC: app1-dest
+              copyMethod: Direct
+              cacheCapacity: 1Gi
+              moverSecurityContext: "{{ podSecurityContext }}"
+      when: podSecurityContext is defined
+
+    - name: Restore app1 data with matching identity (w/o mSC)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationDestination
+          metadata:
+            name: app1-restore
+            namespace: "{{ namespace }}"
+          spec:
+            trigger:
+              manual: app1-restore
+            kopia:
+              repository: "{{ kopia_secret_name }}"
+              username: "myapp1"       # Must match source
+              hostname: "test-cluster" # Must match source
+              destinationPVC: app1-dest
+              copyMethod: Direct
+              cacheCapacity: 1Gi
+      when: podSecurityContext is not defined
+
+    - name: Wait for app1 restore to complete
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationDestination
+        name: app1-restore
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastManualSync is defined and
+        res.resources[0].status.lastManualSync=="app1-restore" and
+        res.resources[0].status.latestMoverStatus is defined and
+        res.resources[0].status.latestMoverStatus.result == "Successful" and
+        res.resources[0].status.latestMoverStatus.logs is search("Using username override: myapp1") and
+        res.resources[0].status.latestMoverStatus.logs is search("Using hostname override: test-cluster")
+      delay: 1
+      retries: 300
+
+    # Verify that app1 data was correctly restored
+    - name: Run pvc affinity pod for app1 comparison
+      include_role:
+        name: pvc_affinity_pod
+      vars:
+        pvc_names:
+          - app1-source
+          - app1-dest
+
+    - name: Verify contents of app1 PVC
+      include_role:
+        name: compare_pvc_data
+      vars:
+        pvc1_name: app1-source
+        pvc2_name: app1-dest
+
+    - name: Shutdown pvc affinity pod
+      include_role:
+        name: pvc_affinity_pod
+        tasks_from: "delete"
