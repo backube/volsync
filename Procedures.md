@@ -210,6 +210,7 @@ from the csv.spec when it's empty for us.
 
 * Go
   * Change the version number in [operator.yml](.github/workflows/operator.yml)
+  * Change the version number in [release.yml](.github/workflows/release.yml)
   * Change the version number in [go.mod](go.mod)
     * Run `go mod tidy -go=X.Y`
   * Change the version number in [custom-scorecard-tests/go.mod](custom-scorecard-tests/go.mod)
