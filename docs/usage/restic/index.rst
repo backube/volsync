@@ -121,6 +121,9 @@ replication method.
        #storageClassName: my-sc-name
        # The VSC to use if the copy method is Snapshot (default if omitted)
        #volumeSnapshotClassName: my-vsc-name
+       # Exclude directories tagged with CACHEDIR.TAG from the backup
+       #exclude:
+       #  caches: true
 
 Backup options
 --------------
@@ -142,6 +145,16 @@ cacheAccessModes
    This is the access mode(s) that should be used to provision the cache volume.
    It defaults to ``.spec.accessModes``, then to the access modes used by the
    source PVC.
+exclude
+   Options for excluding files and directories from the backup.
+
+   caches
+      When set to ``true``, the restic backup will be run with the
+      ``--exclude-caches`` flag, which skips any directory containing a
+      ``CACHEDIR.TAG`` file whose contents begin with the signature
+      ``Signature: 8a477f597d28d172789f06886806bc55``. This follows the `Cache
+      Directory Tagging Standard <https://bford.info/cachedir/>`_. Defaults to
+      ``false``.
 customCA
    This option allows a custom certificate authority to be used when making TLS
    (https) connections to the remote repository.

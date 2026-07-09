@@ -154,7 +154,13 @@ function ensure_initialized {
 function do_backup {
     echo "=== Starting backup ==="
     pushd "${DATA_DIR}"
-    "${RESTIC[@]}" backup --host "${RESTIC_HOST}" --exclude='lost+found' .
+    declare -a BACKUP_OPTS
+    BACKUP_OPTS=(--host "${RESTIC_HOST}" --exclude='lost+found')
+    if [[ "${EXCLUDE_CACHES}" == "true" ]]; then
+        echo "Excluding cache directories (CACHEDIR.TAG)"
+        BACKUP_OPTS+=(--exclude-caches)
+    fi
+    "${RESTIC[@]}" backup "${BACKUP_OPTS[@]}" .
     popd
 }
 

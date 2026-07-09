@@ -1625,6 +1625,48 @@ var _ = Describe("Restic as a source", func() {
 				})
 			})
 
+			Context("Exclude caches", func() {
+				When("excludeCaches is not set", func() {
+					It("should not set EXCLUDE_CACHES env var", func() {
+						j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(j).To(BeNil()) // hasn't completed
+						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+						job = &batchv1.Job{}
+						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+
+						envVars := job.Spec.Template.Spec.Containers[0].Env
+						for _, envVar := range envVars {
+							Expect(envVar.Name).NotTo(Equal("EXCLUDE_CACHES"))
+						}
+					})
+				})
+				When("excludeCaches is set to true", func() {
+					JustBeforeEach(func() {
+						mover.excludeCaches = true
+					})
+					It("should set EXCLUDE_CACHES env var to true", func() {
+						j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+						Expect(e).NotTo(HaveOccurred())
+						Expect(j).To(BeNil()) // hasn't completed
+						nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+						job = &batchv1.Job{}
+						Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+
+						var excludeCaches *corev1.EnvVar
+						envVars := job.Spec.Template.Spec.Containers[0].Env
+						for i := range envVars {
+							envVar := envVars[i]
+							if envVar.Name == "EXCLUDE_CACHES" {
+								excludeCaches = &envVar
+							}
+						}
+						Expect(excludeCaches).NotTo(BeNil())
+						Expect(excludeCaches.Value).To(Equal("true"))
+					})
+				})
+			})
+
 			// nolint:dupl
 			Context("Unlock tests", func() {
 				When("Unlock is used (spec.restic.unlock", func() {

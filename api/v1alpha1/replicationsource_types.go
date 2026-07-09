@@ -176,6 +176,18 @@ type ResticRetainPolicy struct {
 	Last *string `json:"last,omitempty"`
 }
 
+// ResticExclude defines options for excluding files and directories from restic backups.
+type ResticExclude struct {
+	// caches determines whether to exclude directories tagged with a standard
+	// CACHEDIR.TAG file from the backup. When set to true, the restic backup
+	// command will be run with the --exclude-caches flag, which skips any
+	// directory containing a CACHEDIR.TAG file that starts with the signature
+	// "Signature: 8a477f597d28d172789f06886806bc55".
+	// See https://bford.info/cachedir/ for the Cache Directory Tagging Standard.
+	//+optional
+	Caches bool `json:"caches,omitempty"`
+}
+
 type ReplicationSourceResticCA CustomCASpec
 
 // ReplicationSourceResticSpec defines the field for restic in replicationSource.
@@ -209,6 +221,9 @@ type ReplicationSourceResticSpec struct {
 	// then ran a backup.
 	// Unlock will not be run again unless spec.restic.unlock is set to a different value.
 	Unlock string `json:"unlock,omitempty"`
+	// exclude defines options for excluding files and directories from the backup.
+	//+optional
+	Exclude *ResticExclude `json:"exclude,omitempty"`
 
 	MoverConfig `json:",inline"`
 }
