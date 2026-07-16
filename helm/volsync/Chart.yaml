@@ -24,14 +24,8 @@ annotations: # https://artifacthub.io/docs/topics/annotations/helm/
   # Changelog for current chart & app version
   # Kinds: added, changed, deprecated, removed, fixed, and security
   artifacthub.io/changes: |
-    - kind: changed
-      description: moverVolumes updated to allow NFS type volumeMounts
-    - kind: changed
-      description: Rclone updated to v1.73.1
-    - kind: changed
-      description: kube-rbac-proxy container no longer used. Built in auth for metrics provided by controller-runtime
-    - kind: fixed
-      description: Exclude lost+found for Rclone
+    - kind: security
+      description: Bump google.golang.org/grpc from 1.72.2 to 1.79.3
   artifacthub.io/crds: |
     - kind: ReplicationDestination
       version: v1alpha1
@@ -58,10 +52,10 @@ kubeVersion: "^1.20.0-0"
 # This is the chart version. This version number should be incremented each time
 # you make changes to the chart and its templates, including the app version.
 # Versions are expected to follow Semantic Versioning (https://semver.org/)
-version: "0.15.1"
+version: "0.15.2"
 
 # This is the version number of the application being deployed. This version
 # number should be incremented each time you make changes to the application.
 # Versions are not expected to follow Semantic Versioning. They should reflect
 # the version the application is using. It is recommended to use it with quotes.
-appVersion: "0.15.1"
+appVersion: "0.15.2"
