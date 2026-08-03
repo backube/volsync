@@ -43,6 +43,16 @@
         mountPath: {}
   - entrypoint:
     - volsync-custom-scorecard-tests
+    - test_rclone_priv_with_symlinks.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_rclone_priv_with_symlinks.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
     - test_rclone_with_customca_configmap.yml
     image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:
