@@ -38,6 +38,7 @@ spec:
 
               echo "... all file contents matched"
 
+{% if not skip_symlink_check | default(false) %}
               echo "Validating symlinks: PVC1 -> PVC2"
               find /mnt -type l | { grep -v lost+found || true; } | sort | while IFS= read -r f; do
                 f2=$(echo "$f" | sed 's|^/mnt/|/mnt2/|')
@@ -64,13 +65,24 @@ spec:
               done
 
               echo "... all symlinks matched"
+{% else %}
+              echo "Skipping symlink validation (skip_symlink_check=true)"
+{% endif %}
 
               echo "File attributes:"
+{% if skip_symlink_check | default(false) %}
+              find /mnt -not -type l -exec stat -c "{{ properties_to_verify }}" {} \; | \
+{% else %}
               find /mnt -exec stat -c "{{ properties_to_verify }}" {} \; | \
+{% endif %}
                 grep -v lost+found | \
                 sort | tee /tmp/attributes-mnt
               sed -ri 's|/mnt|/mnt2|' /tmp/attributes-mnt
+{% if skip_symlink_check | default(false) %}
+              find /mnt2 -not -type l -exec stat -c "{{ properties_to_verify }}" {} \; | \
+{% else %}
               find /mnt2 -exec stat -c "{{ properties_to_verify }}" {} \; | \
+{% endif %}
                 grep -v lost+found | \
                 sort > /tmp/attributes-mnt2
 
