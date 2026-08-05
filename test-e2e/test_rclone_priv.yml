@@ -50,13 +50,18 @@
               requests:
                 storage: 1Gi
 
-    - name: Write data into the source PVC
+    - name: Write data and symlinks into the source PVC
       include_role:
         name: write_to_pvc
       vars:
         data: 'data'
         path: '/datafile'
         pvc_name: 'data-source'
+        symlinks:
+          - path: '/mysql.sock'
+            target: '/var/run/mysqld/mysqld.sock'
+          - path: '/link-relative'
+            target: 'datafile'
 
     - name: Sync data from source volume
       kubernetes.core.k8s:
@@ -184,3 +189,4 @@
         pvc1_name: data-source
         pvc2_name: data-dest
         timeout: 900
+        skip_symlink_check: true
