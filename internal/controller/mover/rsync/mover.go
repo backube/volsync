@@ -22,6 +22,7 @@ package rsync
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -69,6 +70,7 @@ type Mover struct {
 	isSource           bool
 	paused             bool
 	mainPVCName        *string
+	privileged         bool
 	latestMoverStatus  *volsyncv1alpha1.MoverStatus
 	moverConfig        volsyncv1alpha1.MoverConfig
 	// Source-only fields
@@ -92,6 +94,11 @@ func (m *Mover) Name() string { return rsyncMoverName }
 
 func (m *Mover) Synchronize(ctx context.Context) (mover.Result, error) {
 	var err error
+
+	// Rsync-SSH mover requires privileged mode in order to work.
+	if !m.privileged {
+		return mover.InProgress(), fmt.Errorf("rsync-ssh mover requires privileged mode")
+	}
 
 	// Allocate temporary data PVC
 	var dataPVC *corev1.PersistentVolumeClaim

@@ -34,6 +34,10 @@ var _ = Describe("ReplicationSource", func() {
 		namespace = &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
 				GenerateName: "volsync-test-",
+				Annotations: map[string]string{
+					// Rsync-ssh requires privileged movers enabled via this ns annotation
+					volsyncv1alpha1.PrivilegedMoversNamespaceAnnotation: "true",
+				},
 			},
 		}
 		createWithCacheReload(ctx, k8sClient, namespace)
@@ -101,6 +105,50 @@ var _ = Describe("ReplicationSource", func() {
 			Expect(errCond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(errCond.Reason).To(Equal(volsyncv1alpha1.SynchronizingReasonError))
 			Expect(errCond.Message).To(ContainSubstring("a replication method must be specified"))
+		})
+	})
+
+	//nolint:dupl
+	Context("When the privileged movers annotation is not set on the ns", func() {
+		var unprivilegedNamespace *corev1.Namespace
+
+		BeforeEach(func() {
+			// create a separate namespace without the privileged movers annotation for this test
+			// Each test is run in its own namespace
+			unprivilegedNamespace = &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					GenerateName: "volsync-test-unprivileged-",
+				},
+			}
+			createWithCacheReload(ctx, k8sClient, unprivilegedNamespace)
+			Expect(unprivilegedNamespace.Name).NotTo(BeEmpty())
+
+			// Update our RD to use the unprivileged namespace
+			rs.Namespace = unprivilegedNamespace.Name
+
+			// Set rsync as the replication method
+			rs.Spec.Rsync = &volsyncv1alpha1.ReplicationSourceRsyncSpec{
+				ReplicationSourceVolumeOptions: volsyncv1alpha1.ReplicationSourceVolumeOptions{
+					CopyMethod: volsyncv1alpha1.CopyMethodClone,
+				},
+			}
+		})
+		AfterEach(func() {
+			// All resources are namespaced, so this should clean it all up
+			Expect(k8sClient.Delete(ctx, unprivilegedNamespace)).To(Succeed())
+		})
+
+		It("the CR should report an error in the status (requiring privileged mode)", func() {
+			Eventually(func() *volsyncv1alpha1.ReplicationSourceStatus {
+				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rs), rs)).To(Succeed())
+				return rs.Status
+			}, duration, interval).ShouldNot(BeNil())
+			Expect(rs.Status.Conditions).To(HaveLen(1))
+			errCond := rs.Status.Conditions[0]
+			Expect(errCond.Type).To(Equal(volsyncv1alpha1.ConditionSynchronizing))
+			Expect(errCond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(errCond.Reason).To(Equal(volsyncv1alpha1.SynchronizingReasonError))
+			Expect(errCond.Message).To(ContainSubstring("mover requires privileged mode"))
 		})
 	})
 
