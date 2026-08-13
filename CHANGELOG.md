@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The Rsync-ssh mover now requires privileged mode to run. Previously for backwards
+  compatibility it forced privileged mode. Note: Rsync-TLS is still the recommended
+  mover for Rsync.
+
 ### Fixed
 
 - Restic optional env vars - only set in job if key exists in secret

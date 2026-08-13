@@ -34,6 +34,10 @@ data transfer is both authenticated and secure.
   Using rsync replication over SSH is deprecated. Users should move to the
   :doc:`TLS-based rsync </usage/rsync-tls/index>` replication method.
 
+  Rsync replication over SSH requires elevated privileges, and starting
+  from VolSync v0.17.0 will require the privileged mover annotation on the
+  namespace. See :doc:`Mover permission model </usage/permissionmodel>` for more.
+
 The Rsync method is typically configured to use a "push" model for the data
 replication. A schedule or other trigger is used on the source side of the
 relationship to trigger each replication iteration.

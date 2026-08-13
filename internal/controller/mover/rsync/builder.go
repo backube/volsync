@@ -94,7 +94,7 @@ func (rb *Builder) getRsyncContainerImage() string {
 
 func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 	eventRecorder events.EventRecorder,
-	source *volsyncv1alpha1.ReplicationSource, _ bool) (mover.Mover, error) {
+	source *volsyncv1alpha1.ReplicationSource, privileged bool) (mover.Mover, error) {
 	// Only build if the CR belongs to us
 	if source.Spec.Rsync == nil {
 		return nil, nil
@@ -121,8 +121,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 
 	isSource := true
 
-	saHandler := utils.NewSAHandler(client, source, isSource, true, /*Rsync runs privileged only*/
-		source.Spec.Rsync.MoverServiceAccount)
+	saHandler := utils.NewSAHandler(client, source, isSource, privileged, source.Spec.Rsync.MoverServiceAccount)
 
 	return &Mover{
 		client:             client,
@@ -140,6 +139,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 		isSource:           isSource,
 		paused:             source.Spec.Paused,
 		mainPVCName:        &source.Spec.SourcePVC,
+		privileged:         privileged,
 		sourceStatus:       source.Status.Rsync,
 		latestMoverStatus:  source.Status.LatestMoverStatus,
 		moverConfig: volsyncv1alpha1.MoverConfig{
@@ -153,7 +153,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 //nolint:funlen
 func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 	eventRecorder events.EventRecorder,
-	destination *volsyncv1alpha1.ReplicationDestination, _ bool) (mover.Mover, error) {
+	destination *volsyncv1alpha1.ReplicationDestination, privileged bool) (mover.Mover, error) {
 	// Only build if the CR belongs to us
 	if destination.Spec.Rsync == nil {
 		return nil, nil
@@ -181,8 +181,7 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 
 	isSource := false
 
-	saHandler := utils.NewSAHandler(client, destination, isSource, true, /*Rsync runs privileged only*/
-		destination.Spec.Rsync.MoverServiceAccount)
+	saHandler := utils.NewSAHandler(client, destination, isSource, privileged, destination.Spec.Rsync.MoverServiceAccount)
 
 	var svcAnnotations map[string]string
 	if destination.Spec.Rsync.ServiceAnnotations != nil {
@@ -208,6 +207,7 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 		isSource:           isSource,
 		paused:             destination.Spec.Paused,
 		mainPVCName:        destination.Spec.Rsync.DestinationPVC,
+		privileged:         privileged,
 		cleanupTempPVC:     destination.Spec.Rsync.CleanupTempPVC,
 		destStatus:         destination.Status.Rsync,
 		latestMoverStatus:  destination.Status.LatestMoverStatus,

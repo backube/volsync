@@ -575,31 +575,9 @@ var _ = Describe("Rsync as a source", func() {
 				})
 			})
 
-			When("Mover is unprivileged", func() {
-				// This test is here as the common builder func will instantiate rsync (FromSource/Dest)
-				// with privileged=false if there is no privileged annotation from the namespace, but
-				// rsync is a special case and will always run unprivileged (rsync-tls uses the new behavior
-				// and rsync will eventually get deprecated)
-				It("Should create a service account with role and role binding with access to scc "+
-					"(rsync always runs privileged)", func() {
-					// Instantiate a separate rclone mover for this tests using unprivileged
-					m, err := commonBuilderForTestSuite.FromSource(k8sClient, logger, &events.FakeRecorder{}, rs,
-						false /* unprivileged */)
-					Expect(err).NotTo(HaveOccurred())
-					Expect(m).NotTo(BeNil())
-					unprivMover, _ := m.(*Mover)
-					Expect(unprivMover).NotTo(BeNil())
-
-					var sa *corev1.ServiceAccount
-					Eventually(func() bool {
-						sa, err = unprivMover.saHandler.Reconcile(ctx, logger)
-						return sa != nil && err == nil
-					}, timeout, interval).Should(BeTrue())
-					Expect(err).ToNot(HaveOccurred())
-
-					validateSaRoleAndRoleBinding(sa, ns.GetName())
-				})
-			})
+			// Previously we tested the saHandler in unprivileged mode, but now we don't allow rsync-ssh to run in
+			// unprivileged mode, so this test is no longer valid - the mover code will return an error before
+			// getting to the saHandler.Reconcile() call.
 
 			//nolint:dupl
 			When("A user supplied moverServiceAccount is set in the spec", func() {
@@ -1596,31 +1574,9 @@ var _ = Describe("Rsync as a destination", func() {
 				})
 			})
 
-			When("Mover is unprivileged", func() {
-				// This test is here as the common builder func will instantiate rsync (FromSource/Dest)
-				// with privileged=false if there is no privileged annotation from the namespace, but
-				// rsync is a special case and will always run unprivileged (rsync-tls uses the new behavior
-				// and rsync will eventually get deprecated)
-				It("Should create a service account with role and role binding with access to scc "+
-					"(rsync always runs privileged)", func() {
-					// Instantiate a separate rclone mover for this tests using unprivileged
-					m, err := commonBuilderForTestSuite.FromDestination(k8sClient, logger, &events.FakeRecorder{}, rd,
-						false /* unprivileged */)
-					Expect(err).NotTo(HaveOccurred())
-					Expect(m).NotTo(BeNil())
-					unprivMover, _ := m.(*Mover)
-					Expect(unprivMover).NotTo(BeNil())
-
-					var sa *corev1.ServiceAccount
-					Eventually(func() bool {
-						sa, err = unprivMover.saHandler.Reconcile(ctx, logger)
-						return sa != nil && err == nil
-					}, timeout, interval).Should(BeTrue())
-					Expect(err).ToNot(HaveOccurred())
-
-					validateSaRoleAndRoleBinding(sa, ns.GetName())
-				})
-			})
+			// Previously we tested the saHandler in unprivileged mode, but now we don't allow rsync-ssh to run in
+			// unprivileged mode, so this test is no longer valid - the mover code will return an error before
+			// getting to the saHandler.Reconcile() call.
 
 			When("A user supplied moverServiceAccount is set in the spec", func() {
 				userSuppliedMoverSvcAccount := "cust-svc-acct"
