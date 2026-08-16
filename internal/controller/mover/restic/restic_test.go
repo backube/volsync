@@ -71,34 +71,33 @@ var _ = Describe("Restic retain policy", func() {
 	})
 	Context("When a retain policy is specified", func() {
 		It("has forget options that correspond", func() {
-			one := int32(1)
-			two := int32(2)
-			three := int32(3)
-			four := int32(4)
-			five := int32(5)
 			policy := &volsyncv1alpha1.ResticRetainPolicy{
-				Hourly:  &five,
-				Daily:   &four,
-				Weekly:  &three,
-				Monthly: &two,
-				Yearly:  &one,
+				Hourly:  new(int32(5)),
+				Daily:   new(int32(4)),
+				Weekly:  new(int32(3)),
+				Monthly: new(int32(2)),
+				Yearly:  new(int32(1)),
 			}
 			forget := generateForgetOptions(policy)
-			Expect(forget).NotTo(MatchRegexp("--keep-last"))
-			Expect(forget).NotTo(MatchRegexp("--within"))
-			Expect(forget).To(MatchRegexp("(^|\\s)--keep-hourly\\s+5(\\s|$)"))
-			Expect(forget).To(MatchRegexp("(^|\\s)--keep-daily\\s+4(\\s|$)"))
-			Expect(forget).To(MatchRegexp("(^|\\s)--keep-weekly\\s+3(\\s|$)"))
-			Expect(forget).To(MatchRegexp("(^|\\s)--keep-monthly\\s+2(\\s|$)"))
-			Expect(forget).To(MatchRegexp("(^|\\s)--keep-yearly\\s+1(\\s|$)"))
+			Expect(forget).To(Equal(" --keep-hourly 5 --keep-daily 4 --keep-weekly 3 --keep-monthly 2 --keep-yearly 1"))
+			Expect(forget).NotTo(And(
+				ContainSubstring("--keep-last"),
+				ContainSubstring("--keep-within"),
+			))
 		})
-		It("permits time-based retention", func() {
-			duration := "5m3w1d"
+		It("permits time-based & last retention", func() {
 			policy := &volsyncv1alpha1.ResticRetainPolicy{
-				Within: &duration,
+				Last:          new("3"),
+				Within:        new("5m3w1d"),
+				WithinHourly:  new("2d"),
+				WithinDaily:   new("7d"),
+				WithinWeekly:  new("2m"),
+				WithinMonthly: new("1y"),
+				WithinYearly:  new("10y"),
 			}
 			forget := generateForgetOptions(policy)
-			Expect(forget).To(MatchRegexp("^\\s*--keep-within\\s+5m3w1d\\s*$"))
+			// nolint:lll
+			Expect(forget).To(Equal(" --keep-last 3 --keep-within 5m3w1d --keep-within-hourly 2d --keep-within-daily 7d --keep-within-weekly 2m --keep-within-monthly 1y --keep-within-yearly 10y"))
 		})
 	})
 })
