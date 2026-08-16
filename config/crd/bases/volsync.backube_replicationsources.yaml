@@ -2994,8 +2994,28 @@ spec:
                         format: int32
                         type: integer
                       within:
-                        description: Within defines the number of snapshots to be
-                          kept Within the given time period
+                        description: Within defines the duration in which to keep
+                          all snapshosts
+                        type: string
+                      withinDaily:
+                        description: WithinDaily defines the duration in which to
+                          keep daily snapshots
+                        type: string
+                      withinHourly:
+                        description: WithinHourly defines the duration in which to
+                          keep hourly snapshots
+                        type: string
+                      withinMonthly:
+                        description: WithinMonthly defines the duration in which to
+                          keep monthly snapshots
+                        type: string
+                      withinWeekly:
+                        description: WithinWeekly defines the duration in which to
+                          keep weekly snapshots
+                        type: string
+                      withinYearly:
+                        description: WithinYearly defines the duration in which to
+                          keep yearly snapshots
                         type: string
                       yearly:
                         description: Yearly defines the number of snapshots to be
