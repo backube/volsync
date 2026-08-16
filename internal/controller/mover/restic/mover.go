@@ -638,7 +638,7 @@ func generateForgetOptions(policy *volsyncv1alpha1.ResticRetainPolicy) string {
 	}
 
 	var forget string
-	optionTable := []struct {
+	numberOptionTable := []struct {
 		opt   string
 		value *int32
 	}{
@@ -648,16 +648,28 @@ func generateForgetOptions(policy *volsyncv1alpha1.ResticRetainPolicy) string {
 		{"--keep-monthly", policy.Monthly},
 		{"--keep-yearly", policy.Yearly},
 	}
-	for _, v := range optionTable {
+	for _, v := range numberOptionTable {
 		if v.value != nil {
 			forget += fmt.Sprintf(" %s %d", v.opt, *v.value)
 		}
 	}
-	if policy.Within != nil {
-		forget += fmt.Sprintf(" --keep-within %s", *policy.Within)
+
+	durationOptionTable := []struct {
+		opt   string
+		value *string
+	}{
+		{"--keep-last", policy.Last}, // not sure why this is a string
+		{"--keep-within", policy.Within},
+		{"--keep-within-hourly", policy.WithinHourly},
+		{"--keep-within-daily", policy.WithinDaily},
+		{"--keep-within-weekly", policy.WithinWeekly},
+		{"--keep-within-monthly", policy.WithinMonthly},
+		{"--keep-within-yearly", policy.WithinYearly},
 	}
-	if policy.Last != nil {
-		forget += fmt.Sprintf(" --keep-last %s", *policy.Last)
+	for _, v := range durationOptionTable {
+		if v.value != nil {
+			forget += fmt.Sprintf(" %s %s", v.opt, *v.value)
+		}
 	}
 
 	if len(forget) == 0 { // Retain policy was present, but empty
