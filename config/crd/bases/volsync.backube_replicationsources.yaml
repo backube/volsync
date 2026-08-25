@@ -1581,6 +1581,20 @@ spec:
                           If SecretName is used then ConfigMapName should not be set
                         type: string
                     type: object
+                  exclude:
+                    description: exclude defines options for excluding files and directories
+                      from the backup.
+                    properties:
+                      caches:
+                        description: |-
+                          caches determines whether to exclude directories tagged with a standard
+                          CACHEDIR.TAG file from the backup. When set to true, the restic backup
+                          command will be run with the --exclude-caches flag, which skips any
+                          directory containing a CACHEDIR.TAG file that starts with the signature
+                          "Signature: 8a477f597d28d172789f06886806bc55".
+                          See https://bford.info/cachedir/ for the Cache Directory Tagging Standard.
+                        type: boolean
+                    type: object
                   moverAffinity:
                     description: MoverAffinity allows specifying the PodAffinity that
                       will be used by the data mover

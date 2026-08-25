@@ -81,6 +81,7 @@ type Mover struct {
 	// Source-only fields
 	pruneInterval *int32
 	unlock        string
+	excludeCaches bool
 	retainPolicy  *volsyncv1alpha1.ResticRetainPolicy
 	sourceStatus  *volsyncv1alpha1.ReplicationSourceResticStatus
 	// Destination-only fields
@@ -425,6 +426,13 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 
 		// Cluster-wide proxy settings
 		envVars = utils.AppendEnvVarsForClusterWideProxy(envVars)
+
+		if m.excludeCaches {
+			envVars = append(envVars, corev1.EnvVar{
+				Name:  "EXCLUDE_CACHES",
+				Value: "true",
+			})
+		}
 
 		// Run mover in debug mode if required
 		envVars = utils.AppendDebugMoverEnvVar(m.owner, envVars)
