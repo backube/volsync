@@ -253,6 +253,11 @@ func UpdatePodTemplateSpecFromMoverConfig(podTemplateSpec *corev1.PodTemplateSpe
 		podTemplateSpec.Spec.Affinity = moverConfig.MoverAffinity
 	}
 
+	// Tolerations
+	if moverConfig.MoverTolerations != nil {
+		podTemplateSpec.Spec.Tolerations = moverConfig.MoverTolerations
+	}
+
 	// Adjust the job/deploy containers resourceRequirements based on resourceRequirements from the moverConfig
 	moverResources := defaultMoverResources
 	if moverConfig.MoverResources != nil {

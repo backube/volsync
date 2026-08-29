@@ -172,6 +172,9 @@ type MoverConfig struct {
 	MoverResources *corev1.ResourceRequirements `json:"moverResources,omitempty"`
 	// MoverAffinity allows specifying the PodAffinity that will be used by the data mover
 	MoverAffinity *corev1.Affinity `json:"moverAffinity,omitempty"`
+	// MoverTolerations allows specifying the tolerations that will be used by the data mover.
+	// +optional
+	MoverTolerations []corev1.Toleration `json:"moverTolerations,omitempty"`
 	// MoverVolumes are PVCs or Secrets that should additionally be mounted to the mover job pod.
 	// This should only be used by advanced users.
 	// +optional

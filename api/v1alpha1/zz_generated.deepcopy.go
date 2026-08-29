@@ -88,6 +88,13 @@ func (in *MoverConfig) DeepCopyInto(out *MoverConfig) {
 		*out = new(v1.Affinity)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.MoverTolerations != nil {
+		in, out := &in.MoverTolerations, &out.MoverTolerations
+		*out = make([]v1.Toleration, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	if in.MoverVolumes != nil {
 		in, out := &in.MoverVolumes, &out.MoverVolumes
 		*out = make([]MoverVolume, len(*in))
