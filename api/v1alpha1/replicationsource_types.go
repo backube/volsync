@@ -153,6 +153,9 @@ type ReplicationSourceRcloneSpec struct {
 
 // ResticRetainPolicy defines the feilds for Restic backup
 type ResticRetainPolicy struct {
+	// Last defines the number of snapshots to be kept
+	//+optional
+	Last *string `json:"last,omitempty"`
 	// Hourly defines the number of snapshots to be kept hourly
 	//+optional
 	Hourly *int32 `json:"hourly,omitempty"`
@@ -168,12 +171,24 @@ type ResticRetainPolicy struct {
 	// Yearly defines the number of snapshots to be kept yearly
 	//+optional
 	Yearly *int32 `json:"yearly,omitempty"`
-	// Within defines the number of snapshots to be kept Within the given time period
+	// Within defines the duration in which to keep all snapshosts
 	//+optional
 	Within *string `json:"within,omitempty"`
-	// Last defines the number of snapshots to be kept
+	// WithinHourly defines the duration in which to keep hourly snapshots
 	//+optional
-	Last *string `json:"last,omitempty"`
+	WithinHourly *string `json:"withinHourly,omitempty"`
+	// WithinDaily defines the duration in which to keep daily snapshots
+	//+optional
+	WithinDaily *string `json:"withinDaily,omitempty"`
+	// WithinWeekly defines the duration in which to keep weekly snapshots
+	//+optional
+	WithinWeekly *string `json:"withinWeekly,omitempty"`
+	// WithinMonthly defines the duration in which to keep monthly snapshots
+	//+optional
+	WithinMonthly *string `json:"withinMonthly,omitempty"`
+	// WithinYearly defines the duration in which to keep yearly snapshots
+	//+optional
+	WithinYearly *string `json:"withinYearly,omitempty"`
 }
 
 // ResticExclude defines options for excluding files and directories from restic backups.
