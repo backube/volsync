@@ -15,13 +15,18 @@ import (
 	"github.com/restic/restic/internal/crypto"
 )
 
+// ErrBroken is returned by Add and Finalize after a write error. The packer
+// must not be used again.
+var ErrBroken = errors.New("packer cannot be used after a write error")
+
 // Packer is used to create a new Pack.
 type Packer struct {
-	blobs []restic.Blob
+	blobs restic.Blobs
 
 	bytes uint
 	k     *crypto.Key
 	wr    io.Writer
+	err   error // packer is unusable after the first error
 
 	m sync.Mutex
 }
@@ -37,17 +42,30 @@ func (p *Packer) Add(t restic.BlobType, id restic.ID, data []byte, uncompressedL
 	p.m.Lock()
 	defer p.m.Unlock()
 
-	c := restic.Blob{BlobHandle: restic.BlobHandle{Type: t, ID: id}}
+	if p.err != nil {
+		return 0, errors.Join(ErrBroken, p.err)
+	}
 
 	n, err := p.wr.Write(data)
-	c.Length = uint(n)
-	c.Offset = p.bytes
-	c.UncompressedLength = uint(uncompressedLength)
+	if err != nil {
+		p.err = errors.Wrap(err, "Write")
+		return n, p.err
+	}
+	if n != len(data) {
+		p.err = errors.New("short write")
+		return n, p.err
+	}
+
+	c := restic.Blob{
+		BlobHandle:         restic.BlobHandle{Type: t, ID: id},
+		Length:             uint(n),
+		Offset:             p.bytes,
+		UncompressedLength: uint(uncompressedLength),
+	}
 	p.bytes += uint(n)
 	p.blobs = append(p.blobs, c)
-	n += CalculateEntrySize(c)
 
-	return n, errors.Wrap(err, "Write")
+	return n + CalculateEntrySize(c), nil
 }
 
 var entrySize = uint(binary.Size(restic.BlobType(0)) + 2*headerLengthSize + len(restic.ID{}))
@@ -75,6 +93,10 @@ func (p *Packer) Finalize() error {
 	p.m.Lock()
 	defer p.m.Unlock()
 
+	if p.err != nil {
+		return errors.Join(ErrBroken, p.err)
+	}
+
 	header, err := makeHeader(p.blobs)
 	if err != nil {
 		return err
@@ -87,25 +109,27 @@ func (p *Packer) Finalize() error {
 	encryptedHeader = binary.LittleEndian.AppendUint32(encryptedHeader, uint32(len(encryptedHeader)))
 
 	if err := verifyHeader(p.k, encryptedHeader, p.blobs); err != nil {
-		//nolint:revive // ignore linter warnings about error message spelling
+		//nolint:revive,staticcheck // ignore linter warnings about error message spelling
 		return fmt.Errorf("Detected data corruption while writing pack-file header: %w\nCorrupted data is either caused by hardware issues or software bugs. Please open an issue at https://github.com/restic/restic/issues/new/choose for further troubleshooting.", err)
 	}
 
 	// append the header
 	n, err := p.wr.Write(encryptedHeader)
 	if err != nil {
-		return errors.Wrap(err, "Write")
+		p.err = errors.Wrap(err, "Write")
+		return p.err
 	}
 
 	if n != len(encryptedHeader) {
-		return errors.New("wrong number of bytes written")
+		p.err = errors.New("wrong number of bytes written")
+		return p.err
 	}
 	p.bytes += uint(len(encryptedHeader))
 
 	return nil
 }
 
-func verifyHeader(k *crypto.Key, header []byte, expected []restic.Blob) error {
+func verifyHeader(k *crypto.Key, header []byte, expected restic.Blobs) error {
 	// do not offer a way to skip the pack header verification, as pack headers are usually small enough
 	// to not result in a significant performance impact
 
@@ -133,7 +157,7 @@ func (p *Packer) HeaderOverhead() int {
 }
 
 // makeHeader constructs the header for p.
-func makeHeader(blobs []restic.Blob) ([]byte, error) {
+func makeHeader(blobs restic.Blobs) ([]byte, error) {
 	buf := make([]byte, 0, len(blobs)*int(entrySize))
 
 	for _, b := range blobs {
@@ -208,7 +232,7 @@ func (p *Packer) HeaderFull() bool {
 }
 
 // Blobs returns the slice of blobs that have been written.
-func (p *Packer) Blobs() []restic.Blob {
+func (p *Packer) Blobs() restic.Blobs {
 	p.m.Lock()
 	defer p.m.Unlock()
 
@@ -324,7 +348,7 @@ func (e InvalidFileError) Error() string {
 
 // List returns the list of entries found in a pack file and the length of the
 // header (including header size and crypto overhead)
-func List(k *crypto.Key, rd io.ReaderAt, size int64) (entries []restic.Blob, hdrSize uint32, err error) {
+func List(k *crypto.Key, rd io.ReaderAt, size int64) (entries restic.Blobs, hdrSize uint32, err error) {
 	buf, err := readHeader(rd, size)
 	if err != nil {
 		return nil, 0, err
@@ -343,7 +367,7 @@ func List(k *crypto.Key, rd io.ReaderAt, size int64) (entries []restic.Blob, hdr
 	}
 
 	// might over allocate a bit if all blobs have EntrySize but only by a few percent
-	entries = make([]restic.Blob, 0, uint(len(buf))/plainEntrySize)
+	entries = make(restic.Blobs, 0, uint(len(buf))/plainEntrySize)
 
 	pos := uint(0)
 	for len(buf) > 0 {
@@ -403,7 +427,7 @@ func CalculateEntrySize(blob restic.Blob) int {
 	return int(plainEntrySize)
 }
 
-func CalculateHeaderSize(blobs []restic.Blob) int {
+func CalculateHeaderSize(blobs restic.Blobs) int {
 	size := headerSize
 	for _, blob := range blobs {
 		size += CalculateEntrySize(blob)

@@ -18,12 +18,11 @@
 package policy
 
 import (
-	stdjson "encoding/json"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
 
-	"github.com/minio/minio-go/v7/internal/json"
 	"github.com/minio/minio-go/v7/pkg/set"
 )
 
@@ -120,15 +119,6 @@ type Statement struct {
 	Principal  User          `json:"Principal"`
 	Resources  set.StringSet `json:"Resource"`
 	Sid        string
-}
-
-// MarshalJSON is a custom json marshaler. It is needed due to
-// the error reported in https://github.com/goccy/go-json/pull/545
-// (which prevents goccy/go-json from omitting the empty Conditions field)
-// and circumvents the issue by using the stdlib json package.
-func (s Statement) MarshalJSON() ([]byte, error) {
-	type AliasStatement Statement
-	return stdjson.Marshal(AliasStatement(s))
 }
 
 // BucketAccessPolicy - minio policy collection
@@ -518,6 +508,18 @@ func getBucketPolicy(statement Statement, prefix string) (commonFound, readOnly,
 			} else if stringNotEqualsValue, ok := statement.Conditions["StringNotEquals"]; ok {
 				if s3PrefixValues, ok := stringNotEqualsValue["s3:prefix"]; ok {
 					if !s3PrefixValues.Contains(prefix) {
+						readOnly = true
+					}
+				}
+			} else if stringLikeValue, ok := statement.Conditions["StringLike"]; ok {
+				if s3PrefixValues, ok := stringLikeValue["s3:prefix"]; ok {
+					if s3PrefixValues.Contains(prefix + "*") {
+						readOnly = true
+					}
+				}
+			} else if stringNotLikeValue, ok := statement.Conditions["StringNotLike"]; ok {
+				if s3PrefixValues, ok := stringNotLikeValue["s3:prefix"]; ok {
+					if !s3PrefixValues.Contains(prefix + "*") {
 						readOnly = true
 					}
 				}

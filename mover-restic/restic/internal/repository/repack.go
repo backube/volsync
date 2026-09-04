@@ -21,67 +21,60 @@ type repackBlobSet interface {
 
 type LogFunc func(msg string, args ...interface{})
 
-// Repack takes a list of packs together with a list of blobs contained in
+// CopyBlobs takes a list of packs together with a list of blobs contained in
 // these packs. Each pack is loaded and the blobs listed in keepBlobs is saved
 // into a new pack. Returned is the list of obsolete packs which can then
 // be removed.
 //
-// The map keepBlobs is modified by Repack, it is used to keep track of which
+// The map keepBlobs is modified by CopyBlobs, it is used to keep track of which
 // blobs have been processed.
-func Repack(
+func CopyBlobs(
 	ctx context.Context,
 	repo restic.Repository,
 	dstRepo restic.Repository,
+	dstUploader restic.BlobSaverWithAsync,
 	packs restic.IDSet,
 	keepBlobs repackBlobSet,
 	p *progress.Counter,
 	logf LogFunc,
-) (obsoletePacks restic.IDSet, err error) {
+) error {
 	debug.Log("repacking %d packs while keeping %d blobs", len(packs), keepBlobs.Len())
 
 	if logf == nil {
 		logf = func(_ string, _ ...interface{}) {}
 	}
+	p.SetMax(uint64(len(packs)))
+	defer p.Done()
 
 	if repo == dstRepo && dstRepo.Connections() < 2 {
-		return nil, errors.New("repack step requires a backend connection limit of at least two")
+		return errors.New("repack step requires a backend connection limit of at least two")
 	}
 
-	wg, wgCtx := errgroup.WithContext(ctx)
-
-	dstRepo.StartPackUploader(wgCtx, wg)
-	wg.Go(func() error {
-		var err error
-		obsoletePacks, err = repack(wgCtx, repo, dstRepo, packs, keepBlobs, p, logf)
-		return err
-	})
-
-	if err := wg.Wait(); err != nil {
-		return nil, err
-	}
-	return obsoletePacks, nil
+	return repack(ctx, repo, dstRepo, dstUploader, packs, keepBlobs, p, logf)
 }
 
 func repack(
 	ctx context.Context,
 	repo restic.Repository,
 	dstRepo restic.Repository,
+	uploader restic.BlobSaverWithAsync,
 	packs restic.IDSet,
 	keepBlobs repackBlobSet,
 	p *progress.Counter,
 	logf LogFunc,
-) (obsoletePacks restic.IDSet, err error) {
+) error {
+
 	wg, wgCtx := errgroup.WithContext(ctx)
 
 	if feature.Flag.Enabled(feature.S3Restore) {
 		job, err := repo.StartWarmup(ctx, packs)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if job.HandleCount() != 0 {
 			logf("warming up %d packs from cold storage, this may take a while...", job.HandleCount())
 			if err := job.Wait(ctx); err != nil {
-				return nil, err
+				return err
 			}
 		}
 	}
@@ -91,7 +84,7 @@ func repack(
 	wg.Go(func() error {
 		defer close(downloadQueue)
 		for pbs := range repo.ListPacksFromIndex(wgCtx, packs) {
-			var packBlobs []restic.Blob
+			var packBlobs restic.Blobs
 			keepMutex.Lock()
 			// filter out unnecessary blobs
 			for _, entry := range pbs.Blobs {
@@ -132,7 +125,7 @@ func repack(
 				}
 
 				// We do want to save already saved blobs!
-				_, _, _, err = dstRepo.SaveBlob(wgCtx, blob.Type, buf, blob.ID, true)
+				_, _, _, err = uploader.SaveBlob(wgCtx, blob.Type, buf, blob.ID, true)
 				if err != nil {
 					return err
 				}
@@ -159,13 +152,5 @@ func repack(
 		wg.Go(worker)
 	}
 
-	if err := wg.Wait(); err != nil {
-		return nil, err
-	}
-
-	if err := dstRepo.Flush(ctx); err != nil {
-		return nil, err
-	}
-
-	return packs, nil
+	return wg.Wait()
 }

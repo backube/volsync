@@ -5,18 +5,21 @@ import (
 	"fmt"
 
 	"github.com/restic/restic/internal/errors"
+	"github.com/restic/restic/internal/global"
 	"github.com/restic/restic/internal/repository"
 	"github.com/restic/restic/internal/restic"
+	"github.com/restic/restic/internal/ui"
+	"github.com/restic/restic/internal/ui/progress"
 	"github.com/spf13/cobra"
 )
 
-func newKeyRemoveCommand() *cobra.Command {
+func newKeyRemoveCommand(globalOptions *global.Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "remove [ID]",
-		Short: "Remove key ID (password) from the repository.",
+		Short: "Remove key ID (password) from the repository",
 		Long: `
-The "remove" sub-command removes the selected key ID. The "remove" command does not allow
-removing the current key being used to access the repository. 
+The "key remove" command removes the selected key ID. It does not allow removing the
+current key being used to access the repository.
 
 EXIT STATUS
 ===========
@@ -29,27 +32,28 @@ Exit status is 12 if the password is incorrect.
 	`,
 		DisableAutoGenTag: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runKeyRemove(cmd.Context(), globalOptions, args)
+			return runKeyRemove(cmd.Context(), *globalOptions, args, globalOptions.Term)
 		},
 	}
 	return cmd
 }
 
-func runKeyRemove(ctx context.Context, gopts GlobalOptions, args []string) error {
+func runKeyRemove(ctx context.Context, gopts global.Options, args []string, term ui.Terminal) error {
 	if len(args) != 1 {
 		return fmt.Errorf("key remove expects one argument as the key id")
 	}
 
-	ctx, repo, unlock, err := openWithExclusiveLock(ctx, gopts, false)
+	printer := ui.NewProgressPrinter(gopts.JSON, gopts.Verbosity, term)
+	ctx, repo, unlock, err := openWithExclusiveLock(ctx, gopts, false, printer)
 	if err != nil {
 		return err
 	}
 	defer unlock()
 
-	return deleteKey(ctx, repo, args[0])
+	return deleteKey(ctx, repo, args[0], printer)
 }
 
-func deleteKey(ctx context.Context, repo *repository.Repository, idPrefix string) error {
+func deleteKey(ctx context.Context, repo *repository.Repository, idPrefix string, printer progress.Printer) error {
 	id, err := restic.Find(ctx, repo, restic.KeyFile, idPrefix)
 	if err != nil {
 		return err
@@ -64,6 +68,6 @@ func deleteKey(ctx context.Context, repo *repository.Repository, idPrefix string
 		return err
 	}
 
-	Verbosef("removed key %v\n", id)
+	printer.P("removed key %v", id)
 	return nil
 }

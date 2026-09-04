@@ -6,7 +6,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/pkg/errors"
+	"github.com/restic/restic/internal/data"
 	"github.com/restic/restic/internal/restic"
 	rtest "github.com/restic/restic/internal/test"
 )
@@ -19,14 +19,14 @@ type TestFile struct {
 	Size uint64
 }
 
-func BuildTreeMap(tree TestTree) (m TreeMap, root restic.ID) {
-	m = TreeMap{}
+func BuildTreeMap(tree TestTree) (m data.TestTreeMap, root restic.ID) {
+	m = data.TestTreeMap{}
 	id := buildTreeMap(tree, m)
 	return m, id
 }
 
-func buildTreeMap(tree TestTree, m TreeMap) restic.ID {
-	tb := restic.NewTreeJSONBuilder()
+func buildTreeMap(tree TestTree, m data.TestTreeMap) restic.ID {
+	tb := data.NewTreeJSONBuilder()
 	var names []string
 	for name := range tree {
 		names = append(names, name)
@@ -37,9 +37,9 @@ func buildTreeMap(tree TestTree, m TreeMap) restic.ID {
 		item := tree[name]
 		switch elem := item.(type) {
 		case TestFile:
-			err := tb.AddNode(&restic.Node{
+			err := tb.AddNode(&data.Node{
 				Name: name,
-				Type: restic.NodeTypeFile,
+				Type: data.NodeTypeFile,
 				Size: elem.Size,
 			})
 			if err != nil {
@@ -47,10 +47,10 @@ func buildTreeMap(tree TestTree, m TreeMap) restic.ID {
 			}
 		case TestTree:
 			id := buildTreeMap(elem, m)
-			err := tb.AddNode(&restic.Node{
+			err := tb.AddNode(&data.Node{
 				Name:    name,
 				Subtree: &id,
-				Type:    restic.NodeTypeDir,
+				Type:    data.NodeTypeDir,
 			})
 			if err != nil {
 				panic(err)
@@ -74,24 +74,6 @@ func buildTreeMap(tree TestTree, m TreeMap) restic.ID {
 	return id
 }
 
-// TreeMap returns the trees from the map on LoadTree.
-type TreeMap map[restic.ID][]byte
-
-func (t TreeMap) LoadBlob(_ context.Context, tpe restic.BlobType, id restic.ID, _ []byte) ([]byte, error) {
-	if tpe != restic.TreeBlob {
-		return nil, errors.New("can only load trees")
-	}
-	tree, ok := t[id]
-	if !ok {
-		return nil, errors.New("tree not found")
-	}
-	return tree, nil
-}
-
-func (t TreeMap) Connections() uint {
-	return 2
-}
-
 // checkFunc returns a function suitable for walking the tree to check
 // something, and a function which will check the final result.
 type checkFunc func(t testing.TB) (walker WalkFunc, leaveDir func(path string) error, final func(testing.TB, error))
@@ -100,7 +82,7 @@ type checkFunc func(t testing.TB) (walker WalkFunc, leaveDir func(path string) e
 func checkItemOrder(want []string) checkFunc {
 	pos := 0
 	return func(t testing.TB) (walker WalkFunc, leaveDir func(path string) error, final func(testing.TB, error)) {
-		walker = func(treeID restic.ID, path string, node *restic.Node, err error) error {
+		walker = func(treeID restic.ID, path string, node *data.Node, err error) error {
 			if err != nil {
 				t.Errorf("error walking %v: %v", path, err)
 				return err
@@ -137,7 +119,7 @@ func checkItemOrder(want []string) checkFunc {
 func checkParentTreeOrder(want []string) checkFunc {
 	pos := 0
 	return func(t testing.TB) (walker WalkFunc, leaveDir func(path string) error, final func(testing.TB, error)) {
-		walker = func(treeID restic.ID, path string, node *restic.Node, err error) error {
+		walker = func(treeID restic.ID, path string, node *data.Node, err error) error {
 			if err != nil {
 				t.Errorf("error walking %v: %v", path, err)
 				return err
@@ -172,7 +154,7 @@ func checkSkipFor(skipFor map[string]struct{}, wantPaths []string) checkFunc {
 	var pos int
 
 	return func(t testing.TB) (walker WalkFunc, leaveDir func(path string) error, final func(testing.TB, error)) {
-		walker = func(treeID restic.ID, path string, node *restic.Node, err error) error {
+		walker = func(treeID restic.ID, path string, node *data.Node, err error) error {
 			if err != nil {
 				t.Errorf("error walking %v: %v", path, err)
 				return err
@@ -214,7 +196,7 @@ func checkErrorReturned(errForPath string) checkFunc {
 	expectedErr := fmt.Errorf("error for %v", errForPath)
 
 	return func(t testing.TB) (walker WalkFunc, leaveDir func(path string) error, final func(testing.TB, error)) {
-		walker = func(treeID restic.ID, path string, node *restic.Node, err error) error {
+		walker = func(treeID restic.ID, path string, node *data.Node, err error) error {
 			if path == errForPath {
 				return expectedErr
 			}

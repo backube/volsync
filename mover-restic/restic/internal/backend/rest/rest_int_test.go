@@ -79,8 +79,8 @@ func TestListAPI(t *testing.T) {
 				t.Logf("req %v %v, accept: %v", req.Method, req.URL.Path, req.Header["Accept"])
 
 				var err error
-				switch {
-				case req.Method == "GET":
+				switch req.Method {
+				case "GET":
 					// list files in data/
 					res.Header().Set("Content-Type", test.ContentType)
 					_, err = res.Write([]byte(test.Data))
@@ -89,7 +89,7 @@ func TestListAPI(t *testing.T) {
 						t.Fatal(err)
 					}
 					return
-				case req.Method == "HEAD":
+				case "HEAD":
 					// stat file in data/, use the first two bytes in the name
 					// of the file as the size :)
 					filename := req.URL.Path[6:]
@@ -117,7 +117,7 @@ func TestListAPI(t *testing.T) {
 				URL:         srvURL,
 			}
 
-			be, err := rest.Open(context.TODO(), cfg, http.DefaultTransport)
+			be, err := rest.Open(context.TODO(), cfg, http.DefaultTransport, t.Logf)
 			if err != nil {
 				t.Fatal(err)
 			}

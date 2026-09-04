@@ -2,41 +2,13 @@ package walker
 
 import (
 	"context"
-	"fmt"
+	"slices"
 	"testing"
 
-	"github.com/pkg/errors"
+	"github.com/restic/restic/internal/data"
 	"github.com/restic/restic/internal/restic"
 	"github.com/restic/restic/internal/test"
 )
-
-// WritableTreeMap also support saving
-type WritableTreeMap struct {
-	TreeMap
-}
-
-func (t WritableTreeMap) SaveBlob(_ context.Context, tpe restic.BlobType, buf []byte, id restic.ID, _ bool) (newID restic.ID, known bool, size int, err error) {
-	if tpe != restic.TreeBlob {
-		return restic.ID{}, false, 0, errors.New("can only save trees")
-	}
-
-	if id.IsNull() {
-		id = restic.Hash(buf)
-	}
-	_, ok := t.TreeMap[id]
-	if ok {
-		return id, false, 0, nil
-	}
-
-	t.TreeMap[id] = append([]byte{}, buf...)
-	return id, true, len(buf), nil
-}
-
-func (t WritableTreeMap) Dump() {
-	for k, v := range t.TreeMap {
-		fmt.Printf("%v: %v", k, string(v))
-	}
-}
 
 type checkRewriteFunc func(t testing.TB) (rewriter *TreeRewriter, final func(testing.TB))
 
@@ -45,7 +17,7 @@ func checkRewriteItemOrder(want []string) checkRewriteFunc {
 	pos := 0
 	return func(t testing.TB) (rewriter *TreeRewriter, final func(testing.TB)) {
 		rewriter = NewTreeRewriter(RewriteOpts{
-			RewriteNode: func(node *restic.Node, path string) *restic.Node {
+			RewriteNode: func(node *data.Node, path string) *data.Node {
 				if pos >= len(want) {
 					t.Errorf("additional unexpected path found: %v", path)
 					return nil
@@ -75,7 +47,7 @@ func checkRewriteSkips(skipFor map[string]struct{}, want []string, disableCache 
 
 	return func(t testing.TB) (rewriter *TreeRewriter, final func(testing.TB)) {
 		rewriter = NewTreeRewriter(RewriteOpts{
-			RewriteNode: func(node *restic.Node, path string) *restic.Node {
+			RewriteNode: func(node *data.Node, path string) *data.Node {
 				if pos >= len(want) {
 					t.Errorf("additional unexpected path found: %v", path)
 					return nil
@@ -109,8 +81,8 @@ func checkRewriteSkips(skipFor map[string]struct{}, want []string, disableCache 
 func checkIncreaseNodeSize(increase uint64) checkRewriteFunc {
 	return func(t testing.TB) (rewriter *TreeRewriter, final func(testing.TB)) {
 		rewriter = NewTreeRewriter(RewriteOpts{
-			RewriteNode: func(node *restic.Node, path string) *restic.Node {
-				if node.Type == restic.NodeTypeFile {
+			RewriteNode: func(node *data.Node, path string) *data.Node {
+				if node.Type == data.NodeTypeFile {
 					node.Size += increase
 				}
 				return node
@@ -279,13 +251,13 @@ func TestRewriter(t *testing.T) {
 				test.newTree = test.tree
 			}
 			expRepo, expRoot := BuildTreeMap(test.newTree)
-			modrepo := WritableTreeMap{repo}
+			modrepo := data.TestWritableTreeMap{TestTreeMap: repo}
 
 			ctx, cancel := context.WithCancel(context.TODO())
 			defer cancel()
 
 			rewriter, last := test.check(t)
-			newRoot, err := rewriter.RewriteTree(ctx, modrepo, "/", root)
+			newRoot, err := rewriter.RewriteTree(ctx, modrepo, modrepo, "/", root)
 			if err != nil {
 				t.Error(err)
 			}
@@ -294,10 +266,10 @@ func TestRewriter(t *testing.T) {
 			// verifying against the expected tree root also implicitly checks the structural integrity
 			if newRoot != expRoot {
 				t.Error("hash mismatch")
-				fmt.Println("Got")
-				modrepo.Dump()
-				fmt.Println("Expected")
-				WritableTreeMap{expRepo}.Dump()
+				t.Log("Got")
+				modrepo.Dump(t)
+				t.Log("Expected")
+				data.TestWritableTreeMap{TestTreeMap: expRepo}.Dump(t)
 			}
 		})
 	}
@@ -320,22 +292,22 @@ func TestSnapshotSizeQuery(t *testing.T) {
 	t.Run("", func(t *testing.T) {
 		repo, root := BuildTreeMap(tree)
 		expRepo, expRoot := BuildTreeMap(newTree)
-		modrepo := WritableTreeMap{repo}
+		modrepo := data.TestWritableTreeMap{TestTreeMap: repo}
 
 		ctx, cancel := context.WithCancel(context.TODO())
 		defer cancel()
 
-		rewriteNode := func(node *restic.Node, path string) *restic.Node {
+		rewriteNode := func(node *data.Node, path string) *data.Node {
 			if path == "/bar" {
 				return nil
 			}
-			if node.Type == restic.NodeTypeFile {
+			if node.Type == data.NodeTypeFile {
 				node.Size += 21
 			}
 			return node
 		}
-		rewriter, querySize := NewSnapshotSizeRewriter(rewriteNode)
-		newRoot, err := rewriter.RewriteTree(ctx, modrepo, "/", root)
+		rewriter, querySize := NewSnapshotSizeRewriter(rewriteNode, nil)
+		newRoot, err := rewriter.RewriteTree(ctx, modrepo, modrepo, "/", root)
 		if err != nil {
 			t.Error(err)
 		}
@@ -348,32 +320,100 @@ func TestSnapshotSizeQuery(t *testing.T) {
 		// verifying against the expected tree root also implicitly checks the structural integrity
 		if newRoot != expRoot {
 			t.Error("hash mismatch")
-			fmt.Println("Got")
-			modrepo.Dump()
-			fmt.Println("Expected")
-			WritableTreeMap{expRepo}.Dump()
+			t.Log("Got")
+			modrepo.Dump(t)
+			t.Log("Expected")
+			data.TestWritableTreeMap{TestTreeMap: expRepo}.Dump(t)
 		}
 	})
 
 }
 
+func TestRewriterKeepEmptyDirectory(t *testing.T) {
+	var paths []string
+	tests := []struct {
+		name      string
+		keepEmpty NodeKeepEmptyDirectoryFunc
+		assert    func(t *testing.T, newRoot restic.ID)
+	}{
+		{
+			name:      "Keep",
+			keepEmpty: func(string) bool { return true },
+			assert: func(t *testing.T, newRoot restic.ID) {
+				_, expRoot := BuildTreeMap(TestTree{"empty": TestTree{}})
+				test.Assert(t, newRoot == expRoot, "expected empty dir kept")
+			},
+		},
+		{
+			name:      "Drop subdir only",
+			keepEmpty: func(p string) bool { return p != "/empty" },
+			assert: func(t *testing.T, newRoot restic.ID) {
+				_, expRoot := BuildTreeMap(TestTree{})
+				test.Assert(t, newRoot == expRoot, "expected empty root")
+			},
+		},
+		{
+			name:      "Drop all",
+			keepEmpty: func(string) bool { return false },
+			assert: func(t *testing.T, newRoot restic.ID) {
+				test.Assert(t, newRoot.IsNull(), "expected null root")
+			},
+		},
+		{
+			name: "Paths",
+			keepEmpty: func(p string) bool {
+				paths = append(paths, p)
+				return p != "/empty"
+			},
+			assert: func(t *testing.T, newRoot restic.ID) {
+				test.Assert(t, len(paths) >= 2, "expected at least two KeepEmptyDirectory calls")
+				var hasRoot, hasEmpty bool
+				for _, p := range paths {
+					if p == "/" {
+						hasRoot = true
+					}
+					if p == "/empty" {
+						hasEmpty = true
+					}
+				}
+				test.Assert(t, hasRoot && hasEmpty, "expected paths \"/\" and \"/empty\", got %v", paths)
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			repo, root := BuildTreeMap(TestTree{"empty": TestTree{}})
+			modrepo := data.TestWritableTreeMap{TestTreeMap: repo}
+
+			rw := NewTreeRewriter(RewriteOpts{KeepEmptyDirectory: tc.keepEmpty})
+			newRoot, err := rw.RewriteTree(ctx, modrepo, modrepo, "/", root)
+			test.OK(t, err)
+			tc.assert(t, newRoot)
+		})
+	}
+}
+
 func TestRewriterFailOnUnknownFields(t *testing.T) {
-	tm := WritableTreeMap{TreeMap{}}
+	tm := data.TestWritableTreeMap{TestTreeMap: data.TestTreeMap{}}
 	node := []byte(`{"nodes":[{"name":"subfile","type":"file","mtime":"0001-01-01T00:00:00Z","atime":"0001-01-01T00:00:00Z","ctime":"0001-01-01T00:00:00Z","uid":0,"gid":0,"content":null,"unknown_field":42}]}`)
 	id := restic.Hash(node)
-	tm.TreeMap[id] = node
+	tm.TestTreeMap[id] = node
 
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
 	rewriter := NewTreeRewriter(RewriteOpts{
-		RewriteNode: func(node *restic.Node, path string) *restic.Node {
+		RewriteNode: func(node *data.Node, path string) *data.Node {
 			// tree loading must not succeed
 			t.Fail()
 			return node
 		},
 	})
-	_, err := rewriter.RewriteTree(ctx, tm, "/", id)
+	_, err := rewriter.RewriteTree(ctx, tm, tm, "/", id)
 
 	if err == nil {
 		t.Error("missing error on unknown field")
@@ -383,7 +423,7 @@ func TestRewriterFailOnUnknownFields(t *testing.T) {
 	rewriter = NewTreeRewriter(RewriteOpts{
 		AllowUnstableSerialization: true,
 	})
-	root, err := rewriter.RewriteTree(ctx, tm, "/", id)
+	root, err := rewriter.RewriteTree(ctx, tm, tm, "/", id)
 	test.OK(t, err)
 	_, expRoot := BuildTreeMap(TestTree{
 		"subfile": TestFile{},
@@ -392,7 +432,7 @@ func TestRewriterFailOnUnknownFields(t *testing.T) {
 }
 
 func TestRewriterTreeLoadError(t *testing.T) {
-	tm := WritableTreeMap{TreeMap{}}
+	tm := data.TestWritableTreeMap{TestTreeMap: data.TestTreeMap{}}
 	id := restic.NewRandomID()
 
 	ctx, cancel := context.WithCancel(context.TODO())
@@ -400,21 +440,23 @@ func TestRewriterTreeLoadError(t *testing.T) {
 
 	// also check that load error by default cause the operation to fail
 	rewriter := NewTreeRewriter(RewriteOpts{})
-	_, err := rewriter.RewriteTree(ctx, tm, "/", id)
+	_, err := rewriter.RewriteTree(ctx, tm, tm, "/", id)
 	if err == nil {
 		t.Fatal("missing error on unloadable tree")
 	}
 
-	replacementID := restic.NewRandomID()
+	replacementNode := &data.Node{Name: "replacement", Type: data.NodeTypeFile, Size: 42}
+	replacementID := data.TestSaveNodes(t, ctx, tm, []*data.Node{replacementNode})
+
 	rewriter = NewTreeRewriter(RewriteOpts{
-		RewriteFailedTree: func(nodeID restic.ID, path string, err error) (restic.ID, error) {
+		RewriteFailedTree: func(nodeID restic.ID, path string, err error) (data.TreeNodeIterator, error) {
 			if nodeID != id || path != "/" {
 				t.Fail()
 			}
-			return replacementID, nil
+			return slices.Values([]data.NodeOrError{{Node: replacementNode}}), nil
 		},
 	})
-	newRoot, err := rewriter.RewriteTree(ctx, tm, "/", id)
+	newRoot, err := rewriter.RewriteTree(ctx, tm, tm, "/", id)
 	test.OK(t, err)
 	test.Equals(t, replacementID, newRoot)
 }

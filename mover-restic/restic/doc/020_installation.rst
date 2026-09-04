@@ -27,6 +27,11 @@ Please see the :ref:`official_binaries` section below for various downloads.
 Official binaries can be updated in place by using the ``restic self-update``
 command.
 
+The environment variable ``$GITHUB_ACCESS_TOKEN`` can be set to use a personal 
+access token when updating. This increases the rate limit through authenticated GitHub API 
+requests, and prevents update failures when many 
+unauthenticated requests have already been made from the same IP.
+
 Alpine Linux
 ============
 
@@ -40,8 +45,8 @@ package from the official community repos, e.g. using ``apk``:
 Arch Linux
 ==========
 
-On `Arch Linux <https://archlinux.org/>`__, there is a package called ``restic``
-installed from the official community repos, e.g. with ``pacman -S``:
+On `Arch Linux <https://archlinux.org/>`__, you can install the ``restic``
+package from the official community repos, e.g. with ``pacman -S``:
 
 .. code-block:: console
 
@@ -108,13 +113,25 @@ You may also install it using `MacPorts <https://www.macports.org/>`__:
 Nix & NixOS
 ===========
 
-If you are using `Nix / NixOS <https://nixos.org>`__
-there is a package available named ``restic``.
-It can be installed using ``nix-env``:
+If you are using `Nix / NixOS <https://nixos.org>`__,
+there is a package named ``restic`` available in `nixpkgs <https://search.nixos.org/packages?query=restic>`__.
+You can install it by adding this to your ``configuration.nix``:
 
 .. code-block:: console
 
-    $ nix-env --install restic
+      environment.systemPackages = [
+        pkgs.restic
+      ];
+
+Mise (Linux/macOS/Windows)
+==========================
+
+If you are using `Mise <https://mise.jdx.dev>`__,
+you can install ``restic`` using this command:
+
+.. code-block:: console
+
+    $ mise use -g restic@latest
 
 OpenBSD
 =======
@@ -143,35 +160,15 @@ On openSUSE (leap 15.0 and greater, and tumbleweed), you can install restic usin
 
     # zypper install restic
 
-RHEL & CentOS
-=============
+RHEL & CentOS Stream
+====================
 
-For RHEL / CentOS Stream 8 & 9 restic can be installed from the EPEL repository:
+For supported RHEL / CentOS Stream releases, restic can be installed from the EPEL repository:
 
 .. code-block:: console
 
     $ dnf install epel-release
     $ dnf install restic
-
-For RHEL7/CentOS there is a copr repository available, you can try the following:
-
-.. code-block:: console
-
-    $ yum install yum-plugin-copr
-    $ yum copr enable copart/restic
-    $ yum install restic
-
-If that doesn't work, you can try adding the repository directly, for CentOS6 use:
-
-.. code-block:: console
-
-    $ yum-config-manager --add-repo https://copr.fedorainfracloud.org/coprs/copart/restic/repo/epel-6/copart-restic-epel-6.repo
-
-For CentOS7 use:
-
-.. code-block:: console
-
-    $ yum-config-manager --add-repo https://copr.fedorainfracloud.org/coprs/copart/restic/repo/epel-7/copart-restic-epel-7.repo
 
 Solus
 =====
@@ -187,7 +184,7 @@ Windows
 
 restic can be installed using either `Scoop <https://scoop.sh/>`__ or `WinGet <https://learn.microsoft.com/en-us/windows/package-manager/>`__.
 
-Regardless of the method, the ``restic.exe`` binary will be added to your ``PATH`` automatically, making the ``restic`` command accessible in Powershell or CMD.
+Regardless of the method, the ``restic.exe`` binary will be added to your ``PATH`` automatically, making the ``restic`` command accessible in PowerShell or CMD.
 
 .. code-block:: console
 
@@ -201,22 +198,22 @@ By default, WinGet will install restic into the ``User`` scope, which is typical
 
 .. _official_binaries:
 
-Official Binaries
+Official binaries
 *****************
 
-Stable Releases
+Stable releases
 ===============
 
 You can download the latest stable release versions of restic from the `restic
 release page <https://github.com/restic/restic/releases/latest>`__. These builds
 are considered stable and releases are made regularly in a controlled manner.
 
-There's both pre-compiled binaries for different platforms as well as the source
+There are both pre-compiled binaries for different platforms as well as the source
 code available for download. Just download and run the one matching your system.
 
 On your first installation, if you desire, you can verify the integrity of your
 downloads by testing the SHA-256 checksums listed in ``SHA256SUMS`` and verifying
-the integrity of the file ``SHA256SUMS`` with the PGP signature in ``SHA256SUMS.asc``. 
+the integrity of the file ``SHA256SUMS`` with the PGP signature in ``SHA256SUMS.asc``.
 The PGP signature was created using the key (`0x91A6868BD3F7A907 <https://restic.net/gpg-key-alex.asc>`__):
 
 ::
@@ -258,7 +255,7 @@ GitHub to verify their authenticity. No external programs are necessary.
    If you want to save the downloaded restic binary into a different file, pass
    the file name via the option ``--output``.
 
-Unstable Builds
+Unstable builds
 ===============
 
 Another option is to use the latest builds for the master branch, available on
@@ -267,11 +264,11 @@ the `restic beta download site
 and ready to run, and a new version is built every time a push is made to the
 master branch.
 
-Docker Container
+Docker container
 ****************
 
-We're maintaining a bare docker container with just a few files and the restic
-binary, you can get it with `docker pull` like this:
+A minimal Docker image with just a few files and the restic
+binary is available; you can get it with ``docker pull`` like this:
 
 .. code-block:: console
 
@@ -284,14 +281,31 @@ The container is also available on the GitHub Container Registry:
     $ docker pull ghcr.io/restic/restic
 
 Restic relies on the hostname for various operations. Make sure to set a static
-hostname using `--hostname` when creating a Docker container, otherwise Docker
+hostname using ``--hostname`` when creating a Docker container, otherwise Docker
 will assign a random hostname each time.
 
-From Source
+The container additionally honors traditional ``nice`` `(man page) <https://man7.org/linux/man-pages/man1/nice.1.html>`__ and ``ionice`` `(man page) <https://man7.org/linux/man-pages/man1/ionice.1.html#OPTIONS>`__ directives via the following environment variables.
+This allows restic to be scheduled as a background process to reduce latency for the system while running.
+
+* ``NICE``: If set, this adjusts the CPU prioritization via ``nice -n``. This defaults to no adjustment - standard CPU priority.
+* ``IONICE_CLASS``: If set, this adjusts the IO prioritization of the restic process via ``ionice -c`` for the available classes.
+  Note: if you attempt to set `real-time`, you *will* have to add the ``SYS_NICE`` capability (`see capabilities manpage <https://man7.org/linux/man-pages/man7/capabilities.7.html#DESCRIPTION>`__) to allow using this IO class.
+* ``IONICE_PRIORITY``: This defaults to 4 (no prioritization or penalties); this is the prioritization within the given ``IONICE_CLASS``.
+
+The following example runs restic such that other CPU and IO requests have higher priority. This effectively perturbs the system as minimally as possible while ``restic`` runs.
+
+.. code-block:: console
+
+    # docker run -e NICE=20 -e IONICE_CLASS=2 -e IONICE_PRIORITY=7 ghcr.io/restic/restic
+
+*Remember* that this invocation is explicitly telling your CPU and IO scheduler to deprioritize restic.  This typically will result in a longer runtime.  For a system with heavy load, this can be drastically longer.
+
+
+From source
 ***********
 
 restic is written in the Go programming language and you need at least
-Go version 1.23. Building restic may also work with older versions of Go,
+Go version 1.25. Building restic may also work with older versions of Go,
 but that's not supported. See the `Getting
 started <https://go.dev/doc/install>`__ guide of the Go project for
 instructions how to install Go.
@@ -337,18 +351,24 @@ Restic can write out man pages and bash/fish/zsh/powershell compatible autocompl
     $ ./restic generate --help
 
     The "generate" command writes automatically generated files (like the man pages
-    and the auto-completion files for bash, fish, zsh and powershell).
+    and the auto-completion files for bash, fish, powershell and zsh).
+
+    EXIT STATUS
+    ===========
+
+    Exit status is 0 if the command was successful.
+    Exit status is 1 if there was any error.
 
     Usage:
-      restic generate [flags] [command]
+      restic generate [flags]
 
     Flags:
-          --bash-completion file   write bash completion file
-          --fish-completion file   write fish completion file
-      -h, --help                   help for generate
-          --man directory          write man pages to directory
-          --powershell-completion  write powershell completion file
-          --zsh-completion file    write zsh completion file
+          --bash-completion file         write bash completion file (`-` for stdout)
+          --fish-completion file         write fish completion file (`-` for stdout)
+      -h, --help                         help for generate
+          --man directory                write man pages to directory
+          --powershell-completion file   write powershell completion file (`-` for stdout)
+          --zsh-completion file          write zsh completion file (`-` for stdout)
 
 Example for using sudo to write a bash completion script directly to the system-wide location:
 

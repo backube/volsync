@@ -6,22 +6,23 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/restic/restic/internal/data"
 	"github.com/restic/restic/internal/debug"
 	"github.com/restic/restic/internal/errors"
+	"github.com/restic/restic/internal/global"
 	"github.com/restic/restic/internal/repository"
 	"github.com/restic/restic/internal/restic"
 	"github.com/restic/restic/internal/ui"
-	"github.com/restic/restic/internal/ui/termstatus"
 )
 
-func newTagCommand() *cobra.Command {
+func newTagCommand(globalOptions *global.Options) *cobra.Command {
 	var opts TagOptions
 
 	cmd := &cobra.Command{
 		Use:   "tag [flags] [snapshotID ...]",
 		Short: "Modify tags on snapshots",
 		Long: `
-The "tag" command allows you to modify tags on exiting snapshots.
+The "tag" command allows you to modify tags on existing snapshots.
 
 You can either set/replace the entire set of tags on a snapshot, or
 add tags to/remove tags from the existing set.
@@ -40,9 +41,8 @@ Exit status is 12 if the password is incorrect.
 		GroupID:           cmdGroupDefault,
 		DisableAutoGenTag: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			term, cancel := setupTermstatus()
-			defer cancel()
-			return runTag(cmd.Context(), opts, globalOptions, term, args)
+			finalizeSnapshotFilter(&opts.SnapshotFilter)
+			return runTag(cmd.Context(), opts, *globalOptions, globalOptions.Term, args)
 		},
 	}
 
@@ -52,10 +52,10 @@ Exit status is 12 if the password is incorrect.
 
 // TagOptions bundles all options for the 'tag' command.
 type TagOptions struct {
-	restic.SnapshotFilter
-	SetTags    restic.TagLists
-	AddTags    restic.TagLists
-	RemoveTags restic.TagLists
+	data.SnapshotFilter
+	SetTags    data.TagLists
+	AddTags    data.TagLists
+	RemoveTags data.TagLists
 }
 
 func (opts *TagOptions) AddFlags(f *pflag.FlagSet) {
@@ -76,7 +76,7 @@ type changedSnapshotsSummary struct {
 	ChangedSnapshots int    `json:"changed_snapshots"`
 }
 
-func changeTags(ctx context.Context, repo *repository.Repository, sn *restic.Snapshot, setTags, addTags, removeTags []string, printFunc func(changedSnapshot)) (bool, error) {
+func changeTags(ctx context.Context, repo *repository.Repository, sn *data.Snapshot, setTags, addTags, removeTags []string, printFunc func(changedSnapshot)) (bool, error) {
 	var changed bool
 
 	if len(setTags) != 0 {
@@ -100,7 +100,7 @@ func changeTags(ctx context.Context, repo *repository.Repository, sn *restic.Sna
 		}
 
 		// Save the new snapshot.
-		id, err := restic.SaveSnapshot(ctx, repo, sn)
+		id, err := data.SaveSnapshot(ctx, repo, sn)
 		if err != nil {
 			return false, err
 		}
@@ -119,7 +119,9 @@ func changeTags(ctx context.Context, repo *repository.Repository, sn *restic.Sna
 	return changed, nil
 }
 
-func runTag(ctx context.Context, opts TagOptions, gopts GlobalOptions, term *termstatus.Terminal, args []string) error {
+func runTag(ctx context.Context, opts TagOptions, gopts global.Options, term ui.Terminal, args []string) error {
+	printer := ui.NewProgressPrinter(gopts.JSON, gopts.Verbosity, term)
+
 	if len(opts.SetTags) == 0 && len(opts.AddTags) == 0 && len(opts.RemoveTags) == 0 {
 		return errors.Fatal("nothing to do!")
 	}
@@ -127,23 +129,23 @@ func runTag(ctx context.Context, opts TagOptions, gopts GlobalOptions, term *ter
 		return errors.Fatal("--set and --add/--remove cannot be given at the same time")
 	}
 
-	Verbosef("create exclusive lock for repository\n")
-	ctx, repo, unlock, err := openWithExclusiveLock(ctx, gopts, false)
+	printer.P("create exclusive lock for repository")
+	ctx, repo, unlock, err := openWithExclusiveLock(ctx, gopts, false, printer)
 	if err != nil {
 		return err
 	}
 	defer unlock()
 
 	printFunc := func(c changedSnapshot) {
-		Verboseff("old snapshot ID: %v -> new snapshot ID: %v\n", c.OldSnapshotID, c.NewSnapshotID)
+		printer.V("old snapshot ID: %v -> new snapshot ID: %v", c.OldSnapshotID, c.NewSnapshotID)
 	}
 
 	summary := changedSnapshotsSummary{MessageType: "summary", ChangedSnapshots: 0}
 	printSummary := func(c changedSnapshotsSummary) {
 		if c.ChangedSnapshots == 0 {
-			Verbosef("no snapshots were modified\n")
+			printer.P("no snapshots were modified")
 		} else {
-			Verbosef("modified %v snapshots\n", c.ChangedSnapshots)
+			printer.P("modified %v snapshots", c.ChangedSnapshots)
 		}
 	}
 
@@ -156,10 +158,10 @@ func runTag(ctx context.Context, opts TagOptions, gopts GlobalOptions, term *ter
 		}
 	}
 
-	for sn := range FindFilteredSnapshots(ctx, repo, repo, &opts.SnapshotFilter, args) {
+	for sn := range FindFilteredSnapshots(ctx, repo, repo, &opts.SnapshotFilter, args, printer) {
 		changed, err := changeTags(ctx, repo, sn, opts.SetTags.Flatten(), opts.AddTags.Flatten(), opts.RemoveTags.Flatten(), printFunc)
 		if err != nil {
-			Warnf("unable to modify the tags for snapshot ID %q, ignoring: %v\n", sn.ID(), err)
+			printer.E("unable to modify the tags for snapshot ID %q, ignoring: %v", sn.ID(), err)
 			continue
 		}
 		if changed {

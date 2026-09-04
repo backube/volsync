@@ -15,25 +15,30 @@ import (
 
 	"github.com/restic/restic/internal/backend/cache"
 	"github.com/restic/restic/internal/checker"
+	"github.com/restic/restic/internal/data"
 	"github.com/restic/restic/internal/errors"
+	"github.com/restic/restic/internal/global"
 	"github.com/restic/restic/internal/repository"
 	"github.com/restic/restic/internal/restic"
 	"github.com/restic/restic/internal/ui"
 	"github.com/restic/restic/internal/ui/progress"
-	"github.com/restic/restic/internal/ui/termstatus"
 )
 
-func newCheckCommand() *cobra.Command {
+func newCheckCommand(globalOptions *global.Options) *cobra.Command {
 	var opts CheckOptions
 	cmd := &cobra.Command{
 		Use:   "check [flags]",
 		Short: "Check the repository for errors",
 		Long: `
 The "check" command tests the repository for errors and reports any errors it
-finds. It can also be used to read all data and therefore simulate a restore.
+finds.
 
-By default, the "check" command will always load all data directly from the
-repository and not use a local cache.
+By default, check verifies the structural consistency and integrity of
+snapshots, trees and pack files. To also verify the integrity of the actual
+backed-up data, use the --read-data or --read-data-subset flags.
+
+By default, check creates a new temporary cache directory to verify data.
+To reuse the existing cache, use the --with-cache flag.
 
 EXIT STATUS
 ===========
@@ -47,14 +52,13 @@ Exit status is 12 if the password is incorrect.
 		GroupID:           cmdGroupDefault,
 		DisableAutoGenTag: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			term, cancel := setupTermstatus()
-			defer cancel()
-			summary, err := runCheck(cmd.Context(), opts, globalOptions, args, term)
+			finalizeSnapshotFilter(&opts.SnapshotFilter)
+			summary, err := runCheck(cmd.Context(), opts, *globalOptions, args, globalOptions.Term)
 			if globalOptions.JSON {
 				if err != nil && summary.NumErrors == 0 {
 					summary.NumErrors = 1
 				}
-				term.Print(ui.ToJSONString(summary))
+				globalOptions.Term.Print(ui.ToJSONString(summary))
 			}
 			return err
 		},
@@ -73,6 +77,7 @@ type CheckOptions struct {
 	ReadDataSubset string
 	CheckUnused    bool
 	WithCache      bool
+	data.SnapshotFilter
 }
 
 func (opts *CheckOptions) AddFlags(f *pflag.FlagSet) {
@@ -86,6 +91,7 @@ func (opts *CheckOptions) AddFlags(f *pflag.FlagSet) {
 		panic(err)
 	}
 	f.BoolVar(&opts.WithCache, "with-cache", false, "use existing cache, only read uncached data from repository")
+	initMultiSnapshotFilter(f, &opts.SnapshotFilter, true)
 }
 
 func checkFlags(opts CheckOptions) error {
@@ -173,7 +179,7 @@ func parsePercentage(s string) (float64, error) {
 //   - if the user explicitly requested --no-cache, we don't use any cache
 //   - if the user provides --cache-dir, we use a cache in a temporary sub-directory of the specified directory and the sub-directory is deleted after the check
 //   - by default, we use a cache in a temporary directory that is deleted after the check
-func prepareCheckCache(opts CheckOptions, gopts *GlobalOptions, printer progress.Printer) (cleanup func()) {
+func prepareCheckCache(opts CheckOptions, gopts *global.Options, printer progress.Printer) (cleanup func()) {
 	cleanup = func() {}
 	if opts.WithCache {
 		// use the default cache, no setup needed
@@ -194,7 +200,7 @@ func prepareCheckCache(opts CheckOptions, gopts *GlobalOptions, printer progress
 		// use a cache in a temporary directory
 		err := os.MkdirAll(cachedir, 0755)
 		if err != nil {
-			Warnf("unable to create cache directory %s, disabling cache: %v\n", cachedir, err)
+			printer.E("unable to create cache directory %s, disabling cache: %v", cachedir, err)
 			gopts.NoCache = true
 			return cleanup
 		}
@@ -220,15 +226,12 @@ func prepareCheckCache(opts CheckOptions, gopts *GlobalOptions, printer progress
 	return cleanup
 }
 
-func runCheck(ctx context.Context, opts CheckOptions, gopts GlobalOptions, args []string, term *termstatus.Terminal) (checkSummary, error) {
+func runCheck(ctx context.Context, opts CheckOptions, gopts global.Options, args []string, term ui.Terminal) (checkSummary, error) {
 	summary := checkSummary{MessageType: "summary"}
-	if len(args) != 0 {
-		return summary, errors.Fatal("the check command expects no arguments, only options - please see `restic help check` for usage and flags")
-	}
 
 	var printer progress.Printer
 	if !gopts.JSON {
-		printer = newTerminalProgressPrinter(gopts.verbosity, term)
+		printer = ui.NewProgressPrinter(gopts.JSON, gopts.Verbosity, term)
 	} else {
 		printer = newJSONErrorPrinter(term)
 	}
@@ -239,32 +242,38 @@ func runCheck(ctx context.Context, opts CheckOptions, gopts GlobalOptions, args 
 	if !gopts.NoLock {
 		printer.P("create exclusive lock for repository\n")
 	}
-	ctx, repo, unlock, err := openWithExclusiveLock(ctx, gopts, gopts.NoLock)
+	ctx, repo, unlock, err := openWithExclusiveLock(ctx, gopts, gopts.NoLock, printer)
 	if err != nil {
 		return summary, err
 	}
 	defer unlock()
 
 	chkr := checker.New(repo, opts.CheckUnused)
-	err = chkr.LoadSnapshots(ctx)
+	err = chkr.LoadSnapshots(ctx, &opts.SnapshotFilter, args)
 	if err != nil {
 		return summary, err
 	}
 
 	printer.P("load indexes\n")
-	bar := newIndexTerminalProgress(gopts.Quiet, gopts.JSON, term)
-	hints, errs := chkr.LoadIndex(ctx, bar)
+	hints, errs := chkr.LoadIndex(ctx, printer)
 	if ctx.Err() != nil {
 		return summary, ctx.Err()
 	}
 
 	errorsFound := false
+	salvagePacks := restic.NewIDSet()
+
 	for _, hint := range hints {
-		switch hint.(type) {
-		case *checker.ErrDuplicatePacks:
+		switch hint := hint.(type) {
+		case *repository.ErrIncompletePackEntry:
+			printer.E("%s", hint.Error())
+			salvagePacks.Insert(hint.PackID)
+			errorsFound = true
+			summary.NumErrors++
+		case *repository.ErrDuplicatePacks:
 			printer.S("%s", hint.Error())
 			summary.HintRepairIndex = true
-		case *checker.ErrMixedPack:
+		case *repository.ErrMixedPack:
 			printer.S("%s", hint.Error())
 			summary.HintPrune = true
 		default:
@@ -293,13 +302,12 @@ func runCheck(ctx context.Context, opts CheckOptions, gopts GlobalOptions, args 
 
 	orphanedPacks := 0
 	errChan := make(chan error)
-	salvagePacks := restic.NewIDSet()
 
 	printer.P("check all packs\n")
 	go chkr.Packs(ctx, errChan)
 
 	for err := range errChan {
-		var packErr *checker.PackError
+		var packErr *repository.PackError
 		if errors.As(err, &packErr) {
 			if packErr.Orphaned {
 				orphanedPacks++
@@ -363,6 +371,7 @@ func runCheck(ctx context.Context, opts CheckOptions, gopts GlobalOptions, args 
 		return summary, ctx.Err()
 	}
 
+	// the following block only used for tests
 	if opts.CheckUnused {
 		unused, err := chkr.UnusedBlobs(ctx)
 		if err != nil {
@@ -374,12 +383,16 @@ func runCheck(ctx context.Context, opts CheckOptions, gopts GlobalOptions, args 
 		}
 	}
 
-	doReadData := func(packs map[restic.ID]int64) {
+	readDataFilter, err := buildPacksFilter(opts, printer, chkr.IsFiltered())
+	if err != nil {
+		return summary, err
+	}
+
+	if readDataFilter != nil {
 		p := printer.NewCounter("packs")
-		p.SetMax(uint64(len(packs)))
 		errChan := make(chan error)
 
-		go chkr.ReadPacks(ctx, packs, p, errChan)
+		go chkr.ReadPacks(ctx, readDataFilter, p, errChan)
 
 		for err := range errChan {
 			errorsFound = true
@@ -390,47 +403,6 @@ func runCheck(ctx context.Context, opts CheckOptions, gopts GlobalOptions, args 
 			}
 		}
 		p.Done()
-	}
-
-	switch {
-	case opts.ReadData:
-		printer.P("read all data\n")
-		doReadData(selectPacksByBucket(chkr.GetPacks(), 1, 1))
-	case opts.ReadDataSubset != "":
-		var packs map[restic.ID]int64
-		dataSubset, err := stringToIntSlice(opts.ReadDataSubset)
-		if err == nil {
-			bucket := dataSubset[0]
-			totalBuckets := dataSubset[1]
-			packs = selectPacksByBucket(chkr.GetPacks(), bucket, totalBuckets)
-			packCount := uint64(len(packs))
-			printer.P("read group #%d of %d data packs (out of total %d packs in %d groups)\n", bucket, packCount, chkr.CountPacks(), totalBuckets)
-		} else if strings.HasSuffix(opts.ReadDataSubset, "%") {
-			percentage, err := parsePercentage(opts.ReadDataSubset)
-			if err == nil {
-				packs = selectRandomPacksByPercentage(chkr.GetPacks(), percentage)
-				printer.P("read %.1f%% of data packs\n", percentage)
-			}
-		} else {
-			repoSize := int64(0)
-			allPacks := chkr.GetPacks()
-			for _, size := range allPacks {
-				repoSize += size
-			}
-			if repoSize == 0 {
-				return summary, errors.Fatal("Cannot read from a repository having size 0")
-			}
-			subsetSize, _ := ui.ParseBytes(opts.ReadDataSubset)
-			if subsetSize > repoSize {
-				subsetSize = repoSize
-			}
-			packs = selectRandomPacksByFileSize(chkr.GetPacks(), subsetSize, repoSize)
-			printer.P("read %d bytes of data packs\n", subsetSize)
-		}
-		if packs == nil {
-			return summary, errors.Fatal("internal error: failed to select packs to check")
-		}
-		doReadData(packs)
 	}
 
 	if len(salvagePacks) > 0 {
@@ -454,6 +426,64 @@ func runCheck(ctx context.Context, opts CheckOptions, gopts GlobalOptions, args 
 	}
 	printer.P("no errors were found\n")
 	return summary, nil
+}
+
+func buildPacksFilter(opts CheckOptions, printer progress.Printer,
+	filteredStatus bool) (func(packs map[restic.ID]int64) map[restic.ID]int64, error) {
+	typeData := ""
+	if filteredStatus {
+		typeData = "filtered "
+	}
+	switch {
+	case opts.ReadData:
+		return func(packs map[restic.ID]int64) map[restic.ID]int64 {
+			printer.P("read all %sdata", typeData)
+			return packs
+		}, nil
+	case opts.ReadDataSubset != "":
+		dataSubset, err := stringToIntSlice(opts.ReadDataSubset)
+		if err == nil {
+			bucket := dataSubset[0]
+			totalBuckets := dataSubset[1]
+			return func(packs map[restic.ID]int64) map[restic.ID]int64 {
+				packCount := uint64(len(packs))
+				packs = selectPacksByBucket(packs, bucket, totalBuckets)
+				printer.P("read group #%d of %d %sdata packs (out of total %d packs in %d groups", bucket, len(packs), typeData, packCount, totalBuckets)
+				return packs
+			}, nil
+		} else if strings.HasSuffix(opts.ReadDataSubset, "%") {
+			percentage, err := parsePercentage(opts.ReadDataSubset)
+			if err != nil {
+				return nil, err
+			}
+			return func(packs map[restic.ID]int64) map[restic.ID]int64 {
+				printer.P("read %.1f%% of %spackfiles", percentage, typeData)
+				return selectRandomPacksByPercentage(packs, percentage)
+			}, nil
+		}
+
+		repoSize := int64(0)
+		return func(packs map[restic.ID]int64) map[restic.ID]int64 {
+			for _, size := range packs {
+				repoSize += size
+			}
+			subsetSize, _ := ui.ParseBytes(opts.ReadDataSubset)
+			if subsetSize > repoSize {
+				subsetSize = repoSize
+			}
+			if repoSize > 0 {
+				packs = selectRandomPacksByFileSize(packs, subsetSize, repoSize)
+			}
+			percentage := float64(subsetSize) / float64(repoSize) * 100.0
+			if repoSize == 0 {
+				percentage = 100
+			}
+			printer.P("read %d bytes (%.1f%%) of %sdata packs\n", subsetSize, percentage, typeData)
+			return packs
+		}, nil
+	}
+
+	return nil, nil
 }
 
 // selectPacksByBucket selects subsets of packs by ranges of buckets.
@@ -527,6 +557,10 @@ func (*jsonErrorPrinter) NewCounter(_ string) *progress.Counter {
 	return nil
 }
 
+func (*jsonErrorPrinter) NewCounterTerminalOnly(_ string) *progress.Counter {
+	return nil
+}
+
 func (p *jsonErrorPrinter) E(msg string, args ...interface{}) {
 	status := checkError{
 		MessageType: "error",
@@ -536,5 +570,6 @@ func (p *jsonErrorPrinter) E(msg string, args ...interface{}) {
 }
 func (*jsonErrorPrinter) S(_ string, _ ...interface{})  {}
 func (*jsonErrorPrinter) P(_ string, _ ...interface{})  {}
+func (*jsonErrorPrinter) PT(_ string, _ ...interface{}) {}
 func (*jsonErrorPrinter) V(_ string, _ ...interface{})  {}
 func (*jsonErrorPrinter) VV(_ string, _ ...interface{}) {}

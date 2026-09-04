@@ -3,22 +3,24 @@ package main
 import (
 	"context"
 	"path/filepath"
+	"runtime"
 	"time"
 
+	"github.com/restic/restic/internal/data"
 	"github.com/restic/restic/internal/debug"
 	"github.com/restic/restic/internal/errors"
 	"github.com/restic/restic/internal/filter"
-	"github.com/restic/restic/internal/restic"
+	"github.com/restic/restic/internal/global"
 	"github.com/restic/restic/internal/restorer"
 	"github.com/restic/restic/internal/ui"
+	"github.com/restic/restic/internal/ui/progress"
 	restoreui "github.com/restic/restic/internal/ui/restore"
-	"github.com/restic/restic/internal/ui/termstatus"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
-func newRestoreCommand() *cobra.Command {
+func newRestoreCommand(globalOptions *global.Options) *cobra.Command {
 	var opts RestoreOptions
 
 	cmd := &cobra.Command{
@@ -32,7 +34,10 @@ The special snapshotID "latest" can be used to restore the latest snapshot in th
 repository.
 
 To only restore a specific subfolder, you can use the "snapshotID:subfolder"
-syntax, where "subfolder" is a path within the snapshot.
+syntax, where "subfolder" is a path within the snapshot tree as shown by
+"restic ls".
+
+POSIX ACLs are always restored by their numeric value, while file ownership can optionally be restored by name instead of numeric value.
 
 EXIT STATUS
 ===========
@@ -46,9 +51,8 @@ Exit status is 12 if the password is incorrect.
 		GroupID:           cmdGroupDefault,
 		DisableAutoGenTag: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			term, cancel := setupTermstatus()
-			defer cancel()
-			return runRestore(cmd.Context(), opts, globalOptions, term, args)
+			finalizeSnapshotFilter(&opts.SnapshotFilter)
+			return runRestore(cmd.Context(), opts, *globalOptions, globalOptions.Term, args)
 		},
 	}
 
@@ -61,7 +65,7 @@ type RestoreOptions struct {
 	filter.ExcludePatternOptions
 	filter.IncludePatternOptions
 	Target string
-	restic.SnapshotFilter
+	data.SnapshotFilter
 	DryRun              bool
 	Sparse              bool
 	Verify              bool
@@ -69,6 +73,7 @@ type RestoreOptions struct {
 	Delete              bool
 	ExcludeXattrPattern []string
 	IncludeXattrPattern []string
+	OwnershipByName     bool
 }
 
 func (opts *RestoreOptions) AddFlags(f *pflag.FlagSet) {
@@ -86,17 +91,27 @@ func (opts *RestoreOptions) AddFlags(f *pflag.FlagSet) {
 	f.BoolVar(&opts.Verify, "verify", false, "verify restored files content")
 	f.Var(&opts.Overwrite, "overwrite", "overwrite behavior, one of (always|if-changed|if-newer|never)")
 	f.BoolVar(&opts.Delete, "delete", false, "delete files from target directory if they do not exist in snapshot. Use '--dry-run -vv' to check what would be deleted")
+	if runtime.GOOS != "windows" {
+		f.BoolVar(&opts.OwnershipByName, "ownership-by-name", false, "restore file ownership by user name and group name (except POSIX ACLs)")
+	}
 }
 
-func runRestore(ctx context.Context, opts RestoreOptions, gopts GlobalOptions,
-	term *termstatus.Terminal, args []string) error {
+func runRestore(ctx context.Context, opts RestoreOptions, gopts global.Options,
+	term ui.Terminal, args []string) error {
 
-	excludePatternFns, err := opts.ExcludePatternOptions.CollectPatterns(Warnf)
+	var printer restoreui.ProgressPrinter
+	if gopts.JSON {
+		printer = restoreui.NewJSONProgress(term, gopts.Verbosity)
+	} else {
+		printer = restoreui.NewTextProgress(term, gopts.Verbosity)
+	}
+
+	excludePatternFns, err := opts.ExcludePatternOptions.CollectPatterns(printer.E)
 	if err != nil {
 		return err
 	}
 
-	includePatternFns, err := opts.IncludePatternOptions.CollectPatterns(Warnf)
+	includePatternFns, err := opts.IncludePatternOptions.CollectPatterns(printer.E)
 	if err != nil {
 		return err
 	}
@@ -131,47 +146,35 @@ func runRestore(ctx context.Context, opts RestoreOptions, gopts GlobalOptions,
 
 	debug.Log("restore %v to %v", snapshotIDString, opts.Target)
 
-	ctx, repo, unlock, err := openWithReadLock(ctx, gopts, gopts.NoLock)
+	ctx, repo, unlock, err := openWithReadLock(ctx, gopts, gopts.NoLock, printer)
 	if err != nil {
 		return err
 	}
 	defer unlock()
 
-	sn, subfolder, err := (&restic.SnapshotFilter{
-		Hosts: opts.Hosts,
-		Paths: opts.Paths,
-		Tags:  opts.Tags,
-	}).FindLatest(ctx, repo, repo, snapshotIDString)
+	sn, subfolder, err := opts.SnapshotFilter.FindLatest(ctx, repo, repo, snapshotIDString)
 	if err != nil {
 		return errors.Fatalf("failed to find snapshot: %v", err)
 	}
 
-	bar := newIndexTerminalProgress(gopts.Quiet, gopts.JSON, term)
-	err = repo.LoadIndex(ctx, bar)
+	err = repo.LoadIndex(ctx, printer)
 	if err != nil {
 		return err
 	}
 
-	sn.Tree, err = restic.FindTreeDirectory(ctx, repo, sn.Tree, subfolder)
+	sn.Tree, err = data.FindTreeDirectory(ctx, repo, sn.Tree, subfolder)
 	if err != nil {
 		return err
 	}
 
-	msg := ui.NewMessage(term, gopts.verbosity)
-	var printer restoreui.ProgressPrinter
-	if gopts.JSON {
-		printer = restoreui.NewJSONProgress(term, gopts.verbosity)
-	} else {
-		printer = restoreui.NewTextProgress(term, gopts.verbosity)
-	}
-
-	progress := restoreui.NewProgress(printer, calculateProgressInterval(!gopts.Quiet, gopts.JSON))
+	progress := restoreui.NewProgress(printer, ui.CalculateProgressInterval(!gopts.Quiet, gopts.JSON, term.CanUpdateStatus()))
 	res := restorer.NewRestorer(repo, sn, restorer.Options{
-		DryRun:    opts.DryRun,
-		Sparse:    opts.Sparse,
-		Progress:  progress,
-		Overwrite: opts.Overwrite,
-		Delete:    opts.Delete,
+		DryRun:          opts.DryRun,
+		Sparse:          opts.Sparse,
+		Progress:        progress,
+		Overwrite:       opts.Overwrite,
+		Delete:          opts.Delete,
+		OwnershipByName: opts.OwnershipByName,
 	})
 
 	totalErrors := 0
@@ -180,13 +183,13 @@ func runRestore(ctx context.Context, opts RestoreOptions, gopts GlobalOptions,
 		return progress.Error(location, err)
 	}
 	res.Warn = func(message string) {
-		msg.E("Warning: %s\n", message)
+		printer.E("Warning: %s\n", message)
 	}
 	res.Info = func(message string) {
 		if gopts.JSON {
 			return
 		}
-		msg.P("Info: %s\n", message)
+		printer.P("Info: %s\n", message)
 	}
 
 	selectExcludeFilter := func(item string, isDir bool) (selectedForRestore bool, childMayBeSelected bool) {
@@ -234,13 +237,13 @@ func runRestore(ctx context.Context, opts RestoreOptions, gopts GlobalOptions,
 		res.SelectFilter = selectIncludeFilter
 	}
 
-	res.XattrSelectFilter, err = getXattrSelectFilter(opts)
+	res.XattrSelectFilter, err = getXattrSelectFilter(opts, printer)
 	if err != nil {
 		return err
 	}
 
 	if !gopts.JSON {
-		msg.P("restoring %s to %s\n", res.Snapshot(), opts.Target)
+		printer.P("restoring %s to %s\n", res.Snapshot(), opts.Target)
 	}
 
 	countRestoredFiles, err := res.RestoreTo(ctx, opts.Target)
@@ -251,26 +254,26 @@ func runRestore(ctx context.Context, opts RestoreOptions, gopts GlobalOptions,
 	progress.Finish()
 
 	if totalErrors > 0 {
-		return errors.Fatalf("There were %d errors\n", totalErrors)
+		return errors.Fatalf("There were %d errors", totalErrors)
 	}
 
 	if opts.Verify {
 		if !gopts.JSON {
-			msg.P("verifying files in %s\n", opts.Target)
+			printer.P("verifying files in %s\n", opts.Target)
 		}
 		var count int
 		t0 := time.Now()
-		bar := newTerminalProgressMax(!gopts.Quiet && !gopts.JSON && stdoutIsTerminal(), 0, "files verified", term)
+		bar := printer.NewCounterTerminalOnly("files verified")
 		count, err = res.VerifyFiles(ctx, opts.Target, countRestoredFiles, bar)
 		if err != nil {
 			return err
 		}
 		if totalErrors > 0 {
-			return errors.Fatalf("There were %d errors\n", totalErrors)
+			return errors.Fatalf("There were %d errors", totalErrors)
 		}
 
 		if !gopts.JSON {
-			msg.P("finished verifying %d files in %s (took %s)\n", count, opts.Target,
+			printer.P("finished verifying %d files in %s (took %s)\n", count, opts.Target,
 				time.Since(t0).Round(time.Millisecond))
 		}
 	}
@@ -278,7 +281,7 @@ func runRestore(ctx context.Context, opts RestoreOptions, gopts GlobalOptions,
 	return nil
 }
 
-func getXattrSelectFilter(opts RestoreOptions) (func(xattrName string) bool, error) {
+func getXattrSelectFilter(opts RestoreOptions, printer progress.Printer) (func(xattrName string) bool, error) {
 	hasXattrExcludes := len(opts.ExcludeXattrPattern) > 0
 	hasXattrIncludes := len(opts.IncludeXattrPattern) > 0
 
@@ -292,7 +295,7 @@ func getXattrSelectFilter(opts RestoreOptions) (func(xattrName string) bool, err
 		}
 
 		return func(xattrName string) bool {
-			shouldReject := filter.RejectByPattern(opts.ExcludeXattrPattern, Warnf)(xattrName)
+			shouldReject := filter.RejectByPattern(opts.ExcludeXattrPattern, printer.E)(xattrName)
 			return !shouldReject
 		}, nil
 	}
@@ -304,7 +307,7 @@ func getXattrSelectFilter(opts RestoreOptions) (func(xattrName string) bool, err
 		}
 
 		return func(xattrName string) bool {
-			shouldInclude, _ := filter.IncludeByPattern(opts.IncludeXattrPattern, Warnf)(xattrName)
+			shouldInclude, _ := filter.IncludeByPattern(opts.IncludeXattrPattern, printer.E)(xattrName)
 			return shouldInclude
 		}, nil
 	}
