@@ -5,19 +5,22 @@ import (
 	"fmt"
 
 	"github.com/restic/restic/internal/errors"
+	"github.com/restic/restic/internal/global"
 	"github.com/restic/restic/internal/repository"
+	"github.com/restic/restic/internal/ui"
+	"github.com/restic/restic/internal/ui/progress"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
-func newKeyAddCommand() *cobra.Command {
+func newKeyAddCommand(globalOptions *global.Options) *cobra.Command {
 	var opts KeyAddOptions
 
 	cmd := &cobra.Command{
 		Use:   "add",
 		Short: "Add a new key (password) to the repository; returns the new key ID",
 		Long: `
-The "add" sub-command creates a new key and validates the key. Returns the new key ID.
+The "key add" command creates a new key and validates the key. Returns the new key ID.
 
 EXIT STATUS
 ===========
@@ -30,7 +33,7 @@ Exit status is 12 if the password is incorrect.
 	`,
 		DisableAutoGenTag: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runKeyAdd(cmd.Context(), globalOptions, opts, args)
+			return runKeyAdd(cmd.Context(), *globalOptions, opts, args, globalOptions.Term)
 		},
 	}
 
@@ -52,21 +55,22 @@ func (opts *KeyAddOptions) Add(flags *pflag.FlagSet) {
 	flags.StringVarP(&opts.Hostname, "host", "", "", "the hostname for new key")
 }
 
-func runKeyAdd(ctx context.Context, gopts GlobalOptions, opts KeyAddOptions, args []string) error {
+func runKeyAdd(ctx context.Context, gopts global.Options, opts KeyAddOptions, args []string, term ui.Terminal) error {
 	if len(args) > 0 {
 		return fmt.Errorf("the key add command expects no arguments, only options - please see `restic help key add` for usage and flags")
 	}
 
-	ctx, repo, unlock, err := openWithAppendLock(ctx, gopts, false)
+	printer := ui.NewProgressPrinter(false, gopts.Verbosity, term)
+	ctx, repo, unlock, err := openWithAppendLock(ctx, gopts, false, printer)
 	if err != nil {
 		return err
 	}
 	defer unlock()
 
-	return addKey(ctx, repo, gopts, opts)
+	return addKey(ctx, repo, gopts, opts, printer)
 }
 
-func addKey(ctx context.Context, repo *repository.Repository, gopts GlobalOptions, opts KeyAddOptions) error {
+func addKey(ctx context.Context, repo *repository.Repository, gopts global.Options, opts KeyAddOptions, printer progress.Printer) error {
 	pw, err := getNewPassword(ctx, gopts, opts.NewPasswordFile, opts.InsecureNoPassword)
 	if err != nil {
 		return err
@@ -74,7 +78,7 @@ func addKey(ctx context.Context, repo *repository.Repository, gopts GlobalOption
 
 	id, err := repository.AddKey(ctx, repo, pw, opts.Username, opts.Hostname, repo.Key())
 	if err != nil {
-		return errors.Fatalf("creating new key failed: %v\n", err)
+		return errors.Fatalf("creating new key failed: %v", err)
 	}
 
 	err = switchToNewKeyAndRemoveIfBroken(ctx, repo, id, pw)
@@ -82,7 +86,7 @@ func addKey(ctx context.Context, repo *repository.Repository, gopts GlobalOption
 		return err
 	}
 
-	Verbosef("saved new key with ID %s\n", id.ID())
+	printer.P("saved new key with ID %s", id.ID())
 
 	return nil
 }
@@ -90,7 +94,7 @@ func addKey(ctx context.Context, repo *repository.Repository, gopts GlobalOption
 // testKeyNewPassword is used to set a new password during integration testing.
 var testKeyNewPassword string
 
-func getNewPassword(ctx context.Context, gopts GlobalOptions, newPasswordFile string, insecureNoPassword bool) (string, error) {
+func getNewPassword(ctx context.Context, gopts global.Options, newPasswordFile string, insecureNoPassword bool) (string, error) {
 	if testKeyNewPassword != "" {
 		return testKeyNewPassword, nil
 	}
@@ -103,7 +107,7 @@ func getNewPassword(ctx context.Context, gopts GlobalOptions, newPasswordFile st
 	}
 
 	if newPasswordFile != "" {
-		password, err := loadPasswordFromFile(newPasswordFile)
+		password, err := global.LoadPasswordFromFile(newPasswordFile)
 		if err != nil {
 			return "", err
 		}
@@ -116,11 +120,11 @@ func getNewPassword(ctx context.Context, gopts GlobalOptions, newPasswordFile st
 	// Since we already have an open repository, temporary remove the password
 	// to prompt the user for the passwd.
 	newopts := gopts
-	newopts.password = ""
+	newopts.Password = ""
 	// empty passwords are already handled above
 	newopts.InsecureNoPassword = false
 
-	return ReadPasswordTwice(ctx, newopts,
+	return global.ReadPasswordTwice(ctx, newopts,
 		"enter new password: ",
 		"enter password again: ")
 }

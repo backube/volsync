@@ -3,143 +3,117 @@ package termstatus
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
-	"strconv"
+	"strings"
 	"testing"
 
+	"github.com/restic/restic/internal/terminal"
 	rtest "github.com/restic/restic/internal/test"
 )
 
 func TestSetStatus(t *testing.T) {
-	var buf bytes.Buffer
-	term := New(&buf, io.Discard, false)
-
-	term.canUpdateStatus = true
-	term.fd = ^uintptr(0)
-	term.clearCurrentLine = posixClearCurrentLine
-	term.moveCursorUp = posixMoveCursorUp
-
-	ctx, cancel := context.WithCancel(context.Background())
-	go term.Run(ctx)
+	buf, term, cancel := setupStatusTest()
 
 	const (
-		cl   = posixControlClearLine
-		home = posixControlMoveCursorHome
-		up   = posixControlMoveCursorUp
+		cl   = terminal.PosixControlClearLine
+		home = terminal.PosixControlMoveCursorHome
+		up   = terminal.PosixControlMoveCursorUp
+
+		clearLn = home + cl
 	)
 
 	term.SetStatus([]string{"first"})
-	exp := home + cl + "first" + home
+	exp := clearLn + "first" + home
 
 	term.SetStatus([]string{""})
-	exp += home + cl + "" + home
+	exp += clearLn + "" + home
 
 	term.SetStatus([]string{})
-	exp += home + cl + "" + home
+	exp += clearLn + "" + home
 
 	// already empty status
 	term.SetStatus([]string{})
 
 	term.SetStatus([]string{"foo", "bar", "baz"})
-	exp += home + cl + "foo\n" + home + cl + "bar\n" +
-		home + cl + "baz" + home + up + up
+	exp += clearLn + "foo\n" + clearLn + "bar\n" + clearLn + "baz" + home + up + up
 
 	term.SetStatus([]string{"quux", "needs\nquote"})
-	exp += home + cl + "quux\n" +
-		home + cl + "\"needs\\nquote\"\n" +
-		home + cl + home + up + up // Clear third line
+	exp += clearLn + "quux\n" +
+		clearLn + "\"needs\\nquote\"\n" +
+		clearLn + home + up + up // Clear third line
 
 	cancel()
-	exp += home + cl + "\n" + home + cl + home + up // Status cleared
+	exp += clearLn + "\n" + clearLn + "" + home + up // Status cleared
 
 	<-term.closed
 	rtest.Equals(t, exp, buf.String())
 }
 
-func TestQuote(t *testing.T) {
-	for _, c := range []struct {
-		in        string
-		needQuote bool
-	}{
-		{"foo.bar/baz", false},
-		{"föó_bàŕ-bãẑ", false},
-		{" foo ", false},
-		{"foo bar", false},
-		{"foo\nbar", true},
-		{"foo\rbar", true},
-		{"foo\abar", true},
-		{"\xff", true},
-		{`c:\foo\bar`, false},
-		// Issue #2260: terminal control characters.
-		{"\x1bm_red_is_beautiful", true},
-	} {
-		if c.needQuote {
-			rtest.Equals(t, strconv.Quote(c.in), Quote(c.in))
-		} else {
-			rtest.Equals(t, c.in, Quote(c.in))
-		}
-	}
+func TestSetStatusUnchangedLines(t *testing.T) {
+	buf, term, cancel := setupStatusTest()
+
+	const (
+		cl   = terminal.PosixControlClearLine
+		home = terminal.PosixControlMoveCursorHome
+		up   = terminal.PosixControlMoveCursorUp
+		down = terminal.PosixControlMoveCursorDown
+
+		clearLn  = home + cl
+		stepDown = home + down
+	)
+
+	term.SetStatus([]string{"line1", "line2", "line3"})
+	exp := clearLn + "line1\n" + clearLn + "line2\n" + clearLn + "line3" + home + up + up
+
+	term.SetStatus([]string{"line1", "line2", "line3-changed"})
+	exp += stepDown + stepDown + clearLn + "line3-changed" + home + up + up
+
+	term.SetStatus([]string{"line1", "line2", "line3-changed"})
+
+	term.SetStatus([]string{"line1", "line2-new", "line3-changed"})
+	exp += stepDown + clearLn + "line2-new\n" + home + up + up
+
+	cancel()
+	exp += clearLn + "\n" + clearLn + "\n" + clearLn + "" + home + up + up
+
+	<-term.closed
+	rtest.Equals(t, exp, buf.String())
 }
 
-func TestTruncate(t *testing.T) {
-	var tests = []struct {
-		input  string
-		width  int
-		output string
-	}{
-		{"", 80, ""},
-		{"", 0, ""},
-		{"", -1, ""},
-		{"foo", 80, "foo"},
-		{"foo", 4, "foo"},
-		{"foo", 3, "foo"},
-		{"foo", 2, "fo"},
-		{"foo", 1, "f"},
-		{"foo", 0, ""},
-		{"foo", -1, ""},
-		{"Löwen", 4, "Löwe"},
-		{"あああああ/data", 7, "あああ"},
-		{"あああああ/data", 10, "あああああ"},
-		{"あああああ/data", 11, "あああああ/"},
-	}
+func setupStatusTest() (*bytes.Buffer, *Terminal, context.CancelFunc) {
+	buf := &bytes.Buffer{}
+	term := New(nil, buf, buf, false)
 
-	for _, test := range tests {
-		t.Run("", func(t *testing.T) {
-			out := Truncate(test.input, test.width)
-			if out != test.output {
-				t.Fatalf("wrong output for input %v, width %d: want %q, got %q",
-					test.input, test.width, test.output, out)
-			}
-		})
-	}
+	term.canUpdateStatus = true
+	term.fd = ^uintptr(0)
+	term.clearCurrentLine = terminal.PosixClearCurrentLine
+	term.moveCursorUp = terminal.PosixMoveCursorUp
+	term.moveCursorDown = terminal.PosixMoveCursorDown
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go term.Run(ctx)
+	return buf, term, cancel
 }
 
-func benchmarkTruncate(b *testing.B, s string, w int) {
-	for i := 0; i < b.N; i++ {
-		Truncate(s, w)
-	}
-}
+func TestPrint(t *testing.T) {
+	buf, term, cancel := setupStatusTest()
 
-func BenchmarkTruncateASCII(b *testing.B) {
-	s := "This is an ASCII-only status message...\r\n"
-	benchmarkTruncate(b, s, len(s)-1)
-}
+	const (
+		cl   = terminal.PosixControlClearLine
+		home = terminal.PosixControlMoveCursorHome
+	)
 
-func BenchmarkTruncateUnicode(b *testing.B) {
-	s := "Hello World or Καλημέρα κόσμε or こんにちは 世界"
-	w := 0
-	for i := 0; i < len(s); {
-		w++
-		wide, utfsize := wideRune(s[i:])
-		if wide {
-			w++
-		}
-		i += int(utfsize)
-	}
-	b.ResetTimer()
+	term.Print("test")
+	exp := home + cl + "test\n"
+	term.Error("error")
+	exp += home + cl + "error\n"
 
-	benchmarkTruncate(b, s, w-1)
+	cancel()
+
+	<-term.closed
+	rtest.Equals(t, exp, buf.String())
 }
 
 func TestSanitizeLines(t *testing.T) {
@@ -150,8 +124,8 @@ func TestSanitizeLines(t *testing.T) {
 	}{
 		{[]string{""}, 80, []string{""}},
 		{[]string{"too long test line"}, 10, []string{"too long"}},
-		{[]string{"too long test line", "text"}, 10, []string{"too long\n", "text"}},
-		{[]string{"too long test line", "second long test line"}, 10, []string{"too long\n", "second l"}},
+		{[]string{"too long test line", "text"}, 10, []string{"too long", "text"}},
+		{[]string{"too long test line", "second long test line"}, 10, []string{"too long", "second l"}},
 	}
 
 	for _, test := range tests {
@@ -160,4 +134,60 @@ func TestSanitizeLines(t *testing.T) {
 			rtest.Equals(t, test.output, out)
 		})
 	}
+}
+
+type errorReader struct{ err error }
+
+func (r *errorReader) Read([]byte) (int, error) { return 0, r.err }
+
+func TestReadPassword(t *testing.T) {
+	want := errors.New("foo")
+	_, err := readPassword(&errorReader{want})
+	rtest.Assert(t, errors.Is(err, want), "wrong error %v", err)
+}
+
+func TestReadPasswordTerminal(t *testing.T) {
+	expected := "password"
+	term := New(io.NopCloser(strings.NewReader(expected)), io.Discard, io.Discard, false)
+	pw, err := term.ReadPassword(context.Background(), "test")
+	rtest.OK(t, err)
+	rtest.Equals(t, expected, pw)
+}
+
+func TestRawInputOutput(t *testing.T) {
+	input := io.NopCloser(strings.NewReader("password"))
+	var output bytes.Buffer
+	term, cancel := Setup(input, &output, io.Discard, false)
+	defer cancel()
+	rtest.Equals(t, input, term.InputRaw())
+	rtest.Equals(t, false, term.InputIsTerminal())
+	rtest.Equals(t, io.Writer(&output), term.OutputRaw())
+	rtest.Equals(t, false, term.OutputIsTerminal())
+	rtest.Equals(t, false, term.CanUpdateStatus())
+}
+
+func TestDisableStatus(t *testing.T) {
+	var output bytes.Buffer
+	term, cancel := Setup(nil, &output, &output, true)
+	rtest.Equals(t, false, term.CanUpdateStatus())
+
+	term.Print("test")
+	term.Error("error")
+	term.SetStatus([]string{"status"})
+
+	cancel()
+	rtest.Equals(t, "test\nerror\nstatus\n", output.String())
+}
+
+func TestOutputWriter(t *testing.T) {
+	var output bytes.Buffer
+	term, cancel := Setup(nil, &output, &output, true)
+
+	_, err := term.OutputWriter().Write([]byte("output\npartial"))
+	rtest.OK(t, err)
+	term.Print("test")
+	term.Error("error")
+
+	cancel()
+	rtest.Equals(t, "output\ntest\nerror\npartial\n", output.String())
 }

@@ -91,7 +91,7 @@ func TestRepositoryWithVersion(t testing.TB, version uint) (*Repository, restic.
 	if dir != "" {
 		_, err := os.Stat(dir)
 		if err != nil {
-			lbe, err := local.Create(context.TODO(), local.Config{Path: dir})
+			lbe, err := local.Create(context.TODO(), local.Config{Path: dir}, t.Logf)
 			if err != nil {
 				t.Fatalf("error creating local backend at %v: %v", dir, err)
 			}
@@ -105,17 +105,17 @@ func TestRepositoryWithVersion(t testing.TB, version uint) (*Repository, restic.
 	return repo, &internalRepository{repo}, be
 }
 
-func TestFromFixture(t testing.TB, repoFixture string) (*Repository, backend.Backend, func()) {
-	repodir, cleanup := test.Env(t, repoFixture)
+func TestFromFixture(t testing.TB, repoFixture string) (*Repository, backend.Backend) {
+	repodir := test.Env(t, repoFixture)
 	repo, be := TestOpenLocal(t, repodir)
 
-	return repo, be, cleanup
+	return repo, be
 }
 
 // TestOpenLocal opens a local repository.
 func TestOpenLocal(t testing.TB, dir string) (*Repository, backend.Backend) {
 	var be backend.Backend
-	be, err := local.Open(context.TODO(), local.Config{Path: dir, Connections: 2})
+	be, err := local.Open(context.TODO(), local.Config{Path: dir, Connections: 2}, t.Logf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,4 +161,36 @@ func BenchmarkAllVersions(b *testing.B, bench VersionedBenchmark) {
 func TestNewLock(_ *testing.T, repo *Repository, exclusive bool) (*restic.Lock, error) {
 	// TODO get rid of this test helper
 	return restic.NewLock(context.TODO(), &internalRepository{repo}, exclusive)
+}
+
+// TestCheckRepo runs the checker on repo.
+func TestCheckRepo(t testing.TB, repo *Repository) {
+	chkr := NewChecker(repo)
+
+	hints, errs := chkr.LoadIndex(context.TODO(), nil)
+	if len(errs) != 0 {
+		t.Fatalf("errors loading index: %v", errs)
+	}
+
+	if len(hints) != 0 {
+		t.Fatalf("errors loading index: %v", hints)
+	}
+
+	// packs
+	errChan := make(chan error)
+	go chkr.Packs(context.TODO(), errChan)
+
+	for err := range errChan {
+		t.Error(err)
+	}
+
+	// read data
+	errChan = make(chan error)
+	go chkr.ReadPacks(context.TODO(), func(packs map[restic.ID]int64) map[restic.ID]int64 {
+		return packs
+	}, nil, errChan)
+
+	for err := range errChan {
+		t.Error(err)
+	}
 }

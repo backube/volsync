@@ -8,12 +8,12 @@ import (
 	"github.com/restic/restic/internal/archiver"
 	"github.com/restic/restic/internal/restic"
 	"github.com/restic/restic/internal/ui"
-	"github.com/restic/restic/internal/ui/termstatus"
+	"github.com/restic/restic/internal/ui/progress"
 )
 
 // TextProgress reports progress for the `backup` command.
 type TextProgress struct {
-	*ui.Message
+	progress.Printer
 
 	term      ui.Terminal
 	verbosity uint
@@ -25,7 +25,7 @@ var _ ProgressPrinter = &TextProgress{}
 // NewTextProgress returns a new backup progress reporter.
 func NewTextProgress(term ui.Terminal, verbosity uint) *TextProgress {
 	return &TextProgress{
-		Message:   ui.NewMessage(term, verbosity),
+		Printer:   ui.NewProgressPrinter(false, verbosity, term),
 		term:      term,
 		verbosity: verbosity,
 	}
@@ -62,12 +62,12 @@ func (b *TextProgress) Update(total, processed Counter, errors uint, currentFile
 		)
 	}
 
-	lines := make([]string, 0, len(currentFiles)+1)
+	lines := make([]string, 1, len(currentFiles)+1)
+	lines[0] = status
 	for filename := range currentFiles {
 		lines = append(lines, filename)
 	}
-	sort.Strings(lines)
-	lines = append([]string{status}, lines...)
+	sort.Strings(lines[1:])
 
 	b.term.SetStatus(lines)
 }
@@ -90,7 +90,7 @@ func (b *TextProgress) Error(_ string, err error) error {
 // CompleteItem is the status callback function for the archiver when a
 // file/dir has been saved successfully.
 func (b *TextProgress) CompleteItem(messageType, item string, s archiver.ItemStats, d time.Duration) {
-	item = termstatus.Quote(item)
+	item = ui.Quote(item)
 
 	switch messageType {
 	case "dir new":
@@ -104,8 +104,8 @@ func (b *TextProgress) CompleteItem(messageType, item string, s archiver.ItemSta
 			item, d.Seconds(), ui.FormatBytes(s.DataSize),
 			ui.FormatBytes(s.DataSizeInRepo), ui.FormatBytes(s.TreeSizeInRepo))
 	case "file new":
-		b.VV("new       %v, saved in %.3fs (%v added)", item,
-			d.Seconds(), ui.FormatBytes(s.DataSize))
+		b.VV("new       %v, saved in %.3fs (%v added, %v stored)", item,
+			d.Seconds(), ui.FormatBytes(s.DataSize), ui.FormatBytes(s.DataSizeInRepo))
 	case "file unchanged":
 		b.VV("unchanged %v", item)
 	case "file modified":

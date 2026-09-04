@@ -1,7 +1,8 @@
 package index
 
 import (
-	"context"
+	"iter"
+	"slices"
 	"sort"
 
 	"github.com/restic/restic/internal/restic"
@@ -107,44 +108,84 @@ func (a *AssociatedSet[T]) Delete(bh restic.BlobHandle) {
 	}
 }
 
+type haser interface {
+	Has(bh restic.BlobHandle) bool
+}
+
+// Intersect returns a new set containing the handles that are present in both sets.
+func (a *AssociatedSet[T]) Intersect(other haser) *AssociatedSet[T] {
+	result := NewAssociatedSet[T](a.idx)
+	// Determining the smaller set already requires iterating over all keys
+	// and thus provides no performance benefit.
+	for bh := range a.Keys() {
+		if other.Has(bh) {
+			// preserve value receiver
+			val, _ := a.Get(bh)
+			result.Set(bh, val)
+		}
+	}
+
+	return result
+}
+
+// Sub returns a new set containing all handles that are present in a but not in
+// other.
+func (a *AssociatedSet[T]) Sub(other haser) *AssociatedSet[T] {
+	result := NewAssociatedSet[T](a.idx)
+	for bh := range a.Keys() {
+		if !other.Has(bh) {
+			val, _ := a.Get(bh)
+			result.Set(bh, val)
+		}
+	}
+
+	return result
+}
+
 func (a *AssociatedSet[T]) Len() int {
 	count := 0
-	a.For(func(_ restic.BlobHandle, _ T) {
+	for range a.All() {
 		count++
-	})
+	}
 	return count
 }
 
-func (a *AssociatedSet[T]) For(cb func(bh restic.BlobHandle, val T)) {
-	for k, v := range a.overflow {
-		cb(k, v)
+func (a *AssociatedSet[T]) All() iter.Seq2[restic.BlobHandle, T] {
+	return func(yield func(restic.BlobHandle, T) bool) {
+		for k, v := range a.overflow {
+			if !yield(k, v) {
+				return
+			}
+		}
+
+		for pb := range a.idx.Values() {
+			if _, ok := a.overflow[pb.BlobHandle]; ok {
+				// already reported via overflow set
+				continue
+			}
+
+			val, known := a.Get(pb.BlobHandle)
+			if known {
+				if !yield(pb.BlobHandle, val) {
+					return
+				}
+			}
+		}
 	}
-
-	_ = a.idx.Each(context.Background(), func(pb restic.PackedBlob) {
-		if _, ok := a.overflow[pb.BlobHandle]; ok {
-			// already reported via overflow set
-			return
-		}
-
-		val, known := a.Get(pb.BlobHandle)
-		if known {
-			cb(pb.BlobHandle, val)
-		}
-	})
 }
 
-// List returns a sorted slice of all BlobHandle in the set.
-func (a *AssociatedSet[T]) List() restic.BlobHandles {
-	list := make(restic.BlobHandles, 0)
-	a.For(func(bh restic.BlobHandle, _ T) {
-		list = append(list, bh)
-	})
-
-	return list
+func (a *AssociatedSet[T]) Keys() iter.Seq[restic.BlobHandle] {
+	return func(yield func(restic.BlobHandle) bool) {
+		for bh := range a.All() {
+			if !yield(bh) {
+				return
+			}
+		}
+	}
 }
 
 func (a *AssociatedSet[T]) String() string {
-	list := a.List()
+	list := restic.BlobHandles(slices.Collect(a.Keys()))
 	sort.Sort(list)
 
 	str := list.String()

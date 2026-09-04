@@ -8,14 +8,16 @@ import (
 	"github.com/restic/chunker"
 	"github.com/restic/restic/internal/backend/location"
 	"github.com/restic/restic/internal/errors"
-	"github.com/restic/restic/internal/repository"
+	"github.com/restic/restic/internal/global"
 	"github.com/restic/restic/internal/restic"
+	"github.com/restic/restic/internal/ui"
+	"github.com/restic/restic/internal/ui/progress"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
-func newInitCommand() *cobra.Command {
+func newInitCommand(globalOptions *global.Options) *cobra.Command {
 	var opts InitOptions
 
 	cmd := &cobra.Command{
@@ -33,7 +35,7 @@ Exit status is 1 if there was any error.
 		GroupID:           cmdGroupDefault,
 		DisableAutoGenTag: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runInit(cmd.Context(), opts, globalOptions, args)
+			return runInit(cmd.Context(), opts, *globalOptions, args, globalOptions.Term)
 		},
 	}
 	opts.AddFlags(cmd.Flags())
@@ -42,105 +44,78 @@ Exit status is 1 if there was any error.
 
 // InitOptions bundles all options for the init command.
 type InitOptions struct {
-	secondaryRepoOptions
+	global.SecondaryRepoOptions
 	CopyChunkerParameters bool
 	RepositoryVersion     string
 }
 
 func (opts *InitOptions) AddFlags(f *pflag.FlagSet) {
-	opts.secondaryRepoOptions.AddFlags(f, "secondary", "to copy chunker parameters from")
+	opts.SecondaryRepoOptions.AddFlags(f, "secondary", "to copy chunker parameters from")
 	f.BoolVar(&opts.CopyChunkerParameters, "copy-chunker-params", false, "copy chunker parameters from the secondary repository (useful with the copy command)")
 	f.StringVar(&opts.RepositoryVersion, "repository-version", "stable", "repository format version to use, allowed values are a format version, 'latest' and 'stable'")
 }
 
-func runInit(ctx context.Context, opts InitOptions, gopts GlobalOptions, args []string) error {
+func runInit(ctx context.Context, opts InitOptions, gopts global.Options, args []string, term ui.Terminal) error {
 	if len(args) > 0 {
 		return errors.Fatal("the init command expects no arguments, only options - please see `restic help init` for usage and flags")
 	}
 
+	printer := ui.NewProgressPrinter(gopts.JSON, gopts.Verbosity, term)
+
 	var version uint
-	if opts.RepositoryVersion == "latest" || opts.RepositoryVersion == "" {
+	switch opts.RepositoryVersion {
+	case "latest", "":
 		version = restic.MaxRepoVersion
-	} else if opts.RepositoryVersion == "stable" {
+	case "stable":
 		version = restic.StableRepoVersion
-	} else {
+	default:
 		v, err := strconv.ParseUint(opts.RepositoryVersion, 10, 32)
 		if err != nil {
 			return errors.Fatal("invalid repository version")
 		}
 		version = uint(v)
 	}
-	if version < restic.MinRepoVersion || version > restic.MaxRepoVersion {
-		return errors.Fatalf("only repository versions between %v and %v are allowed", restic.MinRepoVersion, restic.MaxRepoVersion)
-	}
 
-	chunkerPolynomial, err := maybeReadChunkerPolynomial(ctx, opts, gopts)
+	chunkerPolynomial, err := maybeReadChunkerPolynomial(ctx, opts, gopts, printer)
 	if err != nil {
 		return err
 	}
 
-	gopts.Repo, err = ReadRepo(gopts)
+	s, err := global.CreateRepository(ctx, gopts, version, chunkerPolynomial, printer)
 	if err != nil {
-		return err
-	}
-
-	gopts.password, err = ReadPasswordTwice(ctx, gopts,
-		"enter password for new repository: ",
-		"enter password again: ")
-	if err != nil {
-		return err
-	}
-
-	be, err := create(ctx, gopts.Repo, gopts, gopts.extended)
-	if err != nil {
-		return errors.Fatalf("create repository at %s failed: %v\n", location.StripPassword(gopts.backends, gopts.Repo), err)
-	}
-
-	s, err := repository.New(be, repository.Options{
-		Compression: gopts.Compression,
-		PackSize:    gopts.PackSize * 1024 * 1024,
-	})
-	if err != nil {
-		return errors.Fatal(err.Error())
-	}
-
-	err = s.Init(ctx, version, gopts.password, chunkerPolynomial)
-	if err != nil {
-		return errors.Fatalf("create key in repository at %s failed: %v\n", location.StripPassword(gopts.backends, gopts.Repo), err)
+		return errors.Fatalf("%s", err)
 	}
 
 	if !gopts.JSON {
-		Verbosef("created restic repository %v at %s", s.Config().ID[:10], location.StripPassword(gopts.backends, gopts.Repo))
+		printer.P("created restic repository %v at %s", s.Config().ID[:10], location.StripPassword(gopts.Backends, gopts.Repo))
 		if opts.CopyChunkerParameters && chunkerPolynomial != nil {
-			Verbosef(" with chunker parameters copied from secondary repository\n")
-		} else {
-			Verbosef("\n")
+			printer.P(" with chunker parameters copied from secondary repository")
 		}
-		Verbosef("\n")
-		Verbosef("Please note that knowledge of your password is required to access\n")
-		Verbosef("the repository. Losing your password means that your data is\n")
-		Verbosef("irrecoverably lost.\n")
+		printer.P("")
+		printer.P("Please note that knowledge of your password is required to access")
+		printer.P("the repository. Losing your password means that your data is")
+		printer.P("irrecoverably lost.")
 
 	} else {
 		status := initSuccess{
 			MessageType: "initialized",
 			ID:          s.Config().ID,
-			Repository:  location.StripPassword(gopts.backends, gopts.Repo),
+			Repository:  location.StripPassword(gopts.Backends, gopts.Repo),
 		}
-		return json.NewEncoder(globalOptions.stdout).Encode(status)
+		return json.NewEncoder(gopts.Term.OutputWriter()).Encode(status)
 	}
 
 	return nil
 }
 
-func maybeReadChunkerPolynomial(ctx context.Context, opts InitOptions, gopts GlobalOptions) (*chunker.Pol, error) {
+func maybeReadChunkerPolynomial(ctx context.Context, opts InitOptions, gopts global.Options, printer progress.Printer) (*chunker.Pol, error) {
 	if opts.CopyChunkerParameters {
-		otherGopts, _, err := fillSecondaryGlobalOpts(ctx, opts.secondaryRepoOptions, gopts, "secondary")
+		otherGopts, _, err := opts.SecondaryRepoOptions.FillGlobalOpts(ctx, gopts, "secondary")
 		if err != nil {
 			return nil, err
 		}
 
-		otherRepo, err := OpenRepository(ctx, otherGopts)
+		otherRepo, err := global.OpenRepository(ctx, otherGopts, printer)
 		if err != nil {
 			return nil, err
 		}

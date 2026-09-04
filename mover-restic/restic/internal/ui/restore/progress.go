@@ -38,6 +38,7 @@ type ProgressPrinter interface {
 	Error(item string, err error) error
 	CompleteItem(action ItemAction, item string, size uint64)
 	Finish(progress State, duration time.Duration)
+	progress.Printer
 }
 
 type ItemAction string
@@ -130,10 +131,10 @@ func (p *Progress) ReportDeletion(name string) {
 		return
 	}
 
-	p.s.FilesDeleted++
-
 	p.m.Lock()
 	defer p.m.Unlock()
+
+	p.s.FilesDeleted++
 
 	p.printer.CompleteItem(ActionDeleted, name, 0)
 }

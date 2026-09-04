@@ -6,23 +6,28 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/restic/restic/internal/global"
+	"github.com/restic/restic/internal/restic"
 	rtest "github.com/restic/restic/internal/test"
+	"github.com/restic/restic/internal/ui"
 )
 
-func testRunCopy(t testing.TB, srcGopts GlobalOptions, dstGopts GlobalOptions) {
+func testRunCopy(t testing.TB, srcGopts global.Options, dstGopts global.Options) {
 	gopts := srcGopts
 	gopts.Repo = dstGopts.Repo
-	gopts.password = dstGopts.password
+	gopts.Password = dstGopts.Password
 	gopts.InsecureNoPassword = dstGopts.InsecureNoPassword
 	copyOpts := CopyOptions{
-		secondaryRepoOptions: secondaryRepoOptions{
+		SecondaryRepoOptions: global.SecondaryRepoOptions{
 			Repo:               srcGopts.Repo,
-			password:           srcGopts.password,
+			Password:           srcGopts.Password,
 			InsecureNoPassword: srcGopts.InsecureNoPassword,
 		},
 	}
 
-	rtest.OK(t, runCopy(context.TODO(), copyOpts, gopts, nil))
+	rtest.OK(t, withTermStatus(t, gopts, func(ctx context.Context, gopts global.Options) error {
+		return runCopy(context.TODO(), copyOpts, gopts, nil, gopts.Term)
+	}))
 }
 
 func TestCopy(t *testing.T) {
@@ -45,8 +50,8 @@ func TestCopy(t *testing.T) {
 	copiedSnapshotIDs := testListSnapshots(t, env2.gopts, 3)
 
 	// Check that the copies size seems reasonable
-	stat := dirStats(env.repo)
-	stat2 := dirStats(env2.repo)
+	stat := dirStats(t, env.repo)
+	stat2 := dirStats(t, env2.repo)
 	sizeDiff := int64(stat.size) - int64(stat2.size)
 	if sizeDiff < 0 {
 		sizeDiff = -sizeDiff
@@ -69,7 +74,7 @@ func TestCopy(t *testing.T) {
 		testRunRestore(t, env2.gopts, restoredir, snapshotID.String())
 		foundMatch := false
 		for cmpdir := range origRestores {
-			diff := directoriesContentsDiff(restoredir, cmpdir)
+			diff := directoriesContentsDiff(t, restoredir, cmpdir)
 			if diff == "" {
 				delete(origRestores, cmpdir)
 				foundMatch = true
@@ -80,6 +85,41 @@ func TestCopy(t *testing.T) {
 	}
 
 	rtest.Assert(t, len(origRestores) == 0, "found not copied snapshots")
+
+	// check that snapshots were properly batched while copying
+	_, _, countBlobs := testPackAndBlobCounts(t, env.gopts)
+	countTreePacksDst, countDataPacksDst, countBlobsDst := testPackAndBlobCounts(t, env2.gopts)
+
+	rtest.Equals(t, countBlobs, countBlobsDst, "expected blob count in both repos to be equal")
+	rtest.Equals(t, countTreePacksDst, 1, "expected 1 tree packfile")
+	rtest.Equals(t, countDataPacksDst, 1, "expected 1 data packfile")
+}
+
+func testPackAndBlobCounts(t testing.TB, gopts global.Options) (countTreePacks int, countDataPacks int, countBlobs int) {
+	rtest.OK(t, withTermStatus(t, gopts, func(ctx context.Context, gopts global.Options) error {
+		printer := ui.NewProgressPrinter(gopts.JSON, gopts.Verbosity, gopts.Term)
+		_, repo, unlock, err := openWithReadLock(ctx, gopts, false, printer)
+		rtest.OK(t, err)
+		defer unlock()
+
+		rtest.OK(t, repo.List(context.TODO(), restic.PackFile, func(id restic.ID, size int64) error {
+			blobs, _, err := repo.ListPack(context.TODO(), id, size)
+			rtest.OK(t, err)
+			rtest.Assert(t, len(blobs) > 0, "a packfile should contain at least one blob")
+
+			switch blobs[0].Type {
+			case restic.TreeBlob:
+				countTreePacks++
+			case restic.DataBlob:
+				countDataPacks++
+			}
+			countBlobs += len(blobs)
+			return nil
+		}))
+		return nil
+	}))
+
+	return countTreePacks, countDataPacks, countBlobs
 }
 
 func TestCopyIncremental(t *testing.T) {
@@ -142,7 +182,7 @@ func TestCopyToEmptyPassword(t *testing.T) {
 	defer cleanup()
 	env2, cleanup2 := withTestEnvironment(t)
 	defer cleanup2()
-	env2.gopts.password = ""
+	env2.gopts.Password = ""
 	env2.gopts.InsecureNoPassword = true
 
 	testSetupBackupData(t, env)

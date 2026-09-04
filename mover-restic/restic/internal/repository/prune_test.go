@@ -8,13 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restic/restic/internal/checker"
 	"github.com/restic/restic/internal/repository"
 	"github.com/restic/restic/internal/repository/pack"
 	"github.com/restic/restic/internal/restic"
 	rtest "github.com/restic/restic/internal/test"
 	"github.com/restic/restic/internal/ui/progress"
-	"golang.org/x/sync/errgroup"
 )
 
 func testPrune(t *testing.T, opts repository.PruneOptions, errOnUnused bool) {
@@ -27,16 +25,16 @@ func testPrune(t *testing.T, opts repository.PruneOptions, errOnUnused bool) {
 	createRandomBlobs(t, random, repo, 5, 0.5, true)
 	keep, _ := selectBlobs(t, random, repo, 0.5)
 
-	var wg errgroup.Group
-	repo.StartPackUploader(context.TODO(), &wg)
-	// duplicate a few blobs to exercise those code paths
-	for blob := range keep {
-		buf, err := repo.LoadBlob(context.TODO(), blob.Type, blob.ID, nil)
-		rtest.OK(t, err)
-		_, _, _, err = repo.SaveBlob(context.TODO(), blob.Type, buf, blob.ID, true)
-		rtest.OK(t, err)
-	}
-	rtest.OK(t, repo.Flush(context.TODO()))
+	rtest.OK(t, repo.WithBlobUploader(context.TODO(), func(ctx context.Context, uploader restic.BlobSaverWithAsync) error {
+		// duplicate a few blobs to exercise those code paths
+		for blob := range keep {
+			buf, err := repo.LoadBlob(ctx, blob.Type, blob.ID, nil)
+			rtest.OK(t, err)
+			_, _, _, err = uploader.SaveBlob(ctx, blob.Type, buf, blob.ID, true)
+			rtest.OK(t, err)
+		}
+		return nil
+	}))
 
 	plan, err := repository.PlanPrune(context.TODO(), opts, repo, func(ctx context.Context, repo restic.Repository, usedBlobs restic.FindBlobSet) error {
 		for blob := range keep {
@@ -49,7 +47,7 @@ func testPrune(t *testing.T, opts repository.PruneOptions, errOnUnused bool) {
 	rtest.OK(t, plan.Execute(context.TODO(), &progress.NoopPrinter{}))
 
 	repo = repository.TestOpenBackend(t, be)
-	checker.TestCheckRepo(t, repo, true)
+	repository.TestCheckRepo(t, repo)
 
 	if errOnUnused {
 		existing := listBlobs(repo)
@@ -98,7 +96,6 @@ func TestPrune(t *testing.T) {
 			opts: repository.PruneOptions{
 				MaxRepackBytes: math.MaxUint64,
 				MaxUnusedBytes: func(used uint64) (unused uint64) { return math.MaxUint64 },
-				RepackSmall:    true,
 			},
 			errOnUnused: true,
 		},
@@ -134,20 +131,19 @@ func TestPruneSmall(t *testing.T) {
 	const blobSize = 1000 * 1000
 	const numBlobsCreated = 55
 
-	var wg errgroup.Group
-	repo.StartPackUploader(context.TODO(), &wg)
 	keep := restic.NewBlobSet()
-	// we need a minum of 11 packfiles, each packfile will be about 5 Mb long
-	for i := 0; i < numBlobsCreated; i++ {
-		buf := make([]byte, blobSize)
-		random.Read(buf)
+	rtest.OK(t, repo.WithBlobUploader(context.TODO(), func(ctx context.Context, uploader restic.BlobSaverWithAsync) error {
+		// we need a minimum of 11 packfiles, each packfile will be about 5 Mb long
+		for i := 0; i < numBlobsCreated; i++ {
+			buf := make([]byte, blobSize)
+			random.Read(buf)
 
-		id, _, _, err := repo.SaveBlob(context.TODO(), restic.DataBlob, buf, restic.ID{}, false)
-		rtest.OK(t, err)
-		keep.Insert(restic.BlobHandle{Type: restic.DataBlob, ID: id})
-	}
-
-	rtest.OK(t, repo.Flush(context.Background()))
+			id, _, _, err := uploader.SaveBlob(ctx, restic.DataBlob, buf, restic.ID{}, false)
+			rtest.OK(t, err)
+			keep.Insert(restic.BlobHandle{Type: restic.DataBlob, ID: id})
+		}
+		return nil
+	}))
 
 	// gather number of packfiles
 	repoPacks, err := pack.Size(context.TODO(), repo, false)
@@ -163,7 +159,6 @@ func TestPruneSmall(t *testing.T) {
 		MaxRepackBytes: math.MaxUint64,
 		MaxUnusedBytes: func(used uint64) (unused uint64) { return blobSize / 4 },
 		SmallPackBytes: 5 * 1024 * 1024,
-		RepackSmall:    true,
 	}
 	plan, err := repository.PlanPrune(context.TODO(), opts, repo, func(ctx context.Context, repo restic.Repository, usedBlobs restic.FindBlobSet) error {
 		for blob := range keep {
@@ -181,7 +176,7 @@ func TestPruneSmall(t *testing.T) {
 
 	// repopen repository
 	repo = repository.TestOpenBackend(t, be)
-	checker.TestCheckRepo(t, repo, true)
+	repository.TestCheckRepo(t, repo)
 
 	// load all blobs
 	for blob := range keep {

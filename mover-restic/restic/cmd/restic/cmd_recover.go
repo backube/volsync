@@ -5,16 +5,17 @@ import (
 	"os"
 	"time"
 
+	"github.com/restic/restic/internal/data"
 	"github.com/restic/restic/internal/errors"
+	"github.com/restic/restic/internal/global"
 	"github.com/restic/restic/internal/repository"
 	"github.com/restic/restic/internal/restic"
+	"github.com/restic/restic/internal/ui"
 	"github.com/restic/restic/internal/ui/progress"
-	"github.com/restic/restic/internal/ui/termstatus"
 	"github.com/spf13/cobra"
-	"golang.org/x/sync/errgroup"
 )
 
-func newRecoverCommand() *cobra.Command {
+func newRecoverCommand(globalOptions *global.Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "recover [flags]",
 		Short: "Recover data from the repository not referenced by snapshots",
@@ -35,27 +36,24 @@ Exit status is 12 if the password is incorrect.
 		GroupID:           cmdGroupDefault,
 		DisableAutoGenTag: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			term, cancel := setupTermstatus()
-			defer cancel()
-			return runRecover(cmd.Context(), globalOptions, term)
+			return runRecover(cmd.Context(), *globalOptions, globalOptions.Term)
 		},
 	}
 	return cmd
 }
 
-func runRecover(ctx context.Context, gopts GlobalOptions, term *termstatus.Terminal) error {
+func runRecover(ctx context.Context, gopts global.Options, term ui.Terminal) error {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return err
 	}
 
-	ctx, repo, unlock, err := openWithExclusiveLock(ctx, gopts, false)
+	printer := ui.NewProgressPrinter(false, gopts.Verbosity, term)
+	ctx, repo, unlock, err := openWithExclusiveLock(ctx, gopts, false, printer)
 	if err != nil {
 		return err
 	}
 	defer unlock()
-
-	printer := newTerminalProgressPrinter(gopts.verbosity, term)
 
 	snapshotLister, err := restic.MemorizeList(ctx, repo, restic.SnapshotFile)
 	if err != nil {
@@ -69,8 +67,7 @@ func runRecover(ctx context.Context, gopts GlobalOptions, term *termstatus.Termi
 	}
 
 	printer.P("load index files\n")
-	bar := newIndexTerminalProgress(gopts.Quiet, gopts.JSON, term)
-	if err = repo.LoadIndex(ctx, bar); err != nil {
+	if err = repo.LoadIndex(ctx, printer); err != nil {
 		return err
 	}
 
@@ -88,9 +85,10 @@ func runRecover(ctx context.Context, gopts GlobalOptions, term *termstatus.Termi
 	}
 
 	printer.P("load %d trees\n", len(trees))
-	bar = newTerminalProgressMax(!gopts.Quiet, uint64(len(trees)), "trees loaded", term)
+	bar := printer.NewCounter("trees loaded")
+	bar.SetMax(uint64(len(trees)))
 	for id := range trees {
-		tree, err := restic.LoadTree(ctx, repo, id)
+		tree, err := data.LoadTree(ctx, repo, id)
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -99,8 +97,12 @@ func runRecover(ctx context.Context, gopts GlobalOptions, term *termstatus.Termi
 			continue
 		}
 
-		for _, node := range tree.Nodes {
-			if node.Type == restic.NodeTypeDir && node.Subtree != nil {
+		for item := range tree {
+			if item.Error != nil {
+				return item.Error
+			}
+			node := item.Node
+			if node.Type == data.NodeTypeDir && node.Subtree != nil {
 				trees[*node.Subtree] = true
 			}
 		}
@@ -109,7 +111,7 @@ func runRecover(ctx context.Context, gopts GlobalOptions, term *termstatus.Termi
 	bar.Done()
 
 	printer.P("load snapshots\n")
-	err = restic.ForAllSnapshots(ctx, snapshotLister, repo, nil, func(_ restic.ID, sn *restic.Snapshot, _ error) error {
+	err = data.ForAllSnapshots(ctx, snapshotLister, repo, nil, func(_ restic.ID, sn *data.Snapshot, _ error) error {
 		trees[*sn.Tree] = true
 		return nil
 	})
@@ -136,42 +138,33 @@ func runRecover(ctx context.Context, gopts GlobalOptions, term *termstatus.Termi
 		return ctx.Err()
 	}
 
-	tree := restic.NewTree(len(roots))
-	for id := range roots {
-		var subtreeID = id
-		node := restic.Node{
-			Type:       restic.NodeTypeDir,
-			Name:       id.Str(),
-			Mode:       0755,
-			Subtree:    &subtreeID,
-			AccessTime: time.Now(),
-			ModTime:    time.Now(),
-			ChangeTime: time.Now(),
-		}
-		err := tree.Insert(&node)
-		if err != nil {
-			return err
-		}
-	}
-
-	wg, wgCtx := errgroup.WithContext(ctx)
-	repo.StartPackUploader(wgCtx, wg)
-
 	var treeID restic.ID
-	wg.Go(func() error {
+	err = repo.WithBlobUploader(ctx, func(ctx context.Context, uploader restic.BlobSaverWithAsync) error {
 		var err error
-		treeID, err = restic.SaveTree(wgCtx, repo, tree)
+		tw := data.NewTreeWriter(uploader)
+		for id := range roots {
+			var subtreeID = id
+			node := data.Node{
+				Type:       data.NodeTypeDir,
+				Name:       id.Str(),
+				Mode:       0755,
+				Subtree:    &subtreeID,
+				AccessTime: time.Now(),
+				ModTime:    time.Now(),
+				ChangeTime: time.Now(),
+			}
+			err := tw.AddNode(&node)
+			if err != nil {
+				return err
+			}
+		}
+
+		treeID, err = tw.Finalize(ctx)
 		if err != nil {
 			return errors.Fatalf("unable to save new tree to the repository: %v", err)
 		}
-
-		err = repo.Flush(wgCtx)
-		if err != nil {
-			return errors.Fatalf("unable to save blobs to the repository: %v", err)
-		}
 		return nil
 	})
-	err = wg.Wait()
 	if err != nil {
 		return err
 	}
@@ -181,14 +174,14 @@ func runRecover(ctx context.Context, gopts GlobalOptions, term *termstatus.Termi
 }
 
 func createSnapshot(ctx context.Context, printer progress.Printer, name, hostname string, tags []string, repo restic.SaverUnpacked[restic.WriteableFileType], tree *restic.ID) error {
-	sn, err := restic.NewSnapshot([]string{name}, tags, hostname, time.Now())
+	sn, err := data.NewSnapshot([]string{name}, tags, hostname, time.Now())
 	if err != nil {
 		return errors.Fatalf("unable to save snapshot: %v", err)
 	}
 
 	sn.Tree = tree
 
-	id, err := restic.SaveSnapshot(ctx, repo, sn)
+	id, err := data.SaveSnapshot(ctx, repo, sn)
 	if err != nil {
 		return errors.Fatalf("unable to save snapshot: %v", err)
 	}

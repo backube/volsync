@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/restic/chunker"
+	"github.com/restic/restic/internal/data"
 	"github.com/restic/restic/internal/debug"
 	"github.com/restic/restic/internal/errors"
 	"github.com/restic/restic/internal/fs"
@@ -14,13 +15,10 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// saveBlobFn saves a blob to a repo.
-type saveBlobFn func(context.Context, restic.BlobType, *buffer, string, func(res saveBlobResponse))
-
 // fileSaver concurrently saves incoming files to the repo.
 type fileSaver struct {
 	saveFilePool *bufferPool
-	saveBlob     saveBlobFn
+	uploader     restic.BlobSaverAsync
 
 	pol chunker.Pol
 
@@ -28,21 +26,18 @@ type fileSaver struct {
 
 	CompleteBlob func(bytes uint64)
 
-	NodeFromFileInfo func(snPath, filename string, meta ToNoder, ignoreXattrListError bool) (*restic.Node, error)
+	NodeFromFileInfo func(snPath, filename string, meta ToNoder, ignoreXattrListError bool) (*data.Node, error)
 }
 
 // newFileSaver returns a new file saver. A worker pool with fileWorkers is
 // started, it is stopped when ctx is cancelled.
-func newFileSaver(ctx context.Context, wg *errgroup.Group, save saveBlobFn, pol chunker.Pol, fileWorkers, blobWorkers uint) *fileSaver {
+func newFileSaver(ctx context.Context, wg *errgroup.Group, uploader restic.BlobSaverAsync, pol chunker.Pol, fileWorkers uint) *fileSaver {
 	ch := make(chan saveFileJob)
-
-	debug.Log("new file saver with %v file workers and %v blob workers", fileWorkers, blobWorkers)
-
-	poolSize := fileWorkers + blobWorkers
+	debug.Log("new file saver with %v file workers", fileWorkers)
 
 	s := &fileSaver{
-		saveBlob:     save,
-		saveFilePool: newBufferPool(int(poolSize), chunker.MaxSize),
+		uploader:     uploader,
+		saveFilePool: newBufferPool(chunker.MaxSize),
 		pol:          pol,
 		ch:           ch,
 
@@ -64,12 +59,12 @@ func (s *fileSaver) TriggerShutdown() {
 }
 
 // fileCompleteFunc is called when the file has been saved.
-type fileCompleteFunc func(*restic.Node, ItemStats)
+type fileCompleteFunc func(*data.Node, ItemStats)
 
 // Save stores the file f and returns the data once it has been completed. The
 // file is closed by Save. completeReading is only called if the file was read
 // successfully. complete is always called. If completeReading is called, then
-// this will always happen before calling complete.
+// this will always happen before calling complete. The callbacks must not block.
 func (s *fileSaver) Save(ctx context.Context, snPath string, target string, file fs.File, start func(), completeReading func(), complete fileCompleteFunc) futureNode {
 	fn, ch := newFutureNode()
 	job := saveFileJob{
@@ -160,7 +155,7 @@ func (s *fileSaver) saveFile(ctx context.Context, chnker *chunker.Chunker, snPat
 		return
 	}
 
-	if node.Type != restic.NodeTypeFile {
+	if node.Type != data.NodeTypeFile {
 		_ = f.Close()
 		completeError(errors.Errorf("node type %q is wrong", node.Type))
 		return
@@ -179,17 +174,19 @@ func (s *fileSaver) saveFile(ctx context.Context, chnker *chunker.Chunker, snPat
 			buf.Release()
 			break
 		}
-
-		buf.Data = chunk.Data
-		node.Size += uint64(chunk.Length)
-
 		if err != nil {
+			buf.Release()
 			_ = f.Close()
 			completeError(err)
 			return
 		}
+
+		buf.Data = chunk.Data
+		node.Size += uint64(chunk.Length)
+
 		// test if the context has been cancelled, return the error
 		if ctx.Err() != nil {
+			buf.Release()
 			_ = f.Close()
 			completeError(ctx.Err())
 			return
@@ -202,15 +199,20 @@ func (s *fileSaver) saveFile(ctx context.Context, chnker *chunker.Chunker, snPat
 		node.Content = append(node.Content, restic.ID{})
 		lock.Unlock()
 
-		s.saveBlob(ctx, restic.DataBlob, buf, target, func(sbr saveBlobResponse) {
-			lock.Lock()
-			if !sbr.known {
-				fnr.stats.DataBlobs++
-				fnr.stats.DataSize += uint64(sbr.length)
-				fnr.stats.DataSizeInRepo += uint64(sbr.sizeInRepo)
+		s.uploader.SaveBlobAsync(ctx, restic.DataBlob, buf.Data, restic.ID{}, false, func(newID restic.ID, known bool, sizeInRepo int, err error) {
+			defer buf.Release()
+			if err != nil {
+				completeError(err)
+				return
 			}
 
-			node.Content[pos] = sbr.id
+			lock.Lock()
+			if !known {
+				fnr.stats.DataBlobs++
+				fnr.stats.DataSize += uint64(len(buf.Data))
+				fnr.stats.DataSizeInRepo += uint64(sizeInRepo)
+			}
+			node.Content[pos] = newID
 			lock.Unlock()
 
 			completeBlob()

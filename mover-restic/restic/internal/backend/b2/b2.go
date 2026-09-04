@@ -88,7 +88,7 @@ func newClient(ctx context.Context, cfg Config, rt http.RoundTripper) (*b2.Clien
 }
 
 // Open opens a connection to the B2 service.
-func Open(ctx context.Context, cfg Config, rt http.RoundTripper) (backend.Backend, error) {
+func Open(ctx context.Context, cfg Config, rt http.RoundTripper, _ func(string, ...interface{})) (backend.Backend, error) {
 	debug.Log("cfg %#v", cfg)
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -120,7 +120,7 @@ func Open(ctx context.Context, cfg Config, rt http.RoundTripper) (backend.Backen
 
 // Create opens a connection to the B2 service. If the bucket does not exist yet,
 // it is created.
-func Create(ctx context.Context, cfg Config, rt http.RoundTripper) (backend.Backend, error) {
+func Create(ctx context.Context, cfg Config, rt http.RoundTripper, _ func(string, ...interface{})) (backend.Backend, error) {
 	debug.Log("cfg %#v", cfg)
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -246,6 +246,7 @@ func (be *b2Backend) Save(ctx context.Context, h backend.Handle, rd backend.Rewi
 
 	// sanity check
 	if n != rd.Length() {
+		_ = w.Close()
 		return errors.Errorf("wrote %d bytes instead of the expected %d bytes", n, rd.Length())
 	}
 	return errors.Wrap(w.Close(), "Close")

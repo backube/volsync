@@ -6,13 +6,14 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/restic/restic/internal/fs"
 	"github.com/restic/restic/internal/test"
 )
 
 func TestCommandReaderSuccess(t *testing.T) {
-	reader, err := fs.NewCommandReader(context.TODO(), []string{"true"}, io.Discard)
+	reader, err := fs.NewCommandReader(context.TODO(), []string{"true"}, func(msg string, args ...interface{}) {})
 	test.OK(t, err)
 
 	_, err = io.Copy(io.Discard, reader)
@@ -22,7 +23,7 @@ func TestCommandReaderSuccess(t *testing.T) {
 }
 
 func TestCommandReaderFail(t *testing.T) {
-	reader, err := fs.NewCommandReader(context.TODO(), []string{"false"}, io.Discard)
+	reader, err := fs.NewCommandReader(context.TODO(), []string{"false"}, func(msg string, args ...interface{}) {})
 	test.OK(t, err)
 
 	_, err = io.Copy(io.Discard, reader)
@@ -30,17 +31,17 @@ func TestCommandReaderFail(t *testing.T) {
 }
 
 func TestCommandReaderInvalid(t *testing.T) {
-	_, err := fs.NewCommandReader(context.TODO(), []string{"w54fy098hj7fy5twijouytfrj098y645wr"}, io.Discard)
+	_, err := fs.NewCommandReader(context.TODO(), []string{"w54fy098hj7fy5twijouytfrj098y645wr"}, func(msg string, args ...interface{}) {})
 	test.Assert(t, err != nil, "missing error")
 }
 
 func TestCommandReaderEmptyArgs(t *testing.T) {
-	_, err := fs.NewCommandReader(context.TODO(), []string{}, io.Discard)
+	_, err := fs.NewCommandReader(context.TODO(), []string{}, func(msg string, args ...interface{}) {})
 	test.Assert(t, err != nil, "missing error")
 }
 
 func TestCommandReaderOutput(t *testing.T) {
-	reader, err := fs.NewCommandReader(context.TODO(), []string{"echo", "hello world"}, io.Discard)
+	reader, err := fs.NewCommandReader(context.TODO(), []string{"echo", "hello world"}, func(msg string, args ...interface{}) {})
 	test.OK(t, err)
 
 	var buf bytes.Buffer
@@ -50,4 +51,15 @@ func TestCommandReaderOutput(t *testing.T) {
 	test.OK(t, reader.Close())
 
 	test.Equals(t, "hello world", strings.TrimSpace(buf.String()))
+}
+
+func TestCommandReaderQuickClose(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.TODO(), 10*time.Second)
+	defer cancel()
+	reader, err := fs.NewCommandReader(ctx, []string{"sleep", "3600"}, func(msg string, args ...interface{}) {})
+	test.OK(t, err)
+
+	// test that close returns before the context expires
+	_ = reader.Close()
+	test.OK(t, ctx.Err())
 }

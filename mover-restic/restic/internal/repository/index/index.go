@@ -3,9 +3,13 @@ package index
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
 	"encoding/json"
 	"io"
+	"iter"
 	"math"
+	"slices"
 	"sync"
 	"time"
 
@@ -131,9 +135,18 @@ var Oversized = func(idx *Index) bool {
 	return blobs >= indexMaxBlobs+pack.MaxHeaderEntries
 }
 
+// Preallocate preallocates space for the given blob type.
+// This is used to avoid reallocations when adding a large number of blobs to the index.
+func (idx *Index) Preallocate(t restic.BlobType, numEntries int) {
+	idx.m.Lock()
+	defer idx.m.Unlock()
+
+	idx.byType[t].preallocate(numEntries)
+}
+
 // StorePack remembers the ids of all blobs of a given pack
 // in the index
-func (idx *Index) StorePack(id restic.ID, blobs []restic.Blob) {
+func (idx *Index) StorePack(id restic.ID, blobs restic.Blobs) {
 	idx.m.Lock()
 	defer idx.m.Unlock()
 
@@ -169,9 +182,9 @@ func (idx *Index) Lookup(bh restic.BlobHandle, pbs []restic.PackedBlob) []restic
 	idx.m.RLock()
 	defer idx.m.RUnlock()
 
-	idx.byType[bh.Type].foreachWithID(bh.ID, func(e *indexEntry) {
+	for e := range idx.byType[bh.Type].valuesWithID(bh.ID) {
 		pbs = append(pbs, idx.toPackedBlob(e, bh.Type))
-	})
+	}
 
 	return pbs
 }
@@ -200,28 +213,22 @@ func (idx *Index) LookupSize(bh restic.BlobHandle) (plaintextLength uint, found 
 	return uint(crypto.PlaintextLength(int(e.length))), true
 }
 
-// Each passes all blobs known to the index to the callback fn. This blocks any
+// Values returns an iterator over all blobs known to the index. This blocks any
 // modification of the index.
-func (idx *Index) Each(ctx context.Context, fn func(restic.PackedBlob)) error {
-	idx.m.RLock()
-	defer idx.m.RUnlock()
+func (idx *Index) Values() iter.Seq[restic.PackedBlob] {
+	return func(yield func(restic.PackedBlob) bool) {
+		idx.m.RLock()
+		defer idx.m.RUnlock()
 
-	for typ := range idx.byType {
-		m := &idx.byType[typ]
-		m.foreach(func(e *indexEntry) bool {
-			if ctx.Err() != nil {
-				return false
+		for typ := range idx.byType {
+			m := &idx.byType[typ]
+			for e := range m.values() {
+				if !yield(idx.toPackedBlob(e, restic.BlobType(typ))) {
+					return
+				}
 			}
-			fn(idx.toPackedBlob(e, restic.BlobType(typ)))
-			return true
-		})
+		}
 	}
-	return ctx.Err()
-}
-
-type EachByPackResult struct {
-	PackID restic.ID
-	Blobs  []restic.Blob
 }
 
 // EachByPack returns a channel that yields all blobs known to the index
@@ -231,10 +238,10 @@ type EachByPackResult struct {
 // from the finalized index which have been re-read into a non-finalized index.
 // When the  context is cancelled, the background goroutine
 // terminates. This blocks any modification of the index.
-func (idx *Index) EachByPack(ctx context.Context, packBlacklist restic.IDSet) <-chan EachByPackResult {
+func (idx *Index) EachByPack(ctx context.Context, packBlacklist restic.IDSet) <-chan restic.PackBlobs {
 	idx.m.RLock()
 
-	ch := make(chan EachByPackResult)
+	ch := make(chan restic.PackBlobs)
 
 	go func() {
 		defer idx.m.RUnlock()
@@ -244,19 +251,18 @@ func (idx *Index) EachByPack(ctx context.Context, packBlacklist restic.IDSet) <-
 
 		for typ := range idx.byType {
 			m := &idx.byType[typ]
-			m.foreach(func(e *indexEntry) bool {
+			for e := range m.values() {
 				packID := idx.packs[e.packIndex]
 				if !idx.final || !packBlacklist.Has(packID) {
 					v := byPack[packID]
 					v[typ] = append(v[typ], e)
 					byPack[packID] = v
 				}
-				return true
-			})
+			}
 		}
 
 		for packID, packByType := range byPack {
-			var result EachByPackResult
+			var result restic.PackBlobs
 			result.PackID = packID
 			for typ, p := range packByType {
 				for _, e := range p {
@@ -309,7 +315,7 @@ func (idx *Index) generatePackList() ([]packJSON, error) {
 
 	for typ := range idx.byType {
 		m := &idx.byType[typ]
-		m.foreach(func(e *indexEntry) bool {
+		for e := range m.values() {
 			packID := idx.packs[e.packIndex]
 			if packID.IsNull() {
 				panic("null pack id")
@@ -331,9 +337,7 @@ func (idx *Index) generatePackList() ([]packJSON, error) {
 				Length:             uint(e.length),
 				UncompressedLength: uint(e.uncompressedLength),
 			})
-
-			return true
-		})
+		}
 	}
 
 	return list, nil
@@ -475,23 +479,23 @@ func (idx *Index) merge(idx2 *Index) error {
 
 		// helper func to test if identical entry is contained in idx
 		hasIdenticalEntry := func(e2 *indexEntry) (found bool) {
-			m.foreachWithID(e2.id, func(e *indexEntry) {
+			for e := range m.valuesWithID(e2.id) {
 				b := idx.toPackedBlob(e, restic.BlobType(typ))
 				b2 := idx2.toPackedBlob(e2, restic.BlobType(typ))
 				if b == b2 {
 					found = true
+					break
 				}
-			})
+			}
 			return found
 		}
 
-		m2.foreach(func(e2 *indexEntry) bool {
+		for e2 := range m2.values() {
 			if !hasIdenticalEntry(e2) {
 				// packIndex needs to be changed as idx2.pack was appended to idx.pack, see above
 				m.add(e2.id, e2.packIndex+packlen, e2.offset, e2.length, e2.uncompressedLength)
 			}
-			return true
-		})
+		}
 	}
 
 	idx.ids = append(idx.ids, idx2.ids...)
@@ -544,4 +548,22 @@ func (idx *Index) Len(t restic.BlobType) uint {
 	defer idx.m.RUnlock()
 
 	return idx.byType[t].len()
+}
+
+func PackBlobsHash(pbs restic.PackBlobs) restic.ID {
+	h := sha256.New()
+	h.Write(pbs.PackID[:])
+
+	sortedBlobs := slices.Clone(pbs.Blobs)
+	sortedBlobs.Sort()
+	for _, blob := range sortedBlobs {
+		h.Write(blob.ID[:])
+		buf := make([]byte, 0, 16)
+		buf = binary.LittleEndian.AppendUint32(buf, uint32(blob.Type))
+		buf = binary.LittleEndian.AppendUint32(buf, uint32(blob.Offset))
+		buf = binary.LittleEndian.AppendUint32(buf, uint32(blob.Length))
+		buf = binary.LittleEndian.AppendUint32(buf, uint32(blob.UncompressedLength))
+		h.Write(buf)
+	}
+	return restic.ID(h.Sum(nil))
 }
