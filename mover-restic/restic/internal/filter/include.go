@@ -25,6 +25,10 @@ func (opts *IncludePatternOptions) Add(f *pflag.FlagSet) {
 	f.StringArrayVar(&opts.InsensitiveIncludeFiles, "iinclude-file", nil, "same as --include-file but ignores casing of `file`names in patterns")
 }
 
+func (opts *IncludePatternOptions) Empty() bool {
+	return len(opts.Includes) == 0 && len(opts.InsensitiveIncludes) == 0 && len(opts.IncludeFiles) == 0 && len(opts.InsensitiveIncludeFiles) == 0
+}
+
 func (opts IncludePatternOptions) CollectPatterns(warnf func(msg string, args ...interface{})) ([]IncludeByNameFunc, error) {
 	var fs []IncludeByNameFunc
 	if len(opts.IncludeFiles) > 0 {
@@ -71,7 +75,7 @@ func (opts IncludePatternOptions) CollectPatterns(warnf func(msg string, args ..
 	return fs, nil
 }
 
-// IncludeByPattern returns a IncludeByNameFunc which includes files that match
+// IncludeByPattern returns an IncludeByNameFunc which includes files that match
 // one of the patterns.
 func IncludeByPattern(patterns []string, warnf func(msg string, args ...interface{})) IncludeByNameFunc {
 	parsedPatterns := ParsePatterns(patterns)
@@ -85,14 +89,15 @@ func IncludeByPattern(patterns []string, warnf func(msg string, args ...interfac
 	}
 }
 
-// IncludeByInsensitivePattern returns a IncludeByNameFunc which includes files that match
+// IncludeByInsensitivePattern returns an IncludeByNameFunc which includes files that match
 // one of the patterns, ignoring the casing of the filenames.
 func IncludeByInsensitivePattern(patterns []string, warnf func(msg string, args ...interface{})) IncludeByNameFunc {
+	lowerPatterns := make([]string, len(patterns))
 	for index, path := range patterns {
-		patterns[index] = strings.ToLower(path)
+		lowerPatterns[index] = strings.ToLower(path)
 	}
 
-	includeFunc := IncludeByPattern(patterns, warnf)
+	includeFunc := IncludeByPattern(lowerPatterns, warnf)
 	return func(item string) (matched bool, childMayMatch bool) {
 		return includeFunc(strings.ToLower(item))
 	}

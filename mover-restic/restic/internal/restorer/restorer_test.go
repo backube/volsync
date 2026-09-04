@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/restic/restic/internal/archiver"
+	"github.com/restic/restic/internal/data"
 	"github.com/restic/restic/internal/errors"
 	"github.com/restic/restic/internal/fs"
 	"github.com/restic/restic/internal/repository"
@@ -24,7 +25,6 @@ import (
 	rtest "github.com/restic/restic/internal/test"
 	"github.com/restic/restic/internal/ui/progress"
 	restoreui "github.com/restic/restic/internal/ui/restore"
-	"golang.org/x/sync/errgroup"
 )
 
 type Node interface{}
@@ -75,11 +75,11 @@ func saveFile(t testing.TB, repo restic.BlobSaver, data string) restic.ID {
 	return id
 }
 
-func saveDir(t testing.TB, repo restic.BlobSaver, nodes map[string]Node, inode uint64, getGenericAttributes func(attr *FileAttributes, isDir bool) (genericAttributes map[restic.GenericAttributeType]json.RawMessage)) restic.ID {
+func saveDir(t testing.TB, repo restic.BlobSaver, nodes map[string]Node, inode uint64, getGenericAttributes func(attr *FileAttributes, isDir bool) (genericAttributes map[data.GenericAttributeType]json.RawMessage)) restic.ID {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	tree := &restic.Tree{}
+	tree := make([]*data.Node, 0, len(nodes))
 	for name, n := range nodes {
 		inode++
 		switch node := n.(type) {
@@ -107,8 +107,8 @@ func saveDir(t testing.TB, repo restic.BlobSaver, nodes map[string]Node, inode u
 			if mode == 0 {
 				mode = 0644
 			}
-			err := tree.Insert(&restic.Node{
-				Type:              restic.NodeTypeFile,
+			tree = append(tree, &data.Node{
+				Type:              data.NodeTypeFile,
 				Mode:              mode,
 				ModTime:           node.ModTime,
 				Name:              name,
@@ -120,10 +120,9 @@ func saveDir(t testing.TB, repo restic.BlobSaver, nodes map[string]Node, inode u
 				Links:             lc,
 				GenericAttributes: getGenericAttributes(node.attributes, false),
 			})
-			rtest.OK(t, err)
 		case Symlink:
-			err := tree.Insert(&restic.Node{
-				Type:       restic.NodeTypeSymlink,
+			tree = append(tree, &data.Node{
+				Type:       data.NodeTypeSymlink,
 				Mode:       os.ModeSymlink | 0o777,
 				ModTime:    node.ModTime,
 				Name:       name,
@@ -133,7 +132,6 @@ func saveDir(t testing.TB, repo restic.BlobSaver, nodes map[string]Node, inode u
 				Inode:      inode,
 				Links:      1,
 			})
-			rtest.OK(t, err)
 		case Dir:
 			id := saveDir(t, repo, node.Nodes, inode, getGenericAttributes)
 
@@ -142,8 +140,8 @@ func saveDir(t testing.TB, repo restic.BlobSaver, nodes map[string]Node, inode u
 				mode = 0755
 			}
 
-			err := tree.Insert(&restic.Node{
-				Type:              restic.NodeTypeDir,
+			tree = append(tree, &data.Node{
+				Type:              data.NodeTypeDir,
 				Mode:              mode,
 				ModTime:           node.ModTime,
 				Name:              name,
@@ -152,39 +150,31 @@ func saveDir(t testing.TB, repo restic.BlobSaver, nodes map[string]Node, inode u
 				Subtree:           &id,
 				GenericAttributes: getGenericAttributes(node.attributes, false),
 			})
-			rtest.OK(t, err)
 		default:
 			t.Fatalf("unknown node type %T", node)
 		}
 	}
 
-	id, err := restic.SaveTree(ctx, repo, tree)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	return id
+	return data.TestSaveNodes(t, ctx, repo, tree)
 }
 
-func saveSnapshot(t testing.TB, repo restic.Repository, snapshot Snapshot, getGenericAttributes func(attr *FileAttributes, isDir bool) (genericAttributes map[restic.GenericAttributeType]json.RawMessage)) (*restic.Snapshot, restic.ID) {
+func saveSnapshot(t testing.TB, repo restic.Repository, snapshot Snapshot, getGenericAttributes func(attr *FileAttributes, isDir bool) (genericAttributes map[data.GenericAttributeType]json.RawMessage)) (*data.Snapshot, restic.ID) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	wg, wgCtx := errgroup.WithContext(ctx)
-	repo.StartPackUploader(wgCtx, wg)
-	treeID := saveDir(t, repo, snapshot.Nodes, 1000, getGenericAttributes)
-	err := repo.Flush(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	var treeID restic.ID
+	rtest.OK(t, repo.WithBlobUploader(ctx, func(ctx context.Context, uploader restic.BlobSaverWithAsync) error {
+		treeID = saveDir(t, uploader, snapshot.Nodes, 1000, getGenericAttributes)
+		return nil
+	}))
 
-	sn, err := restic.NewSnapshot([]string{"test"}, nil, "", time.Now())
+	sn, err := data.NewSnapshot([]string{"test"}, nil, "", time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	sn.Tree = &treeID
-	id, err := restic.SaveSnapshot(ctx, repo, sn)
+	id, err := data.SaveSnapshot(ctx, repo, sn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +182,7 @@ func saveSnapshot(t testing.TB, repo restic.Repository, snapshot Snapshot, getGe
 	return sn, id
 }
 
-var noopGetGenericAttributes = func(attr *FileAttributes, isDir bool) (genericAttributes map[restic.GenericAttributeType]json.RawMessage) {
+var noopGetGenericAttributes = func(attr *FileAttributes, isDir bool) (genericAttributes map[data.GenericAttributeType]json.RawMessage) {
 	// No-op
 	return nil
 }
@@ -553,8 +543,8 @@ func checkVisitOrder(list []TreeVisit) TraverseTreeCheck {
 	var pos int
 
 	return func(t testing.TB) treeVisitor {
-		check := func(funcName string) func(*restic.Node, string, string, []string) error {
-			return func(node *restic.Node, target, location string, expectedFilenames []string) error {
+		check := func(funcName string) func(*data.Node, string, string, []string) error {
+			return func(node *data.Node, target, location string, expectedFilenames []string) error {
 				if pos >= len(list) {
 					t.Errorf("step %v, %v(%v): expected no more than %d function calls", pos, funcName, location, len(list))
 					pos++
@@ -580,9 +570,9 @@ func checkVisitOrder(list []TreeVisit) TraverseTreeCheck {
 				return nil
 			}
 		}
-		checkNoFilename := func(funcName string) func(*restic.Node, string, string) error {
+		checkNoFilename := func(funcName string) func(*data.Node, string, string) error {
 			f := check(funcName)
-			return func(node *restic.Node, target, location string) error {
+			return func(node *data.Node, target, location string) error {
 				return f(node, target, location, nil)
 			}
 		}
@@ -999,6 +989,7 @@ func TestRestorerSparseOverwrite(t *testing.T) {
 
 type printerMock struct {
 	s restoreui.State
+	progress.NoopPrinter
 }
 
 func (p *printerMock) Update(_ restoreui.State, _ time.Duration) {

@@ -8,25 +8,27 @@ import (
 	"path/filepath"
 
 	"github.com/restic/restic/internal/errors"
+	"github.com/restic/restic/internal/global"
 	"github.com/restic/restic/internal/selfupdate"
+	"github.com/restic/restic/internal/ui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
-func registerSelfUpdateCommand(cmd *cobra.Command) {
+func registerSelfUpdateCommand(cmd *cobra.Command, globalOptions *global.Options) {
 	cmd.AddCommand(
-		newSelfUpdateCommand(),
+		newSelfUpdateCommand(globalOptions),
 	)
 }
 
-func newSelfUpdateCommand() *cobra.Command {
+func newSelfUpdateCommand(globalOptions *global.Options) *cobra.Command {
 	var opts SelfUpdateOptions
 
 	cmd := &cobra.Command{
 		Use:   "self-update [flags]",
 		Short: "Update the restic binary",
 		Long: `
-The command "self-update" downloads the latest stable release of restic from
+The "self-update" command downloads the latest stable release of restic from
 GitHub and replaces the currently running binary. After download, the
 authenticity of the binary is verified using the GPG signature on the release
 files.
@@ -36,13 +38,10 @@ EXIT STATUS
 
 Exit status is 0 if the command was successful.
 Exit status is 1 if there was any error.
-Exit status is 10 if the repository does not exist.
-Exit status is 11 if the repository is already locked.
-Exit status is 12 if the password is incorrect.
 `,
 		DisableAutoGenTag: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSelfUpdate(cmd.Context(), opts, globalOptions, args)
+			return runSelfUpdate(cmd.Context(), opts, *globalOptions, args, globalOptions.Term)
 		},
 	}
 
@@ -59,7 +58,7 @@ func (opts *SelfUpdateOptions) AddFlags(f *pflag.FlagSet) {
 	f.StringVar(&opts.Output, "output", "", "Save the downloaded file as `filename` (default: running binary itself)")
 }
 
-func runSelfUpdate(ctx context.Context, opts SelfUpdateOptions, gopts GlobalOptions, args []string) error {
+func runSelfUpdate(ctx context.Context, opts SelfUpdateOptions, gopts global.Options, args []string, term ui.Terminal) error {
 	if opts.Output == "" {
 		file, err := os.Executable()
 		if err != nil {
@@ -85,15 +84,16 @@ func runSelfUpdate(ctx context.Context, opts SelfUpdateOptions, gopts GlobalOpti
 		}
 	}
 
-	Verbosef("writing restic to %v\n", opts.Output)
+	printer := ui.NewProgressPrinter(false, gopts.Verbosity, term)
+	printer.P("writing restic to %v", opts.Output)
 
-	v, err := selfupdate.DownloadLatestStableRelease(ctx, opts.Output, version, Verbosef)
+	v, err := selfupdate.DownloadLatestStableRelease(ctx, opts.Output, global.Version, printer.P)
 	if err != nil {
 		return errors.Fatalf("unable to update restic: %v", err)
 	}
 
-	if v != version {
-		Printf("successfully updated restic to version %v\n", v)
+	if v != global.Version {
+		printer.S("successfully updated restic to version %v", v)
 	}
 
 	return nil

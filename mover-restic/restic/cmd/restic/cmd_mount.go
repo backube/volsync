@@ -1,20 +1,26 @@
 //go:build darwin || freebsd || linux
-// +build darwin freebsd linux
 
 package main
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"golang.org/x/sys/unix"
 
+	"github.com/restic/restic/internal/backend/local"
+	"github.com/restic/restic/internal/backend/location"
+	"github.com/restic/restic/internal/data"
 	"github.com/restic/restic/internal/debug"
 	"github.com/restic/restic/internal/errors"
-	"github.com/restic/restic/internal/restic"
+	"github.com/restic/restic/internal/global"
+	"github.com/restic/restic/internal/ui"
 
 	"github.com/restic/restic/internal/fuse"
 
@@ -22,19 +28,19 @@ import (
 	"github.com/anacrolix/fuse/fs"
 )
 
-func registerMountCommand(cmdRoot *cobra.Command) {
-	cmdRoot.AddCommand(newMountCommand())
+func registerMountCommand(cmdRoot *cobra.Command, globalOptions *global.Options) {
+	cmdRoot.AddCommand(newMountCommand(globalOptions))
 }
 
-func newMountCommand() *cobra.Command {
+func newMountCommand(globalOptions *global.Options) *cobra.Command {
 	var opts MountOptions
 
 	cmd := &cobra.Command{
 		Use:   "mount [flags] mountpoint",
 		Short: "Mount the repository",
 		Long: `
-The "mount" command mounts the repository via fuse to a directory. This is a
-read-only mount.
+The "mount" command mounts the repository read-only via FUSE at the given
+mountpoint.
 
 Snapshot Directories
 ====================
@@ -80,7 +86,8 @@ Exit status is 12 if the password is incorrect.
 		DisableAutoGenTag: true,
 		GroupID:           cmdGroupDefault,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runMount(cmd.Context(), opts, globalOptions, args)
+			finalizeSnapshotFilter(&opts.SnapshotFilter)
+			return runMount(cmd.Context(), opts, *globalOptions, args, globalOptions.Term)
 		},
 	}
 
@@ -93,7 +100,7 @@ type MountOptions struct {
 	OwnerRoot            bool
 	AllowOther           bool
 	NoDefaultPermissions bool
-	restic.SnapshotFilter
+	data.SnapshotFilter
 	TimeTemplate  string
 	PathTemplates []string
 }
@@ -111,7 +118,9 @@ func (opts *MountOptions) AddFlags(f *pflag.FlagSet) {
 	_ = f.MarkDeprecated("snapshot-template", "use --time-template")
 }
 
-func runMount(ctx context.Context, opts MountOptions, gopts GlobalOptions, args []string) error {
+func runMount(ctx context.Context, opts MountOptions, gopts global.Options, args []string, term ui.Terminal) error {
+	printer := ui.NewProgressPrinter(false, gopts.Verbosity, term)
+
 	if opts.TimeTemplate == "" {
 		return errors.Fatal("time template string cannot be empty")
 	}
@@ -125,32 +134,29 @@ func runMount(ctx context.Context, opts MountOptions, gopts GlobalOptions, args 
 	}
 
 	mountpoint := args[0]
-
-	// Check the existence of the mount point at the earliest stage to
-	// prevent unnecessary computations while opening the repository.
-	if _, err := os.Stat(mountpoint); errors.Is(err, os.ErrNotExist) {
-		Verbosef("Mountpoint %s doesn't exist\n", mountpoint)
+	if err := validateMountpoint(mountpoint, gopts); err != nil {
 		return err
 	}
 
 	debug.Log("start mount")
 	defer debug.Log("finish mount")
 
-	ctx, repo, unlock, err := openWithReadLock(ctx, gopts, gopts.NoLock)
+	ctx, repo, unlock, err := openWithReadLock(ctx, gopts, gopts.NoLock, printer)
 	if err != nil {
 		return err
 	}
 	defer unlock()
 
-	bar := newIndexProgress(gopts.Quiet, gopts.JSON)
-	err = repo.LoadIndex(ctx, bar)
+	err = repo.LoadIndex(ctx, printer)
 	if err != nil {
 		return err
 	}
 
+	fuseMountName := fmt.Sprintf("restic:%s", repo.Config().ID[:10])
+
 	mountOptions := []systemFuse.MountOption{
 		systemFuse.ReadOnly(),
-		systemFuse.FSName("restic"),
+		systemFuse.FSName(fuseMountName),
 		systemFuse.MaxReadahead(128 * 1024),
 	}
 
@@ -179,12 +185,12 @@ func runMount(ctx context.Context, opts MountOptions, gopts GlobalOptions, args 
 		PathTemplates: opts.PathTemplates,
 	}
 	root := fuse.NewRoot(repo, cfg)
-
-	Printf("Now serving the repository at %s\n", mountpoint)
-	Printf("Use another terminal or tool to browse the contents of this folder.\n")
-	Printf("When finished, quit with Ctrl-c here or umount the mountpoint.\n")
-
-	debug.Log("serving mount at %v", mountpoint)
+	// load repository before reporting the mountpoint
+	printer.S("Loading snapshots...")
+	_, err = root.ReadDirAll(ctx)
+	if err != nil {
+		return err
+	}
 
 	done := make(chan struct{})
 
@@ -193,12 +199,17 @@ func runMount(ctx context.Context, opts MountOptions, gopts GlobalOptions, args 
 		err = fs.Serve(c, root)
 	}()
 
+	printer.S("Now serving the repository at %s", mountpoint)
+	printer.S("Use another terminal or tool to browse the contents of this folder.")
+	printer.S("When finished, quit with Ctrl-c here or umount the mountpoint.")
+	debug.Log("serving mount at %v", mountpoint)
+
 	select {
 	case <-ctx.Done():
 		debug.Log("running umount cleanup handler for mount at %v", mountpoint)
 		err := systemFuse.Unmount(mountpoint)
 		if err != nil {
-			Warnf("unable to umount (maybe already umounted or still in use?): %v\n", err)
+			printer.E("unable to umount (maybe already umounted or still in use?): %v", err)
 		}
 
 		return ErrOK
@@ -207,4 +218,92 @@ func runMount(ctx context.Context, opts MountOptions, gopts GlobalOptions, args 
 	}
 
 	return err
+}
+
+func validateMountpoint(mountpoint string, gopts global.Options) error {
+	// Check the existence of the mount point at the earliest stage to
+	// prevent unnecessary computations while opening the repository.
+	stat, err := os.Stat(mountpoint)
+	if errors.Is(err, os.ErrNotExist) {
+		return errors.Fatal(fmt.Sprintf("mountpoint %s does not exist", mountpoint))
+	} else if err != nil {
+		return errors.Fatal(fmt.Sprintf("mountpoint %s is inaccessible: %v", mountpoint, err))
+	} else if !stat.IsDir() {
+		return errors.Fatal(fmt.Sprintf("mountpoint %s is not a directory", mountpoint))
+	}
+
+	err = unix.Access(mountpoint, unix.W_OK|unix.X_OK)
+	if err != nil {
+		return errors.Fatal(fmt.Sprintf("mountpoint %s is not writeable or not executable", mountpoint))
+	}
+
+	// Refuse to mount onto (or under, or over) the local repository directory.
+	// Doing so makes the FUSE server read its own backend files through the
+	// mount it just created, deadlocking the kernel (GH #5234).
+	loc, err := location.Parse(gopts.Backends, gopts.Repo)
+	if err != nil {
+		return err
+	}
+	if loc.Scheme == "local" {
+		if err := checkMountpointOverlap(loc.Config.(*local.Config).Path, mountpoint); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkMountpointOverlap returns an error.Fatal if the local repository at
+// repoPath and the mountpoint overlap: equal paths, mountpoint nested inside
+// the repo, or the repo nested inside the mountpoint. Any overlap deadlocks
+// the FUSE server (GH #5234).
+func checkMountpointOverlap(repoPath, mountpoint string) error {
+	rp, err := resolvePath(repoPath)
+	if err != nil {
+		return err
+	}
+	mp, err := resolvePath(mountpoint)
+	if err != nil {
+		return err
+	}
+
+	const tail = "; refusing to mount to avoid deadlocking the FUSE server"
+	switch {
+	case rp == mp:
+		return errors.Fatal(fmt.Sprintf("mountpoint %s is the local repository directory%s", mp, tail))
+	case isInside(rp, mp):
+		return errors.Fatal(fmt.Sprintf("mountpoint %s is inside the local repository directory %s%s", mp, rp, tail))
+	case isInside(mp, rp):
+		return errors.Fatal(fmt.Sprintf("local repository directory %s is inside the mountpoint %s%s", rp, mp, tail))
+	}
+	return nil
+}
+
+// resolvePath returns p as an absolute, symlink-resolved path. If EvalSymlinks
+// fails (e.g. the path does not fully exist), it falls back to the absolute
+// form: overlap detection is best-effort and we'd rather refuse a clear
+// overlap than abort on an unrelated stat error.
+func resolvePath(p string) (string, error) {
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return "", err
+	}
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return abs, nil
+	}
+	return resolved, nil
+}
+
+// isInside reports whether child is strictly nested inside parent. Both paths
+// must already be cleaned and absolute. Equal paths return false; the caller
+// handles equality separately so it can produce a distinct error message.
+func isInside(parent, child string) bool {
+	rel, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	if rel == "." || rel == ".." {
+		return false
+	}
+	return !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

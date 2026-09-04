@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Restic updated to v0.19.1
+- Rclone updated to v1.75.0
+- Restic support `--keep-within-*` retention flags
 - The Rsync-ssh mover now requires privileged mode to run. Previously for backwards
   compatibility it forced privileged mode. Note: Rsync-TLS is still the recommended
   mover for Rsync.

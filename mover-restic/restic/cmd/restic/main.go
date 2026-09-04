@@ -14,11 +14,14 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/automaxprocs/maxprocs"
 
+	"github.com/restic/restic/internal/backend/all"
 	"github.com/restic/restic/internal/debug"
 	"github.com/restic/restic/internal/errors"
 	"github.com/restic/restic/internal/feature"
+	"github.com/restic/restic/internal/global"
 	"github.com/restic/restic/internal/repository"
 	"github.com/restic/restic/internal/restic"
+	"github.com/restic/restic/internal/ui/termstatus"
 )
 
 func init() {
@@ -31,7 +34,7 @@ var ErrOK = errors.New("ok")
 var cmdGroupDefault = "default"
 var cmdGroupAdvanced = "advanced"
 
-func newRootCommand() *cobra.Command {
+func newRootCommand(globalOptions *global.Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "restic",
 		Short: "Backup and restore files",
@@ -46,6 +49,10 @@ The full documentation can be found at https://restic.readthedocs.io/ .
 		DisableAutoGenTag: true,
 
 		PersistentPreRunE: func(c *cobra.Command, _ []string) error {
+			switch c.Name() {
+			case "__complete", "__completeNoDesc":
+				return nil
+			}
 			return globalOptions.PreRun(needsPassword(c.Name()))
 		},
 	}
@@ -66,41 +73,42 @@ The full documentation can be found at https://restic.readthedocs.io/ .
 	// Use our "generate" command instead of the cobra provided "completion" command
 	cmd.CompletionOptions.DisableDefaultCmd = true
 
+	// globalOptions is passed to commands by reference to allow PersistentPreRunE to modify it
 	cmd.AddCommand(
-		newBackupCommand(),
-		newCacheCommand(),
-		newCatCommand(),
-		newCheckCommand(),
-		newCopyCommand(),
-		newDiffCommand(),
-		newDumpCommand(),
-		newFeaturesCommand(),
-		newFindCommand(),
-		newForgetCommand(),
-		newGenerateCommand(),
-		newInitCommand(),
-		newKeyCommand(),
-		newListCommand(),
-		newLsCommand(),
-		newMigrateCommand(),
-		newOptionsCommand(),
-		newPruneCommand(),
-		newRebuildIndexCommand(),
-		newRecoverCommand(),
-		newRepairCommand(),
-		newRestoreCommand(),
-		newRewriteCommand(),
-		newSnapshotsCommand(),
-		newStatsCommand(),
-		newTagCommand(),
-		newUnlockCommand(),
-		newVersionCommand(),
+		newBackupCommand(globalOptions),
+		newCacheCommand(globalOptions),
+		newCatCommand(globalOptions),
+		newCheckCommand(globalOptions),
+		newCopyCommand(globalOptions),
+		newDiffCommand(globalOptions),
+		newDumpCommand(globalOptions),
+		newFeaturesCommand(globalOptions),
+		newFindCommand(globalOptions),
+		newForgetCommand(globalOptions),
+		newGenerateCommand(globalOptions),
+		newInitCommand(globalOptions),
+		newKeyCommand(globalOptions),
+		newListCommand(globalOptions),
+		newLsCommand(globalOptions),
+		newMigrateCommand(globalOptions),
+		newOptionsCommand(globalOptions),
+		newPruneCommand(globalOptions),
+		newRebuildIndexCommand(globalOptions),
+		newRecoverCommand(globalOptions),
+		newRepairCommand(globalOptions),
+		newRestoreCommand(globalOptions),
+		newRewriteCommand(globalOptions),
+		newSnapshotsCommand(globalOptions),
+		newStatsCommand(globalOptions),
+		newTagCommand(globalOptions),
+		newUnlockCommand(globalOptions),
+		newVersionCommand(globalOptions),
 	)
 
-	registerDebugCommand(cmd)
-	registerMountCommand(cmd)
-	registerSelfUpdateCommand(cmd)
-	registerProfiling(cmd)
+	registerDebugCommand(cmd, globalOptions)
+	registerMountCommand(cmd, globalOptions)
+	registerSelfUpdateCommand(cmd, globalOptions)
+	global.RegisterProfiling(cmd, os.Stderr)
 
 	return cmd
 }
@@ -110,7 +118,7 @@ The full documentation can be found at https://restic.readthedocs.io/ .
 // user for authentication).
 func needsPassword(cmd string) bool {
 	switch cmd {
-	case "cache", "generate", "help", "options", "self-update", "version", "__complete":
+	case "cache", "generate", "help", "options", "self-update", "version", "__complete", "__completeNoDesc":
 		return false
 	default:
 		return true
@@ -125,7 +133,7 @@ func tweakGoGC() {
 	}
 }
 
-func printExitError(code int, message string) {
+func printExitError(globalOptions global.Options, code int, message string) {
 	if globalOptions.JSON {
 		type jsonExitError struct {
 			MessageType string `json:"message_type"` // exit_error
@@ -139,13 +147,15 @@ func printExitError(code int, message string) {
 			Message:     message,
 		}
 
-		err := json.NewEncoder(globalOptions.stderr).Encode(jsonS)
+		err := json.NewEncoder(os.Stderr).Encode(jsonS)
 		if err != nil {
-			Warnf("JSON encode failed: %v\n", err)
+			// ignore error as there's no good way to handle it
+			_, _ = fmt.Fprintf(os.Stderr, "JSON encode failed: %v\n", err)
+			debug.Log("JSON encode failed: %v\n", err)
 			return
 		}
 	} else {
-		_, _ = fmt.Fprintf(globalOptions.stderr, "%v\n", message)
+		_, _ = fmt.Fprintf(os.Stderr, "%v\n", message)
 	}
 }
 
@@ -166,17 +176,25 @@ func main() {
 
 	debug.Log("main %#v", os.Args)
 	debug.Log("restic %s compiled with %v on %v/%v",
-		version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
+		global.Version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
 
-	ctx := createGlobalContext()
-	err = newRootCommand().ExecuteContext(ctx)
-
-	if err == nil {
-		err = ctx.Err()
-	} else if err == ErrOK {
-		// ErrOK overwrites context cancellation errors
-		err = nil
+	globalOptions := global.Options{
+		Backends: all.Backends(),
 	}
+	func() {
+		term, cancel := termstatus.Setup(os.Stdin, os.Stdout, os.Stderr, globalOptions.Quiet)
+		defer cancel()
+		globalOptions.Term = term
+		ctx := createGlobalContext(os.Stderr)
+		err = newRootCommand(&globalOptions).ExecuteContext(ctx)
+		switch err {
+		case nil:
+			err = ctx.Err()
+		case ErrOK:
+			// ErrOK overwrites context cancellation errors
+			err = nil
+		}
+	}()
 
 	var exitMessage string
 	switch {
@@ -192,7 +210,7 @@ func main() {
 		exitMessage = fmt.Sprintf("%+v", err)
 
 		if logBuffer.Len() > 0 {
-			exitMessage += "also, the following messages were logged by a library:\n"
+			exitMessage += " also, the following messages were logged by a library:\n"
 			sc := bufio.NewScanner(logBuffer)
 			for sc.Scan() {
 				exitMessage += fmt.Sprintln(sc.Text())
@@ -206,7 +224,9 @@ func main() {
 		exitCode = 0
 	case err == ErrInvalidSourceData:
 		exitCode = 3
-	case errors.Is(err, ErrNoRepository):
+	case errors.Is(err, ErrFailedToRemoveOneOrMoreSnapshots):
+		exitCode = 3
+	case errors.Is(err, global.ErrNoRepository):
 		exitCode = 10
 	case restic.IsAlreadyLocked(err):
 		exitCode = 11
@@ -219,7 +239,7 @@ func main() {
 	}
 
 	if exitCode != 0 {
-		printExitError(exitCode, exitMessage)
+		printExitError(globalOptions, exitCode, exitMessage)
 	}
 	Exit(exitCode)
 }

@@ -7,13 +7,14 @@ import (
 	"os"
 
 	"github.com/restic/restic/internal/errors"
+	"github.com/restic/restic/internal/global"
 	"github.com/restic/restic/internal/repository"
 	"github.com/restic/restic/internal/restic"
-	"github.com/restic/restic/internal/ui/termstatus"
+	"github.com/restic/restic/internal/ui"
 	"github.com/spf13/cobra"
 )
 
-func newRepairPacksCommand() *cobra.Command {
+func newRepairPacksCommand(globalOptions *global.Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "packs [packIDs...]",
 		Short: "Salvage damaged pack files",
@@ -32,15 +33,13 @@ Exit status is 12 if the password is incorrect.
 `,
 		DisableAutoGenTag: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			term, cancel := setupTermstatus()
-			defer cancel()
-			return runRepairPacks(cmd.Context(), globalOptions, term, args)
+			return runRepairPacks(cmd.Context(), *globalOptions, globalOptions.Term, args)
 		},
 	}
 	return cmd
 }
 
-func runRepairPacks(ctx context.Context, gopts GlobalOptions, term *termstatus.Terminal, args []string) error {
+func runRepairPacks(ctx context.Context, gopts global.Options, term ui.Terminal, args []string) error {
 	ids := restic.NewIDSet()
 	for _, arg := range args {
 		id, err := restic.ParseID(arg)
@@ -53,16 +52,15 @@ func runRepairPacks(ctx context.Context, gopts GlobalOptions, term *termstatus.T
 		return errors.Fatal("no ids specified")
 	}
 
-	ctx, repo, unlock, err := openWithExclusiveLock(ctx, gopts, false)
+	printer := ui.NewProgressPrinter(false, gopts.Verbosity, term)
+
+	ctx, repo, unlock, err := openWithExclusiveLock(ctx, gopts, false, printer)
 	if err != nil {
 		return err
 	}
 	defer unlock()
 
-	printer := newTerminalProgressPrinter(gopts.verbosity, term)
-
-	bar := newIndexTerminalProgress(gopts.Quiet, gopts.JSON, term)
-	err = repo.LoadIndex(ctx, bar)
+	err = repo.LoadIndex(ctx, printer)
 	if err != nil {
 		return errors.Fatalf("%s", err)
 	}
@@ -93,6 +91,6 @@ func runRepairPacks(ctx context.Context, gopts GlobalOptions, term *termstatus.T
 		return errors.Fatalf("%s", err)
 	}
 
-	Warnf("\nUse `restic repair snapshots --forget` to remove the corrupted data blobs from all snapshots\n")
+	printer.E("\nUse `restic repair snapshots --forget` to remove the corrupted data blobs from all snapshots")
 	return nil
 }

@@ -1,5 +1,4 @@
 //go:build !windows
-// +build !windows
 
 package restic
 
@@ -13,8 +12,10 @@ import (
 	"github.com/restic/restic/internal/errors"
 )
 
-// uidGidInt returns uid, gid of the user as a number.
-func uidGidInt(u *user.User) (uid, gid uint32, err error) {
+// UidGidInt returns uid, gid of the user as a number.
+//
+//nolint:revive // capitalization is correct as is
+func UidGidInt(u *user.User) (uid, gid uint32, err error) {
 	ui, err := strconv.ParseUint(u.Uid, 10, 32)
 	if err != nil {
 		return 0, 0, errors.Errorf("invalid UID %q", u.Uid)

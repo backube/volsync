@@ -3,13 +3,14 @@ package main
 import (
 	"context"
 
+	"github.com/restic/restic/internal/global"
 	"github.com/restic/restic/internal/repository"
-	"github.com/restic/restic/internal/ui/termstatus"
+	"github.com/restic/restic/internal/ui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
-func newRepairIndexCommand() *cobra.Command {
+func newRepairIndexCommand(globalOptions *global.Options) *cobra.Command {
 	var opts RepairIndexOptions
 
 	cmd := &cobra.Command{
@@ -30,9 +31,7 @@ Exit status is 12 if the password is incorrect.
 `,
 		DisableAutoGenTag: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			term, cancel := setupTermstatus()
-			defer cancel()
-			return runRebuildIndex(cmd.Context(), opts, globalOptions, term)
+			return runRebuildIndex(cmd.Context(), opts, *globalOptions, globalOptions.Term)
 		},
 	}
 
@@ -49,10 +48,10 @@ func (opts *RepairIndexOptions) AddFlags(f *pflag.FlagSet) {
 	f.BoolVar(&opts.ReadAllPacks, "read-all-packs", false, "read all pack files to generate new index from scratch")
 }
 
-func newRebuildIndexCommand() *cobra.Command {
+func newRebuildIndexCommand(globalOptions *global.Options) *cobra.Command {
 	var opts RepairIndexOptions
 
-	replacement := newRepairIndexCommand()
+	replacement := newRepairIndexCommand(globalOptions)
 	cmd := &cobra.Command{
 		Use:               "rebuild-index [flags]",
 		Short:             replacement.Short,
@@ -62,9 +61,7 @@ func newRebuildIndexCommand() *cobra.Command {
 		// must create a new instance of the run function as it captures opts
 		// by reference
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			term, cancel := setupTermstatus()
-			defer cancel()
-			return runRebuildIndex(cmd.Context(), opts, globalOptions, term)
+			return runRebuildIndex(cmd.Context(), opts, *globalOptions, globalOptions.Term)
 		},
 	}
 
@@ -72,14 +69,14 @@ func newRebuildIndexCommand() *cobra.Command {
 	return cmd
 }
 
-func runRebuildIndex(ctx context.Context, opts RepairIndexOptions, gopts GlobalOptions, term *termstatus.Terminal) error {
-	ctx, repo, unlock, err := openWithExclusiveLock(ctx, gopts, false)
+func runRebuildIndex(ctx context.Context, opts RepairIndexOptions, gopts global.Options, term ui.Terminal) error {
+	printer := ui.NewProgressPrinter(false, gopts.Verbosity, term)
+
+	ctx, repo, unlock, err := openWithExclusiveLock(ctx, gopts, false, printer)
 	if err != nil {
 		return err
 	}
 	defer unlock()
-
-	printer := newTerminalProgressPrinter(gopts.verbosity, term)
 
 	err = repository.RepairIndex(ctx, repo, repository.RepairIndexOptions{
 		ReadAllPacks: opts.ReadAllPacks,

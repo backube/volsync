@@ -1,11 +1,14 @@
 package repository
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 
+	"github.com/restic/restic/internal/debug"
 	"github.com/restic/restic/internal/errors"
 	"github.com/restic/restic/internal/repository/index"
 	"github.com/restic/restic/internal/repository/pack"
@@ -27,7 +30,6 @@ type PruneOptions struct {
 	SmallPackBytes uint64
 
 	RepackCacheableOnly bool
-	RepackSmall         bool
 	RepackUncompressed  bool
 }
 
@@ -105,7 +107,7 @@ func PlanPrune(ctx context.Context, opts PruneOptions, repo *Repository, getUsed
 	if repo.Config().Version < 2 && opts.RepackUncompressed {
 		return nil, fmt.Errorf("compression requires at least repository format version 2")
 	}
-	if opts.SmallPackBytes > uint64(repo.packSize()) {
+	if opts.SmallPackBytes > uint64(repo.PackSize()) {
 		return nil, fmt.Errorf("repack-smaller-than exceeds repository packsize")
 	}
 
@@ -176,19 +178,19 @@ func packInfoFromIndex(ctx context.Context, idx restic.ListBlobser, usedBlobs *i
 
 	// Check if all used blobs have been found in index
 	missingBlobs := restic.NewBlobSet()
-	usedBlobs.For(func(bh restic.BlobHandle, count uint8) {
+	for bh, count := range usedBlobs.All() {
 		if count == 0 {
 			// blob does not exist in any pack files
 			missingBlobs.Insert(bh)
 		}
-	})
+	}
 
 	if len(missingBlobs) != 0 {
 		printer.E("%v not found in the index\n\n"+
 			"Integrity check failed: Data seems to be missing.\n"+
 			"Will not start prune to prevent (additional) data loss!\n"+
 			"Please report this error (along with the output of the 'prune' run) at\n"+
-			"https://github.com/restic/restic/issues/new/choose\n", missingBlobs)
+			"https://github.com/restic/restic/issues/new/choose", missingBlobs)
 		return nil, nil, ErrIndexIncomplete
 	}
 
@@ -311,13 +313,50 @@ func packInfoFromIndex(ctx context.Context, idx restic.ListBlobser, usedBlobs *i
 
 	// Sanity check. If no duplicates exist, all blobs have value 1. After handling
 	// duplicates, this also applies to duplicates.
-	usedBlobs.For(func(_ restic.BlobHandle, count uint8) {
+	for _, count := range usedBlobs.All() {
 		if count != 1 {
 			panic("internal error during blob selection")
 		}
-	})
+	}
 
 	return usedBlobs, indexPack, nil
+}
+
+// calculateTargetPacksize calculates the packsize as
+// 0.8 * max(4MB, third percentile of all packfile sizes)
+func calculateTargetPacksize(opts PruneOptions, indexPack map[restic.ID]packInfo) (targetPackSize uint) {
+	// For an empty repository, the target pack size does not matter.
+	targetPackSize = 0
+	if len(indexPack) > 0 {
+		type ToSort struct {
+			packID restic.ID
+			size   uint64
+		}
+
+		// calculate 3rd percentile from sorted packfiles
+		toSort := make([]ToSort, 0, len(indexPack))
+		for packID, ip := range indexPack {
+			toSort = append(toSort, ToSort{packID, uint64(ip.usedSize + ip.unusedSize)})
+		}
+		slices.SortFunc(toSort, func(a, b ToSort) int {
+			return cmp.Compare(a.size, b.size)
+		})
+
+		// Using the approximately 3rd percentile is just a heuristic and may not always be the optimal choice.
+		// However, using a low percentile ensures that only a small fraction of the repository
+		// may end up being repacked. By using 80% of that perecentile or the minimum pack size,
+		// we ensure that no repacking happens if the repository already has no small pack files.
+		index := len(indexPack) * 3 / 100
+		targetPackSize = max(MinPackSize, uint(toSort[index].size)) * 4 / 5
+		debug.Log("targetPackSize %d, minimum pack size %d, 3rd percentile %d", targetPackSize, MinPackSize, toSort[index].size)
+	}
+
+	if opts.SmallPackBytes > 0 {
+		// used option --repack-smaller-than if it is set
+		targetPackSize = uint(opts.SmallPackBytes)
+	}
+
+	return targetPackSize
 }
 
 func decidePackAction(ctx context.Context, opts PruneOptions, repo *Repository, indexPack map[restic.ID]packInfo, stats *PruneStats, printer progress.Printer) (PrunePlan, error) {
@@ -328,15 +367,8 @@ func decidePackAction(ctx context.Context, opts PruneOptions, repo *Repository, 
 	var repackCandidates []packInfoWithID
 	var repackSmallCandidates []packInfoWithID
 	repoVersion := repo.Config().Version
-	// only repack very small files by default
-	targetPackSize := repo.packSize() / 25
-	if opts.SmallPackBytes > 0 {
-		targetPackSize = uint(opts.SmallPackBytes)
-	} else if opts.RepackSmall {
-		// consider files with at least 80% of the target size as large enough
-		targetPackSize = repo.packSize() / 5 * 4
-	}
 
+	targetPackSize := calculateTargetPacksize(opts, indexPack)
 	// loop over all packs and decide what to do
 	bar := printer.NewCounter("packs processed")
 	bar.SetMax(uint64(len(indexPack)))
@@ -344,7 +376,7 @@ func decidePackAction(ctx context.Context, opts PruneOptions, repo *Repository, 
 		p, ok := indexPack[id]
 		if !ok {
 			// Pack was not referenced in index and is not used  => immediately remove!
-			printer.V("will remove pack %v as it is unused and not indexed\n", id.Str())
+			printer.V("will remove pack %v as it is unused and not indexed", id.Str())
 			removePacksFirst.Insert(id)
 			stats.Size.Unref += uint64(packSize)
 			return nil
@@ -354,7 +386,7 @@ func decidePackAction(ctx context.Context, opts PruneOptions, repo *Repository, 
 			// Pack size does not fit and pack is needed => error
 			// If the pack is not needed, this is no error, the pack can
 			// and will be simply removed, see below.
-			printer.E("pack %s: calculated size %d does not match real size %d\nRun 'restic repair index'.\n",
+			printer.E("pack %s: calculated size %d does not match real size %d\nRun 'restic repair index'",
 				id.Str(), p.unusedSize+p.usedSize, packSize)
 			return ErrSizeNotMatching
 		}
@@ -428,16 +460,16 @@ func decidePackAction(ctx context.Context, opts PruneOptions, repo *Repository, 
 	}
 
 	if len(indexPack) != 0 {
-		printer.E("The index references %d needed pack files which are missing from the repository:\n", len(indexPack))
+		printer.E("The index references %d needed pack files which are missing from the repository:", len(indexPack))
 		for id := range indexPack {
-			printer.E("  %v\n", id)
+			printer.E("  %v", id)
 		}
 		return PrunePlan{}, ErrPacksMissing
 	}
 	if len(ignorePacks) != 0 {
 		printer.E("Missing but unneeded pack files are referenced in the index, will be repaired\n")
 		for id := range ignorePacks {
-			printer.E("will forget missing pack file %v\n", id)
+			printer.E("will forget missing pack file %v", id)
 		}
 	}
 
@@ -454,6 +486,7 @@ func decidePackAction(ctx context.Context, opts PruneOptions, repo *Repository, 
 	// Instead of unused[i] / used[i] > unused[j] / used[j] we use
 	// unused[i] * used[j] > unused[j] * used[i] as uint32*uint32 < uint64
 	// Moreover packs containing trees and too short packs are sorted to the beginning
+	debug.Log("%d candidate packfiles to repack", len(repackCandidates))
 	sort.Slice(repackCandidates, func(i, j int) bool {
 		pi := repackCandidates[i].packInfo
 		pj := repackCandidates[j].packInfo
@@ -479,6 +512,7 @@ func decidePackAction(ctx context.Context, opts PruneOptions, repo *Repository, 
 		if p.uncompressed {
 			stats.Size.Uncompressed -= p.unusedSize + p.usedSize
 		}
+		debug.Log("repack %s(%s) %10d %10d", id.Str(), p.tpe, p.usedSize, p.unusedSize)
 	}
 
 	// calculate limit for number of unused bytes in the repo after repacking
@@ -552,6 +586,7 @@ func (plan *PrunePlan) Execute(ctx context.Context, printer progress.Printer) er
 	// unreferenced packs can be safely deleted first
 	if len(plan.removePacksFirst) != 0 {
 		printer.P("deleting unreferenced packs\n")
+		// ignoring errors is fine here as keeping too many packs cannot damage the repository
 		_ = deleteFiles(ctx, true, &internalRepository{repo}, plan.removePacksFirst, restic.PackFile, printer)
 		// forget unused data
 		plan.removePacksFirst = nil
@@ -563,11 +598,11 @@ func (plan *PrunePlan) Execute(ctx context.Context, printer progress.Printer) er
 	if len(plan.repackPacks) != 0 {
 		printer.P("repacking packs\n")
 		bar := printer.NewCounter("packs repacked")
-		bar.SetMax(uint64(len(plan.repackPacks)))
-		_, err := Repack(ctx, repo, repo, plan.repackPacks, plan.keepBlobs, bar, printer.P)
-		bar.Done()
+		err := repo.WithBlobUploader(ctx, func(ctx context.Context, uploader restic.BlobSaverWithAsync) error {
+			return CopyBlobs(ctx, repo, repo, uploader, plan.repackPacks, plan.keepBlobs, bar, printer.P)
+		})
 		if err != nil {
-			return errors.Fatal(err.Error())
+			return errors.Fatalf("%s", err)
 		}
 
 		// Also remove repacked packs
@@ -579,7 +614,7 @@ func (plan *PrunePlan) Execute(ctx context.Context, printer progress.Printer) er
 			printer.E("%v was not repacked\n\n"+
 				"Integrity check failed.\n"+
 				"Please report this error (along with the output of the 'prune' run) at\n"+
-				"https://github.com/restic/restic/issues/new/choose\n", plan.keepBlobs)
+				"https://github.com/restic/restic/issues/new/choose", plan.keepBlobs)
 			return errors.Fatal("internal error: blobs were not repacked")
 		}
 
@@ -608,7 +643,8 @@ func (plan *PrunePlan) Execute(ctx context.Context, printer progress.Printer) er
 	}
 
 	if len(plan.removePacks) != 0 {
-		printer.P("removing %d old packs\n", len(plan.removePacks))
+		printer.P("removing %d old packs", len(plan.removePacks))
+		// ignoring errors is fine here as keeping too many packs cannot damage the repository
 		_ = deleteFiles(ctx, true, &internalRepository{repo}, plan.removePacks, restic.PackFile, printer)
 	}
 	if ctx.Err() != nil {
@@ -637,12 +673,12 @@ func deleteFiles(ctx context.Context, ignoreError bool, repo restic.RemoverUnpac
 
 	return restic.ParallelRemove(ctx, repo, fileList, fileType, func(id restic.ID, err error) error {
 		if err != nil {
-			printer.E("unable to remove %v/%v from the repository\n", fileType, id)
+			printer.E("unable to remove %v/%v from the repository", fileType, id)
 			if !ignoreError {
 				return err
 			}
 		}
-		printer.VV("removed %v/%v\n", fileType, id)
+		printer.VV("removed %v/%v", fileType, id)
 		return nil
 	}, bar)
 }

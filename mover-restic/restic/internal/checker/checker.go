@@ -1,21 +1,16 @@
 package checker
 
 import (
-	"bufio"
 	"context"
 	"fmt"
-	"runtime"
 	"sync"
 
-	"github.com/klauspost/compress/zstd"
+	"github.com/restic/restic/internal/data"
 	"github.com/restic/restic/internal/debug"
 	"github.com/restic/restic/internal/errors"
 	"github.com/restic/restic/internal/repository"
-	"github.com/restic/restic/internal/repository/index"
-	"github.com/restic/restic/internal/repository/pack"
 	"github.com/restic/restic/internal/restic"
 	"github.com/restic/restic/internal/ui/progress"
-	"golang.org/x/sync/errgroup"
 )
 
 // Checker runs various checks on a repository. It is advisable to create an
@@ -24,206 +19,51 @@ import (
 // A Checker only tests for internal errors within the data structures of the
 // repository (e.g. missing blobs), and needs a valid Repository to work on.
 type Checker struct {
-	packs    map[restic.ID]int64
+	*repository.Checker
 	blobRefs struct {
 		sync.Mutex
-		M restic.BlobSet
+		M restic.AssociatedBlobSet
 	}
 	trackUnused bool
 
-	masterIndex *index.MasterIndex
-	snapshots   restic.Lister
+	snapshots restic.Lister
 
 	repo restic.Repository
+
+	// when snapshot filtering is being used
+	snapshotFilter *data.SnapshotFilter
+	args           []string
+}
+
+type checkerRepository interface {
+	restic.Repository
+	Checker() *repository.Checker
 }
 
 // New returns a new checker which runs on repo.
-func New(repo restic.Repository, trackUnused bool) *Checker {
+func New(repo checkerRepository, trackUnused bool) *Checker {
 	c := &Checker{
-		packs:       make(map[restic.ID]int64),
-		masterIndex: index.NewMasterIndex(),
+		Checker:     repo.Checker(),
 		repo:        repo,
 		trackUnused: trackUnused,
 	}
 
-	c.blobRefs.M = restic.NewBlobSet()
+	c.blobRefs.M = c.repo.NewAssociatedBlobSet()
 
 	return c
 }
 
-// ErrDuplicatePacks is returned when a pack is found in more than one index.
-type ErrDuplicatePacks struct {
-	PackID  restic.ID
-	Indexes restic.IDSet
-}
-
-func (e *ErrDuplicatePacks) Error() string {
-	return fmt.Sprintf("pack %v contained in several indexes: %v", e.PackID, e.Indexes)
-}
-
-// ErrMixedPack is returned when a pack is found that contains both tree and data blobs.
-type ErrMixedPack struct {
-	PackID restic.ID
-}
-
-func (e *ErrMixedPack) Error() string {
-	return fmt.Sprintf("pack %v contains a mix of tree and data blobs", e.PackID.Str())
-}
-
-func (c *Checker) LoadSnapshots(ctx context.Context) error {
+func (c *Checker) LoadSnapshots(ctx context.Context, snapshotFilter *data.SnapshotFilter, args []string) error {
 	var err error
 	c.snapshots, err = restic.MemorizeList(ctx, c.repo, restic.SnapshotFile)
+	c.args = args
+	c.snapshotFilter = snapshotFilter
 	return err
 }
 
-func computePackTypes(ctx context.Context, idx restic.ListBlobser) (map[restic.ID]restic.BlobType, error) {
-	packs := make(map[restic.ID]restic.BlobType)
-	err := idx.ListBlobs(ctx, func(pb restic.PackedBlob) {
-		tpe, exists := packs[pb.PackID]
-		if exists {
-			if pb.Type != tpe {
-				tpe = restic.InvalidBlob
-			}
-		} else {
-			tpe = pb.Type
-		}
-		packs[pb.PackID] = tpe
-	})
-	return packs, err
-}
-
-// LoadIndex loads all index files.
-func (c *Checker) LoadIndex(ctx context.Context, p *progress.Counter) (hints []error, errs []error) {
-	debug.Log("Start")
-
-	packToIndex := make(map[restic.ID]restic.IDSet)
-	err := c.masterIndex.Load(ctx, c.repo, p, func(id restic.ID, idx *index.Index, err error) error {
-		debug.Log("process index %v, err %v", id, err)
-		err = errors.Wrapf(err, "error loading index %v", id)
-
-		if err != nil {
-			errs = append(errs, err)
-			return nil
-		}
-
-		debug.Log("process blobs")
-		cnt := 0
-		err = idx.Each(ctx, func(blob restic.PackedBlob) {
-			cnt++
-
-			if _, ok := packToIndex[blob.PackID]; !ok {
-				packToIndex[blob.PackID] = restic.NewIDSet()
-			}
-			packToIndex[blob.PackID].Insert(id)
-		})
-
-		debug.Log("%d blobs processed", cnt)
-		return err
-	})
-	if err != nil {
-		// failed to load the index
-		return hints, append(errs, err)
-	}
-
-	err = c.repo.SetIndex(c.masterIndex)
-	if err != nil {
-		debug.Log("SetIndex returned error: %v", err)
-		errs = append(errs, err)
-	}
-
-	// compute pack size using index entries
-	c.packs, err = pack.Size(ctx, c.repo, false)
-	if err != nil {
-		return hints, append(errs, err)
-	}
-	packTypes, err := computePackTypes(ctx, c.repo)
-	if err != nil {
-		return hints, append(errs, err)
-	}
-
-	debug.Log("checking for duplicate packs")
-	for packID := range c.packs {
-		debug.Log("  check pack %v: contained in %d indexes", packID, len(packToIndex[packID]))
-		if len(packToIndex[packID]) > 1 {
-			hints = append(hints, &ErrDuplicatePacks{
-				PackID:  packID,
-				Indexes: packToIndex[packID],
-			})
-		}
-		if packTypes[packID] == restic.InvalidBlob {
-			hints = append(hints, &ErrMixedPack{
-				PackID: packID,
-			})
-		}
-	}
-
-	return hints, errs
-}
-
-// PackError describes an error with a specific pack.
-type PackError struct {
-	ID        restic.ID
-	Orphaned  bool
-	Truncated bool
-	Err       error
-}
-
-func (e *PackError) Error() string {
-	return "pack " + e.ID.String() + ": " + e.Err.Error()
-}
-
-// Packs checks that all packs referenced in the index are still available and
-// there are no packs that aren't in an index. errChan is closed after all
-// packs have been checked.
-func (c *Checker) Packs(ctx context.Context, errChan chan<- error) {
-	defer close(errChan)
-	debug.Log("checking for %d packs", len(c.packs))
-
-	debug.Log("listing repository packs")
-	repoPacks := make(map[restic.ID]int64)
-
-	err := c.repo.List(ctx, restic.PackFile, func(id restic.ID, size int64) error {
-		repoPacks[id] = size
-		return nil
-	})
-
-	if err != nil {
-		errChan <- err
-	}
-
-	for id, size := range c.packs {
-		reposize, ok := repoPacks[id]
-		// remove from repoPacks so we can find orphaned packs
-		delete(repoPacks, id)
-
-		// missing: present in c.packs but not in the repo
-		if !ok {
-			select {
-			case <-ctx.Done():
-				return
-			case errChan <- &PackError{ID: id, Err: errors.New("does not exist")}:
-			}
-			continue
-		}
-
-		// size not matching: present in c.packs and in the repo, but sizes do not match
-		if size != reposize {
-			select {
-			case <-ctx.Done():
-				return
-			case errChan <- &PackError{ID: id, Truncated: true, Err: errors.Errorf("unexpected file size: got %d, expected %d", reposize, size)}:
-			}
-		}
-	}
-
-	// orphaned: present in the repo but not in c.packs
-	for orphanID := range repoPacks {
-		select {
-		case <-ctx.Done():
-			return
-		case errChan <- &PackError{ID: orphanID, Orphaned: true, Err: errors.New("not referenced in any index")}:
-		}
-	}
+// IsFiltered returns true if snapshot filtering is active
+func (c *Checker) IsFiltered() bool {
+	return len(c.args) != 0 || !c.snapshotFilter.Empty()
 }
 
 // Error is an error that occurred while checking a repository.
@@ -250,33 +90,8 @@ func (e *TreeError) Error() string {
 	return fmt.Sprintf("tree %v: %v", e.ID, e.Errors)
 }
 
-// checkTreeWorker checks the trees received and sends out errors to errChan.
-func (c *Checker) checkTreeWorker(ctx context.Context, trees <-chan restic.TreeItem, out chan<- error) {
-	for job := range trees {
-		debug.Log("check tree %v (tree %v, err %v)", job.ID, job.Tree, job.Error)
-
-		var errs []error
-		if job.Error != nil {
-			errs = append(errs, job.Error)
-		} else {
-			errs = c.checkTree(job.ID, job.Tree)
-		}
-
-		if len(errs) == 0 {
-			continue
-		}
-		treeError := &TreeError{ID: job.ID, Errors: errs}
-		select {
-		case <-ctx.Done():
-			return
-		case out <- treeError:
-			debug.Log("tree %v: sent %d errors", treeError.ID, len(treeError.Errors))
-		}
-	}
-}
-
 func loadSnapshotTreeIDs(ctx context.Context, lister restic.Lister, repo restic.LoaderUnpacked) (ids restic.IDs, errs []error) {
-	err := restic.ForAllSnapshots(ctx, lister, repo, nil, func(id restic.ID, sn *restic.Snapshot, err error) error {
+	err := data.ForAllSnapshots(ctx, lister, repo, nil, func(id restic.ID, sn *data.Snapshot, err error) error {
 		if err != nil {
 			errs = append(errs, err)
 			return nil
@@ -293,14 +108,43 @@ func loadSnapshotTreeIDs(ctx context.Context, lister restic.Lister, repo restic.
 	return ids, errs
 }
 
+func (c *Checker) loadActiveTrees(ctx context.Context, snapshotFilter *data.SnapshotFilter, args []string) (trees restic.IDs, errs []error) {
+	trees = []restic.ID{}
+	errs = []error{}
+
+	if !c.IsFiltered() {
+		return loadSnapshotTreeIDs(ctx, c.snapshots, c.repo)
+	}
+
+	err := snapshotFilter.FindAll(ctx, c.snapshots, c.repo, args, func(_ string, sn *data.Snapshot, err error) error {
+		if err != nil {
+			errs = append(errs, err)
+			return err
+		} else if sn != nil {
+			trees = append(trees, *sn.Tree)
+		}
+		return nil
+	})
+
+	if err != nil {
+		errs = append(errs, err)
+		return nil, errs
+	}
+
+	// track blobs to learn which packs need to be checked
+	c.trackUnused = true
+	return trees, errs
+}
+
 // Structure checks that for all snapshots all referenced data blobs and
 // subtrees are available in the index. errChan is closed after all trees have
 // been traversed.
 func (c *Checker) Structure(ctx context.Context, p *progress.Counter, errChan chan<- error) {
-	trees, errs := loadSnapshotTreeIDs(ctx, c.snapshots, c.repo)
+	trees, errs := c.loadActiveTrees(ctx, c.snapshotFilter, c.args)
 	p.SetMax(uint64(len(trees)))
 	debug.Log("need to check %d trees from snapshots, %d errs returned", len(trees), len(errs))
 
+	defer close(errChan)
 	for _, err := range errs {
 		select {
 		case <-ctx.Done():
@@ -309,8 +153,7 @@ func (c *Checker) Structure(ctx context.Context, p *progress.Counter, errChan ch
 		}
 	}
 
-	wg, ctx := errgroup.WithContext(ctx)
-	treeStream := restic.StreamTrees(ctx, wg, c.repo, trees, func(treeID restic.ID) bool {
+	err := data.StreamTrees(ctx, c.repo, trees, p, func(treeID restic.ID) bool {
 		// blobRefs may be accessed in parallel by checkTree
 		c.blobRefs.Lock()
 		h := restic.BlobHandle{ID: treeID, Type: restic.TreeBlob}
@@ -319,32 +162,48 @@ func (c *Checker) Structure(ctx context.Context, p *progress.Counter, errChan ch
 		c.blobRefs.M.Insert(h)
 		c.blobRefs.Unlock()
 		return blobReferenced
-	}, p)
+	}, func(treeID restic.ID, err error, nodes data.TreeNodeIterator) error {
+		debug.Log("check tree %v (err %v)", treeID, err)
 
-	defer close(errChan)
-	// The checkTree worker only processes already decoded trees and is thus CPU-bound
-	workerCount := runtime.GOMAXPROCS(0)
-	for i := 0; i < workerCount; i++ {
-		wg.Go(func() error {
-			c.checkTreeWorker(ctx, treeStream, errChan)
+		var errs []error
+		if err != nil {
+			errs = append(errs, err)
+		} else {
+			errs = c.checkTree(treeID, nodes)
+		}
+		if len(errs) == 0 {
 			return nil
-		})
-	}
+		}
 
-	// the wait group should not return an error because no worker returns an
+		treeError := &TreeError{ID: treeID, Errors: errs}
+		select {
+		case <-ctx.Done():
+			return nil
+		case errChan <- treeError:
+			debug.Log("tree %v: sent %d errors", treeError.ID, len(treeError.Errors))
+		}
+
+		return nil
+	})
+
+	// StreamTrees should not return an error because no worker returns an
 	// error, so panic if that has changed somehow.
-	err := wg.Wait()
 	if err != nil {
 		panic(err)
 	}
 }
 
-func (c *Checker) checkTree(id restic.ID, tree *restic.Tree) (errs []error) {
+func (c *Checker) checkTree(id restic.ID, tree data.TreeNodeIterator) (errs []error) {
 	debug.Log("checking tree %v", id)
 
-	for _, node := range tree.Nodes {
+	for item := range tree {
+		if item.Error != nil {
+			errs = append(errs, &Error{TreeID: id, Err: errors.Errorf("failed to decode tree %v: %w", id, item.Error)})
+			break
+		}
+		node := item.Node
 		switch node.Type {
-		case restic.NodeTypeFile:
+		case data.NodeTypeFile:
 			if node.Content == nil {
 				errs = append(errs, &Error{TreeID: id, Err: errors.Errorf("file %q has nil blob list", node.Name)})
 			}
@@ -380,7 +239,7 @@ func (c *Checker) checkTree(id restic.ID, tree *restic.Tree) (errs []error) {
 				c.blobRefs.Unlock()
 			}
 
-		case restic.NodeTypeDir:
+		case data.NodeTypeDir:
 			if node.Subtree == nil {
 				errs = append(errs, &Error{TreeID: id, Err: errors.Errorf("dir node %q has no subtree", node.Name)})
 				continue
@@ -391,7 +250,7 @@ func (c *Checker) checkTree(id restic.ID, tree *restic.Tree) (errs []error) {
 				continue
 			}
 
-		case restic.NodeTypeSymlink, restic.NodeTypeSocket, restic.NodeTypeCharDev, restic.NodeTypeDev, restic.NodeTypeFifo:
+		case data.NodeTypeSymlink, data.NodeTypeSocket, data.NodeTypeCharDev, data.NodeTypeDev, data.NodeTypeFifo:
 			// nothing to check
 
 		default:
@@ -414,7 +273,7 @@ func (c *Checker) UnusedBlobs(ctx context.Context) (blobs restic.BlobHandles, er
 	c.blobRefs.Lock()
 	defer c.blobRefs.Unlock()
 
-	debug.Log("checking %d blobs", len(c.blobRefs.M))
+	debug.Log("checking %d blobs", c.blobRefs.M.Len())
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -429,96 +288,32 @@ func (c *Checker) UnusedBlobs(ctx context.Context) (blobs restic.BlobHandles, er
 	return blobs, err
 }
 
-// CountPacks returns the number of packs in the repository.
-func (c *Checker) CountPacks() uint64 {
-	return uint64(len(c.packs))
-}
-
-// GetPacks returns IDSet of packs in the repository
-func (c *Checker) GetPacks() map[restic.ID]int64 {
-	return c.packs
-}
-
-// ReadData loads all data from the repository and checks the integrity.
-func (c *Checker) ReadData(ctx context.Context, errChan chan<- error) {
-	c.ReadPacks(ctx, c.packs, nil, errChan)
-}
-
-const maxStreamBufferSize = 4 * 1024 * 1024
-
-// ReadPacks loads data from specified packs and checks the integrity.
-func (c *Checker) ReadPacks(ctx context.Context, packs map[restic.ID]int64, p *progress.Counter, errChan chan<- error) {
-	defer close(errChan)
-
-	g, ctx := errgroup.WithContext(ctx)
-	type checkTask struct {
-		id    restic.ID
-		size  int64
-		blobs []restic.Blob
+// ReadPacks wraps repository.ReadPacks:
+// in case snapshot filtering is not active it calls repository.ReadPacks()
+// with an unmodified parameter list
+// Otherwise it calculates the packfiles needed, gets their sizes from the full
+// packfile set and submits them to repository.ReadPacks()
+func (c *Checker) ReadPacks(ctx context.Context, filter func(packs map[restic.ID]int64) map[restic.ID]int64, p *progress.Counter, errChan chan<- error) {
+	// no snapshot filtering, pass through
+	if !c.IsFiltered() {
+		c.Checker.ReadPacks(ctx, filter, p, errChan)
+		return
 	}
-	ch := make(chan checkTask)
 
-	// as packs are streamed the concurrency is limited by IO
-	workerCount := int(c.repo.Connections())
-	// run workers
-	for i := 0; i < workerCount; i++ {
-		g.Go(func() error {
-			bufRd := bufio.NewReaderSize(nil, maxStreamBufferSize)
-			dec, err := zstd.NewReader(nil)
-			if err != nil {
-				panic(dec)
+	packfileFilter := func(allPacks map[restic.ID]int64) map[restic.ID]int64 {
+		filteredPacks := make(map[restic.ID]int64)
+		c.blobRefs.Lock()
+		defer c.blobRefs.Unlock()
+
+		// convert used blobs into their encompassing packfiles
+		for bh := range c.blobRefs.M.Keys() {
+			for _, pb := range c.repo.LookupBlob(bh.Type, bh.ID) {
+				filteredPacks[pb.PackID] = allPacks[pb.PackID]
 			}
-			defer dec.Close()
-			for {
-				var ps checkTask
-				var ok bool
-
-				select {
-				case <-ctx.Done():
-					return nil
-				case ps, ok = <-ch:
-					if !ok {
-						return nil
-					}
-				}
-
-				err := repository.CheckPack(ctx, c.repo.(*repository.Repository), ps.id, ps.blobs, ps.size, bufRd, dec)
-				p.Add(1)
-				if err == nil {
-					continue
-				}
-
-				select {
-				case <-ctx.Done():
-					return nil
-				case errChan <- err:
-				}
-			}
-		})
-	}
-
-	packSet := restic.NewIDSet()
-	for pack := range packs {
-		packSet.Insert(pack)
-	}
-
-	// push packs to ch
-	for pbs := range c.repo.ListPacksFromIndex(ctx, packSet) {
-		size := packs[pbs.PackID]
-		debug.Log("listed %v", pbs.PackID)
-		select {
-		case ch <- checkTask{id: pbs.PackID, size: size, blobs: pbs.Blobs}:
-		case <-ctx.Done():
 		}
-	}
-	close(ch)
 
-	err := g.Wait()
-	if err != nil {
-		select {
-		case <-ctx.Done():
-			return
-		case errChan <- err:
-		}
+		return filter(filteredPacks)
 	}
+
+	c.Checker.ReadPacks(ctx, packfileFilter, p, errChan)
 }

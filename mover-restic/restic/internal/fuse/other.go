@@ -1,5 +1,4 @@
 //go:build darwin || freebsd || linux
-// +build darwin freebsd linux
 
 package fuse
 
@@ -8,7 +7,7 @@ import (
 
 	"github.com/anacrolix/fuse"
 	"github.com/anacrolix/fuse/fs"
-	"github.com/restic/restic/internal/restic"
+	"github.com/restic/restic/internal/data"
 )
 
 // Statically ensure that *other implements the given interface
@@ -18,11 +17,11 @@ var _ = fs.NodeReadlinker(&other{})
 type other struct {
 	root   *Root
 	forget forgetFn
-	node   *restic.Node
+	node   *data.Node
 	inode  uint64
 }
 
-func newOther(root *Root, forget forgetFn, inode uint64, node *restic.Node) (*other, error) {
+func newOther(root *Root, forget forgetFn, inode uint64, node *data.Node) (*other, error) {
 	return &other{root: root, forget: forget, inode: inode, node: node}, nil
 }
 

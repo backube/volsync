@@ -48,7 +48,7 @@ func OKs(tb testing.TB, errs []error) {
 
 // Equals fails the test if exp is not equal to act.
 // msg is optional message to be printed, first param being format string and rest being arguments.
-func Equals(tb testing.TB, exp, act interface{}, msgs ...string) {
+func Equals[T any](tb testing.TB, exp, act T, msgs ...string) {
 	tb.Helper()
 	if !reflect.DeepEqual(exp, act) {
 		var msgString string
@@ -137,10 +137,18 @@ func SetupTarTestFixture(t testing.TB, outputDir, tarFile string) {
 
 // Env creates a test environment and extracts the repository fixture.
 // Returned is the repo path and a cleanup function.
-func Env(t testing.TB, repoFixture string) (repodir string, cleanup func()) {
+func Env(t testing.TB, repoFixture string) string {
 	t.Helper()
-	tempdir, err := os.MkdirTemp(TestTempDir, "restic-test-env-")
-	OK(t, err)
+
+	var tempdir string
+	if TestCleanupTempDirs {
+		tempdir = t.TempDir()
+	} else {
+		var err error
+		tempdir, err = os.MkdirTemp(TestTempDir, "restic-test-env-")
+		OK(t, err)
+		t.Logf("leaving temporary directory %v used for test", tempdir)
+	}
 
 	fd, err := os.Open(repoFixture)
 	if err != nil {
@@ -150,14 +158,7 @@ func Env(t testing.TB, repoFixture string) (repodir string, cleanup func()) {
 
 	SetupTarTestFixture(t, tempdir, repoFixture)
 
-	return filepath.Join(tempdir, "repo"), func() {
-		if !TestCleanupTempDirs {
-			t.Logf("leaving temporary directory %v used for test", tempdir)
-			return
-		}
-
-		RemoveAll(t, tempdir)
-	}
+	return filepath.Join(tempdir, "repo")
 }
 
 func isFile(fi os.FileInfo) bool {

@@ -1,5 +1,4 @@
 //go:build windows
-// +build windows
 
 package fs
 
@@ -109,7 +108,7 @@ func TestVSSConfig(t *testing.T) {
 				t.Fatalf("unexpected error (%v)", err)
 			}
 			messageHandler := func(msg string, args ...interface{}) {
-				t.Fatalf("unexpected message (%s)", fmt.Sprintf(msg, args))
+				t.Fatalf("unexpected message (%s)", fmt.Sprintf(msg, args...))
 			}
 
 			dst := NewLocalVss(errorHandler, messageHandler, cfg)
@@ -203,7 +202,7 @@ func TestParseMountPoints(t *testing.T) {
 				log = append(log, strings.TrimSpace(err.Error()))
 			}
 			messageHandler := func(msg string, args ...interface{}) {
-				t.Fatalf("unexpected message (%s)", fmt.Sprintf(msg, args))
+				t.Fatalf("unexpected message (%s)", fmt.Sprintf(msg, args...))
 			}
 
 			dst := NewLocalVss(errorHandler, messageHandler, cfg)
@@ -305,7 +304,7 @@ func TestVSSFS(t *testing.T) {
 		if strings.HasPrefix(msg, "creating VSS snapshot for") || strings.HasPrefix(msg, "successfully created snapshot") {
 			return
 		}
-		t.Fatalf("unexpected message (%s)", fmt.Sprintf(msg, args))
+		t.Fatalf("unexpected message (%s)", fmt.Sprintf(msg, args...))
 	}
 
 	localVss := NewLocalVss(errorHandler, messageHandler, cfg)
@@ -333,7 +332,7 @@ func TestVSSFS(t *testing.T) {
 	rtest.OK(t, err)
 	rtest.Equals(t, "example", string(data), "unexpected file content")
 
-	node, err := f.ToNode(false)
+	node, err := f.ToNode(false, t.Logf)
 	rtest.OK(t, err)
 	rtest.Equals(t, node.Mode, lstatFi.Mode)
 

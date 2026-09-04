@@ -32,8 +32,8 @@ It is advisable to run ``restic check`` after pruning, to make sure
 you are alerted, should the internal data structures of the repository
 be damaged.
 
-Remove a single snapshot
-************************
+Removing a single snapshot
+**************************
 
 The command ``snapshots`` can be used to list all snapshots in a
 repository like this:
@@ -181,10 +181,13 @@ The ``forget`` command accepts the following policy options:
    snapshots, keep only the most recent one for each month.
 -  ``--keep-yearly n`` for the last ``n`` years which have one or more
    snapshots, keep only the most recent one for each year.
--  ``--keep-tag`` keep all snapshots which have all tags specified by
-   this option (can be specified multiple times). The ``forget`` command will
-   exit with an error if all snapshots in a snapshot group would be removed
-   as none of them have the specified tags.
+-  ``--keep-tag`` keep snapshots that match at least one *tag list*. Each use of
+   the option defines one list: tags separated by commas mean the snapshot must
+   have all of those tags (AND within the list). When ``--keep-tag`` is given
+   multiple times, the lists are combined with OR (the snapshot is kept if it
+   matches any list). The ``forget`` command will exit with an error if all
+   snapshots in a snapshot group would be removed as none of them satisfy the
+   tag policy.
 -  ``--keep-within duration`` keep all snapshots having a timestamp within
    the specified duration of the latest snapshot, where ``duration`` is a
    number of years, months, days, and hours. E.g. ``2y5m7d3h`` will keep all
@@ -231,9 +234,11 @@ command to the same value.
 
 Additionally, you can restrict the policy to only process snapshots which have a
 particular hostname with the ``--host`` parameter, or tags with the ``--tag``
-option. When multiple tags are specified, only the snapshots which have all the
-tags are considered. For example, the following command removes all but the
-latest snapshot of all snapshots that have the tag ``foo``:
+option. Each ``--tag`` argument defines a tag list: tags separated by commas
+mean the snapshot must have all of those tags (AND within the list). When
+``--tag`` is given multiple times, the lists are combined with OR (the snapshot
+is considered if it matches any list). For example, the following command
+removes all but the latest snapshot of all snapshots that have the tag ``foo``:
 
 .. code-block:: console
 
@@ -260,67 +265,6 @@ the tag.
 
    $ restic forget --tag '' --keep-last 1
 
-Let's look at a simple example: Suppose you have only made one backup every
-Sunday for 12 weeks:
-
-.. code-block:: console
-
-   $ restic snapshots
-   repository f00c6e2a opened successfully
-   ID        Time                 Host        Tags        Paths
-   ---------------------------------------------------------------
-   0a1f9759  2019-09-01 11:00:00  mopped                  /home/user/work
-   46cfe4d5  2019-09-08 11:00:00  mopped                  /home/user/work
-   f6b1f037  2019-09-15 11:00:00  mopped                  /home/user/work
-   eb430a5d  2019-09-22 11:00:00  mopped                  /home/user/work
-   8cf1cb9a  2019-09-29 11:00:00  mopped                  /home/user/work
-   5d33b116  2019-10-06 11:00:00  mopped                  /home/user/work
-   b9553125  2019-10-13 11:00:00  mopped                  /home/user/work
-   e1a7b58b  2019-10-20 11:00:00  mopped                  /home/user/work
-   8f8018c0  2019-10-27 11:00:00  mopped                  /home/user/work
-   59403279  2019-11-03 11:00:00  mopped                  /home/user/work
-   dfee9fb4  2019-11-10 11:00:00  mopped                  /home/user/work
-   e1ae2f40  2019-11-17 11:00:00  mopped                  /home/user/work
-   ---------------------------------------------------------------
-   12 snapshots
-
-Then ``forget --keep-daily 4`` will keep the last four snapshots, for the last
-four Sundays, and remove the other snapshots:
-
-.. code-block:: console
-
-   $ restic forget --keep-daily 4 --dry-run
-   repository f00c6e2a opened successfully
-   Applying Policy: keep the last 4 daily snapshots
-   keep 4 snapshots:
-   ID        Time                 Host        Tags        Reasons         Paths
-   -------------------------------------------------------------------------------
-   8f8018c0  2019-10-27 11:00:00  mopped                  daily snapshot  /home/user/work
-   59403279  2019-11-03 11:00:00  mopped                  daily snapshot  /home/user/work
-   dfee9fb4  2019-11-10 11:00:00  mopped                  daily snapshot  /home/user/work
-   e1ae2f40  2019-11-17 11:00:00  mopped                  daily snapshot  /home/user/work
-   -------------------------------------------------------------------------------
-   4 snapshots
-
-   remove 8 snapshots:
-   ID        Time                 Host        Tags        Paths
-   ---------------------------------------------------------------
-   0a1f9759  2019-09-01 11:00:00  mopped                  /home/user/work
-   46cfe4d5  2019-09-08 11:00:00  mopped                  /home/user/work
-   f6b1f037  2019-09-15 11:00:00  mopped                  /home/user/work
-   eb430a5d  2019-09-22 11:00:00  mopped                  /home/user/work
-   8cf1cb9a  2019-09-29 11:00:00  mopped                  /home/user/work
-   5d33b116  2019-10-06 11:00:00  mopped                  /home/user/work
-   b9553125  2019-10-13 11:00:00  mopped                  /home/user/work
-   e1a7b58b  2019-10-20 11:00:00  mopped                  /home/user/work
-   ---------------------------------------------------------------
-   8 snapshots
-
-The processed snapshots are evaluated against all ``--keep-*`` options but a
-snapshot only need to match a single option to be kept (the results are ORed).
-This means that the most recent snapshot on a Sunday would match both hourly,
-daily and weekly ``--keep-*`` options, and possibly more depending on calendar.
-
 For example, suppose you make one backup every day for 100 years. Then ``forget
 --keep-daily 7 --keep-weekly 5 --keep-monthly 12 --keep-yearly 75`` would keep
 the most recent 7 daily snapshots and 4 last-day-of-the-week ones (since the 7
@@ -336,9 +280,101 @@ might be spread over a longer period. If what you want is to keep daily
 snapshots for the last week, weekly for the last month, monthly for the last
 year and yearly for the last 75 years, you can instead specify ``forget
 --keep-within-daily 7d --keep-within-weekly 1m --keep-within-monthly 1y
---keep-within-yearly 75y`` (note that `1w` is not a recognized duration, so
-you will have to specify `7d` instead).
+--keep-within-yearly 75y`` (note that ``1w`` is not a recognized duration, so
+you will have to specify ``7d`` instead).
 
+The processed snapshots are evaluated against all ``--keep-*`` options but a
+snapshot only needs to match a single option to be kept (the results are ORed).
+This means that the most recent snapshot would match both hourly,
+daily and weekly ``--keep-*`` options, and possibly more depending on calendar.
+
+Let's look at a simple example: Suppose you have made backups every weekday for the past two weeks,
+and on Fridays, you make an additional backup:
+
+.. code-block:: console
+
+   $ restic snapshots
+   repository f00c6e2a opened successfully
+   ID        Time                 Host        Tags        Paths
+   ---------------------------------------------------------------
+   60e5c031  2025-04-21 11:00:00  mopped                  /home/user/work
+   1dccffe9  2025-04-22 11:00:00  mopped                  /home/user/work
+   90a5c949  2025-04-23 11:00:00  mopped                  /home/user/work
+   79580708  2025-04-24 11:00:00  mopped                  /home/user/work
+   8a603ddf  2025-04-25 11:00:00  mopped                  /home/user/work
+   ae33bf10  2025-04-25 23:00:00  mopped                  /home/user/work
+   fb8b1418  2025-04-28 11:00:00  mopped                  /home/user/work
+   1db188b4  2025-04-29 11:00:00  mopped                  /home/user/work
+   7baa4f28  2025-05-01 11:00:00  mopped                  /home/user/work
+   05c48af3  2025-05-02 11:00:00  mopped                  /home/user/work
+   ad72e262  2025-05-02 23:00:00  mopped                  /home/user/work
+   ---------------------------------------------------------------
+   11 snapshots
+
+However, for some reason, you missed making a backup last Wednesday.
+Then ``forget --keep-daily 5`` will keep only one snapshot per day for the last
+five days that had a snapshot and remove the other snapshots:
+
+.. code-block:: console
+
+   $ restic forget --keep-daily 5 --dry-run
+   repository f00c6e2a opened successfully
+   Applying Policy: keep 5 daily snapshots
+   keep 5 snapshots:
+   ID        Time                 Host        Tags        Reasons         Paths
+   -------------------------------------------------------------------------------
+   8a603ddf  2025-04-25 23:00:00  mopped                  daily snapshot  /home/user/work
+   fb8b1418  2025-04-28 11:00:00  mopped                  daily snapshot  /home/user/work
+   1db188b4  2025-04-29 11:00:00  mopped                  daily snapshot  /home/user/work
+   7baa4f28  2025-05-01 11:00:00  mopped                  daily snapshot  /home/user/work
+   ad72e262  2025-05-02 23:00:00  mopped                  daily snapshot  /home/user/work
+   -------------------------------------------------------------------------------
+   5 snapshots
+
+   remove 6 snapshots:
+   ID        Time                 Host        Tags        Paths
+   ---------------------------------------------------------------
+   60e5c031  2025-04-21 11:00:00  mopped                  /home/user/work
+   1dccffe9  2025-04-22 11:00:00  mopped                  /home/user/work
+   90a5c949  2025-04-23 11:00:00  mopped                  /home/user/work
+   79580708  2025-04-24 11:00:00  mopped                  /home/user/work
+   8a603ddf  2025-04-25 11:00:00  mopped                  /home/user/work
+   05c48af3  2025-05-02 11:00:00  mopped                  /home/user/work
+   ---------------------------------------------------------------
+   6 snapshots
+
+As you can see, this kept a snapshot from the previous Friday since you missed the Wednesday backup.
+If you use ``forget --keep-within-daily 7d`` instead, you will only keep
+at most one daily backup from any given day for the last seven days. In this example, it means that no backups from the first week will be kept,
+regardless of how many backups exist in the second week:
+
+.. code-block:: console
+
+   $ restic forget --keep-within-daily 7d --dry-run
+   repository f00c6e2a opened successfully
+   Applying Policy: keep daily snapshots within 7d
+   keep 4 snapshots:
+   ID        Time                 Host        Tags        Reasons         Paths
+   -------------------------------------------------------------------------------
+   fb8b1418  2025-04-28 11:00:00  mopped                  daily within 7d  /home/user/work
+   1db188b4  2025-04-29 11:00:00  mopped                  daily within 7d  /home/user/work
+   7baa4f28  2025-05-01 11:00:00  mopped                  daily within 7d  /home/user/work
+   ad72e262  2025-05-02 23:00:00  mopped                  daily within 7d  /home/user/work
+   -------------------------------------------------------------------------------
+   4 snapshots
+
+   remove 7 snapshots:
+   ID        Time                 Host        Tags        Paths
+   ---------------------------------------------------------------
+   60e5c031  2025-04-21 11:00:00  mopped                  /home/user/work
+   1dccffe9  2025-04-22 11:00:00  mopped                  /home/user/work
+   90a5c949  2025-04-23 11:00:00  mopped                  /home/user/work
+   79580708  2025-04-24 11:00:00  mopped                  /home/user/work
+   8a603ddf  2025-04-25 11:00:00  mopped                  /home/user/work
+   ae33bf10  2025-04-25 23:00:00  mopped                  /home/user/work
+   05c48af3  2025-05-02 11:00:00  mopped                  /home/user/work
+   ---------------------------------------------------------------
+   7 snapshots
 
 Removing all snapshots
 ======================
@@ -359,7 +395,7 @@ removes all snapshots with tag ``example``.
 Security considerations in append-only mode
 ===========================================
 
-.. note:: TL;DR: With append-only repositories, one should specifically use the
+.. note:: TL;DR: With append-only repositories, you should specifically use the
     ``--keep-within`` option of the ``forget`` command when removing snapshots.
 
 To prevent a compromised backup client from deleting its backups (for example
@@ -368,7 +404,7 @@ repository in a so-called append-only mode. This means that the repository is
 served in such a way that it can only be written to and read from, while delete
 and overwrite operations are denied. Restic's `rest-server`_ features an
 append-only mode, but few other standard backends do. To support append-only
-with such backends, one can use `rclone`_ as a complement in between the backup
+with such backends, you can use `rclone`_ as a complement in between the backup
 client and the backend service.
 
 .. _rest-server: https://github.com/restic/rest-server/
@@ -410,10 +446,10 @@ all legitimate snapshots.
 
 .. _customize-pruning:
 
-Customize pruning
-*****************
+Customizing pruning
+*******************
 
-To understand the custom options, we first explain how the pruning process works:
+To understand the custom options, this section first explains how the pruning process works:
 
 1. All snapshots and directories within snapshots are scanned to determine
    which data is still in use.
@@ -463,9 +499,6 @@ The ``prune`` command accepts the following options:
   your repository exceeds the value given by ``--max-unused``.
   The default value is false.
 
-- ``--repack-small`` if set will repack pack files below 80% of target pack size.
-  The default value is false.
-
 - ``--repack-smaller-than`` will repack all packfiles below the size of
   ``--repack-smaller-than``. This allows repacking packfiles that initially came from a
   repository with a smaller ``--pack-size`` to be compacted into larger packfiles.
@@ -495,8 +528,8 @@ is available as a method of last resort. It allows prune to work with little to 
 space. However, a **failed** ``prune`` run can cause the repository to become
 **temporarily unusable**. Therefore, make sure that you have a stable connection to the
 repository storage, before running this command. In case the command fails, it may become
-necessary to manually remove all files from the `index/` folder of the repository and
-run `repair index` afterwards.
+necessary to manually remove all files from the ``index/`` folder of the repository and
+run ``restic repair index`` afterwards.
 
 To prevent accidental usages of the ``--unsafe-recover-no-free-space`` option it is
 necessary to first run ``prune --unsafe-recover-no-free-space SOME-ID`` and then replace

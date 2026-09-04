@@ -6,22 +6,27 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/restic/restic/internal/global"
 	"github.com/restic/restic/internal/repository"
 	"github.com/restic/restic/internal/restic"
 	rtest "github.com/restic/restic/internal/test"
+	"github.com/restic/restic/internal/ui/progress"
 )
 
-func testRunInit(t testing.TB, opts GlobalOptions) {
+func testRunInit(t testing.TB, gopts global.Options) {
 	repository.TestUseLowSecurityKDFParameters(t)
 	restic.TestDisableCheckPolynomial(t)
 	restic.TestSetLockTimeout(t, 0)
 
-	rtest.OK(t, runInit(context.TODO(), InitOptions{}, opts, nil))
-	t.Logf("repository initialized at %v", opts.Repo)
+	err := withTermStatus(t, gopts, func(ctx context.Context, gopts global.Options) error {
+		return runInit(ctx, InitOptions{}, gopts, nil, gopts.Term)
+	})
+	rtest.OK(t, err)
+	t.Logf("repository initialized at %v", gopts.Repo)
 
 	// create temporary junk files to verify that restic does not trip over them
 	for _, path := range []string{"index", "snapshots", "keys", "locks", filepath.Join("data", "00")} {
-		rtest.OK(t, os.WriteFile(filepath.Join(opts.Repo, path, "tmp12345"), []byte("junk file"), 0o600))
+		rtest.OK(t, os.WriteFile(filepath.Join(gopts.Repo, path, "tmp12345"), []byte("junk file"), 0o600))
 	}
 }
 
@@ -34,20 +39,34 @@ func TestInitCopyChunkerParams(t *testing.T) {
 	testRunInit(t, env2.gopts)
 
 	initOpts := InitOptions{
-		secondaryRepoOptions: secondaryRepoOptions{
+		SecondaryRepoOptions: global.SecondaryRepoOptions{
 			Repo:     env2.gopts.Repo,
-			password: env2.gopts.password,
+			Password: env2.gopts.Password,
 		},
 	}
-	rtest.Assert(t, runInit(context.TODO(), initOpts, env.gopts, nil) != nil, "expected invalid init options to fail")
+	err := withTermStatus(t, env.gopts, func(ctx context.Context, gopts global.Options) error {
+		return runInit(ctx, initOpts, gopts, nil, gopts.Term)
+	})
+	rtest.Assert(t, err != nil, "expected invalid init options to fail")
 
 	initOpts.CopyChunkerParameters = true
-	rtest.OK(t, runInit(context.TODO(), initOpts, env.gopts, nil))
-
-	repo, err := OpenRepository(context.TODO(), env.gopts)
+	err = withTermStatus(t, env.gopts, func(ctx context.Context, gopts global.Options) error {
+		return runInit(ctx, initOpts, gopts, nil, gopts.Term)
+	})
 	rtest.OK(t, err)
 
-	otherRepo, err := OpenRepository(context.TODO(), env2.gopts)
+	var repo *repository.Repository
+	err = withTermStatus(t, env.gopts, func(ctx context.Context, gopts global.Options) error {
+		repo, err = global.OpenRepository(ctx, gopts, &progress.NoopPrinter{})
+		return err
+	})
+	rtest.OK(t, err)
+
+	var otherRepo *repository.Repository
+	err = withTermStatus(t, env2.gopts, func(ctx context.Context, gopts global.Options) error {
+		otherRepo, err = global.OpenRepository(ctx, gopts, &progress.NoopPrinter{})
+		return err
+	})
 	rtest.OK(t, err)
 
 	rtest.Assert(t, repo.Config().ChunkerPolynomial == otherRepo.Config().ChunkerPolynomial,

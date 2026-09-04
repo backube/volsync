@@ -7,14 +7,16 @@ import (
 	"io"
 	"strconv"
 
+	"github.com/restic/restic/internal/data"
 	"github.com/restic/restic/internal/errors"
+	"github.com/restic/restic/internal/global"
 	"github.com/restic/restic/internal/restic"
-	"github.com/restic/restic/internal/ui/termstatus"
+	"github.com/restic/restic/internal/ui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
-func newForgetCommand() *cobra.Command {
+func newForgetCommand(globalOptions *global.Options) *cobra.Command {
 	var opts ForgetOptions
 	var pruneOpts PruneOptions
 
@@ -41,6 +43,7 @@ EXIT STATUS
 
 Exit status is 0 if the command was successful.
 Exit status is 1 if there was any error.
+Exit status is 3 if there was an error removing one or more snapshots.
 Exit status is 10 if the repository does not exist.
 Exit status is 11 if the repository is already locked.
 Exit status is 12 if the password is incorrect.
@@ -48,9 +51,8 @@ Exit status is 12 if the password is incorrect.
 		GroupID:           cmdGroupDefault,
 		DisableAutoGenTag: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			term, cancel := setupTermstatus()
-			defer cancel()
-			return runForget(cmd.Context(), opts, pruneOpts, globalOptions, term, args)
+			finalizeSnapshotFilter(&opts.SnapshotFilter)
+			return runForget(cmd.Context(), opts, pruneOpts, *globalOptions, globalOptions.Term, args)
 		},
 	}
 
@@ -62,6 +64,7 @@ Exit status is 12 if the password is incorrect.
 type ForgetPolicyCount int
 
 var ErrNegativePolicyCount = errors.New("negative values not allowed, use 'unlimited' instead")
+var ErrFailedToRemoveOneOrMoreSnapshots = errors.New("failed to remove one or more snapshots")
 
 func (c *ForgetPolicyCount) Set(s string) error {
 	switch s {
@@ -102,21 +105,21 @@ type ForgetOptions struct {
 	Weekly        ForgetPolicyCount
 	Monthly       ForgetPolicyCount
 	Yearly        ForgetPolicyCount
-	Within        restic.Duration
-	WithinHourly  restic.Duration
-	WithinDaily   restic.Duration
-	WithinWeekly  restic.Duration
-	WithinMonthly restic.Duration
-	WithinYearly  restic.Duration
-	KeepTags      restic.TagLists
+	Within        data.Duration
+	WithinHourly  data.Duration
+	WithinDaily   data.Duration
+	WithinWeekly  data.Duration
+	WithinMonthly data.Duration
+	WithinYearly  data.Duration
+	KeepTags      data.TagLists
 
 	UnsafeAllowRemoveAll bool
 
-	restic.SnapshotFilter
+	data.SnapshotFilter
 	Compact bool
 
 	// Grouping
-	GroupBy restic.SnapshotGroupByOptions
+	GroupBy data.SnapshotGroupByOptions
 	DryRun  bool
 	Prune   bool
 }
@@ -147,7 +150,7 @@ func (opts *ForgetOptions) AddFlags(f *pflag.FlagSet) {
 	initMultiSnapshotFilter(f, &opts.SnapshotFilter, false)
 
 	f.BoolVarP(&opts.Compact, "compact", "c", false, "use compact output format")
-	opts.GroupBy = restic.SnapshotGroupByOptions{Host: true, Path: true}
+	opts.GroupBy = data.SnapshotGroupByOptions{Host: true, Path: true}
 	f.VarP(&opts.GroupBy, "group-by", "g", "`group` snapshots by host, paths and/or tags, separated by comma (disable grouping with '')")
 	f.BoolVarP(&opts.DryRun, "dry-run", "n", false, "do not delete anything, just print what would be done")
 	f.BoolVar(&opts.Prune, "prune", false, "automatically run the 'prune' command if snapshots have been removed")
@@ -161,7 +164,7 @@ func verifyForgetOptions(opts *ForgetOptions) error {
 		return errors.Fatal("negative values other than -1 are not allowed for --keep-*")
 	}
 
-	for _, d := range []restic.Duration{opts.Within, opts.WithinHourly, opts.WithinDaily,
+	for _, d := range []data.Duration{opts.Within, opts.WithinHourly, opts.WithinDaily,
 		opts.WithinMonthly, opts.WithinWeekly, opts.WithinYearly} {
 		if d.Hours < 0 || d.Days < 0 || d.Months < 0 || d.Years < 0 {
 			return errors.Fatal("durations containing negative values are not allowed for --keep-within*")
@@ -171,7 +174,7 @@ func verifyForgetOptions(opts *ForgetOptions) error {
 	return nil
 }
 
-func runForget(ctx context.Context, opts ForgetOptions, pruneOptions PruneOptions, gopts GlobalOptions, term *termstatus.Terminal, args []string) error {
+func runForget(ctx context.Context, opts ForgetOptions, pruneOptions PruneOptions, gopts global.Options, term ui.Terminal, args []string) error {
 	err := verifyForgetOptions(&opts)
 	if err != nil {
 		return err
@@ -186,22 +189,17 @@ func runForget(ctx context.Context, opts ForgetOptions, pruneOptions PruneOption
 		return errors.Fatal("--no-lock is only applicable in combination with --dry-run for forget command")
 	}
 
-	ctx, repo, unlock, err := openWithExclusiveLock(ctx, gopts, opts.DryRun && gopts.NoLock)
+	printer := ui.NewProgressPrinter(gopts.JSON, gopts.Verbosity, term)
+	ctx, repo, unlock, err := openWithExclusiveLock(ctx, gopts, opts.DryRun && gopts.NoLock, printer)
 	if err != nil {
 		return err
 	}
 	defer unlock()
 
-	verbosity := gopts.verbosity
-	if gopts.JSON {
-		verbosity = 0
-	}
-	printer := newTerminalProgressPrinter(verbosity, term)
-
-	var snapshots restic.Snapshots
+	var snapshots data.Snapshots
 	removeSnIDs := restic.NewIDSet()
 
-	for sn := range FindFilteredSnapshots(ctx, repo, repo, &opts.SnapshotFilter, args) {
+	for sn := range FindFilteredSnapshots(ctx, repo, repo, &opts.SnapshotFilter, args, printer) {
 		snapshots = append(snapshots, sn)
 	}
 	if ctx.Err() != nil {
@@ -216,12 +214,12 @@ func runForget(ctx context.Context, opts ForgetOptions, pruneOptions PruneOption
 			removeSnIDs.Insert(*sn.ID())
 		}
 	} else {
-		snapshotGroups, _, err := restic.GroupSnapshots(snapshots, opts.GroupBy)
+		snapshotGroups, _, err := data.GroupSnapshots(snapshots, opts.GroupBy)
 		if err != nil {
 			return err
 		}
 
-		policy := restic.ExpirePolicy{
+		policy := data.ExpirePolicy{
 			Last:          int(opts.Last),
 			Hourly:        int(opts.Hourly),
 			Daily:         int(opts.Daily),
@@ -256,14 +254,14 @@ func runForget(ctx context.Context, opts ForgetOptions, pruneOptions PruneOption
 			}
 
 			if gopts.Verbose >= 1 && !gopts.JSON {
-				err = PrintSnapshotGroupHeader(globalOptions.stdout, k)
+				err = PrintSnapshotGroupHeader(gopts.Term.OutputWriter(), k)
 				if err != nil {
 					return err
 				}
 			}
 
-			var key restic.SnapshotGroupKey
-			if json.Unmarshal([]byte(k), &key) != nil {
+			var key data.SnapshotGroupKey
+			if err := json.Unmarshal([]byte(k), &key); err != nil {
 				return err
 			}
 
@@ -272,21 +270,25 @@ func runForget(ctx context.Context, opts ForgetOptions, pruneOptions PruneOption
 			fg.Host = key.Hostname
 			fg.Paths = key.Paths
 
-			keep, remove, reasons := restic.ApplyPolicy(snapshotGroup, policy)
+			keep, remove, reasons := data.ApplyPolicy(snapshotGroup, policy)
 
 			if !policy.Empty() && len(keep) == 0 {
 				return fmt.Errorf("refusing to delete last snapshot of snapshot group \"%v\"", key.String())
 			}
 			if len(keep) != 0 && !gopts.Quiet && !gopts.JSON {
 				printer.P("keep %d snapshots:\n", len(keep))
-				PrintSnapshots(globalOptions.stdout, keep, reasons, opts.Compact)
+				if err := PrintSnapshots(gopts.Term.OutputWriter(), keep, reasons, opts.Compact); err != nil {
+					return err
+				}
 				printer.P("\n")
 			}
 			fg.Keep = asJSONSnapshots(keep)
 
 			if len(remove) != 0 && !gopts.Quiet && !gopts.JSON {
 				printer.P("remove %d snapshots:\n", len(remove))
-				PrintSnapshots(globalOptions.stdout, remove, nil, opts.Compact)
+				if err := PrintSnapshots(gopts.Term.OutputWriter(), remove, nil, opts.Compact); err != nil {
+					return err
+				}
 				printer.P("\n")
 			}
 			fg.Remove = asJSONSnapshots(remove)
@@ -305,12 +307,15 @@ func runForget(ctx context.Context, opts ForgetOptions, pruneOptions PruneOption
 		return ctx.Err()
 	}
 
+	// these are the snapshots that failed to be removed
+	failedSnIDs := restic.NewIDSet()
 	if len(removeSnIDs) > 0 {
 		if !opts.DryRun {
 			bar := printer.NewCounter("files deleted")
 			err := restic.ParallelRemove(ctx, repo, removeSnIDs, restic.WriteableSnapshotFile, func(id restic.ID, err error) error {
 				if err != nil {
 					printer.E("unable to remove %v/%v from the repository\n", restic.SnapshotFile, id)
+					failedSnIDs.Insert(id)
 				} else {
 					printer.VV("removed %v/%v\n", restic.SnapshotFile, id)
 				}
@@ -326,10 +331,14 @@ func runForget(ctx context.Context, opts ForgetOptions, pruneOptions PruneOption
 	}
 
 	if gopts.JSON && len(jsonGroups) > 0 {
-		err = printJSONForget(globalOptions.stdout, jsonGroups)
+		err = printJSONForget(gopts.Term.OutputWriter(), jsonGroups)
 		if err != nil {
 			return err
 		}
+	}
+
+	if len(failedSnIDs) > 0 {
+		return ErrFailedToRemoveOneOrMoreSnapshots
 	}
 
 	if len(removeSnIDs) > 0 && opts.Prune {
@@ -339,7 +348,7 @@ func runForget(ctx context.Context, opts ForgetOptions, pruneOptions PruneOption
 			printer.P("%d snapshots have been removed, running prune\n", len(removeSnIDs))
 		}
 		pruneOptions.DryRun = opts.DryRun
-		return runPruneWithRepo(ctx, pruneOptions, gopts, repo, removeSnIDs, term)
+		return runPruneWithRepo(ctx, pruneOptions, repo, removeSnIDs, printer)
 	}
 
 	return nil
@@ -355,7 +364,7 @@ type ForgetGroup struct {
 	Reasons []KeepReason `json:"reasons"`
 }
 
-func asJSONSnapshots(list restic.Snapshots) []Snapshot {
+func asJSONSnapshots(list data.Snapshots) []Snapshot {
 	var resultList []Snapshot
 	for _, sn := range list {
 		k := Snapshot{
@@ -374,7 +383,7 @@ type KeepReason struct {
 	Matches  []string `json:"matches"`
 }
 
-func asJSONKeeps(list []restic.KeepReason) []KeepReason {
+func asJSONKeeps(list []data.KeepReason) []KeepReason {
 	var resultList []KeepReason
 	for _, keep := range list {
 		k := KeepReason{

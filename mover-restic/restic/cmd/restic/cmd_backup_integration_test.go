@@ -3,33 +3,34 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 	"time"
 
+	"github.com/restic/restic/internal/data"
+	"github.com/restic/restic/internal/errors"
 	"github.com/restic/restic/internal/fs"
+	"github.com/restic/restic/internal/global"
 	"github.com/restic/restic/internal/restic"
 	rtest "github.com/restic/restic/internal/test"
-	"github.com/restic/restic/internal/ui/termstatus"
 )
 
-func testRunBackupAssumeFailure(t testing.TB, dir string, target []string, opts BackupOptions, gopts GlobalOptions) error {
-	return withTermStatus(gopts, func(ctx context.Context, term *termstatus.Terminal) error {
+func testRunBackupAssumeFailure(t testing.TB, dir string, target []string, opts BackupOptions, gopts global.Options) error {
+	return withTermStatus(t, gopts, func(ctx context.Context, gopts global.Options) error {
 		t.Logf("backing up %v in %v", target, dir)
 		if dir != "" {
 			cleanup := rtest.Chdir(t, dir)
 			defer cleanup()
 		}
 
-		opts.GroupBy = restic.SnapshotGroupByOptions{Host: true, Path: true}
-		return runBackup(ctx, opts, gopts, term, target)
+		opts.GroupBy = data.SnapshotGroupByOptions{Host: true, Path: true}
+		return runBackup(ctx, opts, gopts, gopts.Term, target)
 	})
 }
 
-func testRunBackup(t testing.TB, dir string, target []string, opts BackupOptions, gopts GlobalOptions) {
+func testRunBackup(t testing.TB, dir string, target []string, opts BackupOptions, gopts global.Options) {
 	err := testRunBackupAssumeFailure(t, dir, target, opts, gopts)
 	rtest.Assert(t, err == nil, "Error while backing up: %v", err)
 }
@@ -56,13 +57,13 @@ func testBackup(t *testing.T, useFsSnapshot bool) {
 	testListSnapshots(t, env.gopts, 1)
 
 	testRunCheck(t, env.gopts)
-	stat1 := dirStats(env.repo)
+	stat1 := dirStats(t, env.repo)
 
 	// second backup, implicit incremental
 	testRunBackup(t, "", []string{env.testdata}, opts, env.gopts)
 	snapshotIDs := testListSnapshots(t, env.gopts, 2)
 
-	stat2 := dirStats(env.repo)
+	stat2 := dirStats(t, env.repo)
 	if stat2.size > stat1.size+stat1.size/10 {
 		t.Error("repository size has grown by more than 10 percent")
 	}
@@ -74,7 +75,7 @@ func testBackup(t *testing.T, useFsSnapshot bool) {
 	testRunBackup(t, "", []string{env.testdata}, opts, env.gopts)
 	snapshotIDs = testListSnapshots(t, env.gopts, 3)
 
-	stat3 := dirStats(env.repo)
+	stat3 := dirStats(t, env.repo)
 	if stat3.size > stat1.size+stat1.size/10 {
 		t.Error("repository size has grown by more than 10 percent")
 	}
@@ -85,7 +86,7 @@ func testBackup(t *testing.T, useFsSnapshot bool) {
 		restoredir := filepath.Join(env.base, fmt.Sprintf("restore%d", i))
 		t.Logf("restoring snapshot %v to %v", snapshotID.Str(), restoredir)
 		testRunRestore(t, env.gopts, restoredir, snapshotID.String()+":"+toPathInSnapshot(filepath.Dir(env.testdata)))
-		diff := directoriesContentsDiff(env.testdata, filepath.Join(restoredir, "testdata"))
+		diff := directoriesContentsDiff(t, env.testdata, filepath.Join(restoredir, "testdata"))
 		rtest.Assert(t, diff == "", "directories are not equal: %v", diff)
 	}
 
@@ -218,41 +219,41 @@ func TestDryRunBackup(t *testing.T) {
 	// dry run before first backup
 	testRunBackup(t, filepath.Dir(env.testdata), []string{"testdata"}, dryOpts, env.gopts)
 	snapshotIDs := testListSnapshots(t, env.gopts, 0)
-	packIDs := testRunList(t, "packs", env.gopts)
+	packIDs := testRunList(t, env.gopts, "packs")
 	rtest.Assert(t, len(packIDs) == 0,
 		"expected no data, got %v", snapshotIDs)
-	indexIDs := testRunList(t, "index", env.gopts)
+	indexIDs := testRunList(t, env.gopts, "index")
 	rtest.Assert(t, len(indexIDs) == 0,
 		"expected no index, got %v", snapshotIDs)
 
 	// first backup
 	testRunBackup(t, filepath.Dir(env.testdata), []string{"testdata"}, opts, env.gopts)
 	snapshotIDs = testListSnapshots(t, env.gopts, 1)
-	packIDs = testRunList(t, "packs", env.gopts)
-	indexIDs = testRunList(t, "index", env.gopts)
+	packIDs = testRunList(t, env.gopts, "packs")
+	indexIDs = testRunList(t, env.gopts, "index")
 
 	// dry run between backups
 	testRunBackup(t, filepath.Dir(env.testdata), []string{"testdata"}, dryOpts, env.gopts)
 	snapshotIDsAfter := testListSnapshots(t, env.gopts, 1)
 	rtest.Equals(t, snapshotIDs, snapshotIDsAfter)
-	dataIDsAfter := testRunList(t, "packs", env.gopts)
+	dataIDsAfter := testRunList(t, env.gopts, "packs")
 	rtest.Equals(t, packIDs, dataIDsAfter)
-	indexIDsAfter := testRunList(t, "index", env.gopts)
+	indexIDsAfter := testRunList(t, env.gopts, "index")
 	rtest.Equals(t, indexIDs, indexIDsAfter)
 
 	// second backup, implicit incremental
 	testRunBackup(t, filepath.Dir(env.testdata), []string{"testdata"}, opts, env.gopts)
 	snapshotIDs = testListSnapshots(t, env.gopts, 2)
-	packIDs = testRunList(t, "packs", env.gopts)
-	indexIDs = testRunList(t, "index", env.gopts)
+	packIDs = testRunList(t, env.gopts, "packs")
+	indexIDs = testRunList(t, env.gopts, "index")
 
 	// another dry run
 	testRunBackup(t, filepath.Dir(env.testdata), []string{"testdata"}, dryOpts, env.gopts)
 	snapshotIDsAfter = testListSnapshots(t, env.gopts, 2)
 	rtest.Equals(t, snapshotIDs, snapshotIDsAfter)
-	dataIDsAfter = testRunList(t, "packs", env.gopts)
+	dataIDsAfter = testRunList(t, env.gopts, "packs")
 	rtest.Equals(t, packIDs, dataIDsAfter)
-	indexIDsAfter = testRunList(t, "index", env.gopts)
+	indexIDsAfter = testRunList(t, env.gopts, "index")
 	rtest.Equals(t, indexIDs, indexIDsAfter)
 }
 
@@ -262,22 +263,27 @@ func TestBackupNonExistingFile(t *testing.T) {
 
 	testSetupBackupData(t, env)
 
-	_ = withRestoreGlobalOptions(func() error {
-		globalOptions.stderr = io.Discard
+	p := filepath.Join(env.testdata, "0", "0", "9")
+	dirs := []string{
+		filepath.Join(p, "0"),
+		filepath.Join(p, "1"),
+		filepath.Join(p, "nonexisting"),
+		filepath.Join(p, "5"),
+	}
 
-		p := filepath.Join(env.testdata, "0", "0", "9")
-		dirs := []string{
-			filepath.Join(p, "0"),
-			filepath.Join(p, "1"),
-			filepath.Join(p, "nonexisting"),
-			filepath.Join(p, "5"),
-		}
+	opts := BackupOptions{}
 
-		opts := BackupOptions{}
-
-		testRunBackup(t, "", dirs, opts, env.gopts)
-		return nil
-	})
+	// mix of existing and non-existing files
+	err := testRunBackupAssumeFailure(t, "", dirs, opts, env.gopts)
+	rtest.Assert(t, err != nil, "expected error for non-existing file")
+	rtest.Assert(t, errors.Is(err, ErrInvalidSourceData), "expected ErrInvalidSourceData; got %v", err)
+	// only non-existing file
+	dirs = []string{
+		filepath.Join(p, "nonexisting"),
+	}
+	err = testRunBackupAssumeFailure(t, "", dirs, opts, env.gopts)
+	rtest.Assert(t, err != nil, "expected error for non-existing file")
+	rtest.Assert(t, errors.Is(err, ErrNoSourceData), "expected ErrNoSourceData; got %v", err)
 }
 
 func TestBackupSelfHealing(t *testing.T) {
@@ -438,13 +444,13 @@ func TestIncrementalBackup(t *testing.T) {
 
 	testRunBackup(t, "", []string{datadir}, opts, env.gopts)
 	testRunCheck(t, env.gopts)
-	stat1 := dirStats(env.repo)
+	stat1 := dirStats(t, env.repo)
 
 	rtest.OK(t, appendRandomData(testfile, incrementalSecondWrite))
 
 	testRunBackup(t, "", []string{datadir}, opts, env.gopts)
 	testRunCheck(t, env.gopts)
-	stat2 := dirStats(env.repo)
+	stat2 := dirStats(t, env.repo)
 	if stat2.size-stat1.size > incrementalFirstWrite {
 		t.Errorf("repository size has grown by more than %d bytes", incrementalFirstWrite)
 	}
@@ -454,14 +460,13 @@ func TestIncrementalBackup(t *testing.T) {
 
 	testRunBackup(t, "", []string{datadir}, opts, env.gopts)
 	testRunCheck(t, env.gopts)
-	stat3 := dirStats(env.repo)
+	stat3 := dirStats(t, env.repo)
 	if stat3.size-stat2.size > incrementalFirstWrite {
 		t.Errorf("repository size has grown by more than %d bytes", incrementalFirstWrite)
 	}
 	t.Logf("repository grown by %d bytes", stat3.size-stat2.size)
 }
 
-// nolint: staticcheck // false positive nil pointer dereference check
 func TestBackupTags(t *testing.T) {
 	env, cleanup := withTestEnvironment(t)
 	defer cleanup()
@@ -481,7 +486,7 @@ func TestBackupTags(t *testing.T) {
 		"expected no tags, got %v", newest.Tags)
 	parent := newest
 
-	opts.Tags = restic.TagLists{[]string{"NL"}}
+	opts.Tags = data.TagLists{[]string{"NL"}}
 	testRunBackup(t, "", []string{env.testdata}, opts, env.gopts)
 	testRunCheck(t, env.gopts)
 	newest, _ = testRunSnapshots(t, env.gopts)
@@ -497,7 +502,6 @@ func TestBackupTags(t *testing.T) {
 		"expected parent to be %v, got %v", parent.ID, newest.Parent)
 }
 
-// nolint: staticcheck // false positive nil pointer dereference check
 func TestBackupProgramVersion(t *testing.T) {
 	env, cleanup := withTestEnvironment(t)
 	defer cleanup()
@@ -509,7 +513,7 @@ func TestBackupProgramVersion(t *testing.T) {
 	if newest == nil {
 		t.Fatal("expected a backup, got nil")
 	}
-	resticVersion := "restic " + version
+	resticVersion := "restic " + global.Version
 	rtest.Assert(t, newest.ProgramVersion == resticVersion,
 		"expected %v, got %v", resticVersion, newest.ProgramVersion)
 }
@@ -567,7 +571,7 @@ func TestHardLink(t *testing.T) {
 		restoredir := filepath.Join(env.base, fmt.Sprintf("restore%d", i))
 		t.Logf("restoring snapshot %v to %v", snapshotID.Str(), restoredir)
 		testRunRestore(t, env.gopts, restoredir, snapshotID.String())
-		diff := directoriesContentsDiff(env.testdata, filepath.Join(restoredir, "testdata"))
+		diff := directoriesContentsDiff(t, env.testdata, filepath.Join(restoredir, "testdata"))
 		rtest.Assert(t, diff == "", "directories are not equal %v", diff)
 
 		linkResults := createFileSetPerHardlink(filepath.Join(restoredir, "testdata"))
@@ -703,7 +707,7 @@ func TestBackupEmptyPassword(t *testing.T) {
 	env, cleanup := withTestEnvironment(t)
 	defer cleanup()
 
-	env.gopts.password = ""
+	env.gopts.Password = ""
 	env.gopts.InsecureNoPassword = true
 
 	testSetupBackupData(t, env)

@@ -1,5 +1,4 @@
 //go:build !windows
-// +build !windows
 
 package fs
 
@@ -28,7 +27,7 @@ type VssSnapshot struct {
 	mountPointInfo map[string]MountPoint
 }
 
-// HasSufficientPrivilegesForVSS returns true if the user is allowed to use VSS.
+// HasSufficientPrivilegesForVSS returns nil if the user is allowed to use VSS.
 func HasSufficientPrivilegesForVSS() error {
 	return errors.New("VSS snapshots are only supported on windows")
 }

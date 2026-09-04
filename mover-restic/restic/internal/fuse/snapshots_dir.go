@@ -1,5 +1,4 @@
 //go:build darwin || freebsd || linux
-// +build darwin freebsd linux
 
 package fuse
 
@@ -8,8 +7,8 @@ import (
 	"os"
 	"syscall"
 
+	"github.com/restic/restic/internal/data"
 	"github.com/restic/restic/internal/debug"
-	"github.com/restic/restic/internal/restic"
 
 	"github.com/anacrolix/fuse"
 	"github.com/anacrolix/fuse/fs"
@@ -62,7 +61,7 @@ func (d *SnapshotsDir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	debug.Log("ReadDirAll()")
 
 	// update snapshots
-	meta, err := d.dirStruct.UpdatePrefix(ctx, d.prefix)
+	meta, _, err := d.dirStruct.UpdatePrefix(ctx, d.prefix)
 	if err != nil {
 		return nil, unwrapCtxCanceled(err)
 	} else if meta == nil {
@@ -105,14 +104,14 @@ func (d *SnapshotsDir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 func (d *SnapshotsDir) Lookup(ctx context.Context, name string) (fs.Node, error) {
 	debug.Log("Lookup(%s)", name)
 
-	meta, err := d.dirStruct.UpdatePrefix(ctx, d.prefix)
+	meta, gen, err := d.dirStruct.UpdatePrefix(ctx, d.prefix)
 	if err != nil {
 		return nil, unwrapCtxCanceled(err)
 	} else if meta == nil {
 		return nil, syscall.ENOENT
 	}
 
-	return d.cache.lookupOrCreate(name, func(forget forgetFn) (fs.Node, error) {
+	return d.cache.lookupOrCreate(name, gen, func(forget forgetFn) (fs.Node, error) {
 		entry := meta.names[name]
 		if entry == nil {
 			return nil, syscall.ENOENT
@@ -138,14 +137,14 @@ type snapshotLink struct {
 	forget   forgetFn
 	inode    uint64
 	target   string
-	snapshot *restic.Snapshot
+	snapshot *data.Snapshot
 }
 
 var _ = fs.NodeForgetter(&snapshotLink{})
 var _ = fs.NodeReadlinker(&snapshotLink{})
 
 // newSnapshotLink
-func newSnapshotLink(root *Root, forget forgetFn, inode uint64, target string, snapshot *restic.Snapshot) (*snapshotLink, error) {
+func newSnapshotLink(root *Root, forget forgetFn, inode uint64, target string, snapshot *data.Snapshot) (*snapshotLink, error) {
 	return &snapshotLink{root: root, forget: forget, inode: inode, target: target, snapshot: snapshot}, nil
 }
 

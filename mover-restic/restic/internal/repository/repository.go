@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"os"
 	"runtime"
-	"sort"
 	"sync"
 
 	"github.com/klauspost/compress/zstd"
@@ -43,6 +41,8 @@ type Repository struct {
 	opts Options
 
 	packerWg    *errgroup.Group
+	mainWg      *errgroup.Group
+	blobSaver   *sync.WaitGroup
 	uploader    *packerUploader
 	treePM      *packerManager
 	dataPM      *packerManager
@@ -73,7 +73,9 @@ const (
 	CompressionAuto    CompressionMode = 0
 	CompressionOff     CompressionMode = 1
 	CompressionMax     CompressionMode = 2
-	CompressionInvalid CompressionMode = 3
+	CompressionFastest CompressionMode = 3
+	CompressionBetter  CompressionMode = 4
+	CompressionInvalid CompressionMode = 5
 )
 
 // Set implements the method needed for pflag command flag parsing.
@@ -85,9 +87,13 @@ func (c *CompressionMode) Set(s string) error {
 		*c = CompressionOff
 	case "max":
 		*c = CompressionMax
+	case "fastest":
+		*c = CompressionFastest
+	case "better":
+		*c = CompressionBetter
 	default:
 		*c = CompressionInvalid
-		return fmt.Errorf("invalid compression mode %q, must be one of (auto|off|max)", s)
+		return fmt.Errorf("invalid compression mode %q, must be one of (auto|off|fastest|better|max)", s)
 	}
 
 	return nil
@@ -101,6 +107,10 @@ func (c *CompressionMode) String() string {
 		return "off"
 	case CompressionMax:
 		return "max"
+	case CompressionFastest:
+		return "fastest"
+	case CompressionBetter:
+		return "better"
 	default:
 		return "invalid"
 	}
@@ -145,19 +155,19 @@ func (r *Repository) Config() restic.Config {
 	return r.cfg
 }
 
-// packSize return the target size of a pack file when uploading
-func (r *Repository) packSize() uint {
+// PackSize return the target size of a pack file when uploading
+func (r *Repository) PackSize() uint {
 	return r.opts.PackSize
 }
 
 // UseCache replaces the backend with the wrapped cache.
-func (r *Repository) UseCache(c *cache.Cache) {
+func (r *Repository) UseCache(c *cache.Cache, errorLog func(string, ...interface{})) {
 	if c == nil {
 		return
 	}
 	debug.Log("using cache")
 	r.cache = c
-	r.be = c.Wrap(r.be)
+	r.be = c.Wrap(r.be, errorLog)
 }
 
 func (r *Repository) Cache() *cache.Cache {
@@ -167,6 +177,10 @@ func (r *Repository) Cache() *cache.Cache {
 // SetDryRun sets the repo backend into dry-run mode.
 func (r *Repository) SetDryRun() {
 	r.be = dryrun.New(r.be)
+}
+
+func (r *Repository) Checker() *Checker {
+	return NewChecker(r)
 }
 
 // LoadUnpacked loads and decrypts the file with the given type and ID.
@@ -274,7 +288,7 @@ func (r *Repository) loadBlob(ctx context.Context, blobs []restic.PackedBlob, bu
 			continue
 		}
 
-		it := newPackBlobIterator(blob.PackID, newByteReader(buf), blob.Offset, []restic.Blob{blob.Blob}, r.key, r.getZstdDecoder())
+		it := newPackBlobIterator(blob.PackID, newByteReader(buf), blob.Offset, restic.Blobs{blob.Blob}, r.key, r.getZstdDecoder())
 		pbv, err := it.Next()
 
 		if err == nil {
@@ -305,9 +319,17 @@ func (r *Repository) loadBlob(ctx context.Context, blobs []restic.PackedBlob, bu
 
 func (r *Repository) getZstdEncoder() *zstd.Encoder {
 	r.allocEnc.Do(func() {
-		level := zstd.SpeedDefault
-		if r.opts.Compression == CompressionMax {
+
+		var level zstd.EncoderLevel
+		switch r.opts.Compression {
+		case CompressionFastest:
+			level = zstd.SpeedFastest
+		case CompressionBetter:
+			level = zstd.SpeedBetterCompression
+		case CompressionMax:
 			level = zstd.SpeedBestCompression
+		default:
+			level = zstd.SpeedDefault
 		}
 
 		opts := []zstd.EOption{
@@ -358,11 +380,13 @@ func (r *Repository) saveAndEncrypt(ctx context.Context, t restic.BlobType, data
 
 	uncompressedLength := 0
 	if r.cfg.Version > 1 {
-
 		// we have a repo v2, so compression is available. if the user opts to
 		// not compress, we won't compress any data, but everything else is
 		// compressed.
-		if r.opts.Compression != CompressionOff || t != restic.DataBlob {
+		// uncompressedLength != 0 is used to indicate compressed data. Thus, a zero-sized blob
+		// cannot be compressed. This special case is only relevant for tests, normal operation does not
+		// generate zero-sized blobs.
+		if len(data) > 0 && (r.opts.Compression != CompressionOff || t != restic.DataBlob) {
 			uncompressedLength = len(data)
 			data = r.getZstdEncoder().EncodeAll(data, nil)
 		}
@@ -377,7 +401,7 @@ func (r *Repository) saveAndEncrypt(ctx context.Context, t restic.BlobType, data
 	ciphertext = r.key.Seal(ciphertext, nonce, data, nil)
 
 	if err := r.verifyCiphertext(ciphertext, uncompressedLength, id); err != nil {
-		//nolint:revive // ignore linter warnings about error message spelling
+		//nolint:revive,staticcheck // ignore linter warnings about error message spelling
 		return 0, fmt.Errorf("Detected data corruption while saving blob %v: %w\nCorrupted blobs are either caused by hardware issues or software bugs. Please open an issue at https://github.com/restic/restic/issues/new/choose for further troubleshooting.", id, err)
 	}
 
@@ -482,7 +506,7 @@ func (r *Repository) saveUnpacked(ctx context.Context, t restic.FileType, buf []
 	ciphertext = r.key.Seal(ciphertext, nonce, p, nil)
 
 	if err := r.verifyUnpacked(ciphertext, t, buf); err != nil {
-		//nolint:revive // ignore linter warnings about error message spelling
+		//nolint:revive,staticcheck // ignore linter warnings about error message spelling
 		return restic.ID{}, fmt.Errorf("Detected data corruption while saving file of type %v: %w\nCorrupted data is either caused by hardware issues or software bugs. Please open an issue at https://github.com/restic/restic/issues/new/choose for further troubleshooting.", t, err)
 	}
 
@@ -538,16 +562,40 @@ func (r *Repository) removeUnpacked(ctx context.Context, t restic.FileType, id r
 	return r.be.Remove(ctx, backend.Handle{Type: t, Name: id.String()})
 }
 
-// Flush saves all remaining packs and the index
-func (r *Repository) Flush(ctx context.Context) error {
-	if err := r.flushPacks(ctx); err != nil {
-		return err
-	}
-
-	return r.idx.Flush(ctx, &internalRepository{r})
+func (r *Repository) WithBlobUploader(ctx context.Context, fn func(ctx context.Context, uploader restic.BlobSaverWithAsync) error) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	wg, ctx := errgroup.WithContext(ctx)
+	// pack uploader + wg.Go below + blob saver (CPU bound)
+	wg.SetLimit(2 + runtime.GOMAXPROCS(0))
+	r.mainWg = wg
+	r.startPackUploader(ctx, wg)
+	// blob saver are spawned on demand, use wait group to keep track of them
+	r.blobSaver = &sync.WaitGroup{}
+	wg.Go(func() error {
+		inCallback := true
+		defer func() {
+			// when the defer is called while inCallback is true, this means
+			// that runtime.Goexit was called within `fn`. This should only happen
+			// if a test uses t.Fatal within `fn`.
+			if inCallback {
+				cancel()
+			}
+		}()
+		err := fn(ctx, &blobSaverRepo{repo: r})
+		inCallback = false
+		if err != nil {
+			return err
+		}
+		if err := r.flush(ctx); err != nil {
+			return fmt.Errorf("error flushing repository: %w", err)
+		}
+		return nil
+	})
+	return wg.Wait()
 }
 
-func (r *Repository) StartPackUploader(ctx context.Context, wg *errgroup.Group) {
+func (r *Repository) startPackUploader(ctx context.Context, wg *errgroup.Group) {
 	if r.packerWg != nil {
 		panic("uploader already started")
 	}
@@ -555,16 +603,48 @@ func (r *Repository) StartPackUploader(ctx context.Context, wg *errgroup.Group) 
 	innerWg, ctx := errgroup.WithContext(ctx)
 	r.packerWg = innerWg
 	r.uploader = newPackerUploader(ctx, innerWg, r, r.Connections())
-	r.treePM = newPackerManager(r.key, restic.TreeBlob, r.packSize(), r.packerCount, r.uploader.QueuePacker)
-	r.dataPM = newPackerManager(r.key, restic.DataBlob, r.packSize(), r.packerCount, r.uploader.QueuePacker)
+	r.treePM = newPackerManager(r.key, restic.TreeBlob, r.PackSize(), r.packerCount, r.uploader.QueuePacker)
+	r.dataPM = newPackerManager(r.key, restic.DataBlob, r.PackSize(), r.packerCount, r.uploader.QueuePacker)
 
 	wg.Go(func() error {
 		return innerWg.Wait()
 	})
 }
 
+type blobSaverRepo struct {
+	repo *Repository
+}
+
+func (r *blobSaverRepo) SaveBlob(ctx context.Context, t restic.BlobType, buf []byte, id restic.ID, storeDuplicate bool) (newID restic.ID, known bool, size int, err error) {
+	return r.repo.saveBlob(ctx, t, buf, id, storeDuplicate)
+}
+
+func (r *blobSaverRepo) SaveBlobAsync(ctx context.Context, t restic.BlobType, buf []byte, id restic.ID, storeDuplicate bool, cb func(newID restic.ID, known bool, size int, err error)) {
+	r.repo.saveBlobAsync(ctx, t, buf, id, storeDuplicate, cb)
+}
+
+// Flush saves all remaining packs and the index
+func (r *Repository) flush(ctx context.Context) error {
+	r.flushBlobSaver()
+	r.mainWg = nil
+
+	if err := r.flushPackUploader(ctx); err != nil {
+		return err
+	}
+
+	return r.idx.Flush(ctx, &internalRepository{r})
+}
+
+func (r *Repository) flushBlobSaver() {
+	if r.blobSaver == nil {
+		return
+	}
+	r.blobSaver.Wait()
+	r.blobSaver = nil
+}
+
 // FlushPacks saves all remaining packs.
-func (r *Repository) flushPacks(ctx context.Context) error {
+func (r *Repository) flushPackUploader(ctx context.Context) error {
 	if r.packerWg == nil {
 		return nil
 	}
@@ -596,7 +676,7 @@ func (r *Repository) LookupBlob(tpe restic.BlobType, id restic.ID) []restic.Pack
 	return r.idx.Lookup(restic.BlobHandle{Type: tpe, ID: id})
 }
 
-// LookupBlobSize returns the size of blob id.
+// LookupBlobSize returns the size of blob id. Also returns pending blobs.
 func (r *Repository) LookupBlobSize(tpe restic.BlobType, id restic.ID) (uint, bool) {
 	return r.idx.LookupSize(restic.BlobHandle{Type: tpe, ID: id})
 }
@@ -604,17 +684,17 @@ func (r *Repository) LookupBlobSize(tpe restic.BlobType, id restic.ID) (uint, bo
 // ListBlobs runs fn on all blobs known to the index. When the context is cancelled,
 // the index iteration returns immediately with ctx.Err(). This blocks any modification of the index.
 func (r *Repository) ListBlobs(ctx context.Context, fn func(restic.PackedBlob)) error {
-	return r.idx.Each(ctx, fn)
+	for blob := range r.idx.Values() {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		fn(blob)
+	}
+	return nil
 }
 
 func (r *Repository) ListPacksFromIndex(ctx context.Context, packs restic.IDSet) <-chan restic.PackBlobs {
 	return r.idx.ListPacks(ctx, packs)
-}
-
-// SetIndex instructs the repository to use the given index.
-func (r *Repository) SetIndex(i restic.MasterIndex) error {
-	r.idx = i.(*index.MasterIndex)
-	return r.prepareCache()
 }
 
 func (r *Repository) clearIndex() {
@@ -622,13 +702,20 @@ func (r *Repository) clearIndex() {
 }
 
 // LoadIndex loads all index files from the backend in parallel and stores them
-func (r *Repository) LoadIndex(ctx context.Context, p *progress.Counter) error {
+func (r *Repository) LoadIndex(ctx context.Context, p restic.TerminalCounterFactory) error {
+	return r.loadIndexWithCallback(ctx, p, nil)
+}
+
+// loadIndexWithCallback loads all index files from the backend in parallel and stores them
+func (r *Repository) loadIndexWithCallback(ctx context.Context, p restic.TerminalCounterFactory, cb func(id restic.ID, idx *index.Index, err error) error) error {
 	debug.Log("Loading index")
 
-	// reset in-memory index before loading it from the repository
-	r.clearIndex()
+	var bar *progress.Counter
+	if p != nil {
+		bar = p.NewCounterTerminalOnly("index files loaded")
+	}
 
-	err := r.idx.Load(ctx, r, p, nil)
+	err := r.idx.Load(ctx, r, bar, cb)
 	if err != nil {
 		return err
 	}
@@ -642,13 +729,13 @@ func (r *Repository) LoadIndex(ctx context.Context, p *progress.Counter) error {
 		defer cancel()
 
 		invalidIndex := false
-		err := r.idx.Each(ctx, func(blob restic.PackedBlob) {
+		for blob := range r.idx.Values() {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			if blob.IsCompressed() {
 				invalidIndex = true
 			}
-		})
-		if err != nil {
-			return err
 		}
 		if invalidIndex {
 			return errors.New("index uses feature not supported by repository version 1")
@@ -672,7 +759,7 @@ func (r *Repository) createIndexFromPacks(ctx context.Context, packsize map[rest
 
 	// track spawned goroutines using wg, create a new context which is
 	// cancelled as soon as an error occurs.
-	wg, ctx := errgroup.WithContext(ctx)
+	wg, wgCtx := errgroup.WithContext(ctx)
 
 	type FileInfo struct {
 		restic.ID
@@ -685,8 +772,8 @@ func (r *Repository) createIndexFromPacks(ctx context.Context, packsize map[rest
 		defer close(ch)
 		for id, size := range packsize {
 			select {
-			case <-ctx.Done():
-				return ctx.Err()
+			case <-wgCtx.Done():
+				return wgCtx.Err()
 			case ch <- FileInfo{id, size}:
 			}
 		}
@@ -696,14 +783,13 @@ func (r *Repository) createIndexFromPacks(ctx context.Context, packsize map[rest
 	// a worker receives an pack ID from ch, reads the pack contents, and adds them to idx
 	worker := func() error {
 		for fi := range ch {
-			entries, _, err := r.ListPack(ctx, fi.ID, fi.Size)
+			entries, _, err := r.ListPack(wgCtx, fi.ID, fi.Size)
 			if err != nil {
 				debug.Log("unable to list pack file %v", fi.ID.Str())
 				m.Lock()
 				invalid = append(invalid, fi.ID)
 				m.Unlock()
-			}
-			if err := r.idx.StorePack(ctx, fi.ID, entries, &internalRepository{r}); err != nil {
+			} else if err := r.idx.StorePack(wgCtx, fi.ID, entries, &internalRepository{r}); err != nil {
 				return err
 			}
 			p.Add(1)
@@ -724,7 +810,29 @@ func (r *Repository) createIndexFromPacks(ctx context.Context, packsize map[rest
 		return invalid, err
 	}
 
+	// flush the index to the repository
+	err = r.flush(ctx)
+	if err != nil {
+		return invalid, err
+	}
+
 	return invalid, nil
+}
+
+func (r *Repository) NewAssociatedBlobSet() restic.AssociatedBlobSet {
+	return &associatedBlobSet{*index.NewAssociatedSet[struct{}](r.idx)}
+}
+
+// associatedBlobSet is a wrapper around index.AssociatedSet to implement the restic.AssociatedBlobSet interface.
+type associatedBlobSet struct {
+	index.AssociatedSet[struct{}]
+}
+
+func (s *associatedBlobSet) Intersect(other restic.AssociatedBlobSet) restic.AssociatedBlobSet {
+	return &associatedBlobSet{*s.AssociatedSet.Intersect(other)}
+}
+func (s *associatedBlobSet) Sub(other restic.AssociatedBlobSet) restic.AssociatedBlobSet {
+	return &associatedBlobSet{*s.AssociatedSet.Sub(other)}
 }
 
 // prepareCache initializes the local cache. indexIDs is the list of IDs of
@@ -737,12 +845,7 @@ func (r *Repository) prepareCache() error {
 	packs := r.idx.Packs(restic.NewIDSet())
 
 	// clear old packs
-	err := r.cache.Clear(restic.PackFile, packs)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error clearing pack files in cache: %v\n", err)
-	}
-
-	return nil
+	return r.cache.Clear(restic.PackFile, packs)
 }
 
 // SearchKey finds a key with the supplied password, afterwards the config is
@@ -858,7 +961,7 @@ func (r *Repository) List(ctx context.Context, t restic.FileType, fn func(restic
 
 // ListPack returns the list of blobs saved in the pack id and the length of
 // the pack header.
-func (r *Repository) ListPack(ctx context.Context, id restic.ID, size int64) ([]restic.Blob, uint32, error) {
+func (r *Repository) ListPack(ctx context.Context, id restic.ID, size int64) (restic.Blobs, uint32, error) {
 	h := backend.Handle{Type: restic.PackFile, Name: id.String()}
 
 	entries, hdrSize, err := pack.List(r.Key(), backend.ReaderAt(ctx, r.be, h), size)
@@ -885,14 +988,14 @@ func (r *Repository) Close() error {
 	return r.be.Close()
 }
 
-// SaveBlob saves a blob of type t into the repository.
+// saveBlob saves a blob of type t into the repository.
 // It takes care that no duplicates are saved; this can be overwritten
 // by setting storeDuplicate to true.
 // If id is the null id, it will be computed and returned.
 // Also returns if the blob was already known before.
 // If the blob was not known before, it returns the number of bytes the blob
 // occupies in the repo (compressed or not, including encryption overhead).
-func (r *Repository) SaveBlob(ctx context.Context, t restic.BlobType, buf []byte, id restic.ID, storeDuplicate bool) (newID restic.ID, known bool, size int, err error) {
+func (r *Repository) saveBlob(ctx context.Context, t restic.BlobType, buf []byte, id restic.ID, storeDuplicate bool) (newID restic.ID, known bool, size int, err error) {
 
 	if int64(len(buf)) > math.MaxUint32 {
 		return restic.ID{}, false, 0, fmt.Errorf("blob is larger than 4GB")
@@ -913,7 +1016,7 @@ func (r *Repository) SaveBlob(ctx context.Context, t restic.BlobType, buf []byte
 	}
 
 	// first try to add to pending blobs; if not successful, this blob is already known
-	known = !r.idx.AddPending(restic.BlobHandle{ID: newID, Type: t})
+	known = !r.idx.AddPending(restic.BlobHandle{ID: newID, Type: t}, uint(len(buf)))
 
 	// only save when needed or explicitly told
 	if !known || storeDuplicate {
@@ -921,6 +1024,19 @@ func (r *Repository) SaveBlob(ctx context.Context, t restic.BlobType, buf []byte
 	}
 
 	return newID, known, size, err
+}
+
+func (r *Repository) saveBlobAsync(ctx context.Context, t restic.BlobType, buf []byte, id restic.ID, storeDuplicate bool, cb func(newID restic.ID, known bool, size int, err error)) {
+	r.mainWg.Go(func() error {
+		if ctx.Err() != nil {
+			// fail fast if the context is cancelled
+			cb(restic.ID{}, false, 0, ctx.Err())
+			return ctx.Err()
+		}
+		newID, known, size, err := r.saveBlob(ctx, t, buf, id, storeDuplicate)
+		cb(newID, known, size, err)
+		return err
+	})
 }
 
 type backendLoadFn func(ctx context.Context, h backend.Handle, length int, offset int64, fn func(rd io.Reader) error) error
@@ -934,19 +1050,16 @@ const maxUnusedRange = 1 * 1024 * 1024
 // handleBlobFn is called at most once for each blob. If the callback returns an error,
 // then LoadBlobsFromPack will abort and not retry it. The buf passed to the callback is only valid within
 // this specific call. The callback must not keep a reference to buf.
-func (r *Repository) LoadBlobsFromPack(ctx context.Context, packID restic.ID, blobs []restic.Blob, handleBlobFn func(blob restic.BlobHandle, buf []byte, err error) error) error {
+func (r *Repository) LoadBlobsFromPack(ctx context.Context, packID restic.ID, blobs restic.Blobs, handleBlobFn func(blob restic.BlobHandle, buf []byte, err error) error) error {
 	return streamPack(ctx, r.be.Load, r.LoadBlob, r.getZstdDecoder(), r.key, packID, blobs, handleBlobFn)
 }
 
-func streamPack(ctx context.Context, beLoad backendLoadFn, loadBlobFn loadBlobFn, dec *zstd.Decoder, key *crypto.Key, packID restic.ID, blobs []restic.Blob, handleBlobFn func(blob restic.BlobHandle, buf []byte, err error) error) error {
+func streamPack(ctx context.Context, beLoad backendLoadFn, loadBlobFn loadBlobFn, dec *zstd.Decoder, key *crypto.Key, packID restic.ID, blobs restic.Blobs, handleBlobFn func(blob restic.BlobHandle, buf []byte, err error) error) error {
 	if len(blobs) == 0 {
 		// nothing to do
 		return nil
 	}
-
-	sort.Slice(blobs, func(i, j int) bool {
-		return blobs[i].Offset < blobs[j].Offset
-	})
+	blobs.Sort()
 
 	lowerIdx := 0
 	lastPos := blobs[0].Offset
@@ -984,7 +1097,7 @@ func streamPack(ctx context.Context, beLoad backendLoadFn, loadBlobFn loadBlobFn
 	return streamPackPart(ctx, beLoad, loadBlobFn, dec, key, packID, blobs[lowerIdx:], handleBlobFn)
 }
 
-func streamPackPart(ctx context.Context, beLoad backendLoadFn, loadBlobFn loadBlobFn, dec *zstd.Decoder, key *crypto.Key, packID restic.ID, blobs []restic.Blob, handleBlobFn func(blob restic.BlobHandle, buf []byte, err error) error) error {
+func streamPackPart(ctx context.Context, beLoad backendLoadFn, loadBlobFn loadBlobFn, dec *zstd.Decoder, key *crypto.Key, packID restic.ID, blobs restic.Blobs, handleBlobFn func(blob restic.BlobHandle, buf []byte, err error) error) error {
 	h := backend.Handle{Type: restic.PackFile, Name: packID.String(), IsMetadata: blobs[0].Type.IsMetadata()}
 
 	dataStart := blobs[0].Offset
@@ -1094,7 +1207,7 @@ type packBlobIterator struct {
 	rd            discardReader
 	currentOffset uint
 
-	blobs []restic.Blob
+	blobs restic.Blobs
 	key   *crypto.Key
 	dec   *zstd.Decoder
 
@@ -1110,7 +1223,7 @@ type packBlobValue struct {
 var errPackEOF = errors.New("reached EOF of pack file")
 
 func newPackBlobIterator(packID restic.ID, rd discardReader, currentOffset uint,
-	blobs []restic.Blob, key *crypto.Key, dec *zstd.Decoder) *packBlobIterator {
+	blobs restic.Blobs, key *crypto.Key, dec *zstd.Decoder) *packBlobIterator {
 	return &packBlobIterator{
 		packID:        packID,
 		rd:            rd,
@@ -1161,7 +1274,7 @@ func (b *packBlobIterator) Next() (packBlobValue, error) {
 	nonce, ciphertext := buf[:b.key.NonceSize()], buf[b.key.NonceSize():]
 	plaintext, err := b.key.Open(ciphertext[:0], nonce, ciphertext, nil)
 	if err != nil {
-		err = fmt.Errorf("decrypting blob %v from %v failed: %w", h, b.packID.Str(), err)
+		err = fmt.Errorf("decrypting blob %v from pack %v failed: %w", h, b.packID.String(), err)
 	}
 	if err == nil && entry.IsCompressed() {
 		// DecodeAll will allocate a slice if it is not large enough since it
@@ -1169,16 +1282,16 @@ func (b *packBlobIterator) Next() (packBlobValue, error) {
 		b.decode, err = b.dec.DecodeAll(plaintext, b.decode[:0])
 		plaintext = b.decode
 		if err != nil {
-			err = fmt.Errorf("decompressing blob %v from %v failed: %w", h, b.packID.Str(), err)
+			err = fmt.Errorf("decompressing blob %v from pack %v failed: %w", h, b.packID.String(), err)
 		}
 	}
 	if err == nil {
 		id := restic.Hash(plaintext)
 		if !id.Equal(entry.ID) {
-			debug.Log("read blob %v/%v from %v: wrong data returned, hash is %v",
-				h.Type, h.ID, b.packID.Str(), id)
-			err = fmt.Errorf("read blob %v from %v: wrong data returned, hash is %v",
-				h, b.packID.Str(), id)
+			debug.Log("read blob %v/%v from pack %v: wrong data returned, hash is %v",
+				h.Type, h.ID, b.packID.String(), id)
+			err = fmt.Errorf("read blob %v from pack %v: wrong data returned, hash is %v",
+				h, b.packID.String(), id)
 		}
 	}
 
