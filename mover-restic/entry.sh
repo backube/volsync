@@ -119,7 +119,7 @@ function ensure_initialized {
         # Match against error string for uninitialized repo
         # This string also appears when credentials are incorrect (in which case
         # the following cmd `restic init` will also fail)
-        if [[ $output =~ .*(Is there a repository at the following location).* ]]; then
+        if [[ $output =~ .*(Is there a repository at the following location|The specified bucket does not exist).* ]]; then
             echo "=== Initialize Dir ==="
             "${RESTIC[@]}" init
         else
@@ -180,7 +180,7 @@ function do_unlock {
     if ! "${RESTIC[@]}" unlock 2>"$outfile"; then
         output=$(<"$outfile")
         # Match against error string for uninitialized repo
-        if [[ $output =~ .*(Is there a repository at the following location).* ]]; then
+        if [[ $output =~ .*(Is there a repository at the following location|The specified bucket does not exist).* ]]; then
             # No repo, no need to unlock
             cat "$outfile"
             echo "No repo, ignoring unlock error"
