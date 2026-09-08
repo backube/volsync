@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Chart now allows to set `priorityClassName` for the operator pod
+
 ### Changed
 
 - The Rsync-ssh mover now requires privileged mode to run. Previously for backwards

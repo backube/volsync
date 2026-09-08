@@ -155,3 +155,5 @@ on the command line or via a custom `values.yaml` file.
   - Allows applying tolerations to the operator pod
 - `affinity`: none
   - Allows setting the operator pod's affinity
+- `priorityClassName`: none
+  - Sets the priorityClassName on the operator pod
