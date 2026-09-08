@@ -584,6 +584,42 @@ var _ = Describe("utils tests", func() {
 			})
 		})
 
+		When("moverConfig has tolerations set", func() {
+			It("Should update the tolerations in the podTemplateSpec", func() {
+				customTolerations := []corev1.Toleration{
+					{
+						Key:      "dedicated",
+						Operator: corev1.TolerationOpEqual,
+						Value:    "storage",
+						Effect:   corev1.TaintEffectNoSchedule,
+					},
+				}
+				moverConfig := volsyncv1alpha1.MoverConfig{MoverTolerations: customTolerations}
+
+				utils.UpdatePodTemplateSpecFromMoverConfig(podTemplateSpec, moverConfig, corev1.ResourceRequirements{})
+
+				Expect(podTemplateSpec.Spec.Tolerations).To(Equal(customTolerations))
+			})
+		})
+
+		When("moverConfig has no tolerations set", func() {
+			It("Should not remove the tolerations in the podTemplateSpec", func() {
+				existingTolerations := []corev1.Toleration{
+					{
+						Key:      "existing",
+						Operator: corev1.TolerationOpExists,
+						Effect:   corev1.TaintEffectNoExecute,
+					},
+				}
+				podTemplateSpec.Spec.Tolerations = existingTolerations
+
+				utils.UpdatePodTemplateSpecFromMoverConfig(
+					podTemplateSpec, volsyncv1alpha1.MoverConfig{}, corev1.ResourceRequirements{})
+
+				Expect(podTemplateSpec.Spec.Tolerations).To(Equal(existingTolerations))
+			})
+		})
+
 	})
 
 	Describe("MoverVolume utils", func() {
