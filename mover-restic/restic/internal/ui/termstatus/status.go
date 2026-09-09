@@ -5,38 +5,48 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
-	"strconv"
+	"slices"
 	"strings"
-	"unicode"
+	"sync"
 
-	"golang.org/x/term"
-	"golang.org/x/text/width"
+	"github.com/restic/restic/internal/terminal"
+	"github.com/restic/restic/internal/ui"
 )
+
+var _ ui.Terminal = &Terminal{}
 
 // Terminal is used to write messages and display status lines which can be
 // updated. When the output is redirected to a file, the status lines are not
 // printed.
 type Terminal struct {
-	wr              *bufio.Writer
-	fd              uintptr
-	errWriter       io.Writer
-	msg             chan message
-	status          chan status
-	canUpdateStatus bool
-	lastStatusLen   int
+	rd               io.ReadCloser
+	inFd             uintptr
+	wr               io.Writer
+	fd               uintptr
+	errWriter        io.Writer
+	msg              chan message
+	status           chan status
+	lastStatus       []string
+	inputIsTerminal  bool
+	outputIsTerminal bool
+	canUpdateStatus  bool
+
+	outputWriter     io.WriteCloser
+	outputWriterOnce sync.Once
 
 	// will be closed when the goroutine which runs Run() terminates, so it'll
 	// yield a default value immediately
 	closed chan struct{}
 
-	clearCurrentLine func(io.Writer, uintptr)
-	moveCursorUp     func(io.Writer, uintptr, int)
+	clearCurrentLine func(io.Writer, uintptr) error
+	moveCursorUp     func(io.Writer, uintptr, int) error
+	moveCursorDown   func(io.Writer, uintptr, int) error
 }
 
 type message struct {
-	line string
-	err  bool
+	line    string
+	err     bool
+	barrier chan struct{}
 }
 
 type status struct {
@@ -47,6 +57,38 @@ type fder interface {
 	Fd() uintptr
 }
 
+// Setup creates a new termstatus.
+// The returned function must be called to shut down the termstatus,
+//
+// Expected usage:
+// ```
+// term, cancel := termstatus.Setup(os.Stdin, os.Stdout, os.Stderr, false)
+// defer cancel()
+// // do stuff
+// ```
+func Setup(stdin io.ReadCloser, stdout, stderr io.Writer, quiet bool) (*Terminal, func()) {
+	var wg sync.WaitGroup
+	// only shutdown once cancel is called to ensure that no output is lost
+	cancelCtx, cancel := context.WithCancel(context.Background())
+
+	term := New(stdin, stdout, stderr, quiet)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		term.Run(cancelCtx)
+	}()
+
+	return term, func() {
+		if term.outputWriter != nil {
+			_ = term.outputWriter.Close()
+		}
+		term.Flush()
+		// shutdown termstatus
+		cancel()
+		wg.Wait()
+	}
+}
+
 // New returns a new Terminal for wr. A goroutine is started to update the
 // terminal. It is terminated when ctx is cancelled. When wr is redirected to
 // a file (e.g. via shell output redirection) or is just an io.Writer (not the
@@ -54,9 +96,10 @@ type fder interface {
 // normal output (via Print/Printf) are written to wr, error messages are
 // written to errWriter. If disableStatus is set to true, no status messages
 // are printed even if the terminal supports it.
-func New(wr io.Writer, errWriter io.Writer, disableStatus bool) *Terminal {
+func New(rd io.ReadCloser, wr io.Writer, errWriter io.Writer, disableStatus bool) *Terminal {
 	t := &Terminal{
-		wr:        bufio.NewWriter(wr),
+		rd:        rd,
+		wr:        wr,
 		errWriter: errWriter,
 		msg:       make(chan message),
 		status:    make(chan status),
@@ -67,20 +110,86 @@ func New(wr io.Writer, errWriter io.Writer, disableStatus bool) *Terminal {
 		return t
 	}
 
-	if d, ok := wr.(fder); ok && CanUpdateStatus(d.Fd()) {
-		// only use the fancy status code when we're running on a real terminal.
-		t.canUpdateStatus = true
-		t.fd = d.Fd()
-		t.clearCurrentLine = clearCurrentLine(t.fd)
-		t.moveCursorUp = moveCursorUp(t.fd)
+	if d, ok := rd.(fder); ok {
+		if terminal.InputIsTerminal(d.Fd()) {
+			t.inFd = d.Fd()
+			t.inputIsTerminal = true
+		}
+	}
+
+	if d, ok := wr.(fder); ok {
+		if terminal.CanUpdateStatus(d.Fd()) {
+			// only use the fancy status code when we're running on a real terminal.
+			t.canUpdateStatus = true
+			t.fd = d.Fd()
+			t.clearCurrentLine = terminal.ClearCurrentLine(t.fd)
+			t.moveCursorUp = terminal.MoveCursorUp(t.fd)
+			t.moveCursorDown = terminal.MoveCursorDown(t.fd)
+		}
+		if terminal.OutputIsTerminal(d.Fd()) {
+			t.outputIsTerminal = true
+		}
 	}
 
 	return t
 }
 
+// InputIsTerminal returns whether the input is a terminal.
+func (t *Terminal) InputIsTerminal() bool {
+	return t.inputIsTerminal
+}
+
+// InputRaw returns the input reader.
+func (t *Terminal) InputRaw() io.ReadCloser {
+	return t.rd
+}
+
+func (t *Terminal) ReadPassword(ctx context.Context, prompt string) (string, error) {
+	if t.InputIsTerminal() {
+		t.Flush()
+		return terminal.ReadPassword(ctx, int(t.inFd), t.errWriter, prompt)
+	}
+	if t.OutputIsTerminal() {
+		t.Print("reading repository password from stdin")
+	}
+	return readPassword(t.rd)
+}
+
+// readPassword reads the password from the given reader directly.
+func readPassword(in io.Reader) (password string, err error) {
+	sc := bufio.NewScanner(in)
+	sc.Scan()
+	if sc.Err() != nil {
+		return "", fmt.Errorf("readPassword: %w", sc.Err())
+	}
+	return sc.Text(), nil
+}
+
 // CanUpdateStatus return whether the status output is updated in place.
 func (t *Terminal) CanUpdateStatus() bool {
 	return t.canUpdateStatus
+}
+
+// OutputWriter returns a output writer that is safe for concurrent use with
+// other output methods. Output is only shown after a line break.
+func (t *Terminal) OutputWriter() io.Writer {
+	t.outputWriterOnce.Do(func() {
+		t.outputWriter = newLineWriter(t.Print)
+	})
+	return t.outputWriter
+}
+
+// OutputRaw returns the raw output writer. Should only be used if there is no
+// other option. Must not be used in combination with Print, Error, SetStatus
+// or any other method that writes to the terminal.
+func (t *Terminal) OutputRaw() io.Writer {
+	t.Flush()
+	return t.wr
+}
+
+// OutputIsTerminal returns whether the output is a terminal.
+func (t *Terminal) OutputIsTerminal() bool {
+	return t.outputIsTerminal
 }
 
 // Run updates the screen. It should be run in a separate goroutine. When
@@ -101,142 +210,170 @@ func (t *Terminal) run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			if !IsProcessBackground(t.fd) {
-				t.writeStatus([]string{})
+			if !terminal.IsProcessBackground(t.fd) {
+				t.writeStatus([]string{}, false)
 			}
 
 			return
 
 		case msg := <-t.msg:
-			if IsProcessBackground(t.fd) {
+			if msg.barrier != nil {
+				msg.barrier <- struct{}{}
+				continue
+			}
+			if terminal.IsProcessBackground(t.fd) {
 				// ignore all messages, do nothing, we are in the background process group
 				continue
 			}
-			t.clearCurrentLine(t.wr, t.fd)
+			if err := t.clearCurrentLine(t.wr, t.fd); err != nil {
+				t.logWriteErr(err)
+				continue
+			}
 
 			var dst io.Writer
 			if msg.err {
 				dst = t.errWriter
-
-				// assume t.wr and t.errWriter are different, so we need to
-				// flush clearing the current line
-				err := t.wr.Flush()
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "flush failed: %v\n", err)
-				}
 			} else {
 				dst = t.wr
 			}
 
 			if _, err := io.WriteString(dst, msg.line); err != nil {
-				fmt.Fprintf(os.Stderr, "write failed: %v\n", err)
+				t.logWriteErr(err)
 				continue
 			}
 
-			t.writeStatus(status)
-
-			if err := t.wr.Flush(); err != nil {
-				fmt.Fprintf(os.Stderr, "flush failed: %v\n", err)
-			}
-
+			t.writeStatus(status, false)
 		case stat := <-t.status:
-			if IsProcessBackground(t.fd) {
+			status = append(status[:0], stat.lines...)
+
+			if terminal.IsProcessBackground(t.fd) {
 				// ignore all messages, do nothing, we are in the background process group
 				continue
 			}
 
-			status = status[:0]
-			status = append(status, stat.lines...)
-			t.writeStatus(status)
+			t.writeStatus(status, true)
 		}
 	}
 }
 
-func (t *Terminal) writeStatus(status []string) {
-	statusLen := len(status)
-	status = append([]string{}, status...)
-	for i := len(status); i < t.lastStatusLen; i++ {
-		// clear no longer used status lines
-		status = append(status, "")
-		if i > 0 {
-			// all lines except the last one must have a line break
-			status[i-1] = status[i-1] + "\n"
-		}
+func (t *Terminal) logWriteErr(err error) {
+	if err != nil {
+		_, _ = fmt.Fprintf(t.errWriter, "write failed: %v\n", err)
 	}
-	t.lastStatusLen = statusLen
+}
 
-	for _, line := range status {
-		t.clearCurrentLine(t.wr, t.fd)
+func (t *Terminal) writeStatus(status []string, skipUnchanged bool) {
+	var unchanged []bool
+	if skipUnchanged {
+		if slices.Equal(status, t.lastStatus) {
+			return
+		}
+		unchanged = findUnchangedLines(status, t.lastStatus)
+	}
 
-		_, err := t.wr.WriteString(line)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "write failed: %v\n", err)
+	lastStatusLen := len(t.lastStatus)
+	// Copy the status slice to avoid aliasing
+	t.lastStatus = append([]string{}, status...)
+
+	// Extend to clear no longer used status lines
+	status = append([]string{}, status...)
+	for i := len(status); i < lastStatusLen; i++ {
+		status = append(status, "")
+	}
+
+	for i, line := range status {
+		if unchanged != nil && i < len(unchanged) && unchanged[i] {
+			// don't write unchanged lines every frame
+			if i < len(status)-1 {
+				// just move the cursor down to the next line
+				t.logWriteErr(t.moveCursorDown(t.wr, t.fd, 1))
+			}
+			continue
 		}
 
-		// flush is needed so that the current line is updated
-		err = t.wr.Flush()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "flush failed: %v\n", err)
+		t.logWriteErr(t.clearCurrentLine(t.wr, t.fd))
+
+		_, err := t.wr.Write([]byte(line))
+		t.logWriteErr(err)
+		// all lines except the last one must be followed by a line break
+		if i < len(status)-1 {
+			_, err := t.wr.Write([]byte("\n"))
+			t.logWriteErr(err)
 		}
 	}
 
 	if len(status) > 0 {
-		t.moveCursorUp(t.wr, t.fd, len(status)-1)
+		t.logWriteErr(t.moveCursorUp(t.wr, t.fd, len(status)-1))
+	}
+}
+
+func findUnchangedLines(curr, last []string) []bool {
+	unchanged := make([]bool, len(curr))
+
+	for i := range min(len(curr), len(last)) {
+		if curr[i] == last[i] {
+			unchanged[i] = true
+		}
 	}
 
-	err := t.wr.Flush()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "flush failed: %v\n", err)
-	}
+	return unchanged
 }
 
 // runWithoutStatus listens on the channels and just prints out the messages,
 // without status lines.
 func (t *Terminal) runWithoutStatus(ctx context.Context) {
+	var lastStatus []string
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case msg := <-t.msg:
-			var flush func() error
+			if msg.barrier != nil {
+				msg.barrier <- struct{}{}
+				continue
+			}
 
 			var dst io.Writer
 			if msg.err {
 				dst = t.errWriter
 			} else {
 				dst = t.wr
-				flush = t.wr.Flush
 			}
 
-			if _, err := io.WriteString(dst, msg.line); err != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "write failed: %v\n", err)
-			}
-
-			if flush == nil {
-				continue
-			}
-
-			if err := flush(); err != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "flush failed: %v\n", err)
-			}
+			_, err := io.WriteString(dst, msg.line)
+			t.logWriteErr(err)
 
 		case stat := <-t.status:
-			for _, line := range stat.lines {
-				// Ensure that each message ends with exactly one newline.
-				if _, err := fmt.Fprintln(t.wr, strings.TrimRight(line, "\n")); err != nil {
-					_, _ = fmt.Fprintf(os.Stderr, "write failed: %v\n", err)
+			if !slices.Equal(stat.lines, lastStatus) {
+				for _, line := range stat.lines {
+					// Ensure that each message ends with exactly one newline.
+					_, err := fmt.Fprintln(t.wr, strings.TrimRight(line, "\n"))
+					t.logWriteErr(err)
 				}
-			}
-			if err := t.wr.Flush(); err != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "flush failed: %v\n", err)
+				// Copy the status slice to avoid aliasing
+				lastStatus = append([]string{}, stat.lines...)
 			}
 		}
 	}
 }
 
+// Flush waits for all pending messages to be printed.
+func (t *Terminal) Flush() {
+	ch := make(chan struct{})
+	defer close(ch)
+	select {
+	case t.msg <- message{barrier: ch}:
+	case <-t.closed:
+	}
+	select {
+	case <-ch:
+	case <-t.closed:
+	}
+}
+
 func (t *Terminal) print(line string, isErr bool) {
 	// make sure the line ends with a line break
-	if line[len(line)-1] != '\n' {
+	if len(line) == 0 || line[len(line)-1] != '\n' {
 		line += "\n"
 	}
 
@@ -256,60 +393,17 @@ func (t *Terminal) Error(line string) {
 	t.print(line, true)
 }
 
-// Truncate s to fit in width (number of terminal cells) w.
-// If w is negative, returns the empty string.
-func Truncate(s string, w int) string {
-	if len(s) < w {
-		// Since the display width of a character is at most 2
-		// and all of ASCII (single byte per rune) has width 1,
-		// no character takes more bytes to encode than its width.
-		return s
-	}
-
-	for i := uint(0); i < uint(len(s)); {
-		utfsize := uint(1) // UTF-8 encoding size of first rune in s.
-		w--
-
-		if s[i] > unicode.MaxASCII {
-			var wide bool
-			if wide, utfsize = wideRune(s[i:]); wide {
-				w--
-			}
-		}
-
-		if w < 0 {
-			return s[:i]
-		}
-		i += utfsize
-	}
-
-	return s
-}
-
-// Guess whether the first rune in s would occupy two terminal cells
-// instead of one. This cannot be determined exactly without knowing
-// the terminal font, so we treat all ambiguous runes as full-width,
-// i.e., two cells.
-func wideRune(s string) (wide bool, utfsize uint) {
-	prop, size := width.LookupString(s)
-	kind := prop.Kind()
-	wide = kind != width.Neutral && kind != width.EastAsianNarrow
-	return wide, uint(size)
-}
-
 func sanitizeLines(lines []string, width int) []string {
+	sanitized := make([]string, len(lines))
 	// Sanitize lines and truncate them if they're too long.
 	for i, line := range lines {
-		line = Quote(line)
+		line = ui.Quote(line)
 		if width > 0 {
-			line = Truncate(line, width-2)
+			line = ui.Truncate(line, width-2)
 		}
-		if i < len(lines)-1 { // Last line gets no line break.
-			line += "\n"
-		}
-		lines[i] = line
+		sanitized[i] = line
 	}
-	return lines
+	return sanitized
 }
 
 // SetStatus updates the status lines.
@@ -319,33 +413,17 @@ func (t *Terminal) SetStatus(lines []string) {
 	// only truncate interactive status output
 	var width int
 	if t.canUpdateStatus {
-		var err error
-		width, _, err = term.GetSize(int(t.fd))
-		if err != nil || width <= 0 {
+		width = terminal.Width(t.fd)
+		if width <= 0 {
 			// use 80 columns by default
 			width = 80
 		}
 	}
 
-	sanitizeLines(lines, width)
+	lines = sanitizeLines(lines, width)
 
 	select {
 	case t.status <- status{lines: lines}:
 	case <-t.closed:
 	}
-}
-
-// Quote lines with funny characters in them, meaning control chars, newlines,
-// tabs, anything else non-printable and invalid UTF-8.
-//
-// This is intended to produce a string that does not mess up the terminal
-// rather than produce an unambiguous quoted string.
-func Quote(line string) string {
-	for _, r := range line {
-		// The replacement character usually means the input is not UTF-8.
-		if r == unicode.ReplacementChar || !unicode.IsPrint(r) {
-			return strconv.Quote(line)
-		}
-	}
-	return line
 }

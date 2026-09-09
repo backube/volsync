@@ -55,7 +55,7 @@ const (
 )
 
 // Open opens the REST backend with the given config.
-func Open(_ context.Context, cfg Config, rt http.RoundTripper) (*Backend, error) {
+func Open(_ context.Context, cfg Config, rt http.RoundTripper, _ func(string, ...interface{})) (*Backend, error) {
 	// use url without trailing slash for layout
 	url := cfg.URL.String()
 	if url[len(url)-1] == '/' {
@@ -84,8 +84,8 @@ func drainAndClose(resp *http.Response) error {
 }
 
 // Create creates a new REST on server configured in config.
-func Create(ctx context.Context, cfg Config, rt http.RoundTripper) (*Backend, error) {
-	be, err := Open(ctx, cfg, rt)
+func Create(ctx context.Context, cfg Config, rt http.RoundTripper, errorLog func(string, ...interface{})) (*Backend, error) {
+	be, err := Open(ctx, cfg, rt, errorLog)
 	if err != nil {
 		return nil, err
 	}
@@ -245,6 +245,7 @@ func (b *Backend) openReader(ctx context.Context, h backend.Handle, length int, 
 	}
 
 	if feature.Flag.Enabled(feature.BackendErrorRedesign) && length > 0 && resp.ContentLength != int64(length) {
+		_ = drainAndClose(resp)
 		return nil, &restError{h, http.StatusRequestedRangeNotSatisfiable, "partial out of bounds read"}
 	}
 

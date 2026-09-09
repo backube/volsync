@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/restic/restic/internal/data"
 	"github.com/restic/restic/internal/debug"
 	"github.com/restic/restic/internal/restic"
 	"golang.org/x/sync/errgroup"
@@ -11,7 +12,7 @@ import (
 
 // treeSaver concurrently saves incoming trees to the repo.
 type treeSaver struct {
-	saveBlob saveBlobFn
+	uploader restic.BlobSaverAsync
 	errFn    ErrorFunc
 
 	ch chan<- saveTreeJob
@@ -19,12 +20,12 @@ type treeSaver struct {
 
 // newTreeSaver returns a new tree saver. A worker pool with treeWorkers is
 // started, it is stopped when ctx is cancelled.
-func newTreeSaver(ctx context.Context, wg *errgroup.Group, treeWorkers uint, saveBlob saveBlobFn, errFn ErrorFunc) *treeSaver {
+func newTreeSaver(ctx context.Context, wg *errgroup.Group, treeWorkers uint, uploader restic.BlobSaverAsync, errFn ErrorFunc) *treeSaver {
 	ch := make(chan saveTreeJob)
 
 	s := &treeSaver{
 		ch:       ch,
-		saveBlob: saveBlob,
+		uploader: uploader,
 		errFn:    errFn,
 	}
 
@@ -42,7 +43,7 @@ func (s *treeSaver) TriggerShutdown() {
 }
 
 // Save stores the dir d and returns the data once it has been completed.
-func (s *treeSaver) Save(ctx context.Context, snPath string, target string, node *restic.Node, nodes []futureNode, complete fileCompleteFunc) futureNode {
+func (s *treeSaver) Save(ctx context.Context, snPath string, target string, node *data.Node, nodes []futureNode, complete fileCompleteFunc) futureNode {
 	fn, ch := newFutureNode()
 	job := saveTreeJob{
 		snPath:   snPath,
@@ -65,22 +66,22 @@ func (s *treeSaver) Save(ctx context.Context, snPath string, target string, node
 type saveTreeJob struct {
 	snPath   string
 	target   string
-	node     *restic.Node
+	node     *data.Node
 	nodes    []futureNode
 	ch       chan<- futureNodeResult
 	complete fileCompleteFunc
 }
 
 // save stores the nodes as a tree in the repo.
-func (s *treeSaver) save(ctx context.Context, job *saveTreeJob) (*restic.Node, ItemStats, error) {
+func (s *treeSaver) save(ctx context.Context, job *saveTreeJob) (*data.Node, ItemStats, error) {
 	var stats ItemStats
 	node := job.node
 	nodes := job.nodes
 	// allow GC of nodes array once the loop is finished
 	job.nodes = nil
 
-	builder := restic.NewTreeJSONBuilder()
-	var lastNode *restic.Node
+	builder := data.NewTreeJSONBuilder()
+	var lastNode *data.Node
 
 	for i, fn := range nodes {
 		// fn is a copy, so clear the original value explicitly
@@ -110,7 +111,7 @@ func (s *treeSaver) save(ctx context.Context, job *saveTreeJob) (*restic.Node, I
 		}
 
 		err := builder.AddNode(fnr.node)
-		if err != nil && errors.Is(err, restic.ErrTreeNotOrdered) && lastNode != nil && fnr.node.Equals(*lastNode) {
+		if err != nil && errors.Is(err, data.ErrTreeNotOrdered) && lastNode != nil && fnr.node.Equals(*lastNode) {
 			debug.Log("insert %v failed: %v", fnr.node.Name, err)
 			// ignore error if an _identical_ node already exists, but nevertheless issue a warning
 			_ = s.errFn(fnr.target, err)
@@ -128,21 +129,35 @@ func (s *treeSaver) save(ctx context.Context, job *saveTreeJob) (*restic.Node, I
 		return nil, stats, err
 	}
 
-	b := &buffer{Data: buf}
-	ch := make(chan saveBlobResponse, 1)
-	s.saveBlob(ctx, restic.TreeBlob, b, job.target, func(res saveBlobResponse) {
-		ch <- res
+	var (
+		known      bool
+		length     int
+		sizeInRepo int
+		id         restic.ID
+	)
+
+	ch := make(chan struct{}, 1)
+	s.uploader.SaveBlobAsync(ctx, restic.TreeBlob, buf, restic.ID{}, false, func(newID restic.ID, cbKnown bool, cbSizeInRepo int, cbErr error) {
+		known = cbKnown
+		length = len(buf)
+		sizeInRepo = cbSizeInRepo
+		id = newID
+		err = cbErr
+		ch <- struct{}{}
 	})
 
 	select {
-	case sbr := <-ch:
-		if !sbr.known {
+	case <-ch:
+		if err != nil {
+			return nil, stats, err
+		}
+		if !known {
 			stats.TreeBlobs++
-			stats.TreeSize += uint64(sbr.length)
-			stats.TreeSizeInRepo += uint64(sbr.sizeInRepo)
+			stats.TreeSize += uint64(length)
+			stats.TreeSizeInRepo += uint64(sizeInRepo)
 		}
 
-		node.Subtree = &sbr.id
+		node.Subtree = &id
 		return node, stats, nil
 	case <-ctx.Done():
 		return nil, stats, ctx.Err()

@@ -3,6 +3,7 @@ package index
 import (
 	"context"
 	"fmt"
+	"iter"
 	"runtime"
 	"sync"
 
@@ -15,13 +16,13 @@ import (
 // MasterIndex is a collection of indexes and IDs of chunks that are in the process of being saved.
 type MasterIndex struct {
 	idx          []*Index
-	pendingBlobs restic.BlobSet
+	pendingBlobs map[restic.BlobHandle]uint
 	idxMutex     sync.RWMutex
 }
 
 // NewMasterIndex creates a new master index.
 func NewMasterIndex() *MasterIndex {
-	mi := &MasterIndex{pendingBlobs: restic.NewBlobSet()}
+	mi := &MasterIndex{}
 	mi.clear()
 	return mi
 }
@@ -30,6 +31,11 @@ func (mi *MasterIndex) clear() {
 	// Always add an empty final index, such that MergeFinalIndexes can merge into this.
 	mi.idx = []*Index{NewIndex()}
 	mi.idx[0].Finalize()
+	mi.clearPendingBlobs()
+}
+
+func (mi *MasterIndex) clearPendingBlobs() {
+	mi.pendingBlobs = make(map[restic.BlobHandle]uint)
 }
 
 // Lookup queries all known Indexes for the ID and returns all matches.
@@ -45,9 +51,15 @@ func (mi *MasterIndex) Lookup(bh restic.BlobHandle) (pbs []restic.PackedBlob) {
 }
 
 // LookupSize queries all known Indexes for the ID and returns the first match.
+// Also returns true if the ID is pending.
 func (mi *MasterIndex) LookupSize(bh restic.BlobHandle) (uint, bool) {
 	mi.idxMutex.RLock()
 	defer mi.idxMutex.RUnlock()
+
+	// also return true if blob is pending
+	if size, ok := mi.pendingBlobs[bh]; ok {
+		return size, true
+	}
 
 	for _, idx := range mi.idx {
 		if size, found := idx.LookupSize(bh); found {
@@ -62,13 +74,13 @@ func (mi *MasterIndex) LookupSize(bh restic.BlobHandle) (uint, bool) {
 // Before doing so it checks if this blob is already known.
 // Returns true if adding was successful and false if the blob
 // was already known
-func (mi *MasterIndex) AddPending(bh restic.BlobHandle) bool {
+func (mi *MasterIndex) AddPending(bh restic.BlobHandle, size uint) bool {
 
 	mi.idxMutex.Lock()
 	defer mi.idxMutex.Unlock()
 
 	// Check if blob is pending or in index
-	if mi.pendingBlobs.Has(bh) {
+	if _, ok := mi.pendingBlobs[bh]; ok {
 		return false
 	}
 
@@ -79,28 +91,8 @@ func (mi *MasterIndex) AddPending(bh restic.BlobHandle) bool {
 	}
 
 	// really not known -> insert
-	mi.pendingBlobs.Insert(bh)
+	mi.pendingBlobs[bh] = size
 	return true
-}
-
-// Has queries all known Indexes for the ID and returns the first match.
-// Also returns true if the ID is pending.
-func (mi *MasterIndex) Has(bh restic.BlobHandle) bool {
-	mi.idxMutex.RLock()
-	defer mi.idxMutex.RUnlock()
-
-	// also return true if blob is pending
-	if mi.pendingBlobs.Has(bh) {
-		return true
-	}
-
-	for _, idx := range mi.idx {
-		if idx.Has(bh) {
-			return true
-		}
-	}
-
-	return false
 }
 
 // IDs returns the IDs of all indexes contained in the index.
@@ -153,18 +145,18 @@ func (mi *MasterIndex) Insert(idx *Index) {
 }
 
 // StorePack remembers the id and pack in the index.
-func (mi *MasterIndex) StorePack(ctx context.Context, id restic.ID, blobs []restic.Blob, r restic.SaverUnpacked[restic.FileType]) error {
+func (mi *MasterIndex) StorePack(ctx context.Context, id restic.ID, blobs restic.Blobs, r restic.SaverUnpacked[restic.FileType]) error {
 	mi.storePack(id, blobs)
 	return mi.saveFullIndex(ctx, r)
 }
 
-func (mi *MasterIndex) storePack(id restic.ID, blobs []restic.Blob) {
+func (mi *MasterIndex) storePack(id restic.ID, blobs restic.Blobs) {
 	mi.idxMutex.Lock()
 	defer mi.idxMutex.Unlock()
 
 	// delete blobs from pending
 	for _, blob := range blobs {
-		mi.pendingBlobs.Delete(restic.BlobHandle{Type: blob.Type, ID: blob.ID})
+		delete(mi.pendingBlobs, restic.BlobHandle{Type: blob.Type, ID: blob.ID})
 	}
 
 	for _, idx := range mi.idx {
@@ -224,18 +216,21 @@ func (mi *MasterIndex) finalizeFullIndexes() []*Index {
 	return list
 }
 
-// Each runs fn on all blobs known to the index. When the context is cancelled,
-// the index iteration return immediately. This blocks any modification of the index.
-func (mi *MasterIndex) Each(ctx context.Context, fn func(restic.PackedBlob)) error {
-	mi.idxMutex.RLock()
-	defer mi.idxMutex.RUnlock()
+// Values returns an iterator over all blobs known to the index. This blocks any
+// modification of the index.
+func (mi *MasterIndex) Values() iter.Seq[restic.PackedBlob] {
+	return func(yield func(restic.PackedBlob) bool) {
+		mi.idxMutex.RLock()
+		defer mi.idxMutex.RUnlock()
 
-	for _, idx := range mi.idx {
-		if err := idx.Each(ctx, fn); err != nil {
-			return err
+		for _, idx := range mi.idx {
+			for pb := range idx.Values() {
+				if !yield(pb) {
+					return
+				}
+			}
 		}
 	}
-	return nil
 }
 
 // MergeFinalIndexes merges all final indexes together.
@@ -247,6 +242,20 @@ func (mi *MasterIndex) Each(ctx context.Context, fn func(restic.PackedBlob)) err
 func (mi *MasterIndex) MergeFinalIndexes() error {
 	mi.idxMutex.Lock()
 	defer mi.idxMutex.Unlock()
+
+	if len(mi.idx) == 0 {
+		return nil
+	}
+
+	// preallocate space for all blob types
+	for typ := range restic.NumBlobTypes {
+		size := 0
+		for _, idx := range mi.idx {
+			size += int(idx.Len(typ))
+		}
+
+		mi.idx[0].Preallocate(typ, size)
+	}
 
 	// The first index is always final and the one to merge into
 	newIdx := mi.idx[:1]
@@ -271,14 +280,22 @@ func (mi *MasterIndex) MergeFinalIndexes() error {
 }
 
 func (mi *MasterIndex) Load(ctx context.Context, r restic.ListerLoaderUnpacked, p *progress.Counter, cb func(id restic.ID, idx *Index, err error) error) error {
+	defer p.Done()
 	indexList, err := restic.MemorizeList(ctx, r, restic.IndexFile)
 	if err != nil {
 		return err
 	}
-
+	loadedIDs, err := mi.prepareIncrementalLoad(ctx, indexList)
+	if err != nil {
+		return err
+	}
 	if p != nil {
 		var numIndexFiles uint64
-		err := indexList.List(ctx, restic.IndexFile, func(_ restic.ID, _ int64) error {
+		err := indexList.List(ctx, restic.IndexFile, func(id restic.ID, _ int64) error {
+			if loadedIDs.Has(id) {
+				// skip already loaded indexes
+				return nil
+			}
 			numIndexFiles++
 			return nil
 		})
@@ -286,10 +303,13 @@ func (mi *MasterIndex) Load(ctx context.Context, r restic.ListerLoaderUnpacked, 
 			return err
 		}
 		p.SetMax(numIndexFiles)
-		defer p.Done()
 	}
 
 	err = ForAllIndexes(ctx, indexList, r, func(id restic.ID, idx *Index, err error) error {
+		if loadedIDs.Has(id) {
+			// skip already loaded indexes
+			return nil
+		}
 		if p != nil {
 			p.Add(1)
 		}
@@ -312,6 +332,37 @@ func (mi *MasterIndex) Load(ctx context.Context, r restic.ListerLoaderUnpacked, 
 	}
 
 	return mi.MergeFinalIndexes()
+}
+
+func (mi *MasterIndex) prepareIncrementalLoad(ctx context.Context, indexList restic.Lister) (restic.IDSet, error) {
+	mi.idxMutex.Lock()
+	// support incremental loading, while also ensuring that the result is identical to the result of a full load into a new MasterIndex
+	mi.clearPendingBlobs()
+	defer mi.idxMutex.Unlock()
+
+	// the first index is always final so this can't actually fail
+	loadedIDList, err := mi.idx[0].IDs()
+	if err != nil {
+		panic("internal error - failed to get index IDs")
+	}
+	loadedIDs := restic.NewIDSet(loadedIDList...)
+
+	indexFiles := restic.NewIDSet()
+	err = indexList.List(ctx, restic.IndexFile, func(id restic.ID, _ int64) error {
+		indexFiles.Insert(id)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(loadedIDs.Sub(indexFiles)) > 0 {
+		// indexes can only be removed by prune, which shouldn't happen concurrently, but behave correctly anyways
+		mi.clear()
+		loadedIDs = nil
+	}
+
+	return loadedIDs, nil
 }
 
 type MasterIndexRewriteOpts struct {
@@ -416,15 +467,27 @@ func (mi *MasterIndex) Rewrite(ctx context.Context, repo restic.Unpacked[restic.
 
 	wg.Go(func() error {
 		defer close(saveCh)
+		// duplicate packs must be tracked separately to allow the `EachByPack` loop to check
+		// for duplicate index entries with different blobs.
+		// this is necessary to work around a bug in restic < 0.10.0 where the blobs of
+		// a pack file could be split over multiple indexes.
+		packBlobsIDSet := restic.NewIDSet()
 		newIndex := NewIndex()
 		for task := range rewriteCh {
-			// always rewrite indexes that include a pack that must be removed or that are not full
+			// always rewrite indexes that include a pack that must be removed or is a duplicate or that are not full
 			if len(task.idx.Packs().Intersect(excludePacks)) == 0 && Full(task.idx) && !Oversized(task.idx) {
-				// make sure that each pack is only stored exactly once in the index
-				excludePacks.Merge(task.idx.Packs())
-				// index is already up to date
-				p.Add(1)
-				continue
+				// check that no pack index entry is a duplicate of an already processed one
+				idxPackBlobsIDSet := restic.NewIDSet()
+				for pbs := range task.idx.EachByPack(wgCtx, excludePacks) {
+					idxPackBlobsIDSet.Insert(PackBlobsHash(pbs))
+				}
+				if len(idxPackBlobsIDSet.Intersect(packBlobsIDSet)) == 0 {
+					// index is already up to date
+					// make sure that each pack is only stored exactly once in the index
+					packBlobsIDSet.Merge(idxPackBlobsIDSet)
+					p.Add(1)
+					continue
+				}
 			}
 
 			ids, err := task.idx.IDs()
@@ -434,6 +497,13 @@ func (mi *MasterIndex) Rewrite(ctx context.Context, repo restic.Unpacked[restic.
 			obsolete.Merge(restic.NewIDSet(ids...))
 
 			for pbs := range task.idx.EachByPack(wgCtx, excludePacks) {
+				// only filter pack blobs with matching packID and blobs
+				packBlobsID := PackBlobsHash(pbs)
+				if packBlobsIDSet.Has(packBlobsID) {
+					continue
+				}
+				packBlobsIDSet.Insert(packBlobsID)
+
 				newIndex.StorePack(pbs.PackID, pbs.Blobs)
 				if Full(newIndex) {
 					select {
@@ -447,8 +517,6 @@ func (mi *MasterIndex) Rewrite(ctx context.Context, repo restic.Unpacked[restic.
 			if wgCtx.Err() != nil {
 				return wgCtx.Err()
 			}
-			// make sure that each pack is only stored exactly once in the index
-			excludePacks.Merge(task.idx.Packs())
 			p.Add(1)
 		}
 
@@ -459,27 +527,24 @@ func (mi *MasterIndex) Rewrite(ctx context.Context, repo restic.Unpacked[restic.
 		return nil
 	})
 
-	// a worker receives an index from ch, and saves the index
-	worker := func() error {
-		for idx := range saveCh {
-			idx.Finalize()
-			if len(idx.packs) == 0 {
-				continue
-			}
-			if _, err := idx.SaveIndex(wgCtx, repo); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-
+	var savers errgroup.Group
 	// encoding an index can take quite some time such that this can be CPU- or IO-bound
 	// do not add repo.Connections() here as there are already the loader goroutines.
-	workerCount := runtime.GOMAXPROCS(0)
-	// run workers on ch
-	for i := 0; i < workerCount; i++ {
-		wg.Go(worker)
+	savers.SetLimit(runtime.GOMAXPROCS(0))
+
+	for idx := range saveCh {
+		savers.Go(func() error {
+			idx.Finalize()
+			if len(idx.packs) == 0 {
+				return nil
+			}
+			_, err := idx.SaveIndex(wgCtx, repo)
+			return err
+		})
 	}
+
+	wg.Go(savers.Wait)
+
 	err := wg.Wait()
 	p.Done()
 	if err != nil {
@@ -514,6 +579,8 @@ func (mi *MasterIndex) SaveFallback(ctx context.Context, repo restic.SaverRemove
 
 	obsolete := restic.NewIDSet()
 	wg, wgCtx := errgroup.WithContext(ctx)
+	// keep concurrency bounded as we're on a fallback path
+	wg.SetLimit(1 + int(repo.Connections()))
 
 	ch := make(chan *Index)
 	wg.Go(func() error {
@@ -553,23 +620,14 @@ func (mi *MasterIndex) SaveFallback(ctx context.Context, repo restic.SaverRemove
 		return nil
 	})
 
-	// a worker receives an index from ch, and saves the index
-	worker := func() error {
-		for idx := range ch {
+	for idx := range ch {
+		wg.Go(func() error {
 			idx.Finalize()
-			if _, err := idx.SaveIndex(wgCtx, repo); err != nil {
-				return err
-			}
-		}
-		return nil
+			_, err := idx.SaveIndex(wgCtx, repo)
+			return err
+		})
 	}
 
-	// keep concurrency bounded as we're on a fallback path
-	workerCount := int(repo.Connections())
-	// run workers on ch
-	for i := 0; i < workerCount; i++ {
-		wg.Go(worker)
-	}
 	err := wg.Wait()
 	p.Done()
 	// the index no longer matches to stored state
@@ -611,7 +669,7 @@ func (mi *MasterIndex) ListPacks(ctx context.Context, packs restic.IDSet) <-chan
 		defer close(out)
 		// only resort a part of the index to keep the memory overhead bounded
 		for i := byte(0); i < 16; i++ {
-			packBlob := make(map[restic.ID][]restic.Blob)
+			packBlob := make(map[restic.ID]restic.Blobs)
 			for pack := range packs {
 				if pack[0]&0xf == i {
 					packBlob[pack] = nil
@@ -620,13 +678,13 @@ func (mi *MasterIndex) ListPacks(ctx context.Context, packs restic.IDSet) <-chan
 			if len(packBlob) == 0 {
 				continue
 			}
-			err := mi.Each(ctx, func(pb restic.PackedBlob) {
+			for pb := range mi.Values() {
+				if ctx.Err() != nil {
+					return
+				}
 				if packs.Has(pb.PackID) && pb.PackID[0]&0xf == i {
 					packBlob[pb.PackID] = append(packBlob[pb.PackID], pb.Blob)
 				}
-			})
-			if err != nil {
-				return
 			}
 
 			// pass on packs

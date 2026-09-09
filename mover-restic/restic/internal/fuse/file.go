@@ -1,5 +1,4 @@
 //go:build darwin || freebsd || linux
-// +build darwin freebsd linux
 
 package fuse
 
@@ -7,6 +6,7 @@ import (
 	"context"
 	"sort"
 
+	"github.com/restic/restic/internal/data"
 	"github.com/restic/restic/internal/debug"
 	"github.com/restic/restic/internal/errors"
 	"github.com/restic/restic/internal/restic"
@@ -28,7 +28,7 @@ var _ = fs.NodeOpener(&file{})
 type file struct {
 	root   *Root
 	forget forgetFn
-	node   *restic.Node
+	node   *data.Node
 	inode  uint64
 }
 
@@ -38,7 +38,7 @@ type openFile struct {
 	cumsize []uint64
 }
 
-func newFile(root *Root, forget forgetFn, inode uint64, node *restic.Node) (fusefile *file, err error) {
+func newFile(root *Root, forget forgetFn, inode uint64, node *data.Node) (fusefile *file, err error) {
 	debug.Log("create new file for %v with %d blobs", node.Name, len(node.Content))
 	return &file{
 		inode:  inode,
@@ -55,7 +55,10 @@ func (f *file) Attr(_ context.Context, a *fuse.Attr) error {
 	a.Size = f.node.Size
 	a.Blocks = (f.node.Size + blockSize - 1) / blockSize
 	a.BlockSize = blockSize
-	a.Nlink = uint32(f.node.Links)
+	// Windows (and other non-POSIX) backups may store a link count of 0.
+	// FUSE must still report a positive nlink so tools that validate stat()
+	// (e.g. Samba) accept the file.
+	a.Nlink = max(uint32(1), uint32(f.node.Links))
 
 	if !f.root.cfg.OwnerIsRoot {
 		a.Uid = f.node.UID

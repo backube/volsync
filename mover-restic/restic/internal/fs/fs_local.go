@@ -4,8 +4,15 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/restic/restic/internal/restic"
+	"github.com/restic/restic/internal/data"
+	"github.com/restic/restic/internal/debug"
 )
+
+func init() {
+	if err := enableProcessPrivileges(); err != nil {
+		debug.Log("error enabling privileges: %v", err)
+	}
+}
 
 // Local is the local file system. Most methods are just passed on to the stdlib.
 type Local struct{}
@@ -99,7 +106,7 @@ func newLocalFile(name string, flag int, metadataOnly bool) (*localFile, error) 
 	var f *os.File
 	if !metadataOnly {
 		var err error
-		f, err = os.OpenFile(fixpath(name), flag, 0)
+		f, err = os.OpenFile(fixpath(name), sanitizeFlags(flag), 0)
 		if err != nil {
 			return nil, err
 		}
@@ -152,11 +159,11 @@ func (f *localFile) Stat() (*ExtendedFileInfo, error) {
 	return f.fi, err
 }
 
-func (f *localFile) ToNode(ignoreXattrListError bool) (*restic.Node, error) {
+func (f *localFile) ToNode(ignoreXattrListError bool, warnf func(format string, args ...any)) (*data.Node, error) {
 	if err := f.cacheFI(); err != nil {
 		return nil, err
 	}
-	return nodeFromFileInfo(f.name, f.fi, ignoreXattrListError)
+	return nodeFromFileInfo(f.name, f.fi, ignoreXattrListError, warnf)
 }
 
 func (f *localFile) Read(p []byte) (n int, err error) {

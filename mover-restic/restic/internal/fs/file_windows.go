@@ -6,9 +6,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
-	"github.com/restic/restic/internal/restic"
+	"github.com/restic/restic/internal/data"
 	"golang.org/x/sys/windows"
 )
 
@@ -63,9 +62,8 @@ func TempFile(dir, prefix string) (f *os.File, err error) {
 	share := uint32(0) // prevent other processes from accessing the file
 	flags := uint32(windows.FILE_ATTRIBUTE_TEMPORARY | windows.FILE_FLAG_DELETE_ON_CLOSE)
 
-	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 	for i := 0; i < 10000; i++ {
-		randSuffix := strconv.Itoa(int(1e9 + rnd.Intn(1e9)%1e9))[1:]
+		randSuffix := strconv.Itoa(int(1e9 + rand.Intn(1e9)%1e9))[1:]
 		path := filepath.Join(dir, prefix+randSuffix)
 
 		ptr, err := windows.UTF16PtrFromString(path)
@@ -74,6 +72,10 @@ func TempFile(dir, prefix string) (f *os.File, err error) {
 		}
 		h, err := windows.CreateFile(ptr, access, share, nil, creation, flags, 0)
 		if os.IsExist(err) {
+			continue
+		}
+		// Access denied error can occur if the tmp files conflict with each other.
+		if isAccessDeniedError(err) {
 			continue
 		}
 		return os.NewFile(uintptr(h), path), err
@@ -115,7 +117,7 @@ func clearAttribute(path string, attribute uint32) error {
 }
 
 // openHandleForEA return a file handle for file or dir for setting/getting EAs
-func openHandleForEA(nodeType restic.NodeType, path string, writeAccess bool) (handle windows.Handle, err error) {
+func openHandleForEA(nodeType data.NodeType, path string, writeAccess bool) (handle windows.Handle, err error) {
 	path = fixpath(path)
 	fileAccess := windows.FILE_READ_EA
 	if writeAccess {
@@ -123,10 +125,7 @@ func openHandleForEA(nodeType restic.NodeType, path string, writeAccess bool) (h
 	}
 
 	switch nodeType {
-	case restic.NodeTypeFile:
-		utf16Path := windows.StringToUTF16Ptr(path)
-		handle, err = windows.CreateFile(utf16Path, uint32(fileAccess), 0, nil, windows.OPEN_EXISTING, windows.FILE_ATTRIBUTE_NORMAL, 0)
-	case restic.NodeTypeDir:
+	case data.NodeTypeFile, data.NodeTypeDir:
 		utf16Path := windows.StringToUTF16Ptr(path)
 		handle, err = windows.CreateFile(utf16Path, uint32(fileAccess), 0, nil, windows.OPEN_EXISTING, windows.FILE_ATTRIBUTE_NORMAL|windows.FILE_FLAG_BACKUP_SEMANTICS, 0)
 	default:

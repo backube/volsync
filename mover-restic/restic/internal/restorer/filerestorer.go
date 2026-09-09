@@ -42,7 +42,7 @@ type packInfo struct {
 	files map[*fileInfo]struct{} // set of files that use blobs from this pack
 }
 
-type blobsLoaderFn func(ctx context.Context, packID restic.ID, blobs []restic.Blob, handleBlobFn func(blob restic.BlobHandle, buf []byte, err error) error) error
+type blobsLoaderFn func(ctx context.Context, packID restic.ID, blobs restic.Blobs, handleBlobFn func(blob restic.BlobHandle, buf []byte, err error) error) error
 type startWarmupFn func(context.Context, restic.IDSet) (restic.WarmupJob, error)
 
 // fileRestorer restores set of files
@@ -185,7 +185,7 @@ func (r *fileRestorer) restoreFiles(ctx context.Context) error {
 			file.sparse = false
 		}
 
-		// empty file or one with already uptodate content. Make sure that the file size is correct
+		// empty file or one with already up-to-date content. Make sure that the file size is correct
 		if !restoredBlobs {
 			err := r.truncateFileToSize(file.location, file.size)
 			if errFile := r.sanitizeError(file, err); errFile != nil {
@@ -217,6 +217,8 @@ func (r *fileRestorer) restoreFiles(ctx context.Context) error {
 	wg, ctx := errgroup.WithContext(ctx)
 	downloadCh := make(chan *packInfo)
 
+	// close all files when finished
+	defer r.filesWriter.flush()
 	worker := func() error {
 		for pack := range downloadCh {
 			if err := r.downloadPack(ctx, pack); err != nil {
@@ -341,7 +343,7 @@ func (r *fileRestorer) reportError(blobs blobToFileOffsetsMapping, processedBlob
 func (r *fileRestorer) downloadBlobs(ctx context.Context, packID restic.ID,
 	blobs blobToFileOffsetsMapping, processedBlobs restic.BlobSet) error {
 
-	blobList := make([]restic.Blob, 0, len(blobs))
+	blobList := make(restic.Blobs, 0, len(blobs))
 	for _, entry := range blobs {
 		blobList = append(blobList, entry.blob)
 	}

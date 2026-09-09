@@ -14,11 +14,110 @@
 Scripting
 #########################
 
-This is a list of how certain tasks may be accomplished when you use
-restic via scripts.
+This section covers environment variables and how certain tasks may be accomplished
+when you use restic via scripts.
 
-Check if a repository is already initialized
-********************************************
+.. _environment-variables:
+
+Environment variables
+*********************
+
+In addition to command-line options, restic supports passing various options in
+environment variables, which are listed below.
+
+.. code-block:: console
+
+    RESTIC_REPOSITORY_FILE              Name of file containing the repository location (replaces --repository-file)
+    RESTIC_REPOSITORY                   Location of repository (replaces -r)
+    RESTIC_PASSWORD_FILE                Location of password file (replaces --password-file)
+    RESTIC_PASSWORD                     The actual password for the repository
+    RESTIC_PASSWORD_COMMAND             Command printing the password for the repository to stdout
+    RESTIC_KEY_HINT                     ID of key to try decrypting first, before other keys
+    RESTIC_CACERT                       Location(s) of certificate file(s), comma separated if multiple (replaces --cacert)
+    RESTIC_TLS_CLIENT_CERT              Location of TLS client certificate and private key (replaces --tls-client-cert)
+    RESTIC_CACHE_DIR                    Location of the cache directory
+    RESTIC_COMPRESSION                  Compression mode (only available for repository format version 2)
+    RESTIC_HOST                         Only consider snapshots for this host / Set the hostname for the snapshot manually (replaces --host)
+    RESTIC_PROGRESS_FPS                 Frames per second by which the progress bar is updated
+    RESTIC_PACK_SIZE                    Target size for pack files
+    RESTIC_READ_CONCURRENCY             Concurrency for file reads
+
+    RESTIC_FROM_REPOSITORY              Source repository for copy (replaces --from-repo)
+    RESTIC_FROM_REPOSITORY_FILE         File containing source repository for copy (replaces --from-repository-file)
+    RESTIC_FROM_PASSWORD                Password for the source repository (copy)
+    RESTIC_FROM_PASSWORD_FILE           Password file for the source repository (replaces --from-password-file)
+    RESTIC_FROM_PASSWORD_COMMAND        Command to obtain source repository password (replaces --from-password-command)
+    RESTIC_FROM_KEY_HINT                Key ID to try first when opening the source repository (replaces --from-key-hint)
+
+    TMPDIR                              Location for temporary files (except Windows)
+    TMP                                 Location for temporary files (only Windows)
+
+    AWS_ACCESS_KEY_ID                   Amazon S3 access key ID
+    AWS_SECRET_ACCESS_KEY               Amazon S3 secret access key
+    AWS_SESSION_TOKEN                   Amazon S3 temporary session token
+    AWS_DEFAULT_REGION                  Amazon S3 default region
+    AWS_PROFILE                         Amazon credentials profile (alternative to specifying key and region)
+    AWS_SHARED_CREDENTIALS_FILE         Location of the AWS CLI shared credentials file (default: ~/.aws/credentials)
+    RESTIC_AWS_ASSUME_ROLE_ARN          Amazon IAM Role ARN to assume using discovered credentials
+    RESTIC_AWS_ASSUME_ROLE_SESSION_NAME Session Name to use with the role assumption
+    RESTIC_AWS_ASSUME_ROLE_EXTERNAL_ID  External ID to use with the role assumption
+    RESTIC_AWS_ASSUME_ROLE_POLICY       Inline Amazon IAM session policy
+    RESTIC_AWS_ASSUME_ROLE_REGION       Region to use for IAM calls for the role assumption (default: us-east-1)
+    RESTIC_AWS_ASSUME_ROLE_STS_ENDPOINT URL to the STS endpoint (default is determined based on RESTIC_AWS_ASSUME_ROLE_REGION). You generally do not need to set this, advanced use only.
+
+    AZURE_ACCOUNT_NAME                  Account name for Azure
+    AZURE_ACCOUNT_KEY                   Account key for Azure
+    AZURE_ACCOUNT_SAS                   Shared access signatures (SAS) for Azure
+    AZURE_ENDPOINT_SUFFIX               Endpoint suffix for Azure Storage (default: core.windows.net)
+    AZURE_FORCE_CLI_CREDENTIAL          Force the use of Azure CLI credentials for authentication
+
+    B2_ACCOUNT_ID                       Account ID or applicationKeyId for Backblaze B2
+    B2_ACCOUNT_KEY                      Account Key or applicationKey for Backblaze B2
+
+    GOOGLE_PROJECT_ID                   Project ID for Google Cloud Storage
+    GOOGLE_APPLICATION_CREDENTIALS      Application Credentials for Google Cloud Storage (e.g. $HOME/.config/gs-secret-restic-key.json)
+    GOOGLE_ACCESS_TOKEN                 Bearer access token for Google Cloud Storage (alternative to default application credentials)
+
+    OS_AUTH_URL                         Auth URL for keystone authentication
+    OS_REGION_NAME                      Region name for keystone authentication
+    OS_USERNAME                         Username for keystone authentication
+    OS_USER_ID                          User ID for keystone v3 authentication
+    OS_PASSWORD                         Password for keystone authentication
+    OS_TENANT_ID                        Tenant ID for keystone v2 authentication
+    OS_TENANT_NAME                      Tenant name for keystone v2 authentication
+
+    OS_USER_DOMAIN_NAME                 User domain name for keystone authentication
+    OS_USER_DOMAIN_ID                   User domain ID for keystone v3 authentication
+    OS_PROJECT_NAME                     Project name for keystone authentication
+    OS_PROJECT_DOMAIN_NAME              Project domain name for keystone authentication
+    OS_PROJECT_DOMAIN_ID                Project domain ID for keystone v3 authentication
+    OS_TRUST_ID                         Trust ID for keystone v3 authentication
+
+    OS_APPLICATION_CREDENTIAL_ID        Application Credential ID (keystone v3)
+    OS_APPLICATION_CREDENTIAL_NAME      Application Credential Name (keystone v3)
+    OS_APPLICATION_CREDENTIAL_SECRET    Application Credential Secret (keystone v3)
+
+    OS_STORAGE_URL                      Storage URL for token authentication
+    OS_AUTH_TOKEN                       Auth token for token authentication
+
+    RCLONE_BWLIMIT                      rclone bandwidth limit
+
+    RESTIC_REST_USERNAME                Restic REST Server username
+    RESTIC_REST_PASSWORD                Restic REST Server password
+
+    ST_AUTH                             Auth URL for keystone v1 authentication
+    ST_USER                             Username for keystone v1 authentication
+    ST_KEY                              Password for keystone v1 authentication
+
+See :ref:`caching` for the rules concerning cache locations when
+``RESTIC_CACHE_DIR`` is not set.
+
+The external programs that restic may execute include ``rclone`` (for rclone
+backends) and ``ssh`` (for the SFTP backend). These may respond to further
+environment variables and configuration files; see their respective manuals.
+
+Checking if a repository is already initialized
+***********************************************
 
 You may find a need to check if a repository is already initialized,
 perhaps to prevent your script from trying to initialize a repository multiple
@@ -59,7 +158,8 @@ a more specific description.
 +-----+----------------------------------------------------+
 | 2   | Go runtime error                                   |
 +-----+----------------------------------------------------+
-| 3   | ``backup`` command could not read some source data |
+| 3   | ``backup`` could not read some source data, or     |
+|     | ``forget`` could not remove one or more snapshots  |
 +-----+----------------------------------------------------+
 | 10  | Repository does not exist (since restic 0.17.0)    |
 +-----+----------------------------------------------------+
@@ -67,22 +167,24 @@ a more specific description.
 +-----+----------------------------------------------------+
 | 12  | Wrong password (since restic 0.17.1)               |
 +-----+----------------------------------------------------+
-| 130 | Restic was interrupted using SIGINT or SIGSTOP     |
+| 130 | Command was cancelled (e.g. SIGINT or SIGTERM)     |
 +-----+----------------------------------------------------+
+
+.. _JSON output:
 
 JSON output
 ***********
 
 Restic outputs JSON data to ``stdout`` if requested with the ``--json`` flag.
-The structure of that data varies depending on the circumstance.  The
-JSON output of most restic commands are documented here.
+The structure of that data varies depending on the circumstance. The
+JSON output of most restic commands is documented here.
 
 .. note::
     Not all commands support JSON output.  If a command does not support JSON output,
     feel free to submit a pull request!
 
 .. warning::
-    We try to keep the JSON output backwards compatible. However, new message types
+    The JSON output is intended to remain backwards compatible. However, new message types
     or fields may be added at any time. Similarly, enum-like fields for which a fixed
     list of allowed values is documented may be extended at any time.
 
@@ -184,7 +286,7 @@ These errors are printed on ``stderr``.
 | ``item``          | Usually, the path of the problematic file | string |
 +-------------------+-------------------------------------------+--------+
 
-Verbose Status
+Verbose status
 ^^^^^^^^^^^^^^
 
 Verbose status provides details about the progress, including details about backed up files.
@@ -257,18 +359,18 @@ Summary is the last output line in a successful backup.
 cat
 ---
 
-The ``cat`` command returns data about various objects in the repository, which
-are stored in JSON form. Specifying ``--json``  or ``--quiet`` will suppress any
-non-JSON messages the command generates.
-
+The ``cat`` command is used to inspect and print internal repository objects to stdout.
+This is primarily useful for debugging, understanding repository structure, or
+recovering data from a damaged repository. For details refer to the :ref:`view-repository-objects` section.
 
 check
 -----
 
 The ``check`` command uses the JSON lines format with the following message types.
+Error lines are JSON objects on stderr; when the command finishes, one JSON summary is printed on stdout.
 
-Status
-^^^^^^
+Summary
+^^^^^^^
 
 +--------------------------+------------------------------------------------------------------------------------------------+----------+
 | ``message_type``         | Always "summary"                                                                               | string   |
@@ -348,6 +450,7 @@ DiffStat object
 | ``bytes``      | Number of bytes                           | uint64 |
 +----------------+-------------------------------------------+--------+
 
+.. _find:
 
 find
 ----
@@ -355,9 +458,8 @@ find
 The ``find`` command outputs a single JSON document containing an array of JSON
 objects with matches for your search term.  These matches are organized by snapshot.
 
-If the ``--blob`` or ``--tree`` option is passed, then the output is an array of
-`Blob objects`_.
-
+If the ``--blob``, ``--tree`` or ``--pack`` option is passed, then the output is
+an array of `Blob objects`_.
 
 +--------------+-----------------------------------+--------------------+
 | ``hits``     | Number of matches in the snapshot | uint64             |
@@ -398,7 +500,7 @@ Match object
 +-----------------+----------------------------------------------+-------------+
 | ``links``       | Number of hardlinks                          | uint64      |
 +-----------------+----------------------------------------------+-------------+
-| ``link_target`` | Target of a symlink                          | string      |
+| ``linktarget``  | Target of a symlink                          | string      |
 +-----------------+----------------------------------------------+-------------+
 | ``uid``         | ID of owner                                  | uint32      |
 +-----------------+----------------------------------------------+-------------+
@@ -603,7 +705,7 @@ node
 +------------------+----------------------------+-------------+
 | ``mtime``        | Node modification time     | time.Time   |
 +------------------+----------------------------+-------------+
-| ``ctime``        | Node creation time         | time.Time   |
+| ``ctime``        | Node change time (ctime)   | time.Time   |
 +------------------+----------------------------+-------------+
 | ``inode``        | Inode number of node       | uint64      |
 +------------------+----------------------------+-------------+
@@ -654,11 +756,11 @@ These errors are printed on ``stderr``.
 | ``item``          | Usually, the path of the problematic file | string |
 +-------------------+-------------------------------------------+--------+
 
-Verbose Status
+Verbose status
 ^^^^^^^^^^^^^^
 
 Verbose status provides details about the progress, including details about restored files.
-Only printed if `--verbose=2` is specified.
+Only printed if ``--verbose=2`` is specified.
 
 +------------------+--------------------------------------------------------+--------+
 | ``message_type`` | Always "verbose_status"                                | string |
@@ -733,7 +835,7 @@ The snapshots command returns a single JSON array with objects of the structure 
 
 SnapshotSummary object
 
-The contained statistics reflect the information at the point64 in time when the snapshot
+The contained statistics reflect the information at the point in time when the snapshot
 was created.
 
 +---------------------------+----------------------------------------------------+-----------+
@@ -810,11 +912,11 @@ Changed
 Summary
 ^^^^^^^
 
-+----------------------------+-----------------------------------+--------+
-| ``message_type``           | Always "summary"                  | string |
-+----------------------------+-----------------------------------+--------+
-| ``changed_snapshot_count`` | Total number of changed snapshots | int64  |
-+----------------------------+-----------------------------------+--------+
++-----------------------+-----------------------------------+--------+
+| ``message_type``      | Always "summary"                  | string |
++-----------------------+-----------------------------------+--------+
+| ``changed_snapshots`` | Total number of changed snapshots | int64  |
++-----------------------+-----------------------------------+--------+
 
 version
 -------
