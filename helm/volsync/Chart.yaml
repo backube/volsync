@@ -27,7 +27,7 @@ annotations: # https://artifacthub.io/docs/topics/annotations/helm/
     - kind: changed
       description: Restic updated to v0.19.1
     - kind: changed
-      description: Rclone updated to v1.75.0
+      description: Rclone updated to v1.75.1
     - kind: changed
       description: Add MoverTolerations to MoverConfig
     - kind: changed
