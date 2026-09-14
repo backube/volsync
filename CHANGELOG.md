@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Restic updated to v0.19.1
-- Rclone updated to v1.75.0
+- Rclone updated to v1.75.1
 - Restic support `--keep-within-*` retention flags
 - Add MoverTolerations to MoverConfig
 - The Rsync-ssh mover now requires privileged mode to run. Previously for backwards
