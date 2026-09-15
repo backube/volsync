@@ -44,8 +44,8 @@
       "matchDatasources": [
         "go"
       ],
-      "matchPackagePrefixes": [
-        "k8s.io/component-helpers"
+      "matchPackageNames": [
+        "k8s.io/component-helpers{/,}**"
       ]
     },
     {
@@ -53,12 +53,12 @@
       // together in a single PR
       "groupName": "diskrsync packages",
       "groupSlug": "diskrsync",
-      "matchPackagePatterns": [
-        // Using the "packagePatterns" option so that we can match both the go
+      "matchPackageNames": [
+        // Use regex patterns so that we can match both the go
         // packages (w/o the "github.com/" prefix) and the other references that
         // do have it.
-        "dop251/diskrsync",
-        "dop251/spgz"
+        "/dop251/diskrsync/",
+        "/dop251/spgz/"
       ]
     },
     {
@@ -72,11 +72,8 @@
       // Group syncthing updates together in a single PR
       "groupName": "syncthing packages",
       "groupSlug": "syncthing",
-      "matchPackagePatterns": [
-        // Using the "packagePatterns" option so that we can match both the go
-        // packages (w/o the "github.com/" prefix) and the other references that
-        // do have it.
-        "syncthing/syncthing"
+      "matchPackageNames": [
+        "/syncthing/syncthing/"
       ]
     },
     {
@@ -96,9 +93,9 @@
     {
       "customType": "regex",
       "description": "controller-tools version updates",
-      "fileMatch": [
-        "^.github/(?:workflows|actions)/.+\\.ya?ml$",
-        "(^|/)Makefile$"
+      "managerFilePatterns": [
+        "/^.github/(?:workflows|actions)/.+\\.ya?ml$/",
+        "/(^|/)Makefile$/"
       ],
       "matchStrings": [
         "CONTROLLER_TOOLS_VERSION\\s*:=?\\s*\"?(?<currentValue>.+?)\"?\\n"
@@ -109,9 +106,9 @@
     {
       "customType": "regex",
       "description": "golang version updates (major/minor only)",
-      "fileMatch": [
-        "^.github/(?:workflows|actions)/.+\\.ya?ml$",
-        "(^|/)Makefile$"
+      "managerFilePatterns": [
+        "/^.github/(?:workflows|actions)/.+\\.ya?ml$/",
+        "/(^|/)Makefile$/"
       ],
       "matchStrings": [
         "GO_VERSION\\s*:=?\\s*\"?(?<currentValue>.+?)\"?\\n"
@@ -125,9 +122,9 @@
     {
       "customType": "regex",
       "description": "golangci-lint version updates",
-      "fileMatch": [
-        "^.github/(?:workflows|actions)/.+\\.ya?ml$",
-        "(^|/)Makefile$"
+      "managerFilePatterns": [
+        "/^.github/(?:workflows|actions)/.+\\.ya?ml$/",
+        "/(^|/)Makefile$/"
       ],
       "matchStrings": [
         "GOLANGCI_VERSION\\s*:=?\\s*\"?(?<currentValue>.+?)\"?\\n"
@@ -138,9 +135,9 @@
     {
       "customType": "regex",
       "description": "Helm version updates",
-      "fileMatch": [
-        "^.github/(?:workflows|actions)/.+\\.ya?ml$",
-        "(^|/)Makefile$"
+      "managerFilePatterns": [
+        "/^.github/(?:workflows|actions)/.+\\.ya?ml$/",
+        "/(^|/)Makefile$/"
       ],
       "matchStrings": [
         "HELM_VERSION\\s*:=?\\s*\"?(?<currentValue>.+?)\"?\\n"
@@ -151,8 +148,8 @@
     {
       "customType": "regex",
       "description": "Docker image updates in yamls",
-      "fileMatch": [
-        "^config/.+\\.ya?ml$"
+      "managerFilePatterns": [
+        "/^config/.+\\.ya?ml$/"
       ],
       "matchStrings": [
         "image:\\s*\"?(?<depName>.*?):(?<currentValue>.*?)(?:@(?<currentDigest>sha256:[a-f0-9]+))?\"?\\s"
@@ -162,9 +159,9 @@
     {
       "customType": "regex",
       "description": "KinD version updates",
-      "fileMatch": [
-        "^.github/(?:workflows|actions)/.+\\.ya?ml$",
-        "(^|/)Makefile$"
+      "managerFilePatterns": [
+        "/^.github/(?:workflows|actions)/.+\\.ya?ml$/",
+        "/(^|/)Makefile$/"
       ],
       "matchStrings": [
         "KIND_VERSION\\s*:=?\\s*\"?(?<currentValue>.+?)\"?\\n"
@@ -176,9 +173,9 @@
     {
       "customType": "regex",
       "description": "kubectl version updates",
-      "fileMatch": [
-        "^.github/(?:workflows|actions)/.+\\.ya?ml$",
-        "(^|/)Makefile$"
+      "managerFilePatterns": [
+        "/^.github/(?:workflows|actions)/.+\\.ya?ml$/",
+        "/(^|/)Makefile$/"
       ],
       "matchStrings": [
         "KUBECTL_VERSION\\s*:=?\\s*\"?v(?<currentValue>.+?)\"?\\n"
@@ -190,9 +187,9 @@
     {
       "customType": "regex",
       "description": "kustomize version updates",
-      "fileMatch": [
-        "^.github/(?:workflows|actions)/.+\\.ya?ml$",
-        "(^|/)Makefile$"
+      "managerFilePatterns": [
+        "/^.github/(?:workflows|actions)/.+\\.ya?ml$/",
+        "/(^|/)Makefile$/"
       ],
       "matchStrings": [
         "KUSTOMIZE_VERSION\\s*:=?\\s*\"?(?<currentValue>.+?)\"?\\n"
@@ -204,8 +201,8 @@
     {
       "customType": "regex",
       "description": "Pipenv version updates",
-      "fileMatch": [
-        "(^|/)Makefile$"
+      "managerFilePatterns": [
+        "/(^|/)Makefile$/"
       ],
       "matchStrings": [
         "PIPENV_VERSION \\s*:=?\\s*\"?(?<currentValue>.+?)\"?\\n"
@@ -216,8 +213,8 @@
     {
       "customType": "regex",
       "description": "yq version updates",
-      "fileMatch": [
-        "(^|/)Makefile$"
+      "managerFilePatterns": [
+        "/(^|/)Makefile$/"
       ],
       "matchStrings": [
         "YQ_VERSION\\s*:=?\\s*\"?(?<currentValue>.+?)\"?\\n"
@@ -228,8 +225,8 @@
     {
       "customType": "regex",
       "description": "RClone version updates in the Dockerfile",
-      "fileMatch": [
-        "^Dockerfile$"
+      "managerFilePatterns": [
+        "/^Dockerfile$/"
       ],
       "matchStrings": [
         "RCLONE_VERSION\\s*=\\s*\"?(?<currentValue>.+?)\"?\\n.*RCLONE_GIT_HASH\\s*=\\s*\"?(?<currentDigest>.+?)\"?\\n"
@@ -240,8 +237,8 @@
     {
       "customType": "regex",
       "description": "Syncthing version updates in the Dockerfile",
-      "fileMatch": [
-        "^Dockerfile$"
+      "managerFilePatterns": [
+        "/^Dockerfile$/"
       ],
       "matchStrings": [
         "SYNCTHING_VERSION\\s*=\\s*\"?(?<currentValue>.+?)\"?\\n.*SYNCTHING_GIT_HASH\\s*=\\s*\"?(?<currentDigest>.+?)\"?\\n"
@@ -252,8 +249,8 @@
     {
       "customType": "regex",
       "description": "diskrsync version updates in the Dockerfile",
-      "fileMatch": [
-        "^Dockerfile$"
+      "managerFilePatterns": [
+        "/^Dockerfile$/"
       ],
       "matchStrings": [
         "DISKRSYNC_VERSION\\s*=\\s*\"?(?<currentValue>.+?)\"?\\n.*DISKRSYNC_GIT_HASH\\s*=\\s*\"?(?<currentDigest>.+?)\"?\\n"
@@ -264,8 +261,8 @@
     {
       "customType": "regex",
       "description": "Update tags for repos in hack/setup-kind-cluster.sh",
-      "fileMatch": [
-        "^hack/setup-kind-cluster.sh$"
+      "managerFilePatterns": [
+        "/^hack/setup-kind-cluster.sh$/"
       ],
       "matchStrings": [
         // This allows adding a comment to the above files to have renovate
