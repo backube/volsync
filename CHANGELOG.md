@@ -3,7 +3,8 @@
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+and this project adheres to
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
@@ -17,9 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rclone updated to v1.75.1
 - Restic support `--keep-within-*` retention flags
 - Add MoverTolerations to MoverConfig
-- The Rsync-ssh mover now requires privileged mode to run. Previously for backwards
-  compatibility it forced privileged mode. Note: Rsync-TLS is still the recommended
-  mover for Rsync.
+- The Rsync-ssh mover now requires privileged mode to run. Previously
+  for backwards compatibility it forced privileged mode. Note: Rsync-TLS is
+  still the recommended mover for Rsync.
 
 ### Fixed
 
@@ -156,7 +157,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Fix for rsync-tls to handle replication when there are many files in the pvc root
+- Fix for rsync-tls to handle replication when there are many files in the pvc
+  root
 - Fix for rsync-tls to handle files in the pvc root that start with `#`
 
 ### Changed
@@ -184,7 +186,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Allow customization of resource requirements and limits on mover job containers
+- Allow customization of resource requirements and limits on mover job
+  containers
 - Include additional restic environment variables from the restic secret
   (RESTIC_REST_USERNAME, RESTIC_REST_PASSWORD, AZURE_ENDPOINT_SUFFIX)
 - Copy trigger pvc annotations.  Allows copy-trigger annotations on the pvc to
@@ -195,8 +198,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Exclude lost+found for restic backups
-- Check if ipv6 is enabled before assigning 'STUNNEL_LISTEN_PORT' in mover-rsync-tls
-  server script
+- Check if ipv6 is enabled before assigning 'STUNNEL_LISTEN_PORT' in
+  mover-rsync-tls server script
 
 ## [0.8.1]
 
@@ -262,7 +265,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - kube-rbac-proxy upgraded to 0.14.0
-- All movers, except rsync-ssh, now run with reduced privileges by default (see docs)
+- All movers, except rsync-ssh, now run with reduced privileges by default
+  (see docs)
 
 ## [0.6.1]
 
@@ -360,7 +364,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Fix to RoleBinding created by VolSync for OCP namespace labeler.
 - Fix to helm charts to remove hardcoded overwriting of pod security settings.
-- Fix for node affinity (when using ReplicationSource in Direct mode) to use NodeSelector.
+- Fix for node affinity (when using ReplicationSource in Direct mode) to use
+  NodeSelector.
 - Fixed log timestamps to be more readable.
 - CLI: Fixed bug where previously specified options couldn't be removed from
   relationship file

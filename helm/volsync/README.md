@@ -136,7 +136,8 @@ on the command line or via a custom `values.yaml` file.
   - Override the name of the operator's ServiceAccount
 - `service.ipFamilyPolicy`: (empty)
   - Set the ip family policy to configure dual-stack see
-  [Configure dual-stack](https://kubernetes.io/docs/concepts/services-networking/dual-stack/#services)
+  [Configure
+  dual-stack](https://kubernetes.io/docs/concepts/services-networking/dual-stack/#services)
 - `service.ipFamilies`: none
   - Sets the families that should be supported and the order
   in which they should be applied to ClusterIP as well. Can be IPv4 and/or IPv6.

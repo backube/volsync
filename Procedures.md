@@ -27,7 +27,8 @@
   `./build-index ../volsync/volsync-X.Y.Z.tgz`
 * Create a PR against that repo w/ the changes
 * If updating the helm chart README.md, then make sure to update the
-  description in the [csv](config/manifests/bases/volsync.clusterserviceversion.yaml).
+  description in the
+  [csv](config/manifests/bases/volsync.clusterserviceversion.yaml).
   Then run `make bundle` to make sure the csv in the bundle dir is updated.
 
 ### Release an updated CLI plugin to krew
@@ -121,7 +122,8 @@ example, say we have the following scenario:
 To get this upgrade to work the easiest solution atm may be to add a skipRange
 to the CSV.
 
-The following annotation can be added to the [csv](bundle/manifests/volsync.clusterserviceversion.yaml)
+The following annotation can be added to the
+[csv](bundle/manifests/volsync.clusterserviceversion.yaml)
 
 ```yaml
 olm.skipRange: '>=0.4.0 <0.4.2'
@@ -131,8 +133,8 @@ This will allow upgrades (even between channels) to `0.4.2` from any version
 starting from `0.4.0`.  It will also upgrade directly to `0.4.2` without
 installing any versions in-between.
 
-In addition, 'replaces' can be specified in the spec to indicate a specific version
-that the operator version replaces.
+In addition, 'replaces' can be specified in the spec to indicate a specific
+version that the operator version replaces.
 
 As an example:
 
@@ -153,11 +155,14 @@ to insert the olm.skipRange and replaces (if required).
 
 See references:
 
-* [operator-framework: how to update operators](https://github.com/operator-framework/operator-lifecycle-manager/blob/master/doc/design/how-to-update-operators.md)
+* [operator-framework: how to update
+  operators](https://github.com/operator-framework/operator-lifecycle-manager/blob/master/doc/design/how-to-update-operators.md)
 
-* [olm architecture: creating an update graph](https://olm.operatorframework.io/docs/concepts/olm-architecture/operator-catalog/creating-an-update-graph/)
+* [olm architecture: creating an update
+  graph](https://olm.operatorframework.io/docs/concepts/olm-architecture/operator-catalog/creating-an-update-graph/)
 
-* [OLM doc discussing upgrades](https://docs.google.com/document/d/1X4xwBK4ECIXjaA_0DuVNuWieY9Qjbl42BMRAyIYc_HM/edit)
+* [OLM doc discussing
+  upgrades](https://docs.google.com/document/d/1X4xwBK4ECIXjaA_0DuVNuWieY9Qjbl42BMRAyIYc_HM/edit)
 
 * [issue](https://github.com/operator-framework/olm-docs/issues/243)
 
@@ -176,10 +181,11 @@ defaults set in the [version.mk](version.mk) file so if those values are
 correct, no need to specify them
 
 Note: REPLACES_VERSION should be empty for the first release in a new channel.
-(For example when releasing a 0.6.0 version in a new channel, we need the skipRange
-still to indicate older versions can upgrade to the new one - but REPLACES_VERSION
-needs to be empty as the replaces version needs to exist in the channel or upgrades
-will not work).  When REPLACES_VERSION is blank, (see make bundle in the Makefile),
+(For example when releasing a 0.6.0 version in a new channel, we need the
+skipRange still to indicate older versions can upgrade to the new one - but
+REPLACES_VERSION needs to be empty as the replaces version needs to exist in
+the channel or upgrades will not work).  When REPLACES_VERSION is blank, (see
+make bundle in the Makefile),
 the csv will be updated but the operator-sdk will automatically remove replaces
 from the csv.spec when it's empty for us.
 
@@ -213,7 +219,8 @@ from the csv.spec when it's empty for us.
   * Change the version number in [release.yml](.github/workflows/release.yml)
   * Change the version number in [go.mod](go.mod)
     * Run `go mod tidy -go=X.Y`
-  * Change the version number in [custom-scorecard-tests/go.mod](custom-scorecard-tests/go.mod)
+  * Change the version number in
+    [custom-scorecard-tests/go.mod](custom-scorecard-tests/go.mod)
     * Run `go mod tidy -go=X.Y`
   * Change the version number for the builder images in
     * [Dockerfile](Dockerfile)
@@ -248,7 +255,8 @@ from the csv.spec when it's empty for us.
   * Run `make bundle` to propagate changes to the operator bundle files
 * [Rclone](https://github.com/rclone/rclone/releases)
   * Change the version number in
-    [mover-rclone/Dockerfile](mover-rclone/Dockerfile) and update GIT hash to match
+    [mover-rclone/Dockerfile](mover-rclone/Dockerfile)
+    and update GIT hash to match
   * Make an entry in [CHANGELOG.md](CHANGELOG.md)
   * Make an entry in [Chart.yaml](helm/volsync/Chart.yaml)
 * [Restic](https://github.com/restic/restic/releases)
