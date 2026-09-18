@@ -1,12 +1,14 @@
 # VolSync Custom Scorecard Tests
 
-These tests are designed to package the end-to-end tests in /test-e2e but be able
-to run them via operator-sdk scorecard tests.
+These tests are designed to package the end-to-end tests in /test-e2e but be
+able to run them via operator-sdk scorecard tests.
 
-More info about scorecard tests [here](https://sdk.operatorframework.io/docs/testing-operators/scorecard/custom-tests/)
+More info about scorecard tests
+[here](https://sdk.operatorframework.io/docs/testing-operators/scorecard/custom-tests/)
 
 For more info (this is downstream specific) for CVP running custom scorecard
-tests see [here](https://docs.engineering.redhat.com/display/CVP/Operator+Verification+Pipeline+Documentation#operator-custom-scorecard-tests)
+tests see
+[here](https://docs.engineering.redhat.com/display/CVP/Operator+Verification+Pipeline+Documentation#operator-custom-scorecard-tests)
 
 The intention is these tests will also be run by downstream CVP E2E tests.
 Downstream the scorecard config.yaml can be used to specify which e2e tests
