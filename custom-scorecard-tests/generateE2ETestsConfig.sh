@@ -61,6 +61,8 @@ rm -rf "${e2e_tests_patchfile2}"
 rm -rf "${e2e_tests_patchfile3}"
 
 # Prereqs (stage 0)
+# Scorecard does not expose TestConfiguration.image to the test process, so
+# pass the same image explicitly for the MinIO server and mc init job.
 cat <<EOF > "${prereqs_patchfile}"
 - op: add
   path: /stages/0/tests/-
@@ -68,6 +70,7 @@ cat <<EOF > "${prereqs_patchfile}"
     entrypoint:
     - volsync-custom-scorecard-tests
     - deploy-prereqs
+    - ${CUSTOM_SCORECARD_IMG}
     image: ${CUSTOM_SCORECARD_IMG}
     labels:
       suite: volsync-e2e

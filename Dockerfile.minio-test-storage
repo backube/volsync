@@ -1,0 +1,39 @@
+######################################################################
+# Build pinned MinIO and MinIO Client binaries for E2E tests.
+FROM --platform=$BUILDPLATFORM golang:1.26 AS builder
+
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+
+COPY hack/minio-test-image.env /tmp/minio-test-image.env
+
+RUN . /tmp/minio-test-image.env && \
+    mkdir -p /out && \
+    CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" \
+      go install "github.com/minio/minio@${MINIO_SOURCE_REF}" && \
+    find "$(go env GOPATH)/bin" -type f -name minio -exec cp {} /out/minio \; && \
+    test -x /out/minio && \
+    CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" \
+      go install "github.com/minio/mc@${MC_SOURCE_REF}" && \
+    find "$(go env GOPATH)/bin" -type f -name mc -exec cp {} /out/mc \; && \
+    test -x /out/mc
+
+######################################################################
+# Keep the image usable by both the MinIO server and the Helm chart's
+# mc-based post-install job.
+FROM registry.access.redhat.com/ubi9-minimal
+
+RUN microdnf install -y ca-certificates && microdnf clean all
+
+COPY --from=builder /out/minio /usr/bin/minio
+COPY --from=builder /out/mc /usr/bin/mc
+COPY hack/minio-test-entrypoint.sh /usr/bin/docker-entrypoint.sh
+
+RUN chmod 0755 /usr/bin/minio /usr/bin/mc /usr/bin/docker-entrypoint.sh
+
+ENV HOME=/tmp
+
+ENTRYPOINT ["/usr/bin/docker-entrypoint.sh"]
+CMD ["minio"]
+
+USER 1001:0
