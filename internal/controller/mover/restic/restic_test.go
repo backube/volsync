@@ -2519,6 +2519,20 @@ var _ = Describe("Restic as a destination", func() {
 			})
 
 			Context("Restore options", func() {
+				restoreOptionsOf := func(m *Mover) string {
+					j, e := m.ensureJob(ctx, cache, dPVC, sa, repo, nil)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil()) // hasn't completed
+					job = &batchv1.Job{}
+					Expect(k8sClient.Get(ctx, types.NamespacedName{Name: jobName, Namespace: ns.Name}, job)).To(Succeed())
+					for _, envVar := range job.Spec.Template.Spec.Containers[0].Env {
+						if envVar.Name == "RESTORE_OPTIONS" { //nolint:goconst
+							return envVar.Value
+						}
+					}
+					Fail("RESTORE_OPTIONS env var not set")
+					return ""
+				}
 				When("No restore options are specified", func() {
 					It("should set env vars related to restore options with defaults", func() {
 						j, e := mover.ensureJob(ctx, cache, dPVC, sa, repo, nil)
@@ -2583,6 +2597,23 @@ var _ = Describe("Restic as a destination", func() {
 						}
 						Expect(restoreOptions).NotTo(BeNil())
 						Expect(restoreOptions.Value).To(Equal("--delete"))
+					})
+				})
+				When("Restore option of enableSparseRestore is specified", func() {
+					BeforeEach(func() {
+						rd.Spec.Restic.EnableSparseRestore = true
+					})
+					It("should set RESTORE_OPTIONS env var with sparse flag", func() {
+						Expect(restoreOptionsOf(mover)).To(Equal("--sparse"))
+					})
+				})
+				When("Restore options of enableFileDeletion and enableSparseRestore are specified", func() {
+					BeforeEach(func() {
+						rd.Spec.Restic.EnableFileDeletion = true
+						rd.Spec.Restic.EnableSparseRestore = true
+					})
+					It("should set RESTORE_OPTIONS env var with both flags", func() {
+						Expect(restoreOptionsOf(mover)).To(Equal("--delete --sparse"))
 					})
 				})
 			})

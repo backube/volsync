@@ -1603,6 +1603,12 @@ spec:
                         This will remove files and directories in the pvc that do not exist in the snapshot being restored.
                         Defaults to false.
                       type: boolean
+                    enableSparseRestore:
+                      description: |-
+                        enableSparseRestore will pass the --sparse flag to the restic restore command.
+                        Files are restored sparse, so regions of zeros do not use disk space.
+                        Defaults to false.
+                      type: boolean
                     moverAffinity:
                       description: MoverAffinity allows specifying the PodAffinity that will be used by the data mover
                       properties:
