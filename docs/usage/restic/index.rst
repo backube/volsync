@@ -308,6 +308,10 @@ enableFileDeletion
    A boolean indicating whether files and directories that exist on the pvc
    being restored to should be deleted if they do not exist in the restic
    snapshot being restored. The default value is ``false``.
+enableSparseRestore
+   A boolean indicating whether files should be restored sparse, so that
+   regions of zeros in large files such as disk images do not use space on the
+   pvc. The default value is ``false``.
 
 Using a custom certificate authority
 ====================================
