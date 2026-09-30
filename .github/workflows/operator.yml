@@ -214,13 +214,56 @@ jobs:
           name: volsync-operator-${{ env.ARCH }}
           path: /tmp/image.tar
 
+  build-minio-test-storage:
+    name: Build-MinIO-test-storage
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Determine architecture
+        id: arch
+        run: |
+          ARCH="$(uname -m | sed -e 's/x86_64/amd64/' -e 's/\(arm\)\(64\)\?.*/\1\2/' -e 's/aarch64$/arm64/')"
+          echo "ARCH=$ARCH" >> $GITHUB_ENV
+
+      - name: Build MinIO test storage image
+        run: |
+          make minio-test-storage-build \
+            MINIO_TEST_IMAGE="volsync-test-storage:ci-${GITHUB_SHA}" \
+            MINIO_TEST_ARCH="${ARCH}"
+
+      - name: Export MinIO test storage image
+        run: docker save -o /tmp/image.tar "volsync-test-storage:ci-${GITHUB_SHA}"
+
+      - name: Save MinIO test storage image as artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: volsync-minio-test-storage-${{ env.ARCH }}
+          path: /tmp/image.tar
+
   build-scorecard:
     name: Build-custom-scorecard-tests
+    needs: [build-minio-test-storage]
     runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout source
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Load MinIO test storage image
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: volsync-minio-test-storage-amd64
+          path: /tmp/minio-test-storage
+
+      - name: Import MinIO test storage image
+        run: docker load -i /tmp/minio-test-storage/image.tar
 
       - name: Install Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -240,7 +283,7 @@ jobs:
           fi
 
       - name: Build operator container
-        run: make custom-scorecard-tests-build CUSTOM_SCORECARD_IMG=${CUSTOM_SCORECARD_IMAGE}
+        run: make custom-scorecard-tests-build CUSTOM_SCORECARD_IMG=${CUSTOM_SCORECARD_IMAGE} MINIO_TEST_STORAGE_IMAGE=volsync-test-storage:ci-${GITHUB_SHA}
 
       - name: Export container image
         run: docker save -o /tmp/image.tar ${CUSTOM_SCORECARD_IMAGE}
@@ -311,7 +354,7 @@ jobs:
 
   e2e:
     name: End-to-end
-    needs: [build-operator, kubectl-plugin]
+    needs: [build-operator, build-minio-test-storage, kubectl-plugin]
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -344,6 +387,7 @@ jobs:
     env:
       KUBECONFIG: /tmp/kubeconfig
       KUBERNETES_VERSION: ${{ matrix.KUBERNETES_VERSIONS }}
+      MINIO_TEST_IMAGE: volsync-test-storage:ci-${{ github.sha }}
     steps:
       - name: Enable Workflow Telemetry
         uses: runforesight/workflow-telemetry-action@94c3c3d9567a0205de6da68a76c428ce4e769af1 # v2.0.0
@@ -390,13 +434,24 @@ jobs:
         run: |
           ./hack/setup-kind-cluster.sh "${KUBERNETES_VERSION}"
 
+      - name: Load MinIO test storage image
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: volsync-minio-test-storage-${{ env.ARCH }}
+          path: /tmp/minio-test-storage
+
+      - name: Import MinIO test storage image into cluster
+        run: |
+          docker load -i /tmp/minio-test-storage/image.tar
+          kind load docker-image "${MINIO_TEST_IMAGE}"
+
       - name: Start MinIO
         run: |
-          ./hack/run-minio.sh
+          ./hack/run-minio.sh "${MINIO_TEST_IMAGE}"
 
       - name: Start MinIO w/ TLS
         run: |
-          MINIO_NAMESPACE=minio-tls MINIO_USE_TLS=1 ./hack/run-minio.sh
+          MINIO_NAMESPACE=minio-tls MINIO_USE_TLS=1 ./hack/run-minio.sh "${MINIO_TEST_IMAGE}"
 
       - name: Load operator container artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1

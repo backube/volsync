@@ -147,6 +147,10 @@ func DeployPrereqs(bundle *apimanifests.Bundle) scapiv1alpha3.TestStatus {
 	r.State = scapiv1alpha3.PassState
 	r.Errors = make([]string, 0)
 	r.Suggestions = make([]string, 0)
+	minioImage := ""
+	if len(os.Args) > 2 {
+		minioImage = os.Args[2]
+	}
 
 	// Ensure csi storagedriver is default
 	output, err := shellout("./ensure-default-csi.sh")
@@ -158,7 +162,7 @@ func DeployPrereqs(bundle *apimanifests.Bundle) scapiv1alpha3.TestStatus {
 
 	// Run minio
 	// helm writes to $HOME so set it to /tmp before running this step
-	output2, err := shellout("export HOME=/tmp && ./run-minio.sh")
+	output2, err := shellout(minioCommand("/tmp", "minio", false, minioImage))
 	r.Log = r.Log + "\n\n" + output2
 	if err != nil {
 		r.State = scapiv1alpha3.ErrorState
@@ -166,7 +170,7 @@ func DeployPrereqs(bundle *apimanifests.Bundle) scapiv1alpha3.TestStatus {
 	}
 
 	// Run minio w/ tls
-	output3, err := shellout("export HOME=/tmp/ && MINIO_NAMESPACE=minio-tls MINIO_USE_TLS=1 ./run-minio.sh")
+	output3, err := shellout(minioCommand("/tmp/", "minio-tls", true, minioImage))
 	r.Log = r.Log + "\n\n" + output3
 	if err != nil {
 		r.State = scapiv1alpha3.FailState
@@ -175,6 +179,22 @@ func DeployPrereqs(bundle *apimanifests.Bundle) scapiv1alpha3.TestStatus {
 	}
 
 	return wrapResult(r)
+}
+
+func minioCommand(home, namespace string, useTLS bool, image string) string {
+	command := fmt.Sprintf("export HOME=%s &&", home)
+	if useTLS {
+		command += fmt.Sprintf(" MINIO_NAMESPACE=%s MINIO_USE_TLS=1", namespace)
+	}
+	command += " ./run-minio.sh"
+	if image != "" {
+		command += " " + shellQuote(image)
+	}
+	return command
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
 func testAnsiblePlaybook(ansiblePlaybookTestName string) scapiv1alpha3.TestStatus {

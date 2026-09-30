@@ -50,3 +50,11 @@ Minio in the kind cluster to act as an object repository. It can be started via:
 .. code-block:: console
 
    $ ./hack/run-minio.sh
+
+With no image argument, the script builds the pinned MinIO and MinIO Client test
+image locally and loads it into kind. To use an image that is already available
+to the cluster, pass its image reference explicitly:
+
+.. code-block:: console
+
+   $ ./hack/run-minio.sh registry.example.com/minio-test-storage:tag
