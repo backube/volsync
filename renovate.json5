@@ -85,6 +85,13 @@
       "matchPackageNames": ["renovatebot/pre-commit-hooks"],
       "schedule": ["before 9am on monday"],
       "updateNotScheduled": false
+    },
+    {
+      // Keep the MinIO server and client source versions in sync.
+      "groupName": "MinIO test image sources",
+      "groupSlug": "minio-test-image",
+      "matchDatasources": ["github-releases"],
+      "matchPackageNames": ["minio/minio", "minio/mc"]
     }
   ],
   "postUpdateOptions": [
@@ -93,6 +100,16 @@
   // Set max number of PRs. This is set high since we have many updates on /hold
   "prConcurrentLimit": 50,
   "customManagers": [
+    {
+      "customType": "regex",
+      "description": "MinIO test image source updates",
+      "fileMatch": [
+        "^hack/minio-test-image\\.env$"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+) versioning=(?<versioning>[^\\s]+)\\s+[^=\\s]+=(?<currentValue>[^\\s]+)"
+      ]
+    },
     {
       "customType": "regex",
       "description": "controller-tools version updates",
