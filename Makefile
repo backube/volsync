@@ -384,11 +384,32 @@ catalog-push: ## Push a catalog image.
 CUSTOM_SCORECARD_IMG_TAG ?= latest
 CUSTOM_SCORECARD_IMG ?= $(IMAGE_TAG_BASE)-custom-scorecard-tests:$(CUSTOM_SCORECARD_IMG_TAG)
 
+MINIO_TEST_IMAGE ?= volsync-test-storage:local
+MINIO_TEST_ARCH ?= amd64
+MINIO_TEST_STORAGE_IMAGE ?= $(MINIO_TEST_IMAGE)
+
+# Currently only building custom scorecard for amd64
+CUSTOM_SCORECARD_PLATFORM ?= linux/amd64
+CUSTOM_SCORECARD_ARCH ?= amd64
+
+.PHONY: minio-test-storage-build
+minio-test-storage-build:
+	docker build --platform linux/$(MINIO_TEST_ARCH) \
+		--build-arg "TARGETOS=linux" \
+		--build-arg "TARGETARCH=$(MINIO_TEST_ARCH)" \
+		-f Dockerfile.minio-test-storage \
+		-t $(MINIO_TEST_IMAGE) .
+
 # Build the custom scorecard image - this can be used to run e2e tests using operator-sdk
 # See more info here: https://sdk.operatorframework.io/docs/testing-operators/scorecard/custom-tests/
 .PHONY: custom-scorecard-tests-build
 custom-scorecard-tests-build:
-	docker build --build-arg "version_arg=$(BUILD_VERSION)" --build-arg "pipenv_version_arg=$(PIPENV_VERSION)" --build-arg "helm_version_arg=$(HELM_VERSION)" --build-arg "kubectl_version_arg=$(KUBECTL_VERSION)" -f Dockerfile.volsync-custom-scorecard-tests -t ${CUSTOM_SCORECARD_IMG} .
+	@if [ "$$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$(MINIO_TEST_STORAGE_IMAGE)" 2>/dev/null)" != "$(CUSTOM_SCORECARD_PLATFORM)" ]; then \
+		$(MAKE) minio-test-storage-build \
+			MINIO_TEST_IMAGE="$(MINIO_TEST_STORAGE_IMAGE)" \
+			MINIO_TEST_ARCH="$(CUSTOM_SCORECARD_ARCH)"; \
+	fi
+	docker build --platform "$(CUSTOM_SCORECARD_PLATFORM)" --build-arg "version_arg=$(BUILD_VERSION)" --build-arg "pipenv_version_arg=$(PIPENV_VERSION)" --build-arg "helm_version_arg=$(HELM_VERSION)" --build-arg "kubectl_version_arg=$(KUBECTL_VERSION)" --build-arg "MINIO_TEST_STORAGE_IMAGE=$(MINIO_TEST_STORAGE_IMAGE)" -f Dockerfile.volsync-custom-scorecard-tests -t ${CUSTOM_SCORECARD_IMG} .
 
 .PHONY: custom-scorecard-tests-generate-config
 custom-scorecard-tests-generate-config: kustomize

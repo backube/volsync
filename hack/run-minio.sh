@@ -2,6 +2,8 @@
 
 set -e -o pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
 # Makes minio available at minio.${MINIO_NAMESPACE}.svc.cluster.local:9000
 
 # Namespace to deploy MinIO into
@@ -10,6 +12,51 @@ MINIO_NAMESPACE="${MINIO_NAMESPACE:-minio}"
 MINIO_USE_TLS=${MINIO_USE_TLS:-0}
 # Specific MinIO chart version to use
 MINIO_CHART_VERSION="${MINIO_CHART_VERSION:-5.4.0}"
+
+# A caller can provide a pre-built image as the first argument or via
+# MINIO_IMAGE. Without one, build and load the local test image into kind.
+MINIO_IMAGE="${1:-${MINIO_IMAGE:-}}"
+if [[ -z "${MINIO_IMAGE}" ]]; then
+    MINIO_IMAGE="${MINIO_TEST_IMAGE:-volsync-test-storage:local}"
+    MINIO_TEST_ARCH="${MINIO_TEST_ARCH:-$(uname -m)}"
+    case "${MINIO_TEST_ARCH}" in
+        x86_64) MINIO_TEST_ARCH=amd64 ;;
+        aarch64) MINIO_TEST_ARCH=arm64 ;;
+    esac
+    REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
+
+    make --no-print-directory -C "${REPO_ROOT}" minio-test-storage-build \
+        MINIO_TEST_ARCH="${MINIO_TEST_ARCH}" \
+        MINIO_TEST_IMAGE="${MINIO_IMAGE}"
+
+    if ! command -v kind >/dev/null 2>&1; then
+        echo "kind is required to load the locally built MinIO image" >&2
+        exit 1
+    fi
+    kind load docker-image "${MINIO_IMAGE}"
+fi
+
+MC_IMAGE="${MC_IMAGE:-${MINIO_IMAGE}}"
+
+split_image_ref() {
+    local image_ref="$1"
+    local image_name="${image_ref##*/}"
+
+    if [[ "${image_name}" != *:* ]]; then
+        echo "Image must include a tag: ${image_ref}" >&2
+        return 1
+    fi
+
+    IMAGE_REPOSITORY="${image_ref%:*}"
+    IMAGE_TAG="${image_ref##*:}"
+}
+
+split_image_ref "${MINIO_IMAGE}"
+MINIO_IMAGE_REPOSITORY="${IMAGE_REPOSITORY}"
+MINIO_IMAGE_TAG="${IMAGE_TAG}"
+split_image_ref "${MC_IMAGE}"
+MC_IMAGE_REPOSITORY="${IMAGE_REPOSITORY}"
+MC_IMAGE_TAG="${IMAGE_TAG}"
 
 # Delete minio if it's already there
 kubectl delete ns "${MINIO_NAMESPACE}" || true
@@ -80,6 +127,12 @@ if ! helm install --create-namespace -n "${MINIO_NAMESPACE}" \
     --set resources.requests.memory=256Mi \
     --set persistence.size=8Gi \
     --set buckets[0].name=restic-e2e,buckets[0].policy=none,buckets[0].purge=false \
+    --set-string "image.repository=${MINIO_IMAGE_REPOSITORY}" \
+    --set-string "image.tag=${MINIO_IMAGE_TAG}" \
+    --set-string "mcImage.repository=${MC_IMAGE_REPOSITORY}" \
+    --set-string "mcImage.tag=${MC_IMAGE_TAG}" \
+    --set image.pullPolicy=IfNotPresent \
+    --set mcImage.pullPolicy=IfNotPresent \
     --version "${MINIO_CHART_VERSION}" \
     --wait --timeout=300s \
     minio minio/minio; then
