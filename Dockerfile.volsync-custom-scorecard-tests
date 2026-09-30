@@ -1,5 +1,7 @@
+ARG MINIO_TEST_STORAGE_IMAGE=volsync-test-storage:local
+
 # Build the volsync-custom-scorecard-tests binary
-FROM golang:1.25 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.25 AS builder
 
 # Copy the go source
 COPY ./custom-scorecard-tests/. /workspace/
@@ -22,6 +24,9 @@ COPY ./go.sum /workspace-cli/go.sum
 COPY ./api/ /workspace-cli/api/
 WORKDIR /workspace-cli
 RUN GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o bin/kubectl-volsync -ldflags "-X=github.com/backube/volsync/kubectl-volsync/cmd.volsyncVersion=${version_arg}" ./kubectl-volsync/main.go
+
+# Reuse the same image that local and GitHub E2E build.
+FROM ${MINIO_TEST_STORAGE_IMAGE} AS minio-test-storage
 
 # Build final container
 FROM registry.access.redhat.com/ubi9/python-311
@@ -47,6 +52,9 @@ WORKDIR ${HOME}
 
 COPY --from=builder /workspace/volsync-custom-scorecard-tests /usr/local/bin/volsync-custom-scorecard-tests
 COPY --from=builder /workspace-cli/bin/kubectl-volsync ./bin/kubectl-volsync
+COPY --from=minio-test-storage /usr/bin/minio /usr/bin/minio
+COPY --from=minio-test-storage /usr/bin/mc /usr/bin/mc
+COPY --from=minio-test-storage /usr/bin/docker-entrypoint.sh /usr/bin/docker-entrypoint.sh
 
 # Copy e2e tests into the container
 COPY ./test-e2e/. ./test-e2e
@@ -65,6 +73,8 @@ RUN cd test-e2e && \
     ../retry.sh pip install --upgrade pipenv=="${pipenv_version_arg}" && \
     ../retry.sh pipenv sync && \
     ../retry.sh pipenv run ansible-galaxy install -r requirements.yml
+
+RUN chmod 0755 /usr/bin/minio /usr/bin/mc /usr/bin/docker-entrypoint.sh
 
 # Install helm & kubectl
 RUN	curl -sSL "https://get.helm.sh/helm-${helm_version_arg}-linux-amd64.tar.gz" | tar xzf - -C /usr/local/bin/ --strip-components=1 --wildcards '*/helm' && \
