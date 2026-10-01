@@ -11,13 +11,13 @@ and this project adheres to
 ### Added
 
 - Chart now allows to set `priorityClassName` for the operator pod
+- Restic support `--keep-within-*` retention flags
+- Add MoverTolerations to MoverConfig
 
 ### Changed
 
 - Restic updated to v0.19.1
 - Rclone updated to v1.75.1
-- Restic support `--keep-within-*` retention flags
-- Add MoverTolerations to MoverConfig
 - The Rsync-ssh mover now requires privileged mode to run. Previously
   for backwards compatibility it forced privileged mode. Note: Rsync-TLS is
   still the recommended mover for Rsync.

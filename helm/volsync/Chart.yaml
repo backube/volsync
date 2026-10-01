@@ -24,14 +24,16 @@ annotations: # https://artifacthub.io/docs/topics/annotations/helm/
   # Changelog for current chart & app version
   # Kinds: added, changed, deprecated, removed, fixed, and security
   artifacthub.io/changes: |
+    - kind: added
+      description: Chart now allows to set `priorityClassName` for the operator pod
+    - kind: added
+      description: Add MoverTolerations to MoverConfig
+    - kind: added
+      description: Restic support `--keep-within-*` retention flags
     - kind: changed
       description: Restic updated to v0.19.1
     - kind: changed
       description: Rclone updated to v1.75.1
-    - kind: changed
-      description: Add MoverTolerations to MoverConfig
-    - kind: changed
-      description: Restic support `--keep-within-*` retention flags
     - kind: changed
       description: The Rsync-ssh mover now requires privileged mode to run. Previously for backwards compatibility it forced privileged mode. Note: Rsync-TLS is still the recommended mover for Rsync.
     - kind: fixed
