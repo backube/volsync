@@ -1,7 +1,7 @@
 ARG MINIO_TEST_STORAGE_IMAGE=volsync-test-storage:local
 
 # Build the volsync-custom-scorecard-tests binary
-FROM --platform=$BUILDPLATFORM golang:1.26 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27 AS builder
 
 # Copy the go source
 COPY ./custom-scorecard-tests/. /workspace/
