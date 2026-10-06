@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"path"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -88,6 +89,7 @@ type Mover struct {
 	previous                    *int32
 	restoreAsOf                 *string
 	enableFileDeletionOnRestore bool
+	enableSparseRestore         bool
 	cleanupTempPVC              bool
 	cleanupCachePVC             bool
 }
@@ -396,6 +398,9 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 			// for replicationdestinations)
 			if m.enableFileDeletionOnRestore {
 				restoreOptions = "--delete"
+			}
+			if m.enableSparseRestore {
+				restoreOptions = strings.TrimSpace(restoreOptions + " --sparse")
 			}
 		}
 		logger.Info("job actions", "actions", actions)

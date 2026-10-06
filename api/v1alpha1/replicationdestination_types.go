@@ -260,6 +260,11 @@ type ReplicationDestinationResticSpec struct {
 	// Defaults to false.
 	//+optional
 	EnableFileDeletion bool `json:"enableFileDeletion,omitempty"`
+	// enableSparseRestore will pass the --sparse flag to the restic restore command.
+	// Files are restored sparse, so regions of zeros do not use disk space.
+	// Defaults to false.
+	//+optional
+	EnableSparseRestore bool `json:"enableSparseRestore,omitempty"`
 
 	MoverConfig `json:",inline"`
 }
