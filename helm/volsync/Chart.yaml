@@ -30,6 +30,8 @@ annotations: # https://artifacthub.io/docs/topics/annotations/helm/
       description: Add MoverTolerations to MoverConfig
     - kind: added
       description: Restic support `--keep-within-*` retention flags
+    - kind: added
+      description: Add spec.restic.enableSparseRestore to restore files sparse
     - kind: changed
       description: Restic updated to v0.19.1
     - kind: changed

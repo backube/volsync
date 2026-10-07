@@ -13,6 +13,7 @@ and this project adheres to
 - Chart now allows to set `priorityClassName` for the operator pod
 - Restic support `--keep-within-*` retention flags
 - Add MoverTolerations to MoverConfig
+- Add spec.restic.enableSparseRestore to restore files sparse
 
 ### Changed
 
