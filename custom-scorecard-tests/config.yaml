@@ -9,8 +9,8 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - deploy-prereqs
-    - quay.io/backube/volsync-custom-scorecard-tests:latest
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    - quay.io/backube/volsync-custom-scorecard-tests:release-0.17
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: deploy-prereqs
@@ -19,7 +19,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_multi_sync_snapshot_rclone.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_multi_sync_snapshot_rclone.yml
@@ -29,7 +29,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_multi_sync_snapshot_rsync.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_multi_sync_snapshot_rsync.yml
@@ -39,7 +39,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_rclone_normal.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_rclone_normal.yml
@@ -49,7 +49,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_rclone_priv.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_rclone_priv.yml
@@ -59,7 +59,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_rclone_with_customca_configmap.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_rclone_with_customca_configmap.yml
@@ -69,7 +69,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_rclone_with_customca_secret.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_rclone_with_customca_secret.yml
@@ -79,7 +79,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_replication_sched_snap.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_replication_sched_snap.yml
@@ -89,7 +89,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_replication_sync_direct.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_replication_sync_direct.yml
@@ -99,7 +99,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_rsync_tls_normal.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_rsync_tls_normal.yml
@@ -109,7 +109,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_rsync_tls_normal_diskrsync.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_rsync_tls_normal_diskrsync.yml
@@ -119,7 +119,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_rsync_tls_normal_longname.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_rsync_tls_normal_longname.yml
@@ -129,7 +129,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_rsync_tls_normal_manyfiles.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_rsync_tls_normal_manyfiles.yml
@@ -139,7 +139,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_rsync_tls_priv.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_rsync_tls_priv.yml
@@ -149,7 +149,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_rsync_tls_priv_diskrsync.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_rsync_tls_priv_diskrsync.yml
@@ -159,7 +159,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_rsync_tls_priv_manyfiles.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_rsync_tls_priv_manyfiles.yml
@@ -169,7 +169,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_simple_rsync.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_simple_rsync.yml
@@ -179,7 +179,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_simple_rsync_diskrsync.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_simple_rsync_diskrsync.yml
@@ -189,7 +189,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_simple_rsync_longname.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_simple_rsync_longname.yml
@@ -199,7 +199,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_volumepopulator.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_volumepopulator.yml
@@ -211,7 +211,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_namespace_role.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_namespace_role.yml
@@ -221,7 +221,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_restic_manual_normal.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_restic_manual_normal.yml
@@ -231,7 +231,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_restic_manual_normal_cleanup_pvcs.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_restic_manual_normal_cleanup_pvcs.yml
@@ -241,7 +241,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_restic_manual_normal_copy_trigger.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_restic_manual_normal_copy_trigger.yml
@@ -251,7 +251,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_restic_manual_normal_localpvcrepo.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_restic_manual_normal_localpvcrepo.yml
@@ -261,7 +261,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_restic_manual_normal_longname.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_restic_manual_normal_longname.yml
@@ -271,7 +271,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_restic_manual_normal_restore_emptyrepo.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_restic_manual_normal_restore_emptyrepo.yml
@@ -281,7 +281,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_restic_manual_priv.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_restic_manual_priv.yml
@@ -291,7 +291,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_restic_with_customca_configmap.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_restic_with_customca_configmap.yml
@@ -301,7 +301,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_restic_with_customca_secret.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_restic_with_customca_secret.yml
@@ -311,7 +311,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_restic_with_previous.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_restic_with_previous.yml
@@ -321,7 +321,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_restic_with_restoreasof.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_restic_with_restoreasof.yml
@@ -331,7 +331,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_restic_with_restoreoptions.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_restic_with_restoreoptions.yml
@@ -341,7 +341,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_restic_without_trigger.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_restic_without_trigger.yml
@@ -351,7 +351,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_roles.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_roles.yml
@@ -361,7 +361,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_roles_privileged.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_roles_privileged.yml
@@ -371,7 +371,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_syncthing_cluster_sync_normal.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_syncthing_cluster_sync_normal.yml
@@ -381,7 +381,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_syncthing_cluster_sync_normal_longname.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_syncthing_cluster_sync_normal_longname.yml
@@ -391,7 +391,7 @@ stages:
   - entrypoint:
     - volsync-custom-scorecard-tests
     - test_syncthing_cluster_sync_priv.yml
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: test_syncthing_cluster_sync_priv.yml

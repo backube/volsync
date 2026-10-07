@@ -4,8 +4,8 @@
     entrypoint:
     - volsync-custom-scorecard-tests
     - deploy-prereqs
-    - quay.io/backube/volsync-custom-scorecard-tests:latest
-    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    - quay.io/backube/volsync-custom-scorecard-tests:release-0.17
+    image: quay.io/backube/volsync-custom-scorecard-tests:release-0.17
     labels:
       suite: volsync-e2e
       test: deploy-prereqs
