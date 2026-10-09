@@ -35,7 +35,7 @@ annotations: # https://artifacthub.io/docs/topics/annotations/helm/
     - kind: changed
       description: Restic updated to v0.19.1
     - kind: changed
-      description: Rclone updated to v1.75.1
+      description: Rclone updated to v1.75.2
     - kind: changed
       description: The Rsync-ssh mover now requires privileged mode to run. Previously for backwards compatibility it forced privileged mode. Note: Rsync-TLS is still the recommended mover for Rsync.
     - kind: fixed
