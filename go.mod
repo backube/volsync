@@ -10,7 +10,7 @@ require (
 	github.com/kubernetes-csi/external-snapshotter/client/v8 v8.4.0
 	github.com/kubernetes-csi/volume-data-source-validator/client v0.0.0-20250919142814-90ffb8220766
 	github.com/onsi/ginkgo/v2 v2.32.0
-	github.com/onsi/gomega v1.42.1
+	github.com/onsi/gomega v1.44.0
 	github.com/openshift/api v0.0.0-20260213155647-8fe9fe363807 // release-4.14
 	github.com/openshift/controller-runtime-common v0.0.0-20260307102856-5db94f69ad3a
 	github.com/prometheus/client_golang v1.23.2
@@ -122,7 +122,7 @@ require (
 	go.uber.org/mock v0.5.2 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
-	go.yaml.in/yaml/v3 v3.0.4 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.55.0 // indirect
 	golang.org/x/exp v0.0.0-20240823005443-9b4947da3948 // indirect
 	golang.org/x/mod v0.38.0 // indirect
