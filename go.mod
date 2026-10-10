@@ -12,7 +12,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/gomega v1.44.0
 	github.com/openshift/api v0.0.0-20260213155647-8fe9fe363807 // release-4.14
-	github.com/openshift/controller-runtime-common v0.0.0-20260307102856-5db94f69ad3a
+	github.com/openshift/controller-runtime-common v0.0.0-20261008111711-8ec0dc844066
 	github.com/prometheus/client_golang v1.25.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/cobra v1.10.2
