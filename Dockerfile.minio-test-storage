@@ -1,6 +1,6 @@
 ######################################################################
 # Build pinned MinIO and MinIO Client binaries for E2E tests.
-FROM --platform=$BUILDPLATFORM golang:1.26 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27 AS builder
 
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
