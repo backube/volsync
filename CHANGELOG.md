@@ -18,7 +18,7 @@ and this project adheres to
 ### Changed
 
 - Restic updated to v0.19.1
-- Rclone updated to v1.75.1
+- Rclone updated to v1.75.2
 - The Rsync-ssh mover now requires privileged mode to run. Previously
   for backwards compatibility it forced privileged mode. Note: Rsync-TLS is
   still the recommended mover for Rsync.
