@@ -511,10 +511,17 @@ jobs:
   e2e-success:
     name: Successful e2e tests
     needs: [e2e, lint, generated-files-check, test-operator, build-scorecard]
+    if: always()
     runs-on: ubuntu-24.04
     steps:
-      - name: Success
-        run: echo "Previous steps were successful"
+      - name: Check prerequisite results
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          if ! printf '%s\n' "$NEEDS" | jq -e 'all(.[]; .result == "success")' >/dev/null; then
+            echo "::error::All prerequisite jobs must succeed"
+            exit 1
+          fi
 
   # This job is to optionally ffwd the main branch to a release branch
   ffwd-to-release-br:
