@@ -40,7 +40,7 @@
     - include_role:
         name: create_restic_secret
       vars:
-        minio_namespace: minio
+        rustfs_namespace: rustfs
         bucket_name: "test-e2e-newbucket-{{ namespace }}"
 
     # No source pvc or replicationsource for this test - restore from empty path in repo
@@ -173,7 +173,7 @@
     - include_role:
         name: create_restic_secret
       vars:
-        minio_namespace: minio
+        rustfs_namespace: rustfs
         bucket_name: "test-e2e-custombucket-{{ namespace }}"
         path_name: "{{ namespace }}-test2"
 

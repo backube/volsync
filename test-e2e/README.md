@@ -42,6 +42,33 @@ $ pipenv run ansible-parallel test_*.yml
 ...
 ```
 
+## S3 test fixture
+
+Restic and Rclone tests use the in-cluster RustFS S3 fixture. From the
+repository root, install the HTTP and custom-CA HTTPS instances before running
+those tests:
+
+```console
+./hack/run-rustfs.sh
+RUSTFS_NAMESPACE=rustfs-tls RUSTFS_USE_TLS=1 ./hack/run-rustfs.sh
+```
+
+The installer pins the chart and images, creates the `restic-e2e` bucket, and
+discovers the cluster's default StorageClass (Kind uses `csi-hostpath-sc`). Set
+`RUSTFS_STORAGE_CLASS` to override the selection, or when there is no default or
+multiple defaults are configured. The installer upgrades resources in place
+and does not delete namespaces. RustFS is used only as a disposable test/dev S3
+fixture; these tests do not establish production compatibility.
+
+The installer prefers the repository-pinned Helm at `bin/helm`; run `make helm`
+to download it, or set `HELM_BIN` to another Helm 3 or 4 executable. HTTP
+installs need no post-renderer. TLS installs use Helm 3's executable
+post-renderer or Helm 4's temporary `postrenderer/v1` subprocess plugin. HTTPS
+setup also requires OpenSSL and Python 3. On OpenShift, the installer leaves
+UID/GID and `fsGroup` assignment to the restricted SCC; server and bucket-init
+security settings remain explicitly restricted. Other clusters use UID/GID and
+`fsGroup` 10001 for writable volumes.
+
 ## Tags
 
 We can use tags to select subsets of tests to run:
@@ -73,12 +100,12 @@ We can use tags to select subsets of tests to run:
       (privileged, baseline, restricted)
   - Returns:
     - `namespace` - The name of the temporary namespace that was created
-- `create_rclone_secret` - Creates a Secret for accessing the in-cluster MinIO
+- `create_rclone_secret` - Creates a Secret for accessing the in-cluster RustFS
   instance
   - Uses:
-    - `get_minio_credentials`
+    - `get_rustfs_credentials`
   - Parameters:
-    - `minio_namespace`
+    - `rustfs_namespace`
     - `namespace`
     - `rclone_secret_name`
   - Returns: none
@@ -90,14 +117,14 @@ We can use tags to select subsets of tests to run:
     - `cluster_info` -
       [Object](https://docs.ansible.com/ansible/latest/collections/kubernetes/core/k8s_cluster_info_module.html#return-values)
       with information about the cluster
-- `get_minio_credentials` - Retrieves the user/password keys for accessing the
-  in-cluster MinIO instance
+- `get_rustfs_credentials` - Retrieves the access/secret keys for accessing the
+  in-cluster RustFS instance
   - Uses: none
   - Parameters:
-    - `minio_namespace`
+    - `rustfs_namespace`
   - Returns:
-    - `minio_access_key`
-    - `minio_secret_key`
+    - `rustfs_access_key`
+    - `rustfs_secret_key`
 - `pvc_has_data` - Ensure a file in a PVC contains specific data
   - Uses:
     - `gather_cluster_info`

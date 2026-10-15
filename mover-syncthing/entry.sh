@@ -201,7 +201,7 @@ for op in "$@"; do
       # ensure our environment is configured before syncthing runs
       preflight_check
 
-      # Use golang crypto/sha256, not minio's optimized sha256-simd
+      # Use the standard Go crypto/sha256 implementation instead of SHA256 SIMD
       # This ensures we can use the fips-enabled golang compiler
       # See https://github.com/syncthing/syncthing/blob/main/lib/sha256/sha256.go
       export STHASHING="standard"

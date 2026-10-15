@@ -29,7 +29,7 @@
     - include_role:
         name: create_rclone_secret
       vars:
-        minio_namespace: minio
+        rustfs_namespace: rustfs
 
     - name: Create source PVC
       kubernetes.core.k8s:
@@ -101,7 +101,7 @@
               copyMethod: Snapshot
       when: podSecurityContext is not defined
 
-    - name: Wait for sync to MinIO to complete
+    - name: Wait for sync to RustFS to complete
       kubernetes.core.k8s_info:
         api_version: volsync.backube/v1alpha1
         kind: ReplicationSource
@@ -163,7 +163,7 @@
               capacity: 1Gi
       when: podSecurityContext is not defined
 
-    - name: Wait for sync from MinIO to complete
+    - name: Wait for sync from RustFS to complete
       kubernetes.core.k8s_info:
         api_version: volsync.backube/v1alpha1
         kind: ReplicationDestination

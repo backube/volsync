@@ -194,7 +194,7 @@ var _ = Describe("Filter Logs Tests", func() {
 Testing mandatory env variables
 == Checking directory for content ===
 == Initialize Dir =======
-created restic repository f5bccd54c8 at s3:http://minio-api-minio.apps.app-aws-411ga-sno-net2-zp5jq.dev06.red-chesterfield.com/ttest-restic-new
+created restic repository f5bccd54c8 at s3:http://s3.example.com/ttest-restic-new
 
 === Starting backup ===
 ~/DEVFEDORA/volsync/TESTDATA ~/DEVFEDORA/volsync/RESTICTESTS
@@ -224,7 +224,7 @@ Restic completed in 18s
 
 		It("Should filter the logs when a log filter is used", func() {
 			// nolint:lll
-			expectedFilteredLog := `created restic repository f5bccd54c8 at s3:http://minio-api-minio.apps.app-aws-411ga-sno-net2-zp5jq.dev06.red-chesterfield.com/ttest-restic-new
+			expectedFilteredLog := `created restic repository f5bccd54c8 at s3:http://s3.example.com/ttest-restic-new
 === Starting backup ===
 created new cache in /home/testuser/DEVFEDORA/volsync/RESTICTESTS/CACHE
 === Starting forget ===

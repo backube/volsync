@@ -4,22 +4,22 @@
   fail: msg="Variable {{ item }} must be defined to use this role"
   when: vars[var_check] is undefined
   with_items:
-    - minio_namespace
+    - rustfs_namespace
     - namespace
     - rclone_secret_name
   loop_control:
     loop_var: var_check
 
 - include_role:
-    name: get_minio_credentials
+    name: get_rustfs_credentials
 
 - name: Determine repo URL
   set_fact:
-    endpoint_url: "http://minio.{{ minio_namespace }}.svc.cluster.local:9000"
+    endpoint_url: "http://rustfs-svc.{{ rustfs_namespace }}.svc.cluster.local:9000"
 
 - name: Set repo URL to use TLS
   set_fact:
-    endpoint_url: "https://minio.{{ minio_namespace }}.svc.cluster.local:9000"
+    endpoint_url: "https://rustfs-svc.{{ rustfs_namespace }}.svc.cluster.local:9000"
   when: use_tls is defined and use_tls == true
 
 - name: Build rclone.conf contents
@@ -27,12 +27,13 @@
     rclone_conf: |
       [rclone-data-mover]
       type = s3
-      provider = Minio
+      provider = Other
       env_auth = false
-      access_key_id = {{ minio_access_key }}
-      secret_access_key = {{ minio_secret_key }}
+      access_key_id = {{ rustfs_access_key }}
+      secret_access_key = {{ rustfs_secret_key }}
       region = us-east-1
       endpoint = {{ endpoint_url }}
+      force_path_style = true
 
 - name: Create rclone secret
   kubernetes.core.k8s:

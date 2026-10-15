@@ -30,7 +30,7 @@
     - include_role:
         name: create_restic_secret
       vars:
-        minio_namespace: minio
+        rustfs_namespace: rustfs
 
     - name: Create source PVC
       kubernetes.core.k8s:
@@ -105,7 +105,7 @@
               cacheCapacity: 1Gi
       when: podSecurityContext is not defined
 
-    - name: Wait for sync to MinIO to complete
+    - name: Wait for sync to RustFS to complete
       kubernetes.core.k8s_info:
         api_version: volsync.backube/v1alpha1
         kind: ReplicationSource

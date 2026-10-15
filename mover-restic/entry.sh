@@ -109,7 +109,7 @@ function ensure_initialized {
         # Using "timeout" above as restic commands such as cat now retry, so a missing repository will
         # mean it keeps retrying
         #
-        # This can happen for some providers (e.g. minio) if the bucket does not exist
+        # This can happen with some S3-compatible providers if the bucket does not exist
         # Restic will return 10 if the bucket exists and no restic repo at the path exists, but will
         # still return 1 if the bucket itself doesn't exist.
         # We can proceed with trying an init which will create the bucket (and path in the bucket if there is one)

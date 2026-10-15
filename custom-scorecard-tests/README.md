@@ -80,8 +80,9 @@ operator-sdk scorecard ./bundle --config custom-scorecard-tests/config.yaml --se
 
 - The example above sends the resulting output to a log.
 - The --selector in this case selects all tests with `suite=volsync-e2e`
-- This will also run the `deploy-prereqs` step which runs the /hack/run-minio.sh
-  script to setup minio in the cluster.
+- This will also run the `deploy-prereqs` step, which runs the
+  `run-rustfs.sh` script bundled in the scorecard-test image to install the
+  RustFS S3 fixture in the cluster.
 - After deploying prereqs it will run all e2e tests in parallel (1 pod gets
   started for each).
 

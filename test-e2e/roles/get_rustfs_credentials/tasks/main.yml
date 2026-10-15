@@ -4,22 +4,22 @@
   fail: msg="Variable {{ item }} must be defined to use this role"
   when: vars[var_check] is undefined
   with_items:
-    - minio_namespace
+    - rustfs_namespace
   loop_control:
     loop_var: var_check
 
-- name: Get MinIO Secret
+- name: Get RustFS credentials Secret
   kubernetes.core.k8s_info:
     api_version: v1
     kind: Secret
-    name: minio
-    namespace: "{{ minio_namespace }}"
-  register: minio_secret
+    name: rustfs-secret
+    namespace: "{{ rustfs_namespace }}"
+  register: rustfs_secret
 
 - name: Save access key
   ansible.builtin.set_fact:
-    minio_access_key: "{{ minio_secret.resources[0].data['rootUser'] | b64decode }}"
+    rustfs_access_key: "{{ rustfs_secret.resources[0].data['RUSTFS_ACCESS_KEY'] | b64decode }}"
 
 - name: Save secret key
   ansible.builtin.set_fact:
-    minio_secret_key: "{{ minio_secret.resources[0].data['rootPassword'] | b64decode }}"
+    rustfs_secret_key: "{{ rustfs_secret.resources[0].data['RUSTFS_SECRET_KEY'] | b64decode }}"

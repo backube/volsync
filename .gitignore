@@ -44,3 +44,4 @@ test-kuttl/kubeconfig
 
 # temp bundle files
 /bundle_tmp*
+__pycache__/

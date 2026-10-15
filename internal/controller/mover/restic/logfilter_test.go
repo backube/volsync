@@ -45,7 +45,7 @@ restic 0.14.0 (v0.3.0-952-g444628f-dirty) compiled with go1.19.3 on linux/amd64
 Testing mandatory env variables
 == Checking directory for content ===
 == Initialize Dir =======
-created restic repository f5bccd54c8 at s3:http://minio-api-minio.apps.app-aws-411ga-sno-net2-zp5jq.dev06.red-chesterfield.com/ttest-restic-new
+created restic repository f5bccd54c8 at s3:http://s3.example.com/ttest-restic-new
 
 Please note that knowledge of your password is required to access
 the repository. Losing your password means that your data is
@@ -69,7 +69,7 @@ Restic completed in 18s
 
 			// nolint:lll
 			expectedFilteredResticSourceLogSuccessful := `== Initialize Dir =======
-created restic repository f5bccd54c8 at s3:http://minio-api-minio.apps.app-aws-411ga-sno-net2-zp5jq.dev06.red-chesterfield.com/ttest-restic-new
+created restic repository f5bccd54c8 at s3:http://s3.example.com/ttest-restic-new
 repository f5bccd54 opened (repository version 2) successfully, password is correct
 created new cache in /home/testuser/DEVFEDORA/volsync/RESTICTESTS/CACHE
 no parent snapshot found, will read all files
@@ -236,7 +236,7 @@ restic 0.16.4 compiled with go1.21.8 on linux/amd64
 Testing mandatory env variables
 === Check for dir initialized ===
 === Initialize Dir ===
-created restic repository 374c6313cb at s3:http://minio.minio.svc.cluster.local:9000/resticbucket1b
+created restic repository 374c6313cb at s3:http://rustfs-svc.rustfs.svc.cluster.local:9000/resticbucket1b
 
 Please note that knowledge of your password is required to access
 the repository. Losing your password means that your data is
@@ -249,7 +249,7 @@ Restic completed in 4s
 
 		// nolint:lll
 		expectedFilteredResticDestlogSuccessful := `=== Initialize Dir ===
-created restic repository 374c6313cb at s3:http://minio.minio.svc.cluster.local:9000/resticbucket1b
+created restic repository 374c6313cb at s3:http://rustfs-svc.rustfs.svc.cluster.local:9000/resticbucket1b
 No eligible snapshots found
 === No data will be restored ===
 Restic completed in 4s`
