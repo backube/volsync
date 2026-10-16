@@ -55,28 +55,31 @@ Add a new database.
    $ exit
 
 
-Now edit ``examples/rclone/rclone.conf`` with your rclone configuration, or you can deploy minio as object-storage to use
-with the examples.
+Now edit ``examples/rclone/rclone.conf`` with your Rclone configuration, or use
+the in-cluster RustFS fixture as the S3-compatible object storage for this
+example.
 
-To start minio in your cluster, run:
+To start RustFS in your cluster, run:
 
 .. code:: console
 
-   $ hack/run-minio.sh
+   $ hack/run-rustfs.sh
 
-If using minio then you can edit ``examples/rclone/rclone.conf`` to match the following:
+For the local RustFS fixture, edit ``examples/rclone/rclone.conf`` to match the
+following:
 
 .. code-block:: none
-    :caption: rclone.conf for use with local minio
+    :caption: rclone.conf for use with local RustFS
 
     [rclone-bucket]
     type = s3
-    provider = Minio
+    provider = Other
     env_auth = false
     access_key_id = access
     secret_access_key = password
     region = us-east-1
-    endpoint = http://minio.minio.svc.cluster.local:9000
+    endpoint = http://rustfs-svc.rustfs.svc.cluster.local:9000
+    force_path_style = true
 
 Now, deploy the ``rclone-secret`` followed by ``ReplicationSource`` configuration.
 

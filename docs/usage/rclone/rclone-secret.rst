@@ -74,12 +74,13 @@ Here is an example ``rclone-secret`` that sets ``RCLONE_BWLIMIT`` to 5M:
      rclone.conf: |
        [s3-bucket]
        type = s3
-       provider = Minio
+       provider = Other
        env_auth = false
        access_key_id = user1
        secret_access_key = abc123
        region = us-east-1
-       endpoint = http://minio.minio.svc.cluster.local:9000
+       endpoint = http://rustfs-svc.rustfs.svc.cluster.local:9000
+       force_path_style = true
 
 For detailed information on Rclone environment variables see the
 `Rclone environment variable documentation <https://rclone.org/docs/#environment-variables>`_.

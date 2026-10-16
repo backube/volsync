@@ -49,21 +49,36 @@ replication. Follow the Go toolchain declared in `go.mod` and the CI workflow.
   `mover-restic`. Controller suites use controller-runtime envtest local API
   servers, not a live cluster. The envtest tools or required Kubernetes API
   server assets may need to be downloaded on first run.
+- Run `hack/test-run-rustfs-storage-class.sh` to check StorageClass selection
+  behavior without a cluster.
 
 ## Live end-to-end tests
 
-These Ansible tests require a Kubernetes cluster with VolSync and MinIO already
+These Ansible tests require a Kubernetes cluster with VolSync and RustFS already
 installed. `make test-e2e-install` installs Pipenv and Ansible/Python
 dependencies; use a Python version supported by `test-e2e/Pipfile.lock` and CI.
-For an existing cluster, install VolSync and MinIO before running the tests. For
-a disposable local Kind cluster, these scripts create the cluster and install
-VolSync and MinIO (requires Docker, Kind, kubectl, and Helm):
+For an existing cluster, install VolSync and then run the RustFS fixture setup
+below. For a disposable local Kind cluster, these scripts create the cluster,
+install VolSync, and provision the RustFS fixtures (requires Docker, Kind,
+kubectl, and Helm; the HTTPS fixture also requires OpenSSL and Python 3):
 
 ```console
 ./hack/setup-kind-cluster.sh
 ./hack/run-in-kind.sh
-./hack/run-minio.sh
+./hack/run-rustfs.sh
+RUSTFS_NAMESPACE=rustfs-tls RUSTFS_USE_TLS=1 ./hack/run-rustfs.sh
 ```
+
+The RustFS installer prefers the repository-pinned Helm at `bin/helm`; run
+`make helm` to download it, or set `HELM_BIN` to another Helm 3 or 4 executable.
+HTTP installs need no post-renderer. TLS installs use Helm 3's executable
+post-renderer or Helm 4's temporary `postrenderer/v1` subprocess plugin.
+It discovers the cluster's default StorageClass (Kind uses
+`csi-hostpath-sc`); set `RUSTFS_STORAGE_CLASS` if no default is configured,
+multiple defaults exist, or you want to override it. On OpenShift it leaves
+UID/GID and `fsGroup` assignment to the restricted SCC while retaining explicit
+security settings for RustFS and its bucket-init Job. Other clusters use UID/GID
+and `fsGroup` 10001 for writable volumes.
 
 For an existing cluster, build the CLI plugin with `make cli` before running
 CLI-tagged tests; the playbooks use `bin/kubectl-volsync`. The local setup above
@@ -80,11 +95,23 @@ See `test-e2e/README.md` for test tags.
 **Cluster safety:** Before any cluster-mutating command, confirm authorization
 and verify the current kube context. Use only a disposable local cluster; never
 use a shared or production context. In particular, `hack/setup-kind-cluster.sh`
-deletes the default Kind cluster, `hack/run-minio.sh` deletes the configured
-MinIO namespace (`MINIO_NAMESPACE`, default `minio`) and installs MinIO with
-fixed test credentials (TLS is disabled by default), and
-`hack/ensure-volsync-test-runner.sh` creates a `ClusterRoleBinding` granting
-`cluster-admin`.
+deletes the default Kind cluster. `hack/run-rustfs.sh` creates or upgrades the
+configured namespace (`RUSTFS_NAMESPACE`, default `rustfs`) and installs a
+disposable S3 fixture with fixed test credentials; it does not delete
+namespaces. Running it with `RUSTFS_USE_TLS=1` also creates the configured
+RustFS HTTPS fixture and a self-signed CA. `hack/ensure-volsync-test-runner.sh`
+creates a `ClusterRoleBinding` granting `cluster-admin`.
+
+## Temporary Prow compatibility
+
+`Dockerfile.minio-test-storage`, `hack/minio-test-image.env`,
+`hack/minio-test-entrypoint.sh`, and `hack/run-minio.sh` are temporary
+compatibility scaffolding for the existing `openshift/release` Prow config.
+The wrapper translates the legacy MinIO namespace and TLS variables to RustFS;
+it must not delete namespaces or install MinIO. Normal development and GitHub
+Actions should use `hack/run-rustfs.sh`. First update `openshift/release` to
+remove its MinIO build and test references, then remove this scaffolding. Keep
+issue #2120 open until both follow-ups are complete.
 
 ## Pull requests and repository bots
 

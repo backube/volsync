@@ -1,5 +1,3 @@
-ARG MINIO_TEST_STORAGE_IMAGE=volsync-test-storage:local
-
 # Build the volsync-custom-scorecard-tests binary
 FROM --platform=$BUILDPLATFORM golang:1.26 AS builder
 
@@ -25,9 +23,6 @@ COPY ./api/ /workspace-cli/api/
 WORKDIR /workspace-cli
 RUN GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o bin/kubectl-volsync -ldflags "-X=github.com/backube/volsync/kubectl-volsync/cmd.volsyncVersion=${version_arg}" ./kubectl-volsync/main.go
 
-# Reuse the same image that local and GitHub E2E build.
-FROM ${MINIO_TEST_STORAGE_IMAGE} AS minio-test-storage
-
 # Build final container
 FROM registry.access.redhat.com/ubi9/python-311
 
@@ -38,6 +33,7 @@ RUN dnf --refresh update -y && \
       bash \
       python \
       python3-pip \
+      openssl \
       tar \
       gzip \
     && dnf clean all
@@ -52,14 +48,13 @@ WORKDIR ${HOME}
 
 COPY --from=builder /workspace/volsync-custom-scorecard-tests /usr/local/bin/volsync-custom-scorecard-tests
 COPY --from=builder /workspace-cli/bin/kubectl-volsync ./bin/kubectl-volsync
-COPY --from=minio-test-storage /usr/bin/minio /usr/bin/minio
-COPY --from=minio-test-storage /usr/bin/mc /usr/bin/mc
-COPY --from=minio-test-storage /usr/bin/docker-entrypoint.sh /usr/bin/docker-entrypoint.sh
 
 # Copy e2e tests into the container
 COPY ./test-e2e/. ./test-e2e
 COPY ./hack/ensure-default-csi.sh .
-COPY ./hack/run-minio.sh .
+COPY ./hack/run-rustfs.sh .
+COPY ./hack/rustfs-https-probes.py .
+COPY ./hack/rustfs-test-assets.env .
 
 # Copy in auto-retry script
 COPY ./.ci-scripts/retry.sh .
@@ -74,7 +69,7 @@ RUN cd test-e2e && \
     ../retry.sh pipenv sync && \
     ../retry.sh pipenv run ansible-galaxy install -r requirements.yml
 
-RUN chmod 0755 /usr/bin/minio /usr/bin/mc /usr/bin/docker-entrypoint.sh
+RUN chmod 0755 ./run-rustfs.sh ./rustfs-https-probes.py
 
 # Install helm & kubectl
 RUN	curl -sSL "https://get.helm.sh/helm-${helm_version_arg}-linux-amd64.tar.gz" | tar xzf - -C /usr/local/bin/ --strip-components=1 --wildcards '*/helm' && \

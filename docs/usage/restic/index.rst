@@ -27,7 +27,9 @@ For both backup and restore operations, it is necessary to specify a backup
 repository for Restic. The repository and connection information are defined in
 a ``restic-config`` Secret.
 
-Below is an example showing how to use a repository stored on Minio.
+Below is an example using the in-cluster RustFS fixture for development and
+testing. For other deployments, use the endpoint and credentials for your S3
+provider.
 
 .. code-block:: yaml
 
@@ -38,7 +40,7 @@ Below is an example showing how to use a repository stored on Minio.
    type: Opaque
    stringData:
      # The repository url
-     RESTIC_REPOSITORY: s3:http://minio.minio.svc.cluster.local:9000/restic-repo
+     RESTIC_REPOSITORY: s3:http://rustfs-svc.rustfs.svc.cluster.local:9000/restic-repo
      # The repository encryption key
      RESTIC_PASSWORD: my-secure-restic-password
      # ENV vars specific to the chosen back end
@@ -63,13 +65,13 @@ As an example one restic-config secret could use:
 
 .. code-block:: yaml
 
-  RESTIC_REPOSITORY: s3:http://minio.minio.svc.cluster.local:9000/restic-repo/pvc-1-backup
+  RESTIC_REPOSITORY: s3:http://rustfs-svc.rustfs.svc.cluster.local:9000/restic-repo/pvc-1-backup
 
 While another (saved in a separate restic-config secret) could use:
 
 .. code-block:: yaml
 
-  RESTIC_REPOSITORY: s3:http://minio.minio.svc.cluster.local:9000/restic-repo/pvc-2-backup
+  RESTIC_REPOSITORY: s3:http://rustfs-svc.rustfs.svc.cluster.local:9000/restic-repo/pvc-2-backup
 
 .. note::
    If backing up multiple PVCs to the same S3 bucket, the path underneath the bucket must

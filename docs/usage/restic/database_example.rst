@@ -74,14 +74,14 @@ Add a new database:
 Restic Repository Setup
 -----------------------
 
-For the purpose of this tutorial we are using minio as the object storage target
-for the backup.
+For this tutorial, use the in-cluster RustFS fixture as the S3-compatible object
+storage target for the backup.
 
-Start ``minio``:
+Start RustFS:
 
 .. code-block:: console
 
-   $ hack/run-minio.sh
+   $ hack/run-rustfs.sh
 
 The ``restic-config`` Secret configures the Restic repository parameters:
 
@@ -95,7 +95,7 @@ The ``restic-config`` Secret configures the Restic repository parameters:
    type: Opaque
    stringData:
       # The repository url
-      RESTIC_REPOSITORY: s3:http://minio.minio.svc.cluster.local:9000/restic-repo
+      RESTIC_REPOSITORY: s3:http://rustfs-svc.rustfs.svc.cluster.local:9000/restic-repo
       # The repository encryption key
       RESTIC_PASSWORD: my-secure-restic-password
       # ENV vars specific to the back end
@@ -193,8 +193,8 @@ repository:
 
 .. code-block:: console
 
-   # In one window, create a port forward to access the minio server
-   $ kubectl port-forward --namespace minio svc/minio 9000:9000
+   # In one window, create a port forward to access the RustFS S3 service
+   $ kubectl port-forward --namespace rustfs svc/rustfs-svc 9000:9000
 
    # An another, access the repository w/ restic via the above forward
    $ AWS_ACCESS_KEY_ID=access AWS_SECRET_ACCESS_KEY=password restic -r s3:http://127.0.0.1:9000/restic-repo snapshots
@@ -325,7 +325,7 @@ For ``pvc-a``:
    type: Opaque
    stringData:
       # The repository url with pvc-a-backup as the subpath under the restic-repo bucket
-      RESTIC_REPOSITORY: s3:http://minio.minio.svc.cluster.local:9000/restic-repo/pvc-a-backup
+      RESTIC_REPOSITORY: s3:http://rustfs-svc.rustfs.svc.cluster.local:9000/restic-repo/pvc-a-backup
       # The repository encryption key
       RESTIC_PASSWORD: my-secure-restic-password-pvc-a
       # ENV vars specific to the back end
@@ -368,7 +368,7 @@ For ``pvc-b``:
    type: Opaque
    stringData:
       # The repository url with pvc-b-backup as the subpath under the restic-repo bucket
-      RESTIC_REPOSITORY: s3:http://minio.minio.svc.cluster.local:9000/restic-repo/pvc-b-backup
+      RESTIC_REPOSITORY: s3:http://rustfs-svc.rustfs.svc.cluster.local:9000/restic-repo/pvc-b-backup
       # The repository encryption key - using a different key from pvc-a.  This will not prevent overwrites
       # or deletes of the data for others who have access to the bucket, but will prevent reads/writes
       # to the restic data in the pvc-b-backup folder for those without this encryption key.

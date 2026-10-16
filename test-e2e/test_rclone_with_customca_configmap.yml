@@ -7,7 +7,7 @@
     - volumepopulator
   vars:
     rclone_secret_name: rclone-secret
-    minio_namespace: minio-tls
+    rustfs_namespace: rustfs-tls
     ca_configmap_name: rclone-ca-configmap
   tasks:
     - include_role:
@@ -107,7 +107,7 @@
                 key: "ca.crt"
       when: podSecurityContext is not defined
 
-    - name: Wait for sync to MinIO to complete
+    - name: Wait for sync to RustFS to complete
       kubernetes.core.k8s_info:
         api_version: volsync.backube/v1alpha1
         kind: ReplicationSource
@@ -175,7 +175,7 @@
                 key: "ca.crt"
       when: podSecurityContext is not defined
 
-    - name: Wait for sync from MinIO to complete
+    - name: Wait for sync from RustFS to complete
       kubernetes.core.k8s_info:
         api_version: volsync.backube/v1alpha1
         kind: ReplicationDestination

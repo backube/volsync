@@ -45,16 +45,33 @@ the cluster, or you can run the operator locally against the cluster.
          $ make run
 
 If you will be working with the Rclone or Restic movers, you may want to deploy
-Minio in the kind cluster to act as an object repository. It can be started via:
+RustFS in the kind cluster as a disposable S3-compatible object repository. It
+can be started via the script below. This fixture is for local development and
+testing; it is not a claim of production S3 compatibility.
 
 .. code-block:: console
 
-   $ ./hack/run-minio.sh
+   $ ./hack/run-rustfs.sh
 
-With no image argument, the script builds the pinned MinIO and MinIO Client test
-image locally and loads it into kind. To use an image that is already available
-to the cluster, pass its image reference explicitly:
+The script installs the pinned RustFS Helm chart and server, then initializes
+the ``restic-e2e`` bucket with a pinned RustFS CLI image. To enable HTTPS with a
+self-signed certificate for custom-CA testing, run:
 
 .. code-block:: console
 
-   $ ./hack/run-minio.sh registry.example.com/minio-test-storage:tag
+   $ RUSTFS_NAMESPACE=rustfs-tls RUSTFS_USE_TLS=1 ./hack/run-rustfs.sh
+
+The installer discovers the cluster's default StorageClass (``csi-hostpath-sc``
+in the Kind setup); set ``RUSTFS_STORAGE_CLASS`` to override it. If the cluster
+has no default or has multiple defaults, specify the override explicitly.
+
+The installer prefers the repository-pinned Helm at ``bin/helm``; run
+``make helm`` to download it, or set ``HELM_BIN`` to another Helm 3 or 4
+executable. HTTP installs need no post-renderer. TLS installs use Helm 3's
+executable post-renderer or Helm 4's temporary ``postrenderer/v1`` subprocess
+plugin. The HTTPS fixture also requires OpenSSL and Python 3.
+
+On OpenShift, the installer leaves UID/GID and ``fsGroup`` assignment to the
+restricted SCC while keeping the server and bucket-init Job security settings
+explicit. On other clusters it uses UID/GID and ``fsGroup`` 10001 for writable
+volumes.

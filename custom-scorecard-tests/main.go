@@ -147,11 +147,6 @@ func DeployPrereqs(bundle *apimanifests.Bundle) scapiv1alpha3.TestStatus {
 	r.State = scapiv1alpha3.PassState
 	r.Errors = make([]string, 0)
 	r.Suggestions = make([]string, 0)
-	minioImage := ""
-	if len(os.Args) > 2 {
-		minioImage = os.Args[2]
-	}
-
 	// Ensure csi storagedriver is default
 	output, err := shellout("./ensure-default-csi.sh")
 	r.Log = output
@@ -160,17 +155,16 @@ func DeployPrereqs(bundle *apimanifests.Bundle) scapiv1alpha3.TestStatus {
 		return wrapResult(r)
 	}
 
-	// Run minio
-	// helm writes to $HOME so set it to /tmp before running this step
-	output2, err := shellout(minioCommand("/tmp", "minio", false, minioImage))
+	// Run RustFS without TLS, then with TLS for the custom-CA tests.
+	// Helm writes to $HOME, so set it to /tmp before running these steps.
+	output2, err := shellout(rustfsCommand("/tmp", "rustfs", false))
 	r.Log = r.Log + "\n\n" + output2
 	if err != nil {
 		r.State = scapiv1alpha3.ErrorState
 		return wrapResult(r)
 	}
 
-	// Run minio w/ tls
-	output3, err := shellout(minioCommand("/tmp/", "minio-tls", true, minioImage))
+	output3, err := shellout(rustfsCommand("/tmp", "rustfs-tls", true))
 	r.Log = r.Log + "\n\n" + output3
 	if err != nil {
 		r.State = scapiv1alpha3.FailState
@@ -181,20 +175,13 @@ func DeployPrereqs(bundle *apimanifests.Bundle) scapiv1alpha3.TestStatus {
 	return wrapResult(r)
 }
 
-func minioCommand(home, namespace string, useTLS bool, image string) string {
+func rustfsCommand(home, namespace string, useTLS bool) string {
 	command := fmt.Sprintf("export HOME=%s &&", home)
 	if useTLS {
-		command += fmt.Sprintf(" MINIO_NAMESPACE=%s MINIO_USE_TLS=1", namespace)
+		command += fmt.Sprintf(" RUSTFS_NAMESPACE=%s RUSTFS_USE_TLS=1", namespace)
 	}
-	command += " ./run-minio.sh"
-	if image != "" {
-		command += " " + shellQuote(image)
-	}
+	command += " ./run-rustfs.sh"
 	return command
-}
-
-func shellQuote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
 func testAnsiblePlaybook(ansiblePlaybookTestName string) scapiv1alpha3.TestStatus {

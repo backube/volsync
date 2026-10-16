@@ -4,22 +4,19 @@
   fail: msg="Variable {{ item }} must be defined to use this role"
   when: vars[var_check] is undefined
   with_items:
-    - minio_namespace
+    - rustfs_namespace
     - namespace
     - ca_configmap_name
   loop_control:
     loop_var: var_check
 
-- include_role:
-    name: get_minio_credentials
-
-- name: Get MinIO CA Secret
+- name: Get RustFS CA certificate
   kubernetes.core.k8s_info:
     api_version: v1
     kind: Secret
-    name: minio-crt
-    namespace: "{{ minio_namespace }}"
-  register: minio_secret
+    name: rustfs-cert
+    namespace: "{{ rustfs_namespace }}"
+  register: rustfs_cert
 
 # For tests that use CustomCA in a configmap
 - name: Create CustomCA configmap
@@ -32,4 +29,4 @@
         name: "{{ ca_configmap_name }}"
         namespace: "{{ namespace }}"
       data:
-        ca.crt: "{{ minio_secret.resources[0].data['public.crt'] | b64decode }}"
+        ca.crt: "{{ rustfs_cert.resources[0].data['rustfs_cert.pem'] | b64decode }}"
