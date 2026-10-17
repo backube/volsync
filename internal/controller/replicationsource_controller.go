@@ -98,6 +98,14 @@ func (r *ReplicationSourceReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	inst := &volsyncv1alpha1.ReplicationSource{}
 	if err := r.Get(ctx, req.NamespacedName, inst); err != nil {
 		if kerrors.IsNotFound(err) {
+			// The CR has been deleted (or otherwise disappeared); drop any
+			// metric series that were created for it so stale values (e.g.
+			// volume_out_of_sync=1) are no longer exported. See issue #1194.
+			clearVolSyncMetrics(prometheus.Labels{
+				"obj_name":      req.Name,
+				"obj_namespace": req.Namespace,
+			})
+		} else {
 			logger.Error(err, "Failed to get Source")
 		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
