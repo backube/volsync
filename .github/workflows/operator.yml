@@ -24,7 +24,7 @@ env:
 jobs:
   lint:
     name: Lint
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     steps:
       - name: Checkout source
@@ -70,7 +70,7 @@ jobs:
 
   generated-files-check:
     name: Auto Generated Files Check
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     steps:
       - name: Checkout source
@@ -150,7 +150,7 @@ jobs:
 
   test-operator:
     name: Test-operator
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     steps:
       - name: Checkout source
@@ -219,7 +219,7 @@ jobs:
 
   build-scorecard:
     name: Build-custom-scorecard-tests
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     steps:
       - name: Checkout source
@@ -450,7 +450,7 @@ jobs:
     name: Successful e2e tests
     needs: [e2e, lint, generated-files-check, test-operator, build-scorecard]
     if: always()
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - name: Check prerequisite results
         env:
@@ -468,7 +468,7 @@ jobs:
     if: >
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
       (github.ref == 'refs/heads/main')
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
 
@@ -508,7 +508,7 @@ jobs:
       (github.ref == 'refs/heads/main' ||
        startsWith(github.ref, 'refs/heads/release-') ||
        startsWith(github.ref, 'refs/tags/v'))
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - name: No-op
         run: /bin/true
