@@ -1817,6 +1817,74 @@ var _ = Describe("Restic as a source", func() {
 				})
 			})
 
+			When("prune becomes due while a backup job is active", func() {
+				It("keeps the active job until it completes, then schedules prune", func() {
+					pruneInterval := int32(1)
+					mover.pruneInterval = &pruneInterval
+					lastPruned := metav1.NewTime(time.Now())
+					mover.sourceStatus = &volsyncv1alpha1.ReplicationSourceResticStatus{
+						LastPruned: &lastPruned,
+					}
+
+					j, err := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(j).To(BeNil()) // job is still running
+
+					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+					job = &batchv1.Job{}
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+					Expect(job.Spec.Template.Spec.Containers[0].Args).To(Equal([]string{"backup"}))
+					originalTemplate := job.Spec.Template.DeepCopy()
+					originalUID := job.UID
+
+					job.Status.Active = 1
+					Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
+
+					lastPruned = metav1.NewTime(time.Now().Add(-48 * time.Hour))
+					mover.sourceStatus.LastPruned = &lastPruned
+					Expect(mover.shouldPrune(time.Now())).To(BeTrue())
+
+					// An immutable update is deferred while the backup is active and must not remove the Job.
+					j, err = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(j).To(BeNil()) // job is still running
+					job = &batchv1.Job{}
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+					Expect(job.UID).To(Equal(originalUID))
+					Expect(job.DeletionTimestamp).To(BeNil())
+					Expect(job.Status.Active).To(Equal(int32(1)))
+					Expect(job.Spec.Template).To(Equal(*originalTemplate))
+					Expect(mover.sourceStatus.LastPruned).To(Equal(&lastPruned))
+
+					job.Status.Active = 0
+					job.Status.Succeeded = 1
+					Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
+
+					// Once completed, the old template can be replaced on the next reconcile.
+					_, err = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+					Expect(err).To(HaveOccurred()) // inactive immutable Jobs are deleted before replacement
+					job = &batchv1.Job{}
+					Expect(kerrors.IsNotFound(k8sClient.Get(ctx, nsn, job))).To(BeTrue())
+					Expect(mover.sourceStatus.LastPruned).To(Equal(&lastPruned))
+
+					j, err = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(j).To(BeNil()) // replacement job is still running
+					job = &batchv1.Job{}
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+					Expect(job.UID).NotTo(Equal(originalUID))
+					Expect(job.Spec.Template.Spec.Containers[0].Args).To(Equal([]string{"backup", "prune"}))
+					Expect(mover.sourceStatus.LastPruned).To(Equal(&lastPruned))
+
+					job.Status.Succeeded = 1
+					Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
+					j, err = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(j).NotTo(BeNil())
+					Expect(mover.sourceStatus.LastPruned.After(lastPruned.Time)).To(BeTrue())
+				})
+			})
+
 			When("Doing a sync when the job already exists", func() {
 				JustBeforeEach(func() {
 					mover.containerImage = "my-restic-mover-image"

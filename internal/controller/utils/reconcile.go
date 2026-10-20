@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
+	batchv1 "k8s.io/api/batch/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -46,15 +47,28 @@ func ReconcileBatch(l logr.Logger, reconcileFuncs ...ReconcileFunc) (bool, error
 }
 
 // If an update causes an immutable error, delete the object and return an error (or potentially
-// an error from the delete if the delete fails).
-// The caller should ensure (usually via a requeue) that createOrUpdate is called on the resource again in
-// order for it to be recreated.
+// an error from the delete if the delete fails). Active Jobs are preserved until their Pods
+// complete, and their replacement is deferred until a later reconcile.
+// The caller should ensure (usually via a requeue) that createOrUpdate is called on the resource
+// again in order for it to be recreated.
 func CreateOrUpdateDeleteOnImmutableErr(ctx context.Context, k8sClient client.Client, obj client.Object,
 	log logr.Logger, f ctrlutil.MutateFn) (ctrlutil.OperationResult, error) {
 	op, err := ctrlutil.CreateOrUpdate(ctx, k8sClient, obj, f)
 
 	// Check if we got an error trying to update an immutable field
 	if err != nil && kerrors.IsInvalid(err) && strings.Contains(strings.ToLower(err.Error()), "field is immutable") {
+		if job, ok := obj.(*batchv1.Job); ok {
+			terminating := int32(0)
+			if job.Status.Terminating != nil {
+				terminating = *job.Status.Terminating
+			}
+			if job.Status.Active > 0 || terminating > 0 {
+				log.Info("Deferring immutable Job replacement while Pods are active or terminating",
+					"active", job.Status.Active, "terminating", terminating)
+				return ctrlutil.OperationResultNone, nil
+			}
+		}
+
 		log.Error(err, "Immutable error updating the object. Will delete so it can be recreated")
 
 		delErr := k8sClient.Delete(ctx, obj, client.PropagationPolicy(metav1.DeletePropagationBackground))

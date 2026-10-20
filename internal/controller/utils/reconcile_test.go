@@ -174,6 +174,64 @@ var _ = Describe("CreateOrUpdateDeleteOnImmutableErr", func() {
 				reloadErr := k8sClient.Get(ctx, client.ObjectKeyFromObject(job), testJob)
 				Expect(kerrors.IsNotFound(reloadErr)).To(BeTrue())
 			})
+
+			It("Should preserve an active job when an immutable field is changed", func() {
+				testJob.Status.Active = 1
+				Expect(k8sClient.Status().Update(ctx, testJob)).To(Succeed())
+				originalTemplate := testJob.Spec.Template.DeepCopy()
+				originalUID := testJob.UID
+
+				job := &batchv1.Job{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      testJobName,
+						Namespace: testNamespace.GetName(),
+					},
+				}
+				op, err := utils.CreateOrUpdateDeleteOnImmutableErr(ctx, k8sClient, job, logger, func() error {
+					// Job.Spec.Template is immutable.
+					job.Spec.Template.Spec.NodeName = "node-b"
+					return nil
+				})
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(op).To(Equal(ctrlutil.OperationResultNone))
+
+				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(job), testJob)).To(Succeed())
+				Expect(testJob.UID).To(Equal(originalUID))
+				Expect(testJob.DeletionTimestamp).To(BeNil())
+				Expect(testJob.Status.Active).To(Equal(int32(1)))
+				Expect(testJob.Spec.Template).To(Equal(*originalTemplate))
+			})
+
+			It("Should preserve a terminating job when an immutable field is changed", func() {
+				terminating := int32(1)
+				testJob.Status.Terminating = &terminating
+				Expect(k8sClient.Status().Update(ctx, testJob)).To(Succeed())
+				originalTemplate := testJob.Spec.Template.DeepCopy()
+				originalUID := testJob.UID
+
+				job := &batchv1.Job{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      testJobName,
+						Namespace: testNamespace.GetName(),
+					},
+				}
+				op, err := utils.CreateOrUpdateDeleteOnImmutableErr(ctx, k8sClient, job, logger, func() error {
+					// Job.Spec.Template is immutable.
+					job.Spec.Template.Spec.NodeName = "node-c"
+					return nil
+				})
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(op).To(Equal(ctrlutil.OperationResultNone))
+
+				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(job), testJob)).To(Succeed())
+				Expect(testJob.UID).To(Equal(originalUID))
+				Expect(testJob.DeletionTimestamp).To(BeNil())
+				Expect(testJob.Status.Terminating).NotTo(BeNil())
+				Expect(*testJob.Status.Terminating).To(Equal(terminating))
+				Expect(testJob.Spec.Template).To(Equal(*originalTemplate))
+			})
 		})
 	})
 })
