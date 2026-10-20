@@ -57,21 +57,23 @@ type Result struct {
 	// RetryAfter is used to indicate whether synchronization should be
 	// explicitly retried, and when. Setting to nil (default) does not cause an
 	// explicit retry, but Synchronize() will be retried when a watched object
-	// is modified. Setting to 0 indicates an immediate retry. Other values
-	// provide a delay.
+	// is modified. Setting to 0 or a negative value indicates an immediate
+	// retry. Positive values provide a delay.
 	RetryAfter *time.Duration
 }
 
 // ReconcileResult converts a Result into controllerruntime's reconcile result
 // structure
 func (mr Result) ReconcileResult() ctrl.Result {
-	if mr.RetryAfter != nil {
-		return ctrl.Result{
-			Requeue:      true,
-			RequeueAfter: *mr.RetryAfter,
-		}
+	if mr.RetryAfter == nil {
+		return ctrl.Result{}
 	}
-	return ctrl.Result{}
+
+	retryAfter := *mr.RetryAfter
+	if retryAfter <= 0 {
+		retryAfter = time.Nanosecond
+	}
+	return ctrl.Result{RequeueAfter: retryAfter}
 }
 
 // InProgress result indicates that the requested operation is still ongoing,

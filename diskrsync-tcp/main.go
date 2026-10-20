@@ -119,6 +119,9 @@ func createControlFile(fileName string) error {
 }
 
 func connectToTarget(sourceFile, targetAddress string, port int, opts *options, logger logr.Logger) error {
+	// #nosec G703 -- G703 taints os.Args[1].
+	// mover-rsync-tls/client.sh passes its fixed /dev/block constant as argv[1]
+	// before the TCP operation.
 	f, err := os.Open(filepath.Clean(sourceFile))
 	if err != nil {
 		return err
@@ -176,6 +179,9 @@ func startServer(targetFile string, port int, opts *options, logger logr.Logger)
 	var w spgz.SparseFile
 	useReadBuffer := false
 
+	// #nosec G703 -- G703 taints os.Args[1].
+	// mover-rsync-tls/server.sh passes its fixed /dev/block constant as argv[1]
+	// before the TCP operation.
 	f, err := os.OpenFile(filepath.Clean(targetFile), os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		return err
