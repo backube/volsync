@@ -84,13 +84,6 @@
       "updateNotScheduled": false
     },
     {
-      // Keep temporary Prow MinIO image source pins updated together.
-      "groupName": "MinIO test image sources",
-      "groupSlug": "minio-test-image",
-      "matchDatasources": ["github-releases"],
-      "matchPackageNames": ["minio/minio", "minio/mc"]
-    },
-    {
       // Keep the RustFS test fixture chart and images updated together.
       "groupName": "RustFS test fixture",
       "groupSlug": "rustfs-test-fixture",
@@ -104,16 +97,6 @@
   // Set max number of PRs. This is set high since we have many updates on /hold
   "prConcurrentLimit": 50,
   "customManagers": [
-    {
-      "customType": "regex",
-      "description": "Temporary Prow MinIO test image source updates",
-      "managerFilePatterns": [
-        "/^hack/minio-test-image\\.env$/"
-      ],
-      "matchStrings": [
-        "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+) versioning=(?<versioning>[^\\s]+)\\s+[^=\\s]+=(?<currentValue>[^\\s]+)"
-      ]
-    },
     {
       "customType": "regex",
       "description": "RustFS test fixture chart and image updates",
