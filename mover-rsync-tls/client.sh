@@ -57,7 +57,7 @@ fi
 
 cd "$SCRIPT_DIR"
 
-# shellcheck disable=SC2317  # It's reachable due to the TRAP
+# shellcheck disable=SC2317,SC2329  # It's reachable due to the TRAP
 function stop_stunnel() {
     ## Terminate stunnel
     kill -TERM "$(<"$STUNNEL_PID_FILE")"
