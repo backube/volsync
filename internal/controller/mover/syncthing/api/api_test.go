@@ -4,6 +4,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 
@@ -36,6 +37,19 @@ var _ = Describe("Syncthing connection", func() {
 				// set a value in each field
 				serverState.Configuration.Version = 10
 				serverState.SystemStatus.MyID = myID.GoString()
+				listenerError := "listener error"
+				serverState.SystemStatus.ConnectionServiceStatus = map[string]ListenerStatusEntry{
+					"tcp://0.0.0.0:22000": {
+						Error:        &listenerError,
+						LANAddresses: []string{"tcp://127.0.0.1:22000"},
+						WANAddresses: []string{"tcp://example.com:22000"},
+					},
+					"tcp://[::]:22000": {
+						Error:        nil,
+						LANAddresses: []string{},
+						WANAddresses: []string{},
+					},
+				}
 				serverState.SystemConnections.Total = TotalStats{At: "test"}
 
 				ts = CreateSyncthingTestServer(serverState, serverAPIKey)
@@ -67,6 +81,8 @@ var _ = Describe("Syncthing connection", func() {
 					// ensure that we fetched the server's values
 					Expect(syncthing.Configuration.Version).To(Equal(10))
 					Expect(syncthing.SystemStatus.MyID).To(Equal(myID.GoString()))
+					Expect(syncthing.SystemStatus.ConnectionServiceStatus).
+						To(Equal(serverState.SystemStatus.ConnectionServiceStatus))
 					Expect(syncthing.SystemConnections.Total.At).To(Equal("test"))
 				})
 
@@ -182,6 +198,42 @@ var _ = Describe("Syncthing connection", func() {
 				})
 			})
 		})
+	})
+})
+
+var _ = Describe("Syncthing listener status JSON", func() {
+	It("decodes the Syncthing v1.30.0 REST shape", func() {
+		const statusJSON = `{
+   "connectionServiceStatus": {
+    "tcp://0.0.0.0:22000": {
+     "error": "listener error",
+     "lanAddresses": ["tcp://127.0.0.1:22000"],
+     "wanAddresses": ["tcp://example.com:22000"]
+    },
+    "tcp://[::]:22000": {
+     "error": null,
+     "lanAddresses": [],
+     "wanAddresses": []
+    }
+   }
+  }`
+
+		var status SystemStatus
+		Expect(json.Unmarshal([]byte(statusJSON), &status)).To(Succeed())
+
+		listenerError := "listener error"
+		Expect(status.ConnectionServiceStatus).To(Equal(map[string]ListenerStatusEntry{
+			"tcp://0.0.0.0:22000": {
+				Error:        &listenerError,
+				LANAddresses: []string{"tcp://127.0.0.1:22000"},
+				WANAddresses: []string{"tcp://example.com:22000"},
+			},
+			"tcp://[::]:22000": {
+				Error:        nil,
+				LANAddresses: []string{},
+				WANAddresses: []string{},
+			},
+		}))
 	})
 })
 
