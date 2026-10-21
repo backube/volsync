@@ -8,6 +8,8 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.17.0]
+
 ### Added
 
 - Chart now allows to set `priorityClassName` for the operator pod
@@ -457,7 +459,8 @@ and this project adheres to
 - Support for rsync & rclone replication
 - Helm chart to deploy operator
 
-[Unreleased]: https://github.com/backube/volsync/compare/release-0.16...HEAD
+[Unreleased]: https://github.com/backube/volsync/compare/release-0.17...HEAD
+[0.17.0]: https://github.com/backube/volsync/compare/release-0.16...v0.17.0
 [0.16.0]: https://github.com/backube/volsync/compare/release-0.15...v0.16.0
 [0.15.0]: https://github.com/backube/volsync/compare/release-0.14...v0.15.0
 [0.14.0]: https://github.com/backube/volsync/compare/release-0.13...v0.14.0
