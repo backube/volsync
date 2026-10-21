@@ -25,6 +25,7 @@ import (
 
 	"github.com/go-logr/logr"
 	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -46,26 +47,110 @@ func ReconcileBatch(l logr.Logger, reconcileFuncs ...ReconcileFunc) (bool, error
 	return true, nil
 }
 
-// If an update causes an immutable error, delete the object and return an error (or potentially
-// an error from the delete if the delete fails). Active Jobs are preserved until their Pods
-// complete, and their replacement is deferred until a later reconcile.
-// The caller should ensure (usually via a requeue) that createOrUpdate is called on the resource
-// again in order for it to be recreated.
-func CreateOrUpdateDeleteOnImmutableErr(ctx context.Context, k8sClient client.Client, obj client.Object,
-	log logr.Logger, f ctrlutil.MutateFn) (ctrlutil.OperationResult, error) {
+// JobHasActiveOrTerminatingPods reports whether a Job still has Pods that must
+// finish before the Job can be treated as complete or replaced. If neither
+// status count is positive, it lists Pods with the uncached API reader,
+// including when Terminating is explicitly zero. This catches stale status
+// during deletion and terminating Pods omitted by older Kubernetes versions.
+// It returns true with an error when it cannot verify the Pod state.
+func JobHasActiveOrTerminatingPods(ctx context.Context, apiReader client.Reader, job *batchv1.Job) (bool, error) {
+	if job == nil {
+		return false, nil
+	}
+
+	if job.Status.Active > 0 || (job.Status.Terminating != nil && *job.Status.Terminating > 0) {
+		return true, nil
+	}
+	if apiReader == nil {
+		return true, fmt.Errorf("unable to verify Pods for Job %s/%s: API reader is nil", job.Namespace, job.Name)
+	}
+	if job.Namespace == "" {
+		return true, fmt.Errorf("unable to verify Pods for Job %s without a namespace", job.Name)
+	}
+	if job.UID == "" {
+		return true, fmt.Errorf("unable to verify Pods for Job %s/%s without a UID", job.Namespace, job.Name)
+	}
+	if job.Spec.Selector == nil ||
+		(len(job.Spec.Selector.MatchLabels) == 0 && len(job.Spec.Selector.MatchExpressions) == 0) {
+		return true, fmt.Errorf("unable to verify Pods for Job %s/%s without a selector", job.Namespace, job.Name)
+	}
+
+	selector, err := metav1.LabelSelectorAsSelector(job.Spec.Selector)
+	if err != nil {
+		return true, fmt.Errorf("unable to parse selector for Job %s/%s: %w", job.Namespace, job.Name, err)
+	}
+
+	pods := &corev1.PodList{}
+	listOptions := []client.ListOption{
+		client.InNamespace(job.Namespace),
+		client.MatchingLabelsSelector{Selector: selector},
+	}
+	if err := apiReader.List(ctx, pods, listOptions...); err != nil {
+		return true, fmt.Errorf("unable to list Pods for Job %s/%s: %w", job.Namespace, job.Name, err)
+	}
+
+	for i := range pods.Items {
+		pod := &pods.Items[i]
+		if !metav1.IsControlledBy(pod, job) {
+			continue
+		}
+		if pod.Status.Phase != corev1.PodSucceeded && pod.Status.Phase != corev1.PodFailed {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// JobShouldWaitForCompletion reports whether a mover Job is still in progress.
+// Deferred updates and Jobs that have not succeeded or exhausted their backoff
+// limit do not need a Pod list. Otherwise, the uncached reader checks for Pods
+// that are not reflected in the Job status. It returns true with an error when
+// the Pod state cannot be verified.
+func JobShouldWaitForCompletion(
+	ctx context.Context,
+	apiReader client.Reader,
+	job *batchv1.Job,
+	deferred bool,
+) (bool, error) {
+	if deferred {
+		return true, nil
+	}
+	if job == nil {
+		return false, nil
+	}
+
+	if job.Status.Succeeded == 0 &&
+		(job.Spec.BackoffLimit == nil || job.Status.Failed < *job.Spec.BackoffLimit) {
+		return true, nil
+	}
+
+	return JobHasActiveOrTerminatingPods(ctx, apiReader, job)
+}
+
+// CreateOrUpdateDeleteOnImmutableErr deletes an object if an update causes an immutable error
+// and returns an error (or an error from the delete if the delete fails). Jobs with active or
+// terminating Pods are preserved until those Pods complete; in that case deferred is true and the
+// caller should return InProgress so the Job is checked again on a later reconcile.
+func CreateOrUpdateDeleteOnImmutableErr(ctx context.Context, k8sClient client.Client, apiReader client.Reader,
+	obj client.Object, log logr.Logger, f ctrlutil.MutateFn) (ctrlutil.OperationResult, bool, error) {
 	op, err := ctrlutil.CreateOrUpdate(ctx, k8sClient, obj, f)
 
 	// Check if we got an error trying to update an immutable field
 	if err != nil && kerrors.IsInvalid(err) && strings.Contains(strings.ToLower(err.Error()), "field is immutable") {
 		if job, ok := obj.(*batchv1.Job); ok {
-			terminating := int32(0)
-			if job.Status.Terminating != nil {
-				terminating = *job.Status.Terminating
+			hasActiveOrTerminatingPods, podErr := JobHasActiveOrTerminatingPods(ctx, apiReader, job)
+			if podErr != nil {
+				return op, false, podErr
 			}
-			if job.Status.Active > 0 || terminating > 0 {
-				log.Info("Deferring immutable Job replacement while Pods are active or terminating",
-					"active", job.Status.Active, "terminating", terminating)
-				return ctrlutil.OperationResultNone, nil
+			if hasActiveOrTerminatingPods {
+				terminating := int32(0)
+				if job.Status.Terminating != nil {
+					terminating = *job.Status.Terminating
+				}
+				log.Info("Deferring immutable Job replacement; nonterminal Pods were found",
+					"reportedStatusActive", job.Status.Active, "reportedStatusTerminating", terminating)
+				return ctrlutil.OperationResultNone, true, nil
 			}
 		}
 
@@ -73,11 +158,11 @@ func CreateOrUpdateDeleteOnImmutableErr(ctx context.Context, k8sClient client.Cl
 
 		delErr := k8sClient.Delete(ctx, obj, client.PropagationPolicy(metav1.DeletePropagationBackground))
 		if delErr != nil {
-			return op, delErr
+			return op, false, delErr
 		}
 
-		return op, fmt.Errorf("unable to update object. Deleting object so it can be recreated")
+		return op, false, fmt.Errorf("unable to update object. Deleting object so it can be recreated")
 	}
 
-	return op, err
+	return op, false, err
 }

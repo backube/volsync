@@ -1817,8 +1817,8 @@ var _ = Describe("Restic as a source", func() {
 				})
 			})
 
-			When("prune becomes due while a backup job is active", func() {
-				It("keeps the active job until it completes, then schedules prune", func() {
+			When("prune becomes due while a backup job is active or terminating", func() {
+				It("keeps the old job until its Pods finish, then schedules prune", func() {
 					pruneInterval := int32(1)
 					mover.pruneInterval = &pruneInterval
 					lastPruned := metav1.NewTime(time.Now())
@@ -1857,10 +1857,32 @@ var _ = Describe("Restic as a source", func() {
 					Expect(mover.sourceStatus.LastPruned).To(Equal(&lastPruned))
 
 					job.Status.Active = 0
+					terminating := int32(1)
+					job.Status.Terminating = &terminating
 					job.Status.Succeeded = 1
+					job.Status.Failed = 1
 					Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
 
-					// Once completed, the old template can be replaced on the next reconcile.
+					// The Job controller can report success before its terminating Pod exits.
+					// Keep treating the backup-only Job as in progress until that Pod is gone.
+					j, err = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(j).To(BeNil())
+					job = &batchv1.Job{}
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+					Expect(job.UID).To(Equal(originalUID))
+					Expect(job.Status.Active).To(Equal(int32(0)))
+					Expect(job.Status.Terminating).NotTo(BeNil())
+					Expect(*job.Status.Terminating).To(Equal(int32(1)))
+					Expect(job.Status.Succeeded).To(Equal(int32(1)))
+					Expect(job.Status.Failed).To(Equal(int32(1)))
+					Expect(job.Spec.Template.Spec.Containers[0].Args).To(Equal([]string{"backup"}))
+					Expect(mover.sourceStatus.LastPruned).To(Equal(&lastPruned))
+
+					// Once the terminating Pod is gone, the old template can be replaced.
+					terminating = 0
+					job.Status.Terminating = &terminating
+					Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
 					_, err = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
 					Expect(err).To(HaveOccurred()) // inactive immutable Jobs are deleted before replacement
 					job = &batchv1.Job{}
@@ -1938,9 +1960,25 @@ var _ = Describe("Restic as a source", func() {
 					job = &batchv1.Job{}
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 					job.Status.Failed = *job.Spec.BackoffLimit
+					terminating := int32(1)
+					job.Status.Terminating = &terminating
+					job.Status.Succeeded = 1
 					Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
 
-					// 1st reconcile should delete the job
+					// Wait for terminating Pods even when success and backoff are both reported.
+					j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+					Expect(*job.Status.Terminating).To(Equal(int32(1)))
+					Expect(job.Status.Succeeded).To(Equal(int32(1)))
+					Expect(job.Status.Failed).To(Equal(*job.Spec.BackoffLimit))
+
+					terminating = 0
+					job.Status.Terminating = &terminating
+					Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
+
+					// Once no Pods are active or terminating, backoff handling deletes the job.
 					j, e = mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil())

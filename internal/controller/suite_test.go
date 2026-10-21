@@ -42,6 +42,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
+	"github.com/backube/volsync/internal/controller/mover"
 	"github.com/backube/volsync/internal/controller/mover/rclone"
 	"github.com/backube/volsync/internal/controller/mover/rsync"
 	"github.com/backube/volsync/internal/controller/utils"
@@ -122,6 +123,7 @@ var _ = BeforeSuite(func() {
 		Metrics: metricsserver.Options{BindAddress: "0"},
 	})
 	Expect(err).ToNot(HaveOccurred())
+	mover.SetAPIReaderForBuilders(k8sManager.GetAPIReader())
 
 	err = (&ReplicationDestinationReconciler{
 		Client:        k8sManager.GetClient(),

@@ -67,6 +67,20 @@ type Builder interface {
 	VersionInfo() string
 }
 
+type apiReaderSetter interface {
+	SetAPIReader(client.Reader)
+}
+
+// SetAPIReaderForBuilders configures uncached readers on registered builders
+// that need them for API reads outside the manager's normal cache.
+func SetAPIReaderForBuilders(reader client.Reader) {
+	for _, builder := range Catalog {
+		if setter, ok := builder.(apiReaderSetter); ok {
+			setter.SetAPIReader(reader)
+		}
+	}
+}
+
 func GetEnabledMoverList() []string {
 	enabledMoverNames := make([]string, 0, len(Catalog))
 	for _, builder := range Catalog {

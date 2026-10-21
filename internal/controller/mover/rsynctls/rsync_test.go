@@ -1596,9 +1596,23 @@ var _ = Describe("RsyncTLS as a source", func() {
 
 					// Set the job status to have failed backofflimit times
 					job.Status.Failed = *job.Spec.BackoffLimit
+					terminating := int32(1)
+					job.Status.Terminating = &terminating
+					job.Status.Succeeded = 1
 					Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
 
-					// Since job is failed >= backofflimit, ensureJob should remove the job so it can be recreated
+					// Wait for terminating Pods even when success and backoff are both reported.
+					j, e = mover.ensureJob(ctx, sPVC, sa, tlsKeySecret.GetName()) // Using sPVC as dataPVC (i.e. direct)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+					Expect(*job.Status.Terminating).To(Equal(int32(1)))
+					Expect(job.Status.Succeeded).To(Equal(int32(1)))
+					Expect(job.Status.Failed).To(Equal(*job.Spec.BackoffLimit))
+
+					terminating = 0
+					job.Status.Terminating = &terminating
+					Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
 					j, e = mover.ensureJob(ctx, sPVC, sa, tlsKeySecret.GetName()) // Using sPVC as dataPVC (i.e. direct)
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil())

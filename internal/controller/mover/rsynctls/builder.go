@@ -46,8 +46,9 @@ const (
 )
 
 type Builder struct {
-	viper *viper.Viper  // For unit tests to be able to override - global viper will be used by default in Register()
-	flags *flag.FlagSet // For unit tests to be able to override - global flags will be used by default in Register()
+	viper     *viper.Viper  // For unit tests to be able to override - global viper will be used by default in Register()
+	flags     *flag.FlagSet // For unit tests to be able to override - global flags will be used by default in Register()
+	apiReader client.Reader
 }
 
 var _ mover.Builder = &Builder{}
@@ -82,6 +83,9 @@ func newBuilder(viper *viper.Viper, flags *flag.FlagSet) (*Builder, error) {
 }
 
 func (rb *Builder) Name() string { return rsyncTLSMoverName }
+
+// SetAPIReader configures uncached reads used to check for Job Pods.
+func (rb *Builder) SetAPIReader(reader client.Reader) { rb.apiReader = reader }
 
 func (rb *Builder) VersionInfo() string {
 	return fmt.Sprintf("Rsync TLS container: %s", rb.getRsyncTLSContainerImage())
@@ -126,6 +130,7 @@ func (rb *Builder) FromSource(client client.Client, logger logr.Logger,
 
 	return &Mover{
 		client:             client,
+		apiReader:          rb.apiReader,
 		logger:             logger.WithValues("method", "RsyncTLS"),
 		eventRecorder:      eventRecorder,
 		owner:              source,
@@ -192,6 +197,7 @@ func (rb *Builder) FromDestination(client client.Client, logger logr.Logger,
 
 	return &Mover{
 		client:             client,
+		apiReader:          rb.apiReader,
 		logger:             logger.WithValues("method", "RsyncTLS"),
 		eventRecorder:      eventRecorder,
 		owner:              destination,

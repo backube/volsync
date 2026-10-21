@@ -61,6 +61,7 @@ const (
 // Mover is the reconciliation logic for the Restic-based data mover.
 type Mover struct {
 	client                client.Client
+	apiReader             client.Reader
 	logger                logr.Logger
 	eventRecorder         events.EventRecorder
 	owner                 client.Object
@@ -346,7 +347,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 	}
 	logger := m.logger.WithValues("job", client.ObjectKeyFromObject(job))
 
-	_, err := utils.CreateOrUpdateDeleteOnImmutableErr(ctx, m.client, job, logger, func() error {
+	_, deferred, err := utils.CreateOrUpdateDeleteOnImmutableErr(ctx, m.client, m.apiReader, job, logger, func() error {
 		if err := ctrl.SetControllerReference(m.owner, job, m.client.Scheme()); err != nil {
 			logger.Error(err, utils.ErrUnableToSetControllerRef)
 			return err
@@ -568,8 +569,17 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 		}
 		return nil
 	})
+	if err != nil {
+		logger.Error(err, "reconcile failed")
+		return nil, err
+	}
+	inProgress, err := utils.JobShouldWaitForCompletion(ctx, m.apiReader, job, deferred)
+	if err != nil {
+		logger.Error(err, "unable to verify mover Job Pods")
+		return nil, err
+	}
 	// If Job had failed, delete it so it can be recreated
-	if job.Status.Failed >= *job.Spec.BackoffLimit {
+	if !inProgress && job.Status.Failed >= *job.Spec.BackoffLimit {
 		// Update status with mover logs from failed job
 		utils.UpdateMoverStatusForFailedJob(ctx, m.logger, m.latestMoverStatus, job.GetName(), job.GetNamespace(),
 			utils.AllLines)
@@ -578,13 +588,8 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 		err = m.client.Delete(ctx, job, client.PropagationPolicy(metav1.DeletePropagationBackground))
 		return nil, err
 	}
-	if err != nil {
-		logger.Error(err, "reconcile failed")
-		return nil, err
-	}
 
-	// Stop here if the job hasn't completed yet
-	if job.Status.Succeeded == 0 {
+	if inProgress {
 		return nil, nil
 	}
 
