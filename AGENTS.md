@@ -102,17 +102,6 @@ namespaces. Running it with `RUSTFS_USE_TLS=1` also creates the configured
 RustFS HTTPS fixture and a self-signed CA. `hack/ensure-volsync-test-runner.sh`
 creates a `ClusterRoleBinding` granting `cluster-admin`.
 
-## Temporary Prow compatibility
-
-`Dockerfile.minio-test-storage`, `hack/minio-test-image.env`,
-`hack/minio-test-entrypoint.sh`, and `hack/run-minio.sh` are temporary
-compatibility scaffolding for the existing `openshift/release` Prow config.
-The wrapper translates the legacy MinIO namespace and TLS variables to RustFS;
-it must not delete namespaces or install MinIO. Normal development and GitHub
-Actions should use `hack/run-rustfs.sh`. First update `openshift/release` to
-remove its MinIO build and test references, then remove this scaffolding. Keep
-issue #2120 open until both follow-ups are complete.
-
 ## Pull requests and repository bots
 
 Commits must include a DCO `Signed-off-by: Name <email>` trailer to pass the

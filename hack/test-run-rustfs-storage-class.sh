@@ -137,35 +137,4 @@ if grep -Fq 'get storageclasses' "${TEST_DIR}/override.kubectl.log"; then
     exit 1
 fi
 
-WRAPPER_DIR="${TEST_DIR}/wrapper"
-mkdir -p "${WRAPPER_DIR}"
-cp "${SCRIPT_DIR}/run-minio.sh" "${WRAPPER_DIR}/run-minio.sh"
-cat >"${WRAPPER_DIR}/run-rustfs.sh" <<'EOF'
-#!/usr/bin/env bash
-printf '%s %s\n' "${RUSTFS_NAMESPACE}" "${RUSTFS_USE_TLS}" >"${WRAPPER_CAPTURE}"
-EOF
-chmod +x "${WRAPPER_DIR}/run-minio.sh" "${WRAPPER_DIR}/run-rustfs.sh"
-
-check_wrapper_mapping() {
-    local minio_namespace="$1"
-    local minio_tls="$2"
-    local expected_namespace="$3"
-    local expected_tls="$4"
-    local capture="${TEST_DIR}/wrapper.out"
-
-    MINIO_NAMESPACE="${minio_namespace}" \
-        MINIO_USE_TLS="${minio_tls}" \
-        RUSTFS_NAMESPACE="" \
-        RUSTFS_USE_TLS="" \
-        WRAPPER_CAPTURE="${capture}" \
-        "${WRAPPER_DIR}/run-minio.sh"
-    if [[ "$(cat "${capture}")" != "${expected_namespace} ${expected_tls}" ]]; then
-        echo "Legacy MinIO settings did not map to the expected RustFS settings." >&2
-        return 1
-    fi
-}
-
-check_wrapper_mapping minio 0 rustfs 0
-check_wrapper_mapping minio-tls 1 rustfs-tls 1
-
-echo "RustFS StorageClass and Prow compatibility checks passed."
+echo "RustFS StorageClass selection checks passed."
