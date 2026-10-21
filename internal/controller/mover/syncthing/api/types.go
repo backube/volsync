@@ -25,7 +25,6 @@ import (
 	"net/http"
 
 	"github.com/syncthing/syncthing/lib/config"
-	"github.com/syncthing/syncthing/lib/connections"
 )
 
 // DialStatus Provides us with information as to whether or not we are able to
@@ -39,14 +38,23 @@ type DialStatus struct {
 // SystemStatus Details information about the running Syncthing system, including the
 // device ID, CPU usage, allocated memory, number of goroutines, when it started, and so on and so forth.
 type SystemStatus struct {
-	Alloc                   int                                        `json:"alloc"`
-	ConnectionServiceStatus map[string]connections.ListenerStatusEntry `json:"connectionServiceStatus"`
-	CPUPercent              int                                        `json:"cpuPercent"`
-	Goroutines              int                                        `json:"goroutines"`
-	GUIAddressOverridden    bool                                       `json:"guiAddressOverridden"`
-	GUIAddressUsed          string                                     `json:"guiAddressUsed"`
-	LastDialStatus          map[string]DialStatus                      `json:"lastDialStatus"`
-	MyID                    string                                     `json:"myID"`
+	Alloc                   int                            `json:"alloc"`
+	ConnectionServiceStatus map[string]ListenerStatusEntry `json:"connectionServiceStatus"`
+	CPUPercent              int                            `json:"cpuPercent"`
+	Goroutines              int                            `json:"goroutines"`
+	GUIAddressOverridden    bool                           `json:"guiAddressOverridden"`
+	GUIAddressUsed          string                         `json:"guiAddressUsed"`
+	LastDialStatus          map[string]DialStatus          `json:"lastDialStatus"`
+	MyID                    string                         `json:"myID"`
+}
+
+// ListenerStatusEntry mirrors Syncthing v1.30.0's REST type
+// (lib/connections/service.go) without importing connections, whose QUIC code
+// imports quic-go/logging, removed in v0.59.1.
+type ListenerStatusEntry struct {
+	Error        *string  `json:"error"`
+	LANAddresses []string `json:"lanAddresses"`
+	WANAddresses []string `json:"wanAddresses"`
 }
 
 // TotalStats Describes the total traffic to/from a given Syncthing node.
