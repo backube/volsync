@@ -16,6 +16,7 @@
   ],
   "labels": ["dependencies"],  // Add "dependencies" label to PRs
   "lockFileMaintenance": {"enabled": true},  // Update Pipfile.lock
+  "minimumReleaseAge": "10 days",
   "packageRules": [
     {
       // Update golang tag in dockerfile & golang version in workflows in a
@@ -35,6 +36,22 @@
         "quay.io/operator-framework/scorecard-test" // Ignore OSDK scorecard image
       ],
       "enabled": false
+    },
+    {
+      // Registries without release timestamps would otherwise leave Docker
+      // updates pending indefinitely.
+      "description": "Allow container updates without release timestamp",
+      "matchDatasources": ["docker"],
+      "minimumReleaseAgeBehaviour": "timestamp-optional"
+    },
+    {
+      // Digest, pinDigest, and lockFileMaintenance branch-stage upgrades may
+      // lack releaseTimestamp and otherwise remain pending. Timestamped
+      // releases still observe the configured minimumReleaseAge.
+      // Remove this workaround when https://github.com/renovatebot/renovate/issues/45236 is fixed.
+      "description": "Allow branch-stage updates without release timestamps",
+      "matchUpdateTypes": ["digest", "pinDigest", "lockFileMaintenance"],
+      "minimumReleaseAgeBehaviour": "timestamp-optional"
     },
     {
       // This is an existing group, and we're adding a new package to it so that
@@ -292,5 +309,6 @@
     "* 3-6 * * 1-5"  // Run between 3am and 6am on weekdays
   ],
   "semanticCommits": "disabled",
-  "timezone": "America/New_York"
+  "timezone": "America/New_York",
+  "vulnerabilityAlerts": {"minimumReleaseAge": "1 day"}
 }
