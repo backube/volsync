@@ -61,23 +61,33 @@ func JobHasActiveOrTerminatingPods(ctx context.Context, apiReader client.Reader,
 	if job.Status.Active > 0 || (job.Status.Terminating != nil && *job.Status.Terminating > 0) {
 		return true, nil
 	}
+
+	pods, err := listJobPods(ctx, apiReader, job)
+	if err != nil {
+		return true, err
+	}
+
+	return hasNonterminalOwnedPods(pods, job), nil
+}
+
+func listJobPods(ctx context.Context, apiReader client.Reader, job *batchv1.Job) (*corev1.PodList, error) {
 	if apiReader == nil {
-		return true, fmt.Errorf("unable to verify Pods for Job %s/%s: API reader is nil", job.Namespace, job.Name)
+		return nil, fmt.Errorf("unable to verify Pods for Job %s/%s: API reader is nil", job.Namespace, job.Name)
 	}
 	if job.Namespace == "" {
-		return true, fmt.Errorf("unable to verify Pods for Job %s without a namespace", job.Name)
+		return nil, fmt.Errorf("unable to verify Pods for Job %s without a namespace", job.Name)
 	}
 	if job.UID == "" {
-		return true, fmt.Errorf("unable to verify Pods for Job %s/%s without a UID", job.Namespace, job.Name)
+		return nil, fmt.Errorf("unable to verify Pods for Job %s/%s without a UID", job.Namespace, job.Name)
 	}
 	if job.Spec.Selector == nil ||
 		(len(job.Spec.Selector.MatchLabels) == 0 && len(job.Spec.Selector.MatchExpressions) == 0) {
-		return true, fmt.Errorf("unable to verify Pods for Job %s/%s without a selector", job.Namespace, job.Name)
+		return nil, fmt.Errorf("unable to verify Pods for Job %s/%s without a selector", job.Namespace, job.Name)
 	}
 
 	selector, err := metav1.LabelSelectorAsSelector(job.Spec.Selector)
 	if err != nil {
-		return true, fmt.Errorf("unable to parse selector for Job %s/%s: %w", job.Namespace, job.Name, err)
+		return nil, fmt.Errorf("unable to parse selector for Job %s/%s: %w", job.Namespace, job.Name, err)
 	}
 
 	pods := &corev1.PodList{}
@@ -86,20 +96,24 @@ func JobHasActiveOrTerminatingPods(ctx context.Context, apiReader client.Reader,
 		client.MatchingLabelsSelector{Selector: selector},
 	}
 	if err := apiReader.List(ctx, pods, listOptions...); err != nil {
-		return true, fmt.Errorf("unable to list Pods for Job %s/%s: %w", job.Namespace, job.Name, err)
+		return nil, fmt.Errorf("unable to list Pods for Job %s/%s: %w", job.Namespace, job.Name, err)
 	}
 
+	return pods, nil
+}
+
+func hasNonterminalOwnedPods(pods *corev1.PodList, job *batchv1.Job) bool {
 	for i := range pods.Items {
 		pod := &pods.Items[i]
 		if !metav1.IsControlledBy(pod, job) {
 			continue
 		}
 		if pod.Status.Phase != corev1.PodSucceeded && pod.Status.Phase != corev1.PodFailed {
-			return true, nil
+			return true
 		}
 	}
 
-	return false, nil
+	return false
 }
 
 // JobShouldWaitForCompletion reports whether a mover Job is still in progress.
