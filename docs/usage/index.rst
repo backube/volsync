@@ -10,6 +10,7 @@ Usage
    resourcerequirements
    triggers
    pvccopytriggers
+   termination
    metrics/index
    rclone/index
    restic/index

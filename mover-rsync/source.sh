@@ -2,6 +2,9 @@
 
 set -e -o pipefail
 
+# shellcheck source=/dev/null
+source "${VOLSYNC_SHUTDOWN_LIB:-/mover-common/shutdown.sh}"
+
 echo "VolSync rsync container version: ${version:-unknown}"
 
 
@@ -33,25 +36,28 @@ if [[ $DEBUG_MOVER -eq 1 && "$SCRIPT_DIR" != "/tmp" ]]; then
   echo "##################################################################"
 
   # Wait for user to delete the file before exiting
-  while [[ -f "${END_DEBUG_FILE}" ]]; do
-    sleep 10
+  while [[ -f "${END_DEBUG_FILE}" && -z "${VOLSYNC_SHUTDOWN_SIGNAL}" ]]; do
+    volsync_run sleep 10
   done
 
   echo ""
   echo "##################################################################"
   echo "Debug done, exiting."
   echo "##################################################################"
-  sleep 2
+  volsync_run sleep 2
   exit 0
 fi
 
 # Ensure we have connection info for the destination
 DESTINATION_PORT="${DESTINATION_PORT:-22}"
+# The VOLSYNC_* path overrides exist so the mover shell tests can run against a
+# sandbox; the mover Job always uses the image defaults.
+KEY_DIR="${VOLSYNC_KEY_DIR:-/keys}"
 if [[ -z "$DESTINATION_ADDRESS" ]]; then
     echo "Remote host must be provided in DESTINATION_ADDRESS"
     exit 1
 fi
-SOURCE="/data"
+SOURCE="${VOLSYNC_DATA_DIR:-/data}"
 BLOCK_SOURCE="/dev/block"
 
 if [[ ! -d $SOURCE ]] && ! test -b $BLOCK_SOURCE; then
@@ -69,7 +75,7 @@ mkdir -p ~/.ssh/controlmasters
 chmod 711 ~/.ssh
 
 # Provide ssh host key to validate remote
-echo "$DESTINATION_ADDRESS $(</keys/destination.pub)" > ~/.ssh/known_hosts
+echo "$DESTINATION_ADDRESS $(<"${KEY_DIR}/destination.pub")" > ~/.ssh/known_hosts
 
 cat - <<SSHCONFIG > ~/.ssh/config
 Host *
@@ -82,7 +88,7 @@ Host *
   # Disables warning when IP is added to known_hosts
   CheckHostIP no
   # Use the identity provided via attached Secret
-  IdentityFile /keys/source
+  IdentityFile ${KEY_DIR}/source
   Port ${DESTINATION_PORT}
   # Enable protocol-level keepalive to detect connection failure
   ServerAliveCountMax 4
@@ -119,19 +125,19 @@ echo "Syncing data to ${URL_DESTINATION_ADDRESS}:${DESTINATION_PORT} ..."
 START_TIME=$SECONDS
 # Avoids exiting on rsync failure
 set +e
-while [[ ${rc} -ne 0 && ${RETRY} -lt ${MAX_RETRIES} ]]
+while [[ ${rc} -ne 0 && ${RETRY} -lt ${MAX_RETRIES} && -z "${VOLSYNC_SHUTDOWN_SIGNAL}" ]]
 do
     RETRY=$((RETRY + 1))
     if test -b $BLOCK_SOURCE; then
       echo "calling diskrsync $BLOCK_SOURCE root@${URL_DESTINATION_ADDRESS}:/dev/block"
-      diskrsync $BLOCK_SOURCE "root@${URL_DESTINATION_ADDRESS}":/dev/block
+      volsync_run diskrsync $BLOCK_SOURCE "root@${URL_DESTINATION_ADDRESS}":/dev/block
     else
-      rsync -aAhHSxz --delete --itemize-changes --info=stats2,misc2 $SOURCE/ "root@${URL_DESTINATION_ADDRESS}":.
+      volsync_run rsync -aAhHSxz --delete --itemize-changes --info=stats2,misc2 "$SOURCE"/ "root@${URL_DESTINATION_ADDRESS}":.
     fi
     rc=$?
-    if [[ ${rc} -ne 0 ]]; then
+    if [[ ${rc} -ne 0 && -z "${VOLSYNC_SHUTDOWN_SIGNAL}" ]]; then
         echo "Syncronization failed. Retrying in ${DELAY} seconds. Retry ${RETRY}/${MAX_RETRIES}."
-        sleep ${DELAY}
+        volsync_run sleep "${DELAY}"
         DELAY=$((DELAY * FACTOR ))
     fi
 done
@@ -140,7 +146,7 @@ echo "Rsync completed in $(( SECONDS - START_TIME ))s"
 if [[ $rc -eq 0 ]]; then
     echo "Synchronization completed successfully. Notifying destination..."
     # ssh does not take [ip] format for ipv6, so use DESTINATION_ADDRESS rather than URL_DESTINATION_ADDRESS
-    ssh "root@${DESTINATION_ADDRESS}" shutdown 0
+    volsync_run ssh "root@${DESTINATION_ADDRESS}" shutdown 0
 else
     echo "Synchronization failed. rsync returned: $rc"
     exit $rc
