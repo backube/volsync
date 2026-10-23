@@ -27,6 +27,9 @@ connection. By using Rsync, the amount of data transferred during each
 synchronization is kept to a minimum, and the ssh connection ensures that the
 data transfer is both authenticated and secure.
 
+For how an in-progress transfer behaves when a mover Pod is stopped, see
+:doc:`../termination`.
+
 ------
 
 .. warning::

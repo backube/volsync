@@ -2,13 +2,18 @@
 
 set -e -o pipefail
 
+# shellcheck source=/dev/null
+source "${VOLSYNC_SHUTDOWN_LIB:-/mover-common/shutdown.sh}"
+
 RSYNC_PID_FILE=/tmp/rsyncd.pid
 CONTROL_FILE=/tmp/control/complete
 CONTROL_FILE_SYMLINK_MUNGING_FILE=/tmp/control/symlink-munging-file
 RSYNCD_CONF=/tmp/rsyncd.conf
 STUNNEL_CONF=/tmp/stunnel.conf
-STUNNEL_PID_FILE=/tmp/stunnel.pid
-PSK_FILE=/keys/psk.txt
+# The VOLSYNC_* path overrides exist so the mover shell tests can run against a
+# sandbox; the mover Job always uses the image defaults.
+PSK_FILE="${VOLSYNC_KEY_DIR:-/keys}/psk.txt"
+DISKRSYNC_TCP_BIN="${VOLSYNC_DISKRSYNC_TCP_BIN:-/diskrsync-tcp}"
 RSYNC_LOG=/tmp/rsyncd.log
 IPV6_DISABLED=$(cat /sys/module/ipv6/parameters/disable)
 
@@ -40,15 +45,15 @@ if [[ $DEBUG_MOVER -eq 1 && "$SCRIPT_DIR" != "/tmp" ]]; then
   echo "##################################################################"
 
   # Wait for user to delete the file before exiting
-  while [[ -f "${END_DEBUG_FILE}" ]]; do
-    sleep 10
+  while [[ -f "${END_DEBUG_FILE}" && -z "${VOLSYNC_SHUTDOWN_SIGNAL}" ]]; do
+    volsync_run sleep 10
   done
 
   echo ""
   echo "##################################################################"
   echo "Debug done, exiting."
   echo "##################################################################"
-  sleep 2
+  volsync_run sleep 2
   exit 0
 fi
 
@@ -65,7 +70,7 @@ if [[ ! -r $PSK_FILE ]]; then
     exit 1
 fi
 
-TARGET="/data"
+TARGET="${VOLSYNC_DATA_DIR:-/data}"
 BLOCK_TARGET="/dev/block"
 
 if [[ ! -d $TARGET ]] && ! test -b $BLOCK_TARGET; then
@@ -133,9 +138,8 @@ RSYNCD_CONF
     cat - > "$STUNNEL_CONF" <<STUNNEL_CONF
 ; Global options
 debug = debug
-foreground = no
+foreground = yes
 output = /dev/stdout
-pid = $STUNNEL_PID_FILE
 socket = l:SO_KEEPALIVE=1
 socket = l:TCP_KEEPIDLE=180
 socket = r:SO_KEEPALIVE=1
@@ -163,8 +167,7 @@ STUNNEL_CONF
     ##############################
     ## Tail rsync log to stdout so it shows in pod logs
     touch "$RSYNC_LOG"
-    tail -f "$RSYNC_LOG" &
-    TAIL_PID="$!"
+    volsync_start_helper tail -f "$RSYNC_LOG"
 
     rm -f "$CONTROL_FILE"
     rm -f "$CONTROL_FILE_SYMLINK_MUNGING_FILE"
@@ -180,9 +183,8 @@ if test -b $BLOCK_TARGET; then
     cat - > "$STUNNEL_CONF" <<STUNNEL_CONF
 ; Global options
 debug = debug
-foreground = no
+foreground = yes
 output = /dev/stdout
-pid = $STUNNEL_PID_FILE
 socket = l:SO_KEEPALIVE=1
 socket = l:TCP_KEEPIDLE=180
 socket = r:SO_KEEPALIVE=1
@@ -202,29 +204,40 @@ connect = 8888
 #execargs = diskrsync-tcp $BLOCK_TARGET --target --port 8888 --control-file $CONTROL_FILE
 STUNNEL_CONF
 
-  /diskrsync-tcp $BLOCK_TARGET --target --port 8888 --control-file $CONTROL_FILE&
+  volsync_start_helper "$DISKRSYNC_TCP_BIN" $BLOCK_TARGET --target --port 8888 --control-file $CONTROL_FILE
 fi
 
 ##############################
 ## Start stunnel to wait for incoming connections
 echo "Starting stunnel..."
-stunnel "$STUNNEL_CONF"
+volsync_start_helper stunnel "$STUNNEL_CONF"
 
 ##############################
 ## Wait for the control file to be created, signaling that we should
 ## terminate
 echo "Waiting for control file to be created ($CONTROL_FILE)..."
-while [[ ! -e $CONTROL_FILE ]]; do
-    sleep 1
+while [[ ! -e $CONTROL_FILE && -z "${VOLSYNC_SHUTDOWN_SIGNAL}" ]]; do
+    # A TERM arriving during this sleep is expected; the loop condition then
+    # exits and the shutdown path below runs.
+    volsync_run sleep 1 || true
 done
 
-sleep 5  # Give time for the rsync connection to finish
+# Give time for the rsync connection to finish, unless we are shutting down.
+if ! volsync_shutdown_requested; then
+    volsync_run sleep 5 || true
+fi
 
 # Before shutting down, read the symlink munging file if it exists, and process
-if [[ -s $CONTROL_FILE_SYMLINK_MUNGING_FILE ]]; then
+if volsync_shutdown_requested; then
+    echo "Shutdown requested, skipping symlink munging."
+elif [[ -s $CONTROL_FILE_SYMLINK_MUNGING_FILE ]]; then
     echo "Symlink munging file found, processing..."
     #while read -r symlink; do
     while IFS= read -r symlink; do
+        if volsync_shutdown_requested; then
+            echo "Shutdown requested, stopping symlink munging."
+            break
+        fi
         symlinkfullpath="${TARGET}/${symlink}"
         echo "Processing symlink: ${symlinkfullpath}"
 
@@ -244,18 +257,24 @@ if [[ -s $CONTROL_FILE_SYMLINK_MUNGING_FILE ]]; then
 fi
 
 ##############################
-## Terminate stunnel
+## Terminate stunnel and any other helpers
 echo "Shutting down..."
-kill -TERM "$(<"$STUNNEL_PID_FILE")"
-if [[ -d $TARGET ]]; then
-    kill -TERM "$TAIL_PID"
-fi
-wait
+volsync_stop_helpers
 echo "Stunnel completed shut down."
 
+# A TERM arriving during the post-transfer sync kills it, which is expected on
+# the shutdown path; without a shutdown signal a sync failure stays fatal.
+sync_failed=0
 if test -b $BLOCK_TARGET; then
-    sync -f $BLOCK_TARGET
+    volsync_run_cleanup sync -f "$BLOCK_TARGET" || sync_failed=$?
 else
-    sync -f $TARGET
+    volsync_run_cleanup sync -f "$TARGET" || sync_failed=$?
+fi
+if [[ ${sync_failed} -ne 0 ]] && ! volsync_shutdown_requested; then
+    exit "${sync_failed}"
 fi
 echo "Sync complete, exiting."
+
+if volsync_shutdown_requested; then
+    exit 143
+fi

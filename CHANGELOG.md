@@ -8,6 +8,15 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Changed
+
+- Mover Pods now forward the container stop signal (SIGTERM) to the running
+  mover process and wait for it to exit, so Restic can release its repository
+  lock instead of leaving a stale lock behind. The Job-based movers (Restic,
+  Rclone, Rsync-ssh, and Rsync-TLS) now use a 120-second
+  `terminationGracePeriodSeconds`. Upgrade the mover container image together
+  with the operator so the new entrypoints are used.
+
 ## [0.17.0]
 
 ### Added

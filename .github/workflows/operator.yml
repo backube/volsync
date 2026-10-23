@@ -208,6 +208,9 @@ jobs:
       - name: Build operator container
         run: make docker-build IMG=${OPERATOR_IMAGE}
 
+      - name: Test mover shutdown signal forwarding
+        run: ./hack/test-mover-shutdown-container.sh ${OPERATOR_IMAGE}
+
       - name: Export container image
         run: docker save -o /tmp/image.tar ${OPERATOR_IMAGE}
 

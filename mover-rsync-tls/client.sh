@@ -2,6 +2,9 @@
 
 set -e -o pipefail
 
+# shellcheck source=/dev/null
+source "${VOLSYNC_SHUTDOWN_LIB:-/mover-common/shutdown.sh}"
+
 DESTINATION_PORT="${DESTINATION_PORT:-8000}"
 if [[ -z "$DESTINATION_ADDRESS" ]]; then
     echo "Remote host address must be provided in DESTINATION_ADDRESS"
@@ -9,10 +12,12 @@ if [[ -z "$DESTINATION_ADDRESS" ]]; then
 fi
 
 STUNNEL_CONF=/tmp/stunnel-client.conf
-STUNNEL_PID_FILE=/tmp/stunnel-client.pid
-PSK_FILE=/keys/psk.txt
+# The VOLSYNC_* path overrides exist so the mover shell tests can run against a
+# sandbox; the mover Job always uses the image defaults.
+PSK_FILE="${VOLSYNC_KEY_DIR:-/keys}/psk.txt"
+DISKRSYNC_TCP_BIN="${VOLSYNC_DISKRSYNC_TCP_BIN:-/diskrsync-tcp}"
 STUNNEL_LISTEN_PORT=9000
-SOURCE="/data"
+SOURCE="${VOLSYNC_DATA_DIR:-/data}"
 BLOCK_SOURCE="/dev/block"
 
 SCRIPT_FULLPATH="$(realpath "$0")"
@@ -43,25 +48,19 @@ if [[ $DEBUG_MOVER -eq 1 && "$SCRIPT_DIR" != "/tmp" ]]; then
   echo "##################################################################"
 
   # Wait for user to delete the file before exiting
-  while [[ -f "${END_DEBUG_FILE}" ]]; do
-    sleep 10
+  while [[ -f "${END_DEBUG_FILE}" && -z "${VOLSYNC_SHUTDOWN_SIGNAL}" ]]; do
+    volsync_run sleep 10
   done
 
   echo ""
   echo "##################################################################"
   echo "Debug done, exiting."
   echo "##################################################################"
-  sleep 2
+  volsync_run sleep 2
   exit 0
 fi
 
 cd "$SCRIPT_DIR"
-
-# shellcheck disable=SC2317,SC2329  # It's reachable due to the TRAP
-function stop_stunnel() {
-    ## Terminate stunnel
-    kill -TERM "$(<"$STUNNEL_PID_FILE")"
-}
 
 if [[ ! -r $PSK_FILE ]]; then
     echo "ERROR: Pre-shared key not found - $PSK_FILE"
@@ -79,9 +78,8 @@ if ! test -b $BLOCK_SOURCE; then
     cat - > "$STUNNEL_CONF" <<STUNNEL_CONF
 ; Global options
 debug = debug
-foreground = no
+foreground = yes
 output = /dev/stdout
-pid = $STUNNEL_PID_FILE
 socket = l:SO_KEEPALIVE=1
 socket = l:TCP_KEEPIDLE=180
 socket = r:SO_KEEPALIVE=1
@@ -107,9 +105,8 @@ else
     cat - > "$STUNNEL_CONF" <<STUNNEL_CONF
 ; Global options
 debug = debug
-foreground = no
+foreground = yes
 output = /dev/stdout
-pid = $STUNNEL_PID_FILE
 socket = l:SO_KEEPALIVE=1
 socket = l:TCP_KEEPIDLE=180
 socket = r:SO_KEEPALIVE=1
@@ -130,8 +127,14 @@ stunnel -version "$STUNNEL_CONF"
 
 ##############################
 ## Start stunnel to wait for incoming connections
-stunnel "$STUNNEL_CONF"
-trap stop_stunnel EXIT
+volsync_start_helper stunnel "$STUNNEL_CONF"
+
+# First rsync pass, kept in a function so volsync_run supervises the whole
+# rsync|tee pipeline as one process group.
+# shellcheck disable=SC2329  # invoked indirectly via volsync_run
+function run_rsync_transfer {
+    rsync -aAhHSxz -r --exclude=lost+found --itemize-changes --info=stats2,misc2 --files-from=/tmp/filelist.txt "${SOURCE}"/ rsync://127.0.0.1:"$STUNNEL_LISTEN_PORT"/data | tee /tmp/rsync-full.log
+}
 
 # Sync files
 START_TIME=$SECONDS
@@ -142,18 +145,18 @@ FACTOR=2
 rc=1
 set +e  # Don't exit on command failure
 echo "Syncing data to ${DESTINATION_ADDRESS}:${DESTINATION_PORT} ..."
-while [[ $rc -ne 0 && $RETRY -lt $MAX_RETRIES ]]; do
+while [[ $rc -ne 0 && $RETRY -lt $MAX_RETRIES && -z "${VOLSYNC_SHUTDOWN_SIGNAL}" ]]; do
     RETRY=$(( RETRY + 1 ))
     if test -b $BLOCK_SOURCE; then
       echo "calling diskrsync-tcp $BLOCK_SOURCE --source --target-address 127.0.0.1 --port $STUNNEL_LISTEN_PORT"
-      /diskrsync-tcp $BLOCK_SOURCE --source --target-address 127.0.0.1 --port $STUNNEL_LISTEN_PORT
+      volsync_run "$DISKRSYNC_TCP_BIN" $BLOCK_SOURCE --source --target-address 127.0.0.1 --port $STUNNEL_LISTEN_PORT
       rc=$?
     else
         # Find all files/dirs at root of pvc, prepend / to each (rsync will use SOURCE as the base dir for these files)
         find "${SOURCE}" -mindepth 1 -maxdepth 1 -printf '/%P\n' > /tmp/filelist.txt
         if [[ -s /tmp/filelist.txt ]]; then
             # 1st run preserves as much as possible, but excludes the root directory
-            rsync -aAhHSxz -r --exclude=lost+found --itemize-changes --info=stats2,misc2 --files-from=/tmp/filelist.txt ${SOURCE}/ rsync://127.0.0.1:$STUNNEL_LISTEN_PORT/data | tee /tmp/rsync-full.log
+            volsync_run run_rsync_transfer
             rc_a=$?
 
             if [[ $rc_a -eq 0 ]]; then
@@ -162,7 +165,7 @@ while [[ $rc -ne 0 && $RETRY -lt $MAX_RETRIES ]]; do
                 grep -E '^cL' /tmp/rsync-full.log | awk -F' -> ' '{print $1}' | sed 's/^[^ ]* //' >> /tmp/symlink-munging-file
                 if [[ -s /tmp/symlink-munging-file ]]; then
                     echo "Symlinks were created or modified, sending symlink munging file to destination..."
-                    rsync /tmp/symlink-munging-file rsync://127.0.0.1:$STUNNEL_LISTEN_PORT/control/symlink-munging-file
+                    volsync_run rsync /tmp/symlink-munging-file rsync://127.0.0.1:$STUNNEL_LISTEN_PORT/control/symlink-munging-file
                     rc_a=$?
                 fi
             fi
@@ -174,13 +177,18 @@ while [[ $rc -ne 0 && $RETRY -lt $MAX_RETRIES ]]; do
         # To delete extra files, must sync at the directory-level, but need to avoid
         # trying to modify the directory itself. This pass will only delete files
         # that exist on the destination but not on the source, not make updates.
-        rsync -rx --exclude=lost+found --ignore-existing --ignore-non-existing --delete --itemize-changes --info=stats2,misc2 ${SOURCE}/ rsync://127.0.0.1:$STUNNEL_LISTEN_PORT/data
-        rc_b=$?
-        rc=$(( rc_a * 100 + rc_b ))
+        if [[ -z "${VOLSYNC_SHUTDOWN_SIGNAL}" ]]; then
+            volsync_run rsync -rx --exclude=lost+found --ignore-existing --ignore-non-existing --delete --itemize-changes --info=stats2,misc2 "${SOURCE}"/ rsync://127.0.0.1:$STUNNEL_LISTEN_PORT/data
+            rc_b=$?
+            rc=$(( rc_a * 100 + rc_b ))
+        else
+            # Do not start another transfer pass once shutdown has been requested.
+            rc=$rc_a
+        fi
     fi
-    if [[ $rc -ne 0 ]]; then
+    if [[ $rc -ne 0 && -z "${VOLSYNC_SHUTDOWN_SIGNAL}" ]]; then
         echo "Syncronization failed. Retrying in $DELAY seconds. Retry ${RETRY}/${MAX_RETRIES}."
-        sleep $DELAY
+        volsync_run sleep "$DELAY"
         DELAY=$(( DELAY * FACTOR ))
     fi
 done
@@ -194,9 +202,9 @@ else
     if [[ $rc -eq 0 ]]; then
         # Tell server to shutdown. Actual file contents don't matter
         echo "Sending shutdown to remote..."
-        rsync "$SCRIPT_FULLPATH" rsync://127.0.0.1:$STUNNEL_LISTEN_PORT/control/complete
+        volsync_run rsync "$SCRIPT_FULLPATH" rsync://127.0.0.1:$STUNNEL_LISTEN_PORT/control/complete
         echo "...done"
-        sleep 5  # Give time for the remote to shut down
+        volsync_run sleep 5  # Give time for the remote to shut down
     else
         echo "Synchronization failed. rsync returned: $rc"
     fi
