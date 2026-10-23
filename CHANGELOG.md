@@ -8,6 +8,11 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Fixed
+
+- VolumePopulator requeues while waiting on external state so a missed watch
+  event cannot leave the target PVC pending indefinitely
+
 ## [0.17.0]
 
 ### Added
