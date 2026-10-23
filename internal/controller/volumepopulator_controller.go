@@ -65,6 +65,15 @@ const (
 	// volPopRequeueInterval bounds how long the volume populator waits on external
 	// state before trying again. Watch events normally drive progress, but a missed
 	// event must not leave the target PVC pending forever.
+	//
+	// This is deliberately a fixed interval rather than an exponential backoff.
+	// These are waits for a healthy external actor (the bind controller, the CSI
+	// provisioner, or a ReplicationDestination update), not failing operations.
+	// controller-runtime only applies its rate limiter to errors and Requeue=true
+	// (where an item's backoff can grow to ~17 minutes); RequeueAfter bypasses it,
+	// so backoff would have to be hand-rolled with per-PVC attempt state. A flat
+	// interval keeps the worst-case recovery time bounded and predictable, and the
+	// polling cost for the few PVCs that can be pending at once is negligible.
 	volPopRequeueInterval = 10 * time.Second
 )
 
