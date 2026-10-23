@@ -35,6 +35,69 @@
   ansible.builtin.set_fact:
     local_should_fail: "{{ should_fail | default(false) }}"
 
+# Population from a snapshot or a VolumePopulator is asynchronous, so either PVC
+# may still be binding when this role is called. Wait for both to bind, but only
+# until one wall-clock deadline of pvc_bound_timeout (default 120s): a single
+# k8s_info lookup can take seconds, so counting retries does not bound elapsed
+# time. A stuck PVC therefore fails here with a precise message instead of
+# surfacing as an opaque ~900s wait for the compare Job.
+- name: Compute the deadline for the PVCs to bind
+  ansible.builtin.set_fact:
+    pvc_bound_deadline: >-
+      {{ (now(utc=true).timestamp() | int) + (pvc_bound_timeout | default(120) | int) }}
+
+# retries is only a safety cap on the loop; the deadline in the until condition
+# is the real wall-clock bound, so slow lookups cannot stretch out the wait.
+- name: Wait for the PVCs the compare Job will mount to be Bound
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: PersistentVolumeClaim
+    name: "{{ pvc_name }}"
+    namespace: "{{ namespace }}"
+  register: pvc_bound_check
+  until: >-
+    (pvc_bound_check.resources | length > 0 and
+    pvc_bound_check.resources[0].get('status', {}).get('phase', '') == 'Bound')
+    or (now(utc=true).timestamp() | int) >= (pvc_bound_deadline | int)
+  retries: 600
+  delay: 1
+  loop:
+    - "{{ pvc1_name }}"
+    - "{{ pvc2_name }}"
+  loop_control:
+    loop_var: pvc_name
+    label: "{{ pvc_name }}"
+
+# Use .get() rather than a dotted attribute lookup: a PVC that does not exist
+# has no 'status' key at all, and a dotted lookup would raise before 'default'
+# could apply.
+- name: Summarize the current phase of each PVC
+  ansible.builtin.set_fact:
+    pvc_phase_summary: >-
+      {%- set summary = [] -%}
+      {%- for pvc_state in pvc_bound_check.results -%}
+      {%- set phase = (pvc_state.resources[0].get('status', {}).get('phase', 'Unknown')
+                       if pvc_state.resources | length > 0 else 'Unknown') -%}
+      {%- set _ = summary.append(pvc_state.pvc_name ~ '=' ~ phase) -%}
+      {%- endfor -%}
+      {{ summary | join(', ') }}
+
+- name: Fail because the PVCs did not become Bound
+  ansible.builtin.fail:
+    msg: >-
+      Timed out after up to {{ pvc_bound_timeout | default(120) }}s waiting for
+      PVCs to become Bound in namespace {{ namespace }}: {{ pvc_phase_summary }}.
+      The compare Job would be unschedulable due to unbound immediate
+      PersistentVolumeClaims. Inspect each PVC (kubectl describe pvc <name>
+      -n {{ namespace }}) and, for a VolumePopulator destination PVC, the VolSync
+      VolumePopulator state; raise pvc_bound_timeout if provisioning is simply
+      slow.
+  when: >-
+    pvc_bound_check.results
+    | map(attribute='resources.0.status.phase', default='Unknown')
+    | reject('equalto', 'Bound')
+    | list | length > 0
+
 - name: Create Job
   kubernetes.core.k8s:
     state: present
