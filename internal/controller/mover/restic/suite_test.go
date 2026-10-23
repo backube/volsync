@@ -111,6 +111,7 @@ var _ = BeforeSuite(func() {
 	commonBuilderForTestSuite, err = newBuilder(viper.New(), flag.NewFlagSet("testfsetrestic", flag.ExitOnError))
 	Expect(err).NotTo(HaveOccurred())
 	Expect(commonBuilderForTestSuite).NotTo(BeNil())
+	commonBuilderForTestSuite.SetAPIReader(k8sClient)
 })
 
 var _ = AfterSuite(func() {

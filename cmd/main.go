@@ -358,6 +358,8 @@ func main() {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
+	// Keep the legacy Job Pod lookup uncached so it cannot start a cluster-wide informer.
+	mover.SetAPIReaderForBuilders(mgr.GetAPIReader())
 
 	if tlsSecurityProfileSpec != nil {
 		// Will only be true for OpenShift clusters

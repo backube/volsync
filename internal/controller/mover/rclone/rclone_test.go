@@ -1719,9 +1719,23 @@ var _ = Describe("Rclone as a source", func() {
 					job = &batchv1.Job{}
 					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
 					job.Status.Failed = *job.Spec.BackoffLimit
+					terminating := int32(1)
+					job.Status.Terminating = &terminating
+					job.Status.Succeeded = 1
 					Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
 
-					// Ensure job should delete the job since backoff limit is reached
+					// Wait for terminating Pods even when success and backoff are both reported.
+					j, e = mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret, nil) // Using sPVC as dataPVC (i.e. direct)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil())
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+					Expect(*job.Status.Terminating).To(Equal(int32(1)))
+					Expect(job.Status.Succeeded).To(Equal(int32(1)))
+					Expect(job.Status.Failed).To(Equal(*job.Spec.BackoffLimit))
+
+					terminating = 0
+					job.Status.Terminating = &terminating
+					Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
 					j, e = mover.ensureJob(ctx, sPVC, sa, rcloneConfigSecret, nil) // Using sPVC as dataPVC (i.e. direct)
 					Expect(e).NotTo(HaveOccurred())
 					Expect(j).To(BeNil())
