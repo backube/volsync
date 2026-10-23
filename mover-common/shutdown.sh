@@ -142,8 +142,9 @@ _volsync_run() {
     done
 
     # If wait was interrupted and the child exited in the window before the
-    # check above, collect its real exit status. A final wait on a job that was
-    # already reaped returns 127; keep the interrupted status in that case.
+    # check above, collect its real exit status. Re-waiting either returns the
+    # remembered status or 127 when the job is no longer known; in the latter
+    # case keep the interrupted status.
     if (( rc > 128 )); then
         local final_rc=0
         wait "$pid" 2>/dev/null || final_rc=$?
