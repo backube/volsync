@@ -19,7 +19,7 @@
 #   - `restic check` reports a healthy repository.
 #
 # Usage:
-#   ./hack/test-mover-shutdown-container.sh <image>
+#   ./.ci-scripts/test-mover-shutdown-container.sh <image>
 #
 # Environment:
 #   CONTAINER_RUNTIME  docker or podman (default: docker, podman if docker is
@@ -29,7 +29,7 @@
 #
 # Example:
 #   make docker-build IMG=localhost/volsync-shutdown-test:dev
-#   ./hack/test-mover-shutdown-container.sh localhost/volsync-shutdown-test:dev
+#   ./.ci-scripts/test-mover-shutdown-container.sh localhost/volsync-shutdown-test:dev
 #
 # shortcut: the fixture size assumes the first backup outlasts the lock poll.
 # If a future Restic finishes the backup while this test is still polling for
