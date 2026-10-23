@@ -229,7 +229,10 @@ func (s *sandbox) runEntrypoint(
 		Succeed(), "failed to signal namespace init\noutput:\n%s", output.String())
 
 	select {
-	case <-done:
+	case err := <-done:
+		// Wait returned; a non-nil error is expected when the mover exits
+		// non-zero after the stop signal. The status is in cmd.ProcessState.
+		_ = err
 	case <-time.After(exitTimeout):
 		Fail(fmt.Sprintf(
 			"mover did not exit within %s after SIGTERM\noutput:\n%s", exitTimeout, output.String()))
@@ -252,8 +255,9 @@ func (s *sandbox) waitForMarker(name string, done <-chan error, output *lockedBu
 			return
 		}
 		select {
-		case <-done:
-			Fail(fmt.Sprintf("mover exited before writing %q\noutput:\n%s", name, output.String()))
+		case err := <-done:
+			Fail(fmt.Sprintf("mover exited before writing %q: %v\noutput:\n%s",
+				name, err, output.String()))
 		default:
 		}
 		time.Sleep(20 * time.Millisecond)
