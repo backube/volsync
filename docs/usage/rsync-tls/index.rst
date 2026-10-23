@@ -26,6 +26,9 @@ Rsync, the amount of data transferred during each synchronization is kept to a
 minimum, and the TLS connection ensures that the data transfer is both
 authenticated and secure.
 
+For how an in-progress transfer behaves when a mover Pod is stopped, see
+:doc:`../termination`.
+
 ------
 
 Rsync-over-TLS uses a "push" model for the data replication. A schedule or other
