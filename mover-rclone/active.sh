@@ -101,5 +101,5 @@ destination)
     error 1 "unknown value for DIRECTION: ${DIRECTION}"
     ;;
 esac
-volsync_run sync -f "${MOUNT_PATH}"
+volsync_run_cleanup sync -f "${MOUNT_PATH}"
 echo "Rclone completed in $(( SECONDS - START_TIME ))s"
