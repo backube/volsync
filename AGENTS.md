@@ -50,7 +50,8 @@ replication. Follow the Go toolchain declared in `go.mod` and the CI workflow.
   servers, not a live cluster. The envtest tools or required Kubernetes API
   server assets may need to be downloaded on first run.
 - Run `hack/test-run-rustfs-storage-class.sh` to check StorageClass selection
-  behavior without a cluster.
+  behavior without a cluster, and `hack/test-run-rustfs-bucket-init.sh` to
+  check bucket-init retries and failure diagnostics.
 
 ## Live end-to-end tests
 
