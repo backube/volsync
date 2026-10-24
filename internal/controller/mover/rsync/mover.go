@@ -453,6 +453,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 			}
 		}
 		job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
+		job.Spec.Template.Spec.TerminationGracePeriodSeconds = ptr.To(mover.MoverTerminationGracePeriodSeconds)
 		job.Spec.Template.Spec.ServiceAccountName = sa.Name
 		job.Spec.Template.Spec.Volumes = []corev1.Volume{
 			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{

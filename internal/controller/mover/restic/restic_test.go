@@ -1321,6 +1321,7 @@ var _ = Describe("Restic as a source", func() {
 					Expect(job.Spec.Template.Spec.Containers).ToNot(BeEmpty())
 					args := job.Spec.Template.Spec.Containers[0].Args
 					Expect(args).To(ConsistOf("backup"))
+					expectMoverTerminationGracePeriod(job.Spec.Template.Spec)
 				})
 				It("should use the specified container image", func() {
 					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
@@ -2358,6 +2359,7 @@ var _ = Describe("Restic as a destination", func() {
 					Expect(job.Spec.Template.Spec.Containers).ToNot(BeEmpty())
 					args := job.Spec.Template.Spec.Containers[0].Args
 					Expect(args).To(ConsistOf("restore"))
+					expectMoverTerminationGracePeriod(job.Spec.Template.Spec)
 				})
 			})
 			When("a custom CA is not supplied", func() {
@@ -2793,4 +2795,10 @@ func verifyEnvVarFromSecret(env []corev1.EnvVar, envVarName string, secretName s
 			},
 		},
 	}))
+}
+
+func expectMoverTerminationGracePeriod(podSpec corev1.PodSpec) {
+	ExpectWithOffset(1, podSpec.TerminationGracePeriodSeconds).ToNot(BeNil())
+	ExpectWithOffset(1, *podSpec.TerminationGracePeriodSeconds).
+		To(Equal(vsmover.MoverTerminationGracePeriodSeconds))
 }

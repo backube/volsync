@@ -16,6 +16,9 @@ VolSync supports taking backups of PersistentVolume data using the Restic-based
 data mover. A ReplicationSource defines the backup policy (target, frequency,
 and retention), while a ReplicationDestination is used for restores.
 
+For how an in-progress operation behaves when a mover Pod is stopped, see
+:doc:`../termination`.
+
 The Restic mover is different than most of VolSync's other movers because it is
 not meant for synchronizing data between clusters. This mover is specifically
 designed for data backup.
