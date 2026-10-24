@@ -15,7 +15,7 @@ HELM_VERSION := v4.3.1
 KUBECTL_VERSION := v1.35.1
 KUSTOMIZE_VERSION := v5.8.2
 OPERATOR_SDK_VERSION := v1.42.0
-PIPENV_VERSION := 2026.9.1
+PIPENV_VERSION := 2026.10.2
 YQ_VERSION := v4.54.1
 #ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
 ENVTEST_VERSION ?= $(shell go list -m -f "{{ .Version }}" sigs.k8s.io/controller-runtime | awk -F'[v.]' '{printf "release-%d.%d", $$2, $$3}')
