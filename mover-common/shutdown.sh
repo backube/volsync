@@ -33,6 +33,7 @@ _volsync_log_debug() {
     if [[ "${DEBUG_MOVER:-0}" == "1" ]]; then
         echo "volsync-shutdown: $*" >&2
     fi
+    return 0
 }
 
 # Send a signal to a process group, falling back to the process itself if the
@@ -43,6 +44,7 @@ _volsync_signal_group() {
     local pgid="$2"
     kill -s "$signal" -- "-${pgid}" 2>/dev/null ||
         kill -s "$signal" "${pgid}" 2>/dev/null || true
+    return 0
 }
 
 # Start a command (or shell function) in its own process group. Job control
@@ -54,6 +56,7 @@ _volsync_spawn() {
     local monitor_was_enabled=0
     case $- in
         *m*) monitor_was_enabled=1 ;;
+        *) ;;
     esac
 
     set -m
@@ -62,6 +65,7 @@ _volsync_spawn() {
     if (( monitor_was_enabled == 0 )); then
         set +m
     fi
+    return 0
 }
 
 # Handle a stop signal delivered to this script (PID 1 in the mover container).
@@ -93,7 +97,9 @@ trap 'volsync_stop_helpers' EXIT
 # Returns the child's exit status, so callers keep their existing `set -e`
 # behavior.
 volsync_run() {
-    _volsync_run 1 "$@"
+    local rc=0
+    _volsync_run 1 "$@" || rc=$?
+    return "$rc"
 }
 
 # Run a short, critical cleanup command (e.g. flushing data with sync) that must
@@ -102,7 +108,9 @@ volsync_run() {
 # while it runs is still forwarded by the trap, so the Pod grace period remains
 # the upper bound.
 volsync_run_cleanup() {
-    _volsync_run 0 "$@"
+    local rc=0
+    _volsync_run 0 "$@" || rc=$?
+    return "$rc"
 }
 
 _volsync_run() {
@@ -202,5 +210,8 @@ volsync_stop_helpers() {
 
 # True (rc 0) once a TERM or INT has been received.
 volsync_shutdown_requested() {
-    [[ -n "${VOLSYNC_SHUTDOWN_SIGNAL}" ]]
+    if [[ -n "${VOLSYNC_SHUTDOWN_SIGNAL}" ]]; then
+        return 0
+    fi
+    return 1
 }
