@@ -6,6 +6,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 TEST_DIR="$(mktemp -d)"
 trap 'rm -rf "${TEST_DIR}"' EXIT
 TEST_BIN="${TEST_DIR}/bin"
@@ -109,7 +110,7 @@ run_bucket_init_case() {
         RUSTFS_BUCKET_INIT_RETRY_INTERVAL_SECONDS=0 \
         RUSTFS_BUCKET_INIT_DEADLINE_SECONDS=20 \
         RUSTFS_BUCKET_INIT_COMMAND_TIMEOUT_SECONDS=1 \
-        timeout 20 "${SCRIPT_DIR}/rustfs-bucket-init.sh" \
+        timeout 20 "${REPO_ROOT}/hack/rustfs-bucket-init.sh" \
         >"${bucket_init_output}" 2>&1 || bucket_init_status=$?
 }
 
@@ -163,7 +164,7 @@ PATH="${TEST_BIN}:${PATH}" \
     RUSTFS_ACCESS_KEY="${access_key_sentinel}" \
     RUSTFS_SECRET_KEY="${secret_key_sentinel}" \
     RUSTFS_BUCKET_INIT_COMMAND_TIMEOUT_SECONDS=0 \
-    "${SCRIPT_DIR}/rustfs-bucket-init.sh" >"${invalid_output}" 2>&1 || invalid_status=$?
+    "${REPO_ROOT}/hack/rustfs-bucket-init.sh" >"${invalid_output}" 2>&1 || invalid_status=$?
 [[ "${invalid_status}" -ne 0 ]] || fail "A zero command timeout should be rejected."
 grep -Fq 'must be greater than 0' "${invalid_output}" || fail "Missing zero-timeout validation message."
 
@@ -274,7 +275,7 @@ run_rustfs_case() {
         RUSTFS_NAMESPACE=rustfs \
         RUSTFS_USE_TLS=0 \
         RUSTFS_STORAGE_CLASS="" \
-        timeout 60 "${SCRIPT_DIR}/run-rustfs.sh" >"${run_output}" 2>&1 || run_status=$?
+        timeout 60 "${REPO_ROOT}/hack/run-rustfs.sh" >"${run_output}" 2>&1 || run_status=$?
 
     [[ "${run_status}" -ne 124 ]] || fail "run-rustfs.sh did not finish within the 60s test timeout for ${case_name}."
     if [[ "${expected_status}" == "success" ]]; then

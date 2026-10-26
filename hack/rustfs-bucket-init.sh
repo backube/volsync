@@ -19,8 +19,9 @@ if [ -z "${RUSTFS_ACCESS_KEY:-}" ] || [ -z "${RUSTFS_SECRET_KEY:-}" ]; then
 fi
 
 # The tunables below exist so the script can be exercised directly (and fast)
-# by hack/test-run-rustfs-bucket-init.sh. The Job created by run-rustfs.sh uses
-# the defaults; they are not plumbed through the Job environment.
+# by .ci-scripts/test-run-rustfs-bucket-init.sh. The Job created by
+# run-rustfs.sh uses the defaults; they are not plumbed through the Job
+# environment.
 rc_output_log="${RUSTFS_BUCKET_INIT_LOG:-/tmp/rc-output.log}"
 retry_attempts="${RUSTFS_BUCKET_INIT_RETRY_ATTEMPTS:-30}"
 retry_interval_seconds="${RUSTFS_BUCKET_INIT_RETRY_INTERVAL_SECONDS:-2}"
