@@ -199,7 +199,7 @@ case "${command_name}" in
                 printf '%s\n' "${JOB_CONDITIONS:-Failed=True}"
                 ;;
             events)
-                echo "EVENTS_MARKER"
+                printf '%s\n' "${IMAGE_EVENTS:-EVENTS_MARKER}"
                 ;;
             pods)
                 case " $* " in
@@ -207,11 +207,11 @@ case "${command_name}" in
                         echo "pod/rustfs-bucket-init-fake"
                         ;;
                     *jsonpath*)
-                        echo "ImagePullBackOff"
+                        echo "${IMAGE_WAITING_REASON:-ImagePullBackOff}"
                         ;;
                     *custom-columns*)
                         echo "NAME PHASE WAITING_REASON TERMINATED_REASON RESTARTS"
-                        echo "rustfs-bucket-init-fake Pending ImagePullBackOff <none> 0"
+                        echo "rustfs-bucket-init-fake Pending ${IMAGE_WAITING_REASON:-ImagePullBackOff} <none> 0"
                         ;;
                     *)
                         echo "PODS_WIDE_MARKER"
@@ -249,6 +249,13 @@ if [[ "${1:-}" == "version" ]]; then
     printf 'v3.15.0\n'
     exit 0
 fi
+while (($#)); do
+    if [[ "${1}" == "--values" ]]; then
+        cp "${2}" "${VALUES_CAPTURE}"
+        break
+    fi
+    shift
+done
 # Let initialize_bucket run; fake kubectl reports the Job result.
 exit 0
 EOF
@@ -260,17 +267,23 @@ run_rustfs_case() {
     local job_conditions="$2"
     local expected_status="$3"
     local wait_timeout_seconds="${4:-480}"
+    local image_waiting_reason="${5:-ImagePullBackOff}"
+    local image_events="${6:-EVENTS_MARKER}"
 
     kubectl_log="${TEST_DIR}/run-rustfs-${case_name}.kubectl.log"
     apply_capture="${TEST_DIR}/run-rustfs-${case_name}.job.yaml"
+    values_capture="${TEST_DIR}/run-rustfs-${case_name}.values.yaml"
     run_output="${TEST_DIR}/run-rustfs-${case_name}.log"
     run_status=0
 
     JOB_CONDITIONS="${job_conditions}" \
         BUCKET_INIT_WAIT_TIMEOUT_SECONDS="${wait_timeout_seconds}" \
+        IMAGE_WAITING_REASON="${image_waiting_reason}" \
+        IMAGE_EVENTS="${image_events}" \
         HELM_BIN="${TEST_BIN}/helm" \
         KUBECTL_LOG="${kubectl_log}" \
         APPLY_CAPTURE="${apply_capture}" \
+        VALUES_CAPTURE="${values_capture}" \
         PATH="${TEST_BIN}:${PATH}" \
         RUSTFS_NAMESPACE=rustfs \
         RUSTFS_USE_TLS=0 \
@@ -321,6 +334,13 @@ grep -Fq 'logs -l app.kubernetes.io/name=rustfs --all-containers --prefix --tail
     fail "Diagnostics are missing RustFS server logs."
 grep -Fq 'get events --sort-by=.lastTimestamp' "${kubectl_log}" || fail "Diagnostics are missing namespace events."
 grep -Fq 'The RustFS CLI image' "${run_output}" || fail "Image pull failure was not reported."
+grep -Fq 'could not be pulled or inspected' "${run_output}" ||
+    fail "Image pull failure message does not mention inspection failures."
+grep -Fq 'image: docker.io/rustfs/rc:' "${apply_capture}" || fail "CLI image is not fully qualified."
+grep -Fq 'repository: docker.io/rustfs/rustfs' "${values_capture}" ||
+    fail "RustFS server image is not fully qualified."
+grep -Fq 'repository: docker.io/library/busybox' "${values_capture}" ||
+    fail "RustFS init image is not fully qualified."
 
 delete_lines="$(grep -n 'delete job' "${kubectl_log}" | cut -d: -f1 || true)"
 [[ -n "${delete_lines}" ]] || fail "The bucket-init Job was never deleted."
@@ -329,6 +349,13 @@ last_diagnostic_line="$(grep -n 'get events --sort-by=.lastTimestamp' "${kubectl
 if [[ "${delete_lines}" -le "${last_diagnostic_line}" ]]; then
     fail "The bucket-init Job must be deleted after diagnostics are collected."
 fi
+
+# CRI-O can report an image-inspection failure for ambiguous short names
+# instead of ErrImagePull/ImagePullBackOff.
+run_rustfs_case image-inspect-failure Failed=True failure 480 ImageInspectError
+grep -Fq 'could not be pulled or inspected' "${run_output}" ||
+    fail "ImageInspectError was not reported."
+grep -Fq 'ImageInspectError' "${run_output}" || fail "ImageInspectError reason was not printed."
 
 # Success case: no diagnostics, logs are printed, and the Job is deleted.
 run_rustfs_case success Complete=True success

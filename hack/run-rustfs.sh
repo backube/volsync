@@ -11,7 +11,7 @@ RUSTFS_USE_TLS="${RUSTFS_USE_TLS-0}"
 RUSTFS_STORAGE_CLASS="${RUSTFS_STORAGE_CLASS:-}"
 RUSTFS_CERT_SECRET="rustfs-cert"
 RUSTFS_CHART_REPOSITORY="https://charts.rustfs.com"
-RUSTFS_CLI_IMAGE="rustfs/rc:${RUSTFS_CLI_VERSION}"
+RUSTFS_CLI_IMAGE="docker.io/rustfs/rc:${RUSTFS_CLI_VERSION}"
 
 # The in-container script stops retrying after 240s. Leave enough headroom for
 # pod scheduling and image pull so it can still print its captured output
@@ -175,10 +175,11 @@ ingress:
   enabled: false
 image:
   rustfs:
-    repository: rustfs/rustfs
+    repository: docker.io/rustfs/rustfs
     tag: "${RUSTFS_SERVER_VERSION}"
     pullPolicy: IfNotPresent
   initImage:
+    repository: docker.io/library/busybox
     tag: "${BUSYBOX_VERSION}"
 secret:
   rustfs:
@@ -311,16 +312,16 @@ report_image_pull_failure() {
             -o jsonpath='{range .items[*].status.containerStatuses[*]}{.state.waiting.reason}{"\n"}{end}' \
             2>/dev/null || true
     )"
-    if printf '%s\n' "${waiting_reasons}" | grep -Eq '^(ErrImagePull|ImagePullBackOff)$'; then
-        echo "The RustFS CLI image '${RUSTFS_CLI_IMAGE}' could not be pulled; check the tag and registry access from the cluster." >&2
+    if printf '%s\n' "${waiting_reasons}" | grep -Eq '^(ErrImagePull|ImagePullBackOff|ImageInspectError)$'; then
+        echo "The RustFS CLI image '${RUSTFS_CLI_IMAGE}' could not be pulled or inspected; check the tag, registry access, and whether the image reference is fully qualified." >&2
         printf '%s\n' "${waiting_reasons}" >&2
     elif events="$(
         kubectl -n "${RUSTFS_NAMESPACE}" get events 2>/dev/null || true
-    )" && printf '%s\n' "${events}" | grep -E 'ErrImagePull|ImagePullBackOff' | grep -Fq "${job_name}"; then
+    )" && printf '%s\n' "${events}" | grep -E 'ErrImagePull|ImagePullBackOff|ImageInspectError|InspectFailed' | grep -Fq "${job_name}"; then
         # The Job controller deletes the pod when activeDeadlineSeconds expires,
         # so the pod status may be gone by the time diagnostics run. Events
-        # persist and still identify an image-pull failure.
-        echo "The RustFS CLI image '${RUSTFS_CLI_IMAGE}' could not be pulled; check the tag and registry access from the cluster (see pod events below)." >&2
+        # persist and still identify an image-pull or image-inspection failure.
+        echo "The RustFS CLI image '${RUSTFS_CLI_IMAGE}' could not be pulled or inspected; check the tag, registry access, and whether the image reference is fully qualified (see pod events below)." >&2
     fi
     if printf '%s\n' "${waiting_reasons}" | grep -qx 'ContainerCreating'; then
         echo "The RustFS CLI container never started (ContainerCreating); image pull latency may have consumed the Job deadline." >&2
