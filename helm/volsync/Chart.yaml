@@ -24,22 +24,7 @@ annotations: # https://artifacthub.io/docs/topics/annotations/helm/
   # Changelog for current chart & app version
   # Kinds: added, changed, deprecated, removed, fixed, and security
   artifacthub.io/changes: |
-    - kind: added
-      description: Chart now allows to set `priorityClassName` for the operator pod
-    - kind: added
-      description: Add MoverTolerations to MoverConfig
-    - kind: added
-      description: Restic support `--keep-within-*` retention flags
-    - kind: added
-      description: Add spec.restic.enableSparseRestore to restore files sparse
-    - kind: changed
-      description: Restic updated to v0.19.1
-    - kind: changed
-      description: Rclone updated to v1.75.2
-    - kind: changed
-      description: The Rsync-ssh mover now requires privileged mode to run. Previously for backwards compatibility it forced privileged mode. Note: Rsync-TLS is still the recommended mover for Rsync.
-    - kind: fixed
-      description: Restic optional env vars - only set in job if key exists in secret
+
   artifacthub.io/crds: |
     - kind: ReplicationDestination
       version: v1alpha1
@@ -66,10 +51,10 @@ kubeVersion: "^1.20.0-0"
 # This is the chart version. This version number should be incremented each time
 # you make changes to the chart and its templates, including the app version.
 # Versions are expected to follow Semantic Versioning (https://semver.org/)
-version: "0.17.0"
+version: "0.18.0"
 
 # This is the version number of the application being deployed. This version
 # number should be incremented each time you make changes to the application.
 # Versions are not expected to follow Semantic Versioning. They should reflect
 # the version the application is using. It is recommended to use it with quotes.
-appVersion: "0.17.0"
+appVersion: "0.18.0"
