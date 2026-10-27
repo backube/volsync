@@ -180,6 +180,10 @@ test: bundle generate lint envtest helm-lint ginkgo ## Run tests.
 	-rm -f cover.out
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GINKGO) $(TEST_ARGS) $(TESTBUILDTAGS) $(TEST_PACKAGES)
 
+.PHONY: test-race
+test-race: override TEST_ARGS += --race
+test-race: test ## Run tests with the Go race detector (slower; used by CI).
+
 .PHONY: test-e2e-install
 PIP_INSTALL_ARGS ?= --user
 test-e2e-install: ## Install environment for running e2e

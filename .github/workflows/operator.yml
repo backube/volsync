@@ -177,8 +177,10 @@ jobs:
             exit 1
           fi
 
-      - name: Run unit tests
-        run: make test
+      # The race detector roughly doubles the Go test phase (~1 min -> ~2 min)
+      # and a detected data race fails this job (blocking).
+      - name: Run unit tests (with race detector)
+        run: make test-race
 
       - name: Upload test coverage
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1

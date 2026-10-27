@@ -20,6 +20,7 @@ package platform
 import (
 	"context"
 	"os"
+	"sync/atomic"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -357,13 +358,15 @@ var _ = Describe("A cluster w/ StorageContextConstraints", func() {
 		})
 
 		When("a TLS profile watcher is running", func() {
-			cancelFuncCalled := false
+			// Set by the watcher callback on the manager goroutine and read by the
+			// test goroutine, so it must be accessed atomically.
+			var cancelFuncCalled atomic.Bool
 
 			var testManagerCancel context.CancelFunc
 			var testManagerDone chan struct{}
 
 			BeforeEach(func() {
-				cancelFuncCalled = false
+				cancelFuncCalled.Store(false)
 
 				testManager, err := ctrl.NewManager(cfg, ctrl.Options{
 					Scheme:  scheme.Scheme,
@@ -387,7 +390,7 @@ var _ = Describe("A cluster w/ StorageContextConstraints", func() {
 				err = InitTLSSecurityProfileWatcherWithManager(testManager,
 					*initialTLSProfileSpec, logger, func() {
 						logger.Info("Test CancelFunc called")
-						cancelFuncCalled = true
+						cancelFuncCalled.Store(true)
 					})
 				Expect(err).NotTo(HaveOccurred())
 
@@ -410,11 +413,13 @@ var _ = Describe("A cluster w/ StorageContextConstraints", func() {
 			})
 
 			It("Should not call cancel function if no TLS profile change", func() {
-				clearProperties()
+				// Properties were cached in BeforeEach before the manager started.
+				// Clearing them here would re-register the OpenShift types in the
+				// shared scheme, racing with the running manager's use of that scheme.
 				tlsProfileSpec, err := GetTLSProfileIfOpenShift(ctx, k8sClient, logger)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(tlsProfileSpec).NotTo(BeNil())
-				Expect(cancelFuncCalled).To(BeFalse())
+				Expect(cancelFuncCalled.Load()).To(BeFalse())
 			})
 
 			It("Should call the cancel function when the TLS profile changes", func() {
@@ -425,7 +430,7 @@ var _ = Describe("A cluster w/ StorageContextConstraints", func() {
 				Expect(k8sClient.Update(ctx, clusterAPIServer)).To(Succeed())
 
 				Eventually(func() bool {
-					return cancelFuncCalled
+					return cancelFuncCalled.Load()
 				}, maxWait, interval).Should(BeTrue())
 			})
 		})
