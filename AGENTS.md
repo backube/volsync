@@ -55,6 +55,10 @@ replication. Follow the Go toolchain declared in `go.mod` and the CI workflow.
   selection behavior without a cluster, and
   `.ci-scripts/test-run-rustfs-bucket-init.sh` to check bucket-init retries and
   failure diagnostics.
+- Disabled Ginkgo specs (the `X*`/`P*` variants of `It`, `Describe`, `When`,
+  `Context`, `Entry`, etc.) must carry a comment explaining why they are
+  disabled and linking a tracking issue. Prefer deleting a spec once the
+  behavior it covers no longer exists.
 
 ## Live end-to-end tests
 

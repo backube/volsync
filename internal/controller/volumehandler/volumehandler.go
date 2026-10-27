@@ -222,10 +222,6 @@ func (vh *VolumeHandler) EnsureNewPVC(ctx context.Context, log logr.Logger,
 	return pvc, nil
 }
 
-func (vh *VolumeHandler) SetAccessModes(accessModes []corev1.PersistentVolumeAccessMode) {
-	vh.accessModes = accessModes
-}
-
 func (vh *VolumeHandler) GetAccessModes() []corev1.PersistentVolumeAccessMode {
 	return vh.accessModes
 }

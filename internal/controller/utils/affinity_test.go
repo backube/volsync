@@ -273,17 +273,12 @@ var _ = Describe("Volume affinity", func() {
 			})
 		})
 
-		// Disabled since the code was removed. VolSync ignores its own pods now
-		XWhen("a PVC is being used only by a VolSync-owned pod", func() {
-			It("will have an affinity that matches that pod", func() {
+		When("a PVC is being used only by a VolSync-owned pod", func() {
+			It("will be ignored, resulting in an empty (unrestricted) affinity", func() {
 				ai, err := utils.AffinityFromVolume(ctx, k8sClient, logger, vsOnly)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(ai.NodeSelector).To(Equal(
-					map[string]string{
-						"kubernetes.io/hostname": vsPod.Spec.NodeName,
-					},
-				))
-				Expect(ai.Tolerations).To(Equal(vsPod.Spec.Tolerations))
+				Expect(ai.NodeSelector).To(BeEmpty())
+				Expect(ai.Tolerations).To(BeEmpty())
 			})
 		})
 	})
