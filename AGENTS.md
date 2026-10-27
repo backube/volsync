@@ -12,6 +12,8 @@ replication. Follow the Go toolchain declared in `go.mod` and the CI workflow.
 - `config/`, `helm/`, and `bundle/` hold deployment, CRD, Helm, and OLM assets.
 - `docs/`, `examples/`, and `test-e2e/` describe and exercise user-visible
   behavior.
+- `hack/` contains developer-facing setup and check scripts; CI-only test
+  harnesses live in `.ci-scripts/`.
 - Before changing behavior, read the relevant implementation, callers, tests,
   and docs. Treat CRD schemas and API behavior as compatibility contracts.
 - For API changes, update the API source and run `make auto-generated-files`
@@ -49,8 +51,10 @@ replication. Follow the Go toolchain declared in `go.mod` and the CI workflow.
   `mover-restic`. Controller suites use controller-runtime envtest local API
   servers, not a live cluster. The envtest tools or required Kubernetes API
   server assets may need to be downloaded on first run.
-- Run `hack/test-run-rustfs-storage-class.sh` to check StorageClass selection
-  behavior without a cluster.
+- Run `.ci-scripts/test-run-rustfs-storage-class.sh` to check StorageClass
+  selection behavior without a cluster, and
+  `.ci-scripts/test-run-rustfs-bucket-init.sh` to check bucket-init retries and
+  failure diagnostics.
 
 ## Live end-to-end tests
 

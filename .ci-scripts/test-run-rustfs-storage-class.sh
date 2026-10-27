@@ -3,6 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 TEST_DIR="$(mktemp -d)"
 trap 'rm -rf "${TEST_DIR}"' EXIT
 TEST_BIN="${TEST_DIR}/bin"
@@ -99,7 +100,7 @@ run_case() {
         RUSTFS_STORAGE_CLASS="${override_storage_class}" \
         RUSTFS_USE_TLS=0 \
         PATH="${TEST_BIN}:${PATH}" \
-        "${SCRIPT_DIR}/run-rustfs.sh" >/dev/null 2>&1; then
+        "${REPO_ROOT}/hack/run-rustfs.sh" >/dev/null 2>&1; then
         echo "Expected the fake Helm upgrade to stop the ${test_case} test case." >&2
         return 1
     fi
