@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumesnapshot/v1"
@@ -60,6 +61,20 @@ const (
 	VolPopPVCToStorageClassIndex           string = "volPopPvc.spec.storageClassName"
 
 	VolPopCRName string = "volsync-replicationdestination"
+
+	// volPopRequeueInterval bounds how long the volume populator waits on external
+	// state before trying again. Watch events normally drive progress, but a missed
+	// event must not leave the target PVC pending forever.
+	//
+	// This is deliberately a fixed interval rather than an exponential backoff.
+	// These are waits for a healthy external actor (the bind controller, the CSI
+	// provisioner, or a ReplicationDestination update), not failing operations.
+	// controller-runtime only applies its rate limiter to errors and Requeue=true
+	// (where an item's backoff can grow to ~17 minutes); RequeueAfter bypasses it,
+	// so backoff would have to be hand-rolled with per-PVC attempt state. A flat
+	// interval keeps the worst-case recovery time bounded and predictable, and the
+	// polling cost for the few PVCs that can be pending at once is negligible.
+	volPopRequeueInterval = 10 * time.Second
 )
 
 func IndexFieldsForVolumePopulator(ctx context.Context, fieldIndexer client.FieldIndexer) error {
@@ -237,7 +252,13 @@ func (r *VolumePopulatorReconciler) reconcilePVC(ctx context.Context, logger log
 
 	// If the PVC is unbound, we need to perform the population
 	if !isPVCBoundToVolume(pvc) {
-		pvcPrime, primeResult := r.reconcilePVCPrime(ctx, logger, pvc, pvcPrime, waitForFirstConsumer, nodeName)
+		// Keep the outer pvcPrime in sync with the one returned by
+		// reconcilePVCPrime. Today a freshly created prime has no volume yet, so
+		// rebindPVClaim always returns a non-nil result and the wait-for-rebind
+		// check below cannot be bypassed. Assigning here keeps that check intact
+		// as defense-in-depth should rebindPVClaim's early return ever change.
+		var primeResult *vpResult
+		pvcPrime, primeResult = r.reconcilePVCPrime(ctx, logger, pvc, pvcPrime, waitForFirstConsumer, nodeName)
 		if primeResult != nil {
 			return primeResult.result()
 		}
@@ -258,7 +279,8 @@ func (r *VolumePopulatorReconciler) reconcilePVC(ctx context.Context, logger log
 	if pvcPrime != nil {
 		if corev1.ClaimLost != pvcPrime.Status.Phase {
 			logger.Info("Waiting for pv rebind", "from pvc", pvcPrime.GetName(), "to pvc", pvc.GetName())
-			return ctrl.Result{}, nil
+			// Requeue as a safety net in case we miss the bind-controller event
+			return ctrl.Result{RequeueAfter: volPopRequeueInterval}, nil
 		}
 	}
 
@@ -294,7 +316,8 @@ func (r *VolumePopulatorReconciler) checkStorageClass(ctx context.Context, logge
 			logger.Error(err, "StorageClass not found, cannot populate volume yet")
 			// Do not return error - will rely on watches to reconcile once storageclass is created
 			// No need for event here - storagecontroller adds warning if storageclass doesn't exist
-			return false, "", &vpResult{ctrl.Result{}, nil}
+			// Requeue as a safety net in case the storageclass creation event is missed
+			return false, "", &vpResult{ctrl.Result{RequeueAfter: volPopRequeueInterval}, nil}
 		}
 
 		if err := checkIntreeStorageClass(pvc, storageClass); err != nil {
@@ -310,7 +333,8 @@ func (r *VolumePopulatorReconciler) checkStorageClass(ctx context.Context, logge
 				// Wait for the PVC to get a node name before continuing
 				logger.Info("VolumeBindingMode is WaitForFirstConsumer, need to wait for nodeName annotation",
 					"annotation name", annotationSelectedNode)
-				return false, "", &vpResult{ctrl.Result{}, nil}
+				// Requeue as a safety net in case the selected-node event is missed
+				return false, "", &vpResult{ctrl.Result{RequeueAfter: volPopRequeueInterval}, nil}
 			}
 		}
 	}
@@ -334,7 +358,8 @@ func (r *VolumePopulatorReconciler) reconcilePVCPrime(ctx context.Context, logge
 			r.EventRecorder.Eventf(pvc, nil, corev1.EventTypeWarning, volsyncv1alpha1.EvVolPopPVCReplicationDestMissing,
 				volsyncv1alpha1.EVAVolPopProvision, "Unable to populate volume: %s", err)
 			// Do not return error - will rely on watches to reconcile once the rd is created
-			return nil, &vpResult{ctrl.Result{}, nil}
+			// Requeue as a safety net in case the replicationdestination creation event is missed
+			return nil, &vpResult{ctrl.Result{RequeueAfter: volPopRequeueInterval}, nil}
 		}
 
 		logger = logger.WithValues("replication destination name", rd.GetName(), "namespace", rd.GetNamespace())
@@ -345,7 +370,8 @@ func (r *VolumePopulatorReconciler) reconcilePVCPrime(ctx context.Context, logge
 				volsyncv1alpha1.EVAVolPopProvision,
 				"Unable to populate volume, waiting for replicationdestination to have latestImage")
 			// We'll get called again later when the replicationdestination is updated (see watches on repldest)
-			return nil, &vpResult{ctrl.Result{}, nil}
+			// Requeue as a safety net in case that event is missed
+			return nil, &vpResult{ctrl.Result{RequeueAfter: volPopRequeueInterval}, nil}
 		}
 
 		latestImage := rd.Status.LatestImage
@@ -416,7 +442,8 @@ func (r *VolumePopulatorReconciler) rebindPVClaim(ctx context.Context, logger lo
 	// Get PV from pvcPrime
 	if pvcPrime.Spec.VolumeName == "" {
 		// No volume yet
-		return &vpResult{ctrl.Result{}, nil}
+		// Requeue as a safety net in case the pvcPrime bind event is missed
+		return &vpResult{ctrl.Result{RequeueAfter: volPopRequeueInterval}, nil}
 	}
 	pv := &corev1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
@@ -430,7 +457,8 @@ func (r *VolumePopulatorReconciler) rebindPVClaim(ctx context.Context, logger lo
 		}
 		// We'll get called again later when the PV exists
 		// Should get reconciled on pvcPrime being updated when the PV binds
-		return &vpResult{ctrl.Result{}, nil}
+		// Requeue as a safety net in case that event is missed
+		return &vpResult{ctrl.Result{RequeueAfter: volPopRequeueInterval}, nil}
 	}
 
 	// Examine the claimref for the PV and see if it's bound to the correct PVC
@@ -467,7 +495,8 @@ func (r *VolumePopulatorReconciler) rebindPVClaim(ctx context.Context, logger lo
 		}
 
 		// Don't start cleaning up yet -- we need the bind controller to acknowledge the switch
-		return &vpResult{ctrl.Result{}, nil}
+		// Requeue as a safety net in case the bind-controller update event is missed
+		return &vpResult{ctrl.Result{RequeueAfter: volPopRequeueInterval}, nil}
 	}
 
 	return nil // No claimRef yet on PV or PV has already been bound to pvc

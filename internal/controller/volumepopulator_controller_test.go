@@ -35,8 +35,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/apimachinery/pkg/util/yaml"
+	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
@@ -47,6 +50,8 @@ import (
 const (
 	duration4s  = 4 * time.Second
 	duration10s = 10 * time.Second
+
+	volSnapshotKind = "VolumeSnapshot"
 )
 
 var _ = Describe("VolumePopulator - helper funcs", func() {
@@ -636,7 +641,7 @@ var _ = Describe("VolumePopulator", func() {
 						rd.Status = &volsyncv1alpha1.ReplicationDestinationStatus{
 							LatestImage: &corev1.TypedLocalObjectReference{
 								APIGroup: &snapv1.SchemeGroupVersion.Group,
-								Kind:     "VolumeSnapshot",
+								Kind:     volSnapshotKind,
 								Name:     snap.GetName(),
 							},
 						}
@@ -664,7 +669,7 @@ var _ = Describe("VolumePopulator", func() {
 					Expect(pvcPrime.Spec.DataSourceRef).NotTo(BeNil())
 					Expect(pvcPrime.Spec.DataSourceRef.APIGroup).NotTo(BeNil())
 					Expect(*pvcPrime.Spec.DataSourceRef.APIGroup).To(Equal(snapv1.SchemeGroupVersion.Group))
-					Expect(pvcPrime.Spec.DataSourceRef.Kind).To(Equal("VolumeSnapshot"))
+					Expect(pvcPrime.Spec.DataSourceRef.Kind).To(Equal(volSnapshotKind))
 					Expect(pvcPrime.Spec.DataSourceRef.Name).To(Equal(snap.GetName()))
 
 					Eventually(func() error {
@@ -921,6 +926,330 @@ var _ = Describe("VolumePopulator", func() {
 				})
 			})
 		})
+	})
+})
+
+var _ = Describe("VolumePopulator - requeue behaviour", func() {
+	const (
+		testNamespace = "volpop-requeue"
+		testPVCName   = "volpop-requeue-pvc"
+		testPVCUID    = "volpop-requeue-pvc-uid"
+		testRDName    = "rd-for-volpop"
+		testSnapName  = "volpop-requeue-snap"
+		testSCName    = "volpop-requeue-sc"
+		testPVName    = "pv-1"
+	)
+
+	logger := zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
+
+	var (
+		fakeClient client.Client
+		reconciler *VolumePopulatorReconciler
+		recorder   *events.FakeRecorder
+		pvc        *corev1.PersistentVolumeClaim
+		snap       *snapv1.VolumeSnapshot
+	)
+
+	BeforeEach(func() {
+		storageClassName := testSCName
+		volumeBindingMode := storagev1.VolumeBindingImmediate
+		snapGroup := snapv1.SchemeGroupVersion.Group
+
+		storageClass := &storagev1.StorageClass{
+			ObjectMeta:        metav1.ObjectMeta{Name: testSCName},
+			Provisioner:       "my-provisioner",
+			VolumeBindingMode: &volumeBindingMode,
+		}
+		snap = &snapv1.VolumeSnapshot{
+			ObjectMeta: metav1.ObjectMeta{Name: testSnapName, Namespace: testNamespace},
+		}
+		rd := &volsyncv1alpha1.ReplicationDestination{
+			ObjectMeta: metav1.ObjectMeta{Name: testRDName, Namespace: testNamespace},
+			Status: &volsyncv1alpha1.ReplicationDestinationStatus{
+				LatestImage: &corev1.TypedLocalObjectReference{
+					APIGroup: &snapGroup,
+					Kind:     volSnapshotKind,
+					Name:     testSnapName,
+				},
+			},
+		}
+		pvc = &corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      testPVCName,
+				Namespace: testNamespace,
+				UID:       testPVCUID,
+			},
+			Spec: corev1.PersistentVolumeClaimSpec{
+				AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+				StorageClassName: &storageClassName,
+				Resources: corev1.VolumeResourceRequirements{
+					Requests: corev1.ResourceList{
+						corev1.ResourceStorage: resource.MustParse("2Gi"),
+					},
+				},
+				DataSourceRef: &corev1.TypedObjectReference{
+					APIGroup: &volsyncv1alpha1.GroupVersion.Group,
+					Kind:     "ReplicationDestination",
+					Name:     testRDName,
+				},
+			},
+			Status: corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimPending},
+		}
+
+		// The fake client does not assign UIDs, so the target PVC gets one up front.
+		fakeClient = fake.NewClientBuilder().WithScheme(scheme.Scheme).
+			WithObjects(storageClass, snap, rd, pvc).Build()
+		recorder = &events.FakeRecorder{Events: make(chan string, 20)}
+		reconciler = &VolumePopulatorReconciler{
+			Client:        fakeClient,
+			Log:           logger,
+			Scheme:        scheme.Scheme,
+			EventRecorder: recorder,
+		}
+	})
+
+	doReconcile := func(key client.ObjectKey) ctrl.Result {
+		result, err := reconciler.Reconcile(context.TODO(), ctrl.Request{NamespacedName: key})
+		ExpectWithOffset(1, err).NotTo(HaveOccurred())
+		return result
+	}
+
+	getPrime := func() *corev1.PersistentVolumeClaim {
+		prime := &corev1.PersistentVolumeClaim{}
+		err := fakeClient.Get(context.TODO(),
+			client.ObjectKey{Namespace: testNamespace, Name: getPVCPrimeName(pvc)}, prime)
+		if kerrors.IsNotFound(err) {
+			return nil
+		}
+		ExpectWithOffset(1, err).NotTo(HaveOccurred())
+		return prime
+	}
+
+	createPrime := func(volumeName string, phase corev1.PersistentVolumeClaimPhase) {
+		prime := &corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      getPVCPrimeName(pvc),
+				Namespace: testNamespace,
+				UID:       "volpop-requeue-prime-uid",
+				Labels:    map[string]string{labelPvcPrime: pvc.Name},
+			},
+			Spec: corev1.PersistentVolumeClaimSpec{
+				AccessModes:      pvc.Spec.AccessModes,
+				Resources:        pvc.Spec.Resources,
+				StorageClassName: pvc.Spec.StorageClassName,
+				VolumeName:       volumeName,
+				DataSourceRef: &corev1.TypedObjectReference{
+					APIGroup: &snapv1.SchemeGroupVersion.Group,
+					Kind:     volSnapshotKind,
+					Name:     testSnapName,
+				},
+			},
+			Status: corev1.PersistentVolumeClaimStatus{Phase: phase},
+		}
+		ExpectWithOffset(1, ctrl.SetControllerReference(pvc, prime, scheme.Scheme)).To(Succeed())
+		ExpectWithOffset(1, fakeClient.Create(context.TODO(), prime)).To(Succeed())
+	}
+
+	getPV := func() *corev1.PersistentVolume {
+		pv := &corev1.PersistentVolume{}
+		ExpectWithOffset(1, fakeClient.Get(context.TODO(),
+			client.ObjectKey{Name: testPVName}, pv)).To(Succeed())
+		return pv
+	}
+
+	createPV := func(claimRef *corev1.ObjectReference) {
+		pv := &corev1.PersistentVolume{
+			ObjectMeta: metav1.ObjectMeta{Name: testPVName},
+			Spec:       corev1.PersistentVolumeSpec{ClaimRef: claimRef},
+		}
+		ExpectWithOffset(1, fakeClient.Create(context.TODO(), pv)).To(Succeed())
+	}
+
+	// updatePrime simulates the bind controller updating the prime PVC. PVC has
+	// a status subresource in the fake client, so spec and status are written
+	// separately (a plain Update would reload the old status).
+	updatePrime := func(volumeName string, phase corev1.PersistentVolumeClaimPhase) {
+		prime := getPrime()
+		ExpectWithOffset(1, prime).NotTo(BeNil())
+		prime.Spec.VolumeName = volumeName
+		ExpectWithOffset(1, fakeClient.Update(context.TODO(), prime)).To(Succeed())
+
+		prime = getPrime()
+		prime.Status.Phase = phase
+		ExpectWithOffset(1, fakeClient.Status().Update(context.TODO(), prime)).To(Succeed())
+	}
+
+	bindTargetPVC := func(volumeName string) {
+		boundPVC := &corev1.PersistentVolumeClaim{}
+		ExpectWithOffset(1, fakeClient.Get(context.TODO(),
+			client.ObjectKeyFromObject(pvc), boundPVC)).To(Succeed())
+		boundPVC.Spec.VolumeName = volumeName
+		ExpectWithOffset(1, fakeClient.Update(context.TODO(), boundPVC)).To(Succeed())
+	}
+
+	getSnapshot := func() *snapv1.VolumeSnapshot {
+		s := &snapv1.VolumeSnapshot{}
+		ExpectWithOffset(1, fakeClient.Get(context.TODO(), client.ObjectKeyFromObject(snap), s)).To(Succeed())
+		return s
+	}
+
+	labelSnapshotInUse := func() {
+		s := getSnapshot()
+		utils.AddLabel(s, getSnapshotInUseLabelKey(pvc), pvc.Name)
+		ExpectWithOffset(1, fakeClient.Update(context.TODO(), s)).To(Succeed())
+	}
+
+	// drainEvents returns all events recorded during the reconcile so far.
+	drainEvents := func() []string {
+		recorded := []string{}
+		for {
+			select {
+			case e := <-recorder.Events:
+				recorded = append(recorded, e)
+			default:
+				return recorded
+			}
+		}
+	}
+
+	It("recovers when the out-of-band prime PVC binds", func() {
+		labelSnapshotInUse()
+		createPrime("", corev1.ClaimPending)
+
+		// The population cannot proceed until the prime PVC has a volume, so the
+		// controller must requeue rather than fall through to cleanup.
+		result := doReconcile(client.ObjectKeyFromObject(pvc))
+		Expect(result.RequeueAfter).To(Equal(volPopRequeueInterval))
+		Expect(getPrime()).NotTo(BeNil())
+		Expect(getSnapshot().GetLabels()).To(HaveKey(getSnapshotInUseLabelKey(pvc)))
+		Expect(drainEvents()).NotTo(ContainElement(ContainSubstring("Populator finished")))
+
+		// Simulate the prime PVC binding to a PV that is still claimed by the prime.
+		prime := getPrime()
+		createPV(&corev1.ObjectReference{
+			Namespace: testNamespace,
+			Name:      prime.Name,
+			UID:       prime.UID,
+		})
+		updatePrime(testPVName, corev1.ClaimBound)
+
+		// The PV claimRef gets switched to the target PVC, then the controller
+		// waits for the bind controller to acknowledge it.
+		result = doReconcile(client.ObjectKeyFromObject(pvc))
+		Expect(result.RequeueAfter).To(Equal(volPopRequeueInterval))
+		updatedPV := getPV()
+		Expect(updatedPV.Spec.ClaimRef).NotTo(BeNil())
+		Expect(updatedPV.Spec.ClaimRef.Namespace).To(Equal(pvc.Namespace))
+		Expect(updatedPV.Spec.ClaimRef.Name).To(Equal(pvc.Name))
+		Expect(updatedPV.Spec.ClaimRef.UID).To(Equal(pvc.UID))
+		Expect(updatedPV.GetAnnotations()).To(HaveKeyWithValue(
+			annotationPopulatedFrom, testNamespace+"/"+testSnapName))
+
+		// Simulate the bind controller acknowledging the switch: the target PVC
+		// binds and the prime PVC is released.
+		bindTargetPVC(testPVName)
+		updatePrime(testPVName, corev1.ClaimLost)
+
+		result = doReconcile(client.ObjectKeyFromObject(pvc))
+		Expect(result.RequeueAfter).To(BeZero())
+		Expect(getPrime()).To(BeNil())
+		Expect(getSnapshot().GetLabels()).NotTo(HaveKey(getSnapshotInUseLabelKey(pvc)))
+	})
+
+	It("create reconcile should requeue and not finish early", func() {
+		result := doReconcile(client.ObjectKeyFromObject(pvc))
+
+		Expect(result.RequeueAfter).To(Equal(volPopRequeueInterval))
+		Expect(getPrime()).NotTo(BeNil())
+		// Guards against premature fall-through to the "population done" path:
+		// the freshly created prime has no volume yet, so cleanup must not run
+		// and the snapshot must stay marked in use. (The pvcPrime shadowing fix
+		// in the controller is defense-in-depth, not what this catches.)
+		Expect(getSnapshot().GetLabels()).To(HaveKey(getSnapshotInUseLabelKey(pvc)))
+		Expect(drainEvents()).NotTo(ContainElement(ContainSubstring("Populator finished")))
+	})
+
+	It("waits for the PV to exist", func() {
+		createPrime("pv-not-created-yet", corev1.ClaimPending)
+
+		result := doReconcile(client.ObjectKeyFromObject(pvc))
+
+		Expect(result.RequeueAfter).To(Equal(volPopRequeueInterval))
+		Expect(getPrime()).NotTo(BeNil())
+	})
+
+	It("patches the PV claimRef then requeues", func() {
+		createPrime(testPVName, corev1.ClaimBound)
+		prime := getPrime()
+		createPV(&corev1.ObjectReference{
+			Namespace: testNamespace,
+			Name:      prime.Name,
+			UID:       prime.UID,
+		})
+
+		result := doReconcile(client.ObjectKeyFromObject(pvc))
+
+		Expect(result.RequeueAfter).To(Equal(volPopRequeueInterval))
+		updatedPV := getPV()
+		Expect(updatedPV.Spec.ClaimRef).NotTo(BeNil())
+		Expect(updatedPV.Spec.ClaimRef.Namespace).To(Equal(pvc.Namespace))
+		Expect(updatedPV.Spec.ClaimRef.Name).To(Equal(pvc.Name))
+		Expect(updatedPV.Spec.ClaimRef.UID).To(Equal(pvc.UID))
+		Expect(updatedPV.GetAnnotations()).To(HaveKeyWithValue(
+			annotationPopulatedFrom, pvc.Namespace+"/"+testSnapName))
+	})
+
+	// Scenario from backube/volsync#2178: a previous reconcile already patched
+	// the PV claimRef to the target PVC, but the bind-controller event that
+	// would follow was missed. The reconcile must requeue and keep waiting.
+	It("requeues when the PV was rebound but the bind event was missed", func() {
+		createPrime(testPVName, corev1.ClaimBound)
+		createPV(&corev1.ObjectReference{
+			Namespace: pvc.Namespace,
+			Name:      pvc.Name,
+			UID:       pvc.UID,
+		})
+
+		result := doReconcile(client.ObjectKeyFromObject(pvc))
+
+		Expect(result.RequeueAfter).To(Equal(volPopRequeueInterval))
+		Expect(getPrime()).NotTo(BeNil())
+	})
+
+	It("requeues when the target PVC is bound but the prime is not yet lost", func() {
+		createPrime(testPVName, corev1.ClaimBound)
+		bindTargetPVC(testPVName)
+
+		result := doReconcile(client.ObjectKeyFromObject(pvc))
+
+		Expect(result.RequeueAfter).To(Equal(volPopRequeueInterval))
+		Expect(getPrime()).NotTo(BeNil())
+	})
+
+	It("completes and cleans up once rebound", func() {
+		labelSnapshotInUse()
+		createPrime(testPVName, corev1.ClaimLost)
+		bindTargetPVC(testPVName)
+
+		result := doReconcile(client.ObjectKeyFromObject(pvc))
+
+		Expect(result.RequeueAfter).To(BeZero())
+		Expect(getPrime()).To(BeNil())
+		Expect(getSnapshot().GetLabels()).NotTo(HaveKey(getSnapshotInUseLabelKey(pvc)))
+	})
+
+	It("requeues while waiting for a missing StorageClass", func() {
+		missingSC := "volpop-requeue-missing-sc"
+		otherPVC := pvc.DeepCopy()
+		otherPVC.Name = "pvc-using-missing-sc"
+		otherPVC.UID = "volpop-requeue-missing-sc-pvc-uid"
+		otherPVC.ResourceVersion = ""
+		otherPVC.Spec.StorageClassName = &missingSC
+		Expect(fakeClient.Create(context.TODO(), otherPVC)).To(Succeed())
+
+		result := doReconcile(client.ObjectKeyFromObject(otherPVC))
+
+		Expect(result.RequeueAfter).To(Equal(volPopRequeueInterval))
 	})
 })
 

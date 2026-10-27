@@ -35,6 +35,15 @@
   ansible.builtin.set_fact:
     local_should_fail: "{{ should_fail | default(false) }}"
 
+# Population from a snapshot or a VolumePopulator is asynchronous, and the
+# storage class may use volumeBindingMode: WaitForFirstConsumer (e.g. gp3-csi on
+# OpenShift), where a PVC cannot bind until a pod consumes it. The compare Job is
+# that consumer, so the Job is created first and only then do we wait for the
+# PVCs. The wait is bounded by a single wall-clock deadline of pvc_bound_timeout
+# (default 300s) computed from now(), because `retries` counts attempts rather
+# than seconds and one k8s_info lookup can take seconds. A PVC that never binds
+# therefore fails here with a precise message instead of surfacing as an opaque
+# wait for the compare Job.
 - name: Create Job
   kubernetes.core.k8s:
     state: present
@@ -42,55 +51,123 @@
   register: res
 
 - block:
-    - name: Wait for compare to complete
+    # The compare Job is the first consumer of these PVCs. Storage classes with
+    # volumeBindingMode: WaitForFirstConsumer (e.g. gp3-csi on OpenShift) cannot
+    # bind until that Job exists, so create it first and then start the bounded
+    # wait below.
+    - name: Compute the deadline for the PVCs to bind
+      ansible.builtin.set_fact:
+        pvc_bound_deadline: >-
+          {{ (now(utc=true).timestamp() | int) + (pvc_bound_timeout | default(300) | int) }}
+
+    # retries is only a safety cap on the loop; the deadline in the until
+    # condition is the real wall-clock bound, so slow lookups cannot stretch out
+    # the wait. Reaching the deadline satisfies the condition, which lets the
+    # explicit "Fail because..." task below produce a diagnostic message.
+    - name: Wait for the PVCs the compare Job will mount to be Bound
       kubernetes.core.k8s_info:
-        api_version: batch/v1
-        kind: Job
-        name: "{{ res.result.metadata.name }}"
+        api_version: v1
+        kind: PersistentVolumeClaim
+        name: "{{ pvc_name }}"
         namespace: "{{ namespace }}"
-      register: res2
-      # We wait until we either get a job success or a failure
-      until: >
-        res2.resources | length > 0 and
-        ( ( res2.resources[0].status.succeeded is defined and
-            res2.resources[0].status.succeeded == 1 )
-          or
-          ( res2.resources[0].status.failed is defined and
-            res2.resources[0].status.failed == 1 )
-        )
+      register: pvc_bound_check
+      until: >-
+        (pvc_bound_check.resources | length > 0 and
+        pvc_bound_check.resources[0].get('status', {}).get('phase', '') == 'Bound')
+        or (now(utc=true).timestamp() | int) >= (pvc_bound_deadline | int)
+      retries: 600
       delay: 1
-      retries: "{{ timeout | default(300) }}"
+      loop:
+        - "{{ pvc1_name }}"
+        - "{{ pvc2_name }}"
+      loop_control:
+        loop_var: pvc_name
+        label: "{{ pvc_name }}"
 
-    - name: Determine whether result was expected
-      fail:
-        msg: "Unexpected comparison result"
-      when: >
-        ( local_should_fail and
-          res2.resources[0].status.succeeded is defined and
-          res2.resources[0].status.succeeded > 0 )
-        or
-        ( not local_should_fail and
-          res2.resources[0].status.failed is defined and
-          res2.resources[0].status.failed > 0 )
+    # Use .get() rather than a dotted attribute lookup: a PVC that does not exist
+    # has no 'status' key at all, and a dotted lookup would raise before
+    # 'default' could apply.
+    - name: Summarize the current phase of each PVC
+      ansible.builtin.set_fact:
+        pvc_phase_summary: >-
+          {%- set summary = [] -%}
+          {%- for pvc_state in pvc_bound_check.results -%}
+          {%- set phase = (pvc_state.resources[0].get('status', {}).get('phase', 'Unknown')
+                           if pvc_state.resources | length > 0 else 'Unknown') -%}
+          {%- set _ = summary.append(pvc_state.pvc_name ~ '=' ~ phase) -%}
+          {%- endfor -%}
+          {{ summary | join(', ') }}
+
+    - name: Fail because the PVCs did not become Bound
+      ansible.builtin.fail:
+        msg: >-
+          Timed out after up to {{ pvc_bound_timeout | default(300) }}s waiting for
+          PVCs to become Bound in namespace {{ namespace }}: {{ pvc_phase_summary }}.
+          The compare Job {{ res.result.metadata.name }} cannot run while these PVCs
+          are unbound. For a VolumePopulator destination PVC, inspect the VolSync
+          VolumePopulator state; for any PVC, inspect `kubectl describe pvc <name>
+          -n {{ namespace }}` (events often show WaitForFirstConsumer or provisioning
+          errors). Raise pvc_bound_timeout if provisioning is simply slow.
+      when: >-
+        pvc_bound_check.results
+        | map(attribute='resources.0.status.phase', default='Unknown')
+        | reject('equalto', 'Bound')
+        | list | length > 0
+
+    - block:
+        - name: Wait for compare to complete
+          kubernetes.core.k8s_info:
+            api_version: batch/v1
+            kind: Job
+            name: "{{ res.result.metadata.name }}"
+            namespace: "{{ namespace }}"
+          register: res2
+          # We wait until we either get a job success or a failure
+          until: >
+            res2.resources | length > 0 and
+            ( ( res2.resources[0].status.succeeded is defined and
+                res2.resources[0].status.succeeded == 1 )
+              or
+              ( res2.resources[0].status.failed is defined and
+                res2.resources[0].status.failed == 1 )
+            )
+          delay: 1
+          retries: "{{ timeout | default(300) }}"
+
+        - name: Determine whether result was expected
+          fail:
+            msg: "Unexpected comparison result"
+          when: >
+            ( local_should_fail and
+              res2.resources[0].status.succeeded is defined and
+              res2.resources[0].status.succeeded > 0 )
+            or
+            ( not local_should_fail and
+              res2.resources[0].status.failed is defined and
+              res2.resources[0].status.failed > 0 )
+      # A compare Job that never scheduled (e.g. its PVCs are unbound) has no
+      # log, so retrieval must not mask the diagnostic failure or block cleanup.
+      always:
+        - name: Retrieve logs from Job
+          kubernetes.core.k8s_log:
+            api_version: batch/v1
+            kind: Job
+            name: "{{ res.result.metadata.name }}"
+            namespace: "{{ namespace }}"
+          register: log
+          failed_when: false
+
+        - name: Dump Job log
+          debug:
+            var: log.log_lines
+          when: log.log_lines is defined
   always:
-    - name: Retrieve logs from Job
-      kubernetes.core.k8s_log:
+    - name: Delete Job
+      kubernetes.core.k8s:
+        state: absent
         api_version: batch/v1
         kind: Job
         name: "{{ res.result.metadata.name }}"
         namespace: "{{ namespace }}"
-      register: log
-
-    - name: Dump Job log
-      debug:
-        var: log.log_lines
-
-- name: Delete Job
-  kubernetes.core.k8s:
-    state: absent
-    api_version: batch/v1
-    kind: Job
-    name: "{{ res.result.metadata.name }}"
-    namespace: "{{ namespace }}"
-    delete_options:
-      propagationPolicy: "Background"
+        delete_options:
+          propagationPolicy: "Background"
