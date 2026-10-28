@@ -1,0 +1,92 @@
+---
+- name: Read {{ cr_kind }}/{{ cr_name }} to determine the settled condition reason
+  kubernetes.core.k8s_info:
+    api_version: volsync.backube/v1alpha1
+    kind: "{{ cr_kind }}"
+    name: "{{ cr_name }}"
+    namespace: "{{ namespace }}"
+  register: verify_sync_cr_spec
+  until: verify_sync_cr_spec.resources | length > 0
+  retries: 30
+  delay: "{{ verify_sync_delay }}"
+
+- name: Derive the expected settled condition reason
+  ansible.builtin.set_fact:
+    verify_sync_settled_reason: >-
+      {{ 'WaitingForManual'
+         if ((verify_sync_cr_spec.resources[0].spec.trigger | default({})).manual | default('') | length) > 0
+         else ('WaitingForSchedule'
+           if (verify_sync_cr_spec.resources[0].spec.trigger | default({})).schedule is defined
+           else 'WaitingForManual') }}
+
+- name: Wait for {{ cr_kind }}/{{ cr_name }} to complete synchronization or report an error
+  kubernetes.core.k8s_info:
+    api_version: volsync.backube/v1alpha1
+    kind: "{{ cr_kind }}"
+    name: "{{ cr_name }}"
+    namespace: "{{ namespace }}"
+  register: verify_sync_cr
+  until: >
+    verify_sync_cr.resources | length > 0 and
+    (
+      (
+        ((verify_sync_cr.resources[0].status.conditions | default([])
+          | selectattr('type', '==', 'Synchronizing') | list | length) == 1) and
+        (verify_sync_cr.resources[0].status.conditions | default([])
+          | selectattr('type', '==', 'Synchronizing')
+          | selectattr('status', '==', 'False')
+          | selectattr('reason', '==', verify_sync_settled_reason)
+          | list | length) == 1 and
+        ((verify_sync_cr.resources[0].status.latestMoverStatus | default({}, true)).result | default('')) == 'Successful'
+      ) or
+      (verify_sync_cr.resources[0].status.conditions | default([])
+        | selectattr('type', '==', 'Synchronizing')
+        | selectattr('reason', '==', 'Error') | list | length > 0) or
+      ((verify_sync_cr.resources[0].status.conditions | default([])
+        | selectattr('type', '==', 'Synchronizing') | list | length) > 1)
+    )
+  retries: "{{ verify_sync_retries }}"
+  delay: "{{ verify_sync_delay }}"
+
+- name: Read completion synchronization error condition
+  ansible.builtin.set_fact:
+    verify_sync_error_condition: >-
+      {{ verify_sync_cr.resources[0].status.conditions | default([])
+         | selectattr('type', '==', 'Synchronizing')
+         | selectattr('reason', '==', 'Error') | list | first | default({}, true) }}
+
+- name: Fail when synchronization completed with an error
+  ansible.builtin.fail:
+    msg: >-
+      {{ cr_kind }}/{{ cr_name }} in namespace {{ namespace }} reported an
+      error instead of completing: {{ verify_sync_error_condition.message | default('') }}
+  when: verify_sync_error_condition | length > 0
+
+- name: Assert {{ cr_kind }}/{{ cr_name }} completed synchronization successfully
+  ansible.builtin.assert:
+    that:
+      - (verify_sync_cr.resources[0].status.conditions | default([])
+        | selectattr('type', '==', 'Synchronizing') | list | length) == 1
+      - (verify_sync_cr.resources[0].status.conditions | default([])
+        | selectattr('type', '==', 'Synchronizing')
+        | selectattr('status', '==', 'False')
+        | selectattr('reason', '==', verify_sync_settled_reason)
+        | list | length) == 1
+      - ((verify_sync_cr.resources[0].status.latestMoverStatus | default({}, true)).result | default('')) == 'Successful'
+      - verify_sync_cr.resources[0].status.lastSyncStartTime is not defined
+    fail_msg: >-
+      {{ cr_kind }}/{{ cr_name }} in namespace {{ namespace }} did not settle as
+      exactly one Synchronizing=False/{{ verify_sync_settled_reason }} condition
+      with a successful mover. Current Synchronizing conditions:
+      {{ verify_sync_cr.resources[0].status.conditions | default([])
+         | selectattr('type', '==', 'Synchronizing') | list }}
+
+- name: Assert completed synchronization timing status
+  ansible.builtin.include_tasks: assert_timing.yml
+
+- name: Assert completed ReplicationDestination latest image
+  ansible.builtin.include_tasks: assert_latest_image.yml
+  when: cr_kind == 'ReplicationDestination'
+
+- name: Assert completed synchronization left no temporary resources
+  ansible.builtin.include_tasks: assert_no_temporary_resources.yml

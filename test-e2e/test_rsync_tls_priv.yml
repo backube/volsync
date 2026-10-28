@@ -120,6 +120,14 @@
       delay: 1
       retries: 900
 
+    - name: Verify ReplicationSource synchronization status
+      include_role:
+        name: verify_sync_status
+      vars:
+        cr_kind: ReplicationSource
+        cr_name: source
+        mode: completion
+
     - name: Wait for sync to complete
       kubernetes.core.k8s_info:
         api_version: volsync.backube/v1alpha1
@@ -185,3 +193,11 @@
         pvc1_name: data-source
         pvc2_name: data-dest
         timeout: 900
+
+    - name: Verify ReplicationDestination synchronization status
+      include_role:
+        name: verify_sync_status
+      vars:
+        cr_kind: ReplicationDestination
+        cr_name: test
+        mode: continuous

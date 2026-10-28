@@ -249,7 +249,8 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 		utils.MarkForCleanup(m.owner, job)
 		job.Spec.Template.Name = job.Name
 		utils.SetOwnedByVolSync(&job.Spec.Template)
-		backoffLimit := int32(2) //TODO: backofflimit was 8 for restic
+		utils.MarkForCleanup(m.owner, &job.Spec.Template) // label mover Pods for cleanup verification
+		backoffLimit := int32(2)                          //TODO: backofflimit was 8 for restic
 		job.Spec.BackoffLimit = &backoffLimit
 
 		parallelism := int32(1)

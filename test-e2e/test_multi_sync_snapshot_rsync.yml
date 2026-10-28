@@ -199,6 +199,22 @@
       delay: 1
       retries: 300
 
+    - name: Verify ReplicationSource synchronization status
+      include_role:
+        name: verify_sync_status
+      vars:
+        cr_kind: ReplicationSource
+        cr_name: source
+        mode: completion
+
+    - name: Verify ReplicationDestination synchronization status
+      include_role:
+        name: verify_sync_status
+      vars:
+        cr_kind: ReplicationDestination
+        cr_name: test
+        mode: continuous
+
     - name: Update data in the source PVC
       include_role:
         name: write_to_pvc
@@ -431,6 +447,22 @@
       when: >
         cluster_info.volumepopulator_supported and
         populated_snap_info.resources[0].metadata.creationTimestamp < second_sync_start_time
+
+    - name: Verify ReplicationSource synchronization status
+      include_role:
+        name: verify_sync_status
+      vars:
+        cr_kind: ReplicationSource
+        cr_name: source
+        mode: completion
+
+    - name: Verify ReplicationDestination synchronization status
+      include_role:
+        name: verify_sync_status
+      vars:
+        cr_kind: ReplicationDestination
+        cr_name: test
+        mode: continuous
 
     - name: Ensure first snapshot was deleted
       kubernetes.core.k8s_info:

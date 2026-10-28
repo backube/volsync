@@ -159,3 +159,11 @@
     - name: Print out lastSyncTime after another sync complete
       ansible.builtin.debug:
         msg: "lastSyncTime is: {{ res2.resources[0].status.lastSyncTime }}"
+
+    - name: Verify ReplicationSource synchronization status
+      include_role:
+        name: verify_sync_status
+      vars:
+        cr_kind: ReplicationSource
+        cr_name: source
+        mode: continuous

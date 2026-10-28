@@ -234,6 +234,14 @@
       delay: 1
       retries: 900
 
+    - name: Verify ReplicationSource synchronization status
+      include_role:
+        name: verify_sync_status
+      vars:
+        cr_kind: ReplicationSource
+        cr_name: source
+        mode: completion
+
     - name: Wait for sync to complete
       kubernetes.core.k8s_info:
         api_version: volsync.backube/v1alpha1
@@ -302,3 +310,11 @@
         # Skip comparing uids/gids on symlinks for older k8s versions - old host-path driver (<1.17.1) had an issue with
         # restoring symlinks in a snapshot, which meant symlinks were created with uid/gid of 0
         skip_symlink_ownership_check: "{{ cluster_info.kubernetes_minor_version < 24 }}"
+
+    - name: Verify ReplicationDestination synchronization status
+      include_role:
+        name: verify_sync_status
+      vars:
+        cr_kind: ReplicationDestination
+        cr_name: test
+        mode: continuous

@@ -1,0 +1,50 @@
+---
+- name: Wait for {{ cr_kind }}/{{ cr_name }} to report an error condition
+  kubernetes.core.k8s_info:
+    api_version: volsync.backube/v1alpha1
+    kind: "{{ cr_kind }}"
+    name: "{{ cr_name }}"
+    namespace: "{{ namespace }}"
+  register: verify_sync_cr
+  until: >
+    verify_sync_cr.resources | length > 0 and
+    (verify_sync_cr.resources[0].status.conditions | default([])
+      | selectattr('type', '==', 'Synchronizing')
+      | selectattr('status', '==', 'False')
+      | selectattr('reason', '==', 'Error') | list | length > 0)
+  retries: "{{ verify_sync_retries }}"
+  delay: "{{ verify_sync_delay }}"
+
+- name: Assert {{ cr_kind }}/{{ cr_name }} has exactly one Synchronizing error condition
+  ansible.builtin.assert:
+    that:
+      - (verify_sync_cr.resources[0].status.conditions | default([])
+        | selectattr('type', '==', 'Synchronizing') | list | length) == 1
+      - (verify_sync_cr.resources[0].status.conditions | default([])
+        | selectattr('type', '==', 'Synchronizing')
+        | selectattr('status', '==', 'False')
+        | selectattr('reason', '==', 'Error') | list | length) == 1
+    fail_msg: >-
+      {{ cr_kind }}/{{ cr_name }} in namespace {{ namespace }} should have exactly
+      one Synchronizing=False/Error condition. Current Synchronizing conditions:
+      {{ verify_sync_cr.resources[0].status.conditions | default([])
+         | selectattr('type', '==', 'Synchronizing') | list }}
+
+- name: Read error condition message
+  ansible.builtin.set_fact:
+    verify_sync_error_message: >-
+      {{ (verify_sync_cr.resources[0].status.conditions | default([])
+         | selectattr('type', '==', 'Synchronizing')
+         | selectattr('reason', '==', 'Error') | list | first | default({}, true)).message | default('') }}
+
+- name: Assert {{ cr_kind }}/{{ cr_name }} reports the expected error
+  ansible.builtin.assert:
+    that:
+      - expected_error_message in verify_sync_error_message
+    fail_msg: >-
+      {{ cr_kind }}/{{ cr_name }} in namespace {{ namespace }} reported
+      "{{ verify_sync_error_message }}" instead of an error containing
+      "{{ expected_error_message }}".
+
+- name: Assert error condition left no temporary resources
+  ansible.builtin.include_tasks: assert_no_temporary_resources.yml
