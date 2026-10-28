@@ -101,12 +101,6 @@ func AccessModes(am []corev1.PersistentVolumeAccessMode) VHOption {
 	}
 }
 
-func CopyMethod(cm volsyncv1alpha1.CopyMethodType) VHOption {
-	return func(vh *VolumeHandler) {
-		vh.copyMethod = cm
-	}
-}
-
 func Capacity(c *resource.Quantity) VHOption {
 	return func(vh *VolumeHandler) {
 		vh.capacity = c
@@ -122,12 +116,6 @@ func VolumeMode(vm *corev1.PersistentVolumeMode) VHOption {
 func StorageClassName(sc *string) VHOption {
 	return func(vh *VolumeHandler) {
 		vh.storageClassName = sc
-	}
-}
-
-func VolumeSnapshotClassName(vsc *string) VHOption {
-	return func(vh *VolumeHandler) {
-		vh.volumeSnapshotClassName = vsc
 	}
 }
 

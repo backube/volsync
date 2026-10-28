@@ -262,42 +262,6 @@ var _ = Describe("ReplicationSource", func() {
 				Manual: "testtrigger",
 			}
 		})
-		XIt("creates a snapshot of the source PVC and restores it as the sync source", func() {
-			// Reconcile waits until the Snap is bound before creating the PVC &
-			// Job, so we need to fake the binding
-			snap := &snapv1.VolumeSnapshot{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      rsyncSrcPrefix + rs.Name,
-					Namespace: rs.Namespace,
-				},
-			}
-			Eventually(func() error {
-				return k8sClient.Get(ctx, client.ObjectKeyFromObject(snap), snap)
-			}, maxWait, interval).Should(Succeed())
-			foo := "foo" //nolint:goconst
-			snap.Status = &snapv1.VolumeSnapshotStatus{
-				BoundVolumeSnapshotContentName: &foo,
-			}
-			Expect(k8sClient.Status().Update(ctx, snap)).To(Succeed())
-			// Continue checking
-			job := &batchv1.Job{}
-			Eventually(func() error {
-				return k8sClient.Get(ctx, types.NamespacedName{Name: rsyncSrcPrefix + rs.Name, Namespace: rs.Namespace}, job)
-			}, maxWait, interval).Should(Succeed())
-			volumes := job.Spec.Template.Spec.Volumes
-			pvc := &corev1.PersistentVolumeClaim{}
-			pvc.Namespace = rs.Namespace
-			for _, v := range volumes {
-				if v.PersistentVolumeClaim != nil && v.Name == dataVolumeName {
-					pvc.Name = v.PersistentVolumeClaim.ClaimName
-				}
-			}
-			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pvc), pvc)).To(Succeed())
-			// XXX: Why doesn't the following pass?
-			Expect(pvc.Spec.DataSource).NotTo(BeNil())
-			Expect(pvc.Spec.DataSource.Kind).To(Equal("VolumeSnapshot"))
-			Expect(pvc).To(beOwnedBy(rs))
-		})
 
 		//nolint:dupl
 		Context("When snapshot is bound correctly", func() {
@@ -662,7 +626,7 @@ var _ = Describe("ReplicationSource", func() {
 					Namespace: rs.Namespace,
 				},
 				StringData: map[string]string{
-					"source":          "foo",
+					"source":          "foo", //nolint:goconst
 					"source.pub":      "bar",
 					"destination.pub": "baz",
 				},
