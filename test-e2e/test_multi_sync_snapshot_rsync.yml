@@ -160,6 +160,45 @@
         pvc2_name: data-dest-1
         timeout: 900
 
+    # Make sure the first sync has finished before changing the manual trigger
+    # to secondsync. Otherwise the first sync could complete with the new tag.
+    - name: Wait for 1st sync from source volume to complete
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationSource
+        name: source
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastManualSync is defined and
+        res.resources[0].status.lastManualSync == "firstsync"
+      delay: 1
+      retries: 900
+
+    # The destination starts a new receive pod after each sync, and the
+    # previous pod can briefly remain a Service endpoint. Wait for exactly one
+    # ready receiver so the next source sync cannot land on the old pod.
+    - name: Wait for the destination receiver to be ready
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        namespace: "{{ namespace }}"
+        label_selectors:
+          - app.kubernetes.io/component=rsync-mover
+          - app.kubernetes.io/name=dst-test
+      register: receiver_pods
+      until: >
+        receiver_pods.resources | length == 1 and
+        receiver_pods.resources[0].status.phase is defined and
+        receiver_pods.resources[0].status.phase == "Running" and
+        receiver_pods.resources[0].status.conditions is defined and
+        receiver_pods.resources[0].status.conditions | length > 0 and
+        receiver_pods.resources[0].status.conditions | selectattr('type', '==', 'Ready')
+          | map(attribute='status') | list | first | default('') == 'True'
+      delay: 1
+      retries: 300
+
     - name: Update data in the source PVC
       include_role:
         name: write_to_pvc
@@ -167,6 +206,22 @@
         data: 'moredata'
         path: '/datafile'
         pvc_name: 'data-source'
+
+    # Capture the destination's current image immediately before triggering the
+    # source. The 2nd sync must move the destination past this baseline; an
+    # image left over from the 1st sync cannot satisfy the wait below.
+    - name: Get destination state before 2nd sync
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationDestination
+        name: test
+        namespace: "{{ namespace }}"
+      register: rd_before_second_sync
+
+    - name: Save pre-2nd-sync snapshot
+      ansible.builtin.set_fact:
+        pre_second_sync_snap: >-
+          {{ rd_before_second_sync.resources[0].status.latestImage.name }}
 
     - name: Trigger 2nd sync from source volume
       kubernetes.core.k8s:
@@ -181,7 +236,44 @@
             trigger:
               manual: secondsync
 
-    - name: Wait for 2nd sync to complete
+    # Capture the start of the 2nd sync from the source's status. This is a
+    # cluster-side timestamp, so snapshot times can be compared to it without
+    # relying on the clock of the machine running the test.
+    - name: Wait for 2nd sync from source volume to start
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationSource
+        name: source
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastSyncStartTime is defined and
+        res.resources[0].status.lastManualSync is defined and
+        res.resources[0].status.lastManualSync == "firstsync"
+      delay: 1
+      retries: 900
+
+    - name: Save the time the 2nd sync started
+      ansible.builtin.set_fact:
+        second_sync_start_time: >-
+          {{ res.resources[0].status.lastSyncStartTime }}
+
+    - name: Wait for 2nd sync from source volume to complete
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationSource
+        name: source
+        namespace: "{{ namespace }}"
+      register: res
+      until: >
+        res.resources | length > 0 and
+        res.resources[0].status.lastManualSync is defined and
+        res.resources[0].status.lastManualSync == "secondsync"
+      delay: 1
+      retries: 900
+
+    - name: Wait for destination to complete 2nd sync
       kubernetes.core.k8s_info:
         api_version: volsync.backube/v1alpha1
         kind: ReplicationDestination
@@ -191,13 +283,37 @@
       until: >
         res.resources | length > 0 and
         res.resources[0].status.latestImage is defined and
-        res.resources[0].status.latestImage.name != first_snap
+        res.resources[0].status.latestImage.name != pre_second_sync_snap and
+        res.resources[0].status.lastSyncTime is defined and
+        res.resources[0].status.lastSyncTime >= second_sync_start_time
       delay: 1
       retries: 900
 
     - name: Save name of second snapshot
       ansible.builtin.set_fact:
         second_snap: "{{ res.resources[0].status.latestImage.name }}"
+
+    - name: Get the second snapshot
+      kubernetes.core.k8s_info:
+        api_version: snapshot.storage.k8s.io/v1
+        kind: VolumeSnapshot
+        name: "{{ second_snap }}"
+        namespace: "{{ namespace }}"
+      register: second_snap_info
+      until: second_snap_info.resources | length > 0
+      delay: 1
+      retries: 60
+
+    # Both timestamps are RFC3339 in UTC, so a string comparison is a valid
+    # chronological comparison.
+    - name: Verify the second snapshot was created after the 2nd sync started
+      ansible.builtin.fail:
+        msg: >-
+          Snapshot {{ second_snap }} was created at
+          {{ second_snap_info.resources[0].metadata.creationTimestamp }}, before
+          the 2nd sync started at {{ second_sync_start_time }}
+      when: >-
+        second_snap_info.resources[0].metadata.creationTimestamp < second_sync_start_time
 
     # create the pvc after RD is finished to make sure we get the latest
     - name: Convert latestImage to PVC using VolumePopulator
@@ -249,6 +365,72 @@
         pvc1_name: data-source
         pvc2_name: data-dest-2
         timeout: 900
+
+    # The compare Job mounts data-dest-2, which also triggers binding when the
+    # StorageClass uses WaitForFirstConsumer.
+    - name: Wait for data-dest-2 to be bound
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: PersistentVolumeClaim
+        name: data-dest-2
+        namespace: "{{ namespace }}"
+      register: dest2_pvc
+      until: >
+        dest2_pvc.resources | length > 0 and
+        dest2_pvc.resources[0].status.phase is defined and
+        dest2_pvc.resources[0].status.phase == "Bound"
+      delay: 1
+      retries: 300
+
+    - name: Verify data-dest-2 uses the 2nd snapshot
+      ansible.builtin.fail:
+        msg: >-
+          data-dest-2 was created from
+          {{ dest2_pvc.resources[0].spec.dataSource.name }}, expected
+          {{ second_snap }}
+      when: >
+        not cluster_info.volumepopulator_supported and
+        dest2_pvc.resources[0].spec.dataSource.name != second_snap
+
+    - name: Get PV for data-dest-2
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: PersistentVolume
+        name: "{{ dest2_pvc.resources[0].spec.volumeName }}"
+      register: dest2_pv
+      when: cluster_info.volumepopulator_supported
+
+    # The controller records which snapshot the PV was populated from, so
+    # verify data-dest-2 came from a snapshot created after the 2nd sync
+    # started. It does not have to be second_snap: the populator uses the RD's
+    # current latestImage, which may advance to another post-trigger image.
+    - name: Get the snapshot that populated data-dest-2
+      kubernetes.core.k8s_info:
+        api_version: snapshot.storage.k8s.io/v1
+        kind: VolumeSnapshot
+        name: "{{ populated_from.split('/')[1] }}"
+        namespace: "{{ namespace }}"
+      register: populated_snap_info
+      until: populated_snap_info.resources | length > 0
+      delay: 1
+      retries: 60
+      vars:
+        populated_from: >-
+          {{ dest2_pv.resources[0].metadata.annotations['volsync.backube/populated-from'] }}
+      when: cluster_info.volumepopulator_supported
+
+    - name: Verify data-dest-2 was populated from a post-2nd-sync snapshot
+      ansible.builtin.fail:
+        msg: >-
+          data-dest-2 was populated from {{ populated_from }}, created at
+          {{ populated_snap_info.resources[0].metadata.creationTimestamp }},
+          before the 2nd sync started at {{ second_sync_start_time }}
+      vars:
+        populated_from: >-
+          {{ dest2_pv.resources[0].metadata.annotations['volsync.backube/populated-from'] }}
+      when: >
+        cluster_info.volumepopulator_supported and
+        populated_snap_info.resources[0].metadata.creationTimestamp < second_sync_start_time
 
     - name: Ensure first snapshot was deleted
       kubernetes.core.k8s_info:
