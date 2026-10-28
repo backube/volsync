@@ -45,12 +45,16 @@ replication. Follow the Go toolchain declared in `go.mod` and the CI workflow.
 - `make test TEST_PACKAGES=./path/to/package` selects Ginkgo packages, but
   still runs its `bundle`, `generate`, `lint`, `envtest`, `helm-lint`, and
   `ginkgo` prerequisites.
-- `make test` is the canonical CI unit-test command used by
-  `.github/workflows/operator.yml`. It defaults to `TEST_PACKAGES=./...`; its
-  Ginkgo options randomize tests, run in parallel, collect coverage, and skip
-  `mover-restic`. Controller suites use controller-runtime envtest local API
-  servers, not a live cluster. The envtest tools or required Kubernetes API
-  server assets may need to be downloaded on first run.
+- `make test` is the canonical unit-test command. It defaults to
+  `TEST_PACKAGES=./...`; its Ginkgo options randomize tests, run in parallel,
+  collect coverage, and skip `mover-restic`. Controller suites use
+  controller-runtime envtest local API servers, not a live cluster. The envtest
+  tools or required Kubernetes API server assets may need to be downloaded on
+  first run.
+- `make test-race` is `make test` with `--race` appended to the Ginkgo options,
+  so it runs the same suite under the Go race detector (roughly twice as slow).
+  This is what CI runs for `test-operator`, and a detected data race fails the
+  job.
 - Run `.ci-scripts/test-run-rustfs-storage-class.sh` to check StorageClass
   selection behavior without a cluster, and
   `.ci-scripts/test-run-rustfs-bucket-init.sh` to check bucket-init retries and
