@@ -1,0 +1,114 @@
+---
+# One sample of ReplicationDestination latest image state. Recurses while the
+# latestImage pointer is moving. A missing or deleting latest-image object fails
+# immediately.
+- name: Count latest image verification attempt
+  ansible.builtin.set_fact:
+    verify_sync_latest_image_attempts: "{{ verify_sync_latest_image_attempts | default(0) | int + 1 }}"
+
+- name: Read {{ cr_kind }}/{{ cr_name }} latest image
+  kubernetes.core.k8s_info:
+    api_version: volsync.backube/v1alpha1
+    kind: "{{ cr_kind }}"
+    name: "{{ cr_name }}"
+    namespace: "{{ namespace }}"
+  register: verify_sync_latest_image_cr
+
+- name: Record the current latest image
+  ansible.builtin.set_fact:
+    verify_sync_latest_image_current: "{{ verify_sync_latest_image_cr.resources[0].status.latestImage | default({}, true) }}"
+
+- name: Reset latest image change flag
+  ansible.builtin.set_fact:
+    verify_sync_latest_image_changed: false
+
+- name: Mark latest image verification failed when it is not recorded
+  ansible.builtin.set_fact:
+    verify_sync_latest_image_failed: true
+    verify_sync_latest_image_message: >-
+      ReplicationDestination {{ cr_name }} in namespace {{ namespace }} does not
+      record a PersistentVolumeClaim or VolumeSnapshot latestImage.
+  when: >-
+    (verify_sync_latest_image_current.kind | default('')) not in ['PersistentVolumeClaim', 'VolumeSnapshot'] or
+    ((verify_sync_latest_image_current.name | default('')) | length) == 0
+
+- name: Determine latest image API version
+  ansible.builtin.set_fact:
+    verify_sync_latest_image_api_version: >-
+      {{ 'v1' if verify_sync_latest_image_current.kind == 'PersistentVolumeClaim'
+         else 'snapshot.storage.k8s.io/v1' }}
+  when: not verify_sync_latest_image_failed | default(false) | bool
+
+- name: Look up the current latest image
+  kubernetes.core.k8s_info:
+    api_version: "{{ verify_sync_latest_image_api_version }}"
+    kind: "{{ verify_sync_latest_image_current.kind }}"
+    name: "{{ verify_sync_latest_image_current.name }}"
+    namespace: "{{ namespace }}"
+  register: verify_sync_latest_image_object
+  when: not verify_sync_latest_image_failed | default(false) | bool
+
+- name: Re-read {{ cr_kind }}/{{ cr_name }} after the latest image lookup
+  kubernetes.core.k8s_info:
+    api_version: volsync.backube/v1alpha1
+    kind: "{{ cr_kind }}"
+    name: "{{ cr_name }}"
+    namespace: "{{ namespace }}"
+  register: verify_sync_latest_image_cr_recheck
+  when: not verify_sync_latest_image_failed | default(false) | bool
+
+- name: Determine whether the latest image changed during the lookup
+  ansible.builtin.set_fact:
+    verify_sync_latest_image_changed: >-
+      {{ ((verify_sync_latest_image_cr_recheck.resources[0].status.latestImage | default({}, true)).kind | default(''))
+         != (verify_sync_latest_image_current.kind | default('')) or
+         ((verify_sync_latest_image_cr_recheck.resources[0].status.latestImage | default({}, true)).name | default(''))
+         != (verify_sync_latest_image_current.name | default('')) }}
+  when: not verify_sync_latest_image_failed | default(false) | bool
+
+- name: Record that the latest image changed during the lookup
+  ansible.builtin.set_fact:
+    verify_sync_latest_image_message: >-
+      ReplicationDestination {{ cr_name }} in namespace {{ namespace }} changed
+      latestImage from {{ verify_sync_latest_image_current.kind }}/{{ verify_sync_latest_image_current.name }}
+      while it was being verified.
+  when:
+    - not verify_sync_latest_image_failed | default(false) | bool
+    - verify_sync_latest_image_changed | bool
+
+- name: Mark latest image verification complete
+  ansible.builtin.set_fact:
+    verify_sync_latest_image_done: true
+  when:
+    - not verify_sync_latest_image_failed | default(false) | bool
+    - not verify_sync_latest_image_changed | bool
+    - verify_sync_latest_image_object.resources | length > 0
+    - verify_sync_latest_image_object.resources[0].metadata.deletionTimestamp is not defined
+
+- name: Mark latest image verification failed when the object is missing or deleting
+  ansible.builtin.set_fact:
+    verify_sync_latest_image_failed: true
+    verify_sync_latest_image_message: >-
+      ReplicationDestination {{ cr_name }} in namespace {{ namespace }} points at
+      {{ verify_sync_latest_image_current.kind }}/{{ verify_sync_latest_image_current.name }},
+      which is missing or being deleted.
+  when:
+    - not verify_sync_latest_image_failed | default(false) | bool
+    - not verify_sync_latest_image_changed | bool
+    - (verify_sync_latest_image_object.resources | length == 0 or
+       verify_sync_latest_image_object.resources[0].metadata.deletionTimestamp is defined)
+
+- name: Wait before rechecking the ReplicationDestination latest image
+  ansible.builtin.pause:
+    seconds: "{{ verify_sync_delay }}"
+  when:
+    - not verify_sync_latest_image_done | bool
+    - not verify_sync_latest_image_failed | bool
+    - (verify_sync_latest_image_attempts | int) < (verify_sync_latest_image_retries | int)
+
+- name: Recheck the ReplicationDestination latest image
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/check_latest_image.yml"
+  when:
+    - not verify_sync_latest_image_done | bool
+    - not verify_sync_latest_image_failed | bool
+    - (verify_sync_latest_image_attempts | int) < (verify_sync_latest_image_retries | int)

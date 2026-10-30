@@ -1366,6 +1366,8 @@ var _ = Describe("RsyncTLS as a source", func() {
 
 					// It should be marked for cleaned up
 					Expect(job.Labels).To(HaveKey("volsync.backube/cleanup"))
+					// Mover Pods should carry the same label for cleanup verification
+					Expect(job.Spec.Template.Labels).To(HaveKey("volsync.backube/cleanup"))
 				})
 
 				It("Should not have container resourceRequirements set by default", func() {

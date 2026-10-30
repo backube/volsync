@@ -17,6 +17,16 @@ stages:
   tests:
   - entrypoint:
     - volsync-custom-scorecard-tests
+    - test_error_condition.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_error_condition.yml
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
     - test_multi_sync_snapshot_rclone.yml
     image: quay.io/backube/volsync-custom-scorecard-tests:latest
     labels:

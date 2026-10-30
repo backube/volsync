@@ -386,7 +386,8 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 
 		job.Spec.Template.Name = job.Name
 		utils.AddAllLabels(&job.Spec.Template, m.serviceSelector())
-		utils.SetOwnedByVolSync(&job.Spec.Template) // ensure the Job's Pod gets the ownership label
+		utils.SetOwnedByVolSync(&job.Spec.Template)       // ensure the Job's Pod gets the ownership label
+		utils.MarkForCleanup(m.owner, &job.Spec.Template) // label mover Pods for cleanup verification
 		backoffLimit := int32(2)
 		job.Spec.BackoffLimit = &backoffLimit
 

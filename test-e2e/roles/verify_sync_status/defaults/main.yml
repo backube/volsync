@@ -1,0 +1,18 @@
+---
+# Default mode verifies that a single, trigger-driven synchronization has
+# completed and settled.
+mode: completion
+
+# Syncthing is always-on and does not populate latestMoverStatus or the
+# lastSyncTime/lastSyncDuration status fields.
+expect_mover_status: true
+
+# Bounded waits for status transitions and asynchronous cleanup deletion.
+verify_sync_retries: 300
+verify_sync_delay: 1
+verify_sync_cleanup_retries: 60
+# Continuous mode may need to observe a Job cleanup/new iteration transition.
+verify_sync_continuous_cleanup_retries: 60
+# Retries to observe a stable latestImage pointer; missing/deleting objects fail
+# immediately.
+verify_sync_latest_image_retries: 10

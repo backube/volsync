@@ -1311,6 +1311,16 @@ var _ = Describe("Restic as a source", func() {
 				Expect(k8sClient.Create(ctx, repo)).To(Succeed())
 			})
 			When("it's the initial sync", func() {
+				It("should label the job and its pod template for cleanup", func() {
+					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
+					Expect(e).NotTo(HaveOccurred())
+					Expect(j).To(BeNil()) // hasn't completed
+					nsn := types.NamespacedName{Name: jobName, Namespace: ns.Name}
+					job = &batchv1.Job{}
+					Expect(k8sClient.Get(ctx, nsn, job)).To(Succeed())
+					Expect(job.Labels).To(HaveKey("volsync.backube/cleanup"))
+					Expect(job.Spec.Template.Labels).To(HaveKey("volsync.backube/cleanup"))
+				})
 				It("should have only the backup action", func() {
 					j, e := mover.ensureJob(ctx, cache, sPVC, sa, repo, nil)
 					Expect(e).NotTo(HaveOccurred())

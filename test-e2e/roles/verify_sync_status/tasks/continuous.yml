@@ -1,0 +1,80 @@
+---
+# Continuous mode covers CRs that immediately start another synchronization:
+# untriggered Restic/Rsync/Rsync-TLS movers and the always-on Syncthing mover.
+# There is no stable idle state to assert, so this mode requires an active
+# Synchronizing condition and no Error condition instead.
+- name: Wait for {{ cr_kind }}/{{ cr_name }} to be actively synchronizing
+  kubernetes.core.k8s_info:
+    api_version: volsync.backube/v1alpha1
+    kind: "{{ cr_kind }}"
+    name: "{{ cr_name }}"
+    namespace: "{{ namespace }}"
+  register: verify_sync_cr
+  until: >
+    verify_sync_cr.resources | length > 0 and
+    (
+      (verify_sync_cr.resources[0].status.conditions | default([])
+        | selectattr('type', '==', 'Synchronizing')
+        | selectattr('status', '==', 'True') | list | length > 0) or
+      (verify_sync_cr.resources[0].status.conditions | default([])
+        | selectattr('type', '==', 'Synchronizing')
+        | selectattr('reason', '==', 'Error') | list | length > 0)
+    ) and
+    (
+      not (expect_mover_status | bool) or
+      (verify_sync_cr.resources[0].status.conditions | default([])
+        | selectattr('type', '==', 'Synchronizing')
+        | selectattr('reason', '==', 'Error') | list | length > 0) or
+      (
+        ((verify_sync_cr.resources[0].status.latestMoverStatus | default({}, true)).result | default('')) == 'Successful' and
+        verify_sync_cr.resources[0].status.lastSyncTime is defined
+      )
+    )
+  retries: "{{ verify_sync_retries }}"
+  delay: "{{ verify_sync_delay }}"
+
+- name: Read continuous synchronization error condition
+  ansible.builtin.set_fact:
+    verify_sync_error_condition: >-
+      {{ verify_sync_cr.resources[0].status.conditions | default([])
+         | selectattr('type', '==', 'Synchronizing')
+         | selectattr('reason', '==', 'Error') | list | first | default({}, true) }}
+
+- name: Fail when continuous synchronization reports an error
+  ansible.builtin.fail:
+    msg: >-
+      {{ cr_kind }}/{{ cr_name }} in namespace {{ namespace }} reported an
+      error: {{ verify_sync_error_condition.message | default('') }}
+  when: verify_sync_error_condition | length > 0
+
+- name: Assert continuous synchronization is active
+  ansible.builtin.assert:
+    that:
+      - (verify_sync_cr.resources[0].status.conditions | default([])
+        | selectattr('type', '==', 'Synchronizing') | list | length) == 1
+      - (verify_sync_cr.resources[0].status.conditions | default([])
+        | selectattr('type', '==', 'Synchronizing')
+        | selectattr('status', '==', 'True') | list | length) == 1
+    fail_msg: >-
+      {{ cr_kind }}/{{ cr_name }} in namespace {{ namespace }} is not actively
+      synchronizing with exactly one Synchronizing=True condition. Current
+      Synchronizing conditions:
+      {{ verify_sync_cr.resources[0].status.conditions | default([])
+         | selectattr('type', '==', 'Synchronizing') | list }}
+
+- name: Assert continuous synchronization timing status
+  ansible.builtin.include_tasks: assert_timing.yml
+  when: expect_mover_status | bool
+
+- name: Assert continuous ReplicationDestination latest image
+  ansible.builtin.include_tasks: assert_latest_image.yml
+  when: cr_kind == 'ReplicationDestination'
+
+- name: Record the synchronization start time for continuous cleanup checks
+  ansible.builtin.set_fact:
+    verify_sync_iteration_start_baseline: "{{ verify_sync_cr.resources[0].status.lastSyncStartTime | default('', true) }}"
+
+- name: Assert continuous synchronization left no leaked temporary resources
+  ansible.builtin.include_tasks: assert_no_temporary_resources.yml
+  vars:
+    verify_sync_allow_active_job: true

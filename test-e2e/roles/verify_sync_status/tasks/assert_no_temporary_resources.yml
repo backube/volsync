@@ -1,0 +1,83 @@
+---
+# Temporary resources carry volsync.backube/cleanup=<CR UID>. Queries are
+# scoped to this CR's UID so tests sharing a namespace cannot interfere.
+#
+# Completion/error modes wait for every cleanup-labeled resource to disappear.
+# Continuous mode retries check_continuous_cleanup.yml instead, because a
+# no-trigger iteration may be between an active status and Job creation, and
+# background GC/deletion can lag.
+- name: Set cleanup label selector for {{ cr_kind }}/{{ cr_name }}
+  ansible.builtin.set_fact:
+    verify_sync_cleanup_selector: "volsync.backube/cleanup={{ verify_sync_cr.resources[0].metadata.uid }}"
+
+- name: Wait for cleanup-labeled temporary PVCs to be deleted
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: PersistentVolumeClaim
+    namespace: "{{ namespace }}"
+    label_selectors:
+      - "{{ verify_sync_cleanup_selector }}"
+  register: verify_sync_temp_pvcs
+  until: verify_sync_temp_pvcs.resources | length == 0
+  retries: "{{ verify_sync_cleanup_retries }}"
+  delay: "{{ verify_sync_delay }}"
+  when: not (verify_sync_allow_active_job | default(false) | bool)
+
+- name: Wait for cleanup-labeled temporary VolumeSnapshots to be deleted
+  kubernetes.core.k8s_info:
+    api_version: snapshot.storage.k8s.io/v1
+    kind: VolumeSnapshot
+    namespace: "{{ namespace }}"
+    label_selectors:
+      - "{{ verify_sync_cleanup_selector }}"
+  register: verify_sync_temp_snapshots
+  until: verify_sync_temp_snapshots.resources | length == 0
+  retries: "{{ verify_sync_cleanup_retries }}"
+  delay: "{{ verify_sync_delay }}"
+  when: not (verify_sync_allow_active_job | default(false) | bool)
+
+- name: Wait for cleanup-labeled mover Jobs to be deleted
+  kubernetes.core.k8s_info:
+    api_version: batch/v1
+    kind: Job
+    namespace: "{{ namespace }}"
+    label_selectors:
+      - "{{ verify_sync_cleanup_selector }}"
+  register: verify_sync_temp_jobs
+  until: verify_sync_temp_jobs.resources | length == 0
+  retries: "{{ verify_sync_cleanup_retries }}"
+  delay: "{{ verify_sync_delay }}"
+  when: not (verify_sync_allow_active_job | default(false) | bool)
+
+- name: Wait for cleanup-labeled mover Pods to be deleted
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ namespace }}"
+    label_selectors:
+      - "{{ verify_sync_cleanup_selector }}"
+  register: verify_sync_temp_pods
+  until: verify_sync_temp_pods.resources | length == 0
+  retries: "{{ verify_sync_cleanup_retries }}"
+  delay: "{{ verify_sync_delay }}"
+  when: not (verify_sync_allow_active_job | default(false) | bool)
+
+- name: Initialize continuous cleanup verification
+  ansible.builtin.set_fact:
+    verify_sync_cleanup_done: false
+    verify_sync_cleanup_last_state: ""
+    verify_sync_cleanup_attempts: 0
+
+- name: Verify continuous cleanup in bounded retries
+  ansible.builtin.include_tasks: check_continuous_cleanup.yml
+  when: verify_sync_allow_active_job | default(false) | bool
+
+- name: Fail when continuous cleanup did not settle
+  ansible.builtin.fail:
+    msg: >-
+      Continuous cleanup did not settle for {{ cr_kind }}/{{ cr_name }} in
+      namespace {{ namespace }} after
+      {{ verify_sync_cleanup_attempts }} checks: {{ verify_sync_cleanup_last_state }}
+  when:
+    - verify_sync_allow_active_job | default(false) | bool
+    - not verify_sync_cleanup_done | bool

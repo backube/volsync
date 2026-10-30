@@ -33,3 +33,14 @@
         cr_name_prefix: source-thisisavery-very-very-very-longnameevenlongerthan63chars2-
         num_syncthings: 3
         privileged: false
+
+    - name: Verify Syncthing continuous synchronization status
+      include_role:
+        name: verify_sync_status
+      vars:
+        namespace: "{{ item.Namespace }}"
+        cr_kind: ReplicationSource
+        cr_name: "{{ item.Name }}"
+        mode: continuous
+        expect_mover_status: false
+      loop: "{{ syncthings }}"

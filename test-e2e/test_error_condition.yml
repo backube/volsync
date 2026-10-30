@@ -1,0 +1,30 @@
+---
+# Negative test: a ReplicationSource with no replication method must report
+# Synchronizing=False/Error and create no mover or temporary resources.
+- hosts: localhost
+  tags:
+    - e2e
+    - error
+  tasks:
+    - include_role:
+        name: create_namespace
+
+    - name: Create ReplicationSource with no replication method
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: volsync.backube/v1alpha1
+          kind: ReplicationSource
+          metadata:
+            name: no-mover
+            namespace: "{{ namespace }}"
+          spec: {}
+
+    - name: Verify ReplicationSource error condition
+      include_role:
+        name: verify_sync_status
+      vars:
+        cr_kind: ReplicationSource
+        cr_name: no-mover
+        mode: error
+        expected_error_message: a replication method must be specified

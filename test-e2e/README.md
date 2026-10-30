@@ -75,6 +75,7 @@ We can use tags to select subsets of tests to run:
 
 - `e2e` - Main operator e2e tests
 - `cli` - Tests for the kubectl plugin/cli
+- `error` - Negative status-condition tests
 - `rclone`, `restic`, `rsync`, `syncthing` - Tests involving specific movers
 
 ## Roles
@@ -135,6 +136,19 @@ We can use tags to select subsets of tests to run:
     - `pvc_name`: Name of the PVC object
     - `timeout`: (optional) Time in seconds to wait
   - Returns: none
+- `verify_sync_status` - Assert ReplicationSource/ReplicationDestination
+  conditions, timing status, latest image, and temporary resource cleanup
+  - Uses: none
+  - Parameters:
+    - `namespace`
+    - `cr_kind`: `ReplicationSource` or `ReplicationDestination`
+    - `cr_name`
+    - `mode`: `completion` (default), `continuous`, or `error`
+    - `expected_error_message`: Required for `mode: error`
+    - `expect_mover_status`: Only affects `mode: continuous`; set `false` for
+      Syncthing (default `true`)
+  - Returns: none
+  - See `roles/verify_sync_status/README.md` for continuous-mode semantics
 - `write_to_pvc` - Write data into a PVC  
   Spawn a Pod that writes some data into a file on the PVC
   - Uses: TBD

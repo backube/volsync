@@ -110,6 +110,32 @@
           - "sync"
         timeout: 900  # Command doesn't return until sync completes
 
+    - name: Find the CLI-created ReplicationSource
+      kubernetes.core.k8s_info:
+        api_version: volsync.backube/v1alpha1
+        kind: ReplicationSource
+        namespace: "{{ namespace }}"
+        label_selectors:
+          - "volsync.backube/relationship"
+      register: replication_source_lookup
+      failed_when: replication_source_lookup.resources | length != 1
+
+    - name: Verify ReplicationSource synchronization status
+      include_role:
+        name: verify_sync_status
+      vars:
+        cr_kind: ReplicationSource
+        cr_name: "{{ replication_source_lookup.resources[0].metadata.name }}"
+        mode: completion
+
+    - name: Verify ReplicationDestination continuous synchronization status
+      include_role:
+        name: verify_sync_status
+      vars:
+        cr_kind: ReplicationDestination
+        cr_name: data-dest
+        mode: continuous
+
     - name: Clean up replication resources
       include_role:
         name: cli

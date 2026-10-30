@@ -1,0 +1,205 @@
+---
+# One sample of continuous cleanup state. Recurses while
+# verify_sync_cleanup_done is false, so GC/deletion lag and the gap between an
+# active status and Job creation are retried within the cleanup budget.
+- name: Count continuous cleanup check attempt
+  ansible.builtin.set_fact:
+    verify_sync_cleanup_attempts: "{{ verify_sync_cleanup_attempts | default(0) | int + 1 }}"
+
+- name: Read {{ cr_kind }}/{{ cr_name }} for continuous cleanup timing
+  kubernetes.core.k8s_info:
+    api_version: volsync.backube/v1alpha1
+    kind: "{{ cr_kind }}"
+    name: "{{ cr_name }}"
+    namespace: "{{ namespace }}"
+  register: verify_sync_cleanup_cr
+
+- name: Determine the current continuous iteration start time
+  ansible.builtin.set_fact:
+    verify_sync_cleanup_iteration_start: >-
+      {{ (verify_sync_cleanup_cr.resources[0].status.lastSyncStartTime | default('', true))
+         or (verify_sync_iteration_start_baseline | default('')) }}
+
+- name: List cleanup-labeled mover Jobs
+  kubernetes.core.k8s_info:
+    api_version: batch/v1
+    kind: Job
+    namespace: "{{ namespace }}"
+    label_selectors:
+      - "{{ verify_sync_cleanup_selector }}"
+  register: verify_sync_cleanup_jobs
+
+- name: List cleanup-labeled temporary PVCs
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: PersistentVolumeClaim
+    namespace: "{{ namespace }}"
+    label_selectors:
+      - "{{ verify_sync_cleanup_selector }}"
+  register: verify_sync_cleanup_pvcs
+
+- name: List cleanup-labeled temporary VolumeSnapshots
+  kubernetes.core.k8s_info:
+    api_version: snapshot.storage.k8s.io/v1
+    kind: VolumeSnapshot
+    namespace: "{{ namespace }}"
+    label_selectors:
+      - "{{ verify_sync_cleanup_selector }}"
+  register: verify_sync_cleanup_snapshots
+
+- name: List cleanup-labeled mover Pods
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ namespace }}"
+    label_selectors:
+      - "{{ verify_sync_cleanup_selector }}"
+  register: verify_sync_cleanup_pods
+
+# Only a Job that is live, nonterminal, and not deleting represents the
+# current iteration and may exempt its current, nondeleting temporary resources.
+- name: Reset live mover Job list
+  ansible.builtin.set_fact:
+    verify_sync_cleanup_active_jobs: []
+
+- name: Collect live, nonterminal mover Jobs
+  ansible.builtin.set_fact:
+    verify_sync_cleanup_active_jobs: "{{ verify_sync_cleanup_active_jobs + [item] }}"
+  loop: "{{ verify_sync_cleanup_jobs.resources }}"
+  when:
+    - item.metadata.deletionTimestamp is not defined
+    - (item.status | default({})).completionTime is not defined
+    - (item.status | default({})).conditions | default([]) | selectattr('type', '==', 'Complete') | selectattr('status', '==', 'True') | list | length == 0
+    - (item.status | default({})).conditions | default([]) | selectattr('type', '==', 'Failed') | selectattr('status', '==', 'True') | list | length == 0
+
+- name: Reset stale cleanup resource lists
+  ansible.builtin.set_fact:
+    verify_sync_cleanup_stale_jobs: []
+    verify_sync_cleanup_stale_pvcs: []
+    verify_sync_cleanup_stale_snapshots: []
+    verify_sync_cleanup_stale_pods: []
+
+# Anything created before this iteration started cannot belong to it, even if a
+# current mover Job exists. These resources keep the check retrying for the
+# cleanup budget, which tolerates GC/deletion lag without hiding leaks.
+- name: Collect stale cleanup-labeled Jobs
+  ansible.builtin.set_fact:
+    verify_sync_cleanup_stale_jobs: "{{ verify_sync_cleanup_stale_jobs + [item] }}"
+  loop: "{{ verify_sync_cleanup_jobs.resources }}"
+  when:
+    - item.metadata.deletionTimestamp is not defined
+    - verify_sync_cleanup_iteration_start | length > 0
+    - item.metadata.creationTimestamp < verify_sync_cleanup_iteration_start
+
+- name: Collect stale cleanup-labeled PVCs
+  ansible.builtin.set_fact:
+    verify_sync_cleanup_stale_pvcs: "{{ verify_sync_cleanup_stale_pvcs + [item] }}"
+  loop: "{{ verify_sync_cleanup_pvcs.resources }}"
+  when:
+    - item.metadata.deletionTimestamp is not defined
+    - verify_sync_cleanup_iteration_start | length > 0
+    - item.metadata.creationTimestamp < verify_sync_cleanup_iteration_start
+
+- name: Collect stale cleanup-labeled VolumeSnapshots
+  ansible.builtin.set_fact:
+    verify_sync_cleanup_stale_snapshots: "{{ verify_sync_cleanup_stale_snapshots + [item] }}"
+  loop: "{{ verify_sync_cleanup_snapshots.resources }}"
+  when:
+    - item.metadata.deletionTimestamp is not defined
+    - verify_sync_cleanup_iteration_start | length > 0
+    - item.metadata.creationTimestamp < verify_sync_cleanup_iteration_start
+
+- name: Collect stale cleanup-labeled Pods
+  ansible.builtin.set_fact:
+    verify_sync_cleanup_stale_pods: "{{ verify_sync_cleanup_stale_pods + [item] }}"
+  loop: "{{ verify_sync_cleanup_pods.resources }}"
+  when:
+    - item.metadata.deletionTimestamp is not defined
+    - verify_sync_cleanup_iteration_start | length > 0
+    - item.metadata.creationTimestamp < verify_sync_cleanup_iteration_start
+
+- name: Record active and stale resource names
+  ansible.builtin.set_fact:
+    verify_sync_cleanup_active_job_names: "{{ verify_sync_cleanup_active_jobs | map(attribute='metadata.name') | list }}"
+    verify_sync_cleanup_stale_job_names: "{{ verify_sync_cleanup_stale_jobs | map(attribute='metadata.name') | list }}"
+    verify_sync_cleanup_stale_pvc_names: "{{ verify_sync_cleanup_stale_pvcs | map(attribute='metadata.name') | list }}"
+    verify_sync_cleanup_stale_snapshot_names: "{{ verify_sync_cleanup_stale_snapshots | map(attribute='metadata.name') | list }}"
+    verify_sync_cleanup_stale_pod_names: "{{ verify_sync_cleanup_stale_pods | map(attribute='metadata.name') | list }}"
+
+- name: Identify cleanup-labeled resources that are still settling
+  ansible.builtin.set_fact:
+    verify_sync_cleanup_pending_jobs: >-
+      {{ verify_sync_cleanup_jobs.resources
+         | rejectattr('metadata.deletionTimestamp', 'defined')
+         | rejectattr('metadata.name', 'in', verify_sync_cleanup_active_job_names)
+         | rejectattr('metadata.name', 'in', verify_sync_cleanup_stale_job_names) | list }}
+    verify_sync_cleanup_pending_pvcs: >-
+      {{ verify_sync_cleanup_pvcs.resources
+         | rejectattr('metadata.deletionTimestamp', 'defined')
+         | rejectattr('metadata.name', 'in', verify_sync_cleanup_stale_pvc_names) | list }}
+    verify_sync_cleanup_pending_snapshots: >-
+      {{ verify_sync_cleanup_snapshots.resources
+         | rejectattr('metadata.deletionTimestamp', 'defined')
+         | rejectattr('metadata.name', 'in', verify_sync_cleanup_stale_snapshot_names) | list }}
+    verify_sync_cleanup_pending_pods: >-
+      {{ verify_sync_cleanup_pods.resources
+         | rejectattr('metadata.deletionTimestamp', 'defined')
+         | rejectattr('metadata.name', 'in', verify_sync_cleanup_stale_pod_names) | list }}
+    verify_sync_cleanup_deleting: >-
+      {{ (verify_sync_cleanup_jobs.resources | selectattr('metadata.deletionTimestamp', 'defined') | list)
+         + (verify_sync_cleanup_pvcs.resources | selectattr('metadata.deletionTimestamp', 'defined') | list)
+         + (verify_sync_cleanup_snapshots.resources | selectattr('metadata.deletionTimestamp', 'defined') | list)
+         + (verify_sync_cleanup_pods.resources | selectattr('metadata.deletionTimestamp', 'defined') | list) }}
+
+- name: Mark continuous cleanup complete with an active mover Job
+  ansible.builtin.set_fact:
+    verify_sync_cleanup_done: true
+  when:
+    - verify_sync_cleanup_active_jobs | length > 0
+    - verify_sync_cleanup_pending_jobs | length == 0
+    - verify_sync_cleanup_deleting | length == 0
+    - verify_sync_cleanup_stale_jobs | length == 0
+    - verify_sync_cleanup_stale_pvcs | length == 0
+    - verify_sync_cleanup_stale_snapshots | length == 0
+    - verify_sync_cleanup_stale_pods | length == 0
+
+- name: Mark continuous cleanup complete with no cleanup-labeled resources
+  ansible.builtin.set_fact:
+    verify_sync_cleanup_done: true
+  when:
+    - verify_sync_cleanup_active_jobs | length == 0
+    - verify_sync_cleanup_pending_jobs | length == 0
+    - verify_sync_cleanup_pending_pvcs | length == 0
+    - verify_sync_cleanup_pending_snapshots | length == 0
+    - verify_sync_cleanup_pending_pods | length == 0
+    - verify_sync_cleanup_deleting | length == 0
+    - verify_sync_cleanup_stale_jobs | length == 0
+    - verify_sync_cleanup_stale_pvcs | length == 0
+    - verify_sync_cleanup_stale_snapshots | length == 0
+    - verify_sync_cleanup_stale_pods | length == 0
+
+- name: Record the last continuous cleanup state
+  ansible.builtin.set_fact:
+    verify_sync_cleanup_last_state: >-
+      Active Jobs={{ verify_sync_cleanup_active_jobs | map(attribute='metadata.name') | list }},
+      Jobs={{ verify_sync_cleanup_jobs.resources | map(attribute='metadata.name') | list }},
+      PVCs={{ verify_sync_cleanup_pvcs.resources | map(attribute='metadata.name') | list }},
+      VolumeSnapshots={{ verify_sync_cleanup_snapshots.resources | map(attribute='metadata.name') | list }},
+      Pods={{ verify_sync_cleanup_pods.resources | map(attribute='metadata.name') | list }},
+      Stale Jobs={{ verify_sync_cleanup_stale_job_names }},
+      Stale PVCs={{ verify_sync_cleanup_stale_pvc_names }},
+      Stale VolumeSnapshots={{ verify_sync_cleanup_stale_snapshot_names }},
+      Stale Pods={{ verify_sync_cleanup_stale_pod_names }}
+
+- name: Wait before rechecking continuous cleanup
+  ansible.builtin.pause:
+    seconds: "{{ verify_sync_delay }}"
+  when:
+    - not verify_sync_cleanup_done | bool
+    - (verify_sync_cleanup_attempts | int) < (verify_sync_continuous_cleanup_retries | int)
+
+- name: Recheck continuous cleanup
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/check_continuous_cleanup.yml"
+  when:
+    - not verify_sync_cleanup_done | bool
+    - (verify_sync_cleanup_attempts | int) < (verify_sync_continuous_cleanup_retries | int)

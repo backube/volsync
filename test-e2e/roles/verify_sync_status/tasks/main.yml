@@ -1,0 +1,19 @@
+---
+# Shared assertions for ReplicationSource/ReplicationDestination status,
+# conditions, and temporary mover resource cleanup.
+- name: Validate verify_sync_status inputs
+  ansible.builtin.assert:
+    that:
+      - namespace is defined
+      - cr_kind is defined
+      - cr_kind in ['ReplicationSource', 'ReplicationDestination']
+      - cr_name is defined
+      - mode in ['completion', 'continuous', 'error']
+      - mode != 'error' or (expected_error_message is defined and expected_error_message | length > 0)
+    fail_msg: >-
+      verify_sync_status requires namespace, cr_kind, cr_name, and mode
+      (completion, continuous, or error). Mode error also requires
+      expected_error_message.
+
+- name: Verify synchronization status
+  ansible.builtin.include_tasks: "{{ mode }}.yml"

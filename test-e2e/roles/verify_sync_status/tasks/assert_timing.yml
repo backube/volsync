@@ -1,0 +1,17 @@
+---
+- name: Assert synchronization timing status
+  ansible.builtin.assert:
+    that:
+      - verify_sync_cr.resources[0].status.lastSyncTime is defined
+      - verify_sync_cr.resources[0].status.lastSyncDuration is defined
+      # API timestamps are UTC RFC3339 strings with second precision; a fast
+      # first sync may serialize to the same second as CR creation.
+      - (verify_sync_cr.resources[0].status.lastSyncTime | to_datetime('%Y-%m-%dT%H:%M:%S%z')) >= (verify_sync_cr.resources[0].metadata.creationTimestamp | to_datetime('%Y-%m-%dT%H:%M:%S%z'))
+      - (verify_sync_cr.resources[0].status.lastSyncDuration | string) is match('^([0-9]+(\.[0-9]+)?(ns|us|µs|μs|ms|s|m|h))+$')
+      - (verify_sync_cr.resources[0].status.lastSyncDuration | string) is not match('^0+(\.0+)?(ns|us|µs|μs|ms|s|m|h)$')
+      - (verify_sync_cr.resources[0].spec.trigger | default({})).schedule is not defined or verify_sync_cr.resources[0].status.nextSyncTime is defined
+    fail_msg: >-
+      {{ cr_kind }}/{{ cr_name }} in namespace {{ namespace }} has invalid
+      synchronization timing status. Expected lastSyncTime at or after the CR
+      creation time, a positive Go duration in lastSyncDuration, and
+      nextSyncTime for a scheduled trigger.

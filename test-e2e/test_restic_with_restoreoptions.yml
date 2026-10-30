@@ -134,6 +134,14 @@
       delay: 1
       retries: 900
 
+    - name: Verify ReplicationSource synchronization status
+      include_role:
+        name: verify_sync_status
+      vars:
+        cr_kind: ReplicationSource
+        cr_name: source
+        mode: completion
+
     - name: Create dest PVC (restore volume)
       kubernetes.core.k8s:
         state: present
@@ -218,6 +226,14 @@
       delay: 1
       retries: 300
 
+    - name: Verify ReplicationDestination synchronization status
+      include_role:
+        name: verify_sync_status
+      vars:
+        cr_kind: ReplicationDestination
+        cr_name: restore
+        mode: completion
+
     - name: Shutdown pvc affinity pod
       include_role:
         name: pvc_affinity_pod
@@ -301,6 +317,14 @@
         res.resources[0].status.latestMoverStatus.logs is search("Restic completed in.*")
       delay: 1
       retries: 300
+
+    - name: Verify ReplicationDestination synchronization status
+      include_role:
+        name: verify_sync_status
+      vars:
+        cr_kind: ReplicationDestination
+        cr_name: restore
+        mode: completion
 
     - name: Verify contents of PVC (extra files/dirs on dest should be removed)
       include_role:

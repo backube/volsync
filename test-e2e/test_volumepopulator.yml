@@ -153,6 +153,14 @@
           delay: 1
           retries: 900
 
+        - name: Verify ReplicationSource synchronization status
+          include_role:
+            name: verify_sync_status
+          vars:
+            cr_kind: ReplicationSource
+            cr_name: source
+            mode: completion
+
         # Create dest PVC (restore volume) even before the ReplicationDestination
         # exists. Volume populator should populate this once the
         # replicationDestination exists and latestImage is set
@@ -236,6 +244,14 @@
           delay: 1
           retries: 300
 
+        - name: Verify ReplicationDestination synchronization status
+          include_role:
+            name: verify_sync_status
+          vars:
+            cr_kind: ReplicationDestination
+            cr_name: restore
+            mode: completion
+
         - name: Save name of first snapshot
           ansible.builtin.set_fact:
             snapshot1_name: "{{ res.resources[0].status.latestImage.name }}"
@@ -305,6 +321,14 @@
             res.resources[0].status.latestImage is defined
           delay: 1
           retries: 300
+
+        - name: Verify ReplicationDestination synchronization status
+          include_role:
+            name: verify_sync_status
+          vars:
+            cr_kind: ReplicationDestination
+            cr_name: restore
+            mode: completion
 
         - name: Save name of second snapshot
           ansible.builtin.set_fact:
@@ -424,6 +448,14 @@
           delay: 1
           retries: 300
 
+        - name: Verify ReplicationSource synchronization status
+          include_role:
+            name: verify_sync_status
+          vars:
+            cr_kind: ReplicationSource
+            cr_name: source
+            mode: completion
+
         - name: Restore data from previous restoreasof time
           kubernetes.core.k8s:
             state: patched
@@ -453,6 +485,14 @@
             res.resources[0].status.latestImage is defined
           delay: 1
           retries: 300
+
+        - name: Verify ReplicationDestination synchronization status
+          include_role:
+            name: verify_sync_status
+          vars:
+            cr_kind: ReplicationDestination
+            cr_name: restore
+            mode: completion
 
         - name: Save name of third snapshot
           ansible.builtin.set_fact:
@@ -563,6 +603,14 @@
             res.resources[0].status.latestImage is defined
           delay: 1
           retries: 300
+
+        - name: Verify ReplicationDestination synchronization status
+          include_role:
+            name: verify_sync_status
+          vars:
+            cr_kind: ReplicationDestination
+            cr_name: restore
+            mode: completion
 
         - name: Save name of fourth snapshot
           ansible.builtin.set_fact:

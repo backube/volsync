@@ -356,6 +356,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 		utils.MarkForCleanup(m.owner, job)
 		job.Spec.Template.Name = job.Name
 		utils.SetOwnedByVolSync(&job.Spec.Template)
+		utils.MarkForCleanup(m.owner, &job.Spec.Template) // label mover Pods for cleanup verification
 		backoffLimit := int32(8)
 		job.Spec.BackoffLimit = &backoffLimit
 		parallelism := int32(1)

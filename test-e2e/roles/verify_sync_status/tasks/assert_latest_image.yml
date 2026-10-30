@@ -1,0 +1,17 @@
+---
+- name: Initialize latest image verification
+  ansible.builtin.set_fact:
+    verify_sync_latest_image_done: false
+    verify_sync_latest_image_failed: false
+    verify_sync_latest_image_changed: false
+    verify_sync_latest_image_message: ""
+    verify_sync_latest_image_attempts: 0
+
+- name: Verify the ReplicationDestination latest image in bounded retries
+  ansible.builtin.include_tasks: check_latest_image.yml
+
+- name: Assert the ReplicationDestination latest image still exists
+  ansible.builtin.assert:
+    that:
+      - verify_sync_latest_image_done | bool
+    fail_msg: "{{ verify_sync_latest_image_message | default('latestImage verification did not complete') }}"
