@@ -2,6 +2,9 @@
 
 set -e -o pipefail
 
+# shellcheck source=/dev/null
+source "${VOLSYNC_SHUTDOWN_LIB:-/mover-common/shutdown.sh}"
+
 echo "VolSync rclone container version: ${version:-unknown}"
 
 SCRIPT_FULLPATH="$(realpath "$0")"
@@ -32,15 +35,15 @@ if [[ $DEBUG_MOVER -eq 1 && "$SCRIPT_DIR" != "/tmp" ]]; then
   echo "##################################################################"
 
   # Wait for user to delete the file before exiting
-  while [[ -f "${END_DEBUG_FILE}" ]]; do
-    sleep 10
+  while [[ -f "${END_DEBUG_FILE}" && -z "${VOLSYNC_SHUTDOWN_SIGNAL}" ]]; do
+    volsync_run sleep 10
   done
 
   echo ""
   echo "##################################################################"
   echo "Debug done, exiting."
   echo "##################################################################"
-  sleep 2
+  volsync_run sleep 2
   exit 0
 fi
 
@@ -74,22 +77,29 @@ if [[ -n "${CUSTOM_CA}" ]]; then
     RCLONE_FLAGS_COPY+=(--ca-cert "${CUSTOM_CA}")
 fi
 
+# Publish the source-side POSIX ACLs alongside the data. Kept in a function so
+# volsync_run can supervise the whole find|getfacl pipeline as one job.
+# shellcheck disable=SC2329  # invoked indirectly via volsync_run
+function write_permissions_facl {
+    find "${MOUNT_PATH}" -path "${MOUNT_PATH}/lost+found" -prune -o -not -type l -print | getfacl -P - > /tmp/permissions.facl
+}
+
 START_TIME=$SECONDS
 case "${DIRECTION}" in
 source)
-    find "${MOUNT_PATH}" -path "${MOUNT_PATH}/lost+found" -prune -o -not -type l -print | getfacl -P - > /tmp/permissions.facl
-    rclone sync "${RCLONE_FLAGS_SYNC[@]}" --exclude "lost+found/**" "${MOUNT_PATH}" "${RCLONE_CONFIG_SECTION}:${RCLONE_DEST_PATH}" --log-level DEBUG
-    rclone copy "${RCLONE_FLAGS_COPY[@]}" --include permissions.facl /tmp "${RCLONE_CONFIG_SECTION}:${RCLONE_DEST_PATH}" --log-level DEBUG
+    volsync_run write_permissions_facl
+    volsync_run rclone sync "${RCLONE_FLAGS_SYNC[@]}" --exclude "lost+found/**" "${MOUNT_PATH}" "${RCLONE_CONFIG_SECTION}:${RCLONE_DEST_PATH}" --log-level DEBUG
+    volsync_run rclone copy "${RCLONE_FLAGS_COPY[@]}" --include permissions.facl /tmp "${RCLONE_CONFIG_SECTION}:${RCLONE_DEST_PATH}" --log-level DEBUG
     ;;
 destination)
-    rclone sync "${RCLONE_FLAGS_SYNC[@]}" --exclude "lost+found/**" --exclude permissions.facl "${RCLONE_CONFIG_SECTION}:${RCLONE_DEST_PATH}" "${MOUNT_PATH}" --log-level DEBUG
-    rclone copy "${RCLONE_FLAGS_COPY[@]}" --include permissions.facl "${RCLONE_CONFIG_SECTION}:${RCLONE_DEST_PATH}" /tmp --log-level DEBUG
-    stat /tmp/permissions.facl
-    setfacl --restore=/tmp/permissions.facl || true
+    volsync_run rclone sync "${RCLONE_FLAGS_SYNC[@]}" --exclude "lost+found/**" --exclude permissions.facl "${RCLONE_CONFIG_SECTION}:${RCLONE_DEST_PATH}" "${MOUNT_PATH}" --log-level DEBUG
+    volsync_run rclone copy "${RCLONE_FLAGS_COPY[@]}" --include permissions.facl "${RCLONE_CONFIG_SECTION}:${RCLONE_DEST_PATH}" /tmp --log-level DEBUG
+    volsync_run stat /tmp/permissions.facl
+    volsync_run setfacl --restore=/tmp/permissions.facl || true
     ;;
 *)
     error 1 "unknown value for DIRECTION: ${DIRECTION}"
     ;;
 esac
-sync -f "${MOUNT_PATH}"
+volsync_run_cleanup sync -f "${MOUNT_PATH}"
 echo "Rclone completed in $(( SECONDS - START_TIME ))s"
