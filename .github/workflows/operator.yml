@@ -45,7 +45,7 @@ jobs:
       - name: Setup Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '4.0.7'
+          ruby-version: '4.0.9'
 
       - name: Install pre-commit
         run: |
