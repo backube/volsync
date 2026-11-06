@@ -4,15 +4,14 @@
 package api
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 
 	"github.com/go-logr/logr"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/syncthing/syncthing/lib/config"
-	"github.com/syncthing/syncthing/lib/protocol"
+
+	"github.com/backube/volsync/internal/controller/mover/syncthing/lib/config"
 )
 
 var _ = Describe("Syncthing connection", func() {
@@ -21,11 +20,11 @@ var _ = Describe("Syncthing connection", func() {
 
 		When("Syncthing server exists", func() {
 			var (
-				ts          *httptest.Server
-				serverState *Syncthing
-				myID, _     = protocol.DeviceIDFromString(
-					"ZNWFSWE-RWRV2BD-45BLMCV-LTDE2UR-4LJDW6J-R5BPWEB-TXD27XJ-IZF5RA4",
-				)
+				ts           *httptest.Server
+				serverState  *Syncthing
+				myID         = "ZNWFSWE-RWRV2BD-45BLMCV-LTDE2UR-4LJDW6J-R5BPWEB-TXD27XJ-IZF5RA4"
+				device1      = "AIR6LPZ-7K4PTTV-UXQSMUU-CPQ5YWH-OEDFIIQ-JUG777G-2YQXXR5-YD6AWQR"
+				device2      = "GYRZZQB-IRNPV4Z-T7TC52W-EQYJ3TT-FDQW6MW-DFLMU42-SSSU6EM-FBK2VAY"
 				serverAPIKey = "0xDEADBEEF"
 			)
 
@@ -34,23 +33,7 @@ var _ = Describe("Syncthing connection", func() {
 			})
 
 			JustBeforeEach(func() {
-				// set a value in each field
-				serverState.Configuration.Version = 10
-				serverState.SystemStatus.MyID = myID.GoString()
-				listenerError := "listener error"
-				serverState.SystemStatus.ConnectionServiceStatus = map[string]ListenerStatusEntry{
-					"tcp://0.0.0.0:22000": {
-						Error:        &listenerError,
-						LANAddresses: []string{"tcp://127.0.0.1:22000"},
-						WANAddresses: []string{"tcp://example.com:22000"},
-					},
-					"tcp://[::]:22000": {
-						Error:        nil,
-						LANAddresses: []string{},
-						WANAddresses: []string{},
-					},
-				}
-				serverState.SystemConnections.Total = TotalStats{At: "test"}
+				serverState.SystemStatus.MyID = myID
 
 				ts = CreateSyncthingTestServer(serverState, serverAPIKey)
 			})
@@ -79,26 +62,73 @@ var _ = Describe("Syncthing connection", func() {
 					Expect(syncthing).NotTo(BeNil())
 
 					// ensure that we fetched the server's values
-					Expect(syncthing.Configuration.Version).To(Equal(10))
-					Expect(syncthing.SystemStatus.MyID).To(Equal(myID.GoString()))
-					Expect(syncthing.SystemStatus.ConnectionServiceStatus).
-						To(Equal(serverState.SystemStatus.ConnectionServiceStatus))
-					Expect(syncthing.SystemConnections.Total.At).To(Equal("test"))
+					Expect(syncthing.SystemStatus.MyID).To(Equal(myID))
 				})
 
-				It("updates the Syncthing Config", func() {
-					syncthing := &Syncthing{
-						Configuration: config.Configuration{
-							Version: 9,
-						},
+				It("adds a device via AddOrUpdateDevice", func() {
+					err := syncthingConnection.AddOrUpdateDevice(config.DeviceConfiguration{
+						DeviceID:  device1,
+						Addresses: []string{"tcp://1.2.3.4:22000"}, //nolint:goconst
+					})
+					Expect(err).ToNot(HaveOccurred())
+					Expect(serverState.Configuration.Devices).To(HaveLen(1))
+					Expect(serverState.Configuration.Devices[0].DeviceID).To(Equal(device1))
+				})
+
+				It("updates an existing device via AddOrUpdateDevice", func() {
+					// Add device first
+					err := syncthingConnection.AddOrUpdateDevice(config.DeviceConfiguration{
+						DeviceID:  device1,
+						Addresses: []string{"tcp://1.2.3.4:22000"}, //nolint:goconst
+					})
+					Expect(err).ToNot(HaveOccurred())
+
+					// Update with new address
+					err = syncthingConnection.AddOrUpdateDevice(config.DeviceConfiguration{
+						DeviceID:  device1,
+						Addresses: []string{"tcp://5.6.7.8:22000"},
+					})
+					Expect(err).ToNot(HaveOccurred())
+					Expect(serverState.Configuration.Devices).To(HaveLen(1))
+					Expect(serverState.Configuration.Devices[0].Addresses[0]).To(Equal("tcp://5.6.7.8:22000"))
+				})
+
+				It("removes a device via RemoveDevice", func() {
+					// Add device first
+					err := syncthingConnection.AddOrUpdateDevice(config.DeviceConfiguration{
+						DeviceID:  device1,
+						Addresses: []string{"tcp://1.2.3.4:22000"}, //nolint:goconst
+					})
+					Expect(err).ToNot(HaveOccurred())
+					Expect(serverState.Configuration.Devices).To(HaveLen(1))
+
+					// Remove it
+					err = syncthingConnection.RemoveDevice(device1)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(serverState.Configuration.Devices).To(BeEmpty())
+				})
+
+				It("patches folder devices via PatchFolderDevices", func() {
+					// Set up a folder on the server
+					serverState.Configuration.Folders = []config.FolderConfiguration{
+						{ID: "default", Label: "Default", Devices: []config.FolderDeviceConfiguration{}},
 					}
 
-					// write to the server
-					err := syncthingConnection.PublishConfig(syncthing.Configuration)
+					// Patch the folder's devices
+					err := syncthingConnection.PatchFolderDevices("default", []config.FolderDeviceConfiguration{
+						{DeviceID: device1},
+						{DeviceID: device2},
+					})
 					Expect(err).ToNot(HaveOccurred())
-					Expect(serverState.Configuration.Version).To(Equal(9))
+					Expect(serverState.Configuration.Folders[0].Devices).To(HaveLen(2))
 				})
 
+				It("patches GUI credentials via PatchGUI", func() {
+					err := syncthingConnection.PatchGUI("admin", "secret123")
+					Expect(err).ToNot(HaveOccurred())
+					Expect(serverState.Configuration.GUI.User).To(Equal("admin"))
+					Expect(serverState.Configuration.GUI.Password).To(Equal("secret123"))
+				})
 			})
 
 			When("syncthingAPIConnection is making requests to the server", func() {
@@ -115,7 +145,6 @@ var _ = Describe("Syncthing connection", func() {
 					}
 				})
 
-				// nolint:dupl
 				It("jsonRequests without errors", func() {
 					// all of these request methods should succeed
 					_, err := apiConnection.jsonRequest(ConfigEndpoint, "GET", nil)
@@ -139,15 +168,9 @@ var _ = Describe("Syncthing connection", func() {
 					Expect(err).ToNot(HaveOccurred())
 					Expect(status).NotTo(BeNil())
 
-					mockConfig := config.Configuration{Version: 74}
-					err = apiConnection.PublishConfig(mockConfig)
-					Expect(err).ToNot(HaveOccurred())
-					Expect(serverState.Configuration.Version).To(Equal(mockConfig.Version))
-
 					syncthingResponse, err := apiConnection.Fetch()
 					Expect(err).ToNot(HaveOccurred())
 					Expect(syncthingResponse).NotTo(BeNil())
-
 				})
 
 				When("the wrong api key is used", func() {
@@ -155,9 +178,7 @@ var _ = Describe("Syncthing connection", func() {
 						apiConnection.apiConfig.APIKey = "my-super-secret-key-DO-NOT-STEAL!!!"
 					})
 
-					// nolint:dupl
-					It("errors", func() {
-						// ensure all of the api methods & helpers error here
+					It("errors on all operations", func() {
 						_, err := apiConnection.jsonRequest(ConfigEndpoint, "GET", nil)
 						Expect(err).To(HaveOccurred())
 
@@ -179,10 +200,10 @@ var _ = Describe("Syncthing connection", func() {
 						Expect(err).To(HaveOccurred())
 						Expect(status).To(BeNil())
 
-						mockConfig := config.Configuration{Version: 74}
-						err = apiConnection.PublishConfig(mockConfig)
+						err = apiConnection.AddOrUpdateDevice(config.DeviceConfiguration{
+							DeviceID: device1,
+						})
 						Expect(err).To(HaveOccurred())
-						Expect(serverState.Configuration.Version).NotTo(Equal(mockConfig.Version))
 
 						syncthingResponse, err := apiConnection.Fetch()
 						Expect(err).To(HaveOccurred())
@@ -201,50 +222,14 @@ var _ = Describe("Syncthing connection", func() {
 	})
 })
 
-var _ = Describe("Syncthing listener status JSON", func() {
-	It("decodes the Syncthing v1.30.0 REST shape", func() {
-		const statusJSON = `{
-   "connectionServiceStatus": {
-    "tcp://0.0.0.0:22000": {
-     "error": "listener error",
-     "lanAddresses": ["tcp://127.0.0.1:22000"],
-     "wanAddresses": ["tcp://example.com:22000"]
-    },
-    "tcp://[::]:22000": {
-     "error": null,
-     "lanAddresses": [],
-     "wanAddresses": []
-    }
-   }
-  }`
-
-		var status SystemStatus
-		Expect(json.Unmarshal([]byte(statusJSON), &status)).To(Succeed())
-
-		listenerError := "listener error"
-		Expect(status.ConnectionServiceStatus).To(Equal(map[string]ListenerStatusEntry{
-			"tcp://0.0.0.0:22000": {
-				Error:        &listenerError,
-				LANAddresses: []string{"tcp://127.0.0.1:22000"},
-				WANAddresses: []string{"tcp://example.com:22000"},
-			},
-			"tcp://[::]:22000": {
-				Error:        nil,
-				LANAddresses: []string{},
-				WANAddresses: []string{},
-			},
-		}))
-	})
-})
-
 var _ = Describe("Syncthing struct methods", func() {
 	var (
-		syncthing  *Syncthing
-		myID, _    = protocol.DeviceIDFromString("ZNWFSWE-RWRV2BD-45BLMCV-LTDE2UR-4LJDW6J-R5BPWEB-TXD27XJ-IZF5RA4")
-		device1, _ = protocol.DeviceIDFromString("AIR6LPZ-7K4PTTV-UXQSMUU-CPQ5YWH-OEDFIIQ-JUG777G-2YQXXR5-YD6AWQR")
-		device2, _ = protocol.DeviceIDFromString("GYRZZQB-IRNPV4Z-T7TC52W-EQYJ3TT-FDQW6MW-DFLMU42-SSSU6EM-FBK2VAY")
-		device3, _ = protocol.DeviceIDFromString("VNPQDOJ-3V7DEWN-QBCTXF2-LSVNMHL-XTGL4GX-NCGQEXQ-THHBVWR-HVVMEQR")
-		device4, _ = protocol.DeviceIDFromString("E3TWU3G-UGFHTJE-SJLCDYH-KGQR3R6-7QMOM43-FOC3UFT-H4H54DC-GMK5RAO")
+		syncthing *Syncthing
+		myID      = "ZNWFSWE-RWRV2BD-45BLMCV-LTDE2UR-4LJDW6J-R5BPWEB-TXD27XJ-IZF5RA4"
+		device1   = "AIR6LPZ-7K4PTTV-UXQSMUU-CPQ5YWH-OEDFIIQ-JUG777G-2YQXXR5-YD6AWQR"
+		device2   = "GYRZZQB-IRNPV4Z-T7TC52W-EQYJ3TT-FDQW6MW-DFLMU42-SSSU6EM-FBK2VAY"
+		device3   = "VNPQDOJ-3V7DEWN-QBCTXF2-LSVNMHL-XTGL4GX-NCGQEXQ-THHBVWR-HVVMEQR"
+		device4   = "E3TWU3G-UGFHTJE-SJLCDYH-KGQR3R6-7QMOM43-FOC3UFT-H4H54DC-GMK5RAO"
 	)
 
 	BeforeEach(func() {
@@ -253,7 +238,7 @@ var _ = Describe("Syncthing struct methods", func() {
 
 	When("devices are present in Syncthing struct", func() {
 		BeforeEach(func() {
-			devices := []config.DeviceConfiguration{
+			syncthing.Configuration.Devices = []config.DeviceConfiguration{
 				{
 					DeviceID:  device1,
 					Name:      "IoT-furnace",
@@ -270,33 +255,20 @@ var _ = Describe("Syncthing struct methods", func() {
 					Addresses: []string{"udp4://196.168.1.203:23000"},
 				},
 			}
-			syncthing.Configuration.SetDevices(devices)
 		})
 
 		It("finds the ones that are stored", func() {
 			devices := []struct {
-				deviceID   protocol.DeviceID
+				deviceID   string
 				shouldFind bool
 			}{
-				{
-					deviceID:   device1,
-					shouldFind: true,
-				},
-				{
-					deviceID:   device2,
-					shouldFind: true,
-				},
-				{
-					deviceID:   device3,
-					shouldFind: true,
-				},
-				{
-					deviceID:   device4,
-					shouldFind: false,
-				},
+				{deviceID: device1, shouldFind: true},
+				{deviceID: device2, shouldFind: true},
+				{deviceID: device3, shouldFind: true},
+				{deviceID: device4, shouldFind: false},
 			}
 			for _, device := range devices {
-				config, ok := syncthing.GetDeviceFromID(device.deviceID.GoString())
+				config, ok := syncthing.GetDeviceFromID(device.deviceID)
 				if device.shouldFind {
 					Expect(ok).To(BeTrue())
 					Expect(config).NotTo(BeNil())
@@ -306,43 +278,11 @@ var _ = Describe("Syncthing struct methods", func() {
 				}
 			}
 		})
-
-		When("folders are present", func() {
-			BeforeEach(func() {
-				syncthing.Configuration.SetFolder(config.FolderConfiguration{
-					ID:      "b-mitzvah-recordings",
-					Label:   "B.Mitzvah Recordings",
-					Devices: []config.FolderDeviceConfiguration{},
-				})
-			})
-
-			It("shares them with the given devices", func() {
-				Expect(syncthing.Configuration.Folders).NotTo(BeEmpty())
-				Expect(syncthing.Configuration.Folders[0].Devices).To(BeEmpty())
-				// devices have not been shared yet so expect to find nothing
-				syncthing.ShareFoldersWithDevices()
-				Expect(syncthing.Configuration.Folders[0].Devices).
-					To(HaveLen(len(syncthing.Configuration.Devices)))
-
-				deviceMap := syncthing.Configuration.DeviceMap()
-				sharedWith := syncthing.Configuration.Folders[0].Devices
-				for deviceID := range deviceMap {
-					found := false
-					for _, sharedDevice := range sharedWith {
-						if sharedDevice.DeviceID == deviceID {
-							found = true
-							break
-						}
-					}
-					Expect(found).To(BeTrue())
-				}
-			})
-		})
 	})
 
 	It("returns the ID when set", func() {
 		// ID present should return a string
-		syncthing.SystemStatus.MyID = myID.GoString()
+		syncthing.SystemStatus.MyID = myID
 		Expect(syncthing.MyID()).NotTo(Equal(""))
 
 		syncthing.SystemStatus.MyID = ""
