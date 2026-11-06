@@ -24,62 +24,26 @@ import (
 	"crypto/tls"
 	"net/http"
 
-	"github.com/syncthing/syncthing/lib/config"
+	"github.com/backube/volsync/internal/controller/mover/syncthing/lib/config"
 )
 
-// DialStatus Provides us with information as to whether or not we are able to
-// dial a given device, when the last time we dialed was, and what the error is, if any.
-type DialStatus struct {
-	When  string  `json:"when"`
-	Error *string `json:"error"`
-	OK    bool    `json:"ok"`
-}
-
-// SystemStatus Details information about the running Syncthing system, including the
-// device ID, CPU usage, allocated memory, number of goroutines, when it started, and so on and so forth.
+// SystemStatus contains the fields from /rest/system/status that the mover uses.
+// The full response includes many more fields (alloc, cpuPercent, goroutines, etc.)
+// which Go's JSON decoder silently ignores.
 type SystemStatus struct {
-	Alloc                   int                            `json:"alloc"`
-	ConnectionServiceStatus map[string]ListenerStatusEntry `json:"connectionServiceStatus"`
-	CPUPercent              int                            `json:"cpuPercent"`
-	Goroutines              int                            `json:"goroutines"`
-	GUIAddressOverridden    bool                           `json:"guiAddressOverridden"`
-	GUIAddressUsed          string                         `json:"guiAddressUsed"`
-	LastDialStatus          map[string]DialStatus          `json:"lastDialStatus"`
-	MyID                    string                         `json:"myID"`
+	MyID string `json:"myID"`
 }
 
-// ListenerStatusEntry mirrors Syncthing v1.30.0's REST type
-// (lib/connections/service.go) without importing connections, whose QUIC code
-// imports quic-go/logging, removed in v0.59.1.
-type ListenerStatusEntry struct {
-	Error        *string  `json:"error"`
-	LANAddresses []string `json:"lanAddresses"`
-	WANAddresses []string `json:"wanAddresses"`
-}
-
-// TotalStats Describes the total traffic to/from a given Syncthing node.
-type TotalStats struct {
-	At            string `json:"at"`
-	InBytesTotal  int    `json:"inBytesTotal"`
-	OutBytesTotal int    `json:"outBytesTotal"`
-}
-
-// ConnectionStats Details statistics about this Syncthing connection.
+// ConnectionStats contains the per-device fields from /rest/system/connections
+// that the mover uses. The full response includes additional fields
+// (paused, clientVersion, type, etc.) which Go's JSON decoder silently ignores.
 type ConnectionStats struct {
-	TotalStats
-	Connected     bool   `json:"connected"`
-	Paused        bool   `json:"paused"`
-	At            string `json:"at"`
-	StartedAt     string `json:"startedAt"`
-	ClientVersion string `json:"clientVersion"`
-	Address       string `json:"address"`
-	Type          string `json:"type"`
+	Connected bool   `json:"connected"`
+	Address   string `json:"address"`
 }
 
-// SystemConnections Describes the devices which are connected to the Syncthing
-// device, in addition to statistics about the total traffic to and from this node.
+// SystemConnections contains the fields from /rest/system/connections that the mover uses.
 type SystemConnections struct {
-	Total       TotalStats                 `json:"total"`
 	Connections map[string]ConnectionStats `json:"connections"`
 }
 
@@ -98,9 +62,16 @@ type APIConfig struct {
 }
 
 type SyncthingConnection interface {
-	// API Functions, these are meant to define communication with the Syncthing API.
+	// Fetch retrieves the latest configuration, system status, and connections from the Syncthing API.
 	Fetch() (*Syncthing, error)
-	PublishConfig(config.Configuration) error
+	// AddOrUpdateDevice adds a new device or updates an existing one via POST /rest/config/devices.
+	AddOrUpdateDevice(device config.DeviceConfiguration) error
+	// RemoveDevice removes a device by ID via DELETE /rest/config/devices/{id}.
+	RemoveDevice(deviceID string) error
+	// PatchFolderDevices updates only the devices list on a folder via PATCH /rest/config/folders/{id}.
+	PatchFolderDevices(folderID string, devices []config.FolderDeviceConfiguration) error
+	// PatchGUI updates only the user and password on the GUI config via PATCH /rest/config/gui.
+	PatchGUI(user, password string) error
 }
 
 // Syncthing Defines a Syncthing API object which contains a subset of the information
