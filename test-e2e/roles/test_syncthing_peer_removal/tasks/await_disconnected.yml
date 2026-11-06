@@ -37,7 +37,7 @@
     name: "{{ first.resources[0].metadata.name }}"
     namespace: "{{ first.resources[0].metadata.namespace }}"
   register: res
-  until: (res | community.general.json_query(query)) | length == 0
+  until: ((res | community.general.json_query(query)) or []) | length == 0
   vars:
     query: "resources[0].status.syncthing.peers[?ID=='{{ second.resources[0].status.syncthing.ID }}']"
   retries: 60
@@ -50,7 +50,7 @@
     name: "{{ second.resources[0].metadata.name }}"
     namespace: "{{ second.resources[0].metadata.namespace }}"
   register: res
-  until: (res | community.general.json_query(query)) | length == 0
+  until: ((res | community.general.json_query(query)) or []) | length == 0
   vars:
     query: "resources[0].status.syncthing.peers[?ID=='{{ first.resources[0].status.syncthing.ID }}']"
   retries: 60
