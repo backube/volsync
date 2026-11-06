@@ -44,8 +44,8 @@ TAGS ?=
 #   2. When running the docker image, flags for the movers may need to be updated (i.e. the deloyment.yaml in the
 #      helm chart would also to be updated) to remove passing in the container-image argument
 #      (--syncthing-container-image in the example above).
-#   2. Running tests currently will not work if you disable rsync or rclone as common tests in controllers
-#      depend on them (see setup in suite_test.go for example)
+#   2. Tests compile with any mover disabled, but they will not pass if you disable rsync as common tests in
+#      controllers depend on it (see replicationsource_test.go for example)
 #   3. If you want to disable multiple movers, use a comma separated list of tags like this:
 #      TAGS=disable_syncthing,disable_restic
 #

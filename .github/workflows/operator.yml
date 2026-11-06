@@ -192,6 +192,31 @@ jobs:
           # future. Until then, coverage stats are best-effort.
           fail_ci_if_error: false
 
+  vet-mover-tags:
+    name: Vet-mover-tags
+    runs-on: ubuntu-26.04
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      # Each directory is a mover gated by disable_<directory>, so a new mover
+      # is vetted without being added to a list.
+      - name: Vet with each mover disabled
+        run: |
+          failed=0
+          for dir in internal/controller/mover/*/; do
+            tag="disable_$(basename "$dir")"
+            echo "Vetting with $tag"
+            go vet -tags "$tag" ./... || { echo "::error::go vet failed with $tag"; failed=1; }
+          done
+          exit "$failed"
+
   build-operator:
     name: Build-operator
     runs-on: ${{ matrix.os }}
@@ -453,7 +478,7 @@ jobs:
   #   pushed.
   e2e-success:
     name: Successful e2e tests
-    needs: [e2e, lint, generated-files-check, test-operator, build-scorecard]
+    needs: [e2e, lint, generated-files-check, test-operator, vet-mover-tags, build-scorecard]
     if: always()
     runs-on: ubuntu-26.04
     steps:
