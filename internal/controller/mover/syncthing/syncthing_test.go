@@ -1065,6 +1065,52 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 						Expect(found).To(Equal(1))
 					})
 				})
+
+				When("stale and introduced devices are both present", func() {
+					var (
+						device2 = "GYRZZQB-IRNPV4Z-T7TC52W-EQYJ3TT-FDQW6MW-DFLMU42-SSSU6EM-FBK2VAY"
+						device3 = "VNPQDOJ-3V7DEWN-QBCTXF2-LSVNMHL-XTGL4GX-NCGQEXQ-THHBVWR-HVVMEQR"
+						// device2 was introduced to us by device1 (a spec peer)
+						introducedDevice = config.DeviceConfiguration{
+							DeviceID:     device2,
+							Addresses:    []string{"tcp://[::2]:22000"}, //nolint:goconst
+							IntroducedBy: device1,
+						}
+						// device3 is a leftover spec peer that is no longer desired
+						staleDevice = config.DeviceConfiguration{
+							DeviceID:  device3,
+							Addresses: []string{"tcp://[::3]:22000"}, //nolint:goconst
+						}
+					)
+
+					JustBeforeEach(func() {
+						serverState.Configuration.Devices = []config.DeviceConfiguration{
+							{DeviceID: myID},
+							introducedDevice,
+							staleDevice,
+						}
+						mover.peerList = []volsyncv1alpha1.SyncthingPeer{
+							{ID: device1, Address: "tcp://1.2.3.4:5678"},
+						}
+					})
+
+					It("removes the stale device but keeps the introduced one", func() {
+						result, err := mover.Synchronize(ctx)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(result.Completed).To(BeFalse())
+
+						remaining := map[string]bool{}
+						for _, d := range serverState.Configuration.Devices {
+							remaining[d.DeviceID] = true
+						}
+						// stale, non-introduced device must be removed
+						Expect(remaining).NotTo(HaveKey(staleDevice.DeviceID))
+						// introduced device must be preserved
+						Expect(remaining).To(HaveKey(introducedDevice.DeviceID))
+						// desired spec peer must be present
+						Expect(remaining).To(HaveKey(device1))
+					})
+				})
 			})
 
 			When("synchronize is called but server isn't running", func() {
