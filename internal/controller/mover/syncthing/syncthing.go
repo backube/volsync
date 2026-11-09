@@ -24,7 +24,71 @@ import (
 
 	"github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/internal/controller/mover/syncthing/api"
+	"github.com/backube/volsync/internal/controller/mover/syncthing/lib/config"
 )
+
+// updateSyncthingDevices reconciles the daemon's device list and folder sharing
+// with the given peerList using granular REST calls. It removes stale devices
+// (skipping self and introduced ones), upserts the desired peers, and re-shares
+// folders with self, introduced devices, and the peerList.
+func updateSyncthingDevices(
+	connection api.SyncthingConnection,
+	peerList []v1alpha1.SyncthingPeer,
+	syncthing *api.Syncthing,
+) error {
+	// build the set of desired peer IDs
+	desiredPeers := map[string]struct{}{}
+	for _, peer := range peerList {
+		desiredPeers[peer.ID] = struct{}{}
+	}
+
+	// remove stale devices (not self, not introduced, not in peerList)
+	for _, device := range syncthing.Configuration.Devices {
+		if device.DeviceID == syncthing.MyID() || device.IntroducedBy != "" {
+			continue
+		}
+		if _, wanted := desiredPeers[device.DeviceID]; !wanted {
+			if err := connection.RemoveDevice(device.DeviceID); err != nil {
+				return err
+			}
+		}
+	}
+
+	// add/update devices from peerList
+	for _, peer := range peerList {
+		if err := connection.AddOrUpdateDevice(config.DeviceConfiguration{
+			DeviceID:   peer.ID,
+			Addresses:  []string{peer.Address},
+			Introducer: peer.Introducer,
+		}); err != nil {
+			return err
+		}
+	}
+
+	// build the folder device list: self + introduced + peerList
+	folderDevices := []config.FolderDeviceConfiguration{
+		{DeviceID: syncthing.MyID()},
+	}
+	for _, device := range syncthing.Configuration.Devices {
+		if device.IntroducedBy != "" {
+			folderDevices = append(folderDevices, config.FolderDeviceConfiguration{
+				DeviceID:     device.DeviceID,
+				IntroducedBy: device.IntroducedBy,
+			})
+		}
+	}
+	for _, peer := range peerList {
+		folderDevices = append(folderDevices, config.FolderDeviceConfiguration{DeviceID: peer.ID})
+	}
+
+	// update folder sharing
+	for _, folder := range syncthing.Configuration.Folders {
+		if err := connection.PatchFolderDevices(folder.ID, folderDevices); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 // syncthingNeedsReconfigure Determines whether the given nodeList differs from Syncthing's internal devices,
 // and returns 'true' if the Syncthing API must be reconfigured, 'false' otherwise.

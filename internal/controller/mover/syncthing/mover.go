@@ -43,7 +43,6 @@ import (
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/internal/controller/mover"
 	"github.com/backube/volsync/internal/controller/mover/syncthing/api"
-	"github.com/backube/volsync/internal/controller/mover/syncthing/lib/config"
 	"github.com/backube/volsync/internal/controller/utils"
 	"github.com/backube/volsync/internal/controller/volumehandler"
 )
@@ -739,60 +738,11 @@ func (m *Mover) ensureIsConfigured(apiSecret *corev1.Secret, syncthing *api.Sync
 		}
 	}
 
-	// Update devices using granular API calls
+	// Update devices and folder sharing using granular API calls
 	if syncthingNeedsReconfigure(m.peerList, syncthing) {
 		m.logger.V(4).Info("devices need to be reconfigured")
-
-		// Build set of desired peer IDs
-		desiredPeers := map[string]struct{}{}
-		for _, peer := range m.peerList {
-			desiredPeers[peer.ID] = struct{}{}
-		}
-
-		// Remove stale devices (not self, not introduced, not in peerList)
-		for _, device := range syncthing.Configuration.Devices {
-			if device.DeviceID == syncthing.MyID() || device.IntroducedBy != "" {
-				continue
-			}
-			if _, wanted := desiredPeers[device.DeviceID]; !wanted {
-				if err := m.syncthingConnection.RemoveDevice(device.DeviceID); err != nil {
-					return err
-				}
-			}
-		}
-
-		// Add/update devices from peerList
-		for _, peer := range m.peerList {
-			if err := m.syncthingConnection.AddOrUpdateDevice(config.DeviceConfiguration{
-				DeviceID:   peer.ID,
-				Addresses:  []string{peer.Address},
-				Introducer: peer.Introducer,
-			}); err != nil {
-				return err
-			}
-		}
-
-		// Build folder device list: self + introduced + peerList
-		folderDevices := []config.FolderDeviceConfiguration{
-			{DeviceID: syncthing.MyID()},
-		}
-		for _, device := range syncthing.Configuration.Devices {
-			if device.IntroducedBy != "" {
-				folderDevices = append(folderDevices, config.FolderDeviceConfiguration{
-					DeviceID:     device.DeviceID,
-					IntroducedBy: device.IntroducedBy,
-				})
-			}
-		}
-		for _, peer := range m.peerList {
-			folderDevices = append(folderDevices, config.FolderDeviceConfiguration{DeviceID: peer.ID})
-		}
-
-		// Update folder sharing
-		for _, folder := range syncthing.Configuration.Folders {
-			if err := m.syncthingConnection.PatchFolderDevices(folder.ID, folderDevices); err != nil {
-				return err
-			}
+		if err := updateSyncthingDevices(m.syncthingConnection, m.peerList, syncthing); err != nil {
+			return err
 		}
 	}
 
