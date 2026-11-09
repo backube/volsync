@@ -36,18 +36,9 @@ func updateSyncthingDevices(
 	peerList []v1alpha1.SyncthingPeer,
 	syncthing *api.Syncthing,
 ) error {
-	// build the set of desired peer IDs
-	desiredPeers := map[string]struct{}{}
-	for _, peer := range peerList {
-		desiredPeers[peer.ID] = struct{}{}
-	}
-
-	// remove stale devices (not self, not introduced, not in peerList)
-	for _, device := range syncthing.Configuration.Devices {
-		if device.DeviceID == syncthing.MyID() || device.IntroducedBy != "" {
-			continue
-		}
-		if _, wanted := desiredPeers[device.DeviceID]; !wanted {
+	// remove stale managed devices that are not in the peerList
+	for _, device := range managedDevices(syncthing) {
+		if _, wanted := desiredPeerIDs(peerList)[device.DeviceID]; !wanted {
 			if err := connection.RemoveDevice(device.DeviceID); err != nil {
 				return err
 			}
@@ -122,13 +113,8 @@ func syncthingNeedsReconfigure(
 			Address: "",
 		},
 	}
-	// add the rest of devices to the map
-	for _, device := range syncthing.Configuration.Devices {
-		// ignore self and introduced devices
-		if device.DeviceID == syncthing.MyID() || device.IntroducedBy != "" {
-			continue
-		}
-
+	// add the managed devices to the map
+	for _, device := range managedDevices(syncthing) {
 		currentDevs[device.DeviceID] = v1alpha1.SyncthingPeer{
 			ID:      device.DeviceID,
 			Address: device.Addresses[0],
@@ -147,6 +133,30 @@ func syncthingNeedsReconfigure(
 		}
 	}
 	return false
+}
+
+// managedDevices returns the daemon's current devices excluding self and
+// devices introduced by an introducer. These are the devices whose membership
+// this mover is responsible for keeping in sync with the peerList.
+func managedDevices(syncthing *api.Syncthing) []config.DeviceConfiguration {
+	managed := make([]config.DeviceConfiguration, 0, len(syncthing.Configuration.Devices))
+	for _, device := range syncthing.Configuration.Devices {
+		if device.DeviceID == syncthing.MyID() || device.IntroducedBy != "" {
+			continue
+		}
+		managed = append(managed, device)
+	}
+	return managed
+}
+
+// desiredPeerIDs returns the set of device IDs that the peerList says should
+// exist in the daemon's configuration.
+func desiredPeerIDs(peerList []v1alpha1.SyncthingPeer) map[string]struct{} {
+	desired := make(map[string]struct{}, len(peerList))
+	for _, peer := range peerList {
+		desired[peer.ID] = struct{}{}
+	}
+	return desired
 }
 
 // GenerateRandomBytes Generates random bytes of the given length using the OS's RNG.
