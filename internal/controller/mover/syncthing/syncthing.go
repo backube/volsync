@@ -56,21 +56,7 @@ func updateSyncthingDevices(
 		}
 	}
 
-	// build the folder device list: self + introduced + peerList
-	folderDevices := []config.FolderDeviceConfiguration{
-		{DeviceID: syncthing.MyID()},
-	}
-	for _, device := range syncthing.Configuration.Devices {
-		if device.IntroducedBy != "" {
-			folderDevices = append(folderDevices, config.FolderDeviceConfiguration{
-				DeviceID:     device.DeviceID,
-				IntroducedBy: device.IntroducedBy,
-			})
-		}
-	}
-	for _, peer := range peerList {
-		folderDevices = append(folderDevices, config.FolderDeviceConfiguration{DeviceID: peer.ID})
-	}
+	folderDevices := expectedFolderDevices(peerList, syncthing)
 
 	// update folder sharing
 	for _, folder := range syncthing.Configuration.Folders {
@@ -81,8 +67,9 @@ func updateSyncthingDevices(
 	return nil
 }
 
-// syncthingNeedsReconfigure Determines whether the given nodeList differs from Syncthing's internal devices,
-// and returns 'true' if the Syncthing API must be reconfigured, 'false' otherwise.
+// syncthingNeedsReconfigure Determines whether the given nodeList or folder sharing
+// diverges from Syncthing's current configuration, and returns 'true' if the
+// Syncthing API must be reconfigured, 'false' otherwise.
 func syncthingNeedsReconfigure(
 	nodeList []v1alpha1.SyncthingPeer,
 	syncthing *api.Syncthing,
@@ -132,6 +119,15 @@ func syncthingNeedsReconfigure(
 			return true
 		}
 	}
+
+	// check if folder sharing diverges from the expected device lists, so that
+	// a previously failed folder update is retried on a later reconcile
+	expected := expectedFolderDevices(nodeList, syncthing)
+	for _, folder := range syncthing.Configuration.Folders {
+		if !folderDevicesEqual(folder.Devices, expected) {
+			return true
+		}
+	}
 	return false
 }
 
@@ -157,6 +153,46 @@ func desiredPeerIDs(peerList []v1alpha1.SyncthingPeer) map[string]struct{} {
 		desired[peer.ID] = struct{}{}
 	}
 	return desired
+}
+
+// expectedFolderDevices returns the device list every folder should be shared
+func expectedFolderDevices(
+	peerList []v1alpha1.SyncthingPeer,
+	syncthing *api.Syncthing,
+) []config.FolderDeviceConfiguration {
+	expected := []config.FolderDeviceConfiguration{
+		{DeviceID: syncthing.MyID()},
+	}
+	for _, device := range syncthing.Configuration.Devices {
+		if device.IntroducedBy != "" {
+			expected = append(expected, config.FolderDeviceConfiguration{
+				DeviceID:     device.DeviceID,
+				IntroducedBy: device.IntroducedBy,
+			})
+		}
+	}
+	for _, peer := range peerList {
+		expected = append(expected, config.FolderDeviceConfiguration{DeviceID: peer.ID})
+	}
+	return expected
+}
+
+// folderDevicesEqual reports whether two folder device lists contain the same
+// device IDs, regardless of order.
+func folderDevicesEqual(a, b []config.FolderDeviceConfiguration) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	ids := make(map[string]struct{}, len(a))
+	for _, device := range a {
+		ids[device.DeviceID] = struct{}{}
+	}
+	for _, device := range b {
+		if _, ok := ids[device.DeviceID]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // GenerateRandomBytes Generates random bytes of the given length using the OS's RNG.
