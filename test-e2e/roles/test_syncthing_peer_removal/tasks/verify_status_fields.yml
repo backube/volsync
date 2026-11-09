@@ -31,6 +31,45 @@
     namespace: "{{ instances[1].Namespace }}"
   register: second
 
+# A freshly (re-)established connection can flap briefly before it settles.
+# Poll until the peer entry exists, is connected, and has an address before
+# running the one-shot assertions below.
+- name: "Await connected peer status of {{ second.resources[0].metadata.name }} on {{ first.resources[0].metadata.name }}"
+  kubernetes.core.k8s_info:
+    api_version: volsync.backube/v1alpha1
+    kind: ReplicationSource
+    name: "{{ first.resources[0].metadata.name }}"
+    namespace: "{{ first.resources[0].metadata.namespace }}"
+  register: res
+  until: >-
+    (res.resources[0].status.syncthing.peers | default([])
+      | selectattr('ID', 'equalto', second.resources[0].status.syncthing.ID)
+      | map(attribute='connected') | join | bool)
+    and
+    ((res.resources[0].status.syncthing.peers | default([])
+      | selectattr('ID', 'equalto', second.resources[0].status.syncthing.ID)
+      | map(attribute='address') | join) | length > 0)
+  retries: 30
+  delay: 5
+
+- name: "Await connected peer status of {{ first.resources[0].metadata.name }} on {{ second.resources[0].metadata.name }}"
+  kubernetes.core.k8s_info:
+    api_version: volsync.backube/v1alpha1
+    kind: ReplicationSource
+    name: "{{ second.resources[0].metadata.name }}"
+    namespace: "{{ second.resources[0].metadata.namespace }}"
+  register: res
+  until: >-
+    (res.resources[0].status.syncthing.peers | default([])
+      | selectattr('ID', 'equalto', first.resources[0].status.syncthing.ID)
+      | map(attribute='connected') | join | bool)
+    and
+    ((res.resources[0].status.syncthing.peers | default([])
+      | selectattr('ID', 'equalto', first.resources[0].status.syncthing.ID)
+      | map(attribute='address') | join) | length > 0)
+  retries: 30
+  delay: 5
+
 - name: "Verify {{ first.resources[0].metadata.name }} has peer {{ second.resources[0].metadata.name }} with correct fields"
   assert:
     that:
