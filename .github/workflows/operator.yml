@@ -209,10 +209,26 @@ jobs:
       # is vetted without being added to a list.
       - name: Vet with each mover disabled
         run: |
+          shopt -s nullglob
+          dirs=(internal/controller/mover/*/)
+          if [ "${#dirs[@]}" -eq 0 ]; then
+            echo "::error::no movers found in internal/controller/mover"
+            exit 1
+          fi
           failed=0
-          for dir in internal/controller/mover/*/; do
+          for dir in "${dirs[@]}"; do
             tag="disable_$(basename "$dir")"
             echo "Vetting with $tag"
+            # Every Go file except package.go must be gated by the tag,
+            # or the tag silently disables nothing. Match the whole tag so
+            # !disable_rsynctls does not count for disable_rsync.
+            untagged="$(grep -rLE --include='*.go' -e "!$tag([^A-Za-z0-9_]|\$)" "$dir" | grep -v '/package\.go$' || true)"
+            if [ -n "$untagged" ]; then
+              echo "::error::files in $dir missing build tag !$tag:"
+              echo "$untagged"
+              failed=1
+              continue
+            fi
             go vet -tags "$tag" ./... || { echo "::error::go vet failed with $tag"; failed=1; }
           done
           exit "$failed"
