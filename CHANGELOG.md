@@ -8,6 +8,14 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Changed
+
+- The Syncthing mover no longer imports the syncthing Go library and
+  communicates with the Syncthing daemon solely via its REST API. This
+  removes ~25 transitive dependencies from the module graph and ensures
+  the mover's configuration updates no longer reset unmanaged Syncthing
+  settings to their defaults
+
 ### Fixed
 
 - VolumePopulator requeues while waiting on external state so a missed watch
