@@ -3,6 +3,10 @@
 # untriggered Restic/Rsync/Rsync-TLS movers and the always-on Syncthing mover.
 # There is no stable idle state to assert, so this mode requires an active
 # Synchronizing condition and no Error condition instead.
+#
+# With fail_fast_on_error (default true) the wait exits early on an Error
+# condition. With false, Error conditions are ignored during the wait and
+# only a timeout (transient errors) or the assertions below can fail the test.
 - name: Wait for {{ cr_kind }}/{{ cr_name }} to be actively synchronizing
   kubernetes.core.k8s_info:
     api_version: volsync.backube/v1alpha1
@@ -16,9 +20,10 @@
       (verify_sync_cr.resources[0].status.conditions | default([])
         | selectattr('type', '==', 'Synchronizing')
         | selectattr('status', '==', 'True') | list | length > 0) or
-      (verify_sync_cr.resources[0].status.conditions | default([])
-        | selectattr('type', '==', 'Synchronizing')
-        | selectattr('reason', '==', 'Error') | list | length > 0)
+      (fail_fast_on_error | default(true) | bool and
+        (verify_sync_cr.resources[0].status.conditions | default([])
+          | selectattr('type', '==', 'Synchronizing')
+          | selectattr('reason', '==', 'Error') | list | length > 0))
     ) and
     (
       not (expect_mover_status | bool) or
@@ -45,7 +50,9 @@
     msg: >-
       {{ cr_kind }}/{{ cr_name }} in namespace {{ namespace }} reported an
       error: {{ verify_sync_error_condition.message | default('') }}
-  when: verify_sync_error_condition | length > 0
+  when:
+    - fail_fast_on_error | default(true) | bool
+    - verify_sync_error_condition | length > 0
 
 - name: Assert continuous synchronization is active
   ansible.builtin.assert:

@@ -43,4 +43,5 @@
         cr_name: "{{ item.Name }}"
         mode: continuous
         expect_mover_status: false
+        fail_fast_on_error: false
       loop: "{{ syncthings }}"
