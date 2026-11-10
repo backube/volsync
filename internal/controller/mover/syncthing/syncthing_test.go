@@ -1713,6 +1713,50 @@ var _ = Describe("Syncthing utils", func() {
 					Expect(syncthingNeedsReconfigure(peerList, &syncthing)).To(BeTrue())
 				})
 			})
+
+			When("folders are shared with devices", func() {
+				BeforeEach(func() {
+					syncthing.Configuration.Devices = []config.DeviceConfiguration{
+						{DeviceID: device1, Addresses: []string{"tcp://[::1]:22000"}},
+						{DeviceID: device2, Addresses: []string{"tcp://[::2]:22000"}},
+					}
+					syncthing.Configuration.Folders = []config.FolderConfiguration{
+						{
+							ID: "syncthing-folder-id",
+							Devices: []config.FolderDeviceConfiguration{
+								{DeviceID: myID},
+								{DeviceID: device1},
+								{DeviceID: device2},
+							},
+						},
+					}
+				})
+
+				peerList := []volsyncv1alpha1.SyncthingPeer{
+					{ID: device1, Address: "tcp://[::1]:22000"},
+					{ID: device2, Address: "tcp://[::2]:22000"},
+				}
+
+				It("doesn't reconfigure when folder sharing matches the peerList", func() {
+					Expect(syncthingNeedsReconfigure(peerList, &syncthing)).To(BeFalse())
+				})
+
+				It("needs reconfigure when a folder is missing a peer from the peerList", func() {
+					syncthing.Configuration.Folders[0].Devices = []config.FolderDeviceConfiguration{
+						{DeviceID: myID},
+						{DeviceID: device1},
+					}
+					Expect(syncthingNeedsReconfigure(peerList, &syncthing)).To(BeTrue())
+				})
+
+				It("needs reconfigure when a folder has a stale device", func() {
+					syncthing.Configuration.Folders[0].Devices = append(
+						syncthing.Configuration.Folders[0].Devices,
+						config.FolderDeviceConfiguration{DeviceID: device3},
+					)
+					Expect(syncthingNeedsReconfigure(peerList, &syncthing)).To(BeTrue())
+				})
+			})
 		})
 
 	})
