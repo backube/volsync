@@ -112,7 +112,6 @@ type Mover struct {
 	configStorageClass  *string
 	configAccessModes   []corev1.PersistentVolumeAccessMode
 	containerImage      string
-	paused              bool
 	dataPVCName         *string
 	peerList            []volsyncv1alpha1.SyncthingPeer
 	status              *volsyncv1alpha1.ReplicationSourceSyncthingStatus
@@ -716,12 +715,14 @@ func (m *Mover) validatePeerList() error {
 	return nil
 }
 
-// ensureIsConfigured Takes the given syncthing state and updates it with the necessary information
-// from the peerList as well as the given apiSecret. An error is returned when we are unsuccessful in
-// updating the configuration.
+// ensureIsConfigured Configures the current Syncthing instance with the devices
+// from the peerList as well as the given apiSecret using granular API endpoints.
+// This avoids PUT /rest/config which would drop unknown fields.
 //
 // If there is no User/Password set on the object, or a user is set but doesn't match the value in the secret,
 // then ensureIsConfigured will update the Syncthing state to match the values in the secret.
+//
+//nolint:cyclop,funlen
 func (m *Mover) ensureIsConfigured(apiSecret *corev1.Secret, syncthing *api.Syncthing) error {
 	// nil check
 	if apiSecret == nil || syncthing == nil {
@@ -737,37 +738,27 @@ func (m *Mover) ensureIsConfigured(apiSecret *corev1.Secret, syncthing *api.Sync
 		}
 	}
 
-	// check if the syncthing is configured
-	hasChanged := false
+	// Update devices and folder sharing using granular API calls
 	if syncthingNeedsReconfigure(m.peerList, syncthing) {
 		m.logger.V(4).Info("devices need to be reconfigured")
-		// configure the syncthing state with the new devices
-		if err := updateSyncthingDevices(m.peerList, syncthing); err != nil {
+		if err := updateSyncthingDevices(m.syncthingConnection, m.peerList, syncthing); err != nil {
 			return err
 		}
-		hasChanged = true
 	}
 
-	// set the user and password if not already set
+	// Update GUI credentials if needed
 	if syncthing.Configuration.GUI.User != string(apiSecret.Data[usernameDataKey]) ||
 		syncthing.Configuration.GUI.Password == "" {
 		m.logger.Info("setting user and password")
-		syncthing.Configuration.GUI.User = string(apiSecret.Data[usernameDataKey])
-		syncthing.Configuration.GUI.Password = string(apiSecret.Data[passwordDataKey])
-		hasChanged = true
-	}
-
-	// update the config
-	if hasChanged {
-		// get syncthing object & update the remote config w/ it
-		m.logger.Info("syncthing needs to be updated")
-		m.logger.V(4).Info("updating with config", "config", syncthing.Configuration)
-		err := m.syncthingConnection.PublishConfig(syncthing.Configuration)
-		if err != nil {
-			m.logger.Error(err, "error updating syncthing config")
+		if err := m.syncthingConnection.PatchGUI(
+			string(apiSecret.Data[usernameDataKey]),
+			string(apiSecret.Data[passwordDataKey]),
+		); err != nil {
+			m.logger.Error(err, "error updating syncthing GUI credentials")
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -827,16 +818,14 @@ func (m *Mover) getConnectedPeers(syncthing *api.Syncthing) []volsyncv1alpha1.Sy
 		//  - https://docs.syncthing.net/rest/system-connections-get.html
 		//  - https://forum.syncthing.net/t/specifying-protocols-without-global-announce-or-relay/18565
 		tcpAddress := asTCPAddress(connectionInfo.Address)
-		introducedBy := device.IntroducedBy
-		deviceName := device.Name
 
 		// check connection status
 		connectedPeers = append(connectedPeers, volsyncv1alpha1.SyncthingPeerStatus{
 			ID:           deviceID,
 			Address:      tcpAddress,
 			Connected:    connectionInfo.Connected,
-			Name:         deviceName,
-			IntroducedBy: introducedBy.GoString(),
+			Name:         device.Name,
+			IntroducedBy: device.IntroducedBy,
 		})
 	}
 	return connectedPeers

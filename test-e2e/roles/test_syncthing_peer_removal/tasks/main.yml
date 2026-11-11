@@ -1,0 +1,277 @@
+---
+# This role tests the full peer lifecycle: add, remove, and re-add.
+#
+# It verifies that removing a peer from .spec.syncthing.peers causes VolSync
+# to remove the device and the peer to disappear from .status.syncthing.peers,
+# and that re-adding the peer restores the connection with correct status fields.
+#
+# Flow:
+#   1. Set up 3 connected syncthings and verify data sync (baseline)
+#   2. Verify status fields are fully populated (ID, Address, Connected)
+#   3. Remove syncthing-2 from syncthing-0 and syncthing-1 (and vice versa)
+#   4. Verify syncthing-2 disappears from status of syncthing-0 and syncthing-1
+#   5. Verify syncthing-0 and syncthing-1 remain connected
+#   6. Re-add syncthing-2 to syncthing-0 and syncthing-1
+#   7. Verify syncthing-2 reconnects with correct status fields
+#   8. Verify data sync still works after re-addition
+
+# ── Validation ──────────────────────────────────────────────────
+
+- name: Check for required variables
+  fail: msg="Variable {{ var_check }} must be defined to use this role"
+  when: vars[var_check] is undefined
+  with_items:
+    - namespaces
+    - num_syncthings
+  loop_control:
+    loop_var: var_check
+
+- name: Check for 1 namespace per syncthing
+  fail: msg="num_namespaces must be >= num_syncthings to use this role"
+  when: (namespaces | length) < num_syncthings
+
+- name: Need at least 3 syncthings for peer removal test
+  fail: msg="num_syncthings must be >= 3 for peer removal test"
+  when: num_syncthings < 3
+
+# ── Setup ───────────────────────────────────────────────────────
+
+- include_role:
+    name: enable_privileged_mover
+  when: privileged
+  loop: "{{ namespaces }}"
+  loop_control:
+    loop_var: namespace
+
+- name: Clear list of syncthings
+  set_fact:
+    syncthings: []
+
+- name: Build list of syncthings
+  set_fact:
+    syncthings: "{{ syncthings + [{ 'Name': 'test-%s' | format(item), 'Namespace': namespaces[item] }] }}"
+  loop: "{{ range(0, num_syncthings) | list }}"
+
+- name: Create data PVCs
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      kind: PersistentVolumeClaim
+      apiVersion: v1
+      metadata:
+        name: "{{ item.Name }}"
+        namespace: "{{ item.Namespace }}"
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+  with_items: "{{ syncthings }}"
+
+- name: Create Syncthings (w/ mSC)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: volsync.backube/v1alpha1
+      kind: ReplicationSource
+      metadata:
+        name: "{{ item.Name }}"
+        namespace: "{{ item.Namespace }}"
+      spec:
+        sourcePVC: "{{ item.Name }}"
+        syncthing:
+          serviceType: ClusterIP
+          moverSecurityContext: "{{ podSecurityContext }}"
+  with_items: "{{ syncthings }}"
+  when: podSecurityContext is defined
+
+- name: Create Syncthings (w/o mSC)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: volsync.backube/v1alpha1
+      kind: ReplicationSource
+      metadata:
+        name: "{{ item.Name }}"
+        namespace: "{{ item.Namespace }}"
+      spec:
+        sourcePVC: "{{ item.Name }}"
+        syncthing:
+          serviceType: ClusterIP
+  with_items: "{{ syncthings }}"
+  when: podSecurityContext is not defined
+
+- name: Wait for Syncthings to be ready
+  kubernetes.core.k8s_info:
+    api_version: volsync.backube/v1alpha1
+    kind: ReplicationSource
+    name: "{{ item.Name }}"
+    namespace: "{{ item.Namespace }}"
+  register: res
+  until: >
+    res.resources | length > 0 and
+    res.resources[0].status.syncthing is defined and
+    res.resources[0].status.syncthing.address is defined and
+    res.resources[0].status.syncthing.ID is defined
+  with_items: "{{ syncthings }}"
+  delay: 5
+  retries: 60
+
+# ── Connect all peers ───────────────────────────────────────────
+
+- name: Peer Syncthings to each other
+  include_tasks:
+    file: "{{ role_path }}/../test_syncthing_cluster_sync/tasks/connect.yml"
+  loop: "{{ syncthings | ansible.builtin.combinations(2) | list }}"
+  loop_control:
+    loop_var: instances
+
+- name: Wait for instances to connect
+  include_tasks:
+    file: "{{ role_path }}/../test_syncthing_cluster_sync/tasks/await_connected.yml"
+  loop: "{{ syncthings | ansible.builtin.combinations(2) | list }}"
+  loop_control:
+    loop_var: instances
+
+# ── Verify status fields are fully populated ────────────────────
+
+- name: Verify status fields for each syncthing
+  include_tasks:
+    file: verify_status_fields.yml
+  loop: "{{ syncthings | ansible.builtin.combinations(2) | list }}"
+  loop_control:
+    loop_var: instances
+
+# ── Baseline: verify data sync works ────────────────────────────
+
+- name: Write data into first PVC
+  include_role:
+    name: write_to_pvc
+  vars:
+    data: 'hello from syncthing-1'
+    path: /testdata.txt
+    pvc_name: "{{ syncthings[0].Name }}"
+    namespace: "{{ syncthings[0].Namespace }}"
+
+- name: Ensure data was synchronized to other instances
+  include_role:
+    name: pvc_has_data
+  vars:
+    data: 'hello from syncthing-1'
+    path: /testdata.txt
+    pvc_name: "{{ item.Name }}"
+    namespace: "{{ item.Namespace }}"
+    timeout: 300
+  loop: "{{ syncthings[1:] }}"
+
+# ── Remove peer 2 from peers 0 and 1 ───────────────────────────
+
+- name: Disconnect syncthing-2 from syncthing-0
+  include_tasks:
+    file: disconnect.yml
+  vars:
+    instances:
+      - "{{ syncthings[0] }}"
+      - "{{ syncthings[2] }}"
+
+- name: Disconnect syncthing-2 from syncthing-1
+  include_tasks:
+    file: disconnect.yml
+  vars:
+    instances:
+      - "{{ syncthings[1] }}"
+      - "{{ syncthings[2] }}"
+
+# ── Verify peer 2 is removed from status ────────────────────────
+
+- name: Wait for syncthing-2 to disconnect from syncthing-0
+  include_tasks:
+    file: await_disconnected.yml
+  vars:
+    instances:
+      - "{{ syncthings[0] }}"
+      - "{{ syncthings[2] }}"
+
+- name: Wait for syncthing-2 to disconnect from syncthing-1
+  include_tasks:
+    file: await_disconnected.yml
+  vars:
+    instances:
+      - "{{ syncthings[1] }}"
+      - "{{ syncthings[2] }}"
+
+# ── Verify peers 0 and 1 remain connected ───────────────────────
+
+- name: Verify syncthing-0 and syncthing-1 are still connected
+  include_tasks:
+    file: "{{ role_path }}/../test_syncthing_cluster_sync/tasks/await_connected.yml"
+  vars:
+    instances:
+      - "{{ syncthings[0] }}"
+      - "{{ syncthings[1] }}"
+
+# ── Re-add peer 2 to peers 0 and 1 ─────────────────────────────
+
+- name: Re-connect syncthing-2 to syncthing-0
+  include_tasks:
+    file: "{{ role_path }}/../test_syncthing_cluster_sync/tasks/connect.yml"
+  vars:
+    instances:
+      - "{{ syncthings[0] }}"
+      - "{{ syncthings[2] }}"
+
+- name: Re-connect syncthing-2 to syncthing-1
+  include_tasks:
+    file: "{{ role_path }}/../test_syncthing_cluster_sync/tasks/connect.yml"
+  vars:
+    instances:
+      - "{{ syncthings[1] }}"
+      - "{{ syncthings[2] }}"
+
+- name: Wait for syncthing-2 to reconnect to syncthing-0
+  include_tasks:
+    file: "{{ role_path }}/../test_syncthing_cluster_sync/tasks/await_connected.yml"
+  vars:
+    instances:
+      - "{{ syncthings[0] }}"
+      - "{{ syncthings[2] }}"
+
+- name: Wait for syncthing-2 to reconnect to syncthing-1
+  include_tasks:
+    file: "{{ role_path }}/../test_syncthing_cluster_sync/tasks/await_connected.yml"
+  vars:
+    instances:
+      - "{{ syncthings[1] }}"
+      - "{{ syncthings[2] }}"
+
+# ── Verify status fields after re-addition ──────────────────────
+
+- name: Verify status fields after re-adding syncthing-2
+  include_tasks:
+    file: verify_status_fields.yml
+  loop: "{{ syncthings | ansible.builtin.combinations(2) | list }}"
+  loop_control:
+    loop_var: instances
+
+# ── Verify data sync works after re-addition ────────────────────
+
+- name: Write new data into syncthing-2 PVC
+  include_role:
+    name: write_to_pvc
+  vars:
+    data: 'hello after re-addition'
+    path: /testdata2.txt
+    pvc_name: "{{ syncthings[2].Name }}"
+    namespace: "{{ syncthings[2].Namespace }}"
+
+- name: Ensure new data synchronized to syncthing-0 and syncthing-1
+  include_role:
+    name: pvc_has_data
+  vars:
+    data: 'hello after re-addition'
+    path: /testdata2.txt
+    pvc_name: "{{ item.Name }}"
+    namespace: "{{ item.Namespace }}"
+    timeout: 300
+  loop: "{{ syncthings[:2] }}"
