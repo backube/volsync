@@ -12,6 +12,8 @@ and this project adheres to
 
 - VolumePopulator requeues while waiting on external state so a missed watch
   event cannot leave the target PVC pending indefinitely
+- Helm chart ServiceMonitor sends the Prometheus service account token, so
+  metrics scraping no longer fails with 401 Unauthorized
 
 ## [0.17.0]
 
