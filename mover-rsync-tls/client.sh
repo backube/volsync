@@ -131,7 +131,7 @@ volsync_start_helper stunnel "$STUNNEL_CONF"
 
 # First rsync pass, kept in a function so volsync_run supervises the whole
 # rsync|tee pipeline as one process group.
-# shellcheck disable=SC2329  # invoked indirectly via volsync_run
+# shellcheck disable=SC2317,SC2329  # invoked indirectly via volsync_run
 function run_rsync_transfer {
     rsync -aAhHSxz -r --exclude=lost+found --itemize-changes --info=stats2,misc2 --files-from=/tmp/filelist.txt "${SOURCE}"/ rsync://127.0.0.1:"$STUNNEL_LISTEN_PORT"/data | tee /tmp/rsync-full.log
 }
@@ -146,6 +146,12 @@ rc=1
 set +e  # Don't exit on command failure
 echo "Syncing data to ${DESTINATION_ADDRESS}:${DESTINATION_PORT} ..."
 while [[ $rc -ne 0 && $RETRY -lt $MAX_RETRIES && -z "${VOLSYNC_SHUTDOWN_SIGNAL}" ]]; do
+    # Do not start another attempt when stunnel is gone. The transfer cannot
+    # reach the destination without it.
+    if ! volsync_check_helpers; then
+        echo "ERROR: a required helper exited before the transfer completed" >&2
+        exit 1
+    fi
     RETRY=$(( RETRY + 1 ))
     if test -b $BLOCK_SOURCE; then
       echo "calling diskrsync-tcp $BLOCK_SOURCE --source --target-address 127.0.0.1 --port $STUNNEL_LISTEN_PORT"
