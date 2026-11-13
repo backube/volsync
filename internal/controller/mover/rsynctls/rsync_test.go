@@ -44,7 +44,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
-	"github.com/backube/volsync/internal/controller/mover"
+	vsmover "github.com/backube/volsync/internal/controller/mover"
 	"github.com/backube/volsync/internal/controller/utils"
 )
 
@@ -62,7 +62,7 @@ var _ = Describe("Rsync properly registers", func() {
 
 		It("is added to the mover catalog", func() {
 			found := false
-			for _, v := range mover.Catalog {
+			for _, v := range vsmover.Catalog {
 				if _, ok := v.(*Builder); ok {
 					found = true
 				}
@@ -1140,6 +1140,9 @@ var _ = Describe("RsyncTLS as a source", func() {
 					Expect(job.Spec.Template.Spec.Containers).To(HaveLen(1))
 					Expect(job.Spec.Template.Spec.Containers[0].Command).To(Equal(
 						[]string{"/bin/bash", "-c", "/mover-rsync-tls/client.sh"}))
+					Expect(job.Spec.Template.Spec.TerminationGracePeriodSeconds).ToNot(BeNil())
+					Expect(*job.Spec.Template.Spec.TerminationGracePeriodSeconds).
+						To(Equal(vsmover.MoverTerminationGracePeriodSeconds))
 				})
 
 				It("should use the specified container image", func() {
@@ -2124,6 +2127,9 @@ var _ = Describe("Rsync as a destination", func() {
 					Expect(job.Spec.Template.Spec.Containers).To(HaveLen(1))
 					Expect(job.Spec.Template.Spec.Containers[0].Command).To(Equal(
 						[]string{"/bin/bash", "-c", "/mover-rsync-tls/server.sh"}))
+					Expect(job.Spec.Template.Spec.TerminationGracePeriodSeconds).ToNot(BeNil())
+					Expect(*job.Spec.Template.Spec.TerminationGracePeriodSeconds).
+						To(Equal(vsmover.MoverTerminationGracePeriodSeconds))
 				})
 			})
 		})

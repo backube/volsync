@@ -27,6 +27,17 @@ import (
 
 const (
 	VolSyncPrefix = "volsync-"
+
+	// MoverTerminationGracePeriodSeconds is the terminationGracePeriodSeconds
+	// used for all Job-based mover Pods (Restic, rclone, rsync, rsync-TLS).
+	//
+	// Kubernetes defaults to 30s when the field is unset. Restic handles
+	// SIGTERM and bounds its lock-cleanup work with restic.UnlockCancelDelay
+	// (60s), so a grace period of 120s gives the forwarded stop signal time to
+	// release the repository lock plus a margin. The mover entrypoint scripts
+	// forward TERM to their child processes (see mover-common/shutdown.sh),
+	// which is what lets the cleanup run at all.
+	MoverTerminationGracePeriodSeconds int64 = 120
 )
 
 // Mover is a common interface that all data movers implement

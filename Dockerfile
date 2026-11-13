@@ -136,6 +136,10 @@ RUN microdnf --refresh update -y && \
 ##### VolSync operator
 COPY --from=manager-builder /workspace/manager /manager
 
+##### shared mover shell helpers
+COPY /mover-common/shutdown.sh /mover-common/
+RUN chmod a+r /mover-common/shutdown.sh
+
 ##### rclone
 COPY --from=rclone-builder /workspace/rclone/rclone /usr/local/bin/rclone
 COPY /mover-rclone/active.sh \
