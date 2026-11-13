@@ -167,7 +167,7 @@ STUNNEL_CONF
     ##############################
     ## Tail rsync log to stdout so it shows in pod logs
     touch "$RSYNC_LOG"
-    volsync_start_helper tail -f "$RSYNC_LOG"
+    volsync_start_helper --noncritical tail -f "$RSYNC_LOG"
 
     rm -f "$CONTROL_FILE"
     rm -f "$CONTROL_FILE_SYMLINK_MUNGING_FILE"
@@ -220,6 +220,23 @@ while [[ ! -e $CONTROL_FILE && -z "${VOLSYNC_SHUTDOWN_SIGNAL}" ]]; do
     # A TERM arriving during this sleep is expected; the loop condition then
     # exits and the shutdown path below runs.
     volsync_run sleep 1 || true
+    # Check completion before helper health. In block mode, diskrsync-tcp
+    # writes the control file and then exits, so a successful finish and a
+    # helper exit can occur almost together. The control file wins that race.
+    if [[ -e $CONTROL_FILE ]]; then
+        break
+    fi
+    # A stop signal during the sleep starts the normal shutdown path. Do not
+    # report a helper failure for helpers that stop because of that signal.
+    if volsync_shutdown_requested; then
+        break
+    fi
+    # A required helper that dies leaves the control file uncreated. Fail now
+    # instead of waiting for a transfer that cannot finish.
+    if ! volsync_check_helpers; then
+        echo "ERROR: a required helper exited before the transfer completed" >&2
+        exit 1
+    fi
 done
 
 # Give time for the rsync connection to finish, unless we are shutting down.
