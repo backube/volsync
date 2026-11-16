@@ -30,7 +30,8 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
-	"github.com/syncthing/syncthing/lib/config"
+
+	"github.com/backube/volsync/internal/controller/mover/syncthing/lib/config"
 )
 
 // syncthingAPIConnection Is an API Connection struct which implements the SyncthingConnection
@@ -49,21 +50,21 @@ func (api *syncthingAPIConnection) headers() map[string]string {
 	}
 }
 
-// jsonRequest Makes an HTTPS request to the API at the .
+// jsonRequest Makes an HTTPS request to the API at the given endpoint.
 func (api *syncthingAPIConnection) jsonRequest(
 	endpoint string,
 	method string,
 	requestBody interface{},
 ) ([]byte, error) {
-	// marshal above json body into a string
-	jsonBody, err := json.Marshal(requestBody)
-	if err != nil {
-		return nil, err
+	var body io.Reader = http.NoBody
+	if requestBody != nil {
+		jsonBody, err := json.Marshal(requestBody)
+		if err != nil {
+			return nil, err
+		}
+		body = bytes.NewReader(jsonBody)
 	}
-	// tostring the json body
-	body := io.Reader(bytes.NewReader(jsonBody))
 
-	// build new client if none exists
 	req, err := http.NewRequest(method, api.apiConfig.APIURL+endpoint, body)
 	if err != nil {
 		return nil, err

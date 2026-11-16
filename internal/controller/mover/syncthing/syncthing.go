@@ -20,49 +20,56 @@ package syncthing
 
 import (
 	"crypto/rand"
-	"fmt"
 	"regexp"
 
 	"github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/internal/controller/mover/syncthing/api"
-	"github.com/syncthing/syncthing/lib/config"
-	"github.com/syncthing/syncthing/lib/protocol"
+	"github.com/backube/volsync/internal/controller/mover/syncthing/lib/config"
 )
 
-// updateSyncthingDevices Updates the Syncthing's connected devices with the provided peerList.
-// An error may be encountered when reading the DeviceID from a string.
-func updateSyncthingDevices(peerList []v1alpha1.SyncthingPeer,
-	syncthing *api.Syncthing) error {
-	if syncthing == nil {
-		return fmt.Errorf("syncthing cannot be nil")
-	}
-	newDevices := []config.DeviceConfiguration{}
-	// add myself and introduced devices to the device list
-	for _, device := range syncthing.Configuration.Devices {
-		if device.DeviceID.GoString() == syncthing.MyID() || device.IntroducedBy.GoString() != "" {
-			newDevices = append(newDevices, device)
+// updateSyncthingDevices reconciles the daemon's device list and folder sharing
+// with the given peerList using granular REST calls. It removes stale devices
+// (skipping self and introduced ones), upserts the desired peers, and re-shares
+// folders with self, introduced devices, and the peerList.
+func updateSyncthingDevices(
+	connection api.SyncthingConnection,
+	peerList []v1alpha1.SyncthingPeer,
+	syncthing *api.Syncthing,
+) error {
+	// remove stale managed devices that are not in the peerList
+	for _, device := range managedDevices(syncthing) {
+		if _, wanted := desiredPeerIDs(peerList)[device.DeviceID]; !wanted {
+			if err := connection.RemoveDevice(device.DeviceID); err != nil {
+				return err
+			}
 		}
 	}
-	// Add the devices from the peerList to the device list
-	for _, device := range peerList {
-		deviceID, err := protocol.DeviceIDFromString(device.ID)
-		if err != nil {
+
+	// add/update devices from peerList
+	for _, peer := range peerList {
+		if err := connection.AddOrUpdateDevice(config.DeviceConfiguration{
+			DeviceID:   peer.ID,
+			Addresses:  []string{peer.Address},
+			Introducer: peer.Introducer,
+		}); err != nil {
 			return err
 		}
-		stDeviceToAdd := config.DeviceConfiguration{
-			DeviceID:   deviceID,
-			Addresses:  []string{device.Address},
-			Introducer: device.Introducer,
-		}
-		newDevices = append(newDevices, stDeviceToAdd)
 	}
-	syncthing.Configuration.Devices = newDevices
-	syncthing.ShareFoldersWithDevices()
+
+	folderDevices := expectedFolderDevices(peerList, syncthing)
+
+	// update folder sharing
+	for _, folder := range syncthing.Configuration.Folders {
+		if err := connection.PatchFolderDevices(folder.ID, folderDevices); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
-// syncthingNeedsReconfigure Determines whether the given nodeList differs from Syncthing's internal devices,
-// and returns 'true' if the Syncthing API must be reconfigured, 'false' otherwise.
+// syncthingNeedsReconfigure Determines whether the given nodeList or folder sharing
+// diverges from Syncthing's current configuration, and returns 'true' if the
+// Syncthing API must be reconfigured, 'false' otherwise.
 func syncthingNeedsReconfigure(
 	nodeList []v1alpha1.SyncthingPeer,
 	syncthing *api.Syncthing,
@@ -93,15 +100,10 @@ func syncthingNeedsReconfigure(
 			Address: "",
 		},
 	}
-	// add the rest of devices to the map
-	for _, device := range syncthing.Configuration.Devices {
-		// ignore self and introduced devices
-		if device.DeviceID.GoString() == syncthing.MyID() || device.IntroducedBy.GoString() != "" {
-			continue
-		}
-
-		currentDevs[device.DeviceID.GoString()] = v1alpha1.SyncthingPeer{
-			ID:      device.DeviceID.GoString(),
+	// add the managed devices to the map
+	for _, device := range managedDevices(syncthing) {
+		currentDevs[device.DeviceID] = v1alpha1.SyncthingPeer{
+			ID:      device.DeviceID,
 			Address: device.Addresses[0],
 		}
 	}
@@ -117,7 +119,80 @@ func syncthingNeedsReconfigure(
 			return true
 		}
 	}
+
+	// check if folder sharing diverges from the expected device lists, so that
+	// a previously failed folder update is retried on a later reconcile
+	expected := expectedFolderDevices(nodeList, syncthing)
+	for _, folder := range syncthing.Configuration.Folders {
+		if !folderDevicesEqual(folder.Devices, expected) {
+			return true
+		}
+	}
 	return false
+}
+
+// managedDevices returns the daemon's current devices excluding self and
+// devices introduced by an introducer. These are the devices whose membership
+// this mover is responsible for keeping in sync with the peerList.
+func managedDevices(syncthing *api.Syncthing) []config.DeviceConfiguration {
+	managed := make([]config.DeviceConfiguration, 0, len(syncthing.Configuration.Devices))
+	for _, device := range syncthing.Configuration.Devices {
+		if device.DeviceID == syncthing.MyID() || device.IntroducedBy != "" {
+			continue
+		}
+		managed = append(managed, device)
+	}
+	return managed
+}
+
+// desiredPeerIDs returns the set of device IDs that the peerList says should
+// exist in the daemon's configuration.
+func desiredPeerIDs(peerList []v1alpha1.SyncthingPeer) map[string]struct{} {
+	desired := make(map[string]struct{}, len(peerList))
+	for _, peer := range peerList {
+		desired[peer.ID] = struct{}{}
+	}
+	return desired
+}
+
+// expectedFolderDevices returns the device list every folder should be shared
+func expectedFolderDevices(
+	peerList []v1alpha1.SyncthingPeer,
+	syncthing *api.Syncthing,
+) []config.FolderDeviceConfiguration {
+	expected := []config.FolderDeviceConfiguration{
+		{DeviceID: syncthing.MyID()},
+	}
+	for _, device := range syncthing.Configuration.Devices {
+		if device.IntroducedBy != "" {
+			expected = append(expected, config.FolderDeviceConfiguration{
+				DeviceID:     device.DeviceID,
+				IntroducedBy: device.IntroducedBy,
+			})
+		}
+	}
+	for _, peer := range peerList {
+		expected = append(expected, config.FolderDeviceConfiguration{DeviceID: peer.ID})
+	}
+	return expected
+}
+
+// folderDevicesEqual reports whether two folder device lists contain the same
+// device IDs, regardless of order.
+func folderDevicesEqual(a, b []config.FolderDeviceConfiguration) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	ids := make(map[string]struct{}, len(a))
+	for _, device := range a {
+		ids[device.DeviceID] = struct{}{}
+	}
+	for _, device := range b {
+		if _, ok := ids[device.DeviceID]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // GenerateRandomBytes Generates random bytes of the given length using the OS's RNG.

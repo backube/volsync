@@ -26,7 +26,8 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/syncthing/syncthing/lib/config"
+
+	"github.com/backube/volsync/internal/controller/mover/syncthing/lib/config"
 )
 
 // Defines endpoints for the Syncthing API
@@ -34,6 +35,9 @@ const (
 	SystemStatusEndpoint      = "/rest/system/status"
 	SystemConnectionsEndpoint = "/rest/system/connections"
 	ConfigEndpoint            = "/rest/config"
+	ConfigDevicesEndpoint     = "/rest/config/devices"
+	ConfigFoldersEndpoint     = "/rest/config/folders"
+	ConfigGUIEndpoint         = "/rest/config/gui"
 )
 
 // Fetch Pulls all of Syncthing's latest information from the API and stores it
@@ -64,14 +68,54 @@ func (s *syncthingAPIConnection) Fetch() (*Syncthing, error) {
 	}, nil
 }
 
-// PublishConfig Updates the Syncthing API with the stored configuration data.
-// An error is returned in the case of a failure.
-func (s *syncthingAPIConnection) PublishConfig(conf config.Configuration) error {
-	// update the config
-	s.logger.Info("Updating Syncthing config")
-	_, err := s.jsonRequest(ConfigEndpoint, "PUT", conf)
+// AddOrUpdateDevice adds or updates a single device via POST /rest/config/devices.
+// Syncthing fills in defaults for any fields not provided.
+func (s *syncthingAPIConnection) AddOrUpdateDevice(device config.DeviceConfiguration) error {
+	s.logger.Info("Adding/updating Syncthing device", "deviceID", device.DeviceID)
+	_, err := s.jsonRequest(ConfigDevicesEndpoint, "POST", device)
 	if err != nil {
-		s.logger.Error(err, "Failed to update Syncthing config")
+		s.logger.Error(err, "Failed to add/update device")
+	}
+	return err
+}
+
+// RemoveDevice removes a device by ID via DELETE /rest/config/devices/{id}.
+func (s *syncthingAPIConnection) RemoveDevice(deviceID string) error {
+	s.logger.Info("Removing Syncthing device", "deviceID", deviceID)
+	_, err := s.jsonRequest(ConfigDevicesEndpoint+"/"+deviceID, "DELETE", nil)
+	if err != nil {
+		s.logger.Error(err, "Failed to remove device")
+	}
+	return err
+}
+
+// PatchFolderDevices updates only the devices list on a folder via PATCH /rest/config/folders/{id}.
+// All other folder settings are preserved server-side.
+func (s *syncthingAPIConnection) PatchFolderDevices(
+	folderID string, devices []config.FolderDeviceConfiguration,
+) error {
+	s.logger.Info("Updating folder device sharing", "folderID", folderID)
+	body := struct {
+		Devices []config.FolderDeviceConfiguration `json:"devices"`
+	}{Devices: devices}
+	_, err := s.jsonRequest(ConfigFoldersEndpoint+"/"+folderID, "PATCH", body)
+	if err != nil {
+		s.logger.Error(err, "Failed to update folder devices")
+	}
+	return err
+}
+
+// PatchGUI updates only the user and password on the GUI config via PATCH /rest/config/gui.
+// All other GUI settings are preserved server-side.
+func (s *syncthingAPIConnection) PatchGUI(user, password string) error {
+	s.logger.Info("Updating Syncthing GUI credentials")
+	body := struct {
+		User     string `json:"user"`
+		Password string `json:"password"`
+	}{User: user, Password: password}
+	_, err := s.jsonRequest(ConfigGUIEndpoint, "PATCH", body)
+	if err != nil {
+		s.logger.Error(err, "Failed to update GUI credentials")
 	}
 	return err
 }

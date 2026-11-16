@@ -407,6 +407,16 @@ stages:
     storage:
       spec:
         mountPath: {}
+  - entrypoint:
+    - volsync-custom-scorecard-tests
+    - test_syncthing_peer_removal.yml
+    image: quay.io/backube/volsync-custom-scorecard-tests:latest
+    labels:
+      suite: volsync-e2e
+      test: test_syncthing_peer_removal.yml
+    storage:
+      spec:
+        mountPath: {}
 - parallel: true
   tests: []
 storage:

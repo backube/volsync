@@ -25,15 +25,16 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 
-	"github.com/syncthing/syncthing/lib/config"
+	"github.com/backube/volsync/internal/controller/mover/syncthing/lib/config"
 )
 
 // GetDeviceFromID Returns a pointer to the device with the given ID,
 // along with a boolean indicating whether the device was found.
 func (s *Syncthing) GetDeviceFromID(id string) (*config.DeviceConfiguration, bool) {
 	for _, device := range s.Configuration.Devices {
-		if device.DeviceID.GoString() == id {
+		if device.DeviceID == id {
 			return &device, true
 		}
 	}
@@ -43,47 +44,23 @@ func (s *Syncthing) GetDeviceFromID(id string) (*config.DeviceConfiguration, boo
 // MyID Is a convenience method which returns the current Syncthing device's ID.
 func (s *Syncthing) MyID() string { return s.SystemStatus.MyID }
 
-// ShareFoldersWithDevices Will set all of the devices in s.Configuration.Devices to be shared with the
-// currently tracked folders.
-//
-// This method does not currently take into account any encryption password set
-// on the folder by the device.
-func (s *Syncthing) ShareFoldersWithDevices() {
-	// share the current folder(s) with the new devices
-	newFolders := make([]config.FolderConfiguration, 0, len(s.Configuration.Folders))
-	for _, folder := range s.Configuration.Folders {
-		// copy folder & reset
-		newFolder := folder
-		newFolder.Devices = []config.FolderDeviceConfiguration{}
-
-		for _, device := range s.Configuration.Devices {
-			newFolder.Devices = append(newFolder.Devices, config.FolderDeviceConfiguration{
-				DeviceID:     device.DeviceID,
-				IntroducedBy: device.IntroducedBy,
-			})
-		}
-		newFolders = append(newFolders, newFolder)
-	}
-	s.Configuration.Folders = newFolders
-}
-
 // CreateSyncthingTestServer Returns a test server that mimics the Syncthing API by exposing
-// the endpoints for config, system status, and system connections.
+// the endpoints for config, system status, system connections, and granular config updates.
 // The server also accepts an API Key, which is used for authenticating between the client and server.
 //
 // The accepted arguments are pointers so that the state can be changed externally and the server
 // will be updated accordingly.
-// nolint:funlen
+//
+//nolint:funlen,cyclop
 func CreateSyncthingTestServer(state *Syncthing, serverAPIKey string) *httptest.Server {
 	setConnections := func(s *Syncthing) {
 		connections := make(map[string]ConnectionStats, 0)
 		for _, device := range s.Configuration.Devices {
-			connections[device.DeviceID.GoString()] = ConnectionStats{
-				Connected:     true,
-				Paused:        false,
-				Address:       device.Addresses[0],
-				Type:          "TCP",
-				ClientVersion: "v1.0.0",
+			if len(device.Addresses) > 0 {
+				connections[device.DeviceID] = ConnectionStats{
+					Connected: true,
+					Address:   device.Addresses[0],
+				}
 			}
 		}
 		s.SystemConnections.Connections = connections
@@ -96,36 +73,106 @@ func CreateSyncthingTestServer(state *Syncthing, serverAPIKey string) *httptest.
 			http.Error(w, "Unauthorized client", http.StatusUnauthorized)
 			return
 		}
-		switch r.URL.Path {
-		case ConfigEndpoint:
-			switch r.Method {
-			case "GET":
-				resBytes, _ := json.Marshal(state.Configuration)
-				fmt.Fprintln(w, string(resBytes))
-			case "PUT":
-				err := json.NewDecoder(r.Body).Decode(&state.Configuration)
-				if err != nil {
-					http.Error(w, "Error decoding request body", http.StatusBadRequest)
-					return
-				}
-				// update the connections
-				setConnections(state)
+
+		path := r.URL.Path
+
+		// POST /rest/config/devices — add/update a single device
+		if path == ConfigDevicesEndpoint && r.Method == "POST" {
+			var device config.DeviceConfiguration
+			if err := json.NewDecoder(r.Body).Decode(&device); err != nil {
+				http.Error(w, "Error decoding request body", http.StatusBadRequest)
+				return
 			}
-			return
-		case SystemStatusEndpoint:
-			res := state.SystemStatus
-			resBytes, _ := json.Marshal(res)
-			fmt.Fprintln(w, string(resBytes))
-			return
-		case SystemConnectionsEndpoint:
-			res := state.SystemConnections
-			resBytes, _ := json.Marshal(res)
-			fmt.Fprintln(w, string(resBytes))
-			return
-		default:
-			// the endpoint doesn't exist
-			http.Error(w, "the resource path doesn't exist", http.StatusNotFound)
+			// Update existing or append new
+			found := false
+			for i, d := range state.Configuration.Devices {
+				if d.DeviceID == device.DeviceID {
+					state.Configuration.Devices[i] = device
+					found = true
+					break
+				}
+			}
+			if !found {
+				state.Configuration.Devices = append(state.Configuration.Devices, device)
+			}
+			setConnections(state)
 			return
 		}
+
+		// DELETE /rest/config/devices/{id} — remove a device
+		if strings.HasPrefix(path, ConfigDevicesEndpoint+"/") && r.Method == "DELETE" {
+			deviceID := strings.TrimPrefix(path, ConfigDevicesEndpoint+"/")
+			newDevices := make([]config.DeviceConfiguration, 0, len(state.Configuration.Devices))
+			for _, d := range state.Configuration.Devices {
+				if d.DeviceID != deviceID {
+					newDevices = append(newDevices, d)
+				}
+			}
+			state.Configuration.Devices = newDevices
+			setConnections(state)
+			return
+		}
+
+		// PATCH /rest/config/folders/{id} — update folder fields (devices list)
+		if strings.HasPrefix(path, ConfigFoldersEndpoint+"/") && r.Method == "PATCH" {
+			folderID := strings.TrimPrefix(path, ConfigFoldersEndpoint+"/")
+			var patch struct {
+				Devices []config.FolderDeviceConfiguration `json:"devices"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
+				http.Error(w, "Error decoding request body", http.StatusBadRequest)
+				return
+			}
+			for i, f := range state.Configuration.Folders {
+				if f.ID == folderID {
+					state.Configuration.Folders[i].Devices = patch.Devices
+					break
+				}
+			}
+			return
+		}
+
+		// PATCH /rest/config/gui — update GUI fields
+		if path == ConfigGUIEndpoint && r.Method == "PATCH" {
+			var patch struct {
+				User     string `json:"user"`
+				Password string `json:"password"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
+				http.Error(w, "Error decoding request body", http.StatusBadRequest)
+				return
+			}
+			if patch.User != "" {
+				state.Configuration.GUI.User = patch.User
+			}
+			if patch.Password != "" {
+				state.Configuration.GUI.Password = patch.Password
+			}
+			return
+		}
+
+		// GET /rest/config — read full config
+		if path == ConfigEndpoint && r.Method == "GET" {
+			resBytes, _ := json.Marshal(state.Configuration)
+			fmt.Fprintln(w, string(resBytes))
+			return
+		}
+
+		// GET /rest/system/status
+		if path == SystemStatusEndpoint {
+			resBytes, _ := json.Marshal(state.SystemStatus)
+			fmt.Fprintln(w, string(resBytes))
+			return
+		}
+
+		// GET /rest/system/connections
+		if path == SystemConnectionsEndpoint {
+			resBytes, _ := json.Marshal(state.SystemConnections)
+			fmt.Fprintln(w, string(resBytes))
+			return
+		}
+
+		// the endpoint doesn't exist
+		http.Error(w, "the resource path doesn't exist", http.StatusNotFound)
 	}))
 }

@@ -1,0 +1,57 @@
+---
+# This disconnects 2 instances of syncthings by removing each from the
+# other's peer list. Mirrors the structure of connect.yml.
+
+- name: Check for required variables
+  fail: msg="Variable {{ item }} must be defined to use this role"
+  when: vars[var_check] is undefined
+  with_items:
+    - instances
+  loop_control:
+    loop_var: var_check
+
+- name: Ensure 2 Syncthings have been specified
+  fail: msg="Exactly 2 Syncthing instances must be specified"
+  when: instances | length != 2
+
+- name: Get info about first syncthing
+  kubernetes.core.k8s_info:
+    api_version: volsync.backube/v1alpha1
+    kind: ReplicationSource
+    name: "{{ instances[0].Name }}"
+    namespace: "{{ instances[0].Namespace }}"
+  register: first
+
+- name: Get info about second syncthing
+  kubernetes.core.k8s_info:
+    api_version: volsync.backube/v1alpha1
+    kind: ReplicationSource
+    name: "{{ instances[1].Name }}"
+    namespace: "{{ instances[1].Namespace }}"
+  register: second
+
+- name: "Disconnect {{ first.resources[0].metadata.name }} =/= {{ second.resources[0].metadata.name }}"
+  kubernetes.core.k8s:
+    state: patched
+    definition:
+      apiVersion: volsync.backube/v1alpha1
+      kind: ReplicationSource
+      metadata:
+        name: "{{ first.resources[0].metadata.name }}"
+        namespace: "{{ first.resources[0].metadata.namespace }}"
+      spec:
+        syncthing:
+          peers: "{{ first.resources[0].spec.syncthing.peers | rejectattr('ID', 'equalto', second.resources[0].status.syncthing.ID) | list }}"
+
+- name: "Disconnect {{ second.resources[0].metadata.name }} =/= {{ first.resources[0].metadata.name }}"
+  kubernetes.core.k8s:
+    state: patched
+    definition:
+      apiVersion: volsync.backube/v1alpha1
+      kind: ReplicationSource
+      metadata:
+        name: "{{ second.resources[0].metadata.name }}"
+        namespace: "{{ second.resources[0].metadata.namespace }}"
+      spec:
+        syncthing:
+          peers: "{{ second.resources[0].spec.syncthing.peers | rejectattr('ID', 'equalto', first.resources[0].status.syncthing.ID) | list }}"
