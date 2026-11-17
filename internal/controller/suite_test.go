@@ -43,8 +43,6 @@ import (
 
 	volsyncv1alpha1 "github.com/backube/volsync/api/v1alpha1"
 	"github.com/backube/volsync/internal/controller/mover"
-	"github.com/backube/volsync/internal/controller/mover/rclone"
-	"github.com/backube/volsync/internal/controller/mover/rsync"
 	"github.com/backube/volsync/internal/controller/utils"
 	//+kubebuilder:scaffold:imports
 )
@@ -66,6 +64,8 @@ var (
 	testEnv         *envtest.Environment
 	cancel          context.CancelFunc
 	ctx             context.Context
+	// enabledMovers is filled in by the build-tagged suite_movers_*_test.go files
+	enabledMovers = []func() error{}
 )
 
 func TestAPIs(t *testing.T) {
@@ -114,9 +114,9 @@ var _ = BeforeSuite(func() {
 	*/
 
 	// Register the data movers
-	Expect(rsync.Register()).To(Succeed())
-	Expect(rclone.Register()).To(Succeed())
-	//	Expect(restic.Register()).To(Succeed())
+	for _, moverRegisterFunc := range enabledMovers {
+		Expect(moverRegisterFunc()).To(Succeed())
+	}
 
 	k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:  scheme.Scheme,
