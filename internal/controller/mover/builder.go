@@ -95,7 +95,11 @@ func GetDestinationMoverFromCatalog(client client.Client, logger logr.Logger,
 	var dataMover Mover
 	for _, builder := range Catalog {
 		candidate, err := builder.FromDestination(client, logger, eventRecorder, destination, privileged)
-		if err == nil && candidate != nil {
+		if err != nil {
+			// The builder matched but could not construct its mover
+			return nil, err
+		}
+		if candidate != nil {
 			if dataMover != nil {
 				// Found 2 movers claiming this CR...
 				return nil, ErrMultipleMoversFound
@@ -115,7 +119,11 @@ func GetSourceMoverFromCatalog(client client.Client, logger logr.Logger,
 	var dataMover Mover
 	for _, builder := range Catalog {
 		candidate, err := builder.FromSource(client, logger, eventRecorder, source, privileged)
-		if err == nil && candidate != nil {
+		if err != nil {
+			// The builder matched but could not construct its mover
+			return nil, err
+		}
+		if candidate != nil {
 			if dataMover != nil {
 				// Found 2 movers claiming this CR...
 				return nil, ErrMultipleMoversFound
