@@ -21,6 +21,9 @@ cases such as:
 With this method, VolSync synchronizes data from a ReplicationSource to a ReplicationDestination
 using `Rclone <https://rclone.org/>`_ via an intermediary object storage location like AWS S3.
 
+For how an in-progress transfer behaves when a mover Pod is stopped, see
+:doc:`../termination`.
+
 ----------------------------------
 
 The Rclone method uses a "push" and "pull" model for the data replication. This requires a schedule or other

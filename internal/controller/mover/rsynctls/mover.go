@@ -446,6 +446,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 			}
 		}
 		podSpec.RestartPolicy = corev1.RestartPolicyNever
+		podSpec.TerminationGracePeriodSeconds = ptr.To(mover.MoverTerminationGracePeriodSeconds)
 		podSpec.ServiceAccountName = sa.Name
 		podSpec.Volumes = []corev1.Volume{
 			{Name: dataVolumeName, VolumeSource: corev1.VolumeSource{
