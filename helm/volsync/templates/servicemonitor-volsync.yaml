@@ -12,6 +12,9 @@ spec:
       path: /metrics
       port: https
       scheme: https
+      {{- if not .Values.metrics.disableAuth }}
+      bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+      {{- end }}
       tlsConfig:
         # Using self-signed cert for connection
         insecureSkipVerify: true
