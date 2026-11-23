@@ -441,7 +441,7 @@ $(GINKGO): $(LOCALBIN)
 
 .PHONY: golangci-lint
 GOLANGCILINT := $(LOCALBIN)/golangci-lint
-GOLANGCI_URL := https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh
+GOLANGCI_URL := https://raw.githubusercontent.com/golangci/golangci-lint/main/install.sh
 golangci-lint: $(GOLANGCILINT) ## Download golangci-lint
 $(GOLANGCILINT): $(LOCALBIN)
 	test -s $@ || { curl -sSfL $(GOLANGCI_URL) | sh -s -- -b $(LOCALBIN) $(GOLANGCI_VERSION); }
