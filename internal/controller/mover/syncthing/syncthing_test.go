@@ -103,7 +103,7 @@ var _ = Describe("Syncthing doesn't implement RD", func() {
 			// create a namespace for test
 			ns = &corev1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "test",
+					Name: "test", //nolint:goconst
 				},
 			}
 			Expect(k8sClient.Create(ctx, ns)).To(Succeed())
@@ -606,7 +606,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 			When("Syncthing server does not exist", func() {
 
 				JustBeforeEach(func() {
-					mover.apiConfig = api.APIConfig{
+					mover.apiConfig = api.APIConfig{ //nolint:gosec
 						APIURL: "https://my-fake-api-address-123",
 						APIKey: "not-a-real-api-key",
 					}
@@ -715,7 +715,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 					// setup test variables
 					mover.peerList = []volsyncv1alpha1.SyncthingPeer{
 						{
-							Address: "tcp://127.0.0.1:22000",
+							Address: "tcp://127.0.0.1:22000", //nolint:goconst
 							ID:      device1.GoString(),
 						},
 						{
@@ -1311,7 +1311,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 
 								foundPrivilegedMoverEnvVar := false
 								for _, envVar := range stContainer.Env {
-									if envVar.Name == "PRIVILEGED_MOVER" {
+									if envVar.Name == "PRIVILEGED_MOVER" { //nolint:goconst
 										foundPrivilegedMoverEnvVar = true
 										Expect(envVar.Value).To(Equal("0"))
 										break
@@ -1338,7 +1338,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 
 								foundPrivilegedMoverEnvVar := false
 								for _, envVar := range stContainer.Env {
-									if envVar.Name == "PRIVILEGED_MOVER" {
+									if envVar.Name == "PRIVILEGED_MOVER" { //nolint:goconst
 										foundPrivilegedMoverEnvVar = true
 										Expect(envVar.Value).To(Equal("1"))
 										break
@@ -1425,7 +1425,7 @@ var _ = Describe("When an RS specifies Syncthing", func() {
 										MountPath: "addl-pvc",
 										VolumeSource: volsyncv1alpha1.MoverVolumeSource{
 											PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-												ClaimName: "my-extra-pvc",
+												ClaimName: "my-extra-pvc", //nolint:goconst
 											},
 										},
 									},
@@ -1687,7 +1687,7 @@ var _ = Describe("Syncthing utils", func() {
 					Expect(syncthingNeedsReconfigure([]volsyncv1alpha1.SyncthingPeer{
 						{
 							ID:      device1.GoString(),
-							Address: "tcp://[::1]:22000",
+							Address: "tcp://[::1]:22000", //nolint:goconst
 						},
 					}, &syncthing)).To(BeTrue())
 				})
@@ -1736,11 +1736,11 @@ var _ = Describe("Syncthing utils", func() {
 						},
 						{
 							ID:      device2.GoString(),
-							Address: "tcp://[::2]:22000",
+							Address: "tcp://[::2]:22000", //nolint:goconst
 						},
 						{
 							ID:      device3.GoString(),
-							Address: "tcp://[::3]:22000",
+							Address: "tcp://[::3]:22000", //nolint:goconst
 						},
 					}
 					err := updateSyncthingDevices(syncthingPeers, &syncthing)

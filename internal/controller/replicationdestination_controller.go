@@ -175,10 +175,10 @@ func newRDMachine(rd *volsyncv1alpha1.ReplicationDestination, c client.Client,
 	}
 
 	metrics := newVolSyncMetrics(prometheus.Labels{
-		"obj_name":      rd.Name,
-		"obj_namespace": rd.Namespace,
-		"role":          "destination",
-		"method":        dataMover.Name(),
+		"obj_name":      rd.Name,          //nolint:goconst
+		"obj_namespace": rd.Namespace,     //nolint:goconst
+		"role":          "destination",    //nolint:goconst
+		"method":        dataMover.Name(), //nolint:goconst
 	})
 
 	return &rdMachine{

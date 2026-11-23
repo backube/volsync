@@ -119,7 +119,7 @@ func createControlFile(fileName string) error {
 }
 
 func connectToTarget(sourceFile, targetAddress string, port int, opts *options, logger logr.Logger) error {
-	f, err := os.Open(sourceFile)
+	f, err := os.Open(filepath.Clean(sourceFile))
 	if err != nil {
 		return err
 	}
@@ -176,7 +176,7 @@ func startServer(targetFile string, port int, opts *options, logger logr.Logger)
 	var w spgz.SparseFile
 	useReadBuffer := false
 
-	f, err := os.OpenFile(targetFile, os.O_RDWR|os.O_CREATE, 0666)
+	f, err := os.OpenFile(filepath.Clean(targetFile), os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		return err
 	}

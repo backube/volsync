@@ -136,10 +136,10 @@ var _ = Describe("Relationships", func() {
 			twoGi := resource.MustParse("2Gi")
 			initial := rdata{
 				AnInt:    7,
-				AString:  "foo",
+				AString:  "foo", //nolint:goconst
 				Quantity: nil,
 				RdataPtr: &rdata{
-					AString:  "bar",
+					AString:  "bar", //nolint:goconst
 					Quantity: &twoGi,
 				},
 			}

@@ -150,7 +150,7 @@ var _ = Describe("utils tests", func() {
 		envVarsOrig := []corev1.EnvVar{
 			{
 				Name:  "existingvar1",
-				Value: "value1",
+				Value: "value1", //nolint:goconst
 			},
 			{
 				Name:  "EXISTINGVAR2",
@@ -280,10 +280,10 @@ var _ = Describe("utils tests", func() {
 		When("RCLONE_ env vars are set", func() {
 			BeforeEach(func() {
 				secret.Data = map[string][]byte{
-					"RCLONE_TESTVAR1": []byte("veryimportant"),
-					"RCLONE_TESTVAR2": []byte("evenmoreimportant"),
+					"RCLONE_TESTVAR1": []byte("veryimportant"),     //nolint:goconst
+					"RCLONE_TESTVAR2": []byte("evenmoreimportant"), //nolint:goconst
 					"NOT_RCLONE_VAR":  []byte("shouldntbeset"),
-					"RCLONE_BWLIMIT":  []byte("5M:10M"),
+					"RCLONE_BWLIMIT":  []byte("5M:10M"), //nolint:goconst
 				}
 			})
 
@@ -532,7 +532,7 @@ var _ = Describe("utils tests", func() {
 											"app.kubernetes.io/created-by": "volsync",
 										},
 									},
-									TopologyKey: "kubernetes.io/hostname",
+									TopologyKey: "kubernetes.io/hostname", //nolint:goconst
 								},
 							},
 						},
@@ -594,7 +594,7 @@ var _ = Describe("utils tests", func() {
 			// Create namespace for test
 			ns = &corev1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{
-					GenerateName: "namespc-",
+					GenerateName: "namespc-", //nolint:goconst
 				},
 			}
 			Expect(k8sClient.Create(ctx, ns)).To(Succeed())
@@ -696,7 +696,7 @@ var _ = Describe("utils tests", func() {
 									Namespace: ns.Name,
 								},
 								StringData: map[string]string{
-									"key1": "value1",
+									"key1": "value1", //nolint:goconst
 								},
 							}
 							Expect(k8sClient.Create(ctx, sec)).To(Succeed())
@@ -727,7 +727,7 @@ var _ = Describe("utils tests", func() {
 			BeforeEach(func() {
 				// Save the original volume and volume mount so we can compare later
 				origVolume = corev1.Volume{
-					Name: "test-volume-1",
+					Name: "test-volume-1", //nolint:goconst
 					VolumeSource: corev1.VolumeSource{
 						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{},
 					},
@@ -768,7 +768,7 @@ var _ = Describe("utils tests", func() {
 				// Pre-create a PVC to use as a moverVolume
 				moverVolPVC := &corev1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "addl-pvc-1",
+						Name:      "addl-pvc-1", //nolint:goconst
 						Namespace: ns.GetName(),
 					},
 					Spec: corev1.PersistentVolumeClaimSpec{
@@ -830,7 +830,7 @@ var _ = Describe("utils tests", func() {
 
 					// new PVC should be added
 					Expect(specVolumeMounts[1]).To(Equal(corev1.VolumeMount{
-						Name:      "u-test-volume-1",
+						Name:      "u-test-volume-1", //nolint:goconst
 						MountPath: "/mnt/test-volume-1",
 					}))
 					Expect(specVolumes[1]).To(Equal(corev1.Volume{
@@ -893,7 +893,7 @@ var _ = Describe("utils tests", func() {
 								MountPath: "test-sec-1",
 								VolumeSource: volsyncv1alpha1.MoverVolumeSource{
 									Secret: &corev1.SecretVolumeSource{
-										SecretName: "addl-sec1",
+										SecretName: "addl-sec1", //nolint:goconst
 									},
 								},
 							},
@@ -911,7 +911,7 @@ var _ = Describe("utils tests", func() {
 
 					// new Secret should be added
 					Expect(specVolumeMounts[1]).To(Equal(corev1.VolumeMount{
-						Name:      "u-test-sec-1",
+						Name:      "u-test-sec-1", //nolint:goconst
 						MountPath: "/mnt/test-sec-1",
 					}))
 					Expect(specVolumes[1]).To(Equal(corev1.Volume{
@@ -934,8 +934,8 @@ var _ = Describe("utils tests", func() {
 								MountPath: "test-my-nfs",
 								VolumeSource: volsyncv1alpha1.MoverVolumeSource{
 									NFS: &corev1.NFSVolumeSource{
-										Path:   "/mnt/mynfs/Data",
-										Server: "nfs.server.local",
+										Path:   "/mnt/mynfs/Data",  //nolint:goconst
+										Server: "nfs.server.local", //nolint:goconst
 									},
 								},
 							},
@@ -976,7 +976,7 @@ var _ = Describe("utils tests", func() {
 								MountPath: "test-sec-1",
 								VolumeSource: volsyncv1alpha1.MoverVolumeSource{
 									Secret: &corev1.SecretVolumeSource{
-										SecretName: "addl-sec1",
+										SecretName: "addl-sec1", //nolint:goconst
 									},
 								},
 							},
@@ -1000,7 +1000,7 @@ var _ = Describe("utils tests", func() {
 												Path: "path1",
 											},
 											{
-												Key:  "key2",
+												Key:  "key2", //nolint:goconst
 												Path: "path2",
 											},
 										},
@@ -1012,8 +1012,8 @@ var _ = Describe("utils tests", func() {
 								MountPath: "test-nfs",
 								VolumeSource: volsyncv1alpha1.MoverVolumeSource{
 									NFS: &corev1.NFSVolumeSource{
-										Path:   "/mnt/mynfs/Data",
-										Server: "nfs.server.local",
+										Path:   "/mnt/mynfs/Data",  //nolint:goconst
+										Server: "nfs.server.local", //nolint:goconst
 									},
 								},
 							},
@@ -1031,7 +1031,7 @@ var _ = Describe("utils tests", func() {
 
 					// new Secret should be added
 					Expect(specVolumeMounts[1]).To(Equal(corev1.VolumeMount{
-						Name:      "u-test-sec-1",
+						Name:      "u-test-sec-1", //nolint:goconst
 						MountPath: "/mnt/test-sec-1",
 					}))
 					Expect(specVolumes[1]).To(Equal(corev1.Volume{

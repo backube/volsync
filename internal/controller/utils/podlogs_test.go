@@ -47,7 +47,7 @@ var _ = Describe("Pod Logs Tests", func() {
 		// Create namespace for test
 		ns = &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
-				GenerateName: "namespc-",
+				GenerateName: "namespc-", //nolint:goconst
 			},
 		}
 		Expect(k8sClient.Create(ctx, ns)).To(Succeed())

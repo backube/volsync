@@ -53,8 +53,8 @@ var _ = Describe("Label helpers", func() {
 	var baseLabels map[string]string
 	BeforeEach(func() {
 		baseLabels = map[string]string{
-			"key1": "value1",
-			"key2": "value2",
+			"key1": "value1", //nolint:goconst
+			"key2": "value2", //nolint:goconst
 			"key3": "value3",
 		}
 	})

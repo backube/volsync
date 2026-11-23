@@ -41,7 +41,7 @@ var _ = Describe("ReplicationDestination", func() {
 		// be customized per test scenario.
 		rd = &volsyncv1alpha1.ReplicationDestination{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "instance",
+				Name:      "instance", //nolint:goconst
 				Namespace: namespace.Name,
 			},
 		}
@@ -89,7 +89,7 @@ var _ = Describe("ReplicationDestination", func() {
 		BeforeEach(func() {
 			pvc = &corev1.PersistentVolumeClaim{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "foo",
+					Name:      "foo", //nolint:goconst
 					Namespace: rd.Namespace,
 				},
 				Spec: corev1.PersistentVolumeClaimSpec{

@@ -1705,7 +1705,7 @@ var _ = Describe("Rsync as a destination", func() {
 			createPVCSpec := func(volumeMode corev1.PersistentVolumeMode) *corev1.PersistentVolumeClaim {
 				return &corev1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "dest",
+						Name:      "dest", //nolint:goconst
 						Namespace: ns.Name,
 					},
 					Spec: corev1.PersistentVolumeClaimSpec{

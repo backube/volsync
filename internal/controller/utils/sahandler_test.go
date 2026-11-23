@@ -182,7 +182,7 @@ var _ = Describe("sahandler tests", func() {
 						Type: corev1.SecretTypeDockerConfigJson,
 
 						Data: map[string][]byte{
-							".dockerconfigjson": []byte(origDockerConfigJSON),
+							".dockerconfigjson": []byte(origDockerConfigJSON), //nolint:goconst
 						},
 					}
 
@@ -459,8 +459,8 @@ var _ = Describe("sahandler tests", func() {
 					Expect(copiedSecretA.OwnerReferences).To(HaveLen(2))
 					Expect(copiedSecretA.OwnerReferences).To(ContainElement(
 						gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
-							"Kind": Equal("ReplicationSource"),
-							"Name": Equal(ownerRS.GetName()),
+							"Kind": Equal("ReplicationSource"), //nolint:goconst
+							"Name": Equal(ownerRS.GetName()),   //nolint:goconst
 						}),
 					))
 					Expect(copiedSecretA.OwnerReferences).To(ContainElement(

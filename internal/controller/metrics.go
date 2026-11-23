@@ -37,10 +37,10 @@ type volsyncMetrics struct {
 
 var (
 	metricLabels = []string{
-		"obj_name",      // Name of the replication CR
-		"obj_namespace", // Namespace containing the CR
-		"role",          // Direction: "source" or "destination"
-		"method",        // Synchronization method (rsync, rclone, etc.)
+		"obj_name",      //nolint:goconst // Name of the replication CR
+		"obj_namespace", //nolint:goconst // Namespace containing the CR
+		"role",          //nolint:goconst // Direction: "source" or "destination"
+		"method",        //nolint:goconst // Synchronization method (rsync, rclone, etc.)
 	}
 
 	missedIntervals = prometheus.NewCounterVec(
