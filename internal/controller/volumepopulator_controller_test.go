@@ -70,8 +70,8 @@ var _ = Describe("VolumePopulator - helper funcs", func() {
 			It("Should return false", func() {
 				pvc.Spec.DataSourceRef = &corev1.TypedObjectReference{
 					APIGroup: &diffAPIGroup,
-					Kind:     "ReplicationDestination",
-					Name:     "myrd",
+					Kind:     "ReplicationDestination", //nolint:goconst
+					Name:     "myrd",                   //nolint:goconst
 				}
 				Expect(pvcHasReplicationDestinationDataSourceRef(pvc)).To(BeFalse())
 			})
@@ -115,8 +115,8 @@ var _ = Describe("VolumePopulator - Predicates", func() {
 			It("should return false", func() {
 				pvc := &corev1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "pvc-for-predtest1",
-						Namespace: "p1ns",
+						Name:      "pvc-for-predtest1", //nolint:goconst
+						Namespace: "p1ns",              //nolint:goconst
 					},
 				}
 				pvcNew := pvc.DeepCopy()

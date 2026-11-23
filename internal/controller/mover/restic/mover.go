@@ -368,11 +368,11 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 		readOnlyVolume := false
 		var actions []string
 		if m.isSource {
-			actions = []string{"backup"}
+			actions = []string{"backup"} //nolint:goconst
 
 			if m.shouldUnlock() {
 				// Run restic unlock before backup
-				actions = []string{"unlock", "backup"}
+				actions = []string{"unlock", "backup"} //nolint:goconst
 			}
 
 			if m.shouldPrune(time.Now()) {
@@ -406,7 +406,7 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 			{Name: "RESTIC_CACHE_DIR", Value: resticCacheMountPath},
 			{Name: "RESTORE_AS_OF", Value: restoreAsOf},
 			{Name: "SELECT_PREVIOUS", Value: previous},
-			{Name: "RESTORE_OPTIONS", Value: restoreOptions},
+			{Name: "RESTORE_OPTIONS", Value: restoreOptions}, //nolint:goconst
 			// We populate environment variables from the restic repo
 			// Secret. They are taken 1-for-1 from the Secret into env vars.
 			// The allowed variables are defined by restic.
@@ -505,13 +505,13 @@ func (m *Mover) ensureJob(ctx context.Context, cachePVC *corev1.PersistentVolume
 			container := &podSpec.Containers[0]
 			// Tell restic where to look for the credential file
 			container.Env = append(container.Env, corev1.EnvVar{
-				Name:  "GOOGLE_APPLICATION_CREDENTIALS",
+				Name:  "GOOGLE_APPLICATION_CREDENTIALS", //nolint:goconst
 				Value: path.Join(credentialDir, gcsCredentialFile),
 			})
 			// Mount the credential file
 			container.VolumeMounts =
 				append(container.VolumeMounts, corev1.VolumeMount{
-					Name:      "gcs-credentials",
+					Name:      "gcs-credentials", //nolint:goconst
 					MountPath: credentialDir,
 				})
 			podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{

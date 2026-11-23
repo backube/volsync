@@ -165,6 +165,7 @@ func (k *rsyncSSHKeys) ensureMainSecret(l logr.Logger) (bool, error) {
 		return false, err
 	}
 	if err == nil { // found it, make sure it has the right fields
+		//nolint:goconst
 		if utils.SecretHasFields(k.MainSecret, []string{"source", "source.pub", "destination", "destination.pub"}...) != nil {
 			logger.V(1).Info("deleting invalid secret")
 			if err = k.Client.Delete(k.Context, k.MainSecret); err != nil {

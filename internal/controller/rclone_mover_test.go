@@ -55,7 +55,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 		// sets up RD, Rclone, Secret & PVC spec
 		pvc = &corev1.PersistentVolumeClaim{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "foo",
+				Name:      "foo", //nolint:goconst
 				Namespace: namespace.Name,
 			},
 			Spec: corev1.PersistentVolumeClaimSpec{
@@ -69,7 +69,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 		}
 		rcloneSecret = &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "rclone-secret",
+				Name:      "rclone-secret", //nolint:goconst
 				Namespace: namespace.Name,
 			},
 			StringData: map[string]string{
@@ -79,7 +79,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 		// scaffolded ReplicationDestination - extra fields will be set in subsequent tests
 		rd = &volsyncv1alpha1.ReplicationDestination{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "instance",
+				Name:      "instance", //nolint:goconst
 				Namespace: namespace.Name,
 			},
 		}
@@ -516,7 +516,7 @@ var _ = Describe("ReplicationDestination [rclone]", func() {
 				// setup a sus secret
 				rcloneSecret = &corev1.Secret{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "rclone-secret",
+						Name:      "rclone-secret", //nolint:goconst
 						Namespace: namespace.Name,
 					},
 					StringData: map[string]string{
@@ -671,7 +671,7 @@ var _ = Describe("ReplicationSource [rclone]", func() {
 		// need secret for most of these tests to work
 		rcloneSecret = &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "rclone-secret",
+				Name:      "rclone-secret", //nolint:goconst
 				Namespace: namespace.Name,
 			},
 			StringData: map[string]string{

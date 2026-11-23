@@ -254,7 +254,7 @@ var _ = Describe("Rclone as a source", func() {
 				},
 				Resources: corev1.VolumeResourceRequirements{
 					Requests: corev1.ResourceList{
-						"storage": resource.MustParse("7Gi"),
+						"storage": resource.MustParse("7Gi"), //nolint:goconst
 					},
 				},
 				StorageClassName: &sc,
@@ -1078,7 +1078,7 @@ var _ = Describe("Rclone as a source", func() {
 						Namespace: ns.Name,
 					},
 					StringData: map[string]string{
-						"key": "value",
+						"key": "value", //nolint:goconst
 					},
 				}
 				caConfigMap = &corev1.ConfigMap{
@@ -1219,7 +1219,7 @@ var _ = Describe("Rclone as a source", func() {
 							{
 								MountPath: "addl-secret",
 								VolumeSource: volsyncv1alpha1.MoverVolumeSource{
-									Secret: &corev1.SecretVolumeSource{
+									Secret: &corev1.SecretVolumeSource{ //nolint:gosec
 										SecretName: "rclone-extra-secret",
 									},
 								},
@@ -1394,12 +1394,12 @@ var _ = Describe("Rclone as a source", func() {
 					BeforeEach(func() {
 						rcloneConfigSecret.StringData = map[string]string{
 							"rclone.config":                        "datahere",
-							"RCLONE_CONFIG_MYS3_TYPE":              "mys3",
-							"RCLONE_CONFIG_MYS3_ACCESS_KEY_ID":     "9999",
-							"RCLONE_CONFIG_MYS3_SECRET_ACCESS_KEY": "111222",
-							"RCLONE_BWLIMIT":                       "5M",
+							"RCLONE_CONFIG_MYS3_TYPE":              "mys3",   //nolint:goconst
+							"RCLONE_CONFIG_MYS3_ACCESS_KEY_ID":     "9999",   //nolint:goconst
+							"RCLONE_CONFIG_MYS3_SECRET_ACCESS_KEY": "111222", //nolint:goconst
+							"RCLONE_BWLIMIT":                       "5M",     //nolint:goconst
 							"othervar":                             "abc123",
-							"RCLONE_CONFIG":                        "bad", // Should not override what we set
+							"RCLONE_CONFIG":                        "bad", //nolint:goconst // Should not override what we set
 						}
 					})
 
@@ -1532,7 +1532,7 @@ var _ = Describe("Rclone as a source", func() {
 						case rcloneSecret:
 							foundRcloneSecretVolumeMount = true
 							Expect(volMount.MountPath).To(Equal("/rclone-config/"))
-						case "tempdir":
+						case "tempdir": //nolint:goconst
 							foundTempMount = true
 							Expect(volMount.MountPath).To(Equal("/tmp"))
 						}
@@ -1828,7 +1828,7 @@ var _ = Describe("Rclone as a destination", func() {
 				BeforeEach(func() {
 					dPVC = &corev1.PersistentVolumeClaim{
 						ObjectMeta: metav1.ObjectMeta{
-							Name:      "dest",
+							Name:      "dest", //nolint:goconst
 							Namespace: ns.Name,
 						},
 						Spec: corev1.PersistentVolumeClaimSpec{

@@ -107,7 +107,7 @@ var _ = Describe("Volume affinity", func() {
 			ObjectMeta: metav1.ObjectMeta{
 				Name: name,
 				Labels: map[string]string{
-					"kubernetes.io/hostname": name,
+					"kubernetes.io/hostname": name, //nolint:goconst
 				},
 			},
 			Spec: corev1.NodeSpec{},

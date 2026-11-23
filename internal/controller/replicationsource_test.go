@@ -58,7 +58,7 @@ var _ = Describe("ReplicationSource", func() {
 		// be customized per test scenario.
 		rs = &volsyncv1alpha1.ReplicationSource{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "instance",
+				Name:      "instance", //nolint:goconst
 				Namespace: namespace.Name,
 			},
 			Spec: volsyncv1alpha1.ReplicationSourceSpec{
@@ -226,7 +226,7 @@ var _ = Describe("ReplicationSource", func() {
 			Eventually(func() error {
 				return k8sClient.Get(ctx, client.ObjectKeyFromObject(snap), snap)
 			}, maxWait, interval).Should(Succeed())
-			foo := "foo"
+			foo := "foo" //nolint:goconst
 			snap.Status = &snapv1.VolumeSnapshotStatus{
 				BoundVolumeSnapshotContentName: &foo,
 			}

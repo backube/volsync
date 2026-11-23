@@ -13,7 +13,7 @@ on:  # yamllint disable-line rule:truthy
   workflow_dispatch:
 
 env:
-  GO_VERSION: "1.25"
+  GO_VERSION: "1.26"
   KIND_VERSION: "0.31.0"
   GO111MODULE: "on"
   OPERATOR_IMAGE: "quay.io/backube/volsync"

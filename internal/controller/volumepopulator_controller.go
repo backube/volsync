@@ -131,7 +131,7 @@ func EnsureVolSyncVolumePopulatorCRIfCRDPresent(ctx context.Context,
 	op, err := ctrlutil.CreateOrUpdate(ctx, k8sClient, volSyncVP, func() error {
 		volSyncVP.SourceKind = metav1.GroupKind{
 			Group: volsyncv1alpha1.GroupVersion.Group,
-			Kind:  "ReplicationDestination",
+			Kind:  "ReplicationDestination", //nolint:goconst
 		}
 		// Add VolSync label
 		utils.SetOwnedByVolSync(volSyncVP)

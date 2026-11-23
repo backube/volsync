@@ -237,7 +237,7 @@ func (m *Mover) ensureSecrets(ctx context.Context) (*string, error) {
 				Namespace: m.owner.GetNamespace(),
 			},
 		}
-		fields := []string{"psk.txt"}
+		fields := []string{"psk.txt"} //nolint:goconst
 		if err := utils.GetAndValidateSecret(ctx, m.client, m.logger, keySecret, fields...); err != nil {
 			m.logger.Error(err, "Key Secret does not contain the proper fields")
 			return nil, err
@@ -399,7 +399,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 		blockVolume := utils.PvcIsBlockMode(dataPVC)
 
 		containerEnv := []corev1.EnvVar{}
-		containerCmd := []string{"/bin/bash", "-c", "/mover-rsync-tls/server.sh"} // cmd for replicationDestination job
+		containerCmd := []string{"/bin/bash", "-c", "/mover-rsync-tls/server.sh"} //nolint:goconst
 		if m.isSource {
 			// Set dest address/port if necessary
 			if m.address != nil {
@@ -434,8 +434,8 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 		if !blockVolume {
 			volumeMounts = append(volumeMounts, corev1.VolumeMount{Name: dataVolumeName, MountPath: mountPath})
 		}
-		volumeMounts = append(volumeMounts, corev1.VolumeMount{Name: "keys", MountPath: "/keys"},
-			corev1.VolumeMount{Name: "tempdir", MountPath: "/tmp"})
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{Name: "keys", MountPath: "/keys"}, //nolint:goconst
+			corev1.VolumeMount{Name: "tempdir", MountPath: "/tmp"}) //nolint:goconst
 		job.Spec.Template.Spec.Containers[0].VolumeMounts = volumeMounts
 		if blockVolume {
 			job.Spec.Template.Spec.Containers[0].VolumeDevices = []corev1.VolumeDevice{

@@ -262,7 +262,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 		envVars = utils.AppendRCloneEnvVars(rcloneConfigSecret, envVars)
 
 		defaultEnvVars := []corev1.EnvVar{
-			{Name: "RCLONE_CONFIG", Value: "/rclone-config/rclone.conf"},
+			{Name: "RCLONE_CONFIG", Value: "/rclone-config/rclone.conf"}, //nolint:goconst
 			{Name: "RCLONE_DEST_PATH", Value: *m.rcloneDestPath},
 			{Name: "DIRECTION", Value: direction},
 			{Name: "MOUNT_PATH", Value: mountPath},
@@ -295,7 +295,7 @@ func (m *Mover) ensureJob(ctx context.Context, dataPVC *corev1.PersistentVolumeC
 			VolumeMounts: []corev1.VolumeMount{
 				{Name: dataVolumeName, MountPath: mountPath},
 				{Name: rcloneSecret, MountPath: "/rclone-config/"},
-				{Name: "tempdir", MountPath: "/tmp"},
+				{Name: "tempdir", MountPath: "/tmp"}, //nolint:goconst
 			},
 		}}
 		job.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever

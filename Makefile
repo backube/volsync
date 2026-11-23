@@ -10,7 +10,7 @@ include ./version.mk
 
 # Helper software versions
 CONTROLLER_TOOLS_VERSION := v0.19.0
-GOLANGCI_VERSION := v2.8.0
+GOLANGCI_VERSION := v2.12.2
 HELM_VERSION := v3.20.1
 KUBECTL_VERSION := v1.35.1
 KUSTOMIZE_VERSION := v5.8.1
@@ -441,7 +441,7 @@ $(GINKGO): $(LOCALBIN)
 
 .PHONY: golangci-lint
 GOLANGCILINT := $(LOCALBIN)/golangci-lint
-GOLANGCI_URL := https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh
+GOLANGCI_URL := https://raw.githubusercontent.com/golangci/golangci-lint/main/install.sh
 golangci-lint: $(GOLANGCILINT) ## Download golangci-lint
 $(GOLANGCILINT): $(LOCALBIN)
 	test -s $@ || { curl -sSfL $(GOLANGCI_URL) | sh -s -- -b $(LOCALBIN) $(GOLANGCI_VERSION); }

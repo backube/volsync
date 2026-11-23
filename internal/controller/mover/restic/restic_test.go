@@ -428,7 +428,7 @@ var _ = Describe("Restic as a source", func() {
 				},
 				Resources: corev1.VolumeResourceRequirements{
 					Requests: corev1.ResourceList{
-						"storage": resource.MustParse("7Gi"),
+						"storage": resource.MustParse("7Gi"), //nolint:goconst
 					},
 				},
 				StorageClassName: &sc,
@@ -487,7 +487,7 @@ var _ = Describe("Restic as a source", func() {
 					keys []string
 					ok   bool
 				}{
-					{keys: []string{"RESTIC_REPOSITORY", "RESTIC_PASSWORD"}, ok: true},
+					{keys: []string{"RESTIC_REPOSITORY", "RESTIC_PASSWORD"}, ok: true}, //nolint:goconst
 					{keys: []string{"RESTIC_REPOSITORY"}, ok: false},
 					{keys: []string{"RESTIC_PASSWORD"}, ok: false},
 					{keys: []string{"another_key", "RESTIC_REPOSITORY", "RESTIC_PASSWORD"}, ok: true},
@@ -1288,20 +1288,20 @@ var _ = Describe("Restic as a source", func() {
 				jobName = "volsync-src-" + rs.Name
 				cache = &corev1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "thecache",
+						Name:      "thecache", //nolint:goconst
 						Namespace: ns.Name,
 					},
 				}
 				sPVC.Spec.DeepCopyInto(&cache.Spec)
 				sa = &corev1.ServiceAccount{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "thesa",
+						Name:      "thesa", //nolint:goconst
 						Namespace: ns.Name,
 					},
 				}
 				repo = &corev1.Secret{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "mysecret",
+						Name:      "mysecret", //nolint:goconst
 						Namespace: ns.Name,
 					},
 				}
@@ -1509,7 +1509,7 @@ var _ = Describe("Restic as a source", func() {
 								MountPath: "addl-pvc",
 								VolumeSource: volsyncv1alpha1.MoverVolumeSource{
 									PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-										ClaimName: "restic-extra-pvc",
+										ClaimName: "restic-extra-pvc", //nolint:goconst
 									},
 								},
 							},
@@ -1641,7 +1641,7 @@ var _ = Describe("Restic as a source", func() {
 						Expect(mover.shouldUnlock()).To(BeTrue())
 						Expect(job.Spec.Template.Spec.Containers).ToNot(BeEmpty())
 						args := job.Spec.Template.Spec.Containers[0].Args
-						Expect(args).To(ConsistOf([]string{"unlock", "backup"}))
+						Expect(args).To(ConsistOf([]string{"unlock", "backup"})) //nolint:goconst
 						// Mark completed
 						job.Status.Succeeded = int32(1)
 						Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
@@ -1699,7 +1699,7 @@ var _ = Describe("Restic as a source", func() {
 						Expect(mover.shouldUnlock()).To(BeTrue())
 						Expect(job.Spec.Template.Spec.Containers).ToNot(BeEmpty())
 						args := job.Spec.Template.Spec.Containers[0].Args
-						Expect(args).To(ConsistOf([]string{"unlock", "backup"}))
+						Expect(args).To(ConsistOf([]string{"unlock", "backup"})) //nolint:goconst
 						// Mark completed
 						job.Status.Succeeded = int32(1)
 						Expect(k8sClient.Status().Update(ctx, job)).To(Succeed())
@@ -1874,20 +1874,20 @@ var _ = Describe("Restic as a source", func() {
 				jobName = "volsync-src-" + rs.Name
 				cache = &corev1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "thecache",
+						Name:      "thecache", //nolint:goconst
 						Namespace: ns.Name,
 					},
 				}
 				sPVC.Spec.DeepCopyInto(&cache.Spec)
 				sa = &corev1.ServiceAccount{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "thesa",
+						Name:      "thesa", //nolint:goconst
 						Namespace: ns.Name,
 					},
 				}
 				repo = &corev1.Secret{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "mysecret",
+						Name:      "mysecret", //nolint:goconst
 						Namespace: ns.Name,
 					},
 				}
@@ -2147,7 +2147,7 @@ var _ = Describe("Restic as a destination", func() {
 				}
 				cache = &corev1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "thecache",
+						Name:      "thecache", //nolint:goconst
 						Namespace: ns.Name,
 					},
 					Spec: corev1.PersistentVolumeClaimSpec{
@@ -2163,13 +2163,13 @@ var _ = Describe("Restic as a destination", func() {
 				}
 				sa = &corev1.ServiceAccount{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "thesa",
+						Name:      "thesa", //nolint:goconst
 						Namespace: ns.Name,
 					},
 				}
 				repo = &corev1.Secret{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "mysecret",
+						Name:      "mysecret", //nolint:goconst
 						Namespace: ns.Name,
 					},
 				}
@@ -2179,7 +2179,7 @@ var _ = Describe("Restic as a destination", func() {
 						Namespace: ns.Name,
 					},
 					StringData: map[string]string{
-						"key": "value",
+						"key": "value", //nolint:goconst
 					},
 				}
 				caConfigMap = &corev1.ConfigMap{
@@ -2351,7 +2351,7 @@ var _ = Describe("Restic as a destination", func() {
 				When("credentials are provided", func() {
 					BeforeEach(func() {
 						repo.Data = map[string][]byte{
-							"GOOGLE_APPLICATION_CREDENTIALS": []byte("dummy"),
+							"GOOGLE_APPLICATION_CREDENTIALS": []byte("dummy"), //nolint:goconst
 						}
 					})
 					It("should mount the Secret", func() {
@@ -2372,7 +2372,7 @@ var _ = Describe("Restic as a destination", func() {
 						Expect(found).To(BeTrue())
 						found = false
 						for _, v := range job.Spec.Template.Spec.Containers[0].VolumeMounts {
-							if v.Name == "gcs-credentials" {
+							if v.Name == "gcs-credentials" { //nolint:goconst
 								found = true
 								Expect(v.MountPath).To(Equal(credentialDir))
 							}
@@ -2380,7 +2380,7 @@ var _ = Describe("Restic as a destination", func() {
 						Expect(found).To(BeTrue())
 						found = false
 						for _, v := range job.Spec.Template.Spec.Volumes {
-							if v.Name == "gcs-credentials" {
+							if v.Name == "gcs-credentials" { //nolint:goconst
 								found = true
 								Expect(v.Secret).NotTo(BeNil())
 								Expect(v.Secret.Items).To(ContainElement(corev1.KeyToPath{
@@ -2447,7 +2447,7 @@ var _ = Describe("Restic as a destination", func() {
 				//nolint:dupl
 				When("Azure Workload Identity env vars are in the secret", func() {
 					BeforeEach(func() {
-						repo.StringData = map[string]string{
+						repo.StringData = map[string]string{ //nolint:gosec
 							"RESTIC_REPOSITORY":          "myrepo",
 							"RESTIC_PASSWORD":            "pass123",
 							"AZURE_TENANT_ID":            "tenant-123",
@@ -2502,7 +2502,7 @@ var _ = Describe("Restic as a destination", func() {
 								restoreAsOf = &envVar
 							case "SELECT_PREVIOUS":
 								selectPrevious = &envVar
-							case "RESTORE_OPTIONS":
+							case "RESTORE_OPTIONS": //nolint:goconst
 								restoreOptions = &envVar
 							}
 						}

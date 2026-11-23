@@ -264,10 +264,10 @@ func newRSMachine(rs *volsyncv1alpha1.ReplicationSource, c client.Client,
 	}
 
 	metrics := newVolSyncMetrics(prometheus.Labels{
-		"obj_name":      rs.Name,
-		"obj_namespace": rs.Namespace,
-		"role":          "source",
-		"method":        dataMover.Name(),
+		"obj_name":      rs.Name,          //nolint:goconst
+		"obj_namespace": rs.Namespace,     //nolint:goconst
+		"role":          "source",         //nolint:goconst
+		"method":        dataMover.Name(), //nolint:goconst
 	})
 
 	return &rsMachine{

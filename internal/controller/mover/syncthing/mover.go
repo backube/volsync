@@ -544,7 +544,7 @@ func (m *Mover) ensureDeployment(ctx context.Context, dataPVC *corev1.Persistent
 
 		if m.privileged {
 			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, corev1.EnvVar{
-				Name:  "PRIVILEGED_MOVER",
+				Name:  "PRIVILEGED_MOVER", //nolint:goconst
 				Value: "1",
 			})
 			podSpec.Containers[0].SecurityContext.Capabilities.Add = []corev1.Capability{

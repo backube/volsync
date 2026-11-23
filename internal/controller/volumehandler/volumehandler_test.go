@@ -205,7 +205,7 @@ var _ = Describe("Volumehandler", func() {
 					pvcSC := "pvcsc"
 					pvc := &corev1.PersistentVolumeClaim{
 						ObjectMeta: metav1.ObjectMeta{
-							Name:      "mypvc",
+							Name:      "mypvc", //nolint:goconst
 							Namespace: ns.Name,
 						},
 						Spec: corev1.PersistentVolumeClaimSpec{
@@ -214,7 +214,7 @@ var _ = Describe("Volumehandler", func() {
 							},
 							Resources: corev1.VolumeResourceRequirements{
 								Requests: corev1.ResourceList{
-									"storage": resource.MustParse("2Gi"),
+									"storage": resource.MustParse("2Gi"), //nolint:goconst
 								},
 							},
 							StorageClassName: &pvcSC,
@@ -257,7 +257,7 @@ var _ = Describe("Volumehandler", func() {
 						},
 						Resources: corev1.VolumeResourceRequirements{
 							Requests: corev1.ResourceList{
-								"storage": resource.MustParse("2Gi"),
+								"storage": resource.MustParse("2Gi"), //nolint:goconst
 							},
 						},
 						StorageClassName: &pvcSC,
