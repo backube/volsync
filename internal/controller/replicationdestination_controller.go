@@ -126,14 +126,17 @@ func (r *ReplicationDestinationReconciler) Reconcile(ctx context.Context, req ct
 			Message: err.Error(),
 		})
 	}
-	// No method found
+	// No method found, or a mover failed to build
 	if rdm == nil && inst.Spec.External == nil {
-		err = mover.ErrNoMoverFound
+		msg := err.Error()
+		if errors.Is(err, mover.ErrNoMoverFound) {
+			msg += fmt.Sprintf(" - enabled movers: %v", mover.GetEnabledMoverList())
+		}
 		apimeta.SetStatusCondition(&inst.Status.Conditions, metav1.Condition{
 			Type:    volsyncv1alpha1.ConditionSynchronizing,
 			Status:  metav1.ConditionFalse,
 			Reason:  volsyncv1alpha1.SynchronizingReasonError,
-			Message: err.Error() + fmt.Sprintf(" - enabled movers: %v", mover.GetEnabledMoverList()),
+			Message: msg,
 		})
 	}
 
