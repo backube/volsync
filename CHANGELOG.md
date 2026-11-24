@@ -15,6 +15,12 @@ and this project adheres to
   removes ~25 transitive dependencies from the module graph and ensures
   the mover's configuration updates no longer reset unmanaged Syncthing
   settings to their defaults
+- Mover Pods now forward the container stop signal (SIGTERM) to the running
+  mover process and wait for it to exit, so Restic can release its repository
+  lock instead of leaving a stale lock behind. The Job-based movers (Restic,
+  Rclone, Rsync-ssh, and Rsync-TLS) now use a 120-second
+  `terminationGracePeriodSeconds`. Upgrade the mover container image together
+  with the operator so the new entrypoints are used.
 
 ### Fixed
 

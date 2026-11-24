@@ -6,6 +6,9 @@ echo "Starting container"
 
 set -e -o pipefail
 
+# shellcheck source=/dev/null
+source "${VOLSYNC_SHUTDOWN_LIB:-/mover-common/shutdown.sh}"
+
 echo "VolSync restic container version: ${version:-unknown}"
 echo  "$@"
 
@@ -37,15 +40,15 @@ if [[ $DEBUG_MOVER -eq 1 && "$SCRIPT_DIR" != "/tmp" ]]; then
   echo "##################################################################"
 
   # Wait for user to delete the file before exiting
-  while [[ -f "${END_DEBUG_FILE}" ]]; do
-    sleep 10
+  while [[ -f "${END_DEBUG_FILE}" && -z "${VOLSYNC_SHUTDOWN_SIGNAL}" ]]; do
+    volsync_run sleep 10
   done
 
   echo ""
   echo "##################################################################"
   echo "Debug done, exiting."
   echo "##################################################################"
-  sleep 2
+  volsync_run sleep 2
   exit 0
 fi
 
@@ -56,7 +59,7 @@ if [[ -n "${CUSTOM_CA}" ]]; then
     RESTIC+=(--cacert "${CUSTOM_CA}")
 fi
 
-"${RESTIC[@]}" version
+volsync_run "${RESTIC[@]}" version
 
 # Force the associated backup host name to be "volsync"
 RESTIC_HOST="volsync"
@@ -95,7 +98,7 @@ function ensure_initialized {
     set +e  # Don't exit on command failure
 
     outfile=$(mktemp -q)
-    timeout 60s "${RESTIC[@]}" cat config > /dev/null 2>"$outfile"
+    volsync_run timeout 60s "${RESTIC[@]}" cat config > /dev/null 2>"$outfile"
     rc=$?
 
     set -e  # Exit on command failure
@@ -121,7 +124,7 @@ function ensure_initialized {
         # the following cmd `restic init` will also fail)
         if [[ $output =~ .*(Is there a repository at the following location|The specified bucket does not exist).* ]]; then
             echo "=== Initialize Dir ==="
-            "${RESTIC[@]}" init
+            volsync_run "${RESTIC[@]}" init
         else
             cat "$outfile"
             error 3 "failure checking existence of repository"
@@ -130,7 +133,7 @@ function ensure_initialized {
     10)
         # rc = 10  Repository does not exist (since restic 0.17.0)
         echo "=== Initialize Dir ==="
-        "${RESTIC[@]}" init
+        volsync_run "${RESTIC[@]}" init
         ;;
     11)
         # rc = 11  Failed to lock repository (since restic 0.17.0)
@@ -160,7 +163,7 @@ function do_backup {
         echo "Excluding cache directories (CACHEDIR.TAG)"
         BACKUP_OPTS+=(--exclude-caches)
     fi
-    "${RESTIC[@]}" backup "${BACKUP_OPTS[@]}" .
+    volsync_run "${RESTIC[@]}" backup "${BACKUP_OPTS[@]}" .
     popd
 }
 
@@ -168,7 +171,7 @@ function do_forget {
     echo "=== Starting forget ==="
     if [[ -n ${FORGET_OPTIONS} ]]; then
         #shellcheck disable=SC2086
-        "${RESTIC[@]}" forget --host "${RESTIC_HOST}" ${FORGET_OPTIONS}
+        volsync_run "${RESTIC[@]}" forget --host "${RESTIC_HOST}" ${FORGET_OPTIONS}
     fi
 }
 
@@ -177,7 +180,7 @@ function do_unlock {
     # Try a restic unlock and capture the rc & output
     outfile=$(mktemp -q)
     #if ! "${RESTIC[@]}" unlock --remove-all 2>"$outfile"; then
-    if ! "${RESTIC[@]}" unlock 2>"$outfile"; then
+    if ! volsync_run "${RESTIC[@]}" unlock 2>"$outfile"; then
         output=$(<"$outfile")
         # Match against error string for uninitialized repo
         if [[ $output =~ .*(Is there a repository at the following location|The specified bucket does not exist).* ]]; then
@@ -194,7 +197,7 @@ function do_unlock {
 
 function do_prune {
     echo "=== Starting prune ==="
-    "${RESTIC[@]}" prune
+    volsync_run "${RESTIC[@]}" prune
 }
 
 #######################################
@@ -247,9 +250,10 @@ function reverse_array() {
         _arr[left]="${_arr[$right]}"
         _arr[right]="$temp"
 
-        # increment indices
-        ((left++))
-        ((right--))
+        # increment indices (explicit assignment so a zero result is not
+        # mistaken for a command failure under set -e)
+        left=$((left + 1))
+        right=$((right - 1))
     done
 }
 
@@ -275,9 +279,16 @@ function select_restic_snapshot_to_restore() {
     declare -A epochs_to_snapshots
 
     local restic_snapshots
-    if ! restic_snapshots=$("${RESTIC[@]}" -r "${RESTIC_REPOSITORY}" snapshots); then
+    local snapshots_file
+    # Command substitution would run restic in a subshell that the main shell's
+    # signal trap cannot reach, so write the output to a file instead.
+    snapshots_file=$(mktemp -q)
+    if ! volsync_run "${RESTIC[@]}" -r "${RESTIC_REPOSITORY}" snapshots > "$snapshots_file"; then
+      rm -f "$snapshots_file"
       error 3 "failure getting list of snapshots from repository"
     fi
+    restic_snapshots=$(<"$snapshots_file")
+    rm -f "$snapshots_file"
 
     # declare vars to be used in the loop
     local snapshot_id
@@ -286,7 +297,8 @@ function select_restic_snapshot_to_restore() {
     local snapshot_epoch
 
     # go through the timestamps received from restic
-    IFS=$'\n'
+    # (local so the caller's IFS is not modified now that this runs in-process)
+    local IFS=$'\n'
     for line in $(echo -e "${restic_snapshots}" | grep /data | awk '{print $1 "\t" $2 " " $3}'); do
         # extract the proper variables
         snapshot_id=$(echo -e "${line}" | cut -d$'\t' -f1)
@@ -309,13 +321,13 @@ function select_restic_snapshot_to_restore() {
             if ((${epochs[${offset}]} <= target_epoch)); then
                 break
             fi
-            ((offset++))
+            offset=$((offset + 1))
         done
     fi
 
     # offset the epoch selection if SELECT_PREVIOUS is defined
     local -i select_offset=${SELECT_PREVIOUS-0}
-    ((offset+=select_offset))
+    offset=$((offset + select_offset))
 
     # if there is a snapshot matching the provided parameters
     if (( offset < ${#epochs[@]} )); then
@@ -341,7 +353,14 @@ function do_restore {
     echo "=== Starting restore ==="
     # restore from specific snapshot specified by timestamp, or latest
     local snapshot_id
-    snapshot_id=$(select_restic_snapshot_to_restore)
+    # Capture via a file rather than a command substitution so the function (and
+    # the restic child it supervises) runs in this shell, where the signal trap
+    # can reach it.
+    local snapshot_id_file
+    snapshot_id_file=$(mktemp -q)
+    select_restic_snapshot_to_restore > "$snapshot_id_file"
+    snapshot_id=$(<"$snapshot_id_file")
+    rm -f "$snapshot_id_file"
     if [[ -z ${snapshot_id} ]]; then
         echo "No eligible snapshots found"
         echo "=== No data will be restored ==="
@@ -353,7 +372,7 @@ function do_restore {
         echo "Selected restic snapshot with id: ${snapshot_id}"
         # Running this cmd can be finicky with spaces, do not put quotes around ${RESTORE_OPTIONS}
         #shellcheck disable=SC2086
-        "${RESTIC[@]}" restore "${snapshot_id}" -t . --host "${RESTIC_HOST}" --include-xattr "user.*" ${RESTORE_OPTIONS}
+        volsync_run "${RESTIC[@]}" restore "${snapshot_id}" -t . --host "${RESTIC_HOST}" --include-xattr "user.*" ${RESTORE_OPTIONS}
         popd
     fi
 }
@@ -370,6 +389,11 @@ for var in PRIVILEGED_MOVER \
 done
 START_TIME=$SECONDS
 for op in "$@"; do
+    if volsync_shutdown_requested; then
+        # A stop signal arrived between operations; do not start another one.
+        echo "Shutdown requested, not starting operation: $op"
+        exit 143
+    fi
     case $op in
         "unlock")
             do_unlock
@@ -386,7 +410,7 @@ for op in "$@"; do
         "restore")
             ensure_initialized
             do_restore
-            sync -f "${DATA_DIR}"
+            volsync_run_cleanup sync -f "${DATA_DIR}"
             ;;
         *)
             error 2 "unknown operation: $op"
