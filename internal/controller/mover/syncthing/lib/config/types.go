@@ -1,3 +1,5 @@
+//go:build !disable_syncthing
+
 // Package config defines the minimal set of Syncthing configuration types
 // needed for VolSync's REST API communication with the Syncthing binary.
 // These types mirror the JSON structure of the Syncthing REST API responses
