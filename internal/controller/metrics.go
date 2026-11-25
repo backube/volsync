@@ -71,6 +71,16 @@ var (
 	)
 )
 
+// clearVolSyncMetrics removes all metric series associated with the given
+// labels from the exported metrics. It should be called when a
+// ReplicationSource/ReplicationDestination is deleted, so that stale gauge,
+// counter and summary series do not linger (see issue #1194).
+func clearVolSyncMetrics(labels prometheus.Labels) {
+	missedIntervals.DeletePartialMatch(labels)
+	outOfSync.DeletePartialMatch(labels)
+	syncDurations.DeletePartialMatch(labels)
+}
+
 func newVolSyncMetrics(labels prometheus.Labels) volsyncMetrics {
 	return volsyncMetrics{
 		MissedIntervals: missedIntervals.With(labels),
