@@ -695,6 +695,8 @@ var resticOptionalEnvVars = [...]string{
 
 	"RESTIC_READ_CONCURRENCY", // New in v0.15.0
 
+	"RESTIC_FEATURES", // New in v0.17.0
+
 	// Optional variables based on what backend is used for restic
 	"AWS_ACCESS_KEY_ID",
 	"AWS_SECRET_ACCESS_KEY",

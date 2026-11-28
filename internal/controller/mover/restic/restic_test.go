@@ -2561,6 +2561,7 @@ var _ = Describe("Restic as a destination", func() {
 							"AWS_ACCESS_KEY_ID":     "test-aws-key",
 							"AWS_SECRET_ACCESS_KEY": "test-aws-secret",
 							"RESTIC_COMPRESSION":    "auto",
+							"RESTIC_FEATURES":       "device-id-for-hardlinks=true",
 							"AZURE_ACCOUNT_NAME":    "teststorage",
 							// Issue #2032: Deliberately NOT setting Azure Workload Identity vars:
 							// AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_FEDERATED_TOKEN_FILE
@@ -2585,6 +2586,7 @@ var _ = Describe("Restic as a destination", func() {
 						verifyEnvVarFromSecret(env, "AWS_ACCESS_KEY_ID", repo.GetName(), true)
 						verifyEnvVarFromSecret(env, "AWS_SECRET_ACCESS_KEY", repo.GetName(), true)
 						verifyEnvVarFromSecret(env, "RESTIC_COMPRESSION", repo.GetName(), true)
+						verifyEnvVarFromSecret(env, "RESTIC_FEATURES", repo.GetName(), true)
 						verifyEnvVarFromSecret(env, "AZURE_ACCOUNT_NAME", repo.GetName(), true)
 
 						// Issue #2032: Azure Workload Identity vars NOT in secret should NOT be set

@@ -8,6 +8,11 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- Restic: `RESTIC_FEATURES` in the repository secret is passed to the mover,
+  to set restic feature flags
+
 ### Changed
 
 - The Syncthing mover no longer imports the syncthing Go library and
